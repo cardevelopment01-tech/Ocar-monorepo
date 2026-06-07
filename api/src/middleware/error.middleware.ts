@@ -1,5 +1,6 @@
 import { ErrorRequestHandler } from 'express'
 import { ZodError } from 'zod'
+import multer from 'multer'
 import { config } from '@/config'
 
 interface PgError extends Error {
@@ -10,13 +11,20 @@ export const errorMiddleware: ErrorRequestHandler = (err, req, res, _next) => {
   const requestId = req.requestId ?? 'unknown'
   console.error(`[${requestId}] Error:`, err)
 
-  const appErr = err as Error & { httpStatus?: number; appCode?: string }
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      res.status(422).json({ error: 'File size exceeds 5MB limit', code: 'FILE_TOO_LARGE', requestId })
+    } else {
+      res.status(422).json({ error: err.message, code: 'FILE_UPLOAD_ERROR', requestId })
+    }
+    return
+  }
+
+  const appErr = err as Error & { httpStatus?: number; appCode?: string; missing?: string[] }
   if (typeof appErr.httpStatus === 'number') {
-    res.status(appErr.httpStatus).json({
-      error: appErr.message,
-      code: appErr.appCode,
-      requestId,
-    })
+    const body: Record<string, unknown> = { error: appErr.message, code: appErr.appCode, requestId }
+    if (appErr.missing) body['missing'] = appErr.missing
+    res.status(appErr.httpStatus).json(body)
     return
   }
 

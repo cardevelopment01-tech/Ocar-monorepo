@@ -1,4 +1,5 @@
 import { AppErrors } from '@/constants/errors'
+import { createHttpError } from '@/lib/errors'
 import { PrincipalRole, OtpPurpose } from '@/constants/enums'
 import { OTP_TTL_SECONDS, JWT_REFRESH_EXPIRY_USER, JWT_REFRESH_EXPIRY_ADMIN } from '@/constants/limits'
 import * as otpLib from '@/lib/otp'
@@ -16,16 +17,7 @@ import type {
   AdminLoginResult,
 } from './auth.types'
 
-// ── Error factory ─────────────────────────────────────────────────────────────
-
-type AppErrorEntry = (typeof AppErrors)[keyof typeof AppErrors]
-
-export function createHttpError(entry: AppErrorEntry): Error & { httpStatus: number; appCode: string } {
-  const err = new Error(entry.message) as Error & { httpStatus: number; appCode: string }
-  err.httpStatus = entry.httpStatus
-  err.appCode = entry.code
-  return err
-}
+export { createHttpError }
 
 // ── Expiry helpers ────────────────────────────────────────────────────────────
 
@@ -81,6 +73,10 @@ export async function requestOtp(
 
   const { allowed } = await otpLib.checkRateLimit(phone, otpPurpose)
   if (!allowed) throw createHttpError(AppErrors.AUTH_OTP_RATE_LIMITED)
+
+  if (await otpLib.isVerifyLocked(phone, otpPurpose, principalRole)) {
+    throw createHttpError(AppErrors.AUTH_OTP_LOCKED)
+  }
 
   const otp = otpLib.generateOtp()
   const otpHash = otpLib.hashOtp(otp)

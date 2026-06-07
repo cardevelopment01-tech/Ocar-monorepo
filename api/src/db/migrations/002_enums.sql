@@ -24,7 +24,10 @@ CREATE TYPE otp_purpose AS ENUM (
 
 -- Documents
 CREATE TYPE doc_status AS ENUM ('pending', 'approved', 'rejected', 'expired');
-CREATE TYPE doc_type AS ENUM ('driving_license', 'id_proof');
+CREATE TYPE doc_type AS ENUM (
+  'driving_license', 'id_proof',
+  'profile_photo', 'aadhaar_front', 'aadhaar_back'
+);
 
 -- Daily verification
 CREATE TYPE verification_kind AS ENUM ('daily_selfie', 'daily_plate');

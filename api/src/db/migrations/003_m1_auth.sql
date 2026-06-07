@@ -1,8 +1,22 @@
 -- M02: Auth & Identity tables
+-- M03: Extended driver onboarding columns + document tables
 
 CREATE SEQUENCE user_code_seq START 1;
 CREATE SEQUENCE driver_code_seq START 1;
 CREATE SEQUENCE admin_code_seq START 1;
+
+-- ─── Admins ──────────────────────────────────────────────────────────────────
+CREATE TABLE admins (
+  id             BIGSERIAL PRIMARY KEY,
+  code           TEXT UNIQUE NOT NULL
+                   DEFAULT 'ADM' || LPAD(nextval('admin_code_seq')::TEXT, 6, '0'),
+  email          CITEXT UNIQUE NOT NULL,
+  password_hash  TEXT NOT NULL,
+  role           admin_role NOT NULL,
+  is_active      BOOLEAN NOT NULL DEFAULT true,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- ─── Users ───────────────────────────────────────────────────────────────────
 CREATE TABLE users (
@@ -25,33 +39,66 @@ CREATE INDEX users_status_idx ON users (status);
 
 -- ─── Drivers ─────────────────────────────────────────────────────────────────
 CREATE TABLE drivers (
-  id          BIGSERIAL PRIMARY KEY,
-  code        TEXT UNIQUE NOT NULL
-                DEFAULT 'DRV' || LPAD(nextval('driver_code_seq')::TEXT, 6, '0'),
-  phone       TEXT UNIQUE NOT NULL,
-  name        TEXT,
-  email       CITEXT,
-  status      driver_status NOT NULL DEFAULT 'pending_docs',
-  fcm_token   TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                    BIGSERIAL PRIMARY KEY,
+  code                  TEXT UNIQUE NOT NULL
+                          DEFAULT 'DRV' || LPAD(nextval('driver_code_seq')::TEXT, 6, '0'),
+  phone                 TEXT UNIQUE NOT NULL,
+  -- Personal info (Step 2 of onboarding)
+  full_name             VARCHAR(120),
+  email                 CITEXT,
+  gender                VARCHAR(10),
+  date_of_birth         DATE,
+  residential_address   TEXT,
+  state                 VARCHAR(80),
+  city                  VARCHAR(80),
+  pincode               VARCHAR(6),
+  experience_years      SMALLINT,
+  emergency_contact     VARCHAR(15),
+  languages_known       TEXT[] NOT NULL DEFAULT '{}',
+  -- Document identifiers (Step 4 of onboarding)
+  aadhaar_number        VARCHAR(12),
+  license_number        VARCHAR(80),
+  -- Status & onboarding progress
+  status                driver_status NOT NULL DEFAULT 'pending_docs',
+  onboarding_step       VARCHAR(20) NOT NULL DEFAULT 'personal_info',
+  fcm_token             TEXT,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX drivers_phone_idx ON drivers (phone);
 CREATE INDEX drivers_status_idx ON drivers (status);
+CREATE INDEX drivers_step_idx ON drivers (onboarding_step);
 
--- ─── Admins ──────────────────────────────────────────────────────────────────
-CREATE TABLE admins (
-  id             BIGSERIAL PRIMARY KEY,
-  code           TEXT UNIQUE NOT NULL
-                   DEFAULT 'ADM' || LPAD(nextval('admin_code_seq')::TEXT, 6, '0'),
-  email          CITEXT UNIQUE NOT NULL,
-  password_hash  TEXT NOT NULL,
-  role           admin_role NOT NULL,
-  is_active      BOOLEAN NOT NULL DEFAULT true,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+-- ─── Driver documents (identity + photo uploads) ──────────────────────────
+CREATE TABLE driver_documents (
+  id              BIGSERIAL PRIMARY KEY,
+  driver_id       BIGINT NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+  doc_type        doc_type NOT NULL,
+  file_url        TEXT NOT NULL,
+  status          doc_status NOT NULL DEFAULT 'pending',
+  rejection_note  TEXT,
+  reviewed_by     BIGINT REFERENCES admins(id),
+  reviewed_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (driver_id, doc_type)
 );
+
+CREATE INDEX driver_docs_driver_idx ON driver_documents (driver_id);
+
+-- ─── Driver status history ────────────────────────────────────────────────
+CREATE TABLE driver_status_history (
+  id           BIGSERIAL PRIMARY KEY,
+  driver_id    BIGINT NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+  from_status  driver_status,
+  to_status    driver_status NOT NULL,
+  reason       TEXT,
+  changed_by   BIGINT REFERENCES admins(id),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX dsh_driver_idx ON driver_status_history (driver_id, created_at DESC);
 
 -- ─── OTP requests ────────────────────────────────────────────────────────────
 -- DB audit trail only; live OTP state lives in Redis for fast TTL lookups.

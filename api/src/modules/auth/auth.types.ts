@@ -21,9 +21,21 @@ export interface DriverRecord {
   id: string
   code: string
   phone: string
-  name: string | null
+  full_name: string | null
   email: string | null
+  gender: string | null
+  date_of_birth: Date | null
+  residential_address: string | null
+  state: string | null
+  city: string | null
+  pincode: string | null
+  experience_years: number | null
+  emergency_contact: string | null
+  languages_known: string[]
+  aadhaar_number: string | null
+  license_number: string | null
   status: DriverStatus
+  onboarding_step: string
   fcm_token: string | null
   created_at: Date
   updated_at: Date

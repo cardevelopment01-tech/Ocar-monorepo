@@ -6,6 +6,8 @@ import { testConnection } from '@/db/client'
 import { testConnection as testRedis } from '@/db/redis'
 import { errorMiddleware } from '@/middleware/error.middleware'
 import authRouter from '@/modules/auth/auth.routes'
+import driversRouter from '@/modules/drivers/drivers.routes'
+import vehiclesRouter from '@/modules/vehicles/vehicles.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -45,6 +47,8 @@ export function createApp(): Application {
   // 6. API router
   const apiRouter = Router()
   apiRouter.use('/auth', authRouter)
+  apiRouter.use('/drivers', driversRouter)
+  apiRouter.use('/vehicles', vehiclesRouter)
   app.use('/api/v1', apiRouter)
 
   // 7. 404 handler

@@ -89,6 +89,18 @@ export async function consumeOtp(
   return { success: true }
 }
 
+export async function isVerifyLocked(
+  phone: string,
+  purpose: OtpPurpose,
+  role: PrincipalRole
+): Promise<boolean> {
+  const key = otpRedisKey(phone, purpose, role)
+  const raw = await redis.get(key)
+  if (!raw) return false
+  const state = JSON.parse(raw) as OtpState
+  return !!(state.lockedUntil && new Date(state.lockedUntil).getTime() > Date.now())
+}
+
 export async function checkRateLimit(
   phone: string,
   purpose: OtpPurpose

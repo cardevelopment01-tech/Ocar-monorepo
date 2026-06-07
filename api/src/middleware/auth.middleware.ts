@@ -36,7 +36,7 @@ export function authenticate(): RequestHandler {
         req.user = { id: BigInt(user.id), code: user.code, role: 'user', status: user.status }
       } else if (payload.role === PrincipalRole.DRIVER) {
         const driver = await findDriverById(id)
-        if (!driver) {
+        if (!driver || driver.status === 'banned') {
           res.status(401).json({
             error: AppErrors.AUTH_TOKEN_INVALID.message,
             code: AppErrors.AUTH_TOKEN_INVALID.code,
