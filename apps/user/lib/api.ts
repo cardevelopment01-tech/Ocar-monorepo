@@ -20,7 +20,9 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 && typeof window !== 'undefined') {
+    const code = error.response?.data?.code
+    const isTokenError = code === 'AUTH_UNAUTHORIZED' || code === 'AUTH_TOKEN_INVALID' || code === 'AUTH_TOKEN_EXPIRED'
+    if (error.response?.status === 401 && isTokenError && typeof window !== 'undefined') {
       localStorage.removeItem('ocar_user_token')
       localStorage.removeItem('ocar_user_data')
       document.cookie = 'ocar_user_token=; path=/; max-age=0'
