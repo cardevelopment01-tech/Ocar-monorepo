@@ -40,6 +40,11 @@ export async function uploadFile(
   const ext = path.extname(file.originalname).toLowerCase() || '.jpg'
   const key = `${folder}/${uuidv4()}${ext}`
 
+  // Dev bypass: when no bucket is configured, return a local placeholder URL
+  if (!config.S3_BUCKET_NAME) {
+    return `http://localhost:9000/ocar-dev/${key}`
+  }
+
   await s3.send(
     new PutObjectCommand({
       Bucket: config.S3_BUCKET_NAME,

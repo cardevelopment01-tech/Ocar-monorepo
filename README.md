@@ -64,7 +64,7 @@ The backend is raw `pg` queries over PostgreSQL + PostGIS (no ORM overhead), Bul
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Monorepo (Turborepo)                      │
 │                                                                   │
-│   apps/user (Next.js 14)    apps/driver (Vite)   apps/admin      │
+│   apps/user (Next.js 16)    apps/driver (Vite)   apps/admin      │
 │        :3000                     :3001           (Next.js) :3002  │
 │           │                        │                  │           │
 │           └────────────────────────┴──────────────────┘           │
@@ -126,9 +126,9 @@ The backend is raw `pg` queries over PostgreSQL + PostGIS (no ORM overhead), Bul
 
 | App             | Technology                   |
 | --------------- | ---------------------------- |
-| User app        | Next.js 14, React 18         |
-| Driver app      | Vite, React 18, React Router |
-| Admin dashboard | Next.js 14, React 18         |
+| User app        | Next.js 16, React 19         |
+| Driver app      | Vite, React 19, React Router |
+| Admin dashboard | Next.js 16, React 19         |
 | Styling         | Tailwind CSS                 |
 | State           | Zustand                      |
 | Maps            | Leaflet                      |
@@ -489,9 +489,9 @@ Six BullMQ workers run alongside the API:
 
 | App           | Port | Stack                        | Purpose                                      |
 | ------------- | ---- | ---------------------------- | -------------------------------------------- |
-| `apps/user`   | 3000 | Next.js 14, Leaflet, Zustand | Booking, ride tracking, wallet, trip history |
-| `apps/driver` | 3001 | Vite, React Router, Zustand  | Onboarding, active ride management, earnings |
-| `apps/admin`  | 3002 | Next.js 14, Zustand          | Driver approval, config, disputes, analytics |
+| `apps/user`   | 3000 | Next.js 16, React 19, Leaflet, Zustand | Booking, ride tracking, wallet, trip history |
+| `apps/driver` | 3001 | Vite, React 19, React Router, Zustand  | Onboarding, active ride management, earnings |
+| `apps/admin`  | 3002 | Next.js 16, React 19, Zustand          | Driver approval, config, disputes, analytics |
 
 ---
 

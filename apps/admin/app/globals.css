@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { font-family: 'DM Sans', sans-serif; }
+  body { background: #F1F5F9; color: #0F172A; }
+  * { -webkit-font-smoothing: antialiased; }
+}
+
+@layer components {
+  /* Status pills */
+  .pill {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+  .pill-success { @apply pill bg-success-light text-success; }
+  .pill-warning { @apply pill bg-warning-light text-warning; }
+  .pill-danger  { @apply pill bg-danger-light text-danger;  }
+  .pill-info    { @apply pill bg-info-light text-info;      }
+  .pill-purple  { @apply pill bg-purple-light text-purple;  }
+  .pill-muted   { @apply pill bg-surface-2 text-text-muted; }
+
+  /* Data table */
+  .data-table { @apply w-full text-sm border-collapse; }
+  .data-table th {
+    @apply px-4 py-3 text-left text-xs font-semibold text-text-muted uppercase tracking-wide
+           border-b border-border bg-surface-2;
+  }
+  .data-table td {
+    @apply px-4 py-3.5 text-text-secondary border-b border-border-light transition-colors duration-100;
+  }
+  .data-table tr { @apply cursor-pointer; }
+  .data-table tr:hover td { background-color: #EFF6FF; }
+  .data-table tr:last-child td { @apply border-b-0; }
+
+  /* Stat card */
+  .stat-card { @apply rounded-2xl p-5 text-white relative overflow-hidden; }
+
+  /* Sidebar nav item */
+  .nav-item {
+    @apply relative flex items-center gap-3 px-3 py-2.5 rounded-xl
+           text-sidebar-text text-sm font-medium cursor-pointer
+           transition-all duration-150 hover:bg-sidebar-hover hover:text-white;
+  }
+  .nav-item.active { @apply bg-sidebar-active text-white; }
+
+  /* Admin card */
+  .admin-card { @apply bg-surface rounded-2xl shadow-card p-6; }
+
+  /* Page layout helpers */
+  .page-header { @apply flex items-center justify-between mb-6; }
+  .page-title  { @apply text-2xl font-bold text-text-primary; }
+  .page-subtitle { @apply text-sm text-text-muted mt-0.5; }
+
+  /* Shimmer skeleton */
+  .skeleton {
+    @apply rounded-md;
+    background: linear-gradient(90deg, #E2E8F0 25%, #F1F5F9 50%, #E2E8F0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite linear;
+  }
+}

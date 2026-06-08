@@ -3,14 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch --env-file=.env src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "migrate": "tsx src/db/migrate.ts",
-    "migrate:fresh": "tsx src/db/migrate.ts --fresh"
+    "migrate": "tsx --env-file=.env src/db/migrate.ts",
+    "migrate:fresh": "tsx --env-file=.env src/db/migrate.ts --fresh",
+    "seed:admin": "tsx --env-file=.env src/db/seed-admin.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1063.0",

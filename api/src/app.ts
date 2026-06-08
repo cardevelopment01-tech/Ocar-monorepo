@@ -8,6 +8,7 @@ import { errorMiddleware } from '@/middleware/error.middleware'
 import authRouter from '@/modules/auth/auth.routes'
 import driversRouter from '@/modules/drivers/drivers.routes'
 import vehiclesRouter from '@/modules/vehicles/vehicles.routes'
+import adminRouter from '@/modules/admin/admin.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -24,7 +25,7 @@ export function createApp(): Application {
   // 3. CORS
   app.use(
     cors({
-      origin: config.ALLOWED_ORIGINS.split(','),
+      origin: config.ALLOWED_ORIGINS.split(',').map(o => o.trim()),
     })
   )
 
@@ -49,6 +50,7 @@ export function createApp(): Application {
   apiRouter.use('/auth', authRouter)
   apiRouter.use('/drivers', driversRouter)
   apiRouter.use('/vehicles', vehiclesRouter)
+  apiRouter.use('/admin', adminRouter)
   app.use('/api/v1', apiRouter)
 
   // 7. 404 handler
