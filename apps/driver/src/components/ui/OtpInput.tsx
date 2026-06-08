@@ -12,11 +12,12 @@ export default function OtpInput({ length = 6, value, onChange, error = false }:
   const refs = useRef<(HTMLInputElement | null)[]>([])
   const digits = value.split('').concat(Array(length).fill('')).slice(0, length)
 
-  // Auto-focus first box on mount (works on PC and Android)
+  // Auto-focus box 0 on mount and whenever value is reset to '' (e.g. after wrong OTP)
   useEffect(() => {
+    if (value !== '') return
     const t = setTimeout(() => refs.current[0]?.focus(), 50)
     return () => clearTimeout(t)
-  }, [])
+  }, [value])
 
   const handleChange = (i: number, char: string) => {
     if (!/^\d*$/.test(char)) return
