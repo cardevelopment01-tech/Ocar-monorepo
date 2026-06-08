@@ -174,6 +174,7 @@ export default function LoginPage() {
                 value={otp}
                 onChange={handleVerifyOtp}
                 disabled={loading}
+                error={!!error}
               />
 
               {error && <p className="text-status-error text-sm mt-4">{error}</p>}

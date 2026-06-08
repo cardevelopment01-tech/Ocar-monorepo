@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, KeyboardEvent, ClipboardEvent } from 'react'
+import { useEffect, useRef, KeyboardEvent, ClipboardEvent } from 'react'
 import { cn } from '@/lib/utils'
 
 interface OtpInputProps {
@@ -8,11 +8,18 @@ interface OtpInputProps {
   onChange: (value: string) => void
   length?: number
   disabled?: boolean
+  error?: boolean
 }
 
-export default function OtpInput({ value, onChange, length = 6, disabled = false }: OtpInputProps) {
+export default function OtpInput({ value, onChange, length = 6, disabled = false, error = false }: OtpInputProps) {
   const refs = useRef<(HTMLInputElement | null)[]>([])
   const digits = value.split('').concat(Array(length).fill('')).slice(0, length)
+
+  // Auto-focus first box on mount (works on PC and Android)
+  useEffect(() => {
+    const t = setTimeout(() => refs.current[0]?.focus(), 50)
+    return () => clearTimeout(t)
+  }, [])
 
   const handleChange = (index: number, char: string) => {
     if (!/^\d*$/.test(char)) return
@@ -36,13 +43,14 @@ export default function OtpInput({ value, onChange, length = 6, disabled = false
   }
 
   return (
-    <div className="flex gap-2.5 justify-center">
+    <div className="flex gap-2 justify-center w-full">
       {digits.map((digit, i) => (
         <input
           key={i}
           ref={el => { refs.current[i] = el }}
           type="text"
           inputMode="numeric"
+          pattern="[0-9]*"
           maxLength={1}
           value={digit}
           onChange={e => handleChange(i, e.target.value)}
@@ -50,12 +58,14 @@ export default function OtpInput({ value, onChange, length = 6, disabled = false
           onPaste={handlePaste}
           disabled={disabled}
           className={cn(
-            'w-12 h-14 text-center text-xl font-semibold rounded-xl border-2 bg-surface-2',
-            'focus:outline-none transition-all duration-150',
-            digit
-              ? 'border-primary scale-[1.04] text-text-primary'
-              : 'border-border text-text-primary',
-            'focus:border-primary focus:scale-[1.04]'
+            'w-11 h-[60px] text-center text-2xl font-bold rounded-2xl border-2',
+            'transition-all duration-150 focus:outline-none caret-transparent select-none',
+            'disabled:opacity-50 disabled:cursor-not-allowed',
+            error
+              ? 'border-status-error bg-status-error/5 text-status-error'
+              : digit
+                ? 'border-primary bg-primary/10 text-primary scale-[1.06]'
+                : 'border-border bg-surface-2 text-text-primary focus:border-primary focus:bg-surface focus:scale-[1.06]'
           )}
         />
       ))}

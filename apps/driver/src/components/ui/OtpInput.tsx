@@ -1,4 +1,4 @@
-import { useRef, KeyboardEvent, ClipboardEvent } from 'react'
+import { useEffect, useRef, KeyboardEvent, ClipboardEvent } from 'react'
 import { cn } from '@/lib/utils'
 
 interface OtpInputProps {
@@ -8,9 +8,15 @@ interface OtpInputProps {
   error?: boolean
 }
 
-export default function OtpInput({ length = 4, value, onChange, error = false }: OtpInputProps) {
+export default function OtpInput({ length = 6, value, onChange, error = false }: OtpInputProps) {
   const refs = useRef<(HTMLInputElement | null)[]>([])
   const digits = value.split('').concat(Array(length).fill('')).slice(0, length)
+
+  // Auto-focus first box on mount (works on PC and Android)
+  useEffect(() => {
+    const t = setTimeout(() => refs.current[0]?.focus(), 50)
+    return () => clearTimeout(t)
+  }, [])
 
   const handleChange = (i: number, char: string) => {
     if (!/^\d*$/.test(char)) return
@@ -32,33 +38,30 @@ export default function OtpInput({ length = 4, value, onChange, error = false }:
   }
 
   return (
-    <div className="w-full overflow-hidden px-1">
-      <div className="flex gap-2 w-full justify-center">
-        {digits.map((digit, i) => (
-          <input
-            key={i}
-            ref={el => { refs.current[i] = el }}
-            type="text"
-            inputMode="numeric"
-            maxLength={1}
-            value={digit}
-            onChange={e => handleChange(i, e.target.value)}
-            onKeyDown={e => handleKeyDown(i, e)}
-            onPaste={handlePaste}
-            className={cn(
-              'flex-1 min-w-0 max-w-[52px] aspect-square',
-              'text-center font-mono font-bold rounded-xl border-2 transition-all duration-150',
-              'text-2xl text-text-primary bg-surface-2 caret-transparent',
-              'focus:outline-none',
-              error
-                ? 'border-accent-red animate-[shake_0.3s_ease]'
-                : digit
-                  ? 'border-primary bg-primary-subtle text-primary'
-                  : 'border-border focus:border-primary'
-            )}
-          />
-        ))}
-      </div>
+    <div className="flex gap-2 justify-center w-full">
+      {digits.map((digit, i) => (
+        <input
+          key={i}
+          ref={el => { refs.current[i] = el }}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={1}
+          value={digit}
+          onChange={e => handleChange(i, e.target.value)}
+          onKeyDown={e => handleKeyDown(i, e)}
+          onPaste={handlePaste}
+          className={cn(
+            'w-11 h-[60px] text-center text-2xl font-bold rounded-2xl border-2',
+            'transition-all duration-150 focus:outline-none caret-transparent select-none',
+            error
+              ? 'border-accent-red bg-accent-red/5 text-accent-red animate-[shake_0.3s_ease]'
+              : digit
+                ? 'border-primary bg-primary-subtle text-primary scale-[1.06]'
+                : 'border-border bg-surface-2 text-text-primary focus:border-primary focus:bg-surface focus:scale-[1.06]'
+          )}
+        />
+      ))}
     </div>
   )
 }
