@@ -1,23 +1,53 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export interface AuthState {
+export interface DriverProfile {
+  id: string
+  code: string
+  phone: string
+  full_name: string | null
+  email: string | null
+  status: string
+  onboarding_step: string
+}
+
+interface AuthState {
   token: string | null
+  refreshToken: string | null
+  driver: DriverProfile | null
   isAuthenticated: boolean
-  setToken: (token: string) => void
+  setAuth: (token: string, refreshToken: string, driver: DriverProfile) => void
   clearAuth: () => void
+  updateDriver: (updates: Partial<DriverProfile>) => void
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       token: null,
+      refreshToken: null,
+      driver: null,
       isAuthenticated: false,
-      setToken: (token) => set({ token, isAuthenticated: true }),
-      clearAuth: () => set({ token: null, isAuthenticated: false }),
+
+      setAuth: (token, refreshToken, driver) =>
+        set({ token, refreshToken, driver, isAuthenticated: true }),
+
+      clearAuth: () =>
+        set({ token: null, refreshToken: null, driver: null, isAuthenticated: false }),
+
+      updateDriver: (updates) =>
+        set((state) => ({
+          driver: state.driver ? { ...state.driver, ...updates } : null,
+        })),
     }),
     {
-      name: 'driver-auth',
+      name: 'ocar_driver_auth',
+      partialize: (state) => ({
+        token: state.token,
+        refreshToken: state.refreshToken,
+        driver: state.driver,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 )

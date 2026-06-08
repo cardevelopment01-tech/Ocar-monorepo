@@ -1,30 +1,95 @@
-import { Routes, Route } from 'react-router-dom'
-
-// TODO: implement in Module M01 — replace placeholders with real page components
-function Placeholder({ name }: { name: string }) {
-  return <div>{name} — TODO</div>
-}
+import { Routes, Route, Navigate } from 'react-router-dom'
+import ProtectedRoute from '@/components/ProtectedRoute'
+import Login from '@/pages/Login'
+import Home from '@/pages/Home'
+import Earnings from '@/pages/Earnings'
+import Wallet from '@/pages/Wallet'
+import Profile from '@/pages/Profile'
+import IncomingRequest from '@/pages/ActiveRide/IncomingRequest'
+import NavigateToPickup from '@/pages/ActiveRide/NavigateToPickup'
+import OTPVerify from '@/pages/ActiveRide/OTPVerify'
+import TripInProgress from '@/pages/ActiveRide/TripInProgress'
+import TripEnd from '@/pages/ActiveRide/TripEnd'
+import ModeSelection from '@/pages/GoOnline/ModeSelection'
+import StandardConfirm from '@/pages/GoOnline/StandardConfirm'
+import ReturnCabSetup from '@/pages/GoOnline/ReturnCabSetup'
+import PersonalDetails from '@/pages/Onboarding/PersonalDetails'
+import Documents from '@/pages/Onboarding/Documents'
+import VehicleRegistration from '@/pages/Onboarding/VehicleRegistration'
+import PendingReview from '@/pages/Onboarding/PendingReview'
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/login" element={<Placeholder name="Login" />} />
-      <Route path="/" element={<Placeholder name="Home" />} />
-      <Route path="/earnings" element={<Placeholder name="Earnings" />} />
-      <Route path="/wallet" element={<Placeholder name="Wallet" />} />
-      <Route path="/onboarding/personal" element={<Placeholder name="PersonalDetails" />} />
-      <Route path="/onboarding/documents" element={<Placeholder name="Documents" />} />
-      <Route path="/onboarding/vehicle" element={<Placeholder name="VehicleRegistration" />} />
-      <Route path="/onboarding/vehicle-docs" element={<Placeholder name="VehicleDocuments" />} />
-      <Route path="/onboarding/selfie" element={<Placeholder name="ReferenceSelfie" />} />
-      <Route path="/go-online/mode" element={<Placeholder name="ModeSelection" />} />
-      <Route path="/go-online/standard" element={<Placeholder name="StandardConfirm" />} />
-      <Route path="/go-online/return-cab" element={<Placeholder name="ReturnCabSetup" />} />
-      <Route path="/ride/incoming" element={<Placeholder name="IncomingRequest" />} />
-      <Route path="/ride/navigate" element={<Placeholder name="NavigateToPickup" />} />
-      <Route path="/ride/otp" element={<Placeholder name="OTPVerify" />} />
-      <Route path="/ride/in-progress" element={<Placeholder name="TripInProgress" />} />
-      <Route path="/ride/end" element={<Placeholder name="TripEnd" />} />
+      {/* Auth */}
+      <Route path="/login" element={<Login />} />
+
+      {/* Main — approved drivers only */}
+      <Route path="/" element={
+        <ProtectedRoute requireApproved>
+          <Home />
+        </ProtectedRoute>
+      } />
+      <Route path="/earnings" element={
+        <ProtectedRoute requireApproved>
+          <Earnings />
+        </ProtectedRoute>
+      } />
+      <Route path="/wallet" element={
+        <ProtectedRoute requireApproved>
+          <Wallet />
+        </ProtectedRoute>
+      } />
+      <Route path="/profile" element={
+        <ProtectedRoute requireApproved>
+          <Profile />
+        </ProtectedRoute>
+      } />
+
+      {/* Go online flow */}
+      <Route path="/go-online/mode" element={
+        <ProtectedRoute requireApproved><ModeSelection /></ProtectedRoute>
+      } />
+      <Route path="/go-online/standard" element={
+        <ProtectedRoute requireApproved><StandardConfirm /></ProtectedRoute>
+      } />
+      <Route path="/go-online/return-cab" element={
+        <ProtectedRoute requireApproved><ReturnCabSetup /></ProtectedRoute>
+      } />
+
+      {/* Active ride flow */}
+      <Route path="/ride/incoming" element={
+        <ProtectedRoute requireApproved><IncomingRequest /></ProtectedRoute>
+      } />
+      <Route path="/ride/navigate" element={
+        <ProtectedRoute requireApproved><NavigateToPickup /></ProtectedRoute>
+      } />
+      <Route path="/ride/otp" element={
+        <ProtectedRoute requireApproved><OTPVerify /></ProtectedRoute>
+      } />
+      <Route path="/ride/in-progress" element={
+        <ProtectedRoute requireApproved><TripInProgress /></ProtectedRoute>
+      } />
+      <Route path="/ride/end" element={
+        <ProtectedRoute requireApproved><TripEnd /></ProtectedRoute>
+      } />
+
+      {/* Onboarding — authenticated but not necessarily approved */}
+      <Route path="/onboarding/personal" element={
+        <ProtectedRoute><PersonalDetails /></ProtectedRoute>
+      } />
+      <Route path="/onboarding/documents" element={
+        <ProtectedRoute><Documents /></ProtectedRoute>
+      } />
+      <Route path="/onboarding/vehicle" element={
+        <ProtectedRoute><VehicleRegistration /></ProtectedRoute>
+      } />
+      <Route path="/onboarding/pending-review" element={
+        <ProtectedRoute><PendingReview /></ProtectedRoute>
+      } />
+
+      {/* Fallback */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

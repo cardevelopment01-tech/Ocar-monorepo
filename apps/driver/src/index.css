@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'DM Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background-color: #0A0C10;
+    color: #F1F5F9;
+  }
+
+  body {
+    background-color: #0A0C10;
+    color: #F1F5F9;
+    overscroll-behavior: none;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button, a, [role="button"] {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}
+
+@layer components {
+  .driver-card {
+    @apply bg-surface rounded-2xl p-5 border border-border;
+  }
+
+  .btn-go {
+    @apply w-full py-5 px-6 bg-primary text-text-inverse
+      font-bold text-lg rounded-2xl shadow-button
+      active:scale-[0.98] active:bg-primary-dark
+      transition-all duration-150
+      disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  .btn-danger {
+    @apply w-full py-5 px-6 bg-accent-red text-white
+      font-bold text-lg rounded-2xl
+      active:scale-[0.98] transition-all duration-150;
+  }
+
+  .btn-secondary-dark {
+    @apply w-full py-4 px-6 bg-surface-2 text-text-primary
+      font-semibold text-base rounded-2xl border border-border
+      active:scale-[0.98] active:bg-surface-3
+      transition-all duration-150;
+  }
+
+  .status-pill {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5
+      rounded-full text-sm font-semibold;
+  }
+
+  .input-dark {
+    @apply w-full px-4 py-4 bg-surface-2 text-text-primary
+      placeholder-text-muted text-base rounded-xl
+      border border-border
+      focus:outline-none focus:border-primary
+      transition-colors duration-150;
+  }
+}
+
+/* Leaflet — keep map light even on dark UI */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  font-family: 'DM Sans', sans-serif;
+  z-index: 0 !important;
+}
+
+.leaflet-pane   { z-index: 0 !important; }
+.leaflet-top,
+.leaflet-bottom { z-index: 0 !important; }
+.leaflet-control-container { display: none; }
