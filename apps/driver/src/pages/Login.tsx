@@ -21,6 +21,7 @@ function formatPhone(input: string): string {
 
 function getOnboardingRoute(driver: DriverProfile): string {
   if (driver.status === 'active') return '/'
+  if (driver.status === 'pending_approval') return '/onboarding/pending-review'
   switch (driver.onboarding_step) {
     case 'personal_info': return '/onboarding/personal'
     case 'vehicle_info':  return '/onboarding/vehicle'
@@ -209,8 +210,8 @@ export default function Login() {
               {countdown > 0 ? (
                 <span className="text-text-muted">Resend in {countdown}s</span>
               ) : (
-                <button onClick={handlePhoneSubmit} className="text-primary font-semibold">
-                  Resend
+                <button onClick={handlePhoneSubmit} disabled={loading} className="text-primary font-semibold disabled:opacity-50">
+                  {loading ? 'Sending…' : 'Resend'}
                 </button>
               )}
             </p>

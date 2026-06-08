@@ -151,11 +151,14 @@ export default function DriversPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<DriverDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState(false)
+  const [detailRetry, setDetailRetry] = useState(0)
   const [activeTab, setActiveTab] = useState<SlideOverTab>('overview')
 
   // actions
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   // ── debounce search ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -191,14 +194,15 @@ export default function DriversPage() {
 
   // ── fetch detail when slide-over opens ───────────────────────────────────
   useEffect(() => {
-    if (!selectedId) { setDetail(null); return }
+    if (!selectedId) { setDetail(null); setDetailError(false); return }
     setDetailLoading(true)
+    setDetailError(false)
     setActiveTab('overview')
     adminDriverApi.getById(selectedId)
       .then(setDetail)
-      .catch(() => setDetail(null))
+      .catch(() => setDetailError(true))
       .finally(() => setDetailLoading(false))
-  }, [selectedId])
+  }, [selectedId, detailRetry])
 
   // ── action helpers ────────────────────────────────────────────────────────
   function openAction(type: ActionType, driver: DriverListItem) {
@@ -213,6 +217,7 @@ export default function DriversPage() {
   async function executeAction(reason?: string) {
     if (!pendingAction) return
     setActionLoading(true)
+    setActionError('')
     try {
       const { type, driverId } = pendingAction
       if (type === 'approve')   await adminDriverApi.approve(driverId)
@@ -227,7 +232,7 @@ export default function DriversPage() {
         setDetail(updated)
       }
     } catch {
-      // keep dialog open so user can retry
+      setActionError('Action failed. Please try again.')
     } finally {
       setActionLoading(false)
     }
@@ -403,11 +408,21 @@ export default function DriversPage() {
         title={detail?.full_name ?? detail?.phone ?? 'Driver Detail'}
         width="lg"
       >
-        {detailLoading || !detail ? (
+        {detailLoading ? (
           <div className="flex flex-col gap-4 p-6">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="h-6 bg-surface-2 rounded animate-pulse" />
             ))}
+          </div>
+        ) : detailError || !detail ? (
+          <div className="flex flex-col items-center justify-center h-48 gap-3 p-6">
+            <p className="text-text-muted text-sm">Failed to load driver details.</p>
+            <button
+              onClick={() => setDetailRetry(n => n + 1)}
+              className="text-xs text-primary underline"
+            >
+              Retry
+            </button>
           </div>
         ) : (
           <div className="flex flex-col h-full">
@@ -614,16 +629,18 @@ export default function DriversPage() {
       {/* Approve / Reinstate — no reason required */}
       <ConfirmDialog
         open={pendingAction?.type === 'approve' || pendingAction?.type === 'reinstate'}
-        onOpenChange={v => { if (!v) setPendingAction(null) }}
+        onOpenChange={v => { if (!v) { setPendingAction(null); setActionError('') } }}
         title={pendingAction?.type === 'approve' ? 'Approve Driver' : 'Reinstate Driver'}
         description={
-          pendingAction?.type === 'approve'
-            ? `Approve ${pendingAction?.driverName} as an active driver?`
-            : `Reinstate ${pendingAction?.driverName} as an active driver?`
+          actionError
+            ? actionError
+            : pendingAction?.type === 'approve'
+              ? `Approve ${pendingAction?.driverName} as an active driver?`
+              : `Reinstate ${pendingAction?.driverName} as an active driver?`
         }
-        confirmLabel={pendingAction?.type === 'approve' ? 'Approve' : 'Reinstate'}
-        variant="success"
-        onConfirm={() => executeAction()}
+        confirmLabel={actionLoading ? 'Submitting…' : pendingAction?.type === 'approve' ? 'Approve' : 'Reinstate'}
+        variant={actionError ? 'danger' : 'success'}
+        onConfirm={() => { if (!actionLoading) executeAction() }}
       />
 
       {/* Reject — reason required */}
