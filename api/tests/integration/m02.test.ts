@@ -43,7 +43,7 @@ beforeAll(async () => {
   const hash = await hashPassword('Admin@1234')
   await pool.query(`
     INSERT INTO admins (email, password_hash, role)
-    VALUES ('admin@evatril.com', $1, 'super_admin')
+    VALUES ('admin@ocar.app', $1, 'super_admin')
     ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
   `, [hash])
 })
@@ -57,7 +57,7 @@ afterAll(async () => {
   ]
   await pool.query(`DELETE FROM users WHERE phone = ANY($1)`, [phones])
   await pool.query(`DELETE FROM drivers WHERE phone = ANY($1)`, [phones])
-  await pool.query(`DELETE FROM admins WHERE email = 'admin@evatril.com'`)
+  await pool.query(`DELETE FROM admins WHERE email = 'admin@ocar.app'`)
   await pool.query(`DELETE FROM refresh_tokens WHERE created_at < now()`)
   // Clear OTP keys
   for (const phone of phones) {
@@ -218,7 +218,7 @@ describe('M02 — Auth & Identity', () => {
     it('TC-M02-011: admin login via password issues admin JWT', async () => {
       const res = await request(app)
         .post('/api/v1/auth/admin/login')
-        .send({ email: 'admin@evatril.com', password: 'Admin@1234' })
+        .send({ email: 'admin@ocar.app', password: 'Admin@1234' })
       expect(res.status).toBe(200)
       expect(res.body.tokens).toHaveProperty('accessToken')
       expect(res.body.admin).toHaveProperty('role', 'super_admin')

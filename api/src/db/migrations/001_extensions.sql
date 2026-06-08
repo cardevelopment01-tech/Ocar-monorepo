@@ -1,4 +1,4 @@
--- Required PostgreSQL extensions for Evatril platform
+-- Required PostgreSQL extensions for Ocar platform
 -- Run once on fresh database
 
 -- PostGIS: spatial types, ST_DWithin, ST_Covers, geography type

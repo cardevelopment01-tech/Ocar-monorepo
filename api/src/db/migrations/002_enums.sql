@@ -1,4 +1,4 @@
--- All application enums for the Evatril platform
+-- All application enums for the Ocar platform
 -- Values must stay in sync with src/constants/enums.ts
 
 -- Shared across users/drivers/admins

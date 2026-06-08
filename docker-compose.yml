@@ -1,11 +1,11 @@
 services:
   postgres:
     image: postgis/postgis:16-3.4
-    container_name: evatril_postgres
+    container_name: ocar_postgres
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: evatril
+      POSTGRES_DB: ocar
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
@@ -18,11 +18,11 @@ services:
 
   postgres_test:
     image: postgis/postgis:16-3.4
-    container_name: evatril_postgres_test
+    container_name: ocar_postgres_test
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_DB: evatril_test
+      POSTGRES_DB: ocar_test
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
@@ -35,7 +35,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: evatril_redis
+    container_name: ocar_redis
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes
