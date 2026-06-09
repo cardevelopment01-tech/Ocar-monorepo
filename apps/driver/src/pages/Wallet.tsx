@@ -1,17 +1,19 @@
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, AlertTriangle, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import StatusBar from '@/components/ui/StatusBar'
+import { useSessionStore } from '@/store/useSessionStore'
 import { mockWalletTransactions, mockDriver, mockEarnings } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
 
 export default function Wallet() {
   const navigate = useNavigate()
+  const { isOnline } = useSessionStore()
   const { balance, minimum } = mockDriver.wallet
   const isLow = balance < minimum
 
   return (
     <div className="min-h-screen bg-bg text-text-primary pb-10">
-      <StatusBar isOnline={true} earningsToday={mockEarnings.today.total} />
+      <StatusBar isOnline={isOnline} earningsToday={mockEarnings.today.total} />
 
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-16 pb-4">

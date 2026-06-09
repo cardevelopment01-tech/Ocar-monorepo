@@ -9,12 +9,13 @@ interface NavItem {
   id: Tab
   icon: React.ElementType
   label: string
+  soon?: boolean
 }
 
 const items: NavItem[] = [
   { id: 'trip',     icon: Car,           label: 'My Trip'  },
-  { id: 'messages', icon: MessageCircle, label: 'Messages' },
-  { id: 'help',     icon: HelpCircle,    label: 'Help'     },
+  { id: 'messages', icon: MessageCircle, label: 'Messages', soon: true },
+  { id: 'help',     icon: HelpCircle,    label: 'Help',     soon: true },
   { id: 'profile',  icon: User,          label: 'Profile'  },
 ]
 
@@ -34,13 +35,17 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
           className="flex items-center justify-around px-2"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)', paddingTop: '10px' }}
         >
-          {items.map(({ id, icon: Icon, label }) => {
+          {items.map(({ id, icon: Icon, label, soon }) => {
             const active = activeTab === id
             return (
               <button
                 key={id}
-                onClick={() => onTabChange(id)}
-                className="flex flex-col items-center gap-1 min-w-[44px] min-h-[44px] justify-center"
+                onClick={() => !soon && onTabChange(id)}
+                disabled={soon}
+                className={cn(
+                  'flex flex-col items-center gap-0.5 min-w-[44px] min-h-[44px] justify-center relative',
+                  soon && 'opacity-40 cursor-not-allowed'
+                )}
               >
                 <Icon
                   className={cn(
@@ -49,9 +54,11 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
                   )}
                   strokeWidth={active ? 2.5 : 1.8}
                 />
-                {active && (
+                {soon ? (
+                  <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider">Soon</span>
+                ) : active ? (
                   <span className="w-1 h-1 rounded-full bg-primary" />
-                )}
+                ) : null}
               </button>
             )
           })}

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { clearAuth } from './auth'
 
 const api = axios.create({
   baseURL: process.env['NEXT_PUBLIC_API_URL'],
@@ -23,9 +24,7 @@ api.interceptors.response.use(
     const code = error.response?.data?.code
     const isTokenError = code === 'AUTH_UNAUTHORIZED' || code === 'AUTH_TOKEN_INVALID' || code === 'AUTH_TOKEN_EXPIRED'
     if (error.response?.status === 401 && isTokenError && typeof window !== 'undefined') {
-      localStorage.removeItem('ocar_user_token')
-      localStorage.removeItem('ocar_user_data')
-      document.cookie = 'ocar_user_token=; path=/; max-age=0'
+      clearAuth()
       window.location.href = '/login'
     }
     return Promise.reject(error)

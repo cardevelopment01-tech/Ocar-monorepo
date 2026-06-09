@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import StatusBar from '@/components/ui/StatusBar'
+import { useSessionStore } from '@/store/useSessionStore'
 import { mockEarnings, mockTripHistory } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
 
@@ -15,13 +16,14 @@ const PERIODS: { key: Period; label: string }[] = [
 
 export default function Earnings() {
   const navigate = useNavigate()
+  const { isOnline } = useSessionStore()
   const [period, setPeriod] = useState<Period>('today')
   const e = mockEarnings[period]
   const maxBar = Math.max(...e.chart, 1)
 
   return (
     <div className="min-h-screen bg-bg text-text-primary pb-10">
-      <StatusBar isOnline={true} earningsToday={mockEarnings.today.total} />
+      <StatusBar isOnline={isOnline} earningsToday={mockEarnings.today.total} />
 
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-16 pb-4">

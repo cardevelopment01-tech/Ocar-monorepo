@@ -33,9 +33,11 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         const fresh = await adminAuthApi.getMe()
         setAdmin(fresh)
         localStorage.setItem('ocar_admin_data', JSON.stringify(fresh))
-      } catch {
+      } catch (err: unknown) {
         clearAdminAuth()
-        window.location.href = '/login'
+        // On 401 the axios interceptor already redirects; redirect here for other failures
+        const status = (err as { response?: { status?: number } })?.response?.status
+        if (status !== 401) window.location.href = '/login'
       } finally {
         setIsLoading(false)
       }

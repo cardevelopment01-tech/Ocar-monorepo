@@ -1,23 +1,36 @@
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Star, Car, ChevronRight } from 'lucide-react'
 import StatusBar from '@/components/ui/StatusBar'
-import { mockDriver, mockEarnings } from '@/lib/mock-data'
+import { useAuthStore } from '@/store/useAuthStore'
+import { useSessionStore } from '@/store/useSessionStore'
+import { mockEarnings } from '@/lib/mock-data'
 
 const MENU_ITEMS = [
-  { label: 'Vehicle Details',     sub: `${mockDriver.vehicle.plate} · ${mockDriver.vehicle.name}` },
-  { label: 'Documents',          sub: 'All verified'           },
-  { label: 'Bank Account',       sub: 'HDFC ···4321'           },
-  { label: 'Emergency Contacts', sub: '2 contacts added'       },
-  { label: 'Help & Support',     sub: 'FAQs, chat support'     },
-  { label: 'Terms & Privacy',    sub: ''                        },
+  { label: 'Vehicle Details',     sub: 'Registered vehicle'     },
+  { label: 'Documents',           sub: 'Verified documents'      },
+  { label: 'Bank Account',        sub: 'Payout account'          },
+  { label: 'Emergency Contacts',  sub: 'Safety contacts'         },
+  { label: 'Help & Support',      sub: 'FAQs, chat support'      },
+  { label: 'Terms & Privacy',     sub: ''                        },
 ]
 
 export default function Profile() {
-  const navigate = useNavigate()
+  const navigate   = useNavigate()
+  const { driver, clearAuth } = useAuthStore()
+  const { isOnline } = useSessionStore()
+
+  const displayName  = driver?.full_name ?? driver?.code ?? 'Driver'
+  const displayPhone = driver?.phone?.replace('+91', '').trim() ?? '—'
+  const initial      = displayName.charAt(0).toUpperCase()
+
+  function handleSignOut() {
+    clearAuth()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <div className="min-h-screen bg-bg text-text-primary pb-10">
-      <StatusBar isOnline={true} earningsToday={mockEarnings.today.total} />
+      <StatusBar isOnline={isOnline} earningsToday={mockEarnings.today.total} />
 
       <div className="flex items-center gap-3 px-4 pt-16 pb-4">
         <button
@@ -32,39 +45,25 @@ export default function Profile() {
       {/* Avatar card */}
       <div className="mx-4 bg-surface rounded-3xl p-5 mb-4 border border-border flex items-center gap-4">
         <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center">
-          <span className="text-3xl font-black text-primary">{mockDriver.name.charAt(0)}</span>
+          <span className="text-3xl font-black text-primary">{initial}</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-text-primary font-bold text-lg">{mockDriver.name}</p>
-          <p className="text-text-muted text-sm">+91 {mockDriver.phone}</p>
+          <p className="text-text-primary font-bold text-lg">{displayName}</p>
+          <p className="text-text-muted text-sm">+91 {displayPhone}</p>
           <div className="flex items-center gap-3 mt-2">
             <div className="flex items-center gap-1">
               <Star size={14} className="text-accent-amber fill-accent-amber" />
-              <span className="text-text-secondary text-sm font-semibold">{mockDriver.rating}</span>
+              <span className="text-text-secondary text-sm font-semibold">—</span>
             </div>
             <div className="flex items-center gap-1">
               <Car size={14} className="text-text-muted" />
-              <span className="text-text-muted text-xs">{mockDriver.totalTrips} trips</span>
+              <span className="text-text-muted text-xs">— trips</span>
             </div>
           </div>
         </div>
-        <span className="bg-primary/20 text-primary text-xs font-bold px-2 py-1 rounded-full">
-          {mockDriver.badge}
+        <span className="bg-primary/20 text-primary text-xs font-bold px-2 py-1 rounded-full capitalize">
+          {driver?.status ?? '—'}
         </span>
-      </div>
-
-      {/* Stats */}
-      <div className="mx-4 grid grid-cols-3 gap-3 mb-4">
-        {[
-          { label: 'Acceptance',   value: `${mockDriver.acceptanceRate}%`, good: mockDriver.acceptanceRate >= 80 },
-          { label: 'Completion',   value: `${mockDriver.completionRate}%`, good: mockDriver.completionRate >= 90 },
-          { label: 'Cancellation', value: `${mockDriver.cancellationRate}%`, good: mockDriver.cancellationRate <= 5 },
-        ].map(s => (
-          <div key={s.label} className="bg-surface rounded-2xl p-3 border border-border text-center">
-            <p className={`font-black text-xl ${s.good ? 'text-primary' : 'text-accent-red'}`}>{s.value}</p>
-            <p className="text-text-muted text-xs mt-0.5">{s.label}</p>
-          </div>
-        ))}
       </div>
 
       {/* Menu */}
@@ -83,10 +82,10 @@ export default function Profile() {
         ))}
       </div>
 
-      {/* Logout */}
+      {/* Sign out */}
       <div className="mx-4 mt-4">
         <button
-          onClick={() => navigate('/login')}
+          onClick={handleSignOut}
           className="btn-danger w-full"
           style={{ minHeight: 52 }}
         >

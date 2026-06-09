@@ -44,7 +44,7 @@ export default function BottomSheet({
             drag="y"
             dragConstraints={{ top: 0 }}
             dragElastic={0.15}
-            onDragEnd={(_, info) => {
+            onDragEnd={(_e: unknown, info: { offset: { y: number } }) => {
               if (info.offset.y > 80) onClose()
             }}
           >
