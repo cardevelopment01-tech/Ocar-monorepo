@@ -84,3 +84,126 @@ INSERT INTO cities (
     40, 'draft', false, false
   )
 ON CONFLICT (slug) DO NOTHING;
+
+-- ── Pricing seed ──────────────────────────────────────────────
+-- Rate cards: 5 categories × 3 ride types = 15 rows
+-- Admin ID 1 = seeded super_admin
+
+INSERT INTO rate_cards
+  (category_id, ride_type, rate_per_km, rate_per_min,
+   min_fare, return_rate_per_km, hour_rate)
+SELECT vc.id, rt.ride_type::ride_type,
+  rt.rate_per_km, rt.rate_per_min, rt.min_fare,
+  rt.return_rate_per_km, rt.hour_rate
+FROM vehicle_categories vc
+CROSS JOIN (VALUES
+  ('one_way',    8.00::numeric,  1.00::numeric, 60.00::numeric,  6.00::numeric, NULL::numeric),
+  ('round_trip', 8.00,           1.00,          60.00,           NULL,          15.00),
+  ('rental',     7.00,           0.80,          80.00,           NULL,          NULL)
+) AS rt(ride_type, rate_per_km, rate_per_min, min_fare, return_rate_per_km, hour_rate)
+WHERE vc.slug = 'hatchback'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO rate_cards
+  (category_id, ride_type, rate_per_km, rate_per_min,
+   min_fare, return_rate_per_km, hour_rate)
+SELECT vc.id, rt.ride_type::ride_type,
+  rt.rate_per_km, rt.rate_per_min, rt.min_fare,
+  rt.return_rate_per_km, rt.hour_rate
+FROM vehicle_categories vc
+CROSS JOIN (VALUES
+  ('one_way',    10.00::numeric, 1.20::numeric, 80.00::numeric,  8.00::numeric, NULL::numeric),
+  ('round_trip', 10.00,          1.20,          80.00,           NULL,          18.00),
+  ('rental',      9.00,          1.00,         100.00,           NULL,          NULL)
+) AS rt(ride_type, rate_per_km, rate_per_min, min_fare, return_rate_per_km, hour_rate)
+WHERE vc.slug = 'sedan'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO rate_cards
+  (category_id, ride_type, rate_per_km, rate_per_min,
+   min_fare, return_rate_per_km, hour_rate)
+SELECT vc.id, rt.ride_type::ride_type,
+  rt.rate_per_km, rt.rate_per_min, rt.min_fare,
+  rt.return_rate_per_km, rt.hour_rate
+FROM vehicle_categories vc
+CROSS JOIN (VALUES
+  ('one_way',    14.00::numeric, 1.50::numeric, 100.00::numeric, 11.00::numeric, NULL::numeric),
+  ('round_trip', 14.00,          1.50,          100.00,          NULL,           25.00),
+  ('rental',     12.00,          1.20,          120.00,          NULL,           NULL)
+) AS rt(ride_type, rate_per_km, rate_per_min, min_fare, return_rate_per_km, hour_rate)
+WHERE vc.slug = 'suv'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO rate_cards
+  (category_id, ride_type, rate_per_km, rate_per_min,
+   min_fare, return_rate_per_km, hour_rate)
+SELECT vc.id, rt.ride_type::ride_type,
+  rt.rate_per_km, rt.rate_per_min, rt.min_fare,
+  rt.return_rate_per_km, rt.hour_rate
+FROM vehicle_categories vc
+CROSS JOIN (VALUES
+  ('one_way',    20.00::numeric, 2.00::numeric, 150.00::numeric, 16.00::numeric, NULL::numeric),
+  ('round_trip', 20.00,          2.00,          150.00,          NULL,           35.00),
+  ('rental',     18.00,          1.80,          200.00,          NULL,           NULL)
+) AS rt(ride_type, rate_per_km, rate_per_min, min_fare, return_rate_per_km, hour_rate)
+WHERE vc.slug = 'luxury'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO rate_cards
+  (category_id, ride_type, rate_per_km, rate_per_min,
+   min_fare, return_rate_per_km, hour_rate)
+SELECT vc.id, rt.ride_type::ride_type,
+  rt.rate_per_km, rt.rate_per_min, rt.min_fare,
+  rt.return_rate_per_km, rt.hour_rate
+FROM vehicle_categories vc
+CROSS JOIN (VALUES
+  ('one_way',    16.00::numeric, 1.80::numeric, 120.00::numeric, 13.00::numeric, NULL::numeric),
+  ('round_trip', 16.00,          1.80,          120.00,          NULL,           28.00),
+  ('rental',     14.00,          1.50,          150.00,          NULL,           NULL)
+) AS rt(ride_type, rate_per_km, rate_per_min, min_fare, return_rate_per_km, hour_rate)
+WHERE vc.slug = 'van'
+ON CONFLICT DO NOTHING;
+
+-- Stop charges per category
+INSERT INTO stop_charges (category_id, charge_per_stop)
+SELECT id, CASE slug
+  WHEN 'hatchback' THEN 20.00
+  WHEN 'sedan'     THEN 25.00
+  WHEN 'suv'       THEN 35.00
+  WHEN 'luxury'    THEN 50.00
+  WHEN 'van'       THEN 40.00
+END
+FROM vehicle_categories
+ON CONFLICT (category_id) DO NOTHING;
+
+-- Sedan rental packages (6 packages)
+INSERT INTO rental_packages
+  (category_id, duration_hours, km_limit, package_fare, extra_per_km, extra_per_min)
+SELECT vc.id, rp.hours, rp.hours * 10, rp.fare, rp.extra_km, rp.extra_min
+FROM vehicle_categories vc
+CROSS JOIN (VALUES
+  (1::smallint,  150.00::numeric, 12.00::numeric, 1.50::numeric),
+  (2,            280.00,          12.00,          1.50),
+  (4,            520.00,          12.00,          1.50),
+  (6,            750.00,          12.00,          1.50),
+  (8,            980.00,          12.00,          1.50),
+  (10,          1200.00,          12.00,          1.50)
+) AS rp(hours, fare, extra_km, extra_min)
+WHERE vc.slug = 'sedan'
+ON CONFLICT (category_id, duration_hours) DO NOTHING;
+
+-- SUV rental packages (6 packages)
+INSERT INTO rental_packages
+  (category_id, duration_hours, km_limit, package_fare, extra_per_km, extra_per_min)
+SELECT vc.id, rp.hours, rp.hours * 10, rp.fare, rp.extra_km, rp.extra_min
+FROM vehicle_categories vc
+CROSS JOIN (VALUES
+  (1::smallint,   200.00::numeric, 16.00::numeric, 2.00::numeric),
+  (2,             380.00,          16.00,          2.00),
+  (4,             700.00,          16.00,          2.00),
+  (6,            1000.00,          16.00,          2.00),
+  (8,            1300.00,          16.00,          2.00),
+  (10,           1600.00,          16.00,          2.00)
+) AS rp(hours, fare, extra_km, extra_min)
+WHERE vc.slug = 'suv'
+ON CONFLICT (category_id, duration_hours) DO NOTHING;

@@ -1,1 +1,203 @@
-// TODO: implement in Module M06 — rate card and surge DB queries
+import { pool } from '@/db/client'
+
+export async function getCurrentRateCard(categoryId: number, rideType: string) {
+  const res = await pool.query(
+    `SELECT rc.*,
+            vc.display_name AS category_name,
+            vc.slug AS category_slug
+     FROM rate_cards rc
+     JOIN vehicle_categories vc ON vc.id = rc.category_id
+     WHERE rc.category_id = $1
+       AND rc.ride_type = $2
+       AND rc.effective_to IS NULL`,
+    [categoryId, rideType]
+  )
+  return res.rows[0] ?? null
+}
+
+export async function getAllCurrentRateCards() {
+  const res = await pool.query(
+    `SELECT rc.*,
+            vc.display_name AS category_name,
+            vc.slug AS category_slug
+     FROM rate_cards rc
+     JOIN vehicle_categories vc ON vc.id = rc.category_id
+     WHERE rc.effective_to IS NULL
+     ORDER BY vc.display_name, rc.ride_type`
+  )
+  return res.rows
+}
+
+export async function getRateCardHistory() {
+  const res = await pool.query(
+    `SELECT rch.*,
+            vc.display_name AS category_name,
+            rc.ride_type
+     FROM rate_card_history rch
+     JOIN rate_cards rc ON rc.id = rch.rate_card_id
+     JOIN vehicle_categories vc ON vc.id = rc.category_id
+     ORDER BY rch.created_at DESC
+     LIMIT 100`
+  )
+  return res.rows
+}
+
+export async function getStopCharge(categoryId: number): Promise<number> {
+  const res = await pool.query(
+    `SELECT charge_per_stop FROM stop_charges WHERE category_id = $1`,
+    [categoryId]
+  )
+  return parseFloat(res.rows[0]?.charge_per_stop ?? '0')
+}
+
+export async function getRentalPackage(packageId: number) {
+  const res = await pool.query(
+    `SELECT rp.*, vc.display_name AS category_name
+     FROM rental_packages rp
+     JOIN vehicle_categories vc ON vc.id = rp.category_id
+     WHERE rp.id = $1 AND rp.is_active = true`,
+    [packageId]
+  )
+  return res.rows[0] ?? null
+}
+
+export async function getRentalPackagesByCategory(categoryId: number) {
+  const res = await pool.query(
+    `SELECT * FROM rental_packages
+     WHERE category_id = $1 AND is_active = true
+     ORDER BY duration_hours`,
+    [categoryId]
+  )
+  return res.rows
+}
+
+export async function getActiveSurge(cityId: number, categoryId: number) {
+  const res = await pool.query(
+    `SELECT * FROM surge_events
+     WHERE city_id = $1
+       AND (category_id = $2 OR category_id IS NULL)
+       AND status = 'active'
+       AND starts_at <= now()
+       AND ends_at > now()
+     ORDER BY
+       CASE WHEN category_id IS NOT NULL THEN 0 ELSE 1 END,
+       multiplier DESC
+     LIMIT 1`,
+    [cityId, categoryId]
+  )
+  return res.rows[0] ?? null
+}
+
+export async function getAllSurgeEvents() {
+  const res = await pool.query(
+    `SELECT se.*,
+            c.name AS city_name,
+            vc.display_name AS category_name
+     FROM surge_events se
+     JOIN cities c ON c.id = se.city_id
+     LEFT JOIN vehicle_categories vc ON vc.id = se.category_id
+     ORDER BY se.created_at DESC`
+  )
+  return res.rows
+}
+
+export async function createSurgeEvent(data: {
+  cityId: number
+  categoryId: number | null
+  multiplier: number
+  reason: string | null
+  startsAt: string
+  endsAt: string
+  adminId: number
+}) {
+  const res = await pool.query(
+    `INSERT INTO surge_events
+       (city_id, category_id, multiplier, reason,
+        status, starts_at, ends_at, created_by)
+     VALUES ($1,$2,$3,$4,'scheduled',$5,$6,$7)
+     RETURNING *`,
+    [
+      data.cityId, data.categoryId, data.multiplier, data.reason,
+      data.startsAt, data.endsAt, data.adminId,
+    ]
+  )
+  return res.rows[0]
+}
+
+export async function cancelSurgeEvent(id: number, adminId: number) {
+  const res = await pool.query(
+    `UPDATE surge_events
+     SET status = 'cancelled',
+         cancelled_by = $2,
+         cancelled_at = now()
+     WHERE id = $1
+       AND status IN ('scheduled', 'active')
+     RETURNING *`,
+    [id, adminId]
+  )
+  return res.rows[0] ?? null
+}
+
+export async function createRateCard(data: {
+  categoryId: number
+  rideType: string
+  ratePerKm: number
+  ratePerMin: number
+  minFare: number
+  returnRatePerKm?: number | null
+  hourRate?: number | null
+  notes?: string | null
+  adminId: number
+}) {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const expired = await client.query(
+      `UPDATE rate_cards
+       SET effective_to = now()
+       WHERE category_id = $1 AND ride_type = $2 AND effective_to IS NULL
+       RETURNING *`,
+      [data.categoryId, data.rideType]
+    )
+
+    if (expired.rows.length > 0) {
+      const old = expired.rows[0]
+      await client.query(
+        `INSERT INTO rate_card_history
+           (rate_card_id, rate_per_km, rate_per_min, min_fare,
+            return_rate_per_km, hour_rate, changed_by, change_reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          old.id, old.rate_per_km, old.rate_per_min, old.min_fare,
+          old.return_rate_per_km, old.hour_rate,
+          data.adminId, data.notes ?? null,
+        ]
+      )
+    }
+
+    const res = await client.query(
+      `INSERT INTO rate_cards
+         (category_id, ride_type, rate_per_km, rate_per_min,
+          min_fare, return_rate_per_km, hour_rate, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       RETURNING *`,
+      [
+        data.categoryId, data.rideType,
+        data.ratePerKm, data.ratePerMin, data.minFare,
+        data.returnRatePerKm ?? null,
+        data.hourRate ?? null,
+        data.notes ?? null,
+        data.adminId,
+      ]
+    )
+
+    await client.query('COMMIT')
+    return res.rows[0]
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}

@@ -161,6 +161,30 @@ export async function createAdminCity(data: {
   return repo.createAdminCity(data)
 }
 
+// ─── Pricing ──────────────────────────────────────────────────────────────────
+
+export async function listAdminRateCards() { return repo.listAdminRateCards() }
+export async function listAdminRateCardHistory() { return repo.listAdminRateCardHistory() }
+export async function listAdminSurgeEvents() { return repo.listAdminSurgeEvents() }
+
+export async function createAdminRateCard(data: Parameters<typeof repo.createAdminRateCard>[0]) {
+  if (!data.categoryId || !data.rideType) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (data.ratePerKm <= 0 || data.minFare <= 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  return repo.createAdminRateCard(data)
+}
+
+export async function createAdminSurgeEvent(data: Parameters<typeof repo.createAdminSurgeEvent>[0]) {
+  if (data.multiplier < 1 || data.multiplier > 5) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (!data.startsAt || !data.endsAt) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  return repo.createAdminSurgeEvent(data)
+}
+
+export async function cancelAdminSurgeEvent(id: bigint, adminId: bigint) {
+  const result = await repo.cancelAdminSurgeEvent(id, adminId)
+  if (!result) throw createHttpError(AppErrors.NOT_FOUND)
+  return result
+}
+
 export async function updateAdminCity(
   id: bigint,
   data: {

@@ -155,6 +155,22 @@ export interface ExpiringVehicleDoc {
 
 // ─── Geo / Cities ─────────────────────────────────────────────────────────────
 
+// ─── Pricing ──────────────────────────────────────────────────────────────────
+
+export interface AdminSurgeEvent {
+  id: number
+  city_id: number
+  city_name: string
+  category_id: number | null
+  category_name: string | null
+  multiplier: number
+  reason: string | null
+  status: 'scheduled' | 'active' | 'expired' | 'cancelled'
+  starts_at: string
+  ends_at: string
+  created_at: string
+}
+
 export interface AdminCity {
   id: number
   name: string

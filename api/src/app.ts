@@ -10,6 +10,7 @@ import driversRouter from '@/modules/drivers/drivers.routes'
 import vehiclesRouter from '@/modules/vehicles/vehicles.routes'
 import adminRouter from '@/modules/admin/admin.routes'
 import geoRouter from '@/modules/geo/geo.routes'
+import pricingRouter from '@/modules/pricing/pricing.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -53,6 +54,7 @@ export function createApp(): Application {
   apiRouter.use('/vehicles', vehiclesRouter)
   apiRouter.use('/admin', adminRouter)
   apiRouter.use('/geo', geoRouter)
+  apiRouter.use('/pricing', pricingRouter)
   app.use('/api/v1', apiRouter)
 
   // 7. 404 handler

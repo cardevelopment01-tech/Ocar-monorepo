@@ -39,6 +39,14 @@ router.get('/vehicles/documents/expiring',      requireAdmin('super_admin', 'ops
 router.patch('/vehicles/documents/:docId/approve', requireAdmin('super_admin', 'ops_admin'), controller.approveVehicleDoc)
 router.patch('/vehicles/documents/:docId/reject',  requireAdmin('super_admin', 'ops_admin'), controller.rejectVehicleDoc)
 
+// ─── Pricing ──────────────────────────────────────────────────────────────────
+router.get('/pricing/rate-cards',            requireAdmin('super_admin', 'ops_admin'), controller.getAdminRateCards)
+router.post('/pricing/rate-cards',           requireAdmin('super_admin', 'ops_admin'), controller.postAdminRateCard)
+router.get('/pricing/rate-cards/history',    requireAdmin('super_admin', 'ops_admin'), controller.getAdminRateCardHistory)
+router.get('/pricing/surge',                 requireAdmin('super_admin', 'ops_admin'), controller.getAdminSurgeEvents)
+router.post('/pricing/surge',                requireAdmin('super_admin', 'ops_admin'), controller.postAdminSurgeEvent)
+router.patch('/pricing/surge/:id/cancel',    requireAdmin('super_admin', 'ops_admin'), controller.cancelAdminSurgeEvent)
+
 // ─── Geo / Cities ─────────────────────────────────────────────────────────────
 router.get('/geo/cities',       requireAdmin('super_admin', 'ops_admin'), controller.getAdminCities)
 router.post('/geo/cities',      requireAdmin('super_admin', 'ops_admin'), controller.postAdminCity)

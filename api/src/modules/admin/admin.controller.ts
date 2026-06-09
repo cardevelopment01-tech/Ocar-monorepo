@@ -171,6 +171,60 @@ export async function getExpiringDocs(req: Request, res: Response, next: NextFun
 
 // ─── Geo / Cities ─────────────────────────────────────────────────────────────
 
+// ─── Pricing ──────────────────────────────────────────────────────────────────
+
+export async function getAdminRateCards(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json(await service.listAdminRateCards()) } catch (err) { next(err) }
+}
+
+export async function getAdminRateCardHistory(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json(await service.listAdminRateCardHistory()) } catch (err) { next(err) }
+}
+
+export async function postAdminRateCard(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const data: { returnRatePerKm?: number | null; hourRate?: number | null; notes?: string | null } = {}
+    if (req.body.return_rate_per_km !== undefined) data.returnRatePerKm = req.body.return_rate_per_km != null ? Number(req.body.return_rate_per_km) : null
+    if (req.body.hour_rate !== undefined)          data.hourRate        = req.body.hour_rate != null ? Number(req.body.hour_rate) : null
+    if (req.body.notes !== undefined)              data.notes           = String(req.body.notes)
+    const card = await service.createAdminRateCard({
+      categoryId:  Number(req.body.category_id),
+      rideType:    String(req.body.ride_type),
+      ratePerKm:   Number(req.body.rate_per_km),
+      ratePerMin:  Number(req.body.rate_per_min),
+      minFare:     Number(req.body.min_fare),
+      adminId:     req.admin!.id,
+      ...data,
+    })
+    res.status(201).json(card)
+  } catch (err) { next(err) }
+}
+
+export async function getAdminSurgeEvents(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json(await service.listAdminSurgeEvents()) } catch (err) { next(err) }
+}
+
+export async function postAdminSurgeEvent(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const surge = await service.createAdminSurgeEvent({
+      cityId:     Number(req.body.city_id),
+      categoryId: req.body.category_id != null ? Number(req.body.category_id) : null,
+      multiplier: Number(req.body.multiplier),
+      reason:     req.body.reason ? String(req.body.reason) : null,
+      startsAt:   String(req.body.starts_at),
+      endsAt:     String(req.body.ends_at),
+      adminId:    req.admin!.id,
+    })
+    res.status(201).json(surge)
+  } catch (err) { next(err) }
+}
+
+export async function cancelAdminSurgeEvent(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json(await service.cancelAdminSurgeEvent(BigInt(req.params['id']!), req.admin!.id))
+  } catch (err) { next(err) }
+}
+
 export async function getAdminCities(req: Request, res: Response, next: NextFunction): Promise<void> {
   try { res.json(await service.listAdminCities()) } catch (err) { next(err) }
 }
