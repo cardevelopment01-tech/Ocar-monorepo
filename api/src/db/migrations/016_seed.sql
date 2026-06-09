@@ -192,6 +192,17 @@ CROSS JOIN (VALUES
 WHERE vc.slug = 'sedan'
 ON CONFLICT (category_id, duration_hours) DO NOTHING;
 
+-- ── System config seed ───────────────────────────────────────
+INSERT INTO system_config (key, value, value_type, description) VALUES
+  ('commission_percent',      '15',   'decimal', 'Platform commission % per ride'),
+  ('driver_minimum_balance',  '500',  'integer', 'Min driver wallet balance (INR) to go online'),
+  ('cashback_ride_percent',   '5',    'decimal', 'User cashback % per completed ride'),
+  ('cashback_expiry_days',    '30',   'integer', 'Days before cashback credits expire'),
+  ('referral_referrer_bonus', '100',  'decimal', 'Bonus for referrer on first ride'),
+  ('referral_referee_bonus',  '50',   'decimal', 'Bonus for referee on first ride'),
+  ('razorpay_enabled',        'false','boolean', 'Enable Razorpay payments (Phase 2)')
+ON CONFLICT (key) DO NOTHING;
+
 -- SUV rental packages (6 packages)
 INSERT INTO rental_packages
   (category_id, duration_hours, km_limit, package_fare, extra_per_km, extra_per_min)

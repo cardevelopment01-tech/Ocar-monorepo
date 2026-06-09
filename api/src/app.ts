@@ -12,6 +12,7 @@ import adminRouter from '@/modules/admin/admin.routes'
 import geoRouter from '@/modules/geo/geo.routes'
 import pricingRouter from '@/modules/pricing/pricing.routes'
 import ridesRouter from '@/modules/rides/rides.routes'
+import paymentsRouter from '@/modules/payments/payments.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -57,6 +58,7 @@ export function createApp(): Application {
   apiRouter.use('/geo', geoRouter)
   apiRouter.use('/pricing', pricingRouter)
   apiRouter.use('/rides', ridesRouter)
+  apiRouter.use('/payments', paymentsRouter)
   app.use('/api/v1', apiRouter)
 
   // 7. 404 handler

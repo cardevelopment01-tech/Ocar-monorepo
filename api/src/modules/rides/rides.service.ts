@@ -8,6 +8,11 @@ import { generateOtp, hashOtp } from '@/lib/otp'
 import { processBroadcast } from '@/jobs/processors/broadcast.processor'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import type { BookingRequest } from './rides.types'
+import {
+  createPaymentRecord,
+  deductCommission,
+  creditCashback,
+} from '@/modules/payments/payments.service'
 
 // ── Driver session management ─────────────────────────────────
 
@@ -400,8 +405,25 @@ export async function verifyEndOTP(
     completedAt,
   })
 
-  // TODO: Trigger payment creation (M08)
-  // TODO: Trigger commission deduction (M08)
+  // Payment + wallet post-processing (non-blocking — ride is already completed)
+  const rideData = await repo.getRideById(rideId)
+  void createPaymentRecord(rideId, 'cash_direct')
+    .then(() => deductCommission(rideId, driverId))
+    .then(async () => {
+      if (rideData?.user_id == null) return
+      const fareRes = await pool.query(
+        `SELECT COALESCE(total_final, total_estimated) AS amount
+         FROM fare_snapshots WHERE ride_id = $1`,
+        [rideId]
+      )
+      const fareAmount = parseFloat(fareRes.rows[0]?.amount ?? '0')
+      if (fareAmount > 0) {
+        await creditCashback(rideId, BigInt(rideData.user_id), fareAmount)
+      }
+    })
+    .catch((err: unknown) => {
+      console.error(`Payment post-processing failed for ride ${rideId}:`, err)
+    })
 
   return { success: true, rideId: rideId.toString() }
 }

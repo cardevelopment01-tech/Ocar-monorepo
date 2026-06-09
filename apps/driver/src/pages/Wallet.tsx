@@ -1,19 +1,79 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, AlertTriangle, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, ArrowDownLeft, ArrowUpRight, RefreshCw } from 'lucide-react'
 import StatusBar from '@/components/ui/StatusBar'
 import { useSessionStore } from '@/store/useSessionStore'
-import { mockWalletTransactions, mockDriver, mockEarnings } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
+import api from '@/lib/api'
+
+const MIN_BALANCE = 500
+
+interface LedgerEntry {
+  id: string
+  entry_type: string
+  amount: string
+  direction: 'credit' | 'debit'
+  balance_after: string
+  ride_id: string | null
+  note: string | null
+  created_at: string
+}
+
+interface DriverWallet {
+  balance: string
+  lifetime_topup: string
+  lifetime_commission: string
+  is_frozen: boolean
+  recent_ledger: LedgerEntry[] | null
+}
+
+function entryLabel(e: LedgerEntry): string {
+  switch (e.entry_type) {
+    case 'commission_debit':  return e.note ?? `Commission deduction`
+    case 'topup':             return 'Wallet top-up'
+    case 'adjustment_credit': return 'Admin credit adjustment'
+    case 'adjustment_debit':  return 'Admin debit adjustment'
+    case 'refund_credit':     return 'Refund credit'
+    default:                  return e.entry_type.replace(/_/g, ' ')
+  }
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
 
 export default function Wallet() {
-  const navigate = useNavigate()
+  const navigate   = useNavigate()
   const { isOnline } = useSessionStore()
-  const { balance, minimum } = mockDriver.wallet
-  const isLow = balance < minimum
+  const [wallet, setWallet]     = useState<DriverWallet | null>(null)
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState(false)
+
+  const load = async () => {
+    setLoading(true)
+    setError(false)
+    try {
+      const res = await api.get<DriverWallet>('/api/v1/payments/wallet/driver')
+      setWallet(res.data)
+    } catch {
+      setError(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { void load() }, [])
+
+  const balance = wallet ? parseFloat(wallet.balance) : 0
+  const isLow   = balance < MIN_BALANCE
+  const ledger  = wallet?.recent_ledger ?? []
 
   return (
     <div className="min-h-screen bg-bg text-text-primary pb-10">
-      <StatusBar isOnline={isOnline} earningsToday={mockEarnings.today.total} />
+      <StatusBar isOnline={isOnline} earningsToday={0} />
 
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-16 pb-4">
@@ -23,37 +83,65 @@ export default function Wallet() {
         >
           <ArrowLeft size={20} className="text-text-secondary" />
         </button>
-        <h1 className="text-xl font-bold">Wallet</h1>
+        <h1 className="text-xl font-bold flex-1">Wallet</h1>
+        {!loading && (
+          <button onClick={() => void load()} className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center">
+            <RefreshCw size={16} className="text-text-secondary" />
+          </button>
+        )}
       </div>
 
-      {/* Balance card */}
-      <div
-        className="mx-4 rounded-3xl p-6 mb-4"
-        style={{
-          background: 'linear-gradient(135deg, #16A34A 0%, #22C55E 100%)',
-          boxShadow: '0 8px 32px rgba(34,197,94,0.25)',
-        }}
-      >
-        <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-1">
-          Compliance Deposit
-        </p>
-        <p className="text-white font-black text-[44px] leading-none">
-          ₹{balance.toLocaleString('en-IN')}
-        </p>
-        <p className="text-white/60 text-xs mt-2">Minimum required: ₹{minimum.toLocaleString('en-IN')}</p>
-      </div>
-
-      {/* Low balance warning */}
-      {isLow && (
-        <div className="mx-4 bg-accent-amber/10 border border-accent-amber/30 rounded-2xl px-4 py-3 flex items-center gap-3 mb-4">
-          <AlertTriangle size={20} className="text-accent-amber flex-shrink-0" />
-          <div>
-            <p className="text-accent-amber font-bold text-sm">Low Balance</p>
-            <p className="text-text-secondary text-xs">
-              Add ₹{(minimum - balance).toLocaleString('en-IN')} to avoid service interruption
+      {loading ? (
+        <div className="mx-4 rounded-3xl p-6 mb-4 bg-surface border border-border animate-pulse h-36" />
+      ) : (
+        <>
+          {/* Balance card */}
+          <div
+            className="mx-4 rounded-3xl p-6 mb-4"
+            style={{
+              background: isLow
+                ? 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)'
+                : 'linear-gradient(135deg, #16A34A 0%, #22C55E 100%)',
+              boxShadow: isLow
+                ? '0 8px 32px rgba(217,119,6,0.25)'
+                : '0 8px 32px rgba(34,197,94,0.25)',
+            }}
+          >
+            <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-1">
+              Compliance Deposit
+            </p>
+            <p className="text-white font-black text-[44px] leading-none">
+              ₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </p>
+            <p className="text-white/60 text-xs mt-2">
+              Minimum required: ₹{MIN_BALANCE.toLocaleString('en-IN')}
             </p>
           </div>
-        </div>
+
+          {/* Low balance warning */}
+          {isLow && (
+            <div className="mx-4 bg-accent-amber/10 border border-accent-amber/30 rounded-2xl px-4 py-3 flex items-center gap-3 mb-4">
+              <AlertTriangle size={20} className="text-accent-amber flex-shrink-0" />
+              <div>
+                <p className="text-accent-amber font-bold text-sm">Low Balance</p>
+                <p className="text-text-secondary text-xs">
+                  Add ₹{(MIN_BALANCE - balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })} to avoid service interruption
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Frozen warning */}
+          {wallet?.is_frozen && (
+            <div className="mx-4 bg-accent-red/10 border border-accent-red/30 rounded-2xl px-4 py-3 flex items-center gap-3 mb-4">
+              <AlertTriangle size={20} className="text-accent-red flex-shrink-0" />
+              <div>
+                <p className="text-accent-red font-bold text-sm">Wallet Frozen</p>
+                <p className="text-text-secondary text-xs">Contact support to unfreeze your wallet</p>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Add money */}
@@ -75,26 +163,38 @@ export default function Wallet() {
       {/* Transactions */}
       <div className="mx-4 bg-surface rounded-3xl p-5 border border-border">
         <p className="text-text-secondary text-sm font-semibold mb-4">Recent Transactions</p>
-        {mockWalletTransactions.map(tx => (
+
+        {error && (
+          <p className="text-text-muted text-sm text-center py-4">
+            Failed to load transactions.{' '}
+            <button onClick={() => void load()} className="text-primary underline">Retry</button>
+          </p>
+        )}
+
+        {!error && ledger.length === 0 && !loading && (
+          <p className="text-text-muted text-sm text-center py-4">No transactions yet</p>
+        )}
+
+        {ledger.map(tx => (
           <div key={tx.id} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
             <div className={cn(
               'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0',
-              tx.type === 'credit' ? 'bg-primary/10' : 'bg-accent-red/10'
+              tx.direction === 'credit' ? 'bg-primary/10' : 'bg-accent-red/10'
             )}>
-              {tx.type === 'credit'
+              {tx.direction === 'credit'
                 ? <ArrowDownLeft size={16} className="text-primary" />
                 : <ArrowUpRight size={16} className="text-accent-red" />
               }
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-text-primary text-sm font-semibold">{tx.label}</p>
-              <p className="text-text-muted text-xs">{tx.date}</p>
+              <p className="text-text-primary text-sm font-semibold truncate">{entryLabel(tx)}</p>
+              <p className="text-text-muted text-xs">{formatDate(tx.created_at)}</p>
             </div>
             <p className={cn(
               'font-bold text-sm flex-shrink-0',
-              tx.type === 'credit' ? 'text-primary' : 'text-accent-red'
+              tx.direction === 'credit' ? 'text-primary' : 'text-accent-red'
             )}>
-              {tx.type === 'credit' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
+              {tx.direction === 'credit' ? '+' : '-'}₹{parseFloat(tx.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </p>
           </div>
         ))}
