@@ -1,7 +1,9 @@
+import http from 'http'
 import { config } from './config'
 import { createApp } from './app'
 import { testConnection, pool } from './db/client'
 import { testConnection as testRedis, client as redisClient } from './db/redis'
+import { initSocketServer } from './websocket/socket.server'
 
 async function start(): Promise<void> {
   const dbOk = await testConnection()
@@ -18,8 +20,11 @@ async function start(): Promise<void> {
   }
 
   const app = createApp()
+  const httpServer = http.createServer(app)
 
-  const server = app.listen(config.API_PORT, () => {
+  initSocketServer(httpServer)
+
+  httpServer.listen(config.API_PORT, () => {
     console.log(
       `Server running on port ${config.API_PORT} [${config.NODE_ENV}]`
     )
@@ -27,7 +32,7 @@ async function start(): Promise<void> {
 
   async function shutdown(): Promise<void> {
     console.log('Shutting down gracefully...')
-    server.close(async () => {
+    httpServer.close(async () => {
       await pool.end()
       redisClient.disconnect()
       process.exit(0)

@@ -1,1 +1,87 @@
-// TODO: implement in Module M07 — TypeScript types for rides module
+export interface DriverSession {
+  id: bigint
+  driver_id: bigint
+  vehicle_id: bigint
+  category_id: bigint
+  category_name: string
+  mode: 'standard' | 'return_cab'
+  status: 'online' | 'on_trip' | 'offline'
+  destination_city_id: bigint | null
+  origin_lat: string | null
+  origin_lng: string | null
+  went_online_at: string
+  went_on_trip_at: string | null
+  went_offline_at: string | null
+  offline_reason: string | null
+  trips_completed: number
+  earnings_this_session: string
+  created_at: string
+  updated_at: string
+}
+
+export interface NearbyDriver {
+  driver_id: bigint
+  session_id: bigint
+  mode: string
+  lat: number
+  lng: number
+  distance_metres: number
+}
+
+export interface Ride {
+  id: bigint
+  user_id: bigint
+  driver_id: bigint | null
+  session_id: bigint | null
+  vehicle_id: bigint | null
+  category_id: bigint
+  ride_type: 'one_way' | 'round_trip' | 'rental'
+  is_return_cab: boolean
+  status: string
+  origin_address: string | null
+  destination_address: string | null
+  origin_lat: number
+  origin_lng: number
+  dest_lat: number | null
+  dest_lng: number | null
+  origin_city_id: bigint | null
+  destination_city_id: bigint | null
+  trip_hours: number | null
+  rental_package_id: bigint | null
+  scheduled_for: string | null
+  start_otp_hash: string | null
+  end_otp_hash: string | null
+  requested_at: string
+  accepted_at: string | null
+  driver_arrived_at: string | null
+  started_at: string | null
+  completed_at: string | null
+  cancelled_at: string | null
+  actual_distance_km: string | null
+  actual_duration_min: string | null
+  sos_triggered: boolean
+  user_phone: string | null
+  user_name: string | null
+  driver_name: string | null
+  driver_phone: string | null
+  total_estimated: string | null
+}
+
+export interface BookingRequest {
+  categoryId: number
+  rideType: 'one_way' | 'round_trip' | 'rental'
+  isReturnCab?: boolean
+  originLat: number
+  originLng: number
+  originAddress?: string
+  destinationLat?: number
+  destinationLng?: number
+  destinationAddress?: string
+  originCityId?: number
+  destinationCityId?: number
+  distanceKm: number
+  durationMin: number
+  stopCount?: number
+  tripHours?: number
+  rentalPackageId?: number
+}
