@@ -19,7 +19,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 && typeof window !== 'undefined') {
+    const isLoginRequest = error.config?.url?.includes('/auth/admin/login')
+    if (error.response?.status === 401 && !isLoginRequest && typeof window !== 'undefined') {
       localStorage.removeItem('ocar_admin_token')
       localStorage.removeItem('ocar_admin_data')
       document.cookie = 'ocar_admin_token=; path=/; max-age=0'
