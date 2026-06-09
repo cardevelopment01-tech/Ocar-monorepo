@@ -2,27 +2,31 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import OtpInput from '@/components/ui/OtpInput'
-import { mockIncomingRequest } from '@/lib/mock-data'
+import { useRideStore } from '@/store/useRideStore'
+import { driverRideApi } from '@/lib/ride-api'
 
 export default function OTPVerify() {
   const navigate = useNavigate()
+  const { activeRide, setEndOtp, updateRideStatus } = useRideStore()
   const [otp, setOtp] = useState('')
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  const handleVerify = () => {
-    if (otp.length !== 4) return
+  const handleVerify = async () => {
+    if (otp.length !== 6 || !activeRide) return
     setLoading(true)
     setError(false)
-    setTimeout(() => {
-      if (otp === '1234') {
-        navigate('/ride/in-progress')
-      } else {
-        setError(true)
-        setOtp('')
-        setLoading(false)
-      }
-    }, 600)
+    try {
+      const { endOtp } = await driverRideApi.verifyStartOtp(activeRide.id, otp)
+      setEndOtp(endOtp)
+      updateRideStatus('in_progress')
+      navigate('/ride/in-progress')
+    } catch {
+      setError(true)
+      setOtp('')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -32,7 +36,6 @@ export default function OTPVerify() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-[360px]"
       >
-        {/* Icon */}
         <div
           className="w-20 h-20 rounded-3xl bg-primary/20 flex items-center justify-center mx-auto mb-6"
           style={{ boxShadow: '0 0 40px rgba(34,197,94,0.2)' }}
@@ -42,10 +45,10 @@ export default function OTPVerify() {
 
         <h1 className="text-text-primary font-bold text-2xl text-center mb-2">Rider OTP</h1>
         <p className="text-text-secondary text-sm text-center mb-2">
-          Ask the rider for their 4-digit OTP
+          Ask the rider for their 6-digit OTP
         </p>
         <p className="text-text-muted text-xs text-center mb-8">
-          {mockIncomingRequest.pickup} → {mockIncomingRequest.drop}
+          {activeRide?.pickup ?? '—'} → {activeRide?.drop ?? '—'}
         </p>
 
         <div className="mb-6">
@@ -63,7 +66,7 @@ export default function OTPVerify() {
 
         <button
           onClick={handleVerify}
-          disabled={otp.length !== 4 || loading}
+          disabled={otp.length !== 6 || loading}
           className="btn-go w-full"
           style={{ minHeight: 56 }}
         >

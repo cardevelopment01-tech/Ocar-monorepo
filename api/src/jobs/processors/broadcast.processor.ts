@@ -106,6 +106,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       drop:              ride.destination_address ?? 'Destination',
       pickupLat:         data.originLat,
       pickupLng:         data.originLng,
+      destinationLat:    ride.dest_lat ?? undefined,
+      destinationLng:    ride.dest_lng ?? undefined,
       distanceToPickup:  Math.round(driver.distance_metres),
       estimatedFare:     ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
       rideType:          data.rideType,

@@ -198,7 +198,7 @@ export async function createRide(data: {
      ) VALUES (
        $1, $2, $3, $4,
        ST_SetSRID(ST_MakePoint($6::float8, $5::float8), 4326)::geography,
-       CASE WHEN $7 IS NOT NULL AND $8 IS NOT NULL
+       CASE WHEN $7::float8 IS NOT NULL AND $8::float8 IS NOT NULL
          THEN ST_SetSRID(ST_MakePoint($8::float8, $7::float8), 4326)::geography
          ELSE NULL END,
        $9, $10, $11, $12, $13, $14, $15
@@ -227,7 +227,7 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
        ST_Y(r.destination::geometry) AS dest_lat,
        ST_X(r.destination::geometry) AS dest_lng,
        u.phone      AS user_phone,
-       u.full_name  AS user_name,
+       u.name       AS user_name,
        d.full_name  AS driver_name,
        d.phone      AS driver_phone,
        fs.total_estimated

@@ -1,18 +1,28 @@
 'use client'
 
+import { useRef, useEffect, useState } from 'react'
 import { MapPin, Search, Bell, User } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import OcarLogo from '@/components/ui/OcarLogo'
-import { mockPickup, mockNearbyDrivers } from '@/lib/mock-data'
+import { mockPickup } from '@/lib/mock-data'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 
 const HomeMapScene = dynamic(() => import('@/components/map/HomeMapScene'), { ssr: false })
 
+// Mock nearby driver positions (Phase 1 — real positions come in M11)
+function getMockDrivers(baseLat: number, baseLng: number) {
+  return [
+    { id: 'd1', lat: baseLat + 0.009,  lng: baseLng - 0.007, heading: 45  },
+    { id: 'd2', lat: baseLat - 0.005,  lng: baseLng + 0.011, heading: 180 },
+    { id: 'd3', lat: baseLat + 0.012,  lng: baseLng + 0.006, heading: 270 },
+  ]
+}
+
 const SAVED_PLACES = [
-  { icon: '🏠', label: 'Home', address: 'Sahid Nagar, Bhubaneswar' },
-  { icon: '💼', label: 'Work', address: 'Infocity, Chandrasekharpur' },
-  { icon: '🛒', label: 'DMart', address: 'Patia, Bhubaneswar' },
+  { icon: '🏠', label: 'Home',  address: 'Sahid Nagar, Bhubaneswar',     lat: 20.2929, lng: 85.8363 },
+  { icon: '💼', label: 'Work',  address: 'Infocity, Chandrasekharpur',    lat: 20.3506, lng: 85.8110 },
+  { icon: '🛒', label: 'DMart', address: 'Patia, Bhubaneswar',            lat: 20.3554, lng: 85.8207 },
 ]
 
 function getGreeting() {
@@ -23,23 +33,81 @@ function getGreeting() {
 }
 
 export default function HomePage() {
-  const router = useRouter()
-  const { user } = useAuth()
+  const router    = useRouter()
+  const { user }  = useAuth()
   const firstName = user?.name?.split(' ')[0] ?? 'there'
+
+  const [originLat,  setOriginLat]  = useState(mockPickup.lat)
+  const [originLng,  setOriginLng]  = useState(mockPickup.lng)
+  const [originAddr, setOriginAddr] = useState('Current Location')
+  const locationFetched = useRef(false)
+
+  // Try GPS once on mount
+  useEffect(() => {
+    if (locationFetched.current || !navigator.geolocation) return
+    locationFetched.current = true
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setOriginLat(pos.coords.latitude)
+        setOriginLng(pos.coords.longitude)
+        setOriginAddr('Current Location')
+      },
+      () => { /* use Bhubaneswar default */ },
+      { enableHighAccuracy: false, timeout: 8000 }
+    )
+  }, [])
+
+  const mockDrivers = getMockDrivers(originLat, originLng)
+
+  function goToSearch(destLabel?: string, destLat?: number, destLng?: number) {
+    const params = new URLSearchParams({
+      originLat:    originLat.toString(),
+      originLng:    originLng.toString(),
+      originAddress: originAddr,
+    })
+    if (destLabel && destLat != null && destLng != null) {
+      // Pre-fill destination for saved places
+      const { haversineKm } = {
+        haversineKm: (la1: number, lo1: number, la2: number, lo2: number) => {
+          const R = 6371
+          const dLa = (la2 - la1) * Math.PI / 180
+          const dLo = (lo2 - lo1) * Math.PI / 180
+          const a = Math.sin(dLa/2)**2 + Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)**2
+          return R * 2 * Math.asin(Math.sqrt(a))
+        }
+      }
+      const straight = haversineKm(originLat, originLng, destLat, destLng)
+      const distanceKm  = Math.round(straight * 1.3 * 10) / 10
+      const durationMin = Math.round(distanceKm / 0.5)
+      const sp = new URLSearchParams({
+        originLat:           originLat.toString(),
+        originLng:           originLng.toString(),
+        originAddress:       originAddr,
+        destinationLat:      destLat.toString(),
+        destinationLng:      destLng.toString(),
+        destinationAddress:  destLabel,
+        distanceKm:          distanceKm.toString(),
+        durationMin:         durationMin.toString(),
+        originCityId:        '1',
+      })
+      router.push(`/select-ride?${sp.toString()}`)
+      return
+    }
+    router.push(`/search?${params.toString()}`)
+  }
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
-
-      {/* MAP — bottom of the stack */}
+      {/* MAP */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <HomeMapScene
-          center={[mockPickup.lat, mockPickup.lng]}
-          pickupPos={[mockPickup.lat, mockPickup.lng]}
-          drivers={mockNearbyDrivers}
+          center={[originLat, originLng]}
+          pickupPos={[originLat, originLng]}
+          drivers={mockDrivers}
         />
       </div>
 
-      {/* TOP BAR — floats above map */}
+      {/* TOP BAR */}
       <div
         className="absolute top-0 left-0 right-0 px-4 pt-12 pb-3 flex items-center justify-between"
         style={{ zIndex: 10 }}
@@ -57,7 +125,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* BOTTOM SEARCH SHEET — floats above map, above nav */}
+      {/* BOTTOM SEARCH SHEET */}
       <div
         className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-3xl shadow-sheet px-4 pt-3"
         style={{
@@ -69,8 +137,9 @@ export default function HomePage() {
 
         <p className="text-xs text-text-muted mb-0.5">{getGreeting()}, {firstName} 👋</p>
         <p className="text-base font-semibold text-text-primary mb-3">Where to?</p>
+
         <button
-          onClick={() => router.push('/search')}
+          onClick={() => goToSearch()}
           className="w-full bg-background rounded-2xl px-4 py-3.5 flex items-center gap-3 text-left"
         >
           <Search size={18} className="text-text-muted flex-shrink-0" />
@@ -81,7 +150,7 @@ export default function HomePage() {
           {SAVED_PLACES.map((place) => (
             <button
               key={place.label}
-              onClick={() => router.push('/search')}
+              onClick={() => goToSearch(place.address, place.lat, place.lng)}
               className="w-full flex items-center gap-3 py-3 border-b border-border last:border-0"
             >
               <div className="w-9 h-9 bg-background rounded-xl flex items-center justify-center text-base">
@@ -96,7 +165,6 @@ export default function HomePage() {
           ))}
         </div>
       </div>
-
     </div>
   )
 }
