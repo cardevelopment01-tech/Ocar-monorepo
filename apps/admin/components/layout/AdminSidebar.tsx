@@ -2,9 +2,9 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Map, Car, Users, User, AlertTriangle, Shield,
+  LayoutDashboard, Map, Car, Truck, Users, User, AlertTriangle, Shield,
   CreditCard, Wallet, RotateCcw, Tag, Settings, ToggleLeft,
-  BarChart2, Camera, LogOut,
+  BarChart2, Camera, LogOut, MapPin,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdminRole } from '@/lib/mock-data'
@@ -35,6 +35,7 @@ const NAV: NavGroup[] = [
     items: [
       { href: '/rides',     label: 'Rides',     icon: Car,           roles: ['super_admin','ops_admin','support_admin'] },
       { href: '/drivers',   label: 'Drivers',   icon: Users,         roles: ['super_admin','ops_admin','support_admin'] },
+      { href: '/vehicles',  label: 'Vehicles',  icon: Truck,         roles: ['super_admin','ops_admin'] },
       { href: '/users',     label: 'Users',     icon: User,          roles: ['super_admin','ops_admin','support_admin'] },
       { href: '/disputes',  label: 'Disputes',  icon: AlertTriangle, roles: ['super_admin','ops_admin','support_admin'] },
       { href: '/sos',       label: 'SOS Alerts',icon: Shield,        roles: ['super_admin','ops_admin'] },
@@ -51,6 +52,7 @@ const NAV: NavGroup[] = [
   {
     label: 'Configuration',
     items: [
+      { href: '/cities',               label: 'Cities',        icon: MapPin,      roles: ['super_admin', 'ops_admin'] },
       { href: '/config/rate-cards',    label: 'Rate Cards',    icon: Tag,         roles: ['super_admin'] },
       { href: '/config/system-config', label: 'System Config', icon: Settings,    roles: ['super_admin'] },
       { href: '/config/feature-flags', label: 'Feature Flags', icon: ToggleLeft,  roles: ['super_admin'] },

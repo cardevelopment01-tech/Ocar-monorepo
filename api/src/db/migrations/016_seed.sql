@@ -58,3 +58,29 @@ BEGIN
     (b_toyota,  'Fortuner',      c_suv)
   ON CONFLICT (brand_id, name) DO NOTHING;
 END $$;
+
+-- Cities seed
+INSERT INTO cities (
+  name, slug, state,
+  centroid,
+  default_speed_limit_kmph,
+  status,
+  is_rental_enabled,
+  is_return_cab_enabled
+) VALUES
+  (
+    'Bhubaneswar', 'bhubaneswar', 'Odisha',
+    ST_GeogFromText('SRID=4326;POINT(85.8245 20.2961)'),
+    50, 'active', true, true
+  ),
+  (
+    'Cuttack', 'cuttack', 'Odisha',
+    ST_GeogFromText('SRID=4326;POINT(85.8830 20.4686)'),
+    50, 'active', false, true
+  ),
+  (
+    'Puri', 'puri', 'Odisha',
+    ST_GeogFromText('SRID=4326;POINT(85.8315 19.8135)'),
+    40, 'draft', false, false
+  )
+ON CONFLICT (slug) DO NOTHING;

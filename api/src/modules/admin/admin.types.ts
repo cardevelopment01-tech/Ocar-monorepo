@@ -76,3 +76,95 @@ export interface UpdateDriverStatusPayload {
   status: DriverStatus
   reason?: string
 }
+
+// ─── Vehicle management types ─────────────────────────────────────────────────
+
+export type VehicleState = 'pending' | 'active' | 'blacklisted' | 'inactive'
+
+export interface AdminVehicleCategory {
+  id: string
+  slug: string
+  display_name: string
+  max_passengers: number
+  is_active: boolean
+  created_at: string
+  driver_count: number
+}
+
+export interface AdminVehicleBrand {
+  id: string
+  name: string
+  logo_url: string | null
+  is_active: boolean
+  created_at: string
+  model_count: number
+}
+
+export interface AdminVehicleModel {
+  id: string
+  brand_id: string
+  name: string
+  typical_category_id: string | null
+  is_active: boolean
+  created_at: string
+  brand_name: string
+  typical_category_name: string | null
+}
+
+export interface FleetVehicle {
+  id: string
+  driver_id: string
+  driver_name: string | null
+  driver_code: string
+  driver_phone: string
+  vehicle_name: string | null
+  number_plate: string | null
+  category: string | null
+  brand: string | null
+  status: VehicleState
+  is_primary: boolean
+  created_at: string
+}
+
+export interface PendingVehicleDoc {
+  id: string
+  vehicle_id: string
+  doc_type: string
+  file_url: string
+  doc_number: string | null
+  status: string
+  created_at: string
+  number_plate: string | null
+  vehicle_name: string | null
+  driver_name: string | null
+  driver_code: string
+}
+
+export interface ExpiringVehicleDoc {
+  id: string
+  vehicle_id: string
+  doc_type: string
+  file_url: string
+  valid_until: string
+  number_plate: string | null
+  vehicle_name: string | null
+  driver_name: string | null
+  driver_phone: string
+  driver_code: string
+}
+
+// ─── Geo / Cities ─────────────────────────────────────────────────────────────
+
+export interface AdminCity {
+  id: number
+  name: string
+  slug: string
+  state: string
+  centroid_lat: number
+  centroid_lng: number
+  default_speed_limit_kmph: number
+  status: 'draft' | 'active' | 'inactive'
+  is_rental_enabled: boolean
+  is_return_cab_enabled: boolean
+  created_at: string
+}

@@ -1,5 +1,10 @@
 import { pool } from '@/db/client'
-import type { AdminDriverListRow, AdminDriverDetail, DriverStatus } from './admin.types'
+import type {
+  AdminDriverListRow, AdminDriverDetail, DriverStatus,
+  AdminVehicleCategory, AdminVehicleBrand, AdminVehicleModel,
+  FleetVehicle, PendingVehicleDoc, ExpiringVehicleDoc,
+  AdminCity,
+} from './admin.types'
 
 export async function listDrivers(filters: {
   status?: string
@@ -173,4 +178,417 @@ export async function updateDriverStatus(
   } finally {
     client.release()
   }
+}
+
+// ─── Vehicle categories ───────────────────────────────────────────────────────
+
+export async function listAdminCategories(): Promise<AdminVehicleCategory[]> {
+  const res = await pool.query(
+    `SELECT vc.id, vc.slug, vc.display_name, vc.max_passengers, vc.is_active, vc.created_at,
+            COUNT(dv.id)::int AS driver_count
+     FROM vehicle_categories vc
+     LEFT JOIN driver_vehicles dv ON dv.category_id = vc.id
+     GROUP BY vc.id
+     ORDER BY vc.display_name`
+  )
+  return res.rows.map(r => ({
+    id: String(r.id), slug: r.slug as string, display_name: r.display_name as string,
+    max_passengers: r.max_passengers as number, is_active: r.is_active as boolean,
+    created_at: r.created_at as string, driver_count: r.driver_count as number,
+  }))
+}
+
+export async function createCategory(data: {
+  slug: string; display_name: string; max_passengers: number; is_active: boolean
+}): Promise<AdminVehicleCategory> {
+  const res = await pool.query(
+    `INSERT INTO vehicle_categories (slug, display_name, max_passengers, is_active)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, slug, display_name, max_passengers, is_active, created_at`,
+    [data.slug, data.display_name, data.max_passengers, data.is_active]
+  )
+  const r = res.rows[0]
+  return { id: String(r.id), slug: r.slug, display_name: r.display_name,
+           max_passengers: r.max_passengers, is_active: r.is_active,
+           created_at: r.created_at, driver_count: 0 }
+}
+
+export async function updateCategory(
+  id: bigint,
+  data: { display_name?: string; max_passengers?: number; is_active?: boolean }
+): Promise<AdminVehicleCategory | null> {
+  const sets: string[] = []
+  const params: unknown[] = []
+  let p = 1
+  if (data.display_name !== undefined) { sets.push(`display_name = $${p++}`); params.push(data.display_name) }
+  if (data.max_passengers !== undefined) { sets.push(`max_passengers = $${p++}`); params.push(data.max_passengers) }
+  if (data.is_active !== undefined) { sets.push(`is_active = $${p++}`); params.push(data.is_active) }
+  if (!sets.length) return null
+  params.push(id)
+  const res = await pool.query(
+    `UPDATE vehicle_categories SET ${sets.join(', ')} WHERE id = $${p}
+     RETURNING id, slug, display_name, max_passengers, is_active, created_at`,
+    params
+  )
+  if (!res.rows.length) return null
+  const r = res.rows[0]
+  return { id: String(r.id), slug: r.slug, display_name: r.display_name,
+           max_passengers: r.max_passengers, is_active: r.is_active,
+           created_at: r.created_at, driver_count: 0 }
+}
+
+// ─── Vehicle brands ───────────────────────────────────────────────────────────
+
+export async function listAdminBrands(): Promise<AdminVehicleBrand[]> {
+  const res = await pool.query(
+    `SELECT vb.id, vb.name, vb.logo_url, vb.is_active, vb.created_at,
+            COUNT(vm.id)::int AS model_count
+     FROM vehicle_brands vb
+     LEFT JOIN vehicle_models vm ON vm.brand_id = vb.id
+     GROUP BY vb.id
+     ORDER BY vb.name`
+  )
+  return res.rows.map(r => ({
+    id: String(r.id), name: r.name as string, logo_url: r.logo_url as string | null,
+    is_active: r.is_active as boolean, created_at: r.created_at as string,
+    model_count: r.model_count as number,
+  }))
+}
+
+export async function createBrand(data: { name: string; is_active: boolean }): Promise<AdminVehicleBrand> {
+  const res = await pool.query(
+    `INSERT INTO vehicle_brands (name, is_active) VALUES ($1, $2)
+     RETURNING id, name, logo_url, is_active, created_at`,
+    [data.name, data.is_active]
+  )
+  const r = res.rows[0]
+  return { id: String(r.id), name: r.name, logo_url: r.logo_url, is_active: r.is_active,
+           created_at: r.created_at, model_count: 0 }
+}
+
+export async function updateBrand(
+  id: bigint,
+  data: { name?: string; is_active?: boolean }
+): Promise<AdminVehicleBrand | null> {
+  const sets: string[] = []
+  const params: unknown[] = []
+  let p = 1
+  if (data.name !== undefined) { sets.push(`name = $${p++}`); params.push(data.name) }
+  if (data.is_active !== undefined) { sets.push(`is_active = $${p++}`); params.push(data.is_active) }
+  if (!sets.length) return null
+  params.push(id)
+  const res = await pool.query(
+    `UPDATE vehicle_brands SET ${sets.join(', ')} WHERE id = $${p}
+     RETURNING id, name, logo_url, is_active, created_at`,
+    params
+  )
+  if (!res.rows.length) return null
+  const r = res.rows[0]
+  return { id: String(r.id), name: r.name, logo_url: r.logo_url, is_active: r.is_active,
+           created_at: r.created_at, model_count: 0 }
+}
+
+// ─── Vehicle models ───────────────────────────────────────────────────────────
+
+export async function listAdminModels(brandId?: bigint): Promise<AdminVehicleModel[]> {
+  const params: unknown[] = []
+  const where = brandId ? (params.push(brandId), 'WHERE vm.brand_id = $1') : ''
+  const res = await pool.query(
+    `SELECT vm.id, vm.brand_id, vm.name, vm.typical_category_id, vm.is_active, vm.created_at,
+            vb.name AS brand_name,
+            vc.display_name AS typical_category_name
+     FROM vehicle_models vm
+     JOIN vehicle_brands vb ON vb.id = vm.brand_id
+     LEFT JOIN vehicle_categories vc ON vc.id = vm.typical_category_id
+     ${where}
+     ORDER BY vb.name, vm.name`,
+    params
+  )
+  return res.rows.map(r => ({
+    id: String(r.id), brand_id: String(r.brand_id), name: r.name as string,
+    typical_category_id: r.typical_category_id ? String(r.typical_category_id) : null,
+    is_active: r.is_active as boolean, created_at: r.created_at as string,
+    brand_name: r.brand_name as string, typical_category_name: r.typical_category_name as string | null,
+  }))
+}
+
+export async function createModel(data: {
+  brand_id: bigint; name: string; typical_category_id?: bigint | null; is_active: boolean
+}): Promise<AdminVehicleModel> {
+  const res = await pool.query(
+    `INSERT INTO vehicle_models (brand_id, name, typical_category_id, is_active)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, brand_id, name, typical_category_id, is_active, created_at`,
+    [data.brand_id, data.name, data.typical_category_id ?? null, data.is_active]
+  )
+  const r = res.rows[0]
+  return { id: String(r.id), brand_id: String(r.brand_id), name: r.name,
+           typical_category_id: r.typical_category_id ? String(r.typical_category_id) : null,
+           is_active: r.is_active, created_at: r.created_at,
+           brand_name: '', typical_category_name: null }
+}
+
+export async function updateModel(
+  id: bigint,
+  data: { name?: string; typical_category_id?: bigint | null; is_active?: boolean }
+): Promise<AdminVehicleModel | null> {
+  const sets: string[] = []
+  const params: unknown[] = []
+  let p = 1
+  if (data.name !== undefined) { sets.push(`name = $${p++}`); params.push(data.name) }
+  if ('typical_category_id' in data) { sets.push(`typical_category_id = $${p++}`); params.push(data.typical_category_id ?? null) }
+  if (data.is_active !== undefined) { sets.push(`is_active = $${p++}`); params.push(data.is_active) }
+  if (!sets.length) return null
+  params.push(id)
+  const res = await pool.query(
+    `UPDATE vehicle_models SET ${sets.join(', ')} WHERE id = $${p}
+     RETURNING id, brand_id, name, typical_category_id, is_active, created_at`,
+    params
+  )
+  if (!res.rows.length) return null
+  const r = res.rows[0]
+  return { id: String(r.id), brand_id: String(r.brand_id), name: r.name,
+           typical_category_id: r.typical_category_id ? String(r.typical_category_id) : null,
+           is_active: r.is_active, created_at: r.created_at,
+           brand_name: '', typical_category_name: null }
+}
+
+// ─── Fleet ────────────────────────────────────────────────────────────────────
+
+export async function listFleet(status?: string): Promise<FleetVehicle[]> {
+  const params: unknown[] = []
+  const where = status ? (params.push(status), 'WHERE dv.status = $1') : ''
+  const res = await pool.query(
+    `SELECT dv.id, dv.driver_id, dv.vehicle_name, dv.number_plate,
+            dv.status, dv.is_primary, dv.created_at,
+            d.full_name AS driver_name, d.code AS driver_code, d.phone AS driver_phone,
+            vc.display_name AS category,
+            vb.name AS brand
+     FROM driver_vehicles dv
+     JOIN drivers d ON d.id = dv.driver_id
+     LEFT JOIN vehicle_categories vc ON vc.id = dv.category_id
+     LEFT JOIN vehicle_brands vb ON vb.id = dv.brand_id
+     ${where}
+     ORDER BY dv.created_at DESC`,
+    params
+  )
+  return res.rows.map(r => ({
+    id: String(r.id), driver_id: String(r.driver_id),
+    driver_name: r.driver_name as string | null, driver_code: r.driver_code as string,
+    driver_phone: r.driver_phone as string, vehicle_name: r.vehicle_name as string | null,
+    number_plate: r.number_plate as string | null, category: r.category as string | null,
+    brand: r.brand as string | null, status: r.status as FleetVehicle['status'],
+    is_primary: r.is_primary as boolean, created_at: r.created_at as string,
+  }))
+}
+
+export async function blacklistVehicle(
+  vehicleId: bigint, adminId: bigint, reason: string
+): Promise<{ driver_suspended: boolean }> {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const vehicleRes = await client.query(
+      `SELECT driver_id, is_primary FROM driver_vehicles WHERE id = $1`,
+      [vehicleId]
+    )
+    if (!vehicleRes.rows.length) throw new Error('Vehicle not found')
+    const { driver_id, is_primary } = vehicleRes.rows[0] as { driver_id: bigint; is_primary: boolean }
+
+    await client.query(
+      `UPDATE driver_vehicles SET status = 'blacklisted', updated_at = now() WHERE id = $1`,
+      [vehicleId]
+    )
+
+    let driver_suspended = false
+    if (is_primary) {
+      const driverRes = await client.query(
+        `SELECT status FROM drivers WHERE id = $1`, [driver_id]
+      )
+      const fromStatus = driverRes.rows[0]?.status as string ?? 'active'
+      await client.query(
+        `UPDATE drivers SET status = 'suspended', updated_at = now() WHERE id = $1`,
+        [driver_id]
+      )
+      await client.query(
+        `INSERT INTO driver_status_history (driver_id, from_status, to_status, reason, changed_by)
+         VALUES ($1, $2, 'suspended', $3, $4)`,
+        [driver_id, fromStatus, `Vehicle blacklisted: ${reason}`, adminId]
+      )
+      driver_suspended = true
+    }
+
+    await client.query('COMMIT')
+    return { driver_suspended }
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+export async function unblacklistVehicle(vehicleId: bigint): Promise<void> {
+  await pool.query(
+    `UPDATE driver_vehicles SET status = 'active', updated_at = now() WHERE id = $1`,
+    [vehicleId]
+  )
+}
+
+// ─── Vehicle documents ────────────────────────────────────────────────────────
+
+export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
+  const res = await pool.query(
+    `SELECT dvd.id, dvd.vehicle_id, dvd.doc_type, dvd.file_url, dvd.doc_number,
+            dvd.status, dvd.created_at,
+            dv.number_plate, dv.vehicle_name,
+            d.full_name AS driver_name, d.code AS driver_code
+     FROM driver_vehicle_documents dvd
+     JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+     JOIN drivers d ON d.id = dv.driver_id
+     WHERE dvd.status = 'pending'
+     ORDER BY dvd.created_at ASC`
+  )
+  return res.rows.map(r => ({
+    id: String(r.id), vehicle_id: String(r.vehicle_id), doc_type: r.doc_type as string,
+    file_url: r.file_url as string, doc_number: r.doc_number as string | null,
+    status: r.status as string, created_at: r.created_at as string,
+    number_plate: r.number_plate as string | null, vehicle_name: r.vehicle_name as string | null,
+    driver_name: r.driver_name as string | null, driver_code: r.driver_code as string,
+  }))
+}
+
+export async function approveVehicleDoc(docId: bigint, adminId: bigint): Promise<void> {
+  await pool.query(
+    `UPDATE driver_vehicle_documents
+     SET status = 'approved', reviewed_by = $1, reviewed_at = now(), updated_at = now()
+     WHERE id = $2`,
+    [adminId, docId]
+  )
+}
+
+export async function rejectVehicleDoc(
+  docId: bigint, adminId: bigint, rejectionNote: string
+): Promise<void> {
+  await pool.query(
+    `UPDATE driver_vehicle_documents
+     SET status = 'rejected', rejection_note = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
+     WHERE id = $3`,
+    [rejectionNote, adminId, docId]
+  )
+}
+
+export async function listExpiringDocs(daysAhead: number): Promise<ExpiringVehicleDoc[]> {
+  const res = await pool.query(
+    `SELECT dvd.id, dvd.vehicle_id, dvd.doc_type, dvd.file_url, dvd.valid_until,
+            dv.number_plate, dv.vehicle_name,
+            d.full_name AS driver_name, d.phone AS driver_phone, d.code AS driver_code
+     FROM driver_vehicle_documents dvd
+     JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+     JOIN drivers d ON d.id = dv.driver_id
+     WHERE dvd.status = 'approved'
+       AND dvd.valid_until IS NOT NULL
+       AND dvd.valid_until <= now() + ($1 || ' days')::interval
+       AND dvd.valid_until >= now()
+     ORDER BY dvd.valid_until ASC`,
+    [daysAhead]
+  )
+  return res.rows.map(r => ({
+    id: String(r.id), vehicle_id: String(r.vehicle_id), doc_type: r.doc_type as string,
+    file_url: r.file_url as string, valid_until: r.valid_until as string,
+    number_plate: r.number_plate as string | null, vehicle_name: r.vehicle_name as string | null,
+    driver_name: r.driver_name as string | null, driver_phone: r.driver_phone as string,
+    driver_code: r.driver_code as string,
+  }))
+}
+
+// ─── Geo / Cities ─────────────────────────────────────────────────────────────
+
+const ADMIN_CITY_COLS = `
+  id, name, slug, state,
+  ST_Y(centroid::geometry) AS centroid_lat,
+  ST_X(centroid::geometry) AS centroid_lng,
+  default_speed_limit_kmph,
+  status,
+  is_rental_enabled,
+  is_return_cab_enabled,
+  created_at
+`
+
+export async function listAdminCities(): Promise<AdminCity[]> {
+  const res = await pool.query(
+    `SELECT ${ADMIN_CITY_COLS} FROM cities ORDER BY name`
+  )
+  return res.rows as AdminCity[]
+}
+
+export async function createAdminCity(data: {
+  name: string
+  slug: string
+  state: string
+  centroid_lat: number
+  centroid_lng: number
+  default_speed_limit_kmph: number
+  is_rental_enabled: boolean
+  is_return_cab_enabled: boolean
+  created_by: bigint
+}): Promise<AdminCity> {
+  const res = await pool.query(
+    `INSERT INTO cities
+       (name, slug, state, centroid,
+        default_speed_limit_kmph,
+        is_rental_enabled, is_return_cab_enabled,
+        created_by)
+     VALUES (
+       $1, $2, $3,
+       ST_SetSRID(ST_MakePoint($5::float8, $4::float8), 4326)::geography,
+       $6, $7, $8, $9
+     )
+     RETURNING ${ADMIN_CITY_COLS}`,
+    [
+      data.name, data.slug, data.state,
+      data.centroid_lat, data.centroid_lng,
+      data.default_speed_limit_kmph,
+      data.is_rental_enabled,
+      data.is_return_cab_enabled,
+      data.created_by,
+    ]
+  )
+  return res.rows[0] as AdminCity
+}
+
+export async function updateAdminCity(
+  id: bigint,
+  data: {
+    name?: string
+    state?: string
+    default_speed_limit_kmph?: number
+    status?: string
+    is_rental_enabled?: boolean
+    is_return_cab_enabled?: boolean
+  }
+): Promise<AdminCity | null> {
+  const sets: string[] = []
+  const values: unknown[] = []
+  let p = 1
+
+  if (data.name !== undefined)                    { sets.push(`name = $${p++}`);                     values.push(data.name) }
+  if (data.state !== undefined)                   { sets.push(`state = $${p++}`);                    values.push(data.state) }
+  if (data.default_speed_limit_kmph !== undefined){ sets.push(`default_speed_limit_kmph = $${p++}`); values.push(data.default_speed_limit_kmph) }
+  if (data.status !== undefined)                  { sets.push(`status = $${p++}`);                   values.push(data.status) }
+  if (data.is_rental_enabled !== undefined)       { sets.push(`is_rental_enabled = $${p++}`);        values.push(data.is_rental_enabled) }
+  if (data.is_return_cab_enabled !== undefined)   { sets.push(`is_return_cab_enabled = $${p++}`);    values.push(data.is_return_cab_enabled) }
+
+  if (!sets.length) {
+    const res = await pool.query(`SELECT ${ADMIN_CITY_COLS} FROM cities WHERE id = $1`, [id])
+    return res.rows[0] ?? null
+  }
+
+  values.push(id)
+  const res = await pool.query(
+    `UPDATE cities SET ${sets.join(', ')} WHERE id = $${p} RETURNING ${ADMIN_CITY_COLS}`,
+    values
+  )
+  return res.rows[0] ?? null
 }
