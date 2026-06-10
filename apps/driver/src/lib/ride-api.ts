@@ -24,6 +24,20 @@ export type RideDetail = {
   total_estimated: string | null
 }
 
+export type TripHistoryItem = {
+  id: string
+  status: string
+  ride_type: string
+  origin_address: string | null
+  destination_address: string | null
+  requested_at: string
+  started_at: string | null
+  completed_at: string | null
+  user_name: string | null
+  fare: string | null
+  driver_earning: string | null
+}
+
 export const driverRideApi = {
   goOnline: async (params: {
     mode: 'standard' | 'return_cab'
@@ -104,6 +118,14 @@ export const driverRideApi = {
   getRide: async (rideId: string): Promise<RideDetail> => {
     const res = await api.get(`/api/v1/rides/${rideId}`)
     return res.data as RideDetail
+  },
+
+  getMyTrips: async (page = 1, limit = 20): Promise<{
+    trips: TripHistoryItem[]
+    pagination: { total: number; page: number; limit: number; pages: number }
+  }> => {
+    const res = await api.get('/api/v1/rides/me/trips', { params: { page, limit } })
+    return res.data as { trips: TripHistoryItem[]; pagination: { total: number; page: number; limit: number; pages: number } }
   },
 
   getMyVehicle: async (): Promise<{ id: number; category_id: number; number_plate: string; status: string } | null> => {

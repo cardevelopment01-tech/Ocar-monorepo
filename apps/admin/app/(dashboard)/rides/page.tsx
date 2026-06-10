@@ -1,82 +1,118 @@
 'use client'
-import { useState } from 'react'
-import { Car, CheckCircle, XCircle, IndianRupee } from 'lucide-react'
-import StatCard from '@/components/ui/StatCard'
+import React from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Car } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
-import { mockRides } from '@/lib/mock-data'
-import { cn } from '@/lib/utils'
+import { adminRideApi, type AdminRideItem } from '@/lib/admin-api'
 
-type Ride = typeof mockRides[number]
+function fmt(iso: string | null) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
 
-const TIMELINE = [
-  { label: 'Requested',       time: '10:42 AM', actor: 'User' },
-  { label: 'Driver Accepted', time: '10:43 AM', actor: 'System' },
-  { label: 'Driver Arrived',  time: '10:51 AM', actor: 'Driver' },
-  { label: 'Trip Started',    time: '10:53 AM', actor: 'Driver' },
-  { label: 'Completed',       time: '11:24 AM', actor: 'System' },
-]
+function SkeletonRows({ cols }: { cols: number }) {
+  return (
+    <>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <tr key={i} className="border-b border-border-light last:border-b-0">
+          {Array.from({ length: cols }).map((_, j) => (
+            <td key={j} className="px-4 py-3">
+              <div className="h-4 bg-surface-2 rounded animate-pulse" style={{ width: j === 0 ? '80px' : '90px' }} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  )
+}
+
+const LIMIT = 20
 
 export default function RidesPage() {
+  const [rides, setRides] = useState<AdminRideItem[]>([])
+  const [total, setTotal] = useState(0)
+  const [pages, setPages] = useState(1)
+  const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [selected, setSelected] = useState<Ride | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [debouncedSearch, setDebouncedSearch] = useState('')
 
-  const filtered = mockRides.filter(r => {
-    if (statusFilter && r.status !== statusFilter) return false
-    if (search) {
-      const q = search.toLowerCase()
-      if (!r.code.toLowerCase().includes(q) && !r.user.name.toLowerCase().includes(q) && !r.user.phone.includes(q)) return false
+  const [selected, setSelected] = useState<AdminRideItem | null>(null)
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => { setDebouncedSearch(search); setPage(1) }, 400)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [search])
+
+  const fetchRides = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params: Record<string, unknown> = { page, limit: LIMIT }
+      if (statusFilter) params['status'] = statusFilter
+      if (debouncedSearch) params['search'] = debouncedSearch
+      const data = await adminRideApi.list(params as Parameters<typeof adminRideApi.list>[0])
+      setRides(data.rides)
+      setTotal(data.pagination.total)
+      setPages(data.pagination.pages)
+    } catch {
+      setRides([])
+    } finally {
+      setLoading(false)
     }
-    return true
-  })
+  }, [page, statusFilter, debouncedSearch])
+
+  useEffect(() => { void fetchRides() }, [fetchRides])
 
   const columns = [
     {
-      key: 'code', header: 'Ride ID',
-      render: (r: Ride) => <span className="font-mono text-xs text-primary">{r.code}</span>,
+      key: 'id', header: 'Ride ID',
+      render: (r: AdminRideItem) => <span className="font-mono text-xs text-primary">#{r.id}</span>,
     },
     {
       key: 'user', header: 'User',
-      render: (r: Ride) => (
+      render: (r: AdminRideItem) => (
         <div>
-          <p className="font-semibold text-text-primary">{r.user.name}</p>
-          <p className="text-xs text-text-muted">{r.user.phone}</p>
+          <p className="font-semibold text-text-primary">{r.user_name}</p>
+          <p className="text-xs text-text-muted">{r.user_phone}</p>
         </div>
       ),
     },
     {
       key: 'driver', header: 'Driver',
-      render: (r: Ride) => r.driver ? (
-        <div>
-          <p className="font-medium text-text-secondary">{r.driver.name}</p>
-          <p className="text-xs text-text-muted font-mono">{r.driver.plate}</p>
-        </div>
-      ) : <span className="text-text-muted italic text-xs">Unassigned</span>,
+      render: (r: AdminRideItem) => r.driver_name
+        ? <div><p className="font-medium text-text-secondary">{r.driver_name}</p><p className="text-xs text-text-muted">{r.driver_phone}</p></div>
+        : <span className="text-text-muted italic text-xs">Unassigned</span>,
     },
     {
       key: 'route', header: 'Route',
-      render: (r: Ride) => (
-        <p className="text-text-secondary">
-          {r.from}<span className="text-text-muted mx-1">→</span>{r.to}
+      render: (r: AdminRideItem) => (
+        <p className="text-text-secondary text-sm">
+          {r.origin_address ?? '—'}<span className="text-text-muted mx-1">→</span>{r.destination_address ?? '—'}
         </p>
       ),
     },
-    { key: 'type',   header: 'Type',   render: (r: Ride) => <StatusPill status={r.type} /> },
+    { key: 'ride_type', header: 'Type',   render: (r: AdminRideItem) => <StatusPill status={r.ride_type} /> },
     {
       key: 'fare', header: 'Fare',
-      render: (r: Ride) => <span className="font-bold text-text-primary">₹{r.fare.toLocaleString('en-IN')}</span>,
+      render: (r: AdminRideItem) => r.fare
+        ? <span className="font-bold text-text-primary">₹{parseFloat(r.fare).toLocaleString('en-IN')}</span>
+        : <span className="text-text-muted">—</span>,
     },
-    { key: 'status', header: 'Status', render: (r: Ride) => <StatusPill status={r.status} /> },
+    { key: 'status', header: 'Status', render: (r: AdminRideItem) => <StatusPill status={r.status} /> },
     {
-      key: 'time', header: 'Time',
-      render: (r: Ride) => <span className="text-text-muted">{r.time}</span>,
+      key: 'requested_at', header: 'Time',
+      render: (r: AdminRideItem) => <span className="text-text-muted text-xs">{fmt(r.requested_at)}</span>,
     },
     {
       key: 'actions', header: '',
-      render: (r: Ride) => (
+      render: (r: AdminRideItem) => (
         <button
           onClick={e => { e.stopPropagation(); setSelected(r) }}
           className="px-3 py-1 text-xs font-semibold border border-border rounded-lg hover:bg-surface-2 transition-colors text-text-secondary"
@@ -87,17 +123,14 @@ export default function RidesPage() {
     },
   ]
 
-  const completed = mockRides.filter(r => r.status === 'completed').length
-  const cancelled  = mockRides.filter(r => r.status === 'cancelled').length
-  const revenue    = mockRides.reduce((s, r) => s + r.fare, 0)
-
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard title="Total Today"  value={mockRides.length} change="+12%"              changeType="up"      icon={Car}          gradient="blue"   />
-        <StatCard title="Completed"    value={completed}        change={`${Math.round(completed/mockRides.length*100)}% rate`} changeType="up" icon={CheckCircle} gradient="green" />
-        <StatCard title="Cancelled"    value={cancelled}        change="Monitor closely"   changeType="down"    icon={XCircle}      gradient="amber"  />
-        <StatCard title="Revenue"      value={`₹${revenue.toLocaleString('en-IN')}`} change="+8% today" changeType="up" icon={IndianRupee}  gradient="purple" />
+      <div className="flex items-center gap-3 mb-1">
+        <Car className="w-5 h-5 text-primary" />
+        <div>
+          <h2 className="text-lg font-bold text-text-primary">Rides</h2>
+          <p className="text-xs text-text-muted">{total} total rides</p>
+        </div>
       </div>
 
       <div className="admin-card">
@@ -105,42 +138,59 @@ export default function RidesPage() {
           <FilterBar
             search={search}
             onSearch={setSearch}
-            searchPlaceholder="Search by Ride ID or user phone…"
+            searchPlaceholder="Search by user name or phone…"
             filters={[{
               key: 'status', label: 'All Statuses',
               options: [
-                { value: 'completed',   label: 'Completed'   },
-                { value: 'in_progress', label: 'In Progress' },
                 { value: 'requested',   label: 'Requested'   },
+                { value: 'accepted',    label: 'Accepted'    },
+                { value: 'arrived',     label: 'Arrived'     },
+                { value: 'in_progress', label: 'In Progress' },
+                { value: 'completed',   label: 'Completed'   },
                 { value: 'cancelled',   label: 'Cancelled'   },
               ],
               value: statusFilter,
-              onChange: setStatusFilter,
+              onChange: (v) => { setStatusFilter(v); setPage(1) },
             }]}
             onExport={() => {}}
           />
         </div>
-        <DataTable
-          columns={columns}
-          data={filtered as unknown as Record<string, unknown>[]}
-          onRowClick={row => setSelected(row as unknown as Ride)}
-          emptyMessage="No rides match your filters"
-        />
+        {loading
+          ? <table className="w-full"><tbody><SkeletonRows cols={9} /></tbody></table>
+          : (
+            <DataTable
+              columns={columns as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
+              data={rides as unknown as Record<string, unknown>[]}
+              onRowClick={row => setSelected(row as unknown as AdminRideItem)}
+              emptyMessage="No rides match your filters"
+            />
+          )
+        }
+        {pages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-border-light">
+            <p className="text-xs text-text-muted">{total} total</p>
+            <div className="flex gap-2">
+              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1 text-xs border border-border rounded-lg disabled:opacity-40 hover:bg-surface-2 transition-colors">Prev</button>
+              <span className="px-3 py-1 text-xs text-text-muted">{page} / {pages}</span>
+              <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="px-3 py-1 text-xs border border-border rounded-lg disabled:opacity-40 hover:bg-surface-2 transition-colors">Next</button>
+            </div>
+          </div>
+        )}
       </div>
 
-      <SlideOver isOpen={!!selected} onClose={() => setSelected(null)} title={selected?.code ?? ''}>
+      <SlideOver isOpen={!!selected} onClose={() => setSelected(null)} title={selected ? `Ride #${selected.id}` : ''}>
         {selected && (
           <div className="p-6 space-y-5">
             <div className="flex items-center gap-3">
               <StatusPill status={selected.status} />
-              <span className="text-text-muted text-sm">{selected.time}</span>
+              <StatusPill status={selected.ride_type} />
+              <span className="text-text-muted text-sm">{fmt(selected.requested_at)}</span>
             </div>
 
-            {/* Parties */}
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: 'Rider', name: selected.user.name, sub: selected.user.phone },
-                { label: 'Driver', name: selected.driver?.name ?? 'Unassigned', sub: selected.driver?.plate ?? '' },
+                { label: 'Rider',  name: selected.user_name,        sub: selected.user_phone },
+                { label: 'Driver', name: selected.driver_name ?? 'Unassigned', sub: selected.driver_phone ?? '' },
               ].map(p => (
                 <div key={p.label} className="bg-surface-2 rounded-xl p-3 border border-border-light">
                   <p className="text-xs text-text-muted uppercase tracking-wide mb-1">{p.label}</p>
@@ -150,55 +200,22 @@ export default function RidesPage() {
               ))}
             </div>
 
-            {/* Route */}
             <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
               <p className="text-xs text-text-muted uppercase tracking-wide mb-1">Route</p>
-              <p className="font-medium text-text-primary">{selected.from} → {selected.to}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <StatusPill status={selected.type} />
-                <span className="text-lg font-bold text-text-primary">₹{selected.fare.toLocaleString('en-IN')}</span>
+              <p className="text-sm font-medium text-text-primary">{selected.origin_address ?? '—'}</p>
+              <p className="text-xs text-text-muted my-1">→</p>
+              <p className="text-sm font-medium text-text-primary">{selected.destination_address ?? '—'}</p>
+              {selected.fare && (
+                <p className="text-xl font-bold text-text-primary mt-2">₹{parseFloat(selected.fare).toLocaleString('en-IN')}</p>
+              )}
+            </div>
+
+            {selected.completed_at && (
+              <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
+                <p className="text-xs text-text-muted uppercase tracking-wide mb-1">Completed At</p>
+                <p className="text-sm font-medium text-text-primary">{fmt(selected.completed_at)}</p>
               </div>
-            </div>
-
-            {/* Timeline */}
-            <div>
-              <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Timeline</p>
-              <div className="space-y-0">
-                {TIMELINE.map((ev, i) => (
-                  <div key={i} className="flex items-start gap-3 relative">
-                    <div className="flex flex-col items-center">
-                      <div className={cn('w-3 h-3 rounded-full mt-0.5 flex-shrink-0', i === TIMELINE.length - 1 ? 'bg-success' : 'bg-primary')} />
-                      {i < TIMELINE.length - 1 && <div className="w-px flex-1 bg-border min-h-[28px]" />}
-                    </div>
-                    <div className="pb-4">
-                      <p className="text-sm font-semibold text-text-primary">{ev.label}</p>
-                      <p className="text-xs text-text-muted">{ev.time} · {ev.actor}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Fare breakdown */}
-            <div className="bg-surface-2 rounded-xl p-4 border border-border-light space-y-2">
-              <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Fare Breakdown</p>
-              {[
-                { label: 'Base Fare',   value: `₹${Math.round(selected.fare * 0.7).toLocaleString('en-IN')}` },
-                { label: 'Per KM',      value: `₹${Math.round(selected.fare * 0.2).toLocaleString('en-IN')}` },
-                { label: 'Commission',  value: `-₹${Math.round(selected.fare * 0.2).toLocaleString('en-IN')}`, muted: true },
-                { label: 'Driver Gets', value: `₹${Math.round(selected.fare * 0.8).toLocaleString('en-IN')}`,  bold: true },
-              ].map(r => (
-                <div key={r.label} className="flex justify-between text-sm">
-                  <span className="text-text-secondary">{r.label}</span>
-                  <span className={cn(r.bold ? 'font-bold text-success' : r.muted ? 'text-danger' : 'text-text-primary')}>{r.value}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button className="flex-1 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm hover:bg-primary-dark transition-colors">View Full Details</button>
-              <button className="flex-1 py-2.5 border border-border text-text-secondary font-semibold rounded-xl text-sm hover:bg-surface-2 transition-colors">Raise Dispute</button>
-            </div>
+            )}
           </div>
         )}
       </SlideOver>

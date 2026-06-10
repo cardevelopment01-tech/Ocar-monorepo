@@ -1,5 +1,7 @@
 import * as repo from './safety.repository'
 import { getIO } from '@/websocket/socket.server'
+import { pool } from '@/db/client'
+import { notificationsQueue } from '@/jobs/queues'
 import type { TriggerSosInput } from './safety.types'
 
 export async function triggerSos(input: TriggerSosInput) {
@@ -24,6 +26,27 @@ export async function triggerSos(input: TriggerSosInput) {
   })
 
   await repo.markRideSosTriggered(input.rideId)
+
+  const triggeredUserId = input.triggeredByUserId ?? (ride.user_id != null ? BigInt(ride.user_id) : null)
+  let userPhone = ''
+  if (triggeredUserId != null) {
+    const phoneRes = await pool.query<{ phone: string }>(
+      `SELECT phone FROM users WHERE id = $1`,
+      [triggeredUserId]
+    )
+    userPhone = phoneRes.rows[0]?.phone ?? ''
+  }
+
+  notificationsQueue.add('sos_alert', {
+    rideId:      String(input.rideId),
+    userId:      String(triggeredUserId ?? ''),
+    userPhone,
+    lat:         input.lat  ?? 0,
+    lng:         input.lng  ?? 0,
+    triggeredAt: new Date().toISOString(),
+  }).catch((err: unknown) => {
+    console.error('Failed to enqueue sos_alert job:', err)
+  })
 
   try {
     getIO().to('admin:ops').emit('sos:alert', {

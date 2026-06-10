@@ -374,3 +374,58 @@ export async function acceptAssignment(
     client.release()
   }
 }
+
+export async function getUserRideHistory(
+  userId: bigint,
+  limit: number,
+  offset: number
+): Promise<{ rows: unknown[]; total: number }> {
+  const [dataRes, countRes] = await Promise.all([
+    pool.query(
+      `SELECT r.id::text, r.status, r.ride_type, r.origin_address, r.destination_address,
+              r.requested_at, r.completed_at,
+              d.full_name AS driver_name,
+              COALESCE(fs.total_final, fs.total_estimated)::text AS fare
+       FROM rides r
+       LEFT JOIN drivers d         ON d.id = r.driver_id
+       LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+       WHERE r.user_id = $1
+       ORDER BY r.requested_at DESC
+       LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
+    ),
+    pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM rides WHERE user_id = $1`,
+      [userId]
+    ),
+  ])
+  return { rows: dataRes.rows, total: parseInt(countRes.rows[0]!.count, 10) }
+}
+
+export async function getDriverTripHistory(
+  driverId: bigint,
+  limit: number,
+  offset: number
+): Promise<{ rows: unknown[]; total: number }> {
+  const [dataRes, countRes] = await Promise.all([
+    pool.query(
+      `SELECT r.id::text, r.status, r.ride_type, r.origin_address, r.destination_address,
+              r.requested_at, r.started_at, r.completed_at,
+              u.name AS user_name,
+              COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
+              COALESCE(fs.driver_earning, '0')::text AS driver_earning
+       FROM rides r
+       LEFT JOIN users u           ON u.id = r.user_id
+       LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+       WHERE r.driver_id = $1
+       ORDER BY r.requested_at DESC
+       LIMIT $2 OFFSET $3`,
+      [driverId, limit, offset]
+    ),
+    pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM rides WHERE driver_id = $1`,
+      [driverId]
+    ),
+  ])
+  return { rows: dataRes.rows, total: parseInt(countRes.rows[0]!.count, 10) }
+}

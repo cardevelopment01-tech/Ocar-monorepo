@@ -340,3 +340,49 @@ export async function resolveAdminDispute(req: Request, res: Response, next: Nex
     res.json(await disputeService.resolveDispute(BigInt(req.params['id']!), input))
   } catch (err) { next(err) }
 }
+
+// ─── Admin Rides ──────────────────────────────────────────────────────────────
+
+export async function getAdminRides(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const q: { status?: string; search?: string; page?: number; limit?: number } = {}
+    if (req.query['status']) q.status = req.query['status'] as string
+    if (req.query['search']) q.search = req.query['search'] as string
+    if (req.query['page'])   q.page   = parseInt(req.query['page'] as string, 10)
+    if (req.query['limit'])  q.limit  = parseInt(req.query['limit'] as string, 10)
+    res.json(await service.listAdminRides(q))
+  } catch (err) { next(err) }
+}
+
+// ─── Admin Users ──────────────────────────────────────────────────────────────
+
+export async function getAdminUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const q: { status?: string; search?: string; page?: number; limit?: number } = {}
+    if (req.query['status']) q.status = req.query['status'] as string
+    if (req.query['search']) q.search = req.query['search'] as string
+    if (req.query['page'])   q.page   = parseInt(req.query['page'] as string, 10)
+    if (req.query['limit'])  q.limit  = parseInt(req.query['limit'] as string, 10)
+    res.json(await service.listAdminUsers(q))
+  } catch (err) { next(err) }
+}
+
+export async function patchAdminUserStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await service.updateAdminUserStatus(BigInt(req.params['id']!), String(req.body.status ?? ''))
+    res.json({ success: true, ...result })
+  } catch (err) { next(err) }
+}
+
+// ─── Admin Payments ───────────────────────────────────────────────────────────
+
+export async function getAdminPayments(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const q: { channel?: string; search?: string; page?: number; limit?: number } = {}
+    if (req.query['channel']) q.channel = req.query['channel'] as string
+    if (req.query['search'])  q.search  = req.query['search'] as string
+    if (req.query['page'])    q.page    = parseInt(req.query['page'] as string, 10)
+    if (req.query['limit'])   q.limit   = parseInt(req.query['limit'] as string, 10)
+    res.json(await service.listAdminPayments(q))
+  } catch (err) { next(err) }
+}

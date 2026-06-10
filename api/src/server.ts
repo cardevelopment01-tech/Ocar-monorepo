@@ -4,6 +4,7 @@ import { createApp } from './app'
 import { testConnection, pool } from './db/client'
 import { testConnection as testRedis, client as redisClient } from './db/redis'
 import { initSocketServer } from './websocket/socket.server'
+import { notificationsWorker } from './jobs/workers/notifications.worker'
 
 async function start(): Promise<void> {
   const dbOk = await testConnection()
@@ -23,6 +24,9 @@ async function start(): Promise<void> {
   const httpServer = http.createServer(app)
 
   initSocketServer(httpServer)
+
+  void notificationsWorker
+  console.log('[Worker] Notifications worker started')
 
   httpServer.listen(config.API_PORT, () => {
     console.log(

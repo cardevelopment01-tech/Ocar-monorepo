@@ -672,6 +672,171 @@ export async function cancelAdminSurgeEvent(id: bigint, adminId: bigint) {
   return res.rows[0] ?? null
 }
 
+// ─── Rides (admin listing) ─────────────────────────────────────────────────────
+
+export async function listAdminRides(filters: {
+  status?: string
+  search?: string
+  limit: number
+  offset: number
+}) {
+  const conditions: string[] = []
+  const params: unknown[] = []
+  let p = 1
+
+  if (filters.status) {
+    conditions.push(`r.status = $${p++}`)
+    params.push(filters.status)
+  }
+  if (filters.search) {
+    conditions.push(`(u.name ILIKE $${p} OR u.phone ILIKE $${p} OR r.id::text = $${p})`)
+    params.push(`%${filters.search}%`)
+    p++
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
+  const countRes = await pool.query(
+    `SELECT COUNT(*) FROM rides r JOIN users u ON u.id = r.user_id ${where}`,
+    params
+  )
+  const total = parseInt(countRes.rows[0].count as string, 10)
+
+  const dataRes = await pool.query(
+    `SELECT
+       r.id::text, r.status, r.ride_type, r.is_return_cab,
+       r.origin_address, r.destination_address,
+       r.requested_at, r.accepted_at, r.driver_arrived_at, r.started_at, r.completed_at,
+       u.name AS user_name, u.phone AS user_phone,
+       d.full_name AS driver_name, d.phone AS driver_phone,
+       COALESCE(fs.total_final, fs.total_estimated)::text AS fare
+     FROM rides r
+     JOIN users u ON u.id = r.user_id
+     LEFT JOIN drivers d ON d.id = r.driver_id
+     LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+     ${where}
+     ORDER BY r.requested_at DESC
+     LIMIT $${p} OFFSET $${p + 1}`,
+    [...params, filters.limit, filters.offset]
+  )
+
+  return { rows: dataRes.rows, total }
+}
+
+// ─── Users (admin listing + status update) ────────────────────────────────────
+
+export async function listAdminUsers(filters: {
+  status?: string
+  search?: string
+  limit: number
+  offset: number
+}) {
+  const conditions: string[] = []
+  const params: unknown[] = []
+  let p = 1
+
+  if (filters.status) {
+    conditions.push(`u.status = $${p++}`)
+    params.push(filters.status)
+  }
+  if (filters.search) {
+    conditions.push(`(u.name ILIKE $${p} OR u.phone ILIKE $${p} OR COALESCE(u.email,'') ILIKE $${p})`)
+    params.push(`%${filters.search}%`)
+    p++
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
+  const countRes = await pool.query(
+    `SELECT COUNT(*) FROM users u ${where}`,
+    params
+  )
+  const total = parseInt(countRes.rows[0].count as string, 10)
+
+  const dataRes = await pool.query(
+    `SELECT
+       u.id::text, u.code, u.name, u.phone, u.email::text, u.status, u.created_at,
+       u.rating_avg::text,
+       COUNT(r.id)::int AS total_rides,
+       COALESCE(w.balance::text, '0.00') AS wallet_balance
+     FROM users u
+     LEFT JOIN rides r ON r.user_id = u.id AND r.status = 'completed'
+     LEFT JOIN user_wallets w ON w.user_id = u.id
+     ${where}
+     GROUP BY u.id, w.balance
+     ORDER BY u.created_at DESC
+     LIMIT $${p} OFFSET $${p + 1}`,
+    [...params, filters.limit, filters.offset]
+  )
+
+  return { rows: dataRes.rows, total }
+}
+
+export async function updateAdminUserStatus(userId: bigint, status: string): Promise<{ id: string; status: string } | null> {
+  const res = await pool.query(
+    `UPDATE users SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING id::text, status`,
+    [userId, status]
+  )
+  return res.rows[0] ?? null
+}
+
+// ─── Payments (admin listing) ─────────────────────────────────────────────────
+
+export async function listAdminPayments(filters: {
+  channel?: string
+  search?: string
+  limit: number
+  offset: number
+}) {
+  const conditions: string[] = []
+  const params: unknown[] = []
+  let p = 1
+
+  if (filters.channel) {
+    conditions.push(`p.channel = $${p++}`)
+    params.push(filters.channel)
+  }
+  if (filters.search) {
+    conditions.push(`(u.name ILIKE $${p} OR COALESCE(d.full_name,'') ILIKE $${p})`)
+    params.push(`%${filters.search}%`)
+    p++
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
+  const countRes = await pool.query(
+    `SELECT COUNT(*)
+     FROM payments p
+     JOIN rides r ON r.id = p.ride_id
+     JOIN users u ON u.id = r.user_id
+     LEFT JOIN drivers d ON d.id = r.driver_id
+     ${where}`,
+    params
+  )
+  const total = parseInt(countRes.rows[0].count as string, 10)
+
+  const dataRes = await pool.query(
+    `SELECT
+       p.id::text, p.status, p.channel, p.created_at,
+       p.amount::text, p.commission_amount::text, p.driver_earning::text,
+       r.id::text AS ride_id,
+       u.name AS user_name,
+       d.full_name AS driver_name
+     FROM payments p
+     JOIN rides r ON r.id = p.ride_id
+     JOIN users u ON u.id = r.user_id
+     LEFT JOIN drivers d ON d.id = r.driver_id
+     ${where}
+     ORDER BY p.created_at DESC
+     LIMIT $${p} OFFSET $${p + 1}`,
+    [...params, filters.limit, filters.offset]
+  )
+
+  return { rows: dataRes.rows, total }
+}
+
+// ─── Rate cards ───────────────────────────────────────────────────────────────
+
 export async function createAdminRateCard(data: {
   categoryId: number
   rideType: string

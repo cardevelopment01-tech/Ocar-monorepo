@@ -27,6 +27,7 @@ const envSchema = z.object({
   MSG91_AUTH_KEY: z.string().default(''),
   MSG91_SENDER_ID: z.string().default(''),
   FAST2SMS_API_KEY: z.string().default(''),
+  ADMIN_PHONE: z.string().default(''),
 
   // Storage
   S3_BUCKET_NAME: z.string().default(''),

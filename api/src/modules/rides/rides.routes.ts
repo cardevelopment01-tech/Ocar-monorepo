@@ -3,7 +3,33 @@ import { authenticate } from '@/middleware/auth.middleware'
 import * as service from './rides.service'
 import * as repo from './rides.repository'
 
+const HISTORY_LIMIT = 20
+
 const router: IRouter = Router()
+
+// ── User ride history ─────────────────────────────────────────
+
+router.get('/me/history', authenticate(), async (req, res, next) => {
+  try {
+    const userId = req.user!.id
+    const page  = Math.max(parseInt((req.query['page'] as string) ?? '1', 10), 1)
+    const limit = Math.min(parseInt((req.query['limit'] as string) ?? String(HISTORY_LIMIT), 10), 50)
+    const { rows, total } = await repo.getUserRideHistory(userId, limit, (page - 1) * limit)
+    res.json({ rides: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } })
+  } catch (err) { next(err) }
+})
+
+// ── Driver trip history ────────────────────────────────────────
+
+router.get('/me/trips', authenticate(), async (req, res, next) => {
+  try {
+    const driverId = req.driver!.id
+    const page  = Math.max(parseInt((req.query['page'] as string) ?? '1', 10), 1)
+    const limit = Math.min(parseInt((req.query['limit'] as string) ?? String(HISTORY_LIMIT), 10), 50)
+    const { rows, total } = await repo.getDriverTripHistory(driverId, limit, (page - 1) * limit)
+    res.json({ trips: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } })
+  } catch (err) { next(err) }
+})
 
 // ── Driver session ────────────────────────────────────────────
 

@@ -198,6 +198,52 @@ export async function cancelAdminSurgeEvent(id: bigint, adminId: bigint) {
   return result
 }
 
+// ─── Rides / Users / Payments ─────────────────────────────────────────────────
+
+export async function listAdminRides(query: {
+  status?: string; search?: string; page?: number; limit?: number
+}) {
+  const limit = Math.min(query.limit ?? 20, 100)
+  const page  = Math.max(query.page ?? 1, 1)
+  const q: { status?: string; search?: string; limit: number; offset: number } = { limit, offset: (page - 1) * limit }
+  if (query.status !== undefined) q.status = query.status
+  if (query.search !== undefined) q.search = query.search
+  const { rows, total } = await repo.listAdminRides(q)
+  return { rides: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
+}
+
+export async function listAdminUsers(query: {
+  status?: string; search?: string; page?: number; limit?: number
+}) {
+  const limit = Math.min(query.limit ?? 20, 100)
+  const page  = Math.max(query.page ?? 1, 1)
+  const q: { status?: string; search?: string; limit: number; offset: number } = { limit, offset: (page - 1) * limit }
+  if (query.status !== undefined) q.status = query.status
+  if (query.search !== undefined) q.search = query.search
+  const { rows, total } = await repo.listAdminUsers(q)
+  return { users: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
+}
+
+export async function updateAdminUserStatus(userId: bigint, status: string) {
+  const VALID = new Set(['active', 'suspended'])
+  if (!VALID.has(status)) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  const updated = await repo.updateAdminUserStatus(userId, status)
+  if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
+  return updated
+}
+
+export async function listAdminPayments(query: {
+  channel?: string; search?: string; page?: number; limit?: number
+}) {
+  const limit = Math.min(query.limit ?? 20, 100)
+  const page  = Math.max(query.page ?? 1, 1)
+  const q: { channel?: string; search?: string; limit: number; offset: number } = { limit, offset: (page - 1) * limit }
+  if (query.channel !== undefined) q.channel = query.channel
+  if (query.search  !== undefined) q.search  = query.search
+  const { rows, total } = await repo.listAdminPayments(q)
+  return { payments: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
+}
+
 export async function updateAdminCity(
   id: bigint,
   data: {

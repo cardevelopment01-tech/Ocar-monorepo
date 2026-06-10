@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import StatusBar from '@/components/ui/StatusBar'
 import { useSessionStore } from '@/store/useSessionStore'
-import { mockEarnings, mockTripHistory } from '@/lib/mock-data'
+import { mockEarnings } from '@/lib/mock-data'
+import { driverRideApi, type TripHistoryItem } from '@/lib/ride-api'
 import { cn } from '@/lib/utils'
 
 type Period = 'today' | 'week' | 'month'
@@ -14,12 +15,26 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: 'month', label: 'This Month' },
 ]
 
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+}
+
 export default function Earnings() {
   const navigate = useNavigate()
   const { isOnline } = useSessionStore()
   const [period, setPeriod] = useState<Period>('today')
   const e = mockEarnings[period]
   const maxBar = Math.max(...e.chart, 1)
+
+  const [trips, setTrips] = useState<TripHistoryItem[]>([])
+  const [tripsLoading, setTripsLoading] = useState(true)
+
+  useEffect(() => {
+    driverRideApi.getMyTrips(1, 10)
+      .then(data => setTrips(data.trips))
+      .catch(() => {})
+      .finally(() => setTripsLoading(false))
+  }, [])
 
   return (
     <div className="min-h-screen bg-bg text-text-primary pb-10">
@@ -117,20 +132,40 @@ export default function Earnings() {
       {/* Trip history */}
       <div className="mx-4 bg-surface rounded-3xl p-5 border border-border">
         <p className="text-text-secondary text-sm font-semibold mb-3">Recent Trips</p>
-        {mockTripHistory.map(t => (
-          <div key={t.id} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
-            <div className="w-9 h-9 rounded-xl bg-surface-3 flex items-center justify-center flex-shrink-0">
-              <span className="text-base">🚗</span>
+        {tripsLoading ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 py-3 border-b border-border last:border-0 animate-pulse">
+              <div className="w-9 h-9 rounded-xl bg-surface-3 flex-shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-4 bg-surface-3 rounded w-3/4" />
+                <div className="h-3 bg-surface-3 rounded w-1/2" />
+              </div>
+              <div className="h-4 w-12 bg-surface-3 rounded" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-text-primary text-sm font-semibold truncate">
-                {t.from} → {t.to}
+          ))
+        ) : trips.length === 0 ? (
+          <p className="text-text-muted text-sm text-center py-4">No trips yet</p>
+        ) : (
+          trips.map(t => (
+            <div key={t.id} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
+              <div className="w-9 h-9 rounded-xl bg-surface-3 flex items-center justify-center flex-shrink-0">
+                <span className="text-base">🚗</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-text-primary text-sm font-semibold truncate">
+                  {t.origin_address ?? '—'} → {t.destination_address ?? '—'}
+                </p>
+                <p className="text-text-muted text-xs mt-0.5">
+                  {fmtDate(t.requested_at)}
+                  {t.user_name ? ` · ${t.user_name}` : ''}
+                </p>
+              </div>
+              <p className="text-primary font-bold text-sm flex-shrink-0">
+                {t.driver_earning ? `₹${parseFloat(t.driver_earning).toLocaleString('en-IN')}` : '—'}
               </p>
-              <p className="text-text-muted text-xs mt-0.5">{t.time} · {t.distance} km</p>
             </div>
-            <p className="text-primary font-bold text-sm flex-shrink-0">₹{t.fare}</p>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   )

@@ -19,6 +19,7 @@ function parseRedisUrl(url: string): { host: string; port: number } {
 }
 
 const connection = parseRedisUrl(config.REDIS_URL)
+export const redisConnection = connection
 
 export const notificationsQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS, {
   connection,

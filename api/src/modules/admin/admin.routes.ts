@@ -63,4 +63,14 @@ router.get('/safety/disputes/:id',       controller.getAdminDispute)
 router.patch('/safety/disputes/:id/assign',  controller.assignAdminDispute)
 router.patch('/safety/disputes/:id/resolve', controller.resolveAdminDispute)
 
+// ─── Rides ────────────────────────────────────────────────────────────────────
+router.get('/rides', controller.getAdminRides)
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+router.get('/users',                controller.getAdminUsers)
+router.patch('/users/:id/status',   controller.patchAdminUserStatus)
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+router.get('/payments', controller.getAdminPayments)
+
 export default router

@@ -96,3 +96,90 @@ export const adminDriverApi = {
     await api.patch(`/api/v1/admin/drivers/${id}/status`, { status: 'active' })
   },
 }
+
+// ─── Rides ────────────────────────────────────────────────────────────────────
+
+export interface AdminRideItem {
+  id: string
+  status: string
+  ride_type: string
+  is_return_cab: boolean
+  origin_address: string | null
+  destination_address: string | null
+  requested_at: string
+  completed_at: string | null
+  user_name: string
+  user_phone: string
+  driver_name: string | null
+  driver_phone: string | null
+  fare: string | null
+}
+
+export interface AdminRidesResponse {
+  rides: AdminRideItem[]
+  pagination: { total: number; page: number; limit: number; pages: number }
+}
+
+export const adminRideApi = {
+  list: async (params: { status?: string; search?: string; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
+    const res = await api.get('/api/v1/admin/rides', { params })
+    return res.data as AdminRidesResponse
+  },
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+export interface AdminUserItem {
+  id: string
+  code: string
+  name: string
+  phone: string
+  email: string | null
+  status: string
+  rating_avg: string | null
+  total_rides: number
+  wallet_balance: string
+  created_at: string
+}
+
+export interface AdminUsersResponse {
+  users: AdminUserItem[]
+  pagination: { total: number; page: number; limit: number; pages: number }
+}
+
+export const adminUserApi = {
+  list: async (params: { status?: string; search?: string; page?: number; limit?: number }): Promise<AdminUsersResponse> => {
+    const res = await api.get('/api/v1/admin/users', { params })
+    return res.data as AdminUsersResponse
+  },
+  updateStatus: async (id: string, status: 'active' | 'suspended'): Promise<void> => {
+    await api.patch(`/api/v1/admin/users/${id}/status`, { status })
+  },
+}
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+export interface AdminPaymentItem {
+  id: string
+  status: string
+  channel: string
+  amount: string
+  commission_amount: string
+  driver_earning: string
+  ride_id: string
+  user_name: string
+  driver_name: string | null
+  created_at: string
+}
+
+export interface AdminPaymentsResponse {
+  payments: AdminPaymentItem[]
+  pagination: { total: number; page: number; limit: number; pages: number }
+}
+
+export const adminPaymentApi = {
+  list: async (params: { channel?: string; search?: string; page?: number; limit?: number }): Promise<AdminPaymentsResponse> => {
+    const res = await api.get('/api/v1/admin/payments', { params })
+    return res.data as AdminPaymentsResponse
+  },
+}

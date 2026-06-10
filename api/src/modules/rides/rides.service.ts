@@ -286,7 +286,15 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
     message: 'Driver has arrived at pickup',
   })
 
-  // TODO: Send OTP to user via SMS (M10)
+  const ride = await repo.getRideById(rideId)
+  if (ride?.user_phone) {
+    await queues[QUEUE_NAMES.NOTIFICATIONS].add('otp_sms', {
+      phone: ride.user_phone,
+      otp,
+      type: 'trip_start',
+    })
+  }
+
   return { success: true, startOtp: otp }
 }
 
@@ -329,7 +337,14 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     startedAt: new Date().toISOString(),
   })
 
-  // TODO: Send end OTP to user via SMS (M10)
+  if (ride.user_phone) {
+    await queues[QUEUE_NAMES.NOTIFICATIONS].add('otp_sms', {
+      phone: ride.user_phone,
+      otp:   endOtp,
+      type:  'trip_end',
+    })
+  }
+
   return { success: true, endOtp }
 }
 

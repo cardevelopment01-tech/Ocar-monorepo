@@ -7,6 +7,7 @@ import { signAccessToken, generateRefreshToken, hashRefreshToken } from '@/lib/j
 import { comparePassword } from '@/lib/hash'
 import type { AccessTokenPayload } from '@/lib/jwt'
 import * as repo from './auth.repository'
+import { notificationsQueue } from '@/jobs/queues'
 import type {
   AuthTokens,
   UserRecord,
@@ -87,7 +88,8 @@ export async function requestOtp(
     repo.createOtpRequest({ principalRole, phone, purpose: otpPurpose, otpHash, expiresAt }),
   ])
 
-  // Production: send via SMS provider — not yet implemented (M10)
+  await notificationsQueue.add('otp_sms', { phone, otp, type: 'auth' })
+
   return { otp }
 }
 
