@@ -1,36 +1,64 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Star } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { mockDriver } from '@/lib/mock-data'
+import { useParams, useRouter } from 'next/navigation'
+import { rideApi } from '@/lib/ride-api'
+import { safetyApi, type RatingTag } from '@/lib/safety-api'
 import { cn } from '@/lib/utils'
 
-const TAGS = ['Great driver', 'Clean vehicle', 'On time', 'Safe driving', 'Friendly', 'Smooth ride']
-
 export default function RateRidePage() {
-  const router = useRouter()
-  const [rating, setRating] = useState(0)
-  const [hovered, setHovered] = useState(0)
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const [tip, setTip] = useState<number | null>(null)
-  const [submitted, setSubmitted] = useState(false)
+  const params = useParams<{ id: string }>()
+  const rideId = params?.id ?? ''
+  const router  = useRouter()
+
+  const [driverName,    setDriverName]    = useState<string | null>(null)
+  const [driverId,      setDriverId]      = useState<string | null>(null)
+  const [tags,          setTags]          = useState<RatingTag[]>([])
+  const [rating,        setRating]        = useState(0)
+  const [hovered,       setHovered]       = useState(0)
+  const [selectedTags,  setSelectedTags]  = useState<string[]>([])
+  const [submitting,    setSubmitting]    = useState(false)
+  const [submitted,     setSubmitted]     = useState(false)
+  const [error,         setError]         = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!rideId) return
+    void rideApi.getRide(rideId).then(ride => {
+      setDriverName(ride.driver_name)
+      setDriverId(ride.driver_id)
+    }).catch(() => {})
+
+    void safetyApi.getTags('user_to_driver').then(setTags).catch(() => {})
+  }, [rideId])
 
   const displayRating = hovered || rating
 
-  const TIPS = [0, 10, 20, 50]
-
-  function toggleTag(tag: string) {
+  function toggleTag(id: string) {
     setSelectedTags(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+      prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
     )
   }
 
   async function handleSubmit() {
-    setSubmitted(true)
-    await new Promise(r => setTimeout(r, 1200))
-    router.push('/home')
+    if (!rating || submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await safetyApi.submitRating({
+        rideId,
+        direction:   'user_to_driver',
+        score:       rating,
+        toDriverId:  driverId ?? undefined,
+        tagIds:      selectedTags,
+      })
+      setSubmitted(true)
+      setTimeout(() => router.push('/home'), 1200)
+    } catch {
+      setError('Could not submit rating. Please try again.')
+      setSubmitting(false)
+    }
   }
 
   if (submitted) {
@@ -58,7 +86,7 @@ export default function RateRidePage() {
           👤
         </div>
         <h1 className="text-xl font-bold text-text-primary mb-1">How was your ride?</h1>
-        <p className="text-text-muted text-sm">{mockDriver.name} · {mockDriver.vehicle}</p>
+        <p className="text-text-muted text-sm">{driverName ?? 'Your Driver'}</p>
       </div>
 
       {/* Stars */}
@@ -88,65 +116,56 @@ export default function RateRidePage() {
         ))}
       </div>
 
-      {/* Tags */}
-      {rating >= 4 && (
+      {/* Tags — shown for all ratings, positive tags for ≥4, negative for ≤2 */}
+      {rating > 0 && tags.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-6"
         >
-          <p className="text-sm font-semibold text-text-primary mb-3">What did you love?</p>
+          <p className="text-sm font-semibold text-text-primary mb-3">
+            {rating >= 4 ? 'What did you love?' : rating <= 2 ? 'What went wrong?' : 'Tell us more'}
+          </p>
           <div className="flex flex-wrap gap-2">
-            {TAGS.map(tag => (
-              <button
-                key={tag}
-                onClick={() => toggleTag(tag)}
-                className={cn(
-                  'px-3.5 py-2 rounded-full text-sm font-medium border transition-colors',
-                  selectedTags.includes(tag)
-                    ? 'bg-primary border-primary text-white'
-                    : 'bg-surface border-border text-text-secondary'
-                )}
-              >
-                {tag}
-              </button>
-            ))}
+            {tags
+              .filter(t => {
+                if (rating >= 4) return t.sentiment === 'positive'
+                if (rating <= 2) return t.sentiment === 'negative'
+                return true
+              })
+              .map(tag => (
+                <button
+                  key={tag.id}
+                  onClick={() => toggleTag(tag.id)}
+                  className={cn(
+                    'px-3.5 py-2 rounded-full text-sm font-medium border transition-colors',
+                    selectedTags.includes(tag.id)
+                      ? 'bg-primary border-primary text-white'
+                      : 'bg-surface border-border text-text-secondary'
+                  )}
+                >
+                  {tag.label}
+                </button>
+              ))}
           </div>
         </motion.div>
       )}
 
-      {/* Tip */}
-      <div className="mb-8">
-        <p className="text-sm font-semibold text-text-primary mb-3">Add a tip</p>
-        <div className="flex gap-2">
-          {TIPS.map(amt => (
-            <button
-              key={amt}
-              onClick={() => setTip(tip === amt ? null : amt)}
-              className={cn(
-                'flex-1 py-2.5 rounded-2xl border text-sm font-semibold transition-colors',
-                tip === amt
-                  ? 'bg-primary border-primary text-white'
-                  : 'bg-surface border-border text-text-secondary'
-              )}
-            >
-              {amt === 0 ? 'None' : `₹${amt}`}
-            </button>
-          ))}
-        </div>
-      </div>
+      {error && (
+        <p className="text-sm text-status-error text-center mb-4">{error}</p>
+      )}
 
-      <div className="mt-auto">
+      <div className="mt-auto space-y-3">
         <button
-          onClick={handleSubmit}
-          disabled={!rating}
+          onClick={() => void handleSubmit()}
+          disabled={!rating || submitting}
           className="btn-primary w-full"
         >
-          Submit Rating
+          {submitting ? 'Submitting…' : 'Submit Rating'}
         </button>
         <button
           onClick={() => router.push('/home')}
-          className="w-full text-center text-text-muted text-sm mt-4"
+          className="w-full text-center text-text-muted text-sm"
         >
           Skip
         </button>

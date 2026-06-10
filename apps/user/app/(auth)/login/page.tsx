@@ -20,6 +20,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [countdown, setCountdown] = useState(0)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const otpRequestInFlightRef = useRef(false)
 
   const isPhoneValid = isValidIndianPhone(phone)
 
@@ -44,7 +45,8 @@ export default function LoginPage() {
   }
 
   async function handleSendOtp() {
-    if (!isPhoneValid) return
+    if (!isPhoneValid || loading || otpRequestInFlightRef.current) return
+    otpRequestInFlightRef.current = true
     setError('')
     setLoading(true)
     try {
@@ -60,8 +62,14 @@ export default function LoginPage() {
         setError('Failed to send OTP. Please check your number.')
       }
     } finally {
+      otpRequestInFlightRef.current = false
       setLoading(false)
     }
+  }
+
+  function handlePhoneSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    void handleSendOtp()
   }
 
   async function handleVerifyOtp(code: string) {
@@ -72,7 +80,11 @@ export default function LoginPage() {
     try {
       const result = await authApi.verifyOtp(formatPhone(phone), code)
       storeAuth(result.tokens.accessToken, result.tokens.refreshToken, result.principal)
-      router.push('/home')
+      if (result.isNew || !result.principal.name) {
+        router.push('/onboarding')
+      } else {
+        router.push('/home')
+      }
     } catch (err: unknown) {
       const apiCode = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
       if (apiCode === 'AUTH_OTP_INVALID') {
@@ -105,44 +117,45 @@ export default function LoginPage() {
               key="phone"
               initial={{ opacity: 0, x: 40 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -40 }}
+              exit={{ opacity: 0, x: -40, pointerEvents: 'none' }}
               transition={{ duration: 0.25 }}
               className="flex-1"
             >
               <h1 className="text-2xl font-bold text-text-primary mb-1">Welcome back</h1>
               <p className="text-text-secondary text-sm mb-8">Enter your phone number to continue</p>
 
-              <div className="relative mb-4">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-text-secondary">
-                  <Phone size={16} />
-                  <span className="text-sm font-medium">+91</span>
-                  <div className="w-px h-4 bg-border mx-1" />
+              <form onSubmit={handlePhoneSubmit}>
+                <div className="relative mb-4">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-text-secondary">
+                    <Phone size={16} />
+                    <span className="text-sm font-medium">+91</span>
+                    <div className="w-px h-4 bg-border mx-1" />
+                  </div>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={10}
+                    value={phone}
+                    onChange={e => { setPhone(e.target.value.replace(/\D/g, '')); setError('') }}
+                    placeholder="10-digit mobile number"
+                    className="input-field pl-[5rem] text-base tracking-wider"
+                  />
                 </div>
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  maxLength={10}
-                  value={phone}
-                  onChange={e => { setPhone(e.target.value.replace(/\D/g, '')); setError('') }}
-                  placeholder="10-digit mobile number"
-                  className="input-field pl-[5rem] text-base tracking-wider"
-                  onKeyDown={e => e.key === 'Enter' && handleSendOtp()}
-                />
-              </div>
 
-              {error && <p className="text-status-error text-sm mb-4">{error}</p>}
+                {error && <p className="text-status-error text-sm mb-4">{error}</p>}
 
-              <button
-                onClick={handleSendOtp}
-                disabled={!isPhoneValid || loading}
-                className="btn-primary w-full mt-2 flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                ) : (
-                  <>Send OTP <ArrowRight size={18} /></>
-                )}
-              </button>
+                <button
+                  type="submit"
+                  disabled={!isPhoneValid || loading}
+                  className="btn-primary w-full mt-2 flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  ) : (
+                    <>Send OTP <ArrowRight size={18} /></>
+                  )}
+                </button>
+              </form>
 
               <p className="text-center text-text-muted text-xs mt-10">
                 By continuing you agree to our Terms & Privacy Policy
@@ -158,6 +171,7 @@ export default function LoginPage() {
               className="flex-1"
             >
               <button
+                type="button"
                 onClick={() => { setStep('phone'); setOtp(''); setError(''); setCountdown(0) }}
                 className="flex items-center gap-2 text-text-secondary text-sm mb-6 -ml-1"
               >
@@ -186,6 +200,7 @@ export default function LoginPage() {
               )}
 
               <button
+                type="button"
                 onClick={handleSendOtp}
                 disabled={loading || countdown > 0}
                 className={cn(

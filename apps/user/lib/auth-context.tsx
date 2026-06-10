@@ -20,9 +20,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    const PROTECTED_PATHS = [
+      '/home', '/ride', '/history', '/wallet',
+      '/profile', '/search', '/select-ride', '/onboarding',
+    ]
+
     const init = async () => {
       const token = getToken()
       if (!token) {
+        const path = window.location.pathname
+        if (PROTECTED_PATHS.some(p => path.startsWith(p))) {
+          clearAuth() // wipe stale cookie so middleware doesn't bounce back
+          window.location.href = '/login'
+          return // keep spinner until redirect fires
+        }
         setIsLoading(false)
         return
       }

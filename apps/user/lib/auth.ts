@@ -95,3 +95,18 @@ export const authApi = {
     window.location.href = '/login'
   },
 }
+
+export const userApi = {
+  updateProfile: async (data: { full_name: string; email?: string }) => {
+    const response = await api.patch('/api/v1/users/me', data)
+    return response.data.user as UserProfile
+  },
+  getMe: async () => {
+    const response = await api.get('/api/v1/users/me')
+    return response.data.user as UserProfile & {
+      total_rides: number
+      rating_avg: number | null
+      wallet_balance: number
+    }
+  },
+}

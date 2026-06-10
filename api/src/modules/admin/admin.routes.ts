@@ -52,4 +52,15 @@ router.get('/geo/cities',       requireAdmin('super_admin', 'ops_admin'), contro
 router.post('/geo/cities',      requireAdmin('super_admin', 'ops_admin'), controller.postAdminCity)
 router.patch('/geo/cities/:id', requireAdmin('super_admin', 'ops_admin'), controller.patchAdminCity)
 
+// ─── Safety — SOS ─────────────────────────────────────────────────────────────
+router.get('/safety/sos',                    controller.getAdminSosAlerts)
+router.patch('/safety/sos/:id/acknowledge',  controller.acknowledgeAdminSos)
+router.patch('/safety/sos/:id/resolve',      controller.resolveAdminSos)
+
+// ─── Safety — Disputes ────────────────────────────────────────────────────────
+router.get('/safety/disputes',           controller.getAdminDisputes)
+router.get('/safety/disputes/:id',       controller.getAdminDispute)
+router.patch('/safety/disputes/:id/assign',  controller.assignAdminDispute)
+router.patch('/safety/disputes/:id/resolve', controller.resolveAdminDispute)
+
 export default router

@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from 'express'
-import * as service from './admin.service'
+import * as service        from './admin.service'
+import * as sosService     from '@/modules/safety/sos.service'
+import * as disputeService from '@/modules/safety/disputes.service'
 import type { DriverStatus } from './admin.types'
+import type { DisputeOutcome } from '@/modules/safety/safety.types'
 
 export async function getDrivers(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -259,5 +262,81 @@ export async function patchAdminCity(req: Request, res: Response, next: NextFunc
     if (req.body.is_rental_enabled !== undefined)       data.is_rental_enabled = Boolean(req.body.is_rental_enabled)
     if (req.body.is_return_cab_enabled !== undefined)   data.is_return_cab_enabled = Boolean(req.body.is_return_cab_enabled)
     res.json(await service.updateAdminCity(BigInt(req.params['id']!), data))
+  } catch (err) { next(err) }
+}
+
+// ─── Admin Safety — SOS ───────────────────────────────────────────────────────
+
+export async function getAdminSosAlerts(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const opts: { status?: string; limit: number; offset: number } = {
+      limit:  parseInt(req.query['limit']  as string ?? '20', 10),
+      offset: parseInt(req.query['offset'] as string ?? '0',  10),
+    }
+    if (req.query['status']) opts.status = req.query['status'] as string
+    res.json(await sosService.listSosAlerts(opts))
+  } catch (err) { next(err) }
+}
+
+export async function acknowledgeAdminSos(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const alert = await sosService.acknowledgeSosAlert(BigInt(req.params['id']!), req.admin!.id)
+    res.json(alert)
+  } catch (err) { next(err) }
+}
+
+export async function resolveAdminSos(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const status = req.body.status === 'false_alarm' ? 'false_alarm' as const : 'resolved' as const
+    const note   = req.body.note ? String(req.body.note) : undefined
+    const alert  = await sosService.resolveSosAlert(BigInt(req.params['id']!), req.admin!.id, status, note)
+    res.json(alert)
+  } catch (err) { next(err) }
+}
+
+// ─── Admin Safety — Disputes ──────────────────────────────────────────────────
+
+export async function getAdminDisputes(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const opts: { status?: string; assignedTo?: bigint; limit: number; offset: number } = {
+      limit:  parseInt(req.query['limit']  as string ?? '20', 10),
+      offset: parseInt(req.query['offset'] as string ?? '0',  10),
+    }
+    if (req.query['status'])      opts.status     = req.query['status'] as string
+    if (req.query['assignedToMe'] === 'true') opts.assignedTo = req.admin!.id
+    res.json(await disputeService.listDisputes(opts))
+  } catch (err) { next(err) }
+}
+
+export async function getAdminDispute(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json(await disputeService.getDispute(BigInt(req.params['id']!)))
+  } catch (err) { next(err) }
+}
+
+export async function assignAdminDispute(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json(await disputeService.assignDispute(BigInt(req.params['id']!), req.admin!.id))
+  } catch (err) { next(err) }
+}
+
+export async function resolveAdminDispute(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const body = req.body as {
+      outcome:       string
+      note:          string
+      refundAmount?: number
+    }
+    if (!body.outcome || !body.note) {
+      res.status(400).json({ error: 'outcome and note are required', code: 'VALIDATION_ERROR' })
+      return
+    }
+    const input: Parameters<typeof disputeService.resolveDispute>[1] = {
+      outcome: body.outcome as DisputeOutcome,
+      note:    String(body.note),
+      adminId: req.admin!.id,
+    }
+    if (body.refundAmount !== undefined) input.refundAmount = Number(body.refundAmount)
+    res.json(await disputeService.resolveDispute(BigInt(req.params['id']!), input))
   } catch (err) { next(err) }
 }

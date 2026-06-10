@@ -71,7 +71,7 @@ export async function requestOtp(
   const principalRole = role === 'user' ? PrincipalRole.USER : PrincipalRole.DRIVER
   const otpPurpose = OtpPurpose.LOGIN
 
-  const { allowed } = await otpLib.checkRateLimit(phone, otpPurpose)
+  const { allowed } = await otpLib.checkRateLimit(phone, otpPurpose, principalRole)
   if (!allowed) throw createHttpError(AppErrors.AUTH_OTP_RATE_LIMITED)
 
   if (await otpLib.isVerifyLocked(phone, otpPurpose, principalRole)) {

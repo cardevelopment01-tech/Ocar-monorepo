@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-const PROTECTED = ['/home', '/ride', '/history', '/wallet', '/profile', '/search']
+const PROTECTED = ['/home', '/ride', '/history', '/wallet', '/profile', '/search', '/select-ride', '/onboarding']
 const PUBLIC_ONLY = ['/login']
 
 export function middleware(request: NextRequest) {

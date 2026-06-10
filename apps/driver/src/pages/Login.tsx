@@ -41,6 +41,8 @@ export default function Login() {
   const [error, setError] = useState('')
   const [countdown, setCountdown] = useState(0)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const otpRequestInFlightRef = useRef(false)
+  const otpVerifyInFlightRef = useRef(false)
   const navigate = useNavigate()
 
   // All hooks above this point — conditional return is safe here
@@ -63,8 +65,14 @@ export default function Login() {
     }, 1000)
   }
 
+  function handleFormSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    void handlePhoneSubmit()
+  }
+
   async function handlePhoneSubmit() {
-    if (phone.length !== 10) return
+    if (phone.length !== 10 || loading || otpRequestInFlightRef.current) return
+    otpRequestInFlightRef.current = true
     setError('')
     setLoading(true)
     try {
@@ -84,12 +92,14 @@ export default function Login() {
         setError('Failed to send OTP. Please check your number.')
       }
     } finally {
+      otpRequestInFlightRef.current = false
       setLoading(false)
     }
   }
 
   async function handleOtpSubmit() {
-    if (otp.length !== 6) return
+    if (otp.length !== 6 || loading || otpVerifyInFlightRef.current) return
+    otpVerifyInFlightRef.current = true
     setError('')
     setLoading(true)
     try {
@@ -116,6 +126,7 @@ export default function Login() {
         setError('Verification failed. Please try again.')
       }
     } finally {
+      otpVerifyInFlightRef.current = false
       setLoading(false)
     }
   }
@@ -138,7 +149,7 @@ export default function Login() {
 
       <div className="w-full max-w-[360px] bg-surface rounded-3xl p-7 border border-border">
         {step === 'phone' ? (
-          <>
+          <form onSubmit={handleFormSubmit}>
             <h1 className="text-text-primary font-bold text-2xl mb-1">Welcome back</h1>
             <p className="text-text-secondary text-sm mb-8">Enter your registered mobile number</p>
 
@@ -157,7 +168,6 @@ export default function Login() {
                   placeholder="9876543210"
                   value={phone}
                   onChange={e => { setPhone(e.target.value.replace(/\D/g, '').slice(0, 10)); setError('') }}
-                  onKeyDown={e => e.key === 'Enter' && handlePhoneSubmit()}
                 />
               </div>
             </div>
@@ -165,17 +175,18 @@ export default function Login() {
             {error && <p className="text-accent-red text-sm mb-4">{error}</p>}
 
             <button
-              onClick={handlePhoneSubmit}
+              type="submit"
               disabled={phone.length !== 10 || loading}
               className="btn-go w-full"
               style={{ minHeight: 56 }}
             >
               {loading ? 'Sending OTP…' : 'Get OTP'}
             </button>
-          </>
+          </form>
         ) : (
           <>
             <button
+              type="button"
               onClick={() => { setStep('phone'); setOtp(''); setError(''); setCountdown(0) }}
               className="text-text-muted text-sm mb-6 flex items-center gap-1 hover:text-text-secondary transition-colors"
             >
@@ -197,6 +208,7 @@ export default function Login() {
             </div>
 
             <button
+              type="button"
               onClick={handleOtpSubmit}
               disabled={otp.length !== 6 || loading}
               className="btn-go w-full"
@@ -210,7 +222,7 @@ export default function Login() {
               {countdown > 0 ? (
                 <span className="text-text-muted">Resend in {countdown}s</span>
               ) : (
-                <button onClick={handlePhoneSubmit} disabled={loading} className="text-primary font-semibold disabled:opacity-50">
+                <button type="button" onClick={handlePhoneSubmit} disabled={loading} className="text-primary font-semibold disabled:opacity-50">
                   {loading ? 'Sending…' : 'Resend'}
                 </button>
               )}

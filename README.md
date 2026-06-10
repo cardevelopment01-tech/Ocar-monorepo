@@ -303,16 +303,14 @@ curl http://localhost:4000/health
 | M02 | Auth & Identity   | ✅ Complete | 14 / 14 | Phone OTP login, admin email auth, JWT refresh rotation    |
 | M03 | Driver Onboarding | ✅ Complete | 13 / 13 | Personal info, vehicle, document uploads, resume flow      |
 | M04 | Vehicle Catalogue | ✅ Complete |    —    | Categories, brands, models — public lookup endpoints       |
-| M05 | Geolocation       | 🔜 Planned  |  0 / 5  | City zones, geocoding cache, driver location tracking      |
-| M06 | Pricing & Fare    | 🔜 Planned  |  0 / 7  | Base fare + per-km/min, surge scheduling, fare estimates   |
-| M07 | Ride Management   | 🔜 Planned  | 0 / 11  | Booking, driver broadcast, OTP verification, GPS tracking  |
-| M08 | Payments          | 🔜 Planned  |  0 / 8  | Razorpay orders, webhooks, wallet, driver settlements      |
-| M09 | Safety            | 🔜 Planned  |  0 / 8  | SOS alerts, ride ratings, dispute lifecycle, warnings      |
-| M10 | Notifications     | 🔜 Planned  |  0 / 5  | SMS, push, WhatsApp, voice — multi-channel delivery        |
-| M11 | Admin Panel       | 🔜 Planned  |  0 / 6  | Driver approval, config management, ops oversight          |
-| M12 | Analytics         | 🔜 Planned  |  0 / 5  | Revenue snapshots, ride stats, driver performance          |
-
-> **38 of 98 tests active** — remaining 60 are `todo` placeholders unlocked as modules ship.
+| M05 | Geolocation       | ✅ Complete |    —    | City zones, geocoding cache, driver GPS location tracking  |
+| M06 | Pricing & Fare    | ✅ Complete |    —    | Base fare + per-km/min, surge scheduling, fare estimates   |
+| M07 | Ride Management   | ✅ Complete |    —    | Booking, driver broadcast, OTP verification, full frontend ride flow |
+| M08 | Payments          | ✅ Complete |    —    | Razorpay orders, webhooks, wallet ledger, driver settlements |
+| M09 | Safety            | ✅ Complete |    —    | SOS alerts, ride ratings with tags, dispute lifecycle      |
+| M10 | Notifications     | 🔜 Planned  |    —    | SMS, push, WhatsApp, voice — multi-channel delivery        |
+| M11 | Config & Live Map | 🔜 Planned  |    —    | Feature flags, system config, live driver map              |
+| M12 | Analytics         | 🔜 Planned  |    —    | Revenue snapshots, ride stats, driver performance          |
 
 ---
 
@@ -354,6 +352,46 @@ The onboarding step is persisted in the database — drivers can close the app a
 | `GET`  | `/vehicles/categories`             |  —   | All active vehicle categories |
 | `GET`  | `/vehicles/brands`                 |  —   | All active vehicle brands     |
 | `GET`  | `/vehicles/brands/:brandId/models` |  —   | Models for a specific brand   |
+
+### Rides — `/rides`
+
+| Method  | Path                              |  Auth  | Description                              |
+| ------- | --------------------------------- | :----: | ---------------------------------------- |
+| `POST`  | `/rides/sessions/start`           | Driver | Go online, start a driver session        |
+| `POST`  | `/rides/sessions/end`             | Driver | Go offline, end active session           |
+| `PATCH` | `/rides/sessions/location`        | Driver | Push current GPS location                |
+| `POST`  | `/rides/book`                     |  User  | Book a ride (triggers driver broadcast)  |
+| `POST`  | `/rides/:id/accept`               | Driver | Accept a broadcast offer                 |
+| `POST`  | `/rides/:id/arrived`              | Driver | Mark driver arrived at pickup            |
+| `POST`  | `/rides/:id/start`                | Driver | Start trip — OTP verified server-side    |
+| `POST`  | `/rides/:id/end`                  | Driver | End trip — OTP verified server-side      |
+| `POST`  | `/rides/:id/cancel`               | Both   | Cancel ride with reason                  |
+| `GET`   | `/rides/:id`                      | Both   | Get ride detail + status                 |
+| `GET`   | `/rides/history`                  | Both   | Paginated ride history                   |
+
+### Payments — `/payments`
+
+| Method | Path                     |  Auth  | Description                             |
+| ------ | ------------------------ | :----: | --------------------------------------- |
+| `GET`  | `/payments/wallet/driver`| Driver | Driver wallet balance + recent ledger   |
+| `GET`  | `/payments/wallet/user`  |  User  | User wallet balance + recent ledger     |
+| `POST` | `/payments/webhook/razorpay` |  —  | Razorpay webhook (signature verified)   |
+
+### Safety — `/safety`
+
+| Method | Path                | Auth  | Description                                   |
+| ------ | ------------------- | :---: | --------------------------------------------- |
+| `GET`  | `/safety/tags`      | Bearer | Get rating tag definitions (`?direction=...`) |
+| `POST` | `/safety/ratings`   | Bearer | Submit a post-ride rating with tags            |
+| `POST` | `/safety/sos`       | Bearer | Trigger SOS alert during an active ride        |
+| `POST` | `/safety/disputes`  | Bearer | Raise a dispute on a completed ride            |
+
+### Users — `/users`
+
+| Method  | Path        | Auth | Description              |
+| ------- | ----------- | :--: | ------------------------ |
+| `GET`   | `/users/me` | User | Get own profile          |
+| `PATCH` | `/users/me` | User | Update name / email / preferences |
 
 ---
 

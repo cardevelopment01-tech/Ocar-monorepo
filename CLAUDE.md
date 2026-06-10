@@ -28,7 +28,8 @@ cab-booking-platform/
 | Cache/Queues | Redis (ioredis), BullMQ |
 | Real-time | Socket.io v4 (attached to same HTTP server) |
 | Auth | JWT access + refresh; SHA-256 refresh hash stored in DB |
-| Payments | Razorpay (M08, stub) |
+| Payments | Razorpay + driver/user wallet ledger (M08 done) |
+| Storage | AWS S3 (`@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`) |
 | OTP | SHA-256 hash of 6-digit numeric OTP stored in DB/Redis |
 | User portal | Next.js 16.2.7, React 19, Tailwind v3, App Router |
 | Driver portal | Vite 5, React 19, React Router v6, Zustand persist, Tailwind v3 |
@@ -114,6 +115,12 @@ When table A needs FK to table B which doesn't exist yet:
 - In B's migration, add `ALTER TABLE A ADD CONSTRAINT ... FOREIGN KEY ...`
 Example: `fare_snapshots.ride_id` FK was added in 007 after `rides` was created.
 
+### S3 document storage
+- `uploadFile(file, folder)` — uploads to S3, returns public URL in prod / MinIO URL in dev
+- `getPresignedUrl(fileUrl, expiresIn=3600)` — pass-through in dev (bucket is public), signed URL in prod
+- Dev bypass: when `S3_BUCKET_NAME` is empty, `uploadFile` returns a placeholder URL without uploading
+- Admin driver detail endpoint calls `getPresignedUrl` on all doc URLs before returning — no frontend change needed
+
 ---
 
 ## TypeScript Conventions
@@ -167,37 +174,26 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 
 ### ✅ DONE
 
-| Module | Migration | Backend | Admin UI |
+| Module | Migration | Backend | Frontend |
 |---|---|---|---|
-| M01 — Auth & OTP | 003_m1_auth.sql | auth module | admin login |
-| M02 — Drivers & Users | 003_m1_auth.sql | drivers module | drivers page |
-| M03 — Vehicles | 004_m2_vehicles.sql | vehicles module | vehicles page (4-tab) |
-| M04 — Admin Core | — | admin module | dashboard layout, driver approval |
-| M05 — Geo & Location | 005_m3_geo.sql | geo module | cities page |
-| M06 — Pricing & Fare | 006_m4_pricing.sql | pricing module | rate cards + surge UI |
+| M01 — Auth & OTP | 003_m1_auth.sql | auth module | admin login, user/driver OTP flow |
+| M02 — Drivers & Users | 003_m1_auth.sql | drivers module | driver onboarding (3-step) |
+| M03 — Vehicles | 004_m2_vehicles.sql | vehicles module | admin vehicles page (4-tab) |
+| M04 — Admin Core | — | admin module | admin dashboard layout, driver approval |
+| M05 — Geo & Location | 005_m3_geo.sql | geo module | admin cities page |
+| M06 — Pricing & Fare | 006_m4_pricing.sql | pricing module | admin rate cards + surge UI |
 | M07-A — Rides backend | 007_m5_booking.sql | rides module | — |
+| M07-B — Rides frontend | — | — | driver GoOnline/ActiveRide flow, user ride booking + tracking |
+| M08 — Payments | 008_m6_payments.sql + 011_wallet.sql | payments module (Razorpay webhook, wallet, ledger, commission) | admin payments page, user/driver wallet pages |
+| M09 — Safety | 009_m7_safety.sql | ratings/SOS/disputes services | admin disputes + SOS pages; user rating flow |
 
-### 🔲 NEXT: M07-B — Rides frontend connection
+### 🔲 TODO
 
-Driver app:
-- `useSessionStore.ts` — go online/offline, session state (Zustand persist)
-- `useRideStore.ts` — incoming request, active ride state
-- Socket.io client connection in driver app
-- Pages to wire: GoOnline/*, ActiveRide/* (IncomingRequest, NavigateToPickup, OTPVerify, TripInProgress, TripEnd)
-
-User app:
-- Socket.io client for ride tracking
-- Pages to wire: ride/book, ride/tracking/[id]
-
-### 🔲 TODO (stubs exist)
-
-| Module | Migration stub | Backend stubs |
+| Module | Migration stub | Status |
 |---|---|---|
-| M08 — Payments | 008_m6_payments.sql | payments module (razorpay, wallet, settlements) |
-| M09 — Safety | 009_m7_safety.sql | safety module (ratings, sos, disputes) |
-| M10 — Notifications | — | notifications module (sms, push, voice, whatsapp) |
-| M11 — Config/Flags | 010_m8_config.sql | — |
-| M12 — Analytics | — | analytics module |
+| M10 — Notifications | 013_messaging.sql | backend stub only (BullMQ queue wired, no SMS/push processor) |
+| M11 — Config/Flags + Live Map | 010_m8_config.sql | admin live-map page is a TODO stub |
+| M12 — Analytics | — | admin analytics page is a TODO stub |
 
 ---
 
@@ -221,10 +217,11 @@ User app:
                          speed_alert_log
                          + ALTER TABLE fare_snapshots ADD FK ride_id → rides
                          + ALTER TABLE driver_session_history ADD FK ride_id → rides
-008_m6_payments.sql    — STUB (payments, razorpay_orders, gateway_events)
-009_m7_safety.sql      — STUB (ratings, sos_alerts, disputes, warnings)
+008_m6_payments.sql    — payments, razorpay_orders, gateway_events, settlements, refunds
+009_m7_safety.sql      — rating_tags, ratings, sos_alerts, dispute_messages, disputes,
+                         driver_warnings
 010_m8_config.sql      — STUB (system_config, feature_flags)
-011_wallet.sql         — STUB
+011_wallet.sql         — driver_wallets, user_wallets, wallet_ledger entries
 012_audit.sql          — STUB
 013_messaging.sql      — STUB
 014_triggers.sql       — set_updated_at() function + triggers for M01-M03 tables
@@ -240,13 +237,35 @@ User app:
 
 ```
 /api/v1/auth/*         — OTP login, admin login, token refresh
-/api/v1/drivers/*      — driver profile, documents, vehicles
+/api/v1/drivers/*      — driver profile, documents (upload to S3), vehicles, onboarding
 /api/v1/vehicles/*     — vehicle categories, brands, models (public lookup)
 /api/v1/admin/*        — admin CRUD (drivers, vehicles, pricing, geo, users)
 /api/v1/geo/*          — cities, nearest city, GPS track flush
 /api/v1/pricing/*      — fare estimate, rate cards, rental packages
 /api/v1/rides/*        — sessions (online/offline/location), ride booking & lifecycle
+/api/v1/payments/*     — driver/user wallet, Razorpay webhook
+/api/v1/safety/*       — ratings (GET tags, POST rating), SOS, disputes
+/api/v1/users/*        — user profile (GET/PATCH /me)
 ```
+
+---
+
+## Admin Dashboard Pages
+
+| Page | Status |
+|---|---|
+| overview | ✅ live |
+| drivers | ✅ live (list, detail slide-over, approve/reject/suspend) |
+| vehicles | ✅ live (categories, brands, models, fleet — 4 tabs) |
+| cities | ✅ live |
+| pricing | ✅ live (rate cards + surge events) |
+| disputes | ✅ live (wired to safety backend) |
+| sos | ✅ live (wired to safety backend) |
+| payments | ✅ live (wired to payments backend) |
+| users | ✅ live (user list) |
+| rides | ⚠️ uses mock data — not wired to backend yet |
+| live-map | 🔲 TODO stub |
+| analytics | 🔲 TODO stub |
 
 ---
 
@@ -261,15 +280,26 @@ api/src/lib/fare.ts                — pure fare calculation engine
 api/src/lib/otp.ts                 — OTP generate/hash/verify (SHA-256 + Redis)
 api/src/lib/jwt.ts                 — sign/verify access tokens
 api/src/lib/hash.ts                — sha256 helper
+api/src/lib/storage.ts             — S3 uploadFile(), getPresignedUrl(), deleteFile()
 api/src/middleware/auth.middleware.ts — authenticate() — sets req.user/driver/admin
 api/src/jobs/queues/index.ts       — BullMQ queue instances (NOTIFICATIONS, GPS_FLUSH, etc.)
 api/src/jobs/processors/broadcast.processor.ts — ride broadcast fan-out
 api/src/websocket/socket.server.ts — Socket.io init + socketEvents helpers
+
 apps/admin/lib/api.ts              — axios instance (admin)
 apps/admin/lib/auth.ts             — admin login helpers
+apps/admin/lib/admin-api.ts        — adminDriverApi, adminUserApi
 apps/admin/lib/city-api.ts         — cityApi
 apps/admin/lib/pricing-api.ts      — pricingApi
 apps/admin/lib/vehicle-api.ts      — vehicleCategoryApi, fleetApi, vehicleDocApi
+apps/admin/lib/safety-api.ts       — safetyApi (SOS alerts, disputes)
+
+apps/user/lib/auth.ts              — user auth helpers
+apps/user/lib/auth-context.tsx     — AuthContext provider
+apps/user/lib/ride-api.ts          — ride booking + tracking API
+apps/user/lib/safety-api.ts        — ratings + disputes API
+
+apps/driver/src/lib/onboarding-api.ts — document upload, identity save, submit
 ```
 
 ---
@@ -303,6 +333,7 @@ cd api && npx tsc --noEmit
 - No `error.message` in production API responses — only codes/safe messages
 - JWT secrets in env vars only — never hardcoded anywhere
 - Refresh token raw value NEVER stored — only SHA-256 hash in DB
+- S3 bucket must be private in prod; use `getPresignedUrl()` for admin doc viewing
 - `.env` is gitignored; `.env.example` is committed
 - `pnpm-lock.yaml` is committed (NOT gitignored)
 - No Co-Authored-By line in any commits

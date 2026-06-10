@@ -1,5 +1,6 @@
 import { createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
+import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
 import type { DriverStatus, UpdateDriverStatusPayload } from './admin.types'
 
@@ -29,7 +30,19 @@ export async function listDrivers(query: {
 export async function getDriver(id: bigint) {
   const driver = await repo.getDriverById(id)
   if (!driver) throw createHttpError(AppErrors.NOT_FOUND)
-  return driver
+
+  const [signedDocs, signedVehicleDocs] = await Promise.all([
+    Promise.all(driver.documents.map(async (doc) => ({
+      ...doc,
+      file_url: await getPresignedUrl(doc.file_url),
+    }))),
+    Promise.all(driver.vehicle_documents.map(async (doc) => ({
+      ...doc,
+      file_url: await getPresignedUrl(doc.file_url),
+    }))),
+  ])
+
+  return { ...driver, documents: signedDocs, vehicle_documents: signedVehicleDocs }
 }
 
 export async function updateDriverStatus(

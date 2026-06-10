@@ -16,6 +16,8 @@ import ReturnCabSetup from '@/pages/GoOnline/ReturnCabSetup'
 import PersonalDetails from '@/pages/Onboarding/PersonalDetails'
 import Documents from '@/pages/Onboarding/Documents'
 import VehicleRegistration from '@/pages/Onboarding/VehicleRegistration'
+import VehicleDocuments from '@/pages/Onboarding/VehicleDocuments'
+import ReferenceSelfie from '@/pages/Onboarding/ReferenceSelfie'
 import PendingReview from '@/pages/Onboarding/PendingReview'
 
 export default function App() {
@@ -83,6 +85,12 @@ export default function App() {
       } />
       <Route path="/onboarding/vehicle" element={
         <ProtectedRoute><VehicleRegistration /></ProtectedRoute>
+      } />
+      <Route path="/onboarding/vehicle-docs" element={
+        <ProtectedRoute><VehicleDocuments /></ProtectedRoute>
+      } />
+      <Route path="/onboarding/selfie" element={
+        <ProtectedRoute><ReferenceSelfie /></ProtectedRoute>
       } />
       <Route path="/onboarding/pending-review" element={
         <ProtectedRoute><PendingReview /></ProtectedRoute>

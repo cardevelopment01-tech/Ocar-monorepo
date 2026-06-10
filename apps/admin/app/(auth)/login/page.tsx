@@ -25,7 +25,7 @@ export default function AdminLoginPage() {
     setIsLoading(true)
     try {
       const { tokens, admin } = await adminAuthApi.login(email.trim().toLowerCase(), password)
-      storeAdminAuth(tokens.accessToken, admin)
+      storeAdminAuth(tokens.accessToken, admin, tokens.refreshToken)
       router.push('/overview')
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number; data?: { error?: string } } })?.response?.status

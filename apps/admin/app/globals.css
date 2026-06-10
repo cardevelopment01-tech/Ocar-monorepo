@@ -4,6 +4,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html.overflow-hidden {
+  overflow: hidden !important;
+}
+
 @layer base {
   html { font-family: 'DM Sans', sans-serif; }
   body { background: #F1F5F9; color: #0F172A; }

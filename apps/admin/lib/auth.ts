@@ -16,16 +16,23 @@ export interface AdminAuthResponse {
   admin: AdminProfile
 }
 
-export function storeAdminAuth(token: string, admin: AdminProfile) {
+export function storeAdminAuth(token: string, admin: AdminProfile, refreshToken?: string) {
   localStorage.setItem('ocar_admin_token', token)
   localStorage.setItem('ocar_admin_data', JSON.stringify(admin))
   document.cookie = `ocar_admin_token=${token}; path=/; max-age=86400`
+  if (refreshToken) localStorage.setItem('ocar_admin_refresh_token', refreshToken)
 }
 
 export function clearAdminAuth() {
   localStorage.removeItem('ocar_admin_token')
   localStorage.removeItem('ocar_admin_data')
+  localStorage.removeItem('ocar_admin_refresh_token')
   document.cookie = 'ocar_admin_token=; path=/; max-age=0'
+}
+
+export function getAdminRefreshToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('ocar_admin_refresh_token')
 }
 
 export function getAdminToken(): string | null {

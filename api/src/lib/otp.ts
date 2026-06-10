@@ -30,8 +30,8 @@ export function otpRedisKey(phone: string, purpose: OtpPurpose, role: PrincipalR
   return `otp:${role}:${phone}:${purpose}`
 }
 
-export function rateLimitRedisKey(phone: string, purpose: OtpPurpose): string {
-  return `otp_rate:${phone}:${purpose}`
+export function rateLimitRedisKey(phone: string, purpose: OtpPurpose, role: PrincipalRole): string {
+  return `otp_rate:${role}:${phone}:${purpose}`
 }
 
 export async function storeOtp(
@@ -103,9 +103,10 @@ export async function isVerifyLocked(
 
 export async function checkRateLimit(
   phone: string,
-  purpose: OtpPurpose
+  purpose: OtpPurpose,
+  role: PrincipalRole
 ): Promise<{ allowed: boolean; remaining: number }> {
-  const key = rateLimitRedisKey(phone, purpose)
+  const key = rateLimitRedisKey(phone, purpose, role)
   const count = await redis.incr(key)
   if (count === 1) {
     await redis.expire(key, OTP_RATE_LIMIT_WINDOW_MINUTES * 60)
