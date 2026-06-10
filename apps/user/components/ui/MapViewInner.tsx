@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { MapContainer, TileLayer } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
+import RecenterMap from '@/components/map/RecenterMap'
 
 // Fix Leaflet default marker icon broken in webpack
 // Must run before any map renders
@@ -48,6 +49,7 @@ export default function MapViewInner({
         subdomains="abcd"
         maxZoom={19}
       />
+      <RecenterMap center={center} />
       {children}
     </MapContainer>
   )

@@ -16,7 +16,7 @@ const sizeClasses: Record<LogoSize, string> = {
 export default function OcarLogo({ className, size = 'md' }: OcarLogoProps) {
   return (
     <span className={cn('font-bold tracking-tight', sizeClasses[size], className)}>
-      <span className="text-primary">O</span>
+      <span className="text-gradient-primary">O</span>
       <span className="text-text-primary">car</span>
     </span>
   )

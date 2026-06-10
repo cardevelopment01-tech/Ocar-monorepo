@@ -22,7 +22,9 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  button, a, [role="button"] {
+  /* Touch targets — scoped to buttons only so inline text links aren't
+     forced to 48px tall (which previously distorted link layout). */
+  button, [role="button"] {
     min-height: 48px;
     min-width: 48px;
   }
@@ -37,21 +39,21 @@
     @apply w-full py-5 px-6 bg-primary text-text-inverse
       font-bold text-lg rounded-2xl shadow-button
       active:scale-[0.98] active:bg-primary-dark
-      transition-all duration-150
+      transition-[transform,background-color,box-shadow] duration-150
       disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
   }
 
   .btn-danger {
     @apply w-full py-5 px-6 bg-accent-red text-white
       font-bold text-lg rounded-2xl
-      active:scale-[0.98] transition-all duration-150;
+      active:scale-[0.98] transition-transform duration-150;
   }
 
   .btn-secondary-dark {
     @apply w-full py-4 px-6 bg-surface-2 text-text-primary
       font-semibold text-base rounded-2xl border border-border
       active:scale-[0.98] active:bg-surface-3
-      transition-all duration-150;
+      transition-[transform,background-color] duration-150;
   }
 
   .status-pill {

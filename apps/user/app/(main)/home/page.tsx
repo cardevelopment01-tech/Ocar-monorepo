@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useMemo } from 'react'
 import { MapPin, Search, Bell, User } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import OcarLogo from '@/components/ui/OcarLogo'
@@ -57,7 +57,7 @@ export default function HomePage() {
     )
   }, [])
 
-  const mockDrivers = getMockDrivers(originLat, originLng)
+  const mockDrivers = useMemo(() => getMockDrivers(originLat, originLng), [originLat, originLng])
 
   function goToSearch(destLabel?: string, destLat?: number, destLng?: number) {
     const params = new URLSearchParams({
@@ -140,7 +140,7 @@ export default function HomePage() {
 
         <button
           onClick={() => goToSearch()}
-          className="w-full bg-background rounded-2xl px-4 py-3.5 flex items-center gap-3 text-left"
+          className="w-full bg-background rounded-2xl px-4 py-3.5 flex items-center gap-3 text-left active:scale-[0.98] transition-transform duration-100"
         >
           <Search size={18} className="text-text-muted flex-shrink-0" />
           <span className="text-text-muted text-sm">Search destination</span>
@@ -151,7 +151,7 @@ export default function HomePage() {
             <button
               key={place.label}
               onClick={() => goToSearch(place.address, place.lat, place.lng)}
-              className="w-full flex items-center gap-3 py-3 border-b border-border last:border-0"
+              className="w-full flex items-center gap-3 py-3 border-b border-border last:border-0 active:scale-[0.98] transition-transform duration-100"
             >
               <div className="w-9 h-9 bg-background rounded-xl flex items-center justify-center text-base">
                 {place.icon}

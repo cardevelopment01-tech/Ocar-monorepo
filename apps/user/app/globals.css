@@ -35,12 +35,16 @@
   }
 
   .btn-primary {
-    @apply w-full py-4 px-6 bg-primary text-text-inverse font-semibold
+    @apply w-full py-4 px-6 bg-gradient-primary text-text-inverse font-semibold
       text-base rounded-full shadow-button
-      active:scale-[0.98] active:bg-primary-dark
-      hover:bg-primary-dark
-      transition-all duration-150 ease-out
+      active:scale-[0.98] active:shadow-button-press active:brightness-95
+      hover:shadow-glow
+      transition-[transform,box-shadow,filter] duration-150 ease-out
       disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  .text-gradient-primary {
+    @apply bg-gradient-primary bg-clip-text text-transparent;
   }
 
   .btn-secondary {
@@ -48,7 +52,7 @@
       text-base rounded-full border border-border
       active:scale-[0.98] active:bg-surface-2
       hover:bg-surface-2
-      transition-all duration-150 ease-out;
+      transition-[transform,background-color] duration-150 ease-out;
   }
 
   .input-field {
@@ -84,4 +88,13 @@
 
 .leaflet-control-container {
   display: none;
+}
+
+/* Smooth driver-car glide between GPS updates.
+   Disabled mid-zoom so markers don't lag behind the tile pane. */
+.leaflet-marker-icon.car-marker {
+  transition: transform 0.6s linear;
+}
+.leaflet-zoom-anim .leaflet-marker-icon.car-marker {
+  transition: none;
 }

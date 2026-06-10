@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { Marker } from 'react-leaflet'
 import L from 'leaflet'
 
@@ -48,6 +49,18 @@ function createPinIcon(variant: PinVariant) {
   })
 }
 
-export default function LocationPin({ position, variant }: LocationPinProps) {
-  return <Marker position={position} icon={createPinIcon(variant)} />
+// Only two variants ever exist — build each icon once and reuse it.
+const PIN_ICONS: Record<PinVariant, L.DivIcon> = {
+  pickup: createPinIcon('pickup'),
+  drop:   createPinIcon('drop'),
 }
+
+function LocationPin({ position, variant }: LocationPinProps) {
+  return <Marker position={position} icon={PIN_ICONS[variant]} />
+}
+
+export default memo(LocationPin, (a, b) =>
+  a.variant === b.variant &&
+  a.position[0] === b.position[0] &&
+  a.position[1] === b.position[1]
+)

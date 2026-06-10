@@ -186,30 +186,40 @@ export default function RidePage() {
         )}
       </div>
 
-      {/* Bottom sheet */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={rideStatus}
-          initial={{ y: 40, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 40, opacity: 0 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="bg-surface rounded-t-3xl shadow-sheet px-4 pt-4 pb-safe-bottom"
-        >
-          <div className="w-10 h-1 bg-border rounded-full mx-auto mb-4" />
+      {/* Bottom sheet — container stays mounted; only inner blocks animate */}
+      <motion.div
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+        className="bg-surface rounded-t-3xl shadow-sheet px-4 pt-4 pb-safe-bottom"
+      >
+        <div className="w-10 h-1 bg-border rounded-full mx-auto mb-4" />
 
+        <AnimatePresence mode="wait">
           {!hasDriver ? (
-            <div className="flex flex-col items-center py-4 gap-3">
+            <motion.div
+              key="searching"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-col items-center py-4 gap-3"
+            >
               <div className="w-12 h-12 rounded-full border-4 border-primary border-t-transparent animate-spin" />
               <p className="text-text-secondary text-sm">Looking for nearby drivers</p>
               <p className="text-text-muted text-xs">Ride #{rideId}</p>
               <button onClick={() => router.back()} className="mt-2 text-status-error text-sm font-medium">
                 Cancel ride
               </button>
-            </div>
+            </motion.div>
           ) : (
-            <>
-              {/* Driver info */}
+            <motion.div
+              key="driver"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+            >
+              {/* Driver info — stays stable across status changes */}
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-primary-subtle flex items-center justify-center text-2xl flex-shrink-0">
                   👤
@@ -226,12 +236,12 @@ export default function RidePage() {
                   {ride?.driver_phone && (
                     <a
                       href={`tel:${ride.driver_phone}`}
-                      className="w-10 h-10 bg-background rounded-full flex items-center justify-center"
+                      className="w-10 h-10 bg-background rounded-full flex items-center justify-center active:scale-95 transition-transform"
                     >
                       <Phone size={16} className="text-primary" />
                     </a>
                   )}
-                  <button className="w-10 h-10 bg-background rounded-full flex items-center justify-center">
+                  <button className="w-10 h-10 bg-background rounded-full flex items-center justify-center active:scale-95 transition-transform">
                     <MessageSquare size={16} className="text-primary" />
                   </button>
                 </div>
@@ -256,33 +266,43 @@ export default function RidePage() {
                 </div>
               </div>
 
-              {/* Status detail */}
-              {rideStatus === 'accepted' && (
-                <div className="flex items-center gap-2 bg-primary-subtle rounded-2xl px-4 py-3 mb-3">
-                  <Clock size={16} className="text-primary" />
-                  <span className="text-sm font-semibold text-primary">Driver is on the way</span>
-                </div>
-              )}
-              {rideStatus === 'driver_arrived' && (
-                <div className="flex items-center gap-2 bg-status-success/10 rounded-2xl px-4 py-3 mb-3">
-                  <MapPin size={16} className="text-status-success" />
-                  <span className="text-sm font-semibold text-status-success">Driver is at your location</span>
-                </div>
-              )}
-              {rideStatus === 'in_progress' && (
-                <div className="flex items-center gap-2 bg-background rounded-2xl px-4 py-3 mb-3">
-                  <MapPin size={16} className="text-primary" />
-                  <span className="text-sm font-semibold text-text-primary">
-                    Fare: ₹{ride?.total_estimated != null ? Math.round(parseFloat(ride.total_estimated)) : '—'}
-                  </span>
-                </div>
-              )}
-            </>
+              {/* Status detail — only THIS swaps as status changes */}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={rideStatus}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                >
+                  {rideStatus === 'accepted' && (
+                    <div className="flex items-center gap-2 bg-primary-subtle rounded-2xl px-4 py-3 mb-3">
+                      <Clock size={16} className="text-primary" />
+                      <span className="text-sm font-semibold text-primary">Driver is on the way</span>
+                    </div>
+                  )}
+                  {rideStatus === 'driver_arrived' && (
+                    <div className="flex items-center gap-2 bg-status-success/10 rounded-2xl px-4 py-3 mb-3">
+                      <MapPin size={16} className="text-status-success" />
+                      <span className="text-sm font-semibold text-status-success">Driver is at your location</span>
+                    </div>
+                  )}
+                  {rideStatus === 'in_progress' && (
+                    <div className="flex items-center gap-2 bg-background rounded-2xl px-4 py-3 mb-3">
+                      <MapPin size={16} className="text-primary" />
+                      <span className="text-sm font-semibold text-text-primary">
+                        Fare: ₹{ride?.total_estimated != null ? Math.round(parseFloat(ride.total_estimated)) : '—'}
+                      </span>
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </motion.div>
           )}
+        </AnimatePresence>
 
-          <div className="h-4" />
-        </motion.div>
-      </AnimatePresence>
+        <div className="h-4" />
+      </motion.div>
     </div>
   )
 }

@@ -3,6 +3,7 @@
 import { MapContainer, TileLayer } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
+import RecenterMap from './RecenterMap'
 
 if (typeof window !== 'undefined') {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -40,6 +41,7 @@ export default function MapViewClient({
         subdomains="abcd"
         maxZoom={20}
       />
+      <RecenterMap center={center} />
       {children}
     </MapContainer>
   )

@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import Login from '@/pages/Login'
 import Home from '@/pages/Home'
@@ -21,8 +22,17 @@ import ReferenceSelfie from '@/pages/Onboarding/ReferenceSelfie'
 import PendingReview from '@/pages/Onboarding/PendingReview'
 
 export default function App() {
+  const location = useLocation()
   return (
-    <Routes>
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+      >
+        <Routes location={location}>
       {/* Auth */}
       <Route path="/login" element={<Login />} />
 
@@ -98,6 +108,8 @@ export default function App() {
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        </Routes>
+      </motion.div>
+    </AnimatePresence>
   )
 }

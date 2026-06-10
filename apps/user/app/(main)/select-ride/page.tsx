@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { rideApi, type FareEstimate } from '@/lib/ride-api'
+import AnimatedNumber from '@/components/ui/AnimatedNumber'
 
 const SelectRideMapScene = dynamic(() => import('@/components/map/SelectRideMapScene'), { ssr: false })
 
@@ -140,13 +141,13 @@ function SelectRideContent() {
                   key={cat.id}
                   onClick={() => setSelected(cat.id)}
                   className={cn(
-                    'w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-colors',
+                    'w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-[transform,background-color,border-color] duration-150 active:scale-[0.98]',
                     isSelected ? 'border-primary bg-primary-subtle' : 'border-transparent bg-background'
                   )}
                 >
                   <div className={cn(
-                    'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-xl',
-                    isSelected ? 'bg-primary' : 'bg-background'
+                    'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-xl transition-shadow',
+                    isSelected ? 'bg-gradient-primary shadow-button' : 'bg-background'
                   )}>
                     {isSelected ? <Car size={20} className="text-white" /> : (CATEGORY_EMOJI[cat.slug] ?? '🚗')}
                   </div>
@@ -166,7 +167,7 @@ function SelectRideContent() {
                     {loading && !fare ? (
                       <div className="w-12 h-4 bg-background rounded animate-pulse" />
                     ) : fare != null ? (
-                      <p className="font-bold text-text-primary">₹{Math.round(fare)}</p>
+                      <p className={cn('font-bold', isSelected ? 'text-gradient-primary' : 'text-text-primary')}>₹<AnimatedNumber value={fare} /></p>
                     ) : (
                       <p className="text-xs text-text-muted">—</p>
                     )}

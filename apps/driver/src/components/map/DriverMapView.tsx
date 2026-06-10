@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { MapContainer, TileLayer } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
+import RecenterMap from './RecenterMap'
 
 const fixLeafletIcons = () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,6 +38,7 @@ export default function DriverMapView({ center, zoom = 15, dimmed = false, child
           subdomains="abcd"
           maxZoom={19}
         />
+        <RecenterMap center={center} />
         {children}
       </MapContainer>
 

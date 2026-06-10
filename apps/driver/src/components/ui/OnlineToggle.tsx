@@ -24,7 +24,7 @@ export default function OnlineToggle({ isOnline, onToggle, disabled = false }: O
           disabled={disabled}
           className={cn(
             'relative w-[110px] h-[110px] rounded-full flex flex-col items-center justify-center gap-1.5',
-            'active:scale-95 transition-all duration-300',
+            'active:scale-95 transition-transform duration-300',
             'disabled:opacity-50 disabled:cursor-not-allowed',
             isOnline
               ? 'shadow-green animate-pulse-green'

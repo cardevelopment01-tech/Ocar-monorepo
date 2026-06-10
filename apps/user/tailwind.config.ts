@@ -11,8 +11,17 @@ const config: Config = {
         primary: {
           DEFAULT: '#2563EB',
           dark: '#1D4ED8',
+          bright: '#3B82F6',
           light: '#DBEAFE',
           subtle: '#EFF6FF',
+        },
+        accent: {
+          DEFAULT: '#7C3AED',
+          light: '#EDE9FE',
+        },
+        money: {
+          DEFAULT: '#059669',
+          light: '#D1FAE5',
         },
         text: {
           primary: '#0F172A',
@@ -46,8 +55,14 @@ const config: Config = {
       boxShadow: {
         card: '0 2px 12px rgba(15, 23, 42, 0.06)',
         sheet: '0 -4px 24px rgba(15, 23, 42, 0.08)',
-        button: '0 2px 8px rgba(37, 99, 235, 0.25)',
+        button: '0 4px 16px rgba(37, 99, 235, 0.35)',
+        'button-press': '0 2px 8px rgba(37, 99, 235, 0.30)',
         float: '0 4px 20px rgba(15, 23, 42, 0.10)',
+        glow: '0 6px 28px rgba(124, 58, 237, 0.30)',
+      },
+      backgroundImage: {
+        'gradient-primary': 'linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)',
+        'gradient-primary-soft': 'linear-gradient(135deg, #3B82F6 0%, #6366F1 100%)',
       },
       animation: {
         'slide-up': 'slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
