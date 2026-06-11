@@ -33,6 +33,10 @@ router.get('/vehicles/fleet',                                    requireAdmin('s
 router.patch('/vehicles/fleet/:vehicleId/blacklist',             requireAdmin('super_admin', 'ops_admin'), controller.blacklistVehicle)
 router.patch('/vehicles/fleet/:vehicleId/unblacklist',           requireAdmin('super_admin', 'ops_admin'), controller.unblacklistVehicle)
 
+// ─── Driver documents ─────────────────────────────────────────────────────────
+router.patch('/drivers/documents/:docId/approve', requireAdmin('super_admin', 'ops_admin'), controller.approveDriverDoc)
+router.patch('/drivers/documents/:docId/reject',  requireAdmin('super_admin', 'ops_admin'), controller.rejectDriverDoc)
+
 // ─── Vehicle documents (static segments BEFORE :docId) ───────────────────────
 router.get('/vehicles/documents/pending',       requireAdmin('super_admin', 'ops_admin'), controller.getPendingVehicleDocs)
 router.get('/vehicles/documents/expiring',      requireAdmin('super_admin', 'ops_admin'), controller.getExpiringDocs)

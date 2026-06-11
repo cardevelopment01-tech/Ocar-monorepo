@@ -129,6 +129,20 @@ export async function updateLocation(driverId: bigint, data: {
     heading:  data.heading ?? 0,
     speed:    data.speed   ?? 0,
   })
+
+  // Emit live location to the user's tracking page
+  const activeRideRes = await pool.query<{ id: string }>(
+    `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress') LIMIT 1`,
+    [driverId]
+  )
+  if (activeRideRes.rows[0]) {
+    socketEvents.sendDriverLocation(activeRideRes.rows[0].id, {
+      lat:       data.lat,
+      lng:       data.lng,
+      heading:   data.heading ?? 0,
+      speed_kmph: data.speed ?? 0,
+    })
+  }
 }
 
 // ── Ride booking ──────────────────────────────────────────────
@@ -217,14 +231,21 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   if (data.destinationLat !== undefined) jobData.destinationLat = data.destinationLat
   if (data.destinationLng !== undefined) jobData.destinationLng = data.destinationLng
 
-  await queues[QUEUE_NAMES.NOTIFICATIONS].add('broadcast_ride', jobData, {
-    attempts: 1,
-    removeOnComplete: true,
-  })
-
-  // Phase 1: process immediately without waiting for a worker
+  // Round 1: fire immediately inline
   processBroadcast(jobData).catch(err =>
-    console.error('Broadcast error:', err)
+    console.error('Broadcast round 1 error:', err)
+  )
+
+  // Rounds 2 and 3: BullMQ delayed jobs — survive server restarts unlike setTimeout
+  await queues[QUEUE_NAMES.NOTIFICATIONS].add(
+    'broadcast_ride',
+    { ...jobData, broadcastRound: 2 },
+    { delay: 25_000, attempts: 1, removeOnComplete: true }
+  )
+  await queues[QUEUE_NAMES.NOTIFICATIONS].add(
+    'broadcast_ride',
+    { ...jobData, broadcastRound: 3 },
+    { delay: 50_000, attempts: 1, removeOnComplete: true }
   )
 
   return {

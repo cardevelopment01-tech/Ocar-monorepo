@@ -133,21 +133,7 @@ export async function deductCommission(
       ]
     )
 
-    if (newBalance < minBalance) {
-      await client.query(
-        `UPDATE drivers
-         SET status = 'suspended', updated_at = now()
-         WHERE id = $1 AND status = 'active'`,
-        [driverId]
-      )
-
-      await client.query(
-        `INSERT INTO driver_status_history (driver_id, from_status, to_status, reason)
-         VALUES ($1,'active','suspended',
-           'Wallet balance below minimum after commission deduction')`,
-        [driverId]
-      )
-    }
+    // Low balance is handled at go-online time (blocks going online) — no suspension here
 
     await client.query('COMMIT')
   } catch (err) {

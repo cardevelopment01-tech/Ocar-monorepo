@@ -3,6 +3,7 @@ import { QUEUE_NAMES, redisConnection } from '@/jobs/queues'
 import { config } from '@/config'
 import { sendSms } from '@/providers/sms.provider'
 import * as notifService from '@/modules/notifications/notifications.service'
+import { processBroadcast, type BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 
 type LogParams = Parameters<typeof notifService.logNotification>[0]
 
@@ -71,8 +72,10 @@ export const notificationsWorker = new Worker(
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
         throw err
       }
+    } else if (job.name === 'broadcast_ride') {
+      await processBroadcast(job.data as BroadcastJobData)
     }
-    // Unknown job names (e.g. broadcast_ride) complete silently
+    // Unknown job names complete silently
   },
   {
     connection:  redisConnection,

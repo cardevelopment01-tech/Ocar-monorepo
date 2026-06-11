@@ -4,6 +4,9 @@ import * as repo from '@/modules/rides/rides.repository'
 const BROADCAST_WINDOW_SECONDS = 20
 const MAX_DRIVERS = 5
 
+// Expanding search radius per round — generous for intercity context (Bhubaneswar city ~20km dia)
+const ROUND_RADII: Record<number, number> = { 1: 5000, 2: 10000, 3: 20000 }
+
 export interface BroadcastJobData {
   rideId: string
   categoryId: string
@@ -14,6 +17,7 @@ export interface BroadcastJobData {
   destinationLat?: number
   destinationLng?: number
   broadcastRound: number
+  radiusMetres?: number
 }
 
 export async function processBroadcast(data: BroadcastJobData): Promise<void> {
@@ -52,11 +56,13 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   }
 
   if (drivers.length < MAX_DRIVERS) {
+    const radiusMetres = data.radiusMetres ?? ROUND_RADII[data.broadcastRound] ?? 8000
     const standardDrivers = await repo.findNearbyDrivers({
       lat: data.originLat,
       lng: data.originLng,
       categoryId,
       maxDrivers: MAX_DRIVERS - drivers.length,
+      radiusMetres,
     })
     const included = new Set(drivers.map(d => d.driver_id.toString()))
     for (const sd of standardDrivers) {

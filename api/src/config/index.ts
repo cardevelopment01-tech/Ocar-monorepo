@@ -30,11 +30,10 @@ const envSchema = z.object({
   ADMIN_PHONE: z.string().default(''),
 
   // Storage
-  S3_BUCKET_NAME: z.string().default(''),
+  S3_BUCKET_NAME: z.string().min(1),
   S3_REGION: z.string().default('ap-south-1'),
-  S3_ACCESS_KEY: z.string().default(''),
-  S3_SECRET_KEY: z.string().default(''),
-  MINIO_ENDPOINT: z.string().default('http://localhost:9000'),
+  S3_ACCESS_KEY: z.string().min(1),
+  S3_SECRET_KEY: z.string().min(1),
 
   // App
   API_PORT: z.coerce.number().default(4000),

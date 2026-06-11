@@ -128,6 +128,33 @@ export async function findNearbyDrivers(params: {
   return res.rows
 }
 
+export async function findAllNearbyDrivers(params: {
+  lat: number
+  lng: number
+  radiusMetres?: number
+}): Promise<Array<{ driver_id: string; lat: number; lng: number; category_id: number }>> {
+  const radius = params.radiusMetres ?? 8000
+  const res = await pool.query(
+    `SELECT
+       dls.driver_id::text,
+       ST_Y(dls.location::geometry) AS lat,
+       ST_X(dls.location::geometry) AS lng,
+       ds.category_id::int AS category_id
+     FROM driver_location_snapshots dls
+     JOIN driver_sessions ds ON ds.id = dls.session_id
+     WHERE dls.is_available = true
+       AND ds.status = 'online'
+       AND ST_DWithin(
+         dls.location,
+         ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography,
+         $3
+       )
+     LIMIT 20`,
+    [params.lat, params.lng, radius]
+  )
+  return res.rows
+}
+
 export async function findReturnCabDrivers(params: {
   pickupLat: number
   pickupLng: number
@@ -413,10 +440,11 @@ export async function getDriverTripHistory(
               r.requested_at, r.started_at, r.completed_at,
               u.name AS user_name,
               COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
-              COALESCE(fs.driver_earning, '0')::text AS driver_earning
+              COALESCE(p.driver_earning, 0)::text AS driver_earning
        FROM rides r
        LEFT JOIN users u           ON u.id = r.user_id
        LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+       LEFT JOIN payments p        ON p.ride_id = r.id
        WHERE r.driver_id = $1
        ORDER BY r.requested_at DESC
        LIMIT $2 OFFSET $3`,

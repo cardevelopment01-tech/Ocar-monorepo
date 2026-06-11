@@ -75,6 +75,17 @@ router.post('/', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+router.get('/nearby-drivers', async (req, res, next) => {
+  try {
+    const lat = parseFloat(req.query['lat'] as string)
+    const lng = parseFloat(req.query['lng'] as string)
+    if (isNaN(lat) || isNaN(lng)) { res.status(400).json({ error: 'lat and lng required' }); return }
+    const radius = Math.min(parseFloat((req.query['radius'] as string) ?? '8000'), 20000)
+    const drivers = await repo.findAllNearbyDrivers({ lat, lng, radiusMetres: radius })
+    res.json({ drivers })
+  } catch (err) { next(err) }
+})
+
 router.get('/:id', authenticate(), async (req, res, next) => {
   try {
     const ride = await repo.getRideById(BigInt(req.params['id']!))

@@ -149,6 +149,22 @@ export async function getPendingVehicleDocs(req: Request, res: Response, next: N
   try { res.json(await service.listPendingVehicleDocs()) } catch (err) { next(err) }
 }
 
+export async function approveDriverDoc(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await service.approveDriverDoc(BigInt(req.params['docId']!), req.admin!.id)
+    res.json({ success: true })
+  } catch (err) { next(err) }
+}
+
+export async function rejectDriverDoc(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await service.rejectDriverDoc(
+      BigInt(req.params['docId']!), req.admin!.id, String(req.body.rejection_note ?? '')
+    )
+    res.json({ success: true })
+  } catch (err) { next(err) }
+}
+
 export async function approveVehicleDoc(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     await service.approveVehicleDoc(BigInt(req.params['docId']!), req.admin!.id)

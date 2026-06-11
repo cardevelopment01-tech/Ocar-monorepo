@@ -2,6 +2,7 @@ import { Server } from 'socket.io'
 import type { Server as HttpServer } from 'http'
 import { verifyAccessToken } from '@/lib/jwt'
 import { config } from '@/config'
+import { pool } from '@/db/client'
 
 // Room naming conventions:
 //   ride:{rideId}   — user + driver tracking a ride
@@ -59,7 +60,20 @@ export function initSocketServer(httpServer: HttpServer): Server {
     })
 
     socket.on('disconnect', () => {
-      console.log(`Socket disconnected: ${user?.sub}`)
+      console.log(`Socket disconnected: ${user?.sub} (${user?.role})`)
+      if (user?.role === 'driver') {
+        const driverId = BigInt(user.sub)
+        pool.query(
+          `UPDATE driver_sessions SET status = 'offline', went_offline_at = now(), offline_reason = 'socket_disconnect'
+           WHERE driver_id = $1 AND status IN ('online', 'on_trip')`,
+          [driverId]
+        ).then(() =>
+          pool.query(
+            `UPDATE driver_location_snapshots SET is_available = false WHERE driver_id = $1`,
+            [driverId]
+          )
+        ).catch(() => {})
+      }
     })
   })
 
