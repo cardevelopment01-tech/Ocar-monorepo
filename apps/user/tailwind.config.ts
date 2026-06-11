@@ -5,15 +5,15 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: '#EEF1F7',
+        background: '#F5F7FF',
         surface: '#FFFFFF',
-        'surface-2': '#F8FAFC',
+        'surface-2': '#F8FAFF',
         primary: {
-          DEFAULT: '#2563EB',
-          dark: '#1D4ED8',
-          bright: '#3B82F6',
-          light: '#DBEAFE',
-          subtle: '#EFF6FF',
+          DEFAULT: '#4F46E5',
+          dark: '#4338CA',
+          bright: '#6366F1',
+          light: '#C7D2FE',
+          subtle: '#EEF2FF',
         },
         accent: {
           DEFAULT: '#7C3AED',
@@ -30,8 +30,8 @@ const config: Config = {
           inverse: '#FFFFFF',
         },
         border: {
-          DEFAULT: '#E2E8F0',
-          light: '#F1F5F9',
+          DEFAULT: '#E8EEFF',
+          light: '#F1F5FF',
         },
         status: {
           success: '#10B981',
@@ -41,7 +41,7 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['DM Sans', 'sans-serif'],
+        sans: ['Inter', 'sans-serif'],
       },
       borderRadius: {
         sm: '8px',
@@ -53,23 +53,25 @@ const config: Config = {
         full: '9999px',
       },
       boxShadow: {
-        card: '0 2px 12px rgba(15, 23, 42, 0.06)',
-        sheet: '0 -4px 24px rgba(15, 23, 42, 0.08)',
-        button: '0 4px 16px rgba(37, 99, 235, 0.35)',
-        'button-press': '0 2px 8px rgba(37, 99, 235, 0.30)',
-        float: '0 4px 20px rgba(15, 23, 42, 0.10)',
-        glow: '0 6px 28px rgba(124, 58, 237, 0.30)',
+        card: '0 2px 16px rgba(79, 70, 229, 0.07)',
+        sheet: '0 -6px 32px rgba(79, 70, 229, 0.10)',
+        button: '0 4px 20px rgba(79, 70, 229, 0.40)',
+        'button-press': '0 2px 10px rgba(79, 70, 229, 0.32)',
+        float: '0 4px 20px rgba(79, 70, 229, 0.12)',
+        glow: '0 6px 32px rgba(79, 70, 229, 0.35)',
+        topbar: '0 1px 0 rgba(79, 70, 229, 0.08)',
       },
       backgroundImage: {
-        'gradient-primary': 'linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)',
-        'gradient-primary-soft': 'linear-gradient(135deg, #3B82F6 0%, #6366F1 100%)',
+        'gradient-primary': 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+        'gradient-primary-soft': 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
       },
       animation: {
-        'slide-up': 'slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
-        'slide-down': 'slideDown 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
+        'slide-up': 'slideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
+        'slide-down': 'slideDown 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
         'fade-in': 'fadeIn 0.2s ease-out',
-        'scale-in': 'scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        'scale-in': 'scaleIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
         'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
+        'fade-up': 'fadeUp 0.22s cubic-bezier(0.22, 1, 0.36, 1)',
       },
       keyframes: {
         slideUp: {
@@ -83,6 +85,10 @@ const config: Config = {
         fadeIn: {
           from: { opacity: '0' },
           to: { opacity: '1' },
+        },
+        fadeUp: {
+          from: { opacity: '0', transform: 'translateY(10px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
         },
         scaleIn: {
           from: { transform: 'scale(0.9)', opacity: '0' },

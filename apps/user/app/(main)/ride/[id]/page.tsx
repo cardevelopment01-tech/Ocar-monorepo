@@ -113,23 +113,30 @@ export default function RidePage() {
     }
   }, [rideStatus, rideId, router])
 
-  const pickupPos:  [number, number] = ride ? [ride.origin_lat, ride.origin_lng] : [PICKUP.lat, PICKUP.lng]
-  const dropPos:    [number, number] = ride?.dest_lat && ride.dest_lng ? [ride.dest_lat, ride.dest_lng] : [DROP.lat, DROP.lng]
-  const mapCenter:  [number, number] = driverPos ?? [(pickupPos[0] + dropPos[0]) / 2, (pickupPos[1] + dropPos[1]) / 2]
-  const mockRoute:  [number, number][] = [pickupPos, dropPos]
+  const pickupPos: [number, number] = ride ? [ride.origin_lat, ride.origin_lng] : [PICKUP.lat, PICKUP.lng]
+  const dropPos:   [number, number] = ride?.dest_lat && ride.dest_lng ? [ride.dest_lat, ride.dest_lng] : [DROP.lat, DROP.lng]
+  // Center on driver when known, else midpoint of route
+  const mapCenter: [number, number] = driverPos ?? pickupPos
+  // Route: driver→pickup while approaching, driver→drop while in progress, pickup→drop otherwise
+  const mapRoute: [number, number][] =
+    driverPos && (rideStatus === 'accepted' || rideStatus === 'driver_arrived')
+      ? [driverPos, pickupPos]
+      : driverPos && rideStatus === 'in_progress'
+      ? [driverPos, dropPos]
+      : [pickupPos, dropPos]
 
   const status = (rideStatus as StatusKey) in STATUS_MESSAGE ? (rideStatus as StatusKey) : 'requested'
   const hasDriver = rideStatus !== 'requested'
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Map */}
       <div className="relative flex-1">
         <RideMapScene
           center={mapCenter}
           pickupPos={pickupPos}
           dropPos={dropPos}
-          route={mockRoute}
+          route={mapRoute}
           driverPos={driverPos}
           driverHeading={driverHeading}
         />
@@ -191,7 +198,7 @@ export default function RidePage() {
         initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-        className="bg-surface rounded-t-3xl shadow-sheet px-4 pt-4 pb-safe-bottom"
+        className="bg-surface rounded-t-3xl shadow-sheet px-4 pt-4 pb-24"
       >
         <div className="w-10 h-1 bg-border rounded-full mx-auto mb-4" />
 

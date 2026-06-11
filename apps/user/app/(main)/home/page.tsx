@@ -1,170 +1,470 @@
 'use client'
 
-import { useRef, useEffect, useState, useMemo } from 'react'
-import { MapPin, Search, Bell, User } from 'lucide-react'
-import dynamic from 'next/dynamic'
-import OcarLogo from '@/components/ui/OcarLogo'
-import { mockPickup } from '@/lib/mock-data'
+import { useRef, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  Search, Bell, User,
+  Home, Briefcase, Car, RotateCcw, Clock,
+  ChevronRight, ArrowRight, MapPin,
+} from 'lucide-react'
+// addr state is kept for passing GPS coords to search/ride pages, not displayed
 
-const HomeMapScene = dynamic(() => import('@/components/map/HomeMapScene'), { ssr: false })
+// ─── constants ────────────────────────────────────────────────────────────────
 
-// Mock nearby driver positions (Phase 1 — real positions come in M11)
-function getMockDrivers(baseLat: number, baseLng: number) {
-  return [
-    { id: 'd1', lat: baseLat + 0.009,  lng: baseLng - 0.007, heading: 45  },
-    { id: 'd2', lat: baseLat - 0.005,  lng: baseLng + 0.011, heading: 180 },
-    { id: 'd3', lat: baseLat + 0.012,  lng: baseLng + 0.006, heading: 270 },
-  ]
-}
+const EASE   = [0.22, 1, 0.36, 1] as const
+const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
-const SAVED_PLACES = [
-  { icon: '🏠', label: 'Home',  address: 'Sahid Nagar, Bhubaneswar',     lat: 20.2929, lng: 85.8363 },
-  { icon: '💼', label: 'Work',  address: 'Infocity, Chandrasekharpur',    lat: 20.3506, lng: 85.8110 },
-  { icon: '🛒', label: 'DMart', address: 'Patia, Bhubaneswar',            lat: 20.3554, lng: 85.8207 },
+const HERO_BG  = 'linear-gradient(160deg, #0F0F23 0%, #1E1B4B 100%)'
+const ICON_BG  = '#F1F0FE'
+const ICON_CLR = '#4F46E5'
+const SHADOW   = '0 2px 12px rgba(15,15,35,0.07)'
+
+// Fixed positions for particles — no Math.random() to avoid hydration mismatch
+const PARTICLES = [
+  { top: '16%', left: '9%',  delay: 0,   dur: 2.6 },
+  { top: '28%', left: '80%', delay: 0.9, dur: 3.2 },
+  { top: '55%', left: '24%', delay: 1.8, dur: 2.4 },
+  { top: '70%', left: '68%', delay: 0.4, dur: 3.8 },
+  { top: '12%', left: '52%', delay: 2.1, dur: 2.9 },
+  { top: '82%', left: '42%', delay: 1.3, dur: 3.4 },
+  { top: '44%', left: '91%', delay: 0.6, dur: 2.7 },
+  { top: '90%', left: '15%', delay: 2.5, dur: 3.1 },
 ]
 
-function getGreeting() {
-  const h = new Date().getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 17) return 'Good afternoon'
-  return 'Good evening'
+// ─── motion variants ──────────────────────────────────────────────────────────
+
+// Hero collapses: hidden → expanded → collapsed
+const heroVariants = {
+  hidden:    { opacity: 0, y: -24 },
+  expanded:  { opacity: 1, y: 0 },
+  collapsed: { opacity: 1, y: 0 },
 }
 
+const section = {
+  hidden: { opacity: 0, y: 14 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.36, ease: EASE } },
+}
+const sectionList = {
+  hidden: {},
+  show:   { transition: { staggerChildren: 0.07 } },
+}
+const row = {
+  hidden: { opacity: 0, x: -8 },
+  show:   { opacity: 1, x: 0, transition: { duration: 0.27, ease: EASE } },
+}
+const cardV = {
+  hidden: { opacity: 0, scale: 0.94 },
+  show:   { opacity: 1, scale: 1,   transition: { duration: 0.28, ease: EASE } },
+}
+const page = {
+  hidden: {},
+  show:   { transition: { staggerChildren: 0.08, delayChildren: 0.3 } },
+}
+
+// ─── data ─────────────────────────────────────────────────────────────────────
+
+const SERVICES = [
+  { id: 'oneway', Icon: Car,       label: 'One Way', sub: 'City to city' },
+  { id: 'return', Icon: RotateCcw, label: 'Return',  sub: 'Round trip'  },
+  { id: 'rental', Icon: Clock,     label: 'Rental',  sub: 'Hourly hire' },
+]
+const SAVED = [
+  { Icon: Home,      label: 'Home', sub: 'Sahid Nagar, Bhubaneswar',   lat: 20.2929, lng: 85.8363 },
+  { Icon: Briefcase, label: 'Work', sub: 'Infocity, Chandrasekharpur', lat: 20.3506, lng: 85.8110 },
+]
+const RECENT = [
+  { label: 'Cuttack Bus Stand',    sub: 'Badambadi, Cuttack', meta: '2 hrs ago', lat: 20.4625, lng: 85.8830 },
+  { label: 'Puri Railway Station', sub: 'Puri, Odisha',       meta: 'Yesterday', lat: 19.8010, lng: 85.8210 },
+]
+const POPULAR = [
+  { from: 'Bhubaneswar', to: 'Cuttack',     lat: 20.4625, lng: 85.8830 },
+  { from: 'Bhubaneswar', to: 'Puri',        lat: 19.8010, lng: 85.8210 },
+  { from: 'Cuttack',     to: 'Bhubaneswar', lat: 20.2961, lng: 85.8245 },
+  { from: 'Puri',        to: 'Bhubaneswar', lat: 20.2961, lng: 85.8245 },
+]
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+function greeting() {
+  const h = new Date().getHours()
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
+}
+
+function haversinKm(a1: number, o1: number, a2: number, o2: number) {
+  const R = 6371, da = (a2 - a1) * Math.PI / 180, dо = (o2 - o1) * Math.PI / 180
+  const s = Math.sin(da / 2) ** 2 + Math.cos(a1 * Math.PI / 180) * Math.cos(a2 * Math.PI / 180) * Math.sin(dо / 2) ** 2
+  return Math.round(R * 2 * Math.asin(Math.sqrt(s)) * 1.3 * 10) / 10
+}
+
+// ─── component ────────────────────────────────────────────────────────────────
+
 export default function HomePage() {
-  const router    = useRouter()
-  const { user }  = useAuth()
-  const firstName = user?.name?.split(' ')[0] ?? 'there'
+  const router   = useRouter()
+  const { user } = useAuth()
+  const name     = user?.name?.split(' ')[0] ?? 'there'
 
-  const [originLat,  setOriginLat]  = useState(mockPickup.lat)
-  const [originLng,  setOriginLng]  = useState(mockPickup.lng)
-  const [originAddr, setOriginAddr] = useState('Current Location')
-  const locationFetched = useRef(false)
+  const [addr,      setAddr]      = useState('Bhubaneswar')
+  const [lat,       setLat]       = useState(20.2961)
+  const [lng,       setLng]       = useState(85.8245)
+  const [collapsed, setCollapsed] = useState(false)
+  const fetched = useRef(false)
 
-  // Try GPS once on mount
   useEffect(() => {
-    if (locationFetched.current || !navigator.geolocation) return
-    locationFetched.current = true
+    if (fetched.current || !navigator.geolocation) return
+    fetched.current = true
     navigator.geolocation.getCurrentPosition(
-      pos => {
-        setOriginLat(pos.coords.latitude)
-        setOriginLng(pos.coords.longitude)
-        setOriginAddr('Current Location')
-      },
-      () => { /* use Bhubaneswar default */ },
-      { enableHighAccuracy: false, timeout: 8000 }
+      p => { setLat(p.coords.latitude); setLng(p.coords.longitude); setAddr('Current Location') },
+      () => {},
+      { enableHighAccuracy: false, timeout: 8000 },
     )
   }, [])
 
-  const mockDrivers = useMemo(() => getMockDrivers(originLat, originLng), [originLat, originLng])
-
-  function goToSearch(destLabel?: string, destLat?: number, destLng?: number) {
-    const params = new URLSearchParams({
-      originLat:    originLat.toString(),
-      originLng:    originLng.toString(),
-      originAddress: originAddr,
-    })
-    if (destLabel && destLat != null && destLng != null) {
-      // Pre-fill destination for saved places
-      const { haversineKm } = {
-        haversineKm: (la1: number, lo1: number, la2: number, lo2: number) => {
-          const R = 6371
-          const dLa = (la2 - la1) * Math.PI / 180
-          const dLo = (lo2 - lo1) * Math.PI / 180
-          const a = Math.sin(dLa/2)**2 + Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)**2
-          return R * 2 * Math.asin(Math.sqrt(a))
-        }
-      }
-      const straight = haversineKm(originLat, originLng, destLat, destLng)
-      const distanceKm  = Math.round(straight * 1.3 * 10) / 10
-      const durationMin = Math.round(distanceKm / 0.5)
-      const sp = new URLSearchParams({
-        originLat:           originLat.toString(),
-        originLng:           originLng.toString(),
-        originAddress:       originAddr,
-        destinationLat:      destLat.toString(),
-        destinationLng:      destLng.toString(),
-        destinationAddress:  destLabel,
-        distanceKm:          distanceKm.toString(),
-        durationMin:         durationMin.toString(),
-        originCityId:        '1',
-      })
-      router.push(`/select-ride?${sp.toString()}`)
-      return
-    }
-    router.push(`/search?${params.toString()}`)
+  function toSearch() {
+    router.push(`/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}`)
+  }
+  function toRide(label: string, dLat: number, dLng: number) {
+    const km  = haversinKm(lat, lng, dLat, dLng)
+    const min = Math.round(km / 0.5)
+    router.push(
+      `/select-ride?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}` +
+      `&destinationLat=${dLat}&destinationLng=${dLng}&destinationAddress=${encodeURIComponent(label)}` +
+      `&distanceKm=${km}&durationMin=${min}&originCityId=1`,
+    )
   }
 
   return (
-    <div className="relative w-full h-screen overflow-hidden">
-      {/* MAP */}
-      <div className="absolute inset-0" style={{ zIndex: 0 }}>
-        <HomeMapScene
-          center={[originLat, originLng]}
-          pickupPos={[originLat, originLng]}
-          drivers={mockDrivers}
-        />
-      </div>
+    <div className="h-full flex flex-col bg-background">
 
-      {/* TOP BAR */}
-      <div
-        className="absolute top-0 left-0 right-0 px-4 pt-12 pb-3 flex items-center justify-between"
-        style={{ zIndex: 10 }}
-      >
-        <div className="backdrop-blur-sm bg-white/80 rounded-2xl px-4 py-2 shadow-card">
-          <OcarLogo size="sm" />
-        </div>
-        <div className="flex gap-2">
-          <button className="w-10 h-10 bg-white/80 backdrop-blur-sm rounded-full shadow-card flex items-center justify-center">
-            <Bell size={18} className="text-text-secondary" />
-          </button>
-          <button className="w-10 h-10 bg-white/80 backdrop-blur-sm rounded-full shadow-card flex items-center justify-center">
-            <User size={18} className="text-text-secondary" />
-          </button>
-        </div>
-      </div>
-
-      {/* BOTTOM SEARCH SHEET */}
-      <div
-        className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-3xl shadow-sheet px-4 pt-3"
+      {/* ── Hero ──────────────────────────────────────────────── */}
+      <motion.div
+        className="relative flex-shrink-0 px-5 pt-safe-top overflow-hidden"
         style={{
-          zIndex: 10,
-          paddingBottom: 'calc(70px + env(safe-area-inset-bottom))',
+          background:              HERO_BG,
+          borderBottomLeftRadius:  28,
+          borderBottomRightRadius: 28,
+        }}
+        variants={heroVariants}
+        initial="hidden"
+        animate={collapsed ? 'collapsed' : 'expanded'}
+        transition={{ duration: 0.5, ease: EASE }}
+      >
+        {/* ── Decorative layer ── */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
+
+          {/* Orb 1 — large indigo blob, top-right */}
+          <motion.div
+            className="absolute rounded-full"
+            style={{
+              width: 220, height: 220,
+              top: -70, right: -50,
+              background: 'radial-gradient(circle, rgba(99,102,241,0.45) 0%, transparent 68%)',
+              filter: 'blur(48px)',
+            }}
+            animate={{ x: [0, 18, -8, 0], y: [0, -14, 8, 0] }}
+            transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
+          />
+
+          {/* Orb 2 — purple blob, bottom-left */}
+          <motion.div
+            className="absolute rounded-full"
+            style={{
+              width: 180, height: 180,
+              bottom: -50, left: -30,
+              background: 'radial-gradient(circle, rgba(124,58,237,0.40) 0%, transparent 68%)',
+              filter: 'blur(42px)',
+            }}
+            animate={{ x: [0, -12, 16, 0], y: [0, 10, -10, 0] }}
+            transition={{ duration: 11, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
+          />
+
+          {/* Orb 3 — faint teal accent, mid-right */}
+          <motion.div
+            className="absolute rounded-full"
+            style={{
+              width: 120, height: 120,
+              top: '40%', right: '10%',
+              background: 'radial-gradient(circle, rgba(56,189,248,0.18) 0%, transparent 68%)',
+              filter: 'blur(32px)',
+            }}
+            animate={{ y: [0, -20, 12, 0], opacity: [0.6, 1, 0.6] }}
+            transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 3 }}
+          />
+
+          {/* Twinkling particles */}
+          {PARTICLES.map((p, i) => (
+            <motion.span
+              key={i}
+              className="absolute rounded-full bg-white"
+              style={{ top: p.top, left: p.left, width: 2, height: 2 }}
+              animate={{ opacity: [0.08, 0.55, 0.08], scale: [1, 1.4, 1] }}
+              transition={{ duration: p.dur, repeat: Infinity, delay: p.delay, ease: 'easeInOut' }}
+            />
+          ))}
+
+          {/* Subtle grid overlay */}
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: 'radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)',
+              backgroundSize: '28px 28px',
+            }}
+          />
+        </div>
+
+        {/* ── Real content — sits above decorative layer ── */}
+        <div className="relative z-10">
+
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-6">
+          <motion.span
+            className="text-xl font-black tracking-tight text-white"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.15, duration: 0.4 }}
+          >
+            ocar
+          </motion.span>
+          <motion.div
+            className="flex items-center gap-2"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.18, duration: 0.4 }}
+          >
+            <motion.button
+              aria-label="Notifications"
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.10)' }}
+              whileTap={{ scale: 0.86 }}
+              transition={SPRING}
+            >
+              <Bell size={16} strokeWidth={1.6} color="rgba(255,255,255,0.85)" />
+            </motion.button>
+            <motion.button
+              onClick={() => router.push('/profile')}
+              aria-label="Profile"
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.10)' }}
+              whileTap={{ scale: 0.86 }}
+              transition={SPRING}
+            >
+              <User size={16} strokeWidth={1.6} color="rgba(255,255,255,0.85)" />
+            </motion.button>
+          </motion.div>
+        </div>
+
+        {/* Greeting — disappears on collapse */}
+        <AnimatePresence initial={false}>
+          {!collapsed && (
+            <motion.div
+              key="greeting"
+              initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+              animate={{ opacity: 1, height: 'auto', marginBottom: 20 }}
+              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+              transition={{ duration: 0.28, ease: EASE }}
+              style={{ overflow: 'hidden' }}
+            >
+              <motion.p
+                className="text-sm font-medium"
+                style={{ color: 'rgba(255,255,255,0.48)' }}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.22, duration: 0.36, ease: EASE }}
+              >
+                {greeting()}
+              </motion.p>
+              <motion.h1
+                className="text-2xl font-bold text-white tracking-tight mt-0.5"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.26, duration: 0.36, ease: EASE }}
+              >
+                {name} 👋
+              </motion.h1>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Search bar — always visible */}
+        <motion.button
+          onClick={toSearch}
+          className="w-full flex items-center gap-3 bg-white rounded-2xl px-4"
+          style={{ paddingTop: 14, paddingBottom: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.26)' }}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.4, ease: EASE }}
+          whileTap={{ scale: 0.985 }}
+        >
+          <Search size={17} strokeWidth={2} className="text-text-muted flex-shrink-0" />
+          <span className="flex-1 text-left text-sm font-medium text-text-muted">Where to?</span>
+          <span
+            className="text-xs font-semibold text-white rounded-lg"
+            style={{ background: ICON_CLR, padding: '6px 12px' }}
+          >
+            Go
+          </span>
+        </motion.button>
+
+        {/* Bottom padding spacer — shrinks when collapsed */}
+        <motion.div
+          animate={{ height: collapsed ? 18 : 8 }}
+          transition={SPRING}
+        />
+
+        </div>{/* end relative z-10 */}
+      </motion.div>
+
+      {/* ── Content ───────────────────────────────────────────── */}
+      <motion.div
+        className="flex-1 overflow-y-auto scrollbar-none"
+        variants={page}
+        initial="hidden"
+        animate="show"
+        onScroll={(e: React.UIEvent<HTMLDivElement>) => {
+          const top = e.currentTarget.scrollTop
+          setCollapsed(top > 48)
         }}
       >
-        <div className="mx-auto mt-3 mb-4 w-12 h-1.5 rounded-full bg-slate-200" />
+        <div className="px-4 pt-6 pb-28 flex flex-col gap-7">
 
-        <p className="text-xs text-text-muted mb-0.5">{getGreeting()}, {firstName} 👋</p>
-        <p className="text-base font-semibold text-text-primary mb-3">Where to?</p>
+          {/* Services */}
+          <motion.div variants={section}>
+            <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Services</p>
+            <motion.div className="grid grid-cols-3 gap-2.5" variants={sectionList} initial="hidden" animate="show">
+              {SERVICES.map(s => (
+                <motion.button
+                  key={s.id}
+                  onClick={toSearch}
+                  className="flex flex-col items-center gap-2 py-4 bg-surface border border-border rounded-2xl"
+                  style={{ boxShadow: SHADOW }}
+                  variants={cardV}
+                  whileTap={{ scale: 0.93 }}
+                  transition={SPRING}
+                >
+                  <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: ICON_BG }}>
+                    <s.Icon size={18} strokeWidth={1.6} style={{ color: ICON_CLR }} />
+                  </span>
+                  <span className="flex flex-col items-center gap-0.5 text-center">
+                    <span className="text-xs font-semibold text-text-primary">{s.label}</span>
+                    <span className="text-[10px] text-text-muted">{s.sub}</span>
+                  </span>
+                </motion.button>
+              ))}
+            </motion.div>
+          </motion.div>
 
-        <button
-          onClick={() => goToSearch()}
-          className="w-full bg-background rounded-2xl px-4 py-3.5 flex items-center gap-3 text-left active:scale-[0.98] transition-transform duration-100"
-        >
-          <Search size={18} className="text-text-muted flex-shrink-0" />
-          <span className="text-text-muted text-sm">Search destination</span>
-        </button>
-
-        <div className="mt-4">
-          {SAVED_PLACES.map((place) => (
-            <button
-              key={place.label}
-              onClick={() => goToSearch(place.address, place.lat, place.lng)}
-              className="w-full flex items-center gap-3 py-3 border-b border-border last:border-0 active:scale-[0.98] transition-transform duration-100"
+          {/* Saved places */}
+          <motion.div variants={section}>
+            <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Saved places</p>
+            <motion.div
+              className="bg-surface rounded-2xl border border-border overflow-hidden"
+              style={{ boxShadow: SHADOW }}
+              variants={sectionList} initial="hidden" animate="show"
             >
-              <div className="w-9 h-9 bg-background rounded-xl flex items-center justify-center text-base">
-                {place.icon}
+              {SAVED.map((p, i) => (
+                <motion.button
+                  key={p.label}
+                  onClick={() => toRide(p.sub, p.lat, p.lng)}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < SAVED.length - 1 ? ' border-b border-border' : ''}`}
+                  variants={row}
+                  whileTap={{ backgroundColor: '#F8FAFF' }}
+                  transition={SPRING}
+                >
+                  <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
+                    <p.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold text-text-primary">{p.label}</span>
+                    <span className="block text-xs text-text-muted truncate mt-0.5">{p.sub}</span>
+                  </span>
+                  <ChevronRight size={14} className="text-text-muted flex-shrink-0" />
+                </motion.button>
+              ))}
+            </motion.div>
+          </motion.div>
+
+          {/* Go again */}
+          <motion.div variants={section}>
+            <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Go again</p>
+            <motion.div
+              className="bg-surface rounded-2xl border border-border overflow-hidden"
+              style={{ boxShadow: SHADOW }}
+              variants={sectionList} initial="hidden" animate="show"
+            >
+              {RECENT.map((r, i) => (
+                <motion.button
+                  key={r.label}
+                  onClick={() => toRide(r.sub, r.lat, r.lng)}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < RECENT.length - 1 ? ' border-b border-border' : ''}`}
+                  variants={row}
+                  whileTap={{ backgroundColor: '#F8FAFF' }}
+                  transition={SPRING}
+                >
+                  <span className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0">
+                    <MapPin size={14} strokeWidth={1.6} className="text-text-muted" />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold text-text-primary">{r.label}</span>
+                    <span className="block text-xs text-text-muted mt-0.5">{r.meta}</span>
+                  </span>
+                  <ChevronRight size={14} className="text-text-muted flex-shrink-0" />
+                </motion.button>
+              ))}
+            </motion.div>
+          </motion.div>
+
+          {/* Popular routes */}
+          <motion.div variants={section}>
+            <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Popular routes</p>
+            <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-0.5 scrollbar-none">
+              {POPULAR.map((r, i) => (
+                <motion.button
+                  key={`${r.from}-${r.to}`}
+                  onClick={() => toRide(r.to, r.lat, r.lng)}
+                  className="flex-shrink-0 flex items-center gap-2 bg-surface border border-border rounded-full px-4 py-2.5"
+                  style={{ boxShadow: SHADOW }}
+                  initial={{ opacity: 0, x: 14 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.3 + i * 0.07, duration: 0.32, ease: EASE }}
+                  whileTap={{ scale: 0.93 }}
+                >
+                  <span className="text-xs font-medium text-text-secondary whitespace-nowrap">{r.from}</span>
+                  <ArrowRight size={10} strokeWidth={2.5} className="text-text-muted flex-shrink-0" />
+                  <span className="text-xs font-semibold text-text-primary whitespace-nowrap">{r.to}</span>
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* Promo */}
+          <motion.div variants={section}>
+            <motion.button
+              className="w-full text-left rounded-2xl px-5 py-5"
+              style={{ background: HERO_BG, boxShadow: '0 6px 24px rgba(15,15,35,0.22)' }}
+              whileTap={{ scale: 0.985 }}
+              transition={SPRING}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <p className="text-base font-bold text-white leading-snug">20% off your first ride</p>
+                  <p className="text-xs font-medium mt-1" style={{ color: 'rgba(255,255,255,0.50)' }}>
+                    New to Ocar? Use code at checkout
+                  </p>
+                  <div
+                    className="inline-flex items-center mt-3 rounded-lg px-3 py-1.5"
+                    style={{ background: 'rgba(255,255,255,0.10)' }}
+                  >
+                    <span className="text-[11px] font-bold tracking-widest" style={{ color: '#A5B4FC' }}>OCAR20</span>
+                  </div>
+                </div>
+                <span className="text-4xl leading-none flex-shrink-0">🎉</span>
               </div>
-              <div className="flex-1 min-w-0 text-left">
-                <p className="text-sm font-semibold text-text-primary">{place.label}</p>
-                <p className="text-xs text-text-muted truncate">{place.address}</p>
-              </div>
-              <MapPin size={14} className="text-text-muted flex-shrink-0" />
-            </button>
-          ))}
+            </motion.button>
+          </motion.div>
+
         </div>
-      </div>
+      </motion.div>
     </div>
   )
 }

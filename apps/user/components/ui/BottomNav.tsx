@@ -27,8 +27,15 @@ interface BottomNavProps {
 export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 bg-surface border-t border-border"
-      style={{ zIndex: 20 }}
+      className="fixed bottom-0 left-0 right-0"
+      style={{
+        zIndex: 20,
+        background: 'rgba(255,255,255,0.95)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        borderTop: '1px solid rgba(79,70,229,0.08)',
+        boxShadow: '0 -1px 0 rgba(79,70,229,0.06)',
+      }}
     >
       <div className="mx-auto max-w-[430px]">
         <div
@@ -43,22 +50,34 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
                 onClick={() => !soon && onTabChange(id)}
                 disabled={soon}
                 className={cn(
-                  'flex flex-col items-center gap-0.5 min-w-[44px] min-h-[44px] justify-center relative',
-                  soon && 'opacity-40 cursor-not-allowed'
+                  'flex flex-col items-center gap-1 min-w-[56px] min-h-[44px] justify-center relative transition-all duration-150',
+                  soon ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                 )}
               >
-                <Icon
+                <div
                   className={cn(
-                    'w-6 h-6 transition-colors',
-                    active ? 'text-primary' : 'text-text-muted'
+                    'w-10 h-7 rounded-full flex items-center justify-center transition-all duration-200',
+                    active ? 'bg-primary/10' : ''
                   )}
-                  strokeWidth={active ? 2.5 : 1.8}
-                />
+                >
+                  <Icon
+                    className={cn(
+                      'w-5 h-5 transition-colors duration-150',
+                      active ? 'text-primary' : 'text-text-muted'
+                    )}
+                    strokeWidth={active ? 2.5 : 1.8}
+                  />
+                </div>
                 {soon ? (
                   <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider">Soon</span>
-                ) : active ? (
-                  <span className="w-1 h-1 rounded-full bg-primary" />
-                ) : null}
+                ) : (
+                  <span className={cn(
+                    'text-[10px] font-semibold transition-colors duration-150',
+                    active ? 'text-primary' : 'text-text-muted'
+                  )}>
+                    {label}
+                  </span>
+                )}
               </button>
             )
           })}

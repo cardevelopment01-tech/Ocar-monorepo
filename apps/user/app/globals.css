@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,19 +6,32 @@
 
 @layer base {
   html {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   body {
-    background-color: #EEF1F7;
+    background-color: #F5F7FF;
     color: #0F172A;
     overscroll-behavior: none;
   }
 
   * {
     -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .pt-safe-top {
+    padding-top: max(env(safe-area-inset-top), 14px);
   }
 }
 
@@ -31,7 +44,8 @@
   }
 
   .sheet-handle {
-    @apply mx-auto mt-3 mb-4 w-10 h-1 rounded-full bg-border;
+    @apply mx-auto mt-3 mb-4 w-10 h-1 rounded-full;
+    background: rgba(79, 70, 229, 0.15);
   }
 
   .btn-primary {
@@ -67,13 +81,18 @@
   .card {
     @apply bg-surface rounded-2xl shadow-card p-4;
   }
+
+  .place-icon-badge {
+    @apply w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0;
+    background: rgba(79, 70, 229, 0.08);
+  }
 }
 
 /* Leaflet map reset */
 .leaflet-container {
   width: 100%;
   height: 100%;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   z-index: 0 !important;
 }
 

@@ -125,4 +125,9 @@ export const rideApi = {
     const res = await api.get('/api/v1/rides/me/history', { params: { page, limit } })
     return res.data as RideHistoryResponse
   },
+
+  getNearbyDrivers: async (lat: number, lng: number): Promise<Array<{ driver_id: string; lat: number; lng: number; category_id: number }>> => {
+    const res = await api.get('/api/v1/rides/nearby-drivers', { params: { lat, lng } })
+    return (res.data as { drivers: Array<{ driver_id: string; lat: number; lng: number; category_id: number }> }).drivers ?? []
+  },
 }

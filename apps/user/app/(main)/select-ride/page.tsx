@@ -1,7 +1,8 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, Users, Zap, Car } from 'lucide-react'
+import { ArrowLeft, Users, Zap, Car, Truck, CreditCard } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -17,14 +18,15 @@ const FALLBACK_CATEGORIES: Category[] = [
   { id: 1, slug: 'hatchback', display_name: 'Hatchback', max_passengers: 4 },
   { id: 2, slug: 'sedan',     display_name: 'Sedan',     max_passengers: 4 },
   { id: 3, slug: 'suv',       display_name: 'SUV',       max_passengers: 6 },
+  { id: 4, slug: 'luxury',    display_name: 'Luxury',    max_passengers: 4 },
 ]
 
-const CATEGORY_EMOJI: Record<string, string> = {
-  hatchback: '🚗',
-  sedan:     '🚙',
-  suv:       '🛻',
-  luxury:    '🏎️',
-  van:       '🚐',
+const CATEGORY_ICON: Record<string, LucideIcon> = {
+  hatchback: Car,
+  sedan:     Car,
+  suv:       Truck,
+  luxury:    Car,
+  van:       Truck,
 }
 
 function SelectRideContent() {
@@ -41,12 +43,22 @@ function SelectRideContent() {
   const durationMin        = parseFloat(sp.get('durationMin') ?? '20')
   const originCityId       = parseInt(sp.get('originCityId') ?? '1', 10)
 
-  const [categories]  = useState<Category[]>(FALLBACK_CATEGORIES)
-  const [estimates,  setEstimates]  = useState<Record<number, FareEstimate>>({})
-  const [loading,    setLoading]    = useState(true)
-  const [selected,   setSelected]   = useState(2) // sedan by default
-  const [isBooking,  setIsBooking]  = useState(false)
-  const [bookError,  setBookError]  = useState<string | null>(null)
+  const [categories]     = useState<Category[]>(FALLBACK_CATEGORIES)
+  const [estimates,      setEstimates]      = useState<Record<number, FareEstimate>>({})
+  const [loading,        setLoading]        = useState(true)
+  const [selected,       setSelected]       = useState(2)
+  const [isBooking,      setIsBooking]      = useState(false)
+  const [bookError,      setBookError]      = useState<string | null>(null)
+  const [nearbyDrivers,  setNearbyDrivers]  = useState<Array<{ driver_id: string; lat: number; lng: number; category_id: number }>>([])
+
+  useEffect(() => {
+    const fetch = async () => {
+      try { setNearbyDrivers(await rideApi.getNearbyDrivers(originLat, originLng)) } catch {}
+    }
+    void fetch()
+    const id = setInterval(fetch, 8000)
+    return () => clearInterval(id)
+  }, [originLat, originLng])
 
   const center: [number, number] = [(originLat + destinationLat) / 2, (originLng + destinationLng) / 2]
   const route: [number, number][] = [[originLat, originLng], [destinationLat, destinationLng]]
@@ -102,14 +114,15 @@ function SelectRideContent() {
   const selectedFare   = estimates[selected]?.breakdown.total
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Map */}
-      <div className="relative" style={{ height: '45%' }}>
+      <div className="relative" style={{ height: '38%' }}>
         <SelectRideMapScene
           center={center}
           pickupPos={[originLat, originLng]}
           dropPos={[destinationLat, destinationLng]}
           route={route}
+          nearbyDrivers={nearbyDrivers}
         />
         <button
           onClick={() => router.back()}
@@ -127,7 +140,7 @@ function SelectRideContent() {
       {/* Bottom sheet */}
       <div className="flex-1 bg-surface rounded-t-3xl -mt-3 shadow-sheet overflow-y-auto">
         <div className="w-10 h-1 bg-border rounded-full mx-auto mt-3 mb-4" />
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-24">
           <h2 className="font-bold text-text-primary text-lg mb-4 pl-1">Choose a ride</h2>
 
           <div className="space-y-2 mb-6">
@@ -135,21 +148,22 @@ function SelectRideContent() {
               const est  = estimates[cat.id]
               const fare = est?.breakdown.total
               const isSelected = selected === cat.id
+              const CatIcon = CATEGORY_ICON[cat.slug] ?? Car
 
               return (
                 <button
                   key={cat.id}
                   onClick={() => setSelected(cat.id)}
                   className={cn(
-                    'w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-[transform,background-color,border-color] duration-150 active:scale-[0.98]',
+                    'w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all duration-150 active:scale-[0.98] cursor-pointer',
                     isSelected ? 'border-primary bg-primary-subtle' : 'border-transparent bg-background'
                   )}
                 >
                   <div className={cn(
-                    'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-xl transition-shadow',
-                    isSelected ? 'bg-gradient-primary shadow-button' : 'bg-background'
+                    'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all',
+                    isSelected ? 'bg-gradient-primary shadow-button' : 'bg-primary-subtle'
                   )}>
-                    {isSelected ? <Car size={20} className="text-white" /> : (CATEGORY_EMOJI[cat.slug] ?? '🚗')}
+                    <CatIcon size={20} className={isSelected ? 'text-white' : 'text-primary'} />
                   </div>
                   <div className="flex-1 text-left">
                     <p className="font-bold text-text-primary">{cat.display_name}</p>
@@ -177,12 +191,23 @@ function SelectRideContent() {
             })}
           </div>
 
-          <div className="flex items-center justify-between bg-background rounded-2xl px-4 py-3 mb-4">
+          <div
+            className="flex items-center justify-between rounded-2xl px-4 py-3 mb-4"
+            style={{
+              background: 'rgba(79,70,229,0.04)',
+              border: '1px solid rgba(79,70,229,0.10)',
+            }}
+          >
             <div className="flex items-center gap-2">
-              <span className="text-lg">💳</span>
-              <span className="text-sm font-medium text-text-primary">Cash</span>
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{ background: 'rgba(79,70,229,0.10)' }}
+              >
+                <CreditCard size={14} className="text-primary" />
+              </div>
+              <span className="text-sm font-semibold text-text-primary">Cash</span>
             </div>
-            <button className="text-xs text-primary font-semibold">Change</button>
+            <button className="text-xs text-primary font-semibold cursor-pointer">Change</button>
           </div>
 
           {bookError && (
