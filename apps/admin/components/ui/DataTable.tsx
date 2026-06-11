@@ -52,7 +52,11 @@ export default function DataTable<T extends Record<string, unknown>>({
                 <tr>
                   <td colSpan={columns.length} className="!border-0">
                     <div className="flex flex-col items-center justify-center py-16 text-text-muted">
-                      {emptyIcon ?? <div className="text-4xl mb-3">📭</div>}
+                      {emptyIcon ?? (
+                        <div className="w-12 h-12 rounded-2xl bg-surface-2 flex items-center justify-center mb-3">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4m8-5v5"/></svg>
+                        </div>
+                      )}
                       <p className="text-sm font-medium">{emptyMessage}</p>
                     </div>
                   </td>

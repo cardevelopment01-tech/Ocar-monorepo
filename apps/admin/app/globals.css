@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -10,59 +10,81 @@ html.overflow-hidden {
 
 @layer base {
   html { font-family: 'DM Sans', sans-serif; }
-  body { background: #F1F5F9; color: #0F172A; }
-  * { -webkit-font-smoothing: antialiased; }
+  body { background: #F8FAFF; color: #0F172A; }
+  * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 }
 
 @layer components {
-  /* Status pills */
+  /* ── Status pills ── */
   .pill {
     @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
   }
-  .pill-success { @apply pill bg-success-light text-success; }
-  .pill-warning { @apply pill bg-warning-light text-warning; }
-  .pill-danger  { @apply pill bg-danger-light text-danger;  }
-  .pill-info    { @apply pill bg-info-light text-info;      }
-  .pill-purple  { @apply pill bg-purple-light text-purple;  }
-  .pill-muted   { @apply pill bg-surface-2 text-text-muted; }
+  .pill-success { @apply pill bg-success-light  text-success; }
+  .pill-warning { @apply pill bg-warning-light  text-warning; }
+  .pill-danger  { @apply pill bg-danger-light   text-danger;  }
+  .pill-info    { @apply pill bg-info-light     text-info;    }
+  .pill-purple  { @apply pill bg-purple-light   text-purple;  }
+  .pill-muted   { @apply pill bg-surface-2      text-text-muted; }
 
-  /* Data table */
+  /* ── Data table ── */
   .data-table { @apply w-full text-sm border-collapse; }
   .data-table th {
     @apply px-4 py-3 text-left text-xs font-semibold text-text-muted uppercase tracking-wide
            border-b border-border bg-surface-2;
   }
   .data-table td {
-    @apply px-4 py-3.5 text-text-secondary border-b border-border-light transition-colors duration-100;
+    @apply px-4 py-3.5 text-text-secondary border-b border-border-light transition-colors duration-150;
   }
   .data-table tr { @apply cursor-pointer; }
-  .data-table tr:hover td { background-color: #EFF6FF; }
+  .data-table tr:hover td { background-color: #F5F7FF; }
   .data-table tr:last-child td { @apply border-b-0; }
 
-  /* Stat card */
+  /* ── Stat card base ── */
   .stat-card { @apply rounded-2xl p-5 text-white relative overflow-hidden; }
 
-  /* Sidebar nav item */
+  /* ── Sidebar nav item ── */
   .nav-item {
     @apply relative flex items-center gap-3 px-3 py-2.5 rounded-xl
-           text-sidebar-text text-sm font-medium cursor-pointer
-           transition-all duration-150 hover:bg-sidebar-hover hover:text-white;
+           text-text-muted text-sm font-medium cursor-pointer
+           transition-all duration-150 hover:bg-sidebar-hover hover:text-text-secondary;
   }
-  .nav-item.active { @apply bg-sidebar-active text-white; }
+  .nav-item.active { @apply bg-primary text-white shadow-sm; }
 
-  /* Admin card */
-  .admin-card { @apply bg-surface rounded-2xl shadow-card p-6; }
+  /* ── Admin card ── */
+  .admin-card {
+    @apply bg-surface rounded-2xl p-6;
+    box-shadow: 0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(79,70,229,0.06);
+    transition: box-shadow 200ms ease;
+  }
+  .admin-card:hover {
+    box-shadow: 0 4px 16px rgba(15,23,42,0.08), 0 12px 40px rgba(79,70,229,0.10);
+  }
 
-  /* Page layout helpers */
-  .page-header { @apply flex items-center justify-between mb-6; }
-  .page-title  { @apply text-2xl font-bold text-text-primary; }
+  /* ── Page layout ── */
+  .page-header   { @apply flex items-center justify-between mb-6; }
+  .page-title    { @apply text-2xl font-bold text-text-primary; }
   .page-subtitle { @apply text-sm text-text-muted mt-0.5; }
 
-  /* Shimmer skeleton */
+  /* ── Shimmer skeleton ── */
   .skeleton {
     @apply rounded-md;
-    background: linear-gradient(90deg, #E2E8F0 25%, #F1F5F9 50%, #E2E8F0 75%);
+    background: linear-gradient(90deg, #EEF2FF 25%, #F5F7FF 50%, #EEF2FF 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite linear;
+  }
+
+  /* ── Premium button ── */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold
+           hover:bg-primary-dark transition-all duration-150 cursor-pointer;
+    box-shadow: 0 2px 8px rgba(79,70,229,0.30);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 4px 16px rgba(79,70,229,0.40);
+    transform: translateY(-1px);
+  }
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-surface border border-border
+           text-text-secondary text-sm font-semibold hover:bg-surface-2 transition-all duration-150 cursor-pointer;
   }
 }
