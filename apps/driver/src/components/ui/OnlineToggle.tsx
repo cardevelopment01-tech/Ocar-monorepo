@@ -9,38 +9,48 @@ interface OnlineToggleProps {
 
 export default function OnlineToggle({ isOnline, onToggle, disabled = false }: OnlineToggleProps) {
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-2.5">
       <div className="relative">
-        {/* Expanding ring — online only */}
         {isOnline && (
           <>
-            <span className="absolute inset-0 rounded-full bg-primary animate-ring-expand opacity-60" />
-            <span className="absolute inset-0 rounded-full bg-primary animate-ring-expand opacity-40" style={{ animationDelay: '0.5s' }} />
+            <span
+              className="absolute inset-0 rounded-full animate-ring-expand"
+              style={{ background: 'rgba(249,115,22,0.30)' }}
+            />
+            <span
+              className="absolute inset-0 rounded-full animate-ring-expand"
+              style={{ background: 'rgba(249,115,22,0.20)', animationDelay: '0.8s' }}
+            />
           </>
         )}
 
         <button
           onClick={onToggle}
           disabled={disabled}
+          aria-label={isOnline ? 'Go offline' : 'Go online'}
+          aria-pressed={isOnline}
           className={cn(
-            'relative w-[110px] h-[110px] rounded-full flex flex-col items-center justify-center gap-1.5',
-            'active:scale-95 transition-transform duration-300',
+            'relative w-[104px] h-[104px] rounded-full flex flex-col items-center justify-center gap-1.5 cursor-pointer',
+            'active:scale-95 transition-[transform,box-shadow] duration-200',
             'disabled:opacity-50 disabled:cursor-not-allowed',
-            isOnline
-              ? 'shadow-green animate-pulse-green'
-              : 'border-2 border-border bg-surface-2'
+            isOnline ? 'animate-pulse-orange' : ''
           )}
           style={isOnline ? {
-            background: 'radial-gradient(circle, #22C55E 0%, #16A34A 100%)',
-          } : undefined}
+            background: 'linear-gradient(145deg, #FB923C 0%, #F97316 55%, #EA580C 100%)',
+            boxShadow: '0 0 28px rgba(249,115,22,0.35), 0 6px 20px rgba(249,115,22,0.30), inset 0 1px 0 rgba(255,255,255,0.25)',
+          } : {
+            background: '#FFFFFF',
+            border: '2px solid #E2E8F0',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.80)',
+          }}
         >
           <Power
             size={22}
-            className={cn(isOnline ? 'text-white' : 'text-text-muted')}
             strokeWidth={2.5}
+            className={cn(isOnline ? 'text-white' : 'text-text-muted')}
           />
           <span className={cn(
-            'text-[11px] font-bold tracking-widest',
+            'text-[10px] font-black tracking-[0.14em]',
             isOnline ? 'text-white' : 'text-text-muted'
           )}>
             {isOnline ? 'ONLINE' : 'OFFLINE'}
@@ -49,8 +59,8 @@ export default function OnlineToggle({ isOnline, onToggle, disabled = false }: O
       </div>
 
       <p className={cn(
-        'text-xs text-center',
-        isOnline ? 'text-text-secondary' : 'text-text-muted'
+        'text-[11px] font-medium text-center',
+        isOnline ? 'text-accent-orange' : 'text-text-muted'
       )}>
         {isOnline ? 'Tap to go offline' : 'Tap to go online'}
       </p>

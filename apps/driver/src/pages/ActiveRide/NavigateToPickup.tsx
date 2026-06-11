@@ -37,13 +37,21 @@ export default function NavigateToPickup() {
   useEffect(() => {
     if (!sessionId) return
     const sendLocation = async () => {
-      let lat = DEFAULT_LAT, lng = DEFAULT_LNG
-      try { const pos = await getCurrentPosition(); lat = pos.coords.latitude; lng = pos.coords.longitude } catch {}
-      await driverRideApi.updateLocation({ sessionId, lat, lng, recordedAt: new Date().toISOString() }).catch(() => {})
+      const pos = await getCurrentPosition().catch(() => null)
+      if (!pos) return  // never send fake coordinates on GPS failure
+      await driverRideApi.updateLocation({
+        sessionId, lat: pos.coords.latitude, lng: pos.coords.longitude,
+        recordedAt: new Date().toISOString(),
+      }).catch(() => {})
     }
     void sendLocation()
     locationIntervalRef.current = setInterval(sendLocation, 30_000)
-    return () => { if (locationIntervalRef.current) clearInterval(locationIntervalRef.current) }
+    const onVisible = () => { if (document.visibilityState === 'visible') void sendLocation() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [sessionId])
 
   const handleArrived = async () => {

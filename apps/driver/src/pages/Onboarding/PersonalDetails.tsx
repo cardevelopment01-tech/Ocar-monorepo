@@ -62,11 +62,23 @@ export default function PersonalDetails() {
     setLanguages(prev => prev.includes(lang) ? prev.filter(l => l !== lang) : [...prev, lang])
 
   const currentStep = driver?.onboarding_step ?? 'personal_info'
-  const steps = ['personal_info', 'vehicle_info', 'documents']
+  const steps = ['personal_info', 'vehicle_info', 'documents', 'selfie']
   const stepIdx = steps.indexOf(currentStep)
 
-  const isValid = fullName && gender && dob && address && state && city &&
-    /^\d{6}$/.test(pincode) && experience && /^[6-9]\d{9}$/.test(emergency) && languages.length > 0
+  const validationIssues = [
+    !fullName                          && 'Full Name',
+    !gender                            && 'Gender',
+    !dob                               && 'Date of Birth',
+    !address                           && 'Residential Address',
+    !state                             && 'State',
+    !city                              && 'City',
+    !(/^\d{6}$/.test(pincode))         && 'Pincode (6 digits)',
+    !experience                        && 'Driving Experience',
+    !(/^[6-9]\d{9}$/.test(emergency))  && 'Emergency Contact (10-digit Indian mobile)',
+    languages.length === 0             && 'At least one Language',
+  ].filter(Boolean) as string[]
+
+  const isValid = validationIssues.length === 0
 
   const handleContinue = async () => {
     if (!isValid) return
@@ -123,7 +135,7 @@ export default function PersonalDetails() {
           <ArrowLeft size={20} className="text-text-secondary" />
         </button>
         <div>
-          <p className="text-text-muted text-xs">Step 1 of 3</p>
+          <p className="text-text-muted text-xs">Step 1 of 4</p>
           <h1 className="text-xl font-bold">Personal Details</h1>
         </div>
       </div>
@@ -212,6 +224,26 @@ export default function PersonalDetails() {
           </div>
         </Field>
       </div>
+
+      {!isValid && validationIssues.length > 0 && (
+        <div
+          className="mb-4 rounded-2xl px-4 py-3"
+          style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.18)' }}
+        >
+          <p className="text-text-muted text-xs font-bold uppercase tracking-wider mb-2">Still needed</p>
+          <div className="flex flex-wrap gap-1.5">
+            {validationIssues.map(issue => (
+              <span
+                key={issue}
+                className="text-xs font-semibold rounded-full px-2.5 py-1"
+                style={{ background: 'rgba(99,102,241,0.15)', color: '#A5B4FC' }}
+              >
+                {issue}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-accent-red text-sm mb-4">{error}</p>}
 

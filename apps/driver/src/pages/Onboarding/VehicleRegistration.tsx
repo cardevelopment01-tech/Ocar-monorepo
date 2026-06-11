@@ -39,7 +39,7 @@ export default function VehicleRegistration() {
   const [error, setError] = useState<string | null>(null)
 
   const currentStep = driver?.onboarding_step ?? 'vehicle_info'
-  const steps = ['personal_info', 'vehicle_info', 'documents']
+  const steps = ['personal_info', 'vehicle_info', 'documents', 'selfie']
   const stepIdx = steps.indexOf(currentStep)
 
   const loadDropdownData = async () => {
@@ -58,8 +58,8 @@ export default function VehicleRegistration() {
         const v = savedVehicle.vehicle
         if (v.category_id) setCategoryId(Number(v.category_id))
         if (v.brand_id) {
-          setBrandId(v.brand_id)
-          const m = await onboardingApi.getModels(v.brand_id)
+          setBrandId(Number(v.brand_id))
+          const m = await onboardingApi.getModels(Number(v.brand_id))
           setModels(m)
         }
         if (v.vehicle_name) setVehicleName(v.vehicle_name)
@@ -164,7 +164,7 @@ export default function VehicleRegistration() {
           <ArrowLeft size={20} className="text-text-secondary" />
         </button>
         <div>
-          <p className="text-text-muted text-xs">Step 2 of 3</p>
+          <p className="text-text-muted text-xs">Step 2 of 4</p>
           <h1 className="text-xl font-bold">Vehicle Details</h1>
         </div>
       </div>
@@ -199,7 +199,7 @@ export default function VehicleRegistration() {
           <div className="grid grid-cols-2 gap-2">
             {categories.map(c => (
               <button key={c.id} onClick={() => setCategoryId(Number(c.id))}
-                className={`py-3 rounded-xl border-2 font-semibold text-sm transition-all ${categoryId === c.id ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
+                className={`py-3 rounded-xl border-2 font-semibold text-sm transition-all ${categoryId === Number(c.id) ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
                 {c.display_name}
               </button>
             ))}

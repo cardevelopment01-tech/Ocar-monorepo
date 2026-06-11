@@ -1,17 +1,16 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
 import StatusBar from '@/components/ui/StatusBar'
 import { useSessionStore } from '@/store/useSessionStore'
 import { mockEarnings } from '@/lib/mock-data'
 import { driverRideApi, type TripHistoryItem } from '@/lib/ride-api'
 import { cn } from '@/lib/utils'
+import { Car } from 'lucide-react'
 
 type Period = 'today' | 'week' | 'month'
 
 const PERIODS: { key: Period; label: string }[] = [
-  { key: 'today', label: 'Today' },
-  { key: 'week',  label: 'This Week' },
+  { key: 'today', label: 'Today'      },
+  { key: 'week',  label: 'This Week'  },
   { key: 'month', label: 'This Month' },
 ]
 
@@ -20,7 +19,6 @@ function fmtDate(iso: string) {
 }
 
 export default function Earnings() {
-  const navigate = useNavigate()
   const { isOnline } = useSessionStore()
   const [period, setPeriod] = useState<Period>('today')
   const e = mockEarnings[period]
@@ -37,30 +35,28 @@ export default function Earnings() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary pb-10">
+    <div className="min-h-screen bg-bg text-text-primary pb-24">
       <StatusBar isOnline={isOnline} earningsToday={mockEarnings.today.total} />
 
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 pt-16 pb-4">
-        <button
-          onClick={() => navigate(-1)}
-          className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center"
-        >
-          <ArrowLeft size={20} className="text-text-secondary" />
-        </button>
-        <h1 className="text-xl font-bold">Earnings</h1>
+      {/* Page header */}
+      <div className="px-5 pt-[64px] pb-2">
+        <h1 className="font-display font-bold text-2xl text-text-primary">Earnings</h1>
+        <p className="text-text-muted text-sm mt-0.5">Your performance overview</p>
       </div>
 
       {/* Period tabs */}
-      <div className="flex gap-1 mx-4 bg-surface rounded-2xl p-1.5 mb-5 border border-border">
+      <div className="flex gap-1 mx-5 bg-surface-2 rounded-2xl p-1.5 mb-5 border border-border">
         {PERIODS.map(p => (
           <button
             key={p.key}
             onClick={() => setPeriod(p.key)}
             className={cn(
-              'flex-1 py-2 rounded-xl text-sm font-bold transition-all',
-              period === p.key ? 'bg-primary text-text-inverse shadow-button' : 'text-text-muted'
+              'flex-1 py-2 rounded-xl text-sm font-bold transition-all duration-200 cursor-pointer',
+              period === p.key
+                ? 'bg-white text-primary shadow-card'
+                : 'text-text-muted hover:text-text-secondary'
             )}
+            aria-pressed={period === p.key}
           >
             {p.label}
           </button>
@@ -69,32 +65,44 @@ export default function Earnings() {
 
       {/* Total card */}
       <div
-        className="mx-4 bg-surface rounded-3xl p-5 mb-4 border border-border"
-        style={{ borderTopColor: '#22C55E', borderTopWidth: 3 }}
+        className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border"
+        style={{ borderLeftColor: '#2563EB', borderLeftWidth: 3 }}
       >
-        <p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1">
+        <p className="text-text-muted text-[11px] font-bold uppercase tracking-widest mb-1">
           {PERIODS.find(p => p.key === period)!.label}
         </p>
-        <p className="text-[44px] font-black text-text-primary leading-none">
+        <p className="text-[44px] font-black text-text-primary leading-none tabular-nums">
           ₹{e.total.toLocaleString('en-IN')}
         </p>
         <div className="flex gap-2 mt-3 flex-wrap">
-          <span className="bg-surface-3 rounded-full px-3 py-1 text-xs font-semibold text-text-secondary">
+          <span
+            className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary"
+            style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}
+          >
             {e.trips} trips
           </span>
-          <span className="bg-surface-3 rounded-full px-3 py-1 text-xs font-semibold text-text-secondary">
+          <span
+            className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary"
+            style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}
+          >
             {e.hours} online
           </span>
-          <span className="bg-surface-3 rounded-full px-3 py-1 text-xs font-semibold text-primary">
-            ⭐ {e.rating}
+          <span
+            className="rounded-full px-3 py-1 text-xs font-semibold flex items-center gap-1"
+            style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.18)', color: '#D97706' }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="#D97706" aria-hidden="true">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+            {e.rating}
           </span>
         </div>
       </div>
 
       {/* Bar chart */}
-      <div className="mx-4 bg-surface rounded-3xl p-5 mb-4 border border-border">
+      <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
         <p className="text-text-secondary text-sm font-semibold mb-4">Breakdown</p>
-        <div className="flex items-end gap-2 h-28">
+        <div className="flex items-end gap-2 h-28" role="img" aria-label="Earnings chart">
           {e.chart.map((val, i) => (
             <div key={i} className="flex-1 flex flex-col items-center gap-1">
               <div
@@ -102,7 +110,10 @@ export default function Earnings() {
                 style={{
                   height: `${(val / maxBar) * 100}%`,
                   minHeight: 4,
-                  background: val > 0 ? '#22C55E' : '#1E2433',
+                  background: val > 0
+                    ? 'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)'
+                    : '#F1F5F9',
+                  borderRadius: '4px 4px 0 0',
                 }}
               />
               <span className="text-text-muted text-[10px]">{e.chartLabels[i]}</span>
@@ -112,8 +123,8 @@ export default function Earnings() {
       </div>
 
       {/* Earnings breakdown */}
-      <div className="mx-4 bg-surface rounded-3xl p-5 mb-4 border border-border">
-        <p className="text-text-secondary text-sm font-semibold mb-3">Earnings Breakdown</p>
+      <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
+        <p className="text-text-secondary text-sm font-semibold mb-3">Breakdown</p>
         {[
           { label: 'Base Fare',    value: e.breakdown.baseFare,    neg: false },
           { label: 'Tips',         value: e.breakdown.tips,        neg: false },
@@ -122,7 +133,10 @@ export default function Earnings() {
         ].map(r => (
           <div key={r.label} className="flex justify-between items-center py-2.5 border-b border-border last:border-0">
             <span className="text-text-secondary text-sm">{r.label}</span>
-            <span className={cn('font-bold text-sm', r.neg ? 'text-accent-red' : 'text-text-primary')}>
+            <span className={cn(
+              'font-bold text-sm tabular-nums',
+              r.neg ? 'text-accent-red' : 'text-accent-green'
+            )}>
               {r.neg ? '-' : '+'}₹{r.value.toLocaleString('en-IN')}
             </span>
           </div>
@@ -130,17 +144,17 @@ export default function Earnings() {
       </div>
 
       {/* Trip history */}
-      <div className="mx-4 bg-surface rounded-3xl p-5 border border-border">
+      <div className="mx-5 bg-white rounded-3xl p-5 border border-border">
         <p className="text-text-secondary text-sm font-semibold mb-3">Recent Trips</p>
         {tripsLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 py-3 border-b border-border last:border-0 animate-pulse">
-              <div className="w-9 h-9 rounded-xl bg-surface-3 flex-shrink-0" />
+            <div key={i} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
+              <div className="w-9 h-9 rounded-xl skeleton flex-shrink-0" />
               <div className="flex-1 space-y-1.5">
-                <div className="h-4 bg-surface-3 rounded w-3/4" />
-                <div className="h-3 bg-surface-3 rounded w-1/2" />
+                <div className="h-4 skeleton rounded w-3/4" />
+                <div className="h-3 skeleton rounded w-1/2" />
               </div>
-              <div className="h-4 w-12 bg-surface-3 rounded" />
+              <div className="h-4 w-12 skeleton rounded" />
             </div>
           ))
         ) : trips.length === 0 ? (
@@ -148,8 +162,11 @@ export default function Earnings() {
         ) : (
           trips.map(t => (
             <div key={t.id} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
-              <div className="w-9 h-9 rounded-xl bg-surface-3 flex items-center justify-center flex-shrink-0">
-                <span className="text-base">🚗</span>
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.15)' }}
+              >
+                <Car size={15} className="text-primary" aria-hidden="true" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-text-primary text-sm font-semibold truncate">
@@ -160,7 +177,7 @@ export default function Earnings() {
                   {t.user_name ? ` · ${t.user_name}` : ''}
                 </p>
               </div>
-              <p className="text-primary font-bold text-sm flex-shrink-0">
+              <p className="text-accent-green font-bold text-sm flex-shrink-0 tabular-nums">
                 {t.driver_earning ? `₹${parseFloat(t.driver_earning).toLocaleString('en-IN')}` : '—'}
               </p>
             </div>

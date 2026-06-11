@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Poppins:wght@600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,15 +6,17 @@
 
 @layer base {
   html {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
-    background-color: #0A0C10;
-    color: #F1F5F9;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #F5F8FF;
+    color: #0F172A;
+    scroll-behavior: smooth;
   }
 
   body {
-    background-color: #0A0C10;
-    color: #F1F5F9;
+    background-color: #F5F8FF;
+    color: #0F172A;
     overscroll-behavior: none;
   }
 
@@ -22,63 +24,137 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Touch targets — scoped to buttons only so inline text links aren't
-     forced to 48px tall (which previously distorted link layout). */
   button, [role="button"] {
-    min-height: 48px;
-    min-width: 48px;
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 
 @layer components {
+  /* ── Card ── */
   .driver-card {
-    @apply bg-surface rounded-2xl p-5 border border-border;
+    border-radius: 20px;
+    padding: 20px;
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 4px 16px rgba(0,0,0,0.06);
   }
 
-  .btn-go {
-    @apply w-full py-5 px-6 bg-primary text-text-inverse
-      font-bold text-lg rounded-2xl shadow-button
-      active:scale-[0.98] active:bg-primary-dark
-      transition-[transform,background-color,box-shadow] duration-150
+  /* ── Primary CTA ── */
+  .btn-primary {
+    @apply w-full py-4 px-6 text-white font-bold text-base rounded-2xl cursor-pointer
+      active:scale-[0.98] transition-[transform,box-shadow] duration-150
       disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+    box-shadow: 0 4px 14px rgba(37,99,235,0.30);
+  }
+  .btn-primary:not(:disabled):hover {
+    box-shadow: 0 6px 22px rgba(37,99,235,0.40);
   }
 
+  /* Alias — preserves existing usage */
+  .btn-go { @apply btn-primary; }
+
+  /* ── Orange CTA (go online) ── */
+  .btn-go-online {
+    @apply w-full py-4 px-6 text-white font-bold text-base rounded-2xl cursor-pointer
+      active:scale-[0.98] transition-[transform,box-shadow] duration-150
+      disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+    background: linear-gradient(135deg, #FB923C 0%, #F97316 100%);
+    box-shadow: 0 4px 14px rgba(249,115,22,0.35);
+  }
+  .btn-go-online:not(:disabled):hover {
+    box-shadow: 0 6px 22px rgba(249,115,22,0.45);
+  }
+
+  /* ── Danger ── */
   .btn-danger {
-    @apply w-full py-5 px-6 bg-accent-red text-white
-      font-bold text-lg rounded-2xl
+    @apply w-full py-4 px-6 text-white font-bold text-base rounded-2xl cursor-pointer
       active:scale-[0.98] transition-transform duration-150;
+    background: linear-gradient(135deg, #F87171 0%, #EF4444 100%);
+    box-shadow: 0 4px 12px rgba(239,68,68,0.22);
   }
 
-  .btn-secondary-dark {
-    @apply w-full py-4 px-6 bg-surface-2 text-text-primary
-      font-semibold text-base rounded-2xl border border-border
-      active:scale-[0.98] active:bg-surface-3
-      transition-[transform,background-color] duration-150;
+  /* ── Secondary ── */
+  .btn-secondary {
+    @apply w-full py-4 px-6 text-text-secondary font-semibold text-base rounded-2xl cursor-pointer
+      active:scale-[0.98] transition-[transform,background,box-shadow] duration-150
+      border border-border;
+    background: #F1F5F9;
+  }
+  .btn-secondary:hover { background: #E8EEFC; }
+
+  /* Alias — preserves existing usage in TripRequestCard */
+  .btn-secondary-dark { @apply btn-secondary; }
+
+  /* ── Inputs ── */
+  .input-light {
+    @apply w-full px-4 py-4 text-text-primary placeholder-text-muted text-base rounded-xl
+      focus:outline-none transition-all duration-200 bg-white border border-border;
+  }
+  .input-light:focus {
+    border-color: rgba(37,99,235,0.50);
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+  }
+  .input-dark { @apply input-light; }
+
+  /* ── Skeleton shimmer ── */
+  .skeleton {
+    border-radius: 8px;
+    background: linear-gradient(90deg, #F1F5F9 25%, #E8EEF6 50%, #F1F5F9 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s infinite linear;
   }
 
-  .status-pill {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5
-      rounded-full text-sm font-semibold;
+  /* ── Page container ── */
+  .page {
+    @apply min-h-screen bg-bg text-text-primary pb-24;
   }
 
-  .input-dark {
-    @apply w-full px-4 py-4 bg-surface-2 text-text-primary
-      placeholder-text-muted text-base rounded-xl
-      border border-border
-      focus:outline-none focus:border-primary
-      transition-colors duration-150;
+  /* ── Standard back header ── */
+  .page-header {
+    @apply flex items-center gap-3 px-4 pb-4;
+    padding-top: 68px;
+  }
+
+  .back-btn {
+    @apply w-10 h-10 rounded-full flex items-center justify-center transition-colors duration-150
+      bg-white border border-border cursor-pointer;
+  }
+  .back-btn:hover { background: #F0F4FD; }
+
+  /* ── Status pills ── */
+  .status-pill { @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold; }
+  .status-pill-online {
+    @apply status-pill;
+    background: rgba(249,115,22,0.10);
+    border: 1px solid rgba(249,115,22,0.25);
+    color: #EA580C;
+  }
+  .status-pill-offline {
+    @apply status-pill;
+    background: #F1F5F9;
+    border: 1px solid #E2E8F0;
+    color: #94A3B8;
   }
 }
 
-/* Leaflet — keep map light even on dark UI */
+/* ── Leaflet ── */
 .leaflet-container {
   width: 100%;
   height: 100%;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   z-index: 0 !important;
 }
-
-.leaflet-pane   { z-index: 0 !important; }
+.leaflet-pane    { z-index: 0 !important; }
 .leaflet-top,
-.leaflet-bottom { z-index: 0 !important; }
+.leaflet-bottom  { z-index: 0 !important; }
 .leaflet-control-container { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

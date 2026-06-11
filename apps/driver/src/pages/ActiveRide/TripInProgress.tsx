@@ -62,13 +62,21 @@ export default function TripInProgress() {
   useEffect(() => {
     if (!sessionId) return
     const send = async () => {
-      let lat = DEFAULT_LAT, lng = DEFAULT_LNG
-      try { const p = await getCurrentPosition(); lat = p.coords.latitude; lng = p.coords.longitude } catch {}
-      await driverRideApi.updateLocation({ sessionId, lat, lng, recordedAt: new Date().toISOString() }).catch(() => {})
+      const pos = await getCurrentPosition().catch(() => null)
+      if (!pos) return  // never send fake coordinates on GPS failure
+      await driverRideApi.updateLocation({
+        sessionId, lat: pos.coords.latitude, lng: pos.coords.longitude,
+        recordedAt: new Date().toISOString(),
+      }).catch(() => {})
     }
     void send()
     locationIntervalRef.current = setInterval(send, 30_000)
-    return () => { if (locationIntervalRef.current) clearInterval(locationIntervalRef.current) }
+    const onVisible = () => { if (document.visibilityState === 'visible') void send() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [sessionId])
 
   const handleCompleteTrip = async () => {
