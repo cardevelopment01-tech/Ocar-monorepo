@@ -92,11 +92,11 @@ export async function getDriverById(id: bigint): Promise<AdminDriverDetail | nul
 
   const [docsRes, vehicleDocsRes, historyRes] = await Promise.all([
     pool.query(
-      `SELECT doc_type, file_url, status, rejection_note FROM driver_documents WHERE driver_id = $1 ORDER BY doc_type`,
+      `SELECT id::text, doc_type, file_url, status, rejection_note FROM driver_documents WHERE driver_id = $1 ORDER BY doc_type`,
       [id]
     ),
     pool.query(
-      `SELECT dvd.doc_type, dvd.file_url, dvd.status, dvd.rejection_note
+      `SELECT dvd.id::text, dvd.doc_type, dvd.file_url, dvd.status, dvd.rejection_note
        FROM driver_vehicle_documents dvd
        JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
        WHERE dv.driver_id = $1
@@ -157,14 +157,15 @@ export async function updateDriverStatus(
   adminId: bigint,
   fromStatus: DriverStatus,
   toStatus: DriverStatus,
-  reason?: string
+  reason?: string,
+  onboardingStep?: string
 ): Promise<void> {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
     await client.query(
-      `UPDATE drivers SET status = $1, updated_at = now() WHERE id = $2`,
-      [toStatus, driverId]
+      `UPDATE drivers SET status = $1, onboarding_step = COALESCE($3, onboarding_step), updated_at = now() WHERE id = $2`,
+      [toStatus, driverId, onboardingStep ?? null]
     )
     await client.query(
       `INSERT INTO driver_status_history (driver_id, from_status, to_status, reason, changed_by)
@@ -457,6 +458,26 @@ export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
     number_plate: r.number_plate as string | null, vehicle_name: r.vehicle_name as string | null,
     driver_name: r.driver_name as string | null, driver_code: r.driver_code as string,
   }))
+}
+
+export async function approveDriverDoc(docId: bigint, adminId: bigint): Promise<void> {
+  await pool.query(
+    `UPDATE driver_documents
+     SET status = 'approved', reviewed_by = $1, reviewed_at = now(), updated_at = now()
+     WHERE id = $2`,
+    [adminId, docId]
+  )
+}
+
+export async function rejectDriverDoc(
+  docId: bigint, adminId: bigint, rejectionNote: string
+): Promise<void> {
+  await pool.query(
+    `UPDATE driver_documents
+     SET status = 'rejected', rejection_note = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
+     WHERE id = $3`,
+    [rejectionNote, adminId, docId]
+  )
 }
 
 export async function approveVehicleDoc(docId: bigint, adminId: bigint): Promise<void> {

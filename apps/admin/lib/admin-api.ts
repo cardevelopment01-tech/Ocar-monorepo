@@ -1,6 +1,6 @@
 import api from './api'
 
-export type DriverStatus = 'pending_docs' | 'pending_approval' | 'active' | 'suspended' | 'banned'
+export type DriverStatus = 'pending_docs' | 'pending_approval' | 'active' | 'suspended' | 'banned' | 'docs_rejected'
 
 export interface DriverListItem {
   id: string
@@ -54,8 +54,8 @@ export interface DriverDetail {
     category: string
     brand: string
   } | null
-  documents: { doc_type: string; file_url: string; status: string; rejection_note: string | null }[]
-  vehicle_documents: { doc_type: string; file_url: string; status: string; rejection_note: string | null }[]
+  documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null }[]
+  vehicle_documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null }[]
   status_history: { from_status: string | null; to_status: string; reason: string | null; created_at: string }[]
 }
 
@@ -84,7 +84,11 @@ export const adminDriverApi = {
     await api.patch(`/api/v1/admin/drivers/${id}/status`, { status: 'active' })
   },
 
-  reject: async (id: string, reason: string): Promise<void> => {
+  rejectDocs: async (id: string, reason: string): Promise<void> => {
+    await api.patch(`/api/v1/admin/drivers/${id}/status`, { status: 'docs_rejected', reason })
+  },
+
+  ban: async (id: string, reason: string): Promise<void> => {
     await api.patch(`/api/v1/admin/drivers/${id}/status`, { status: 'banned', reason })
   },
 
@@ -94,6 +98,22 @@ export const adminDriverApi = {
 
   reinstate: async (id: string): Promise<void> => {
     await api.patch(`/api/v1/admin/drivers/${id}/status`, { status: 'active' })
+  },
+
+  approveDriverDoc: async (docId: string): Promise<void> => {
+    await api.patch(`/api/v1/admin/drivers/documents/${docId}/approve`)
+  },
+
+  rejectDriverDoc: async (docId: string, rejectionNote: string): Promise<void> => {
+    await api.patch(`/api/v1/admin/drivers/documents/${docId}/reject`, { rejection_note: rejectionNote })
+  },
+
+  approveVehicleDoc: async (docId: string): Promise<void> => {
+    await api.patch(`/api/v1/admin/vehicles/documents/${docId}/approve`)
+  },
+
+  rejectVehicleDoc: async (docId: string, rejectionNote: string): Promise<void> => {
+    await api.patch(`/api/v1/admin/vehicles/documents/${docId}/reject`, { rejection_note: rejectionNote })
   },
 }
 

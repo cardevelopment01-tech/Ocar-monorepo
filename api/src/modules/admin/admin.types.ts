@@ -1,4 +1,4 @@
-export type DriverStatus = 'pending_docs' | 'pending_approval' | 'active' | 'suspended' | 'banned'
+export type DriverStatus = 'pending_docs' | 'pending_approval' | 'active' | 'suspended' | 'banned' | 'docs_rejected'
 
 export interface AdminDriverListRow {
   id: string
@@ -53,12 +53,14 @@ export interface AdminDriverDetail {
     brand: string
   } | null
   documents: {
+    id: string
     doc_type: string
     file_url: string
     status: string
     rejection_note: string | null
   }[]
   vehicle_documents: {
+    id: string
     doc_type: string
     file_url: string
     status: string

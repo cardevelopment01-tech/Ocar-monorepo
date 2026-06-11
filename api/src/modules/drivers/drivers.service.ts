@@ -1,6 +1,6 @@
 import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
-import { uploadFile } from '@/lib/storage'
+import { uploadFile, getPresignedUrl } from '@/lib/storage'
 import { notificationsQueue } from '@/jobs/queues'
 import * as repo from './drivers.repository'
 import type { Driver, DriverVehicle, OnboardingStatus } from './drivers.types'
@@ -184,7 +184,7 @@ export async function uploadDriverDocument(
   const fileUrl = await uploadFile(file, folder)
 
   const doc = await repo.upsertDriverDocument(driverId, docType, fileUrl)
-  return { doc_type: doc.doc_type, file_url: doc.file_url, status: doc.status }
+  return { doc_type: doc.doc_type, file_url: await getPresignedUrl(doc.file_url), status: doc.status }
 }
 
 export async function uploadVehicleDocument(
@@ -202,14 +202,15 @@ export async function uploadVehicleDocument(
   const validUntilDate = validUntil ? new Date(validUntil) : undefined
 
   const doc = await repo.upsertVehicleDocument(vehicle.id, docType, fileUrl, docNumber, validUntilDate)
-  return { doc_type: doc.doc_type, file_url: doc.file_url, status: doc.status }
+  return { doc_type: doc.doc_type, file_url: await getPresignedUrl(doc.file_url), status: doc.status }
 }
 
 export async function getDocumentStatus(driverId: bigint): Promise<{
   identity: { license_number: string | null; aadhaar_number: string | null }
-  photos: Record<string, { uploaded: boolean; url: string | null; status: string | null }>
-  vehicle_docs: Record<string, { uploaded: boolean; url: string | null; status: string | null }>
+  photos: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null }>
+  vehicle_docs: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null }>
   all_required_complete: boolean
+  rejection_reason: string | null
 }> {
   const driver = await repo.findDriverById(driverId)
   if (!driver) throw createHttpError(AppErrors.NOT_FOUND)
@@ -218,23 +219,37 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
   const docMap = new Map(docs.map((d) => [d.doc_type, d]))
 
   const photoTypes = ['profile_photo', 'driving_license', 'aadhaar_front', 'aadhaar_back']
-  const photos: Record<string, { uploaded: boolean; url: string | null; status: string | null }> = {}
+  const photos: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null }> = {}
   for (const dt of photoTypes) {
     const doc = docMap.get(dt)
-    photos[dt] = { uploaded: !!doc, url: doc?.file_url ?? null, status: doc?.status ?? null }
+    photos[dt] = {
+      uploaded: !!doc,
+      url: doc?.file_url ? await getPresignedUrl(doc.file_url) : null,
+      status: doc?.status ?? null,
+      rejection_note: doc?.rejection_note ?? null,
+    }
   }
 
   const vehicleDocTypes = ['vehicle_rc', 'insurance', 'permit', 'pollution_cert', 'fitness_cert']
-  const vehicleDocs: Record<string, { uploaded: boolean; url: string | null; status: string | null }> = {}
+  const vehicleDocs: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null }> = {}
   const vehicle = await repo.findVehicleByDriverId(driverId)
   const vehicleDocList = vehicle ? await repo.findVehicleDocuments(vehicle.id) : []
   const vehicleDocMap = new Map(vehicleDocList.map((d) => [d.doc_type, d]))
   for (const dt of vehicleDocTypes) {
     const doc = vehicleDocMap.get(dt)
-    vehicleDocs[dt] = { uploaded: !!doc, url: doc?.file_url ?? null, status: doc?.status ?? null }
+    vehicleDocs[dt] = {
+      uploaded: !!doc,
+      url: doc?.file_url ? await getPresignedUrl(doc.file_url) : null,
+      status: doc?.status ?? null,
+      rejection_note: doc?.rejection_note ?? null,
+    }
   }
 
   const { complete } = await checkDocuments(driverId)
+
+  const rejectionReason = driver.status === 'docs_rejected'
+    ? await repo.findLatestDocsRejectedReason(driverId)
+    : null
 
   return {
     identity: {
@@ -244,6 +259,7 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
     photos,
     vehicle_docs: vehicleDocs,
     all_required_complete: complete,
+    rejection_reason: rejectionReason,
   }
 }
 

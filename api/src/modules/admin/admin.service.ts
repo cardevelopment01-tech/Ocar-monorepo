@@ -4,7 +4,7 @@ import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
 import type { DriverStatus, UpdateDriverStatusPayload } from './admin.types'
 
-const VALID_STATUSES = new Set<DriverStatus>(['pending_docs', 'pending_approval', 'active', 'suspended', 'banned'])
+const VALID_STATUSES = new Set<DriverStatus>(['pending_docs', 'pending_approval', 'active', 'suspended', 'banned', 'docs_rejected'])
 
 export async function listDrivers(query: {
   status?: string
@@ -55,13 +55,15 @@ export async function updateDriverStatus(
     throw createHttpError(AppErrors.VALIDATION_ERROR)
   }
 
-  // Cannot transition from active → pending_docs/pending_approval
-  const backwardTransitions = new Set(['pending_docs', 'pending_approval'])
+  // Cannot move an active driver backward into pre-approval states
+  const backwardTransitions = new Set(['pending_docs', 'pending_approval', 'docs_rejected'])
   if (currentStatus === 'active' && backwardTransitions.has(payload.status)) {
     throw createHttpError(AppErrors.VALIDATION_ERROR)
   }
 
-  await repo.updateDriverStatus(driverId, adminId, currentStatus, payload.status, payload.reason)
+  // When rejecting docs, reset onboarding_step so driver lands on the documents page
+  const onboardingStep = payload.status === 'docs_rejected' ? 'documents' : undefined
+  await repo.updateDriverStatus(driverId, adminId, currentStatus, payload.status, payload.reason, onboardingStep)
 }
 
 // ─── Vehicle management ───────────────────────────────────────────────────────
@@ -136,6 +138,15 @@ export async function unblacklistVehicle(vehicleId: bigint) {
 }
 
 export async function listPendingVehicleDocs() { return repo.listPendingVehicleDocs() }
+
+export async function approveDriverDoc(docId: bigint, adminId: bigint) {
+  return repo.approveDriverDoc(docId, adminId)
+}
+
+export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: string) {
+  if (!note || note.length < 10) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  return repo.rejectDriverDoc(docId, adminId, note)
+}
 
 export async function approveVehicleDoc(docId: bigint, adminId: bigint) {
   return repo.approveVehicleDoc(docId, adminId)

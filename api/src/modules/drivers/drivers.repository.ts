@@ -119,6 +119,16 @@ export async function createStatusHistory(params: {
   )
 }
 
+export async function findLatestDocsRejectedReason(driverId: bigint): Promise<string | null> {
+  const rows = await query<{ reason: string | null }>(
+    `SELECT reason FROM driver_status_history
+     WHERE driver_id = $1 AND to_status = 'docs_rejected'
+     ORDER BY created_at DESC LIMIT 1`,
+    [driverId.toString()]
+  )
+  return rows[0]?.reason ?? null
+}
+
 // ── Driver vehicles ───────────────────────────────────────────────────────────
 
 export async function findVehicleByDriverId(driverId: bigint): Promise<DriverVehicle | null> {
