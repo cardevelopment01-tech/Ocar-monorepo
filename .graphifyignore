@@ -1,0 +1,17 @@
+node_modules/
+.claude/
+*.md
+*.mdx
+*.qmd
+*.txt
+*.rst
+*.html
+*.yaml
+*.yml
+*.csv
+*.local
+*.env*
+.env*
+.*.local
+docs/
+graphify-out/
