@@ -263,7 +263,7 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 | sos | ✅ live (wired to safety backend) |
 | payments | ✅ live (wired to payments backend) |
 | users | ✅ live (user list) |
-| rides | ⚠️ uses mock data — not wired to backend yet |
+| rides | ✅ live (wired to admin rides backend; search, status filter, pagination) |
 | live-map | 🔲 TODO stub |
 | analytics | 🔲 TODO stub |
 
