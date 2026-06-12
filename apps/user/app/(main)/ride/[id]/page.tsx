@@ -1,5 +1,6 @@
 'use client'
 
+import { DEMO_MODE } from '@/lib/demo'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Phone, MessageSquare, MapPin, Clock, Star } from 'lucide-react'
@@ -37,11 +38,13 @@ export default function RidePage() {
   const [socketOk,     setSocketOk]     = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  const DEMO_ALLOWED = new Set(['requested', 'accepted', 'cancelled', 'no_drivers'])
+
   const loadRide = useCallback(async () => {
     try {
       const data = await rideApi.getRide(rideId)
       setRide(data)
-      setRideStatus(data.status)
+      setRideStatus(DEMO_MODE && !DEMO_ALLOWED.has(data.status) ? 'accepted' : data.status)
     } catch { /* ignore */ }
   }, [rideId])
 
@@ -49,6 +52,8 @@ export default function RidePage() {
   useEffect(() => {
     if (!rideId) return
     void loadRide()
+
+    if (DEMO_MODE) return // no live socket in demo — page is static after loadRide
 
     connectSocket()
     const socket = getSocket()
@@ -101,8 +106,9 @@ export default function RidePage() {
     }
   }, [rideId, loadRide])
 
-  // Redirect on completion/cancellation
+  // Redirect on completion/cancellation (skip redirects in demo mode)
   useEffect(() => {
+    if (DEMO_MODE) return
     if (rideStatus === 'completed') {
       const t = setTimeout(() => router.push(`/ride/${rideId}/rate`), 2000)
       return () => clearTimeout(t)
@@ -286,6 +292,11 @@ export default function RidePage() {
                     <div className="flex items-center gap-2 bg-primary-subtle rounded-2xl px-4 py-3 mb-3">
                       <Clock size={16} className="text-primary" />
                       <span className="text-sm font-semibold text-primary">Driver is on the way</span>
+                      {DEMO_MODE && (
+                        <span className="ml-auto text-[10px] font-bold uppercase tracking-wide text-primary/60 bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap">
+                          Live tracking soon
+                        </span>
+                      )}
                     </div>
                   )}
                   {rideStatus === 'driver_arrived' && (

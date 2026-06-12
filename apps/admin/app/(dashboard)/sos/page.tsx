@@ -1,4 +1,6 @@
 'use client'
+import { DEMO_MODE } from '@/lib/demo'
+import DemoBlock from '@/components/ui/DemoBlock'
 import { useState, useEffect, useCallback } from 'react'
 import { Shield, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
@@ -28,6 +30,8 @@ function elapsed(iso: string) {
 }
 
 export default function SOSPage() {
+  if (DEMO_MODE) return <DemoBlock feature="SOS Alerts" />
+
   const [alerts,         setAlerts]         = useState<SosAlert[]>([])
   const [loading,        setLoading]        = useState(true)
   const [actingId,       setActingId]       = useState<string | null>(null)

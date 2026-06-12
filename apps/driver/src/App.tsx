@@ -25,6 +25,8 @@ import PendingReview from '@/pages/Onboarding/PendingReview'
 import { useAuthStore } from '@/store/useAuthStore'
 import api from '@/lib/api'
 import type { DriverProfile } from '@/store/useAuthStore'
+import { DEMO_MODE } from '@/lib/demo'
+import DemoBlock from '@/components/ui/DemoBlock'
 
 export default function App() {
   const location = useLocation()
@@ -60,10 +62,14 @@ export default function App() {
               <ProtectedRoute requireApproved><Home /></ProtectedRoute>
             } />
             <Route path="/earnings" element={
-              <ProtectedRoute requireApproved><Earnings /></ProtectedRoute>
+              <ProtectedRoute requireApproved>
+                {DEMO_MODE ? <DemoBlock feature="Earnings" /> : <Earnings />}
+              </ProtectedRoute>
             } />
             <Route path="/wallet" element={
-              <ProtectedRoute requireApproved><Wallet /></ProtectedRoute>
+              <ProtectedRoute requireApproved>
+                {DEMO_MODE ? <DemoBlock feature="Driver Wallet" /> : <Wallet />}
+              </ProtectedRoute>
             } />
             <Route path="/profile" element={
               <ProtectedRoute requireApproved><Profile /></ProtectedRoute>
@@ -85,16 +91,24 @@ export default function App() {
               <ProtectedRoute requireApproved><IncomingRequest /></ProtectedRoute>
             } />
             <Route path="/ride/navigate" element={
-              <ProtectedRoute requireApproved><NavigateToPickup /></ProtectedRoute>
+              <ProtectedRoute requireApproved>
+                {DEMO_MODE ? <DemoBlock feature="Navigate to Pickup" /> : <NavigateToPickup />}
+              </ProtectedRoute>
             } />
             <Route path="/ride/otp" element={
-              <ProtectedRoute requireApproved><OTPVerify /></ProtectedRoute>
+              <ProtectedRoute requireApproved>
+                {DEMO_MODE ? <DemoBlock feature="OTP Verification" /> : <OTPVerify />}
+              </ProtectedRoute>
             } />
             <Route path="/ride/in-progress" element={
-              <ProtectedRoute requireApproved><TripInProgress /></ProtectedRoute>
+              <ProtectedRoute requireApproved>
+                {DEMO_MODE ? <DemoBlock feature="Trip in Progress" /> : <TripInProgress />}
+              </ProtectedRoute>
             } />
             <Route path="/ride/end" element={
-              <ProtectedRoute requireApproved><TripEnd /></ProtectedRoute>
+              <ProtectedRoute requireApproved>
+                {DEMO_MODE ? <DemoBlock feature="Trip Completion" /> : <TripEnd />}
+              </ProtectedRoute>
             } />
 
             {/* Onboarding */}

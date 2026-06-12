@@ -1,4 +1,6 @@
 'use client'
+import { DEMO_MODE } from '@/lib/demo'
+import DemoBlock from '@/components/ui/DemoBlock'
 import { useState } from 'react'
 import { Pencil, Check, X } from 'lucide-react'
 import { mockSystemConfig } from '@/lib/mock-data'
@@ -9,6 +11,8 @@ type Config = typeof mockSystemConfig[number]
 const GROUPS = ['All', 'Dispatch', 'Pricing', 'Wallet', 'OTP', 'Payments', 'Notifications']
 
 export default function SystemConfigPage() {
+  if (DEMO_MODE) return <DemoBlock feature="System Config" />
+
   const [activeGroup, setActiveGroup] = useState('All')
   const [editing, setEditing] = useState<string | null>(null)
   const [values, setValues] = useState<Record<string, string>>(

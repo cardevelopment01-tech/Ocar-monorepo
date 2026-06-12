@@ -1,5 +1,7 @@
 'use client'
 
+import { DEMO_MODE } from '@/lib/demo'
+import DemoBlock from '@/components/ui/DemoBlock'
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Clock, MapPin, CheckCircle2, XCircle } from 'lucide-react'
@@ -113,6 +115,8 @@ function SkeletonCard() {
 const LIMIT = 20
 
 export default function HistoryPage() {
+  if (DEMO_MODE) return <DemoBlock feature="Ride History" />
+
   const [tab,     setTab]     = useState<Tab>('all')
   const [rides,   setRides]   = useState<RideHistoryItem[]>([])
   const [page,    setPage]    = useState(1)

@@ -1,4 +1,6 @@
 'use client'
+import { DEMO_MODE } from '@/lib/demo'
+import DemoBlock from '@/components/ui/DemoBlock'
 import React from 'react'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { IndianRupee } from 'lucide-react'
@@ -38,6 +40,8 @@ const CHANNEL_LABELS: Record<string, { label: string; cls: string }> = {
 const LIMIT = 20
 
 export default function PaymentsPage() {
+  if (DEMO_MODE) return <DemoBlock feature="Payments" />
+
   const [payments, setPayments] = useState<AdminPaymentItem[]>([])
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState(1)

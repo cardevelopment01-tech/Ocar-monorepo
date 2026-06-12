@@ -1,0 +1,29 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs
+**/dist
+**/.next
+**/build
+
+# Env files — never bake secrets into images
+.env
+.env.*
+.env.prod
+.env.local
+
+# Dev tooling
+**/.git
+graphify-out
+docs
+infra
+
+# Apps — only api is built in Docker
+apps/
+packages/
+
+# Test artifacts
+**/coverage
+**/*.test.ts
+**/*.spec.ts

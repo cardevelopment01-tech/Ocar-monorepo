@@ -1,5 +1,7 @@
 'use client'
 
+import { DEMO_MODE } from '@/lib/demo'
+import DemoBlock from '@/components/ui/DemoBlock'
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Star } from 'lucide-react'
@@ -9,6 +11,8 @@ import { safetyApi, type RatingTag } from '@/lib/safety-api'
 import { cn } from '@/lib/utils'
 
 export default function RateRidePage() {
+  if (DEMO_MODE) return <DemoBlock feature="Rate Your Ride" />
+
   const params = useParams<{ id: string }>()
   const rideId = params?.id ?? ''
   const router  = useRouter()

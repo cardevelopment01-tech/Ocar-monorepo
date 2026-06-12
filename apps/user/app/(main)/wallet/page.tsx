@@ -1,5 +1,7 @@
 'use client'
 
+import { DEMO_MODE } from '@/lib/demo'
+import DemoBlock from '@/components/ui/DemoBlock'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react'
@@ -63,6 +65,8 @@ function fmtExpiry(iso: string | null) {
 }
 
 export default function WalletPage() {
+  if (DEMO_MODE) return <DemoBlock feature="Wallet & Payments" />
+
   const [wallet,  setWallet]  = useState<UserWallet | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(false)
