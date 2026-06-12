@@ -53,7 +53,13 @@ export default function RidePage() {
     if (!rideId) return
     void loadRide()
 
-    if (DEMO_MODE) return // no live socket in demo — page is static after loadRide
+    if (DEMO_MODE) {
+      // No socket in demo — poll every 4s so user sees status update when driver accepts
+      pollRef.current = setInterval(() => void loadRide(), 4_000)
+      return () => {
+        if (pollRef.current) clearInterval(pollRef.current)
+      }
+    }
 
     connectSocket()
     const socket = getSocket()
