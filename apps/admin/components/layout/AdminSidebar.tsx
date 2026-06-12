@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -8,6 +9,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdminRole } from '@/lib/mock-data'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 interface NavItem {
   href: string
@@ -77,6 +79,7 @@ interface AdminSidebarProps {
 
 export default function AdminSidebar({ role, adminName, adminInitials, sosActive = false, onLogout }: AdminSidebarProps) {
   const path = usePathname()
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   return (
     <aside
@@ -151,7 +154,7 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
             <p className="text-text-muted text-xs truncate capitalize">{role.replace('_', ' ')}</p>
           </div>
           <button
-            onClick={onLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className="text-text-muted hover:text-danger transition-colors cursor-pointer"
             title="Logout"
           >
@@ -159,6 +162,16 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        title="Log out?"
+        description="You will be signed out of the admin panel."
+        confirmLabel="Log Out"
+        variant="warning"
+        onConfirm={() => onLogout?.()}
+      />
     </aside>
   )
 }

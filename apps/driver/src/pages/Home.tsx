@@ -42,6 +42,7 @@ export default function Home() {
 
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [mapCenter, setMapCenter] = useState<[number, number]>([20.2961, 85.8245])
+  const [showOfflineConfirm, setShowOfflineConfirm] = useState(false)
   const e = mockEarnings.today
   const firstName = driver?.full_name?.split(' ')[0] ?? 'Driver'
 
@@ -114,7 +115,7 @@ export default function Home() {
 
   const handleToggle = () => {
     if (!isOnline) navigate('/go-online/mode')
-    else void handleGoOffline()
+    else setShowOfflineConfirm(true)
   }
 
   const handleGoOffline = async () => {
@@ -308,6 +309,40 @@ export default function Home() {
           />
         )}
       </AnimatePresence>
+
+      {/* Go offline confirmation */}
+      {showOfflineConfirm && (
+        <div
+          className="absolute inset-0 flex items-end justify-center pb-6 px-5"
+          style={{ zIndex: 30, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
+          onClick={() => setShowOfflineConfirm(false)}
+        >
+          <div
+            className="w-full rounded-3xl p-6"
+            style={{ background: '#FFFFFF', boxShadow: '0 -4px 32px rgba(0,0,0,0.18)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-8 h-1 bg-border rounded-full mx-auto mb-5" />
+            <p className="text-text-primary font-bold text-lg mb-1">Go offline?</p>
+            <p className="text-text-muted text-sm mb-6">You'll stop receiving ride requests until you go online again.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowOfflineConfirm(false)}
+                className="flex-1 py-3 rounded-2xl text-sm font-semibold text-text-secondary border border-border hover:bg-surface-2 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setShowOfflineConfirm(false); void handleGoOffline() }}
+                className="flex-1 py-3 rounded-2xl text-sm font-bold text-white transition-colors"
+                style={{ background: 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)' }}
+              >
+                Go Offline
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Shield, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { safetyApi, type SosAlert } from '@/lib/safety-api'
 
 const ACTIVE_STATUSES = new Set(['triggered', 'acknowledged', 'responding'])
@@ -27,9 +28,10 @@ function elapsed(iso: string) {
 }
 
 export default function SOSPage() {
-  const [alerts,   setAlerts]   = useState<SosAlert[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [actingId, setActingId] = useState<string | null>(null)
+  const [alerts,         setAlerts]         = useState<SosAlert[]>([])
+  const [loading,        setLoading]        = useState(true)
+  const [actingId,       setActingId]       = useState<string | null>(null)
+  const [confirmAction,  setConfirmAction]  = useState<{ id: string; status: 'resolved' | 'false_alarm' } | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -148,14 +150,14 @@ export default function SOSPage() {
                   )}
                   <button
                     disabled={actingId === sos.id}
-                    onClick={() => void resolve(sos.id, 'resolved')}
+                    onClick={() => setConfirmAction({ id: sos.id, status: 'resolved' })}
                     className="px-4 py-2 text-sm font-semibold bg-success text-white rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50"
                   >
                     Mark Resolved
                   </button>
                   <button
                     disabled={actingId === sos.id}
-                    onClick={() => void resolve(sos.id, 'false_alarm')}
+                    onClick={() => setConfirmAction({ id: sos.id, status: 'false_alarm' })}
                     className="px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 transition-colors text-text-secondary disabled:opacity-50"
                   >
                     False Alarm
@@ -205,6 +207,22 @@ export default function SOSPage() {
           </table>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmAction !== null}
+        onOpenChange={open => { if (!open) setConfirmAction(null) }}
+        title={confirmAction?.status === 'false_alarm' ? 'Mark as false alarm?' : 'Mark SOS resolved?'}
+        description={
+          confirmAction?.status === 'false_alarm'
+            ? 'This will dismiss the alert as a false alarm. Only do this if you are certain no emergency occurred.'
+            : 'This will close the SOS alert and notify the parties involved.'
+        }
+        confirmLabel={confirmAction?.status === 'false_alarm' ? 'False Alarm' : 'Mark Resolved'}
+        variant={confirmAction?.status === 'false_alarm' ? 'warning' : 'success'}
+        onConfirm={() => {
+          if (confirmAction) void resolve(confirmAction.id, confirmAction.status)
+        }}
+      />
     </div>
   )
 }

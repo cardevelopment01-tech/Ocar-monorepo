@@ -6,6 +6,7 @@ import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { safetyApi, type Dispute } from '@/lib/safety-api'
 import { cn } from '@/lib/utils'
 
@@ -47,8 +48,9 @@ export default function DisputesPage() {
   const [outcome,      setOutcome]      = useState('')
   const [notes,        setNotes]        = useState('')
   const [refundAmt,    setRefundAmt]    = useState('')
-  const [submitting,   setSubmitting]   = useState(false)
-  const [assigning,    setAssigning]    = useState(false)
+  const [submitting,         setSubmitting]         = useState(false)
+  const [assigning,          setAssigning]          = useState(false)
+  const [showResolveConfirm, setShowResolveConfirm] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -337,7 +339,7 @@ export default function DisputesPage() {
                 />
                 <button
                   disabled={!outcome || !notes || submitting}
-                  onClick={() => void handleResolve()}
+                  onClick={() => setShowResolveConfirm(true)}
                   className="w-full py-3 bg-primary text-white font-semibold rounded-xl text-sm hover:bg-primary-dark transition-colors disabled:opacity-40"
                 >
                   {submitting ? 'Resolving…' : 'Mark Resolved'}
@@ -347,6 +349,16 @@ export default function DisputesPage() {
           </div>
         )}
       </SlideOver>
+
+      <ConfirmDialog
+        open={showResolveConfirm}
+        onOpenChange={setShowResolveConfirm}
+        title="Mark dispute resolved?"
+        description="This will close the dispute and record the selected outcome. This action cannot be undone."
+        confirmLabel="Resolve"
+        variant="success"
+        onConfirm={() => void handleResolve()}
+      />
     </div>
   )
 }

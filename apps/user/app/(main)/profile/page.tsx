@@ -51,12 +51,13 @@ const ICON_CLR = '#4F46E5'
 export default function ProfilePage() {
   const { user, logout, refreshUser } = useAuth()
 
-  const [stats,     setStats]     = useState<UserStats | null>(null)
-  const [editing,   setEditing]   = useState(false)
-  const [editName,  setEditName]  = useState('')
-  const [editEmail, setEditEmail] = useState('')
-  const [saving,    setSaving]    = useState(false)
-  const [saveErr,   setSaveErr]   = useState('')
+  const [stats,           setStats]           = useState<UserStats | null>(null)
+  const [editing,         setEditing]         = useState(false)
+  const [editName,        setEditName]        = useState('')
+  const [editEmail,       setEditEmail]       = useState('')
+  const [saving,          setSaving]          = useState(false)
+  const [saveErr,         setSaveErr]         = useState('')
+  const [showSignOut,     setShowSignOut]     = useState(false)
 
   useEffect(() => {
     userApi.getMe()
@@ -201,7 +202,7 @@ export default function ProfilePage() {
         {/* Sign out */}
         <motion.div variants={fadeUp} className="mt-4">
           <motion.button
-            onClick={logout}
+            onClick={() => setShowSignOut(true)}
             className="w-full flex items-center justify-center gap-2 bg-surface border border-border rounded-2xl py-3.5 text-sm font-semibold text-status-error"
             style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}
             whileTap={{ scale: 0.98 }}
@@ -219,6 +220,53 @@ export default function ProfilePage() {
           Ocar v1.0.0
         </motion.p>
       </motion.div>
+
+      {/* ── Sign out confirmation ── */}
+      <AnimatePresence>
+        {showSignOut && (
+          <motion.div
+            className="fixed inset-0 z-50 flex flex-col justify-end"
+            style={{ background: 'rgba(0,0,0,0.45)' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setShowSignOut(false)}
+          >
+            <motion.div
+              className="bg-surface rounded-t-3xl px-5 pt-5 pb-10"
+              style={{ boxShadow: '0 -6px 32px rgba(0,0,0,0.18)' }}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            >
+              <div className="w-10 h-1 bg-border rounded-full mx-auto mb-5" />
+              <p className="text-base font-bold text-text-primary mb-1">Sign out?</p>
+              <p className="text-sm text-text-muted mb-6">You will be signed out of your Ocar account.</p>
+              <div className="flex gap-3">
+                <motion.button
+                  onClick={() => setShowSignOut(false)}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold text-text-secondary border border-border"
+                  whileTap={{ scale: 0.97 }}
+                  transition={SPRING}
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  onClick={logout}
+                  className="flex-1 py-3 rounded-2xl text-sm font-bold text-white bg-status-error"
+                  whileTap={{ scale: 0.97 }}
+                  transition={SPRING}
+                >
+                  Sign out
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Edit modal ── */}
       <AnimatePresence>
