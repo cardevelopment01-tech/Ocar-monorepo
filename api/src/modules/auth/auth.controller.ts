@@ -37,7 +37,7 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
 export async function adminLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { email, password } = req.body as { email: string; password: string }
-    const result = await authService.adminLogin(email, password)
+    const result = await authService.adminLogin(email, password, req.ip ?? null)
     res.status(200).json(result)
   } catch (err) {
     next(err)

@@ -77,6 +77,13 @@ export async function findAdminByEmail(email: string): Promise<AdminDbRow | null
   return rows[0] ?? null
 }
 
+export async function touchAdminLogin(id: bigint, ip: string | null): Promise<void> {
+  await query(
+    `UPDATE admins SET last_login_at = now(), last_login_ip = $2, updated_at = now() WHERE id = $1`,
+    [id.toString(), ip]
+  )
+}
+
 export async function findAdminById(id: bigint): Promise<AdminRecord | null> {
   const rows = await query<AdminRecord>(
     `SELECT id, code, email, role, is_active, created_at, updated_at

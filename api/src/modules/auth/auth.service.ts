@@ -132,12 +132,14 @@ export async function verifyOtp(
   return { tokens, principal, isNew }
 }
 
-export async function adminLogin(email: string, password: string): Promise<AdminLoginResult> {
+export async function adminLogin(email: string, password: string, ip: string | null): Promise<AdminLoginResult> {
   const adminRow = await repo.findAdminByEmail(email)
   if (!adminRow) throw createHttpError(AppErrors.AUTH_OTP_INVALID)
 
   const valid = await comparePassword(password, adminRow.password_hash)
   if (!valid) throw createHttpError(AppErrors.AUTH_OTP_INVALID)
+
+  await repo.touchAdminLogin(BigInt(adminRow.id), ip)
 
   const { password_hash: _ph, ...admin } = adminRow
   const tokens = await issueTokenPair(PrincipalRole.ADMIN, admin, JWT_REFRESH_EXPIRY_ADMIN, admin.role)
