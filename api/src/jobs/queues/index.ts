@@ -10,12 +10,15 @@ export const QUEUE_NAMES = {
   CLEANUP: 'cleanup',
 } as const
 
-function parseRedisUrl(url: string): { host: string; port: number } {
+function parseRedisUrl(url: string): { host: string; port: number; password?: string; tls?: object } {
   const parsed = new URL(url)
-  return {
+  const opts: { host: string; port: number; password?: string; tls?: object } = {
     host: parsed.hostname || 'localhost',
     port: parseInt(parsed.port || '6379', 10),
   }
+  if (parsed.password) opts.password = decodeURIComponent(parsed.password)
+  if (parsed.protocol === 'rediss:') opts.tls = {}
+  return opts
 }
 
 const connection = parseRedisUrl(config.REDIS_URL)
