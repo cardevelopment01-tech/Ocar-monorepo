@@ -24,7 +24,7 @@ export default function VehicleRegistration() {
 
   const [categoryId, setCategoryId] = useState<number | null>(null)
   const [brandId, setBrandId] = useState<number | null>(null)
-  const [vehicleName, setVehicleName] = useState('')
+  const [modelId, setModelId] = useState<number | null>(null)
   const [modelYear, setModelYear] = useState('')
   const [plate, setPlate] = useState('')
   const [color, setColor] = useState('')
@@ -62,7 +62,7 @@ export default function VehicleRegistration() {
           const m = await onboardingApi.getModels(Number(v.brand_id))
           setModels(m)
         }
-        if (v.vehicle_name) setVehicleName(v.vehicle_name)
+        if (v.model_id) setModelId(Number(v.model_id))
         if (v.model_year)   setModelYear(String(v.model_year))
         if (v.number_plate) setPlate(v.number_plate)
         if (v.color)        setColor(v.color)
@@ -82,18 +82,25 @@ export default function VehicleRegistration() {
 
   const handleBrandChange = async (id: number) => {
     setBrandId(id)
+    setModelId(null)
     setModels([])
     try {
       const m = await onboardingApi.getModels(id)
       setModels(m)
-      if (m[0]?.typical_category_id) setCategoryId(Number(m[0].typical_category_id))
     } catch { /* ignore */ }
+  }
+
+  const handleModelChange = (id: number) => {
+    setModelId(id)
+    const model = models.find(m => Number(m.id) === id)
+    if (model?.typical_category_id) setCategoryId(Number(model.typical_category_id))
   }
 
   const isValidPlate = (p: string) =>
     /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/.test(p.replace(/\s/g, '').toUpperCase())
 
-  const isValid = categoryId && brandId && vehicleName.trim() && modelYear && plate && isValidPlate(plate) && color && fuelType
+  const selectedModel = models.find(m => Number(m.id) === modelId)
+  const isValid = categoryId && brandId && modelId && selectedModel && modelYear && plate && isValidPlate(plate) && color && fuelType
 
   const handleContinue = async () => {
     if (!isValid) return
@@ -104,7 +111,8 @@ export default function VehicleRegistration() {
       const payload: VehicleInfoPayload = {
         category_id: Number(categoryId),
         brand_id: Number(brandId),
-        vehicle_name: vehicleName.trim(),
+        model_id: Number(modelId),
+        vehicle_name: selectedModel!.name,
         model_year: parseInt(modelYear, 10),
         number_plate: plate.trim().toUpperCase().replace(/\s/g, ''),
         color,
@@ -178,20 +186,19 @@ export default function VehicleRegistration() {
           </select>
         </Field>
 
-        {/* Vehicle Name */}
-        <Field label="Vehicle Name">
-          <input
+        {/* Model */}
+        <Field label="Model">
+          <select
             className="input-dark w-full"
-            placeholder="e.g. Dzire, i20, Polo"
-            value={vehicleName}
-            onChange={e => setVehicleName(e.target.value)}
-            list="model-suggestions"
-          />
-          {models.length > 0 && (
-            <datalist id="model-suggestions">
-              {models.map(m => <option key={m.id} value={m.name} />)}
-            </datalist>
-          )}
+            value={modelId ?? ''}
+            disabled={!brandId || models.length === 0}
+            onChange={e => handleModelChange(Number(e.target.value))}
+          >
+            <option value="" disabled>
+              {!brandId ? 'Select brand first' : models.length === 0 ? 'Loading…' : 'Select model'}
+            </option>
+            {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
         </Field>
 
         {/* Category */}

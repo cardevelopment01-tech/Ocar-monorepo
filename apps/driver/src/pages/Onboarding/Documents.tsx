@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, CheckCircle2, AlertCircle, Loader2, Eye } from 'lucide-react'
+import { ArrowLeft, Upload, CheckCircle2, AlertCircle, Loader2, Eye, RefreshCw } from 'lucide-react'
 import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
 
@@ -15,15 +15,15 @@ interface DocRowState {
 }
 
 const DRIVER_DOCS = [
-  { key: 'driving_license', label: 'Driving Licence', required: true, accept: 'image/*,application/pdf' },
-  { key: 'aadhaar_front',   label: 'Aadhaar Front',   required: true, accept: 'image/*' },
-  { key: 'aadhaar_back',    label: 'Aadhaar Back',    required: true, accept: 'image/*' },
+  { key: 'driving_license', label: 'Driving Licence', required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'aadhaar_front',   label: 'Aadhaar Front',   required: true, accept: 'image/*',                  needsExpiry: false },
+  { key: 'aadhaar_back',    label: 'Aadhaar Back',    required: true, accept: 'image/*',                  needsExpiry: false },
 ] as const
 
 const VEHICLE_DOCS = [
-  { key: 'vehicle_rc', label: 'Vehicle RC',  required: true, accept: 'image/*,application/pdf' },
-  { key: 'insurance',  label: 'Insurance',   required: true, accept: 'image/*,application/pdf' },
-  { key: 'permit',     label: 'Permit',      required: true, accept: 'image/*,application/pdf' },
+  { key: 'vehicle_rc', label: 'Vehicle RC', required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'insurance',  label: 'Insurance',  required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'permit',     label: 'Permit',     required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
 ] as const
 
 function initDocState(): Record<string, DocRowState> {
@@ -43,6 +43,8 @@ export default function Documents() {
   const [identityError, setIdentityError] = useState('')
 
   const [docState, setDocState] = useState<Record<string, DocRowState>>(initDocState)
+  const [validUntil, setValidUntil] = useState<Record<string, string>>({})
+  const [expiryErrors] = useState<Record<string, string>>({})
   const [isFetching, setIsFetching] = useState(true)
 
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -104,12 +106,17 @@ export default function Documents() {
   const setRow = (key: string, patch: Partial<DocRowState>) =>
     setDocState(prev => ({ ...prev, [key]: { ...prev[key]!, ...patch } }))
 
+  const handleTrigger = (key: string) => {
+    fileRefs.current[key]?.click()
+  }
+
   const handleFileSelect = async (key: string, isVehicleDoc: boolean, file: File) => {
     setRow(key, { state: 'uploading', error: null, docStatus: null, rejectionNote: null })
     try {
+      const expiry = validUntil[key]
       const result = isVehicleDoc
-        ? await onboardingApi.uploadVehicleDoc(file, key)
-        : await onboardingApi.uploadDriverDoc(file, key)
+        ? await onboardingApi.uploadVehicleDoc(file, key, undefined, expiry)
+        : await onboardingApi.uploadDriverDoc(file, key, expiry)
       setRow(key, { state: 'done', url: result.file_url, error: null, docStatus: 'pending', rejectionNote: null })
     } catch {
       setRow(key, { state: 'error', error: 'Upload failed. Tap to retry.' })
@@ -188,17 +195,21 @@ export default function Documents() {
       {/* Driver documents */}
       <section className="mb-6">
         <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">Driver Documents</p>
-        <div className="space-y-2">
+        <div className="space-y-3">
           {DRIVER_DOCS.map(doc => (
-            <DocUploadRow
+            <DocCard
               key={doc.key}
               label={doc.label}
               required={doc.required}
               accept={doc.accept}
+              needsExpiry={doc.needsExpiry}
               docState={docState[doc.key]!}
+              validUntil={validUntil[doc.key]}
+              expiryError={expiryErrors[doc.key]}
               inputRef={el => { fileRefs.current[doc.key] = el }}
               onFileChange={file => void handleFileSelect(doc.key, false, file)}
-              onTrigger={() => fileRefs.current[doc.key]?.click()}
+              onTrigger={() => handleTrigger(doc.key)}
+              onValidUntilChange={val => setValidUntil(prev => ({ ...prev, [doc.key]: val }))}
             />
           ))}
         </div>
@@ -207,17 +218,21 @@ export default function Documents() {
       {/* Vehicle documents */}
       <section className="mb-8">
         <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">Vehicle Documents</p>
-        <div className="space-y-2">
+        <div className="space-y-3">
           {VEHICLE_DOCS.map(doc => (
-            <DocUploadRow
+            <DocCard
               key={doc.key}
               label={doc.label}
               required={doc.required}
               accept={doc.accept}
+              needsExpiry={doc.needsExpiry}
               docState={docState[doc.key]!}
+              validUntil={validUntil[doc.key]}
+              expiryError={expiryErrors[doc.key]}
               inputRef={el => { fileRefs.current[doc.key] = el }}
               onFileChange={file => void handleFileSelect(doc.key, true, file)}
-              onTrigger={() => fileRefs.current[doc.key]?.click()}
+              onTrigger={() => handleTrigger(doc.key)}
+              onValidUntilChange={val => setValidUntil(prev => ({ ...prev, [doc.key]: val }))}
             />
           ))}
         </div>
@@ -256,82 +271,139 @@ export default function Documents() {
   )
 }
 
-interface DocUploadRowProps {
+interface DocCardProps {
   label: string
   required: boolean
   accept: string
+  needsExpiry: boolean
   docState: DocRowState
+  validUntil?: string
+  expiryError?: string
   inputRef: (el: HTMLInputElement | null) => void
   onFileChange: (file: File) => void
   onTrigger: () => void
+  onValidUntilChange?: (val: string) => void
 }
 
-function DocUploadRow({ label, required, accept, docState, inputRef, onFileChange, onTrigger }: DocUploadRowProps) {
+function DocCard({ label, required, accept, needsExpiry, docState, validUntil, expiryError, inputRef, onFileChange, onTrigger, onValidUntilChange }: DocCardProps) {
   const { state, url, error, docStatus, rejectionNote } = docState
-  const isRejected = state === 'done' && docStatus === 'rejected'
+  const isDone = state === 'done'
+  const isRejected = isDone && docStatus === 'rejected'
+
+  const formatExpiry = (d: string) =>
+    new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 
   return (
-    <div
-      className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
-        isRejected              ? 'border-amber-500/50 bg-amber-500/5'
-        : state === 'done'      ? 'border-green-500/40 bg-green-500/5'
-        : state === 'error'     ? 'border-accent-red/40 bg-accent-red/5'
-        : state === 'uploading' ? 'border-primary/40 bg-primary/5'
-        : 'border-border bg-surface-2'
-      }`}
-      onClick={state !== 'uploading' ? onTrigger : undefined}
-    >
+    <div className={`rounded-2xl border p-4 transition-all ${
+      isRejected ? 'border-amber-500/40 bg-amber-500/5'
+      : isDone    ? 'border-green-500/40 bg-green-500/5'
+      : 'border-border bg-surface-2'
+    }`}>
       <input
         type="file"
         accept={accept}
         className="hidden"
         ref={inputRef}
-        onChange={e => {
-          const file = e.target.files?.[0]
-          if (file) { onFileChange(file); e.target.value = '' }
-        }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) { onFileChange(f); e.target.value = '' } }}
       />
 
-      <div className="flex-shrink-0">
-        {state === 'uploading' && <Loader2 size={20} className="text-primary animate-spin" />}
-        {isRejected            && <AlertCircle size={20} className="text-amber-500" />}
-        {state === 'done' && !isRejected && <CheckCircle2 size={20} className="text-green-500" />}
-        {state === 'error'     && <AlertCircle size={20} className="text-accent-red" />}
-        {state === 'idle'      && <Upload size={20} className="text-text-muted" />}
-      </div>
+      {isDone ? (
+        <>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {isRejected
+                ? <AlertCircle size={18} className="text-amber-500 flex-shrink-0" />
+                : <CheckCircle2 size={18} className="text-green-500 flex-shrink-0" />}
+              <div className="min-w-0">
+                <p className={`text-sm font-semibold ${isRejected ? 'text-amber-400' : 'text-green-400'}`}>{label}</p>
+                {validUntil && <p className="text-xs text-text-muted">Expires {formatExpiry(validUntil)}</p>}
+                {docStatus === 'approved' && !isRejected && <p className="text-xs text-green-500/80">Approved</p>}
+                {docStatus === 'pending'  && !isRejected && <p className="text-xs text-text-muted">Pending review</p>}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {url && (
+                <button
+                  type="button"
+                  onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${
+                    isRejected
+                      ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                      : 'text-green-400 bg-green-500/10 border-green-500/20'
+                  }`}
+                >
+                  <Eye size={12} /> View
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onTrigger}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-text-secondary bg-surface-3 border border-border"
+              >
+                <RefreshCw size={12} /> Replace
+              </button>
+            </div>
+          </div>
+          {isRejected && rejectionNote && (
+            <p className="text-xs text-amber-400/90 mt-2 ml-7">{rejectionNote}</p>
+          )}
+          {needsExpiry && (
+            <div className="mt-3">
+              <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1.5 block">
+                Expiry Date <span className="text-accent-red">*</span>
+              </label>
+              <input
+                type="date"
+                className="input-dark w-full"
+                value={validUntil ?? ''}
+                onChange={e => onValidUntilChange?.(e.target.value)}
+              />
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-text-primary">{label}</p>
+            {required && <span className="text-accent-red text-xs font-semibold">Required</span>}
+          </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <p className={`text-sm font-semibold ${isRejected ? 'text-amber-400' : state === 'done' ? 'text-green-400' : 'text-text-primary'}`}>
-            {label}
-          </p>
-          {required && state !== 'done' && <span className="text-accent-red text-xs">*</span>}
-        </div>
-        {isRejected && rejectionNote ? (
-          <p className="text-xs text-amber-400/80 mt-0.5 leading-snug">{rejectionNote} · tap to re-upload</p>
-        ) : (
-          <p className="text-xs text-text-muted mt-0.5">
-            {state === 'uploading' && 'Uploading…'}
-            {state === 'done'      && 'Uploaded · tap to replace'}
-            {state === 'error'     && (error ?? 'Upload failed — tap to retry')}
-            {state === 'idle'      && 'Tap to upload'}
-          </p>
-        )}
-      </div>
+          <div
+            onClick={state !== 'uploading' ? onTrigger : undefined}
+            className={`rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 py-6 transition-all ${
+              state === 'uploading' ? 'border-primary/40 bg-primary/5 cursor-default'
+              : state === 'error'   ? 'border-accent-red/40 bg-accent-red/5 cursor-pointer'
+              : 'border-border hover:border-primary/50 hover:bg-primary/5 cursor-pointer'
+            }`}
+          >
+            {state === 'uploading'
+              ? <Loader2 size={22} className="text-primary animate-spin" />
+              : state === 'error'
+                ? <AlertCircle size={22} className="text-accent-red" />
+                : <Upload size={22} className="text-text-muted" />}
+            <p className="text-xs text-text-muted text-center px-4">
+              {state === 'uploading' ? 'Uploading…'
+               : state === 'error'   ? (error ?? 'Upload failed — tap to retry')
+               : 'Tap to upload · PDF or image · 5MB max'}
+            </p>
+          </div>
 
-      {state === 'done' && url && (
-        <button
-          type="button"
-          className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-            isRejected
-              ? 'text-amber-400 bg-amber-500/10 border border-amber-500/20 active:bg-amber-500/20'
-              : 'text-green-400 bg-green-500/10 border border-green-500/20 active:bg-green-500/20'
-          }`}
-          onClick={e => { e.stopPropagation(); window.open(url, '_blank', 'noopener,noreferrer') }}
-        >
-          <Eye size={13} strokeWidth={2} />
-          View
-        </button>
+          {needsExpiry && (
+            <div className="mt-3">
+              <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1.5 block">
+                Expiry Date <span className="text-accent-red">*</span>
+              </label>
+              <input
+                type="date"
+                className={`input-dark w-full ${expiryError ? 'border-accent-red' : ''}`}
+                value={validUntil ?? ''}
+                onChange={e => onValidUntilChange?.(e.target.value)}
+                onClick={e => e.stopPropagation()}
+              />
+              {expiryError && <p className="text-accent-red text-xs mt-1">{expiryError}</p>}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

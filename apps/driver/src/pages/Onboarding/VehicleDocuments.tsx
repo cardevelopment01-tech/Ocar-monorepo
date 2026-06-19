@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, CheckCircle2, AlertCircle, Loader2, Eye } from 'lucide-react'
+import { ArrowLeft, Upload, CheckCircle2, AlertCircle, Loader2, Eye, RefreshCw } from 'lucide-react'
 import { onboardingApi } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
 
@@ -13,9 +13,9 @@ interface DocRowState {
 }
 
 const VEHICLE_DOCS = [
-  { key: 'vehicle_rc', label: 'Registration Certificate (RC)', required: true,  accept: 'image/*,application/pdf' },
-  { key: 'insurance',  label: 'Insurance Certificate',         required: true,  accept: 'image/*,application/pdf' },
-  { key: 'permit',     label: 'Commercial Permit',             required: true,  accept: 'image/*,application/pdf' },
+  { key: 'vehicle_rc', label: 'Registration Certificate (RC)', required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'insurance',  label: 'Insurance Certificate',         required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'permit',     label: 'Commercial Permit',             required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
 ] as const
 
 function initDocState(): Record<string, DocRowState> {
@@ -27,6 +27,8 @@ export default function VehicleDocuments() {
   const driver = useAuthStore(s => s.driver)
 
   const [docState, setDocState] = useState<Record<string, DocRowState>>(initDocState)
+  const [validUntil, setValidUntil] = useState<Record<string, string>>({})
+  const [expiryErrors] = useState<Record<string, string>>({})
   const [isFetching, setIsFetching] = useState(true)
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
@@ -54,10 +56,14 @@ export default function VehicleDocuments() {
   const setRow = (key: string, patch: Partial<DocRowState>) =>
     setDocState(prev => ({ ...prev, [key]: { ...prev[key]!, ...patch } }))
 
+  const handleTrigger = (key: string) => {
+    fileRefs.current[key]?.click()
+  }
+
   const handleFileSelect = async (key: string, file: File) => {
     setRow(key, { state: 'uploading', error: null })
     try {
-      const result = await onboardingApi.uploadVehicleDoc(file, key)
+      const result = await onboardingApi.uploadVehicleDoc(file, key, undefined, validUntil[key])
       setRow(key, { state: 'done', url: result.file_url, error: null })
     } catch {
       setRow(key, { state: 'error', error: 'Upload failed. Tap to retry.' })
@@ -98,17 +104,21 @@ export default function VehicleDocuments() {
         Upload your vehicle documents. All three are required to submit your application.
       </p>
 
-      <div className="space-y-2 mb-8">
+      <div className="space-y-3 mb-8">
         {VEHICLE_DOCS.map(doc => (
-          <DocUploadRow
+          <DocCard
             key={doc.key}
             label={doc.label}
             required={doc.required}
             accept={doc.accept}
+            needsExpiry={doc.needsExpiry}
             docState={docState[doc.key]!}
+            validUntil={validUntil[doc.key]}
+            expiryError={expiryErrors[doc.key]}
             inputRef={el => { fileRefs.current[doc.key] = el }}
             onFileChange={file => void handleFileSelect(doc.key, file)}
-            onTrigger={() => fileRefs.current[doc.key]?.click()}
+            onTrigger={() => handleTrigger(doc.key)}
+            onValidUntilChange={val => setValidUntil(prev => ({ ...prev, [doc.key]: val }))}
           />
         ))}
       </div>
@@ -131,71 +141,123 @@ export default function VehicleDocuments() {
   )
 }
 
-interface DocUploadRowProps {
+interface DocCardProps {
   label: string
   required: boolean
   accept: string
+  needsExpiry: boolean
   docState: DocRowState
+  validUntil?: string
+  expiryError?: string
   inputRef: (el: HTMLInputElement | null) => void
   onFileChange: (file: File) => void
   onTrigger: () => void
+  onValidUntilChange?: (val: string) => void
 }
 
-function DocUploadRow({ label, required, accept, docState, inputRef, onFileChange, onTrigger }: DocUploadRowProps) {
+function DocCard({ label, required, accept, needsExpiry, docState, validUntil, expiryError, inputRef, onFileChange, onTrigger, onValidUntilChange }: DocCardProps) {
   const { state, url, error } = docState
+  const isDone = state === 'done'
+
+  const formatExpiry = (d: string) =>
+    new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 
   return (
-    <div
-      className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
-        state === 'done'        ? 'border-green-500/40 bg-green-500/5'
-        : state === 'error'     ? 'border-accent-red/40 bg-accent-red/5'
-        : state === 'uploading' ? 'border-primary/40 bg-primary/5'
-        : 'border-border bg-surface-2'
-      }`}
-      onClick={state !== 'uploading' ? onTrigger : undefined}
-    >
+    <div className={`rounded-2xl border p-4 transition-all ${
+      isDone ? 'border-green-500/40 bg-green-500/5' : 'border-border bg-surface-2'
+    }`}>
       <input
         type="file"
         accept={accept}
         className="hidden"
         ref={inputRef}
-        onChange={e => {
-          const file = e.target.files?.[0]
-          if (file) { onFileChange(file); e.target.value = '' }
-        }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) { onFileChange(f); e.target.value = '' } }}
       />
 
-      <div className="flex-shrink-0">
-        {state === 'uploading' && <Loader2 size={20} className="text-primary animate-spin" />}
-        {state === 'done'      && <CheckCircle2 size={20} className="text-green-500" />}
-        {state === 'error'     && <AlertCircle size={20} className="text-accent-red" />}
-        {state === 'idle'      && <Upload size={20} className="text-text-muted" />}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <p className={`text-sm font-semibold ${state === 'done' ? 'text-green-400' : 'text-text-primary'}`}>
-            {label}
-          </p>
-          {required && state !== 'done' && <span className="text-accent-red text-xs">*</span>}
+      {isDone ? (
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <CheckCircle2 size={18} className="text-green-500 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-green-400">{label}</p>
+              {validUntil && <p className="text-xs text-text-muted">Expires {formatExpiry(validUntil)}</p>}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {url && (
+              <button
+                type="button"
+                onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20"
+              >
+                <Eye size={12} /> View
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onTrigger}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-text-secondary bg-surface-3 border border-border"
+            >
+              <RefreshCw size={12} /> Replace
+            </button>
+          </div>
+          {needsExpiry && (
+            <div className="mt-3">
+              <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1.5 block">
+                Expiry Date <span className="text-accent-red">*</span>
+              </label>
+              <input
+                type="date"
+                className="input-dark w-full"
+                value={validUntil ?? ''}
+                onChange={e => onValidUntilChange?.(e.target.value)}
+              />
+            </div>
+          )}
         </div>
-        <p className="text-xs text-text-muted mt-0.5">
-          {state === 'uploading' && 'Uploading…'}
-          {state === 'done'      && 'Uploaded · tap to replace'}
-          {state === 'error'     && (error ?? 'Upload failed — tap to retry')}
-          {state === 'idle'      && 'Tap to upload'}
-        </p>
-      </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-text-primary">{label}</p>
+            {required && <span className="text-accent-red text-xs font-semibold">Required</span>}
+          </div>
 
-      {state === 'done' && url && (
-        <button
-          type="button"
-          className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20 transition-colors active:bg-green-500/20"
-          onClick={e => { e.stopPropagation(); window.open(url, '_blank', 'noopener,noreferrer') }}
-        >
-          <Eye size={13} strokeWidth={2} />
-          View
-        </button>
+          <div
+            onClick={state !== 'uploading' ? onTrigger : undefined}
+            className={`rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 py-6 transition-all ${
+              state === 'uploading' ? 'border-primary/40 bg-primary/5 cursor-default'
+              : state === 'error'   ? 'border-accent-red/40 bg-accent-red/5 cursor-pointer'
+              : 'border-border hover:border-primary/50 hover:bg-primary/5 cursor-pointer'
+            }`}
+          >
+            {state === 'uploading'
+              ? <Loader2 size={22} className="text-primary animate-spin" />
+              : state === 'error'
+                ? <AlertCircle size={22} className="text-accent-red" />
+                : <Upload size={22} className="text-text-muted" />}
+            <p className="text-xs text-text-muted text-center px-4">
+              {state === 'uploading' ? 'Uploading…'
+               : state === 'error'   ? (error ?? 'Upload failed — tap to retry')
+               : 'Tap to upload · PDF or image · 5MB max'}
+            </p>
+          </div>
+
+          {needsExpiry && (
+            <div className="mt-3">
+              <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1.5 block">
+                Expiry Date <span className="text-accent-red">*</span>
+              </label>
+              <input
+                type="date"
+                className={`input-dark w-full ${expiryError ? 'border-accent-red' : ''}`}
+                value={validUntil ?? ''}
+                onChange={e => onValidUntilChange?.(e.target.value)}
+                onClick={e => e.stopPropagation()}
+              />
+              {expiryError && <p className="text-accent-red text-xs mt-1">{expiryError}</p>}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

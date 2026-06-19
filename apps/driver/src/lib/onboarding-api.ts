@@ -19,6 +19,7 @@ export interface PersonalInfoPayload {
 export interface VehicleInfoPayload {
   category_id: number
   brand_id: number
+  model_id?: number
   vehicle_name: string
   model_year: number
   number_plate: string         // uppercase, no spaces
@@ -88,23 +89,27 @@ export const onboardingApi = {
     return res.data
   },
 
-  uploadDriverDoc: async (file: File, docType: string) => {
+  uploadDriverDoc: async (file: File, docType: string, validUntil?: string) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('doc_type', docType)
+    if (validUntil) formData.append('valid_until', validUntil)
     const res = await api.post('/api/v1/drivers/onboarding/documents/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
     })
     return res.data as { doc_type: string; file_url: string; status: string }
   },
 
-  uploadVehicleDoc: async (file: File, docType: string, docNumber?: string) => {
+  uploadVehicleDoc: async (file: File, docType: string, docNumber?: string, validUntil?: string) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('doc_type', docType)
-    if (docNumber) formData.append('doc_number', docNumber)
+    if (docNumber)   formData.append('doc_number', docNumber)
+    if (validUntil)  formData.append('valid_until', validUntil)
     const res = await api.post('/api/v1/drivers/onboarding/documents/vehicle-upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
     })
     return res.data as { doc_type: string; file_url: string; status: string }
   },
