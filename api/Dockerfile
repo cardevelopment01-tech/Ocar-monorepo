@@ -21,13 +21,14 @@ RUN pnpm build
 # dist/db/migrate.js resolves migrations via path.join(__dirname, 'migrations')
 RUN cp -r src/db/migrations dist/db/migrations
 
-# ── Production deps only ─────────────────────────────────────────────────────
+# ── Production deps — use pnpm deploy for a symlink-free node_modules ────────
 FROM base AS prod-deps
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY api/package.json ./api/
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --prod --ignore-scripts --filter @ocar/api
+    pnpm install --frozen-lockfile --filter @ocar/api
+RUN pnpm --filter @ocar/api deploy --prod /deploy
 
 # ── Final production image ───────────────────────────────────────────────────
 FROM node:22.16-alpine AS runner
@@ -35,7 +36,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-COPY --from=prod-deps /app/api/node_modules ./node_modules
+COPY --from=prod-deps /deploy/node_modules ./node_modules
 COPY --from=builder /app/api/dist ./dist
 COPY api/entrypoint.sh ./entrypoint.sh
 
