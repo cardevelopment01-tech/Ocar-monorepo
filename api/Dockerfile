@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM node:22.16-alpine AS base
 RUN npm install -g pnpm@latest
-RUN pnpm config set dangerouslyAllowAllBuilds true --global
+RUN echo "dangerouslyAllowAllBuilds=true" >> /root/.npmrc
 
 # ── Install all deps (incl. dev — needed for tsc) ───────────────────────────
 FROM base AS deps
