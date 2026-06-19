@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch --env-file=.env src/server.ts",
-    "build": "tsc",
+    "build": "tsc && tsc-alias",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -43,6 +43,7 @@
     "@types/uuid": "^9.0.7",
     "@vitest/coverage-v8": "^1.0.0",
     "supertest": "^6.3.0",
+    "tsc-alias": "^1.8.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"
