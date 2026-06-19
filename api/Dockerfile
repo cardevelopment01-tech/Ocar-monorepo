@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM node:22.16-alpine AS base
 RUN npm install -g pnpm@latest
-RUN echo "dangerouslyAllowAllBuilds=true" >> /root/.npmrc
 
 # ── Install all deps (incl. dev — needed for tsc) ───────────────────────────
 FROM base AS deps
@@ -27,7 +26,7 @@ FROM base AS prod-deps
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY api/package.json ./api/
-RUN pnpm install --frozen-lockfile --prod --filter @ocar/api
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts --filter @ocar/api
 
 # ── Final production image ───────────────────────────────────────────────────
 FROM node:22.16-alpine AS runner
