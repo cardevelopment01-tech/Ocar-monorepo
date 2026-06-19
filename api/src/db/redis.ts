@@ -14,7 +14,6 @@ function makeRedisOptions(): RedisOptions {
       : (times) => Math.min(times * 50, 2000),
   }
   if (url.password) opts.password = decodeURIComponent(url.password)
-  if (url.username) opts.username = decodeURIComponent(url.username)
   if (url.protocol === 'rediss:') opts.tls = {}
   return opts
 }
