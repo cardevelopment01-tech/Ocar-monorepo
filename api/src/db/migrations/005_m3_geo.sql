@@ -6,6 +6,15 @@
 -- Indian latitudes. geometry flat-plane math drifts 1-5%.
 -- ============================================================
 
+-- set_updated_at() may not exist yet on a fresh DB (defined in 014_triggers.sql)
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- ── ENUMS ────────────────────────────────────────────────────
 -- city_status already in 002_enums.sql — do not recreate
 -- zone_type already in 002_enums.sql — do not recreate
