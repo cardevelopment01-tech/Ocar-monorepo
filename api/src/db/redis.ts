@@ -1,15 +1,25 @@
-import Redis from 'ioredis'
+import Redis, { type RedisOptions } from 'ioredis'
 import { config } from '@/config'
 
-export const client = new Redis(config.REDIS_URL, {
-  // In test/dev, don't retry forever — fail fast so health check returns quickly
-  maxRetriesPerRequest: null,
-  enableOfflineQueue: true,
-  lazyConnect: false,
-  retryStrategy: config.NODE_ENV === 'test'
-    ? () => null  // stop retrying immediately in test mode
-    : (times) => Math.min(times * 50, 2000),
-})
+function makeRedisOptions(): RedisOptions {
+  const url = new URL(config.REDIS_URL)
+  const opts: RedisOptions = {
+    host: url.hostname,
+    port: Number(url.port) || (url.protocol === 'rediss:' ? 6380 : 6379),
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: true,
+    lazyConnect: false,
+    retryStrategy: config.NODE_ENV === 'test'
+      ? () => null
+      : (times) => Math.min(times * 50, 2000),
+  }
+  if (url.password) opts.password = decodeURIComponent(url.password)
+  if (url.username) opts.username = decodeURIComponent(url.username)
+  if (url.protocol === 'rediss:') opts.tls = {}
+  return opts
+}
+
+export const client = new Redis(makeRedisOptions())
 
 client.on('error', (err) => {
   console.error('Redis error:', err)
