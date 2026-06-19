@@ -37,7 +37,6 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/ocar-api
-          # Primary tag is short SHA (used for rollback); also tag latest on main
           tags: |
             type=sha,prefix=sha-,format=short
             type=raw,value=latest,enable={{is_default_branch}}
@@ -60,30 +59,26 @@ jobs:
     name: Deploy to EC2
     needs: build-push
     runs-on: ubuntu-latest
-    environment: production
     env:
       IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          envs: IMAGE_TAG
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: IMAGE_TAG,GHCR_TOKEN
           script: |
             set -e
-            cd ${{ secrets.EC2_DEPLOY_PATH }}
+            cd /home/ubuntu/Ocar-monorepo
 
-            # Pull new image — GHCR_TOKEN is a PAT with read:packages scope
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u cardevelopment01-tech --password-stdin
 
-            # Inject image tag into compose (docker-compose.prod.yml reads ${IMAGE_TAG})
             export IMAGE_TAG=$IMAGE_TAG
             docker compose -f docker-compose.prod.yml pull api
-
-            # Restart only the api container without touching postgres/redis
             docker compose -f docker-compose.prod.yml up -d --no-deps api
-
-            # Prune dangling images (keeps disk clean)
+            docker exec ocar_api node dist/db/migrate.js || true
             docker image prune -f
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
