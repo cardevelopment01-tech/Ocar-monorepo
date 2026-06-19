@@ -20,6 +20,7 @@
     "turbo": "latest",
     "typescript": "^5.0.0"
   },
+  "packageManager": "pnpm@9.0.0",
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild", "msgpackr-extract"]
   }
