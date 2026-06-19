@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22-alpine AS base
+FROM node:22.16-alpine AS base
 RUN npm install -g pnpm@latest
 
 # ── Install all deps (incl. dev — needed for tsc) ───────────────────────────
@@ -29,7 +29,7 @@ COPY api/package.json ./api/
 RUN pnpm install --frozen-lockfile --prod --filter @ocar/api
 
 # ── Final production image ───────────────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM node:22.16-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
