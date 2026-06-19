@@ -163,10 +163,27 @@ export async function updateDriverStatus(
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    await client.query(
-      `UPDATE drivers SET status = $1, onboarding_step = COALESCE($3, onboarding_step), updated_at = now() WHERE id = $2`,
-      [toStatus, driverId, onboardingStep ?? null]
-    )
+    if (toStatus === 'active') {
+      await client.query(
+        `UPDATE drivers
+         SET status = $1,
+             onboarding_step = COALESCE($3, onboarding_step),
+             approved_by  = $4,
+             approved_at  = now(),
+             updated_at   = now()
+         WHERE id = $2`,
+        [toStatus, driverId, onboardingStep ?? null, adminId]
+      )
+    } else {
+      await client.query(
+        `UPDATE drivers
+         SET status = $1,
+             onboarding_step = COALESCE($3, onboarding_step),
+             updated_at   = now()
+         WHERE id = $2`,
+        [toStatus, driverId, onboardingStep ?? null]
+      )
+    }
     await client.query(
       `INSERT INTO driver_status_history (driver_id, from_status, to_status, reason, changed_by)
        VALUES ($1, $2, $3, $4, $5)`,
