@@ -66,6 +66,21 @@ jobs:
 
       - run: pnpm install --frozen-lockfile --filter @ocar/api --config.dangerouslyAllowAllBuilds=true
 
+      - name: Run migrations
+        run: pnpm --filter @ocar/api migrate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ocar_test
+          REDIS_URL: redis://localhost:6379
+          JWT_ACCESS_SECRET: test-access-secret-at-least-32-chars
+          JWT_REFRESH_SECRET: test-refresh-secret-at-least-32-chars
+          JWT_ACCESS_EXPIRY: 15m
+          JWT_REFRESH_EXPIRY_USER: 30d
+          JWT_REFRESH_EXPIRY_ADMIN: 24h
+          S3_BUCKET_NAME: test-bucket
+          S3_REGION: ap-south-1
+          S3_ACCESS_KEY: test-access-key
+          S3_SECRET_KEY: test-secret-key
+
       - name: Run tests
         run: pnpm --filter @ocar/api test
         env:
