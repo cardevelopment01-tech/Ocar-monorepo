@@ -33,7 +33,7 @@ services:
       retries: 5
 
   api:
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/ocar-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/cardevelopment01-tech/ocar-api:latest
     container_name: ocar_api
     restart: unless-stopped
     env_file: .env.prod

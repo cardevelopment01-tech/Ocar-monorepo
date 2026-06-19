@@ -7,7 +7,7 @@ FROM base AS deps
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY api/package.json ./api/
-RUN pnpm install --frozen-lockfile --filter @ocar/api
+RUN pnpm install --frozen-lockfile --filter @ocar/api --config.dangerouslyAllowAllBuilds=true
 
 # ── Compile TypeScript ───────────────────────────────────────────────────────
 FROM base AS builder
@@ -26,7 +26,7 @@ FROM base AS prod-deps
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY api/package.json ./api/
-RUN pnpm install --frozen-lockfile --prod --filter @ocar/api
+RUN pnpm install --frozen-lockfile --prod --filter @ocar/api --config.dangerouslyAllowAllBuilds=true
 
 # ── Final production image ───────────────────────────────────────────────────
 FROM node:22.16-alpine AS runner
