@@ -14,3 +14,9 @@ Thumbs.db
 # Stray temp auth files (Windows path mangling artifacts)
 C*_auth.json
 *_auth.json
+
+# Claude Code internal files
+.claude/
+
+# Graphify generated output
+graphify-out/
