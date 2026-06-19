@@ -32,6 +32,7 @@ export const personalInfoSchema = z.object({
 export const vehicleInfoSchema = z.object({
   category_id: z.number().int().positive(),
   brand_id: z.number().int().positive(),
+  model_id: z.number().int().positive().optional(),
   vehicle_name: z.string().min(2).max(100),
   model_year: z
     .number()
@@ -66,7 +67,9 @@ export const identityDocumentSchema = z.object({
 })
 
 export const identityUploadSchema = z.object({
-  doc_type: z.enum(['profile_photo', 'driving_license', 'aadhaar_front', 'aadhaar_back']),
+  doc_type:    z.enum(['profile_photo', 'driving_license', 'aadhaar_front', 'aadhaar_back']),
+  valid_from:  z.string().optional(),
+  valid_until: z.string().optional(),
 })
 
 export const vehicleUploadSchema = z.object({

@@ -62,8 +62,8 @@ export async function uploadDocument(req: Request, res: Response, next: NextFunc
       res.status(422).json({ error: 'No file uploaded', code: 'VALIDATION_ERROR' })
       return
     }
-    const { doc_type } = req.body as { doc_type: string }
-    const result = await service.uploadDriverDocument(req.driver!.id, req.file, doc_type)
+    const { doc_type, valid_from, valid_until } = req.body as { doc_type: string; valid_from?: string; valid_until?: string }
+    const result = await service.uploadDriverDocument(req.driver!.id, req.file, doc_type, valid_from, valid_until)
     res.status(201).json(result)
   } catch (err) {
     next(err)

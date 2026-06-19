@@ -136,6 +136,7 @@ export async function saveVehicleInfo(
   data: {
     category_id: number
     brand_id: number
+    model_id?: number
     vehicle_name: string
     model_year: number
     number_plate: string
@@ -175,7 +176,9 @@ export async function saveIdentityDocuments(
 export async function uploadDriverDocument(
   driverId: bigint,
   file: Express.Multer.File,
-  docType: string
+  docType: string,
+  validFrom?: string,
+  validUntil?: string
 ): Promise<{ doc_type: string; file_url: string; status: string }> {
   const driver = await repo.findDriverById(driverId)
   if (!driver) throw createHttpError(AppErrors.NOT_FOUND)
@@ -183,7 +186,15 @@ export async function uploadDriverDocument(
   const folder = `drivers/${driverId}/${docType}`
   const fileUrl = await uploadFile(file, folder)
 
-  const doc = await repo.upsertDriverDocument(driverId, docType, fileUrl)
+  const validFromDate  = validFrom  ? new Date(validFrom)  : undefined
+  const validUntilDate = validUntil ? new Date(validUntil) : undefined
+
+  const doc = await repo.upsertDriverDocument(driverId, docType, fileUrl, validFromDate, validUntilDate)
+
+  if (docType === 'profile_photo') {
+    await repo.setReferenceSelfie(driverId, fileUrl)
+  }
+
   return { doc_type: doc.doc_type, file_url: await getPresignedUrl(doc.file_url), status: doc.status }
 }
 

@@ -144,6 +144,7 @@ export async function upsertVehicle(
   data: {
     category_id: number
     brand_id: number
+    model_id?: number
     vehicle_name: string
     model_year: number
     number_plate: string
@@ -161,14 +162,15 @@ export async function upsertVehicle(
       `UPDATE driver_vehicles SET
          category_id       = $2,
          brand_id          = $3,
-         vehicle_name      = $4,
-         model_year        = $5,
-         number_plate      = $6,
-         color             = $7,
-         fuel_type         = $8,
-         seating_capacity  = $9,
-         luggage_capacity  = $10,
-         ac_availability   = $11,
+         model_id          = $4,
+         vehicle_name      = $5,
+         model_year        = $6,
+         number_plate      = $7,
+         color             = $8,
+         fuel_type         = $9,
+         seating_capacity  = $10,
+         luggage_capacity  = $11,
+         ac_availability   = $12,
          updated_at        = now()
        WHERE id = $1
        RETURNING *`,
@@ -176,6 +178,7 @@ export async function upsertVehicle(
         existing.id,
         data.category_id,
         data.brand_id,
+        data.model_id ?? null,
         data.vehicle_name,
         data.model_year,
         data.number_plate,
@@ -191,14 +194,15 @@ export async function upsertVehicle(
 
   const rows = await query<DriverVehicle>(
     `INSERT INTO driver_vehicles
-       (driver_id, category_id, brand_id, vehicle_name, model_year, number_plate,
+       (driver_id, category_id, brand_id, model_id, vehicle_name, model_year, number_plate,
         color, fuel_type, seating_capacity, luggage_capacity, ac_availability)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
     [
       driverId.toString(),
       data.category_id,
       data.brand_id,
+      data.model_id ?? null,
       data.vehicle_name,
       data.model_year,
       data.number_plate,
@@ -212,20 +216,34 @@ export async function upsertVehicle(
   return rows[0]!
 }
 
+export async function setReferenceSelfie(driverId: bigint, fileUrl: string): Promise<void> {
+  await query(
+    `UPDATE drivers SET reference_selfie_url = $2, updated_at = now() WHERE id = $1`,
+    [driverId.toString(), fileUrl]
+  )
+}
+
 // ── Driver documents ──────────────────────────────────────────────────────────
 
 export async function upsertDriverDocument(
   driverId: bigint,
   docType: string,
-  fileUrl: string
+  fileUrl: string,
+  validFrom?: Date,
+  validUntil?: Date
 ): Promise<DriverDocument> {
   const rows = await query<DriverDocument>(
-    `INSERT INTO driver_documents (driver_id, doc_type, file_url)
-     VALUES ($1, $2, $3)
+    `INSERT INTO driver_documents (driver_id, doc_type, file_url, valid_from, valid_until)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (driver_id, doc_type)
-     DO UPDATE SET file_url = EXCLUDED.file_url, status = 'pending', updated_at = now()
+     DO UPDATE SET
+       file_url    = EXCLUDED.file_url,
+       valid_from  = COALESCE(EXCLUDED.valid_from,  driver_documents.valid_from),
+       valid_until = COALESCE(EXCLUDED.valid_until, driver_documents.valid_until),
+       status      = 'pending',
+       updated_at  = now()
      RETURNING *`,
-    [driverId.toString(), docType, fileUrl]
+    [driverId.toString(), docType, fileUrl, validFrom ?? null, validUntil ?? null]
   )
   return rows[0]!
 }
