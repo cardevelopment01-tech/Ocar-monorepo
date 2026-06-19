@@ -75,6 +75,7 @@ jobs:
 
             echo "$GHCR_TOKEN" | docker login ghcr.io -u cardevelopment01-tech --password-stdin
 
+            export GITHUB_REPOSITORY_OWNER=cardevelopment01-tech
             export IMAGE_TAG=$IMAGE_TAG
             docker compose -f docker-compose.prod.yml pull api
             docker compose -f docker-compose.prod.yml up -d --no-deps api
