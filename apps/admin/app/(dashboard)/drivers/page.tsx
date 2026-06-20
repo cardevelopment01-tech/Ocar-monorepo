@@ -495,7 +495,7 @@ export default function DriversPage() {
               <>
                 {totalMissing > 0 && (
                   <p className="text-xs text-warning bg-warning/8 border border-warning/20 rounded-lg px-3 py-2">
-                    {totalMissing} doc{totalMissing !== 1 ? 's' : ''} missing — approve anyway to activate.
+                    {totalMissing} doc{totalMissing !== 1 ? 's' : ''} missing. Approve anyway to activate.
                   </p>
                 )}
                 <button onClick={() => openActionFromDetail('approve')}    className="w-full py-2.5 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 transition-colors">Approve Driver</button>

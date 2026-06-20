@@ -124,7 +124,7 @@ export default function StandardConfirm() {
       {locationWarning && (
         <div className="flex items-start gap-3 bg-accent-amber/10 border border-accent-amber/30 rounded-2xl px-4 py-3 mb-4">
           <AlertCircle size={16} className="text-accent-amber flex-shrink-0 mt-0.5" />
-          <p className="text-accent-amber text-sm">Using default location — GPS unavailable</p>
+          <p className="text-accent-amber text-sm">GPS unavailable, using your default location</p>
         </div>
       )}
 

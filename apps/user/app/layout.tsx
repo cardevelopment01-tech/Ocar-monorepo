@@ -4,7 +4,7 @@ import './globals.css'
 import { AuthProvider } from '@/lib/auth-context'
 
 export const metadata: Metadata = {
-  title: 'Ocar — Your ride, your way',
+  title: 'Ocar',
   description: 'Book a cab in seconds. Ocar is the fastest way to get a ride.',
 }
 

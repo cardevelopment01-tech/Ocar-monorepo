@@ -64,7 +64,7 @@ export default function ReturnCabSetup() {
         className="btn-go w-full mt-6"
         style={{ minHeight: 56 }}
       >
-        Go Online — Return to {selected || destination || '…'}
+        Go Online · Return to {selected || destination || '…'}
       </button>
     </div>
   )

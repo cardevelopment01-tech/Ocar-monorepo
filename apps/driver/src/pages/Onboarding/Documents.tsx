@@ -98,7 +98,7 @@ export default function Documents() {
       })
       setIdentitySaved(true)
     } catch {
-      setIdentityError('Could not save — check your details.')
+      setIdentityError("Couldn't save. Check your details.")
     }
   }
 
@@ -252,7 +252,7 @@ export default function Documents() {
               })
               setIdentitySaved(true)
             } catch {
-              setIdentityError('Could not save — check your details.')
+              setIdentityError("Couldn't save. Check your details.")
               return
             }
           }
@@ -379,7 +379,7 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, i
                 : <Upload size={22} className="text-text-muted" />}
             <p className="text-xs text-text-muted text-center px-4">
               {state === 'uploading' ? 'Uploading…'
-               : state === 'error'   ? (error ?? 'Upload failed — tap to retry')
+               : state === 'error'   ? (error ?? 'Upload failed. Tap to retry.')
                : 'Tap to upload · PDF or image · 20MB max'}
             </p>
           </div>

@@ -319,7 +319,7 @@ function CategoriesTab() {
         loading={saving} onCancel={() => setAddOpen(false)} onConfirm={handleAdd} confirmLabel="Add Category"
       />
 
-      <FieldDialog open={!!editTarget} title={`Edit — ${editTarget?.display_name}`}
+      <FieldDialog open={!!editTarget} title={`Edit ${editTarget?.display_name}`}
         fields={[
           { key: 'slug', label: 'Slug (cannot change)', type: 'text', readOnly: true },
           { key: 'display_name', label: 'Display Name', type: 'text' },
@@ -492,7 +492,7 @@ function BrandsTab() {
         ) : (
           <>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold text-text-primary">{selectedBrand.name} — Models</h2>
+              <h2 className="text-sm font-bold text-text-primary">{selectedBrand.name} models</h2>
               <button onClick={() => { setFormVals({ name: '', typical_category_id: '', is_active: true }); setAddModelOpen(true) }}
                 className="px-3 py-1 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary-dark">
                 + Add Model
@@ -528,7 +528,7 @@ function BrandsTab() {
         values={formVals} onChange={(k, v) => setFormVals(p => ({ ...p, [k]: v }))}
         loading={saving} onCancel={() => setAddBrandOpen(false)} onConfirm={handleAddBrand} confirmLabel="Add Brand"
       />
-      <FieldDialog open={!!editBrand} title={`Edit — ${editBrand?.name}`}
+      <FieldDialog open={!!editBrand} title={`Edit ${editBrand?.name}`}
         fields={[{ key: 'name', label: 'Brand Name', type: 'text' }, { key: 'is_active', label: 'Active', type: 'toggle' }]}
         values={formVals} onChange={(k, v) => setFormVals(p => ({ ...p, [k]: v }))}
         loading={saving} onCancel={() => setEditBrand(null)} onConfirm={handleEditBrand}
@@ -550,7 +550,7 @@ function BrandsTab() {
                 <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Typical Category</label>
                 <select value={String(formVals.typical_category_id ?? '')} onChange={e => setFormVals(p => ({ ...p, typical_category_id: e.target.value }))}
                   className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30">
-                  <option value="">— None —</option>
+                  <option value="">None</option>
                   {categoryOptions.map(o => { const [id, name] = o.split(':'); return <option key={id} value={id}>{name}</option> })}
                 </select>
               </div>
@@ -585,7 +585,7 @@ function BrandsTab() {
                 <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Typical Category</label>
                 <select value={String(formVals.typical_category_id ?? '')} onChange={e => setFormVals(p => ({ ...p, typical_category_id: e.target.value }))}
                   className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30">
-                  <option value="">— None —</option>
+                  <option value="">None</option>
                   {categoryOptions.map(o => { const [id, name] = o.split(':'); return <option key={id} value={id}>{name}</option> })}
                 </select>
               </div>

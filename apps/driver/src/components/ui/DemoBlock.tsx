@@ -27,7 +27,7 @@ export default function DemoBlock({ feature }: DemoBlockProps) {
       </p>
 
       <p className="text-sm text-text-muted text-center max-w-xs leading-relaxed">
-        We're building this next — the full experience is just around the corner.
+        We're working on this. Check back soon.
       </p>
 
       <button

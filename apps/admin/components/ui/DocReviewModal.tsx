@@ -404,7 +404,7 @@ export default function DocReviewModal({
                   <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center">
                     <FileText size={24} className="text-white/30" />
                   </div>
-                  <p className="text-white/40 text-sm">PDF — cannot preview inline</p>
+                  <p className="text-white/40 text-sm">PDF, can't preview inline</p>
                   <a
                     href={doc.fileUrl}
                     target="_blank"

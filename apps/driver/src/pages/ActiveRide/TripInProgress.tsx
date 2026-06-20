@@ -205,7 +205,7 @@ export default function TripInProgress() {
 
             <OtpInput value={otp} onChange={v => { setOtp(v); setOtpError(false) }} error={otpError} />
             {otpError && (
-              <p className="text-accent-red text-xs text-center mt-3 font-semibold">Wrong OTP — try again</p>
+              <p className="text-accent-red text-xs text-center mt-3 font-semibold">Wrong OTP, try again</p>
             )}
 
             <button

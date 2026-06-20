@@ -111,7 +111,7 @@ function UpdateRateDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
         <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] max-h-[90vh] overflow-y-auto bg-card border border-slate-800 rounded-xl p-6 z-50 shadow-2xl">
           <Dialog.Title className="text-white font-semibold text-lg mb-1">
-            Update {card.category_name} — {RIDE_TYPE_LABEL[card.ride_type]}
+            Update {card.category_name} · {RIDE_TYPE_LABEL[card.ride_type]}
           </Dialog.Title>
           <p className="text-xs text-amber-400 mb-4">This will create a new rate card and expire the current one. All future rides will use the new rate.</p>
           <form onSubmit={submit} className="space-y-3">
@@ -258,7 +258,7 @@ function CreateSurgeDialog({
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">
-                Multiplier — <span className="text-amber-400 font-medium">{mult.toFixed(2)}× — fares will be {pct}% higher</span>
+                Multiplier: <span className="text-amber-400 font-medium">{mult.toFixed(2)}× · fares will be {pct}% higher</span>
               </label>
               <div className="flex items-center gap-3">
                 <input type="range" min="1.0" max="5.0" step="0.1" value={form.multiplier}
@@ -401,7 +401,7 @@ export default function RateCardsPage() {
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-center gap-3">
           <AlertTriangle size={18} className="text-red-400 flex-shrink-0" />
           <p className="text-red-300 text-sm font-medium">
-            {activeSurges.length} active surge event{activeSurges.length > 1 ? 's' : ''} — fares are elevated
+            {activeSurges.length} active surge event{activeSurges.length > 1 ? 's' : ''}, fares are elevated
           </p>
         </div>
       )}

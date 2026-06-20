@@ -82,7 +82,7 @@ export default function AdminLoginPage() {
             Operations<br />Command Center
           </h2>
           <p className="text-white/70 text-base leading-relaxed max-w-xs">
-            Manage rides, drivers, payments, and platform health — all in one place.
+            Manage rides, drivers, payments, and platform health. All in one place.
           </p>
 
           <div className="flex flex-wrap gap-2 pt-2">
@@ -100,7 +100,7 @@ export default function AdminLoginPage() {
 
         {/* Footer */}
         <p className="relative text-white/40 text-xs">
-          Ocar Internal Tool — Authorised Personnel Only
+          Ocar Internal Tool · Authorised Personnel Only
         </p>
       </div>
 
@@ -201,7 +201,7 @@ export default function AdminLoginPage() {
           </form>
 
           <p className="text-center text-text-muted mt-8" style={{ fontSize: '11px' }}>
-            Ocar — Internal Tool &nbsp;·&nbsp; Authorised Personnel Only
+            Ocar · Internal Tool &nbsp;·&nbsp; Authorised Personnel Only
           </p>
         </div>
       </div>

@@ -75,7 +75,7 @@ export default function OTPVerify() {
             />
             {error && (
               <p className="text-accent-red text-xs text-center mt-3 font-semibold" role="alert">
-                Wrong OTP — double-check with rider
+                Wrong OTP. Ask the rider to check again.
               </p>
             )}
           </div>

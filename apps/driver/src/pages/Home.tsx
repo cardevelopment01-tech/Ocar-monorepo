@@ -224,7 +224,7 @@ export default function Home() {
         >
           <span className="w-1.5 h-1.5 rounded-full bg-text-muted flex-shrink-0" />
           <p className="text-text-secondary text-xs font-semibold whitespace-nowrap">
-            You're offline — tap toggle to earn
+            You're offline. Tap the toggle to start earning.
           </p>
         </div>
       )}
@@ -285,7 +285,7 @@ export default function Home() {
               style={{ background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.18)' }}
             >
               <span className="w-2 h-2 rounded-full bg-accent-orange animate-pulse-soft flex-shrink-0" aria-hidden="true" />
-              <p className="text-amber-700 text-sm font-semibold">Online — waiting for rides nearby</p>
+              <p className="text-amber-700 text-sm font-semibold">Online, looking for rides...</p>
             </div>
           ) : (
             <div

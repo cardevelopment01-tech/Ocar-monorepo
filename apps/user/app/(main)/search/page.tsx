@@ -468,7 +468,7 @@ function SearchContent() {
               <motion.div variants={listStagger} initial="hidden" animate="show">
                 {suggestions.length === 0 && !searching ? (
                   <motion.p variants={fadeUp} className="text-center text-sm text-text-muted py-10">
-                    No results — try a different name
+                    Nothing found. Try a different search.
                   </motion.p>
                 ) : (
                   <div className="bg-surface rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}>
@@ -505,7 +505,7 @@ function SearchContent() {
               <motion.div variants={listStagger} initial="hidden" animate="show" key="suggestions">
                 {suggestions.length === 0 && !searching ? (
                   <motion.p variants={fadeUp} className="text-center text-sm text-text-muted py-10">
-                    No results — try a different name
+                    Nothing found. Try a different search.
                   </motion.p>
                 ) : (
                   <div className="bg-surface rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}>
