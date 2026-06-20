@@ -139,7 +139,7 @@ function SelectRideContent() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Map */}
-      <div className="relative" style={{ height: '38%' }}>
+      <div className="relative flex-shrink-0" style={{ height: '38%' }}>
         <SelectRideMapScene
           center={center}
           pickupPos={[originLat, originLng]}
@@ -153,15 +153,24 @@ function SelectRideContent() {
         >
           <ArrowLeft size={18} className="text-text-primary" />
         </button>
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 bg-surface rounded-full shadow-card px-4 py-2 flex items-center gap-3">
+        {/* Distance pill — above the gradient fade */}
+        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 bg-surface rounded-full shadow-card px-4 py-2 flex items-center gap-3">
           <span className="text-xs font-semibold text-text-primary">{distanceKm} km</span>
           <div className="w-px h-4 bg-border" />
           <span className="text-xs text-text-muted">~{Math.round(durationMin)} min</span>
         </div>
+        {/* Gradient fade — blends map into the sheet below */}
+        <div
+          className="absolute bottom-0 left-0 right-0 h-14 pointer-events-none"
+          style={{ background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.97))' }}
+        />
       </div>
 
-      {/* Bottom sheet — scrollable ride options only */}
-      <div className="flex-1 bg-surface rounded-t-3xl -mt-3 shadow-sheet overflow-y-auto min-h-0">
+      {/* Bottom sheet — clean separation, no overlap, depth via shadow */}
+      <div
+        className="flex-1 bg-surface overflow-y-auto min-h-0"
+        style={{ boxShadow: '0 -6px 24px rgba(0,0,0,0.07)' }}
+      >
         <div className="w-10 h-1 bg-border rounded-full mx-auto mt-3 mb-4" />
         <div className="px-4 pb-4">
           <h2 className="font-bold text-text-primary text-lg mb-4 pl-1">Choose a ride</h2>
