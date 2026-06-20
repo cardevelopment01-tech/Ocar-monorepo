@@ -1,9 +1,9 @@
 export const OTP_LENGTH = 6
 export const OTP_TTL_SECONDS = 300
-export const OTP_MAX_ATTEMPTS = 3
-export const OTP_LOCK_DURATION_MINUTES = 15
-export const OTP_RATE_LIMIT_WINDOW_MINUTES = 15
-export const OTP_RATE_LIMIT_MAX_REQUESTS = 3
+export const OTP_MAX_ATTEMPTS = 10
+export const OTP_LOCK_DURATION_MINUTES = 5
+export const OTP_RATE_LIMIT_WINDOW_MINUTES = 5
+export const OTP_RATE_LIMIT_MAX_REQUESTS = 10
 
 export const JWT_ACCESS_EXPIRY = '15m'
 export const JWT_REFRESH_EXPIRY_USER = '30d'
