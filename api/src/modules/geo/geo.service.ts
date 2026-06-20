@@ -1,5 +1,7 @@
 import * as repo from './geo.repository'
+import * as google from './providers/google.provider'
 import type { GpsTrackPayload } from './geo.types'
+export type { PlaceSuggestion, PlaceDetail, RouteResult } from './providers/google.provider'
 
 export async function getCities() {
   return repo.getActiveCities()
@@ -30,14 +32,41 @@ export async function flushGpsTracks(
   return { written: filtered.length }
 }
 
-export async function geocodeAddress(address: string) {
-  const normalized = address.toLowerCase().trim().replace(/\s+/g, ' ')
-  const cached = await repo.lookupGeoCache(normalized)
-  if (cached) {
-    return { ...cached, normalized_address: normalized, from_cache: true }
-  }
-  // Phase 2: call Google Geocoding API here
-  return null
+export async function autocomplete(
+  input: string,
+  lat?: number,
+  lng?: number,
+) {
+  return google.autocomplete(input, lat, lng)
+}
+
+export async function getPlaceDetails(placeId: string) {
+  const cacheKey = `place:${placeId}`
+  const cached = await repo.lookupGeoCache(cacheKey)
+  if (cached) return { ...cached, placeId, from_cache: true }
+
+  const detail = await google.placeDetails(placeId)
+  await repo.storeGeoCache({
+    normalizedAddress: cacheKey,
+    rawAddress: detail.address,
+    latitude: detail.lat,
+    longitude: detail.lng,
+    provider: 'google',
+  })
+  return { latitude: detail.lat, longitude: detail.lng, address: detail.address, placeId }
+}
+
+export async function reverseGeocode(lat: number, lng: number) {
+  return { address: await google.reverseGeocode(lat, lng) }
+}
+
+export async function getRoute(
+  originLat: number,
+  originLng: number,
+  destLat: number,
+  destLng: number,
+) {
+  return google.getRoute(originLat, originLng, destLat, destLng)
 }
 
 export async function createCity(data: {

@@ -43,6 +43,9 @@ const envSchema = z.object({
   // BullMQ
   BULLMQ_CONCURRENCY: z.coerce.number().default(5),
 
+  // Maps
+  GOOGLE_MAPS_API_KEY: z.string().default(''),
+
   // Test
   TEST_DATABASE_URL: z.string().default(''),
 })

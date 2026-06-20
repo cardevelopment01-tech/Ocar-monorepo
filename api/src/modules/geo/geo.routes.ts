@@ -5,12 +5,14 @@ import * as controller from './geo.controller'
 const router: IRouter = Router()
 
 // ── Public ────────────────────────────────────────────────────
-// All active cities — used by driver app for return_cab destination
 router.get('/cities', controller.getCities)
-
-// Nearest city to a GPS point
-// Static path before :slug to avoid conflict
 router.get('/cities/nearest', controller.getNearestCity)
+
+// Maps / geocoding (proxied — key stays server-side)
+router.get('/autocomplete', controller.getAutocomplete)
+router.get('/place/:placeId', controller.getPlaceDetails)
+router.get('/reverse', controller.getReverseGeocode)
+router.get('/route', controller.getRoute)
 
 // ── Authenticated (driver JWT required) ───────────────────────
 // Flush GPS track batch — called every 30s during active trip
