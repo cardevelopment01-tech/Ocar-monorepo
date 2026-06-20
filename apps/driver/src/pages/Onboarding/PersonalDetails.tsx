@@ -388,7 +388,7 @@ export default function PersonalDetails() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setExperience(v => Math.min(40, (v ?? -1) + 1))}
+                    onClick={() => setExperience(v => Math.min(40, (v ?? 0) + 1))}
                     disabled={experience !== null && experience >= 40}
                     aria-label="Increase years"
                     className="w-9 h-9 rounded-lg flex items-center justify-center bg-white border border-border text-primary active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100 flex-shrink-0"

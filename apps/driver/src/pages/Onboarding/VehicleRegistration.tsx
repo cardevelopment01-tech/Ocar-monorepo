@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Minus, Plus } from 'lucide-react'
 import { onboardingApi, type VehicleInfoPayload, type VehicleCategory, type VehicleBrand, type VehicleModel } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
+import InlineSelect from '@/components/ui/InlineSelect'
 
 const COLORS = ['White', 'Black', 'Silver', 'Grey', 'Red', 'Blue', 'Brown', 'Green', 'Yellow', 'Orange', 'Other'] as const
 const FUEL_TYPES = [
@@ -180,25 +181,26 @@ export default function VehicleRegistration() {
       <div className="space-y-4 mb-8">
         {/* Brand */}
         <Field label="Brand">
-          <select className="input-dark w-full" value={brandId ?? ''} onChange={e => void handleBrandChange(Number(e.target.value))}>
-            <option value="" disabled>Select brand</option>
-            {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
+          <InlineSelect
+            value={brandId}
+            options={brands.map(b => ({ value: Number(b.id), label: b.name }))}
+            onChange={v => void handleBrandChange(Number(v))}
+            placeholder="Select brand"
+            searchable={brands.length > 6}
+          />
         </Field>
 
         {/* Model */}
         <Field label="Model">
-          <select
-            className="input-dark w-full"
-            value={modelId ?? ''}
-            disabled={!brandId || models.length === 0}
-            onChange={e => handleModelChange(Number(e.target.value))}
-          >
-            <option value="" disabled>
-              {!brandId ? 'Select brand first' : models.length === 0 ? 'Loading…' : 'Select model'}
-            </option>
-            {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
+          <InlineSelect
+            value={modelId}
+            options={models.map(m => ({ value: Number(m.id), label: m.name }))}
+            onChange={v => handleModelChange(Number(v))}
+            placeholder={!brandId ? 'Select brand first' : 'Select model'}
+            disabled={!brandId}
+            loading={!!brandId && models.length === 0 && !loadError}
+            searchable={models.length > 6}
+          />
         </Field>
 
         {/* Category */}
@@ -254,17 +256,13 @@ export default function VehicleRegistration() {
           </div>
         </Field>
 
-        {/* Seating + Luggage */}
+        {/* Seating + Luggage — steppers */}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Seating Capacity">
-            <select className="input-dark w-full" value={seating} onChange={e => setSeating(Number(e.target.value))}>
-              {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n} seats</option>)}
-            </select>
+          <Field label="Seats">
+            <Stepper value={seating} min={1} max={8} unit="seat" onChange={setSeating} />
           </Field>
           <Field label="Luggage Bags">
-            <select className="input-dark w-full" value={luggage} onChange={e => setLuggage(Number(e.target.value))}>
-              {[0,1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
+            <Stepper value={luggage} min={0} max={5} unit="bag" onChange={setLuggage} />
           </Field>
         </div>
 
@@ -300,6 +298,36 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <label className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2 block">{label}</label>
       {children}
+    </div>
+  )
+}
+
+function Stepper({ value, min, max, unit, onChange }: {
+  value: number; min: number; max: number; unit: string; onChange: (v: number) => void
+}) {
+  const label = value === 1 ? `1 ${unit}` : `${value} ${unit}s`
+  return (
+    <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl h-[52px] px-2 gap-1"
+         style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(min, value - 1))}
+        disabled={value <= min}
+        aria-label={`Decrease ${unit}`}
+        className="w-9 h-9 rounded-lg flex items-center justify-center bg-slate-50 border border-slate-200 text-blue-600 active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100 flex-shrink-0"
+      >
+        <Minus size={15} />
+      </button>
+      <span className="font-bold text-sm text-slate-800 tabular-nums">{label}</span>
+      <button
+        type="button"
+        onClick={() => onChange(Math.min(max, value + 1))}
+        disabled={value >= max}
+        aria-label={`Increase ${unit}`}
+        className="w-9 h-9 rounded-lg flex items-center justify-center bg-slate-50 border border-slate-200 text-blue-600 active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100 flex-shrink-0"
+      >
+        <Plus size={15} />
+      </button>
     </div>
   )
 }
