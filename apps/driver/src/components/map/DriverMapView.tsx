@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import Map from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 
-const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
+const STYLE_URL = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
 
 let styleCache: StyleSpecification | null = null
 if (typeof window !== 'undefined') {
@@ -38,6 +38,7 @@ export default function DriverMapView({ center, zoom = 15, dimmed = false, child
         style={{ width: '100%', height: '100%' }}
         attributionControl={false}
         reuseMaps
+        pixelRatio={typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1}
       >
         {children}
       </Map>

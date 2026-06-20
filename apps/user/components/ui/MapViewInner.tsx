@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import Map from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 
-const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
+// CartoDB Voyager — clean, sharp, high-contrast road map (no API key needed)
+const STYLE_URL = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
 
 // Cache the style JSON once per session — all map instances share it.
 let styleCache: StyleSpecification | null = null
@@ -41,6 +42,7 @@ export default function MapViewInner({ center, zoom, className, children }: MapV
         style={{ height: '100%', width: '100%' }}
         attributionControl={false}
         reuseMaps
+        pixelRatio={typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1}
       >
         {children}
       </Map>
