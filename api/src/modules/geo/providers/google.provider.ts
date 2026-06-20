@@ -121,32 +121,67 @@ export async function getRoute(
   destLat: number,
   destLng: number,
 ): Promise<RouteResult> {
-  if (!config.GOOGLE_MAPS_API_KEY) {
-    return haversineFallback(originLat, originLng, destLat, destLng)
+  // 1. Try Google Directions (best quality, needs key + Directions API enabled)
+  if (config.GOOGLE_MAPS_API_KEY) {
+    try {
+      const body = await gmapsGet('/directions/json', {
+        origin:      `${originLat},${originLng}`,
+        destination: `${destLat},${destLng}`,
+        mode:        'driving',
+        language:    'en',
+      }) as {
+        status: string
+        routes: Array<{
+          overview_polyline: { points: string }
+          legs: Array<{ distance: { value: number }; duration: { value: number } }>
+        }>
+      }
+
+      if (body.status === 'OK' && body.routes[0]) {
+        const leg = body.routes[0].legs[0]!
+        return {
+          distanceKm: Math.round((leg.distance.value / 1000) * 10) / 10,
+          durationMin: Math.round(leg.duration.value / 60),
+          polyline: body.routes[0].overview_polyline.points,
+        }
+      }
+    } catch { /* fall through to OSRM */ }
   }
 
-  const body = await gmapsGet('/directions/json', {
-    origin: `${originLat},${originLng}`,
-    destination: `${destLat},${destLng}`,
-    mode: 'driving',
-    language: 'en',
-  }) as {
-    status: string
-    routes: Array<{
-      overview_polyline: { points: string }
-      legs: Array<{ distance: { value: number }; duration: { value: number } }>
-    }>
+  // 2. OSRM fallback — free, no key, real road geometry via OpenStreetMap
+  try {
+    return await osrmRoute(originLat, originLng, destLat, destLng)
+  } catch { /* fall through to haversine */ }
+
+  // 3. Last resort — straight-line estimate, no polyline
+  return haversineFallback(originLat, originLng, destLat, destLng)
+}
+
+// OSRM public demo server — returns Google-compatible encoded polyline
+async function osrmRoute(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number,
+): Promise<RouteResult> {
+  const url =
+    `https://router.project-osrm.org/route/v1/driving/` +
+    `${lng1},${lat1};${lng2},${lat2}` +
+    `?overview=full&geometries=polyline`
+
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+  if (!res.ok) throw new Error('OSRM HTTP error')
+
+  const data = await res.json() as {
+    code: string
+    routes: Array<{ distance: number; duration: number; geometry: string }>
   }
 
-  if (body.status !== 'OK') {
-    return haversineFallback(originLat, originLng, destLat, destLng)
-  }
+  if (data.code !== 'Ok' || !data.routes?.[0]) throw new Error('OSRM no route')
 
-  const leg = body.routes[0]!.legs[0]!
+  const route = data.routes[0]
   return {
-    distanceKm: Math.round((leg.distance.value / 1000) * 10) / 10,
-    durationMin: Math.round(leg.duration.value / 60),
-    polyline: body.routes[0]!.overview_polyline.points,
+    distanceKm: Math.round((route.distance / 1000) * 10) / 10,
+    durationMin: Math.round(route.duration / 60),
+    polyline: route.geometry,
   }
 }
 
