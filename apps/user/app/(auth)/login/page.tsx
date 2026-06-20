@@ -59,7 +59,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const result = await authApi.requestOtp(formatPhone(phone))
-      if (process.env.NODE_ENV === 'development' && result.otp) setDevOtp(result.otp)
+      if ((DEMO_MODE || process.env.NODE_ENV === 'development') && result.otp) setDevOtp(result.otp)
       setStep('otp')
       setOtp('')
       startCountdown()
