@@ -185,17 +185,14 @@ function SelectRideContent() {
 
         {/* No drivers banner */}
         {allUnavailable && (
-          <div className="mx-4 mb-2 flex items-center gap-2.5 rounded-2xl px-4 py-3 bg-amber-50 border border-amber-200">
-            <span className="text-lg flex-shrink-0">😴</span>
-            <div>
-              <p className="text-[13px] font-bold text-amber-800">No drivers nearby right now</p>
-              <p className="text-[11px] text-amber-600 mt-0.5">Try again in a few minutes — drivers come online throughout the day</p>
-            </div>
+          <div className="mx-4 mb-2 flex items-center gap-2 rounded-2xl px-4 py-2.5 bg-amber-50 border border-amber-200">
+            <span className="text-base flex-shrink-0">😴</span>
+            <p className="text-[12px] font-semibold text-amber-800">No drivers nearby — try again in a few minutes</p>
           </div>
         )}
 
         {/* Ride cards */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-3 space-y-2">
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-3 space-y-2 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
           {categories.map(cat => {
             const est    = estimates[cat.id]
             const fare   = est?.breakdown.total
