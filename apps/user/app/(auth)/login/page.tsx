@@ -81,9 +81,8 @@ export default function LoginPage() {
     void handleSendOtp()
   }
 
-  async function handleVerifyOtp(code: string) {
-    setOtp(code)
-    if (code.length < 6) return
+  async function submitOtp(code: string) {
+    if (code.length < 6 || loading) return
     setError('')
     setLoading(true)
     try {
@@ -111,6 +110,12 @@ export default function LoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  function handleOtpChange(code: string) {
+    setOtp(code)
+    setError('')
+    if (code.length === 6) void submitOtp(code)
   }
 
   return (
@@ -298,7 +303,7 @@ export default function LoginPage() {
               <OtpInput
                 length={6}
                 value={otp}
-                onChange={handleVerifyOtp}
+                onChange={handleOtpChange}
                 disabled={loading}
                 error={!!error}
               />
@@ -314,18 +319,27 @@ export default function LoginPage() {
                 </motion.p>
               )}
 
-              {loading && (
-                <div className="flex justify-center mt-8">
-                  <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                </div>
-              )}
+              <motion.button
+                type="button"
+                onClick={() => void submitOtp(otp)}
+                disabled={otp.length < 6 || loading}
+                className="btn-primary w-full mt-6 flex items-center justify-center gap-2"
+                whileTap={otp.length === 6 && !loading ? { scale: 0.97 } : {}}
+                transition={SPRING}
+              >
+                {loading ? (
+                  <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                ) : (
+                  <>Verify OTP <ArrowRight size={17} /></>
+                )}
+              </motion.button>
 
               <motion.button
                 type="button"
                 onClick={handleSendOtp}
                 disabled={loading || countdown > 0}
                 className={cn(
-                  'w-full text-center text-sm mt-auto pt-10 font-semibold',
+                  'w-full text-center text-sm mt-4 font-semibold',
                   countdown > 0 || loading
                     ? 'text-text-muted pointer-events-none'
                     : 'text-primary cursor-pointer',
