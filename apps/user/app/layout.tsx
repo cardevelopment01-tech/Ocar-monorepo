@@ -19,6 +19,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://tiles.openfreemap.org" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://tiles.openfreemap.org" />
+      </head>
       <body>
         <main className="min-h-[100dvh] bg-background">
           <div className="mx-auto max-w-[430px] min-h-[100dvh] bg-background relative">

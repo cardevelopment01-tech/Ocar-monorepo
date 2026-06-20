@@ -4,13 +4,15 @@ import { useAuthStore } from '@/store/useAuthStore'
 let socket: Socket | null = null
 
 export function getDriverSocket(): Socket {
+  const token = useAuthStore.getState().token
   if (!socket) {
-    const token = useAuthStore.getState().token
     socket = io(import.meta.env['VITE_API_URL'] as string, {
       auth: { token },
       transports: ['websocket', 'polling'],
       autoConnect: false,
     })
+  } else {
+    socket.auth = { token }
   }
   return socket
 }

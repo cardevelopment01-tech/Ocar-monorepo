@@ -73,7 +73,11 @@ export interface RefreshTokenRecord {
   principal_role: string
   principal_id: string
   token_hash: string
+  family_id: string
   expires_at: Date
+  used_at: Date | null
+  replaced_by_token_hash: string | null
+  reuse_detected_at: Date | null
   revoked_at: Date | null
   created_at: Date
 }
@@ -84,6 +88,7 @@ export interface AuthTokens {
   accessToken: string
   refreshToken: string
   expiresIn: number
+  refreshExpiresIn: number
 }
 
 export interface OtpRequestResult {

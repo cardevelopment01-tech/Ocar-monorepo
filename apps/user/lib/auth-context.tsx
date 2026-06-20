@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
-import { type UserProfile, getStoredUser, getToken, clearAuth } from './auth'
+import { type UserProfile, getStoredUser, getToken, getRefreshToken, clearAuth } from './auth'
 import api from './api'
 
 interface AuthContextType {
@@ -47,9 +47,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const fresh = res.data.principal
         setUser(fresh)
         localStorage.setItem('ocar_user_data', JSON.stringify(fresh))
-      } catch {
-        clearAuth()
-        window.location.href = '/login'
+      } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } })?.response?.status
+        if (status === 401) {
+          clearAuth()
+          window.location.href = '/login'
+        }
       } finally {
         setIsLoading(false)
       }
@@ -59,6 +62,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const logout = () => {
+    const refreshToken = getRefreshToken()
+    if (refreshToken) {
+      void api.post('/api/v1/auth/logout', { refreshToken }).catch(() => undefined)
+    }
     clearAuth()
     setUser(null)
     window.location.href = '/login'

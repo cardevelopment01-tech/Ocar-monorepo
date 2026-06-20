@@ -1,7 +1,9 @@
 import { AppErrors } from '@/constants/errors'
+import crypto from 'crypto'
 import { createHttpError } from '@/lib/errors'
 import { PrincipalRole, OtpPurpose } from '@/constants/enums'
-import { OTP_TTL_SECONDS, JWT_REFRESH_EXPIRY_USER, JWT_REFRESH_EXPIRY_ADMIN } from '@/constants/limits'
+import { config } from '@/config'
+import { OTP_TTL_SECONDS } from '@/constants/limits'
 import * as otpLib from '@/lib/otp'
 import { signAccessToken, generateRefreshToken, hashRefreshToken } from '@/lib/jwt'
 import { comparePassword } from '@/lib/hash'
@@ -37,7 +39,8 @@ async function issueTokenPair(
   role: PrincipalRole,
   principal: UserRecord | DriverRecord | AdminRecord,
   refreshExpiry: string,
-  adminRole?: string
+  adminRole?: string,
+  familyId = crypto.randomUUID()
 ): Promise<AuthTokens> {
   const payload: AccessTokenPayload = {
     sub: principal.id,
@@ -50,16 +53,19 @@ async function issueTokenPair(
   const accessToken = signAccessToken(payload)
   const refreshToken = generateRefreshToken()
   const tokenHash = hashRefreshToken(refreshToken)
-  const expiresAt = new Date(Date.now() + expiryToSeconds(refreshExpiry) * 1000)
+  const accessExpiresIn = expiryToSeconds(config.JWT_ACCESS_EXPIRY)
+  const refreshExpiresIn = expiryToSeconds(refreshExpiry)
+  const expiresAt = new Date(Date.now() + refreshExpiresIn * 1000)
 
   await repo.storeRefreshToken({
     principalRole: role,
     principalId: BigInt(principal.id),
     tokenHash,
+    familyId,
     expiresAt,
   })
 
-  return { accessToken, refreshToken, expiresIn: expiryToSeconds(refreshExpiry) }
+  return { accessToken, refreshToken, expiresIn: accessExpiresIn, refreshExpiresIn }
 }
 
 // ── Public service functions ──────────────────────────────────────────────────
@@ -128,7 +134,7 @@ export async function verifyOtp(
     }
   }
 
-  const tokens = await issueTokenPair(principalRole, principal, JWT_REFRESH_EXPIRY_USER)
+  const tokens = await issueTokenPair(principalRole, principal, config.JWT_REFRESH_EXPIRY_USER)
   return { tokens, principal, isNew }
 }
 
@@ -142,17 +148,22 @@ export async function adminLogin(email: string, password: string, ip: string | n
   await repo.touchAdminLogin(BigInt(adminRow.id), ip)
 
   const { password_hash: _ph, ...admin } = adminRow
-  const tokens = await issueTokenPair(PrincipalRole.ADMIN, admin, JWT_REFRESH_EXPIRY_ADMIN, admin.role)
+  const tokens = await issueTokenPair(PrincipalRole.ADMIN, admin, config.JWT_REFRESH_EXPIRY_ADMIN, admin.role)
   return { tokens, admin }
 }
 
 export async function refreshTokens(refreshToken: string): Promise<{ tokens: AuthTokens }> {
   const tokenHash = hashRefreshToken(refreshToken)
-  const stored = await repo.findValidRefreshToken(tokenHash)
+  const stored = await repo.findRefreshToken(tokenHash)
   if (!stored) throw createHttpError(AppErrors.AUTH_TOKEN_INVALID)
-
-  // Revoke the used token immediately (rotation — single-use)
-  await repo.revokeRefreshToken(tokenHash)
+  if (stored.used_at || stored.revoked_at) {
+    await repo.revokeRefreshTokenFamily(tokenHash)
+    throw createHttpError(AppErrors.AUTH_TOKEN_INVALID)
+  }
+  if (stored.expires_at <= new Date()) {
+    await repo.revokeRefreshTokenFamily(tokenHash)
+    throw createHttpError(AppErrors.AUTH_TOKEN_INVALID)
+  }
 
   const role = stored.principal_role as PrincipalRole
   const principalId = BigInt(stored.principal_id)
@@ -169,13 +180,36 @@ export async function refreshTokens(refreshToken: string): Promise<{ tokens: Aut
 
   if (!principal) throw createHttpError(AppErrors.AUTH_TOKEN_INVALID)
 
-  const expiry = role === PrincipalRole.ADMIN ? JWT_REFRESH_EXPIRY_ADMIN : JWT_REFRESH_EXPIRY_USER
+  const expiry = role === PrincipalRole.ADMIN ? config.JWT_REFRESH_EXPIRY_ADMIN : config.JWT_REFRESH_EXPIRY_USER
   const adminRole = role === PrincipalRole.ADMIN ? (principal as AdminRecord).role : undefined
-  const tokens = await issueTokenPair(role, principal, expiry, adminRole)
+  const payload: AccessTokenPayload = {
+    sub: principal.id,
+    code: principal.code,
+    role,
+    status: (principal as UserRecord | DriverRecord).status ?? 'active',
+  }
+  if (adminRole) payload.adminRole = adminRole as import('@/constants/enums').AdminRole
+
+  const newRefreshToken = generateRefreshToken()
+  const newTokenHash = hashRefreshToken(newRefreshToken)
+  const refreshExpiresIn = expiryToSeconds(expiry)
+  const rotated = await repo.rotateRefreshToken({
+    oldTokenHash: tokenHash,
+    newTokenHash,
+    expiresAt: new Date(Date.now() + refreshExpiresIn * 1000),
+  })
+  if (!rotated) throw createHttpError(AppErrors.AUTH_TOKEN_INVALID)
+
+  const tokens: AuthTokens = {
+    accessToken: signAccessToken(payload),
+    refreshToken: newRefreshToken,
+    expiresIn: expiryToSeconds(config.JWT_ACCESS_EXPIRY),
+    refreshExpiresIn,
+  }
   return { tokens }
 }
 
 export async function logout(refreshToken: string): Promise<void> {
   const tokenHash = hashRefreshToken(refreshToken)
-  await repo.revokeRefreshToken(tokenHash)
+  await repo.revokeRefreshTokenFamily(tokenHash)
 }

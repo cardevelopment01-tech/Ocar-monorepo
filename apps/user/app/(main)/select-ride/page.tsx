@@ -160,10 +160,10 @@ function SelectRideContent() {
         </div>
       </div>
 
-      {/* Bottom sheet */}
-      <div className="flex-1 bg-surface rounded-t-3xl -mt-3 shadow-sheet overflow-y-auto">
+      {/* Bottom sheet — scrollable ride options only */}
+      <div className="flex-1 bg-surface rounded-t-3xl -mt-3 shadow-sheet overflow-y-auto min-h-0">
         <div className="w-10 h-1 bg-border rounded-full mx-auto mt-3 mb-4" />
-        <div className="px-4 pb-24">
+        <div className="px-4 pb-4">
           <h2 className="font-bold text-text-primary text-lg mb-4 pl-1">Choose a ride</h2>
 
           <div className="space-y-2 mb-6">
@@ -226,41 +226,33 @@ function SelectRideContent() {
               )
             })}
           </div>
-
-          <div
-            className="flex items-center justify-between rounded-2xl px-4 py-3 mb-4"
-            style={{
-              background: 'rgba(79,70,229,0.04)',
-              border: '1px solid rgba(79,70,229,0.10)',
-            }}
-          >
-            <div className="flex items-center gap-2">
-              <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center"
-                style={{ background: 'rgba(79,70,229,0.10)' }}
-              >
-                <CreditCard size={14} className="text-primary" />
-              </div>
-              <span className="text-sm font-semibold text-text-primary">Cash</span>
-            </div>
-            <button className="text-xs text-primary font-semibold cursor-pointer">Change</button>
-          </div>
-
-          {bookError && (
-            <p className="text-status-error text-sm text-center mb-3">{bookError}</p>
-          )}
-
-          <button
-            onClick={handleBook}
-            disabled={isBooking || loading || selectedFare == null || (driverEta[selected]?.count === 0)}
-            className="btn-primary w-full"
-          >
-            {isBooking
-              ? 'Booking…'
-              : `Book ${selectedCat?.display_name ?? ''} · ${selectedFare != null ? `₹${Math.round(selectedFare)}` : '—'}`
-            }
-          </button>
         </div>
+      </div>
+
+      {/* Fixed book bar — always visible, never scrolls away */}
+      <div className="flex-shrink-0 bg-surface border-t border-border px-4 pt-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}>
+        <div className="flex items-center justify-between rounded-2xl px-4 py-2.5 mb-3" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.10)' }}>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'rgba(79,70,229,0.10)' }}>
+              <CreditCard size={14} className="text-primary" />
+            </div>
+            <span className="text-sm font-semibold text-text-primary">Cash</span>
+          </div>
+          <button className="text-xs text-primary font-semibold cursor-pointer">Change</button>
+        </div>
+        {bookError && (
+          <p className="text-status-error text-sm text-center mb-2">{bookError}</p>
+        )}
+        <button
+          onClick={handleBook}
+          disabled={isBooking || loading || selectedFare == null || (driverEta[selected]?.count === 0)}
+          className="btn-primary w-full"
+        >
+          {isBooking
+            ? 'Booking…'
+            : `Book ${selectedCat?.display_name ?? ''} · ${selectedFare != null ? `₹${Math.round(selectedFare)}` : '—'}`
+          }
+        </button>
       </div>
     </div>
   )

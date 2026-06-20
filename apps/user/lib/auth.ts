@@ -14,6 +14,7 @@ export interface AuthTokens {
   accessToken: string
   refreshToken: string
   expiresIn: number
+  refreshExpiresIn: number
 }
 
 export interface VerifyOtpResponse {
@@ -34,23 +35,35 @@ export function isValidIndianPhone(phone: string): boolean {
 }
 
 export function storeAuth(accessToken: string, refreshToken: string, user: UserProfile) {
+  storeTokens(accessToken, refreshToken)
+  localStorage.setItem('ocar_user_data', JSON.stringify(user))
+}
+
+export function storeTokens(accessToken: string, refreshToken: string) {
   localStorage.setItem('ocar_user_token', accessToken)
   localStorage.setItem('ocar_user_refresh', refreshToken)
-  localStorage.setItem('ocar_user_data', JSON.stringify(user))
-  // Cookie for Next.js middleware (30 days)
-  document.cookie = `ocar_user_token=${accessToken}; path=/; max-age=2592000; SameSite=Lax`
+  // Non-sensitive presence cookie for Next.js middleware (30 days)
+  document.cookie = 'ocar_user_session=1; path=/; max-age=2592000; SameSite=Lax'
+  // Remove legacy token-bearing cookie if present
+  document.cookie = 'ocar_user_token=; path=/; max-age=0'
 }
 
 export function clearAuth() {
   localStorage.removeItem('ocar_user_token')
   localStorage.removeItem('ocar_user_refresh')
   localStorage.removeItem('ocar_user_data')
+  document.cookie = 'ocar_user_session=; path=/; max-age=0'
   document.cookie = 'ocar_user_token=; path=/; max-age=0'
 }
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null
   return localStorage.getItem('ocar_user_token')
+}
+
+export function getRefreshToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('ocar_user_refresh')
 }
 
 export function getStoredUser(): UserProfile | null {
@@ -90,7 +103,15 @@ export const authApi = {
     return response.data.principal as UserProfile
   },
 
-  logout: () => {
+  logout: async () => {
+    const refreshToken = getRefreshToken()
+    if (refreshToken) {
+      try {
+        await api.post('/api/v1/auth/logout', { refreshToken })
+      } catch {
+        // Best-effort server logout; local cleanup still wins.
+      }
+    }
     clearAuth()
     window.location.href = '/login'
   },

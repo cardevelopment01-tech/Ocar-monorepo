@@ -14,9 +14,9 @@ const envSchema = z.object({
   // JWT
   JWT_ACCESS_SECRET: z.string().min(1),
   JWT_REFRESH_SECRET: z.string().min(1),
-  JWT_ACCESS_EXPIRY: z.string().default('15m'),
-  JWT_REFRESH_EXPIRY_USER: z.string().default('30d'),
-  JWT_REFRESH_EXPIRY_ADMIN: z.string().default('24h'),
+  JWT_ACCESS_EXPIRY: z.string().regex(/^\d+[smhd]$/).default('15m'),
+  JWT_REFRESH_EXPIRY_USER: z.string().regex(/^\d+[smhd]$/).default('30d'),
+  JWT_REFRESH_EXPIRY_ADMIN: z.string().regex(/^\d+[smhd]$/).default('24h'),
 
   // Razorpay
   RAZORPAY_KEY_ID: z.string().default(''),

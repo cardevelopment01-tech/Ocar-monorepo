@@ -40,7 +40,10 @@ export default function App() {
         onboarding_step: res.data.driver.onboarding_step,
         full_name: res.data.driver.full_name,
       }))
-      .catch(() => clearAuth())
+      .catch((err: unknown) => {
+        const status = (err as { response?: { status?: number } })?.response?.status
+        if (status === 401) clearAuth()
+      })
   }, [])
 
   return (

@@ -1,7 +1,6 @@
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import { config } from '@/config'
-import { JWT_ACCESS_EXPIRY } from '@/constants/limits'
 import type { PrincipalRole, AdminRole } from '@/constants/enums'
 
 export interface AccessTokenPayload {
@@ -19,10 +18,11 @@ export interface DecodedAccessToken extends AccessTokenPayload {
 
 export function signAccessToken(payload: AccessTokenPayload): string {
   const { sub, ...rest } = payload
-  return jwt.sign(rest, config.JWT_ACCESS_SECRET, {
+  const options: jwt.SignOptions = {
     subject: sub,
-    expiresIn: JWT_ACCESS_EXPIRY,
-  })
+    expiresIn: config.JWT_ACCESS_EXPIRY as NonNullable<jwt.SignOptions['expiresIn']>,
+  }
+  return jwt.sign(rest, config.JWT_ACCESS_SECRET, options)
 }
 
 export function verifyAccessToken(token: string): DecodedAccessToken {

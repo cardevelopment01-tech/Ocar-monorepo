@@ -9,7 +9,7 @@ import { useAuthStore, type DriverProfile } from '@/store/useAuthStore'
 type Step = 'phone' | 'otp'
 
 interface VerifyOtpResponse {
-  tokens: { accessToken: string; refreshToken: string; expiresIn: number }
+  tokens: { accessToken: string; refreshToken: string; expiresIn: number; refreshExpiresIn: number }
   principal: DriverProfile
   isNew: boolean
 }

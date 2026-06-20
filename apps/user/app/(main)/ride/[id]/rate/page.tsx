@@ -84,7 +84,7 @@ export default function RateRidePage() {
   }
 
   return (
-    <div className="h-full bg-background flex flex-col px-6 pb-24 overflow-y-auto">
+    <div className="h-full bg-background flex flex-col px-6 pb-8 overflow-y-auto">
       <div className="pt-12 pb-6 flex flex-col items-center text-center">
         <div className="w-16 h-16 rounded-2xl bg-primary-subtle flex items-center justify-center text-3xl mb-4">
           👤

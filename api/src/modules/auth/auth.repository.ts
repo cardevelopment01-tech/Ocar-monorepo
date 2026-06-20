@@ -1,4 +1,4 @@
-import { query } from '@/db/client'
+import { query, withTransaction } from '@/db/client'
 import type { PrincipalRole, OtpPurpose } from '@/constants/enums'
 import type {
   UserRecord,
@@ -117,32 +117,101 @@ export async function storeRefreshToken(params: {
   principalRole: PrincipalRole
   principalId: bigint
   tokenHash: string
+  familyId: string
   expiresAt: Date
 }): Promise<RefreshTokenRecord> {
   const rows = await query<RefreshTokenRecord>(
-    `INSERT INTO refresh_tokens (principal_role, principal_id, token_hash, expires_at)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO refresh_tokens (principal_role, principal_id, token_hash, family_id, expires_at)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [params.principalRole, params.principalId.toString(), params.tokenHash, params.expiresAt]
+    [params.principalRole, params.principalId.toString(), params.tokenHash, params.familyId, params.expiresAt]
   )
   return rows[0]!
 }
 
-export async function findValidRefreshToken(tokenHash: string): Promise<RefreshTokenRecord | null> {
+export async function findRefreshToken(tokenHash: string): Promise<RefreshTokenRecord | null> {
   const rows = await query<RefreshTokenRecord>(
     `SELECT * FROM refresh_tokens
      WHERE token_hash = $1
-       AND revoked_at IS NULL
-       AND expires_at > now()
      LIMIT 1`,
     [tokenHash]
   )
   return rows[0] ?? null
 }
 
-export async function revokeRefreshToken(tokenHash: string): Promise<void> {
+export async function rotateRefreshToken(params: {
+  oldTokenHash: string
+  newTokenHash: string
+  expiresAt: Date
+}): Promise<RefreshTokenRecord | null> {
+  return withTransaction(async (client) => {
+    const existing = await client.query<RefreshTokenRecord>(
+      `SELECT * FROM refresh_tokens WHERE token_hash = $1 LIMIT 1 FOR UPDATE`,
+      [params.oldTokenHash]
+    )
+    const token = existing.rows[0]
+    if (!token) return null
+
+    if (token.used_at || token.revoked_at) {
+      await client.query(
+        `UPDATE refresh_tokens
+         SET revoked_at = COALESCE(revoked_at, now()),
+             reuse_detected_at = CASE
+               WHEN token_hash = $1 THEN COALESCE(reuse_detected_at, now())
+               ELSE reuse_detected_at
+             END
+         WHERE family_id = $2`,
+        [params.oldTokenHash, token.family_id]
+      )
+      return null
+    }
+
+    if (token.expires_at <= new Date()) {
+      await client.query(
+        `UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, now()) WHERE token_hash = $1`,
+        [params.oldTokenHash]
+      )
+      return null
+    }
+
+    await client.query(
+      `UPDATE refresh_tokens
+       SET used_at = now(),
+           revoked_at = now(),
+           replaced_by_token_hash = $2
+       WHERE token_hash = $1`,
+      [params.oldTokenHash, params.newTokenHash]
+    )
+
+    const inserted = await client.query<RefreshTokenRecord>(
+      `INSERT INTO refresh_tokens
+         (principal_role, principal_id, token_hash, family_id, expires_at)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [
+        token.principal_role,
+        token.principal_id,
+        params.newTokenHash,
+        token.family_id,
+        params.expiresAt,
+      ]
+    )
+    return inserted.rows[0]!
+  })
+}
+
+export async function revokeRefreshTokenFamily(tokenHash: string): Promise<void> {
+  const token = await findRefreshToken(tokenHash)
+  if (!token) return
   await query(
-    'UPDATE refresh_tokens SET revoked_at = now() WHERE token_hash = $1',
-    [tokenHash]
+    `UPDATE refresh_tokens
+     SET revoked_at = COALESCE(revoked_at, now()),
+         reuse_detected_at = CASE
+           WHEN token_hash = $2 AND (used_at IS NOT NULL OR revoked_at IS NOT NULL)
+           THEN COALESCE(reuse_detected_at, now())
+           ELSE reuse_detected_at
+         END
+     WHERE family_id = $1`,
+    [token.family_id, tokenHash]
   )
 }

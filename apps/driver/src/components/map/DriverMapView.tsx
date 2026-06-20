@@ -1,7 +1,17 @@
+import { useState, useEffect } from 'react'
 import Map from 'react-map-gl/maplibre'
-import 'maplibre-gl/dist/maplibre-gl.css'
 
-const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
+const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
+
+// Fetch and cache the style JSON once per session so every map mount
+// (navigation back to home, tab switch, etc.) skips the remote fetch entirely.
+let styleCache: object | null = null
+if (typeof window !== 'undefined') {
+  fetch(STYLE_URL)
+    .then(r => r.json() as Promise<object>)
+    .then(s => { styleCache = s })
+    .catch(() => {})
+}
 
 interface DriverMapViewProps {
   center: [number, number]
@@ -11,13 +21,24 @@ interface DriverMapViewProps {
 }
 
 export default function DriverMapView({ center, zoom = 15, dimmed = false, children }: DriverMapViewProps) {
+  const [mapStyle, setMapStyle] = useState<object | string>(styleCache ?? STYLE_URL)
+
+  useEffect(() => {
+    if (styleCache) { setMapStyle(styleCache); return }
+    fetch(STYLE_URL)
+      .then(r => r.json() as Promise<object>)
+      .then(s => { styleCache = s; setMapStyle(s) })
+      .catch(() => {})
+  }, [])
+
   return (
     <div className="relative w-full h-full">
       <Map
         initialViewState={{ latitude: center[0], longitude: center[1], zoom }}
-        mapStyle={MAP_STYLE}
+        mapStyle={mapStyle}
         style={{ width: '100%', height: '100%' }}
         attributionControl={false}
+        reuseMaps
       >
         {children}
       </Map>

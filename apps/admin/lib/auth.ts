@@ -12,14 +12,19 @@ export interface AdminProfile {
 }
 
 export interface AdminAuthResponse {
-  tokens: { accessToken: string; refreshToken: string; expiresIn: number }
+  tokens: { accessToken: string; refreshToken: string; expiresIn: number; refreshExpiresIn: number }
   admin: AdminProfile
 }
 
 export function storeAdminAuth(token: string, admin: AdminProfile, refreshToken?: string) {
-  localStorage.setItem('ocar_admin_token', token)
+  storeAdminTokens(token, refreshToken)
   localStorage.setItem('ocar_admin_data', JSON.stringify(admin))
-  document.cookie = `ocar_admin_token=${token}; path=/; max-age=86400`
+}
+
+export function storeAdminTokens(token: string, refreshToken?: string) {
+  localStorage.setItem('ocar_admin_token', token)
+  document.cookie = 'ocar_admin_session=1; path=/; max-age=86400; SameSite=Lax'
+  document.cookie = 'ocar_admin_token=; path=/; max-age=0'
   if (refreshToken) localStorage.setItem('ocar_admin_refresh_token', refreshToken)
 }
 
@@ -27,6 +32,7 @@ export function clearAdminAuth() {
   localStorage.removeItem('ocar_admin_token')
   localStorage.removeItem('ocar_admin_data')
   localStorage.removeItem('ocar_admin_refresh_token')
+  document.cookie = 'ocar_admin_session=; path=/; max-age=0'
   document.cookie = 'ocar_admin_token=; path=/; max-age=0'
 }
 
@@ -60,7 +66,15 @@ export const adminAuthApi = {
     return res.data.principal as AdminProfile
   },
 
-  logout: () => {
+  logout: async () => {
+    const refreshToken = getAdminRefreshToken()
+    if (refreshToken) {
+      try {
+        await api.post('/api/v1/auth/logout', { refreshToken })
+      } catch {
+        // Best-effort server logout; local cleanup still wins.
+      }
+    }
     clearAdminAuth()
     window.location.href = '/login'
   },

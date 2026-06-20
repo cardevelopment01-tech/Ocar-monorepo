@@ -1,4 +1,9 @@
-import axios from 'axios'
+import axios, { type InternalAxiosRequestConfig } from 'axios'
+import { useAuthStore } from '@/store/useAuthStore'
+
+type RetriableRequest = InternalAxiosRequestConfig & { _retry?: boolean }
+
+class MissingRefreshTokenError extends Error {}
 
 const api = axios.create({
   baseURL: import.meta.env['VITE_API_URL'],
@@ -6,19 +11,74 @@ const api = axios.create({
   timeout: 10000,
 })
 
+let refreshPromise: Promise<string> | null = null
+
+function isAuthEndpoint(url?: string): boolean {
+  return !!url && (
+    url.includes('/api/v1/auth/refresh') ||
+    url.includes('/api/v1/auth/otp/request') ||
+    url.includes('/api/v1/auth/otp/verify')
+  )
+}
+
+function tokenExpiresSoon(token: string, skewSeconds = 60): boolean {
+  try {
+    const [, payload] = token.split('.')
+    if (!payload) return false
+    const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number }
+    return typeof decoded.exp === 'number' && decoded.exp - Math.floor(Date.now() / 1000) <= skewSeconds
+  } catch {
+    return false
+  }
+}
+
+function isRefreshAuthFailure(err: unknown): boolean {
+  return axios.isAxiosError(err) && err.response?.status === 401
+}
+
+function shouldClearAfterRefreshFailure(err: unknown): boolean {
+  return err instanceof MissingRefreshTokenError || isRefreshAuthFailure(err)
+}
+
+function clearAndRedirect() {
+  useAuthStore.getState().clearAuth()
+  window.location.href = '/login'
+}
+
+async function refreshAccessToken(): Promise<string> {
+  if (refreshPromise) return refreshPromise
+  refreshPromise = (async () => {
+    const { refreshToken, driver } = useAuthStore.getState()
+    if (!refreshToken) throw new MissingRefreshTokenError('Missing refresh token')
+    const res = await axios.post(
+      `${import.meta.env['VITE_API_URL']}/api/v1/auth/refresh`,
+      { refreshToken },
+      { headers: { 'Content-Type': 'application/json' }, timeout: 10000 }
+    )
+    const tokens = res.data.tokens as { accessToken: string; refreshToken: string }
+    if (!driver) throw new MissingRefreshTokenError('Missing driver profile')
+    useAuthStore.getState().setAuth(tokens.accessToken, tokens.refreshToken, driver)
+    return tokens.accessToken
+  })().finally(() => {
+    refreshPromise = null
+  })
+  return refreshPromise
+}
+
 api.interceptors.request.use(
-  (config) => {
-    const raw = localStorage.getItem('ocar_driver_auth')
-    if (raw) {
+  async (config) => {
+    let token = useAuthStore.getState().token
+    if (token && !isAuthEndpoint(config.url) && tokenExpiresSoon(token)) {
       try {
-        const parsed = JSON.parse(raw) as { state?: { token?: string } }
-        if (parsed.state?.token) {
-          config.headers['Authorization'] = `Bearer ${parsed.state.token}`
+        token = await refreshAccessToken()
+      } catch (err) {
+        if (shouldClearAfterRefreshFailure(err)) {
+          clearAndRedirect()
+          return Promise.reject(err)
         }
-      } catch {
-        // ignore malformed storage
       }
     }
+    if (token) config.headers['Authorization'] = `Bearer ${token}`
     return config
   },
   (error) => Promise.reject(error)
@@ -26,12 +86,27 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const code = error.response?.data?.code
     const isTokenError = code === 'AUTH_UNAUTHORIZED' || code === 'AUTH_TOKEN_INVALID' || code === 'AUTH_TOKEN_EXPIRED'
-    if (error.response?.status === 401 && isTokenError) {
-      localStorage.removeItem('ocar_driver_auth')
-      window.location.href = '/login'
+    const original = error.config as RetriableRequest | undefined
+    if (
+      error.response?.status === 401 &&
+      isTokenError &&
+      original &&
+      !original._retry &&
+      !isAuthEndpoint(original.url)
+    ) {
+      original._retry = true
+      try {
+        const newToken = await refreshAccessToken()
+        original.headers = original.headers ?? {}
+        original.headers['Authorization'] = `Bearer ${newToken}`
+        return api(original)
+      } catch (refreshErr) {
+        if (shouldClearAfterRefreshFailure(refreshErr)) clearAndRedirect()
+        return Promise.reject(refreshErr)
+      }
     }
     return Promise.reject(error)
   }

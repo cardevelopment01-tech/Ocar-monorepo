@@ -5,17 +5,19 @@ const PROTECTED = ['/home', '/ride', '/history', '/wallet', '/profile', '/search
 const PUBLIC_ONLY = ['/login']
 
 export function middleware(request: NextRequest) {
-  const token = request.cookies.get('ocar_user_token')?.value
+  const hasSession =
+    request.cookies.get('ocar_user_session')?.value === '1' ||
+    Boolean(request.cookies.get('ocar_user_token')?.value)
   const path = request.nextUrl.pathname
 
   const isProtected = PROTECTED.some(p => path.startsWith(p))
   const isPublicOnly = PUBLIC_ONLY.some(p => path.startsWith(p))
 
-  if (isProtected && !token) {
+  if (isProtected && !hasSession) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (isPublicOnly && token) {
+  if (isPublicOnly && hasSession) {
     return NextResponse.redirect(new URL('/home', request.url))
   }
 

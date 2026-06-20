@@ -5,16 +5,20 @@ import BottomNav from '@/components/ui/BottomNav'
 
 type Tab = 'trip' | 'messages' | 'help' | 'profile'
 
+// Flow pages own their full bottom chrome — no shared nav bar
+const HIDE_NAV_PREFIXES = ['/search', '/select-ride', '/confirm-pickup', '/ride/']
+
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
 
+  const showNav = !HIDE_NAV_PREFIXES.some(p => pathname.startsWith(p))
+
   const activeTab: Tab =
-    pathname.startsWith('/history') || pathname.startsWith('/ride') || pathname.startsWith('/home') || pathname.startsWith('/search') || pathname.startsWith('/select-ride')
-      ? 'trip'
-      : pathname.startsWith('/profile')
-      ? 'profile'
-      : 'trip'
+    pathname.startsWith('/history') ? 'trip'
+    : pathname.startsWith('/home')  ? 'trip'
+    : pathname.startsWith('/profile') ? 'profile'
+    : 'trip'
 
   const handleTabChange = (tab: Tab) => {
     if (tab === 'trip') router.push('/home')
@@ -24,7 +28,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="relative h-screen overflow-hidden">
       {children}
-      <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
+      {showNav && <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />}
     </div>
   )
 }

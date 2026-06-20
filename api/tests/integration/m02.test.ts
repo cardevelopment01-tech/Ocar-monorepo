@@ -24,7 +24,7 @@ async function verifyOtp(phone: string, otp: string, role: 'user' | 'driver' = '
     .send({ phone, otp, role })
 }
 
-async function loginUser(phone: string): Promise<{ accessToken: string; refreshToken: string }> {
+async function loginUser(phone: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; refreshExpiresIn: number }> {
   // Clear rate limit so each loginUser call works regardless of prior test state
   await redis.del(`otp_rate:${phone}:login`)
   const otpRes = await requestOtp(phone)
@@ -32,7 +32,9 @@ async function loginUser(phone: string): Promise<{ accessToken: string; refreshT
   const { otp } = otpRes.body as { otp: string }
   const verifyRes = await verifyOtp(phone, otp)
   expect(verifyRes.status, `verifyOtp failed for ${phone}: ${JSON.stringify(verifyRes.body)}`).toBeGreaterThanOrEqual(200)
-  const { tokens } = verifyRes.body as { tokens: { accessToken: string; refreshToken: string } }
+  const { tokens } = verifyRes.body as {
+    tokens: { accessToken: string; refreshToken: string; expiresIn: number; refreshExpiresIn: number }
+  }
   return tokens
 }
 
@@ -86,6 +88,8 @@ describe('M02 — Auth & Identity', () => {
       expect(verifyRes.body.isNew).toBe(true)
       expect(verifyRes.body.tokens).toHaveProperty('accessToken')
       expect(verifyRes.body.tokens).toHaveProperty('refreshToken')
+      expect(verifyRes.body.tokens.expiresIn).toBe(900)
+      expect(verifyRes.body.tokens.refreshExpiresIn).toBe(2592000)
 
       const { rows } = await pool.query<{ phone: string }>(
         'SELECT phone FROM users WHERE phone = $1', [phone]
@@ -180,16 +184,19 @@ describe('M02 — Auth & Identity', () => {
       expect(refreshRes.body.tokens).toHaveProperty('accessToken')
       expect(refreshRes.body.tokens).toHaveProperty('refreshToken')
       expect(refreshRes.body.tokens.refreshToken).not.toBe(tokens.refreshToken)
+      expect(refreshRes.body.tokens.expiresIn).toBe(900)
+      expect(refreshRes.body.tokens.refreshExpiresIn).toBe(2592000)
     })
 
-    it('TC-M02-009: reused refresh token invalidates session', async () => {
+    it('TC-M02-009: reused refresh token invalidates token family', async () => {
       const phone = userFixtures.activeUser.phone
       const tokens = await loginUser(phone)
 
       // Use token once
-      await request(app)
+      const firstRefresh = await request(app)
         .post('/api/v1/auth/refresh')
         .send({ refreshToken: tokens.refreshToken })
+      const rotatedToken = firstRefresh.body.tokens.refreshToken as string
 
       // Reuse same token — must fail
       const reuseRes = await request(app)
@@ -197,6 +204,13 @@ describe('M02 — Auth & Identity', () => {
         .send({ refreshToken: tokens.refreshToken })
       expect(reuseRes.status).toBe(401)
       expect(reuseRes.body.code).toBe('AUTH_TOKEN_INVALID')
+
+      // Newer token in the same family must also be revoked.
+      const familyRes = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: rotatedToken })
+      expect(familyRes.status).toBe(401)
+      expect(familyRes.body.code).toBe('AUTH_TOKEN_INVALID')
     })
 
     it('TC-M02-010: driver OTP issues driver-scoped JWT', async () => {

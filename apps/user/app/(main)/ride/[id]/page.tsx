@@ -210,7 +210,7 @@ export default function RidePage() {
         initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-        className="bg-surface rounded-t-3xl shadow-sheet px-4 pt-4 pb-24"
+        className="bg-surface rounded-t-3xl shadow-sheet px-4 pt-4 pb-8"
       >
         <div className="w-10 h-1 bg-border rounded-full mx-auto mb-4" />
 

@@ -1,7 +1,8 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
-import { type AdminProfile, getStoredAdmin, getAdminToken, clearAdminAuth, adminAuthApi } from './auth'
+import { type AdminProfile, getStoredAdmin, getAdminToken, getAdminRefreshToken, clearAdminAuth, adminAuthApi } from './auth'
+import api from './api'
 
 interface AdminAuthContextType {
   admin: AdminProfile | null
@@ -34,10 +35,11 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         setAdmin(fresh)
         localStorage.setItem('ocar_admin_data', JSON.stringify(fresh))
       } catch (err: unknown) {
-        clearAdminAuth()
-        // On 401 the axios interceptor already redirects; redirect here for other failures
         const status = (err as { response?: { status?: number } })?.response?.status
-        if (status !== 401) window.location.href = '/login'
+        if (status === 401) {
+          clearAdminAuth()
+          window.location.href = '/login'
+        }
       } finally {
         setIsLoading(false)
       }
@@ -47,6 +49,10 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const logout = () => {
+    const refreshToken = getAdminRefreshToken()
+    if (refreshToken) {
+      void api.post('/api/v1/auth/logout', { refreshToken }).catch(() => undefined)
+    }
     clearAdminAuth()
     setAdmin(null)
     window.location.href = '/login'

@@ -5,6 +5,7 @@ import StatusBar from '@/components/ui/StatusBar'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { mockEarnings } from '@/lib/mock-data'
+import api from '@/lib/api'
 
 const MENU_ITEMS = [
   { label: 'Vehicle Details',    sub: 'Registered vehicle'  },
@@ -24,7 +25,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 
 export default function Profile() {
   const navigate = useNavigate()
-  const { driver, clearAuth } = useAuthStore()
+  const { driver, refreshToken, clearAuth } = useAuthStore()
   const { isOnline } = useSessionStore()
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
 
@@ -34,6 +35,9 @@ export default function Profile() {
   const statusStyle  = STATUS_COLORS[driver?.status ?? ''] ?? { bg: '#F1F5F9', text: '#94A3B8' }
 
   function doSignOut() {
+    if (refreshToken) {
+      void api.post('/api/v1/auth/logout', { refreshToken }).catch(() => undefined)
+    }
     clearAuth()
     navigate('/login', { replace: true })
   }

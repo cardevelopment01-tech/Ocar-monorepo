@@ -4,13 +4,15 @@ import { getToken } from './auth'
 let socket: Socket | null = null
 
 export function getSocket(): Socket {
+  const token = getToken()
   if (!socket) {
-    const token = getToken()
     socket = io(process.env['NEXT_PUBLIC_API_URL']!, {
       auth: { token },
       transports: ['websocket', 'polling'],
       autoConnect: false,
     })
+  } else {
+    socket.auth = { token }
   }
   return socket
 }
