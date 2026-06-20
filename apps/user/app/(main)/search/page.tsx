@@ -243,7 +243,6 @@ function SearchContent() {
               <motion.button
                 onClick={() => switchMode('origin')}
                 className="w-full text-left px-2 pt-3 pb-3 border-b border-border"
-                style={{ background: mode === 'origin' ? 'rgba(79,70,229,0.04)' : 'transparent' }}
                 whileTap={{ scale: 0.99 }} transition={SPRING}
               >
                 <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 leading-none">From</p>
@@ -276,7 +275,6 @@ function SearchContent() {
               {/* TO row */}
               <div
                 className="px-2 pt-3 pb-3 cursor-text"
-                style={{ background: mode === 'destination' ? 'rgba(79,70,229,0.04)' : 'transparent' }}
                 onClick={() => mode !== 'destination' && switchMode('destination')}
               >
                 <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 leading-none">To</p>
