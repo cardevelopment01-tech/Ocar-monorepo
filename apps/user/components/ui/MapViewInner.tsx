@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import Map from 'react-map-gl/maplibre'
+import type { StyleSpecification } from 'maplibre-gl'
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
 
 // Cache the style JSON once per session — all map instances share it.
-let styleCache: object | null = null
+let styleCache: StyleSpecification | null = null
 if (typeof window !== 'undefined') {
   fetch(STYLE_URL)
-    .then(r => r.json() as Promise<object>)
+    .then(r => r.json() as Promise<StyleSpecification>)
     .then(s => { styleCache = s })
     .catch(() => {})
 }
@@ -22,12 +23,12 @@ interface MapViewInnerProps {
 }
 
 export default function MapViewInner({ center, zoom, className, children }: MapViewInnerProps) {
-  const [mapStyle, setMapStyle] = useState<object | string>(styleCache ?? STYLE_URL)
+  const [mapStyle, setMapStyle] = useState<StyleSpecification | string>(styleCache ?? STYLE_URL)
 
   useEffect(() => {
     if (styleCache) { setMapStyle(styleCache); return }
     fetch(STYLE_URL)
-      .then(r => r.json() as Promise<object>)
+      .then(r => r.json() as Promise<StyleSpecification>)
       .then(s => { styleCache = s; setMapStyle(s) })
       .catch(() => {})
   }, [])
