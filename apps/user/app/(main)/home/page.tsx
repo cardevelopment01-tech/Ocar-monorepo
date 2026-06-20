@@ -238,7 +238,7 @@ export default function HomePage() {
         <div className="relative z-10">
 
         {/* Top bar */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <motion.span
             className="text-xl font-black tracking-tight text-white"
             initial={{ opacity: 0 }}
@@ -329,7 +329,7 @@ export default function HomePage() {
 
         {/* Bottom padding spacer — shrinks when collapsed */}
         <motion.div
-          animate={{ height: collapsed ? 18 : 8 }}
+          animate={{ height: collapsed ? 14 : 6 }}
           transition={SPRING}
         />
 
@@ -347,7 +347,7 @@ export default function HomePage() {
           setCollapsed(top > 48)
         }}
       >
-        <div className="px-4 pt-6 pb-28 flex flex-col gap-7">
+        <div className="px-4 pt-4 pb-28 flex flex-col gap-5">
 
           {/* Services */}
           <motion.div variants={section}>

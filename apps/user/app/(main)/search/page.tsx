@@ -385,7 +385,7 @@ function SearchContent() {
       </div>
 
       {/* ── Body ── */}
-      <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-4 pb-6 relative">
+      <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-2 pb-4 relative">
 
         {/* Resolve overlay */}
         <AnimatePresence>
@@ -411,8 +411,7 @@ function SearchContent() {
           >
             {/* Quick actions */}
             {!showSuggestions && (
-              <div className="mb-5">
-                <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Quick options</p>
+              <div className="mb-3">
                 <div className="bg-surface rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}>
                   {/* Use current location */}
                   <motion.button
@@ -449,9 +448,6 @@ function SearchContent() {
             {/* Origin autocomplete suggestions */}
             {showSuggestions && (
               <motion.div variants={listStagger} initial="hidden" animate="show">
-                <motion.p variants={fadeUp} className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">
-                  Pickup suggestions
-                </motion.p>
                 {suggestions.length === 0 && !searching ? (
                   <motion.p variants={fadeUp} className="text-center text-sm text-text-muted py-10">
                     No results — try a different name
@@ -489,9 +485,6 @@ function SearchContent() {
           <>
             {showSuggestions ? (
               <motion.div variants={listStagger} initial="hidden" animate="show" key="suggestions">
-                <motion.p variants={fadeUp} className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">
-                  Results
-                </motion.p>
                 {suggestions.length === 0 && !searching ? (
                   <motion.p variants={fadeUp} className="text-center text-sm text-text-muted py-10">
                     No results — try a different name
@@ -524,9 +517,6 @@ function SearchContent() {
               <>
                 {/* Popular destinations */}
                 <motion.div variants={listStagger} initial="hidden" animate="show">
-                  <motion.p variants={fadeUp} className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">
-                    Popular destinations
-                  </motion.p>
                   <div className="bg-surface rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}>
                     {POPULAR.map((d, i) => (
                       <motion.button
