@@ -57,6 +57,7 @@ function SelectRideContent() {
   const [loading,       setLoading]       = useState(true)
   const [selected,      setSelected]      = useState(2)
   const [isBooking,     setIsBooking]     = useState(false)
+  const [etaReady,      setEtaReady]      = useState(false)
   const [bookError,     setBookError]     = useState<string | null>(null)
   const [nearbyDrivers, setNearbyDrivers] = useState<Array<{ driver_id: string; lat: number; lng: number; category_id: number }>>([])
 
@@ -79,6 +80,17 @@ function SelectRideContent() {
     }
     return result
   }, [nearbyDrivers, categories, originLat, originLng])
+
+  // Auto-select first available category once ETA data arrives
+  useEffect(() => {
+    if (Object.keys(driverEta).length === 0) return
+    setEtaReady(true)
+    if ((driverEta[selected]?.count ?? 0) === 0) {
+      const first = categories.find(c => (driverEta[c.id]?.count ?? 0) > 0)
+      if (first) setSelected(first.id)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverEta])
 
   const center: [number, number] = [(originLat + destinationLat) / 2, (originLng + destinationLng) / 2]
 
@@ -119,8 +131,9 @@ function SelectRideContent() {
     }
   }
 
-  const selectedCat  = categories.find(c => c.id === selected)!
-  const selectedFare = estimates[selected]?.breakdown.total
+  const selectedCat    = categories.find(c => c.id === selected)!
+  const selectedFare   = estimates[selected]?.breakdown.total
+  const allUnavailable = etaReady && categories.every(c => (driverEta[c.id]?.count ?? 0) === 0)
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-white">
@@ -170,15 +183,28 @@ function SelectRideContent() {
           </div>
         </div>
 
+        {/* No drivers banner */}
+        {allUnavailable && (
+          <div className="mx-4 mb-2 flex items-center gap-2.5 rounded-2xl px-4 py-3 bg-amber-50 border border-amber-200">
+            <span className="text-lg flex-shrink-0">😴</span>
+            <div>
+              <p className="text-[13px] font-bold text-amber-800">No drivers nearby right now</p>
+              <p className="text-[11px] text-amber-600 mt-0.5">Try again in a few minutes — drivers come online throughout the day</p>
+            </div>
+          </div>
+        )}
+
         {/* Ride cards */}
         <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-3 space-y-2">
           {categories.map(cat => {
-            const est      = estimates[cat.id]
-            const fare     = est?.breakdown.total
-            const isSel    = selected === cat.id
-            const eta      = driverEta[cat.id]
-            const noCars   = eta != null && eta.count === 0
-            const emoji    = CAT_EMOJI[cat.slug] ?? '🚗'
+            const est    = estimates[cat.id]
+            const fare   = est?.breakdown.total
+            const isSel  = selected === cat.id
+            const eta    = driverEta[cat.id]
+            const noCars = etaReady && eta != null && eta.count === 0
+            const emoji  = CAT_EMOJI[cat.slug] ?? '🚗'
+            // Only apply dark (inverted) styling when the card is both selected AND available
+            const dark   = isSel && !noCars
 
             return (
               <button
@@ -187,41 +213,41 @@ function SelectRideContent() {
                 disabled={noCars}
                 className={cn(
                   'w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-150 active:scale-[0.98]',
-                  noCars  ? 'bg-slate-50 opacity-40 cursor-not-allowed' :
-                  isSel   ? 'bg-slate-900 cursor-pointer' :
-                            'bg-slate-50 cursor-pointer active:bg-slate-100'
+                  noCars ? 'bg-slate-50 opacity-40 cursor-not-allowed' :
+                  dark   ? 'bg-slate-900 cursor-pointer' :
+                           'bg-slate-50 cursor-pointer active:bg-slate-100'
                 )}
-                style={isSel ? { boxShadow: '0 4px 20px rgba(15,15,35,0.22)' } : undefined}
+                style={dark ? { boxShadow: '0 4px 20px rgba(15,15,35,0.22)' } : undefined}
               >
-                {/* Car emoji in pill */}
+                {/* Car emoji */}
                 <div className={cn(
                   'w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 text-3xl select-none',
-                  isSel ? 'bg-white/10' : 'bg-white border border-slate-100'
+                  dark ? 'bg-white/10' : 'bg-white border border-slate-100'
                 )}>
                   {emoji}
                 </div>
 
                 {/* Name + meta */}
                 <div className="flex-1 text-left min-w-0">
-                  <p className={cn('text-[15px] font-bold leading-tight', isSel ? 'text-white' : 'text-slate-900')}>
+                  <p className={cn('text-[15px] font-bold leading-tight', dark ? 'text-white' : 'text-slate-900')}>
                     {cat.display_name}
                   </p>
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    <span className={cn('flex items-center gap-1 text-[11px] font-semibold', isSel ? 'text-white/50' : 'text-slate-400')}>
+                    <span className={cn('flex items-center gap-1 text-[11px] font-semibold', dark ? 'text-white/50' : 'text-slate-400')}>
                       <Users size={9} strokeWidth={2.5} />{cat.max_passengers} seats
                     </span>
                     {noCars ? (
-                      <span className="text-[11px] font-bold text-red-500">No cars nearby</span>
+                      <span className="text-[11px] font-bold text-red-400">No cars nearby</span>
                     ) : eta != null && eta.etaMin > 0 ? (
                       <span className={cn(
                         'flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full',
-                        isSel ? 'bg-emerald-400/20 text-emerald-300' : 'bg-emerald-50 text-emerald-700'
+                        dark ? 'bg-emerald-400/20 text-emerald-300' : 'bg-emerald-50 text-emerald-700'
                       )}>
                         <Clock size={9} strokeWidth={2.5} />{eta.etaMin} min
                       </span>
                     ) : null}
                     {est?.surge_multiplier != null && est.surge_multiplier > 1 && (
-                      <span className={cn('flex items-center gap-0.5 text-[11px] font-bold', isSel ? 'text-amber-300' : 'text-amber-600')}>
+                      <span className={cn('flex items-center gap-0.5 text-[11px] font-bold', dark ? 'text-amber-300' : 'text-amber-600')}>
                         <Zap size={9} />{est.surge_multiplier}×
                       </span>
                     )}
@@ -231,13 +257,13 @@ function SelectRideContent() {
                 {/* Price */}
                 <div className="text-right flex-shrink-0 min-w-[64px]">
                   {loading && !fare ? (
-                    <div className={cn('w-14 h-5 rounded-lg animate-pulse', isSel ? 'bg-white/10' : 'bg-slate-200')} />
+                    <div className={cn('w-14 h-5 rounded-lg animate-pulse', dark ? 'bg-white/10' : 'bg-slate-200')} />
                   ) : fare != null ? (
-                    <p className={cn('text-xl font-black tabular-nums', isSel ? 'text-white' : 'text-slate-900')}>
+                    <p className={cn('text-xl font-black tabular-nums', dark ? 'text-white' : 'text-slate-900')}>
                       ₹<AnimatedNumber value={Math.round(fare)} />
                     </p>
                   ) : (
-                    <p className={cn('text-sm', isSel ? 'text-white/40' : 'text-slate-400')}>—</p>
+                    <p className={cn('text-sm', dark ? 'text-white/40' : 'text-slate-400')}>—</p>
                   )}
                 </div>
               </button>
@@ -265,12 +291,14 @@ function SelectRideContent() {
           )}
           <button
             onClick={handleBook}
-            disabled={isBooking || loading || selectedFare == null || (driverEta[selected]?.count === 0)}
+            disabled={isBooking || loading || selectedFare == null || allUnavailable || (driverEta[selected]?.count === 0)}
             className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
             style={{ background: isBooking ? '#374151' : 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', minHeight: 52 }}
           >
             {isBooking
               ? 'Booking…'
+              : allUnavailable
+              ? 'No drivers available'
               : `Book ${selectedCat?.display_name ?? ''} · ${selectedFare != null ? `₹${Math.round(selectedFare)}` : '—'}`
             }
           </button>
