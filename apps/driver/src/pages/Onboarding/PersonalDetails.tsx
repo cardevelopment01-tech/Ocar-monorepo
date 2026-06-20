@@ -4,6 +4,7 @@ import { ArrowLeft, Check, ChevronDown, Minus, Plus, User, MapPin, Car } from 'l
 import { onboardingApi, type PersonalInfoPayload } from '@/lib/onboarding-api'
 import { STATE_CITY } from '@/lib/india-geo'
 import { useAuthStore } from '@/store/useAuthStore'
+import SelectSheet from '@/components/ui/SelectSheet'
 
 const INDIAN_LANGUAGES = [
   'Hindi', 'English', 'Odia', 'Bengali', 'Tamil', 'Telugu',
@@ -285,63 +286,46 @@ export default function PersonalDetails() {
               {/* State */}
               <Field label="State" id="state">
                 <div className="relative">
-                  <select
-                    id="state"
-                    className="input-dark w-full appearance-none pr-10"
+                  <SelectSheet
+                    label="Select State"
                     value={state}
-                    onChange={e => { setState(e.target.value); setCity('') }}
-                  >
-                    <option value="" disabled>Select state</option>
-                    {Object.keys(STATE_CITY).map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={18}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
+                    options={Object.keys(STATE_CITY)}
+                    onChange={v => { setState(v); setCity('') }}
+                    placeholder="Select state"
+                    searchable
                   />
                 </div>
               </Field>
 
-              {/* City — dependent select or free-text fallback */}
+              {/* City — bottom-sheet picker or free-text fallback for single-city UTs */}
               <Field label="City" id="city">
-                <div className="relative">
-                  {!state ? (
-                    <select
-                      id="city"
-                      className="input-dark w-full appearance-none pr-10 opacity-50 cursor-not-allowed"
-                      disabled
-                    >
-                      <option>Select state first</option>
-                    </select>
-                  ) : cityOptions.length >= 2 ? (
-                    <select
-                      id="city"
-                      className="input-dark w-full appearance-none pr-10"
-                      value={city}
-                      onChange={e => setCity(e.target.value)}
-                    >
-                      <option value="" disabled>Select city</option>
-                      {cityOptions.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      id="city"
-                      className="input-dark w-full"
-                      placeholder={cityOptions[0] ?? 'Enter city'}
-                      value={city}
-                      onChange={e => setCity(e.target.value)}
-                    />
-                  )}
-                  {(cityOptions.length >= 2 || !state) && (
-                    <ChevronDown
-                      size={18}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
-                    />
-                  )}
-                </div>
+                {!state ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="input-dark w-full flex items-center justify-between gap-2 opacity-50 cursor-not-allowed"
+                    style={{ minHeight: 52 }}
+                  >
+                    <span className="text-text-muted font-normal">Select state first</span>
+                    <ChevronDown size={18} className="text-text-muted flex-shrink-0" />
+                  </button>
+                ) : cityOptions.length >= 2 ? (
+                  <SelectSheet
+                    label="Select City"
+                    value={city}
+                    options={cityOptions}
+                    onChange={setCity}
+                    placeholder="Select city"
+                  />
+                ) : (
+                  <input
+                    id="city"
+                    className="input-dark w-full"
+                    placeholder={cityOptions[0] ?? 'Enter city'}
+                    value={city}
+                    onChange={e => setCity(e.target.value)}
+                  />
+                )}
               </Field>
 
               {/* Pincode */}

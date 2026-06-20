@@ -32,6 +32,12 @@ export default function App() {
   const location = useLocation()
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
 
+  // Scroll to top on every route change. Instant (not smooth) so it doesn't
+  // race the 200ms Framer AnimatePresence exit animation.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [location.pathname])
+
   useEffect(() => {
     if (!isAuthenticated) return
     api.get<{ driver: DriverProfile }>('/api/v1/drivers/me')
