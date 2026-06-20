@@ -12,7 +12,7 @@ export async function requestOtp(req: Request, res: Response, next: NextFunction
     const result = await authService.requestOtp(phone, role, purpose)
     // Return OTP in non-production so tests and development work without SMS
     const body: Record<string, unknown> = { message: 'OTP sent' }
-    if (process.env['NODE_ENV'] !== 'production') body['otp'] = result.otp
+    if (process.env['NODE_ENV'] !== 'production' || process.env['DEMO_MODE'] === 'true') body['otp'] = result.otp
     res.status(200).json(body)
   } catch (err) {
     next(err)

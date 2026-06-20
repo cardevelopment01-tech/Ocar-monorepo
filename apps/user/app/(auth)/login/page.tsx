@@ -7,6 +7,7 @@ import OtpInput from '@/components/ui/OtpInput'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { authApi, storeAuth, formatPhone, isValidIndianPhone } from '@/lib/auth'
+import { DEMO_MODE } from '@/lib/demo'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -284,7 +285,7 @@ export default function LoginPage() {
                 Sent to <span className="font-semibold text-text-primary">+91 {phone}</span>
               </p>
 
-              {process.env.NODE_ENV === 'development' && devOtp && (
+              {(DEMO_MODE || process.env.NODE_ENV === 'development') && devOtp && (
                 <div
                   className="mb-5 px-4 py-2.5 rounded-xl flex items-center justify-between"
                   style={{ background: 'rgba(234,179,8,0.10)', border: '1px dashed rgba(234,179,8,0.45)' }}

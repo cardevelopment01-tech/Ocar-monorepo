@@ -84,7 +84,7 @@ export default function Login() {
     setError(''); setLoading(true)
     try {
       const res = await api.post<{ otp?: string }>('/api/v1/auth/otp/request', { phone: formatPhone(phone), role: 'driver', purpose: 'login' })
-      if (import.meta.env.DEV && res.data.otp) setDevOtp(res.data.otp)
+      if ((import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === 'true') && res.data.otp) setDevOtp(res.data.otp)
       setStep('otp'); setOtp(''); startCountdown()
     } catch (err: unknown) {
       const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
@@ -240,7 +240,7 @@ export default function Login() {
               </button>
               <h1 className="font-display font-bold text-2xl text-text-primary mb-1">Enter OTP</h1>
               <p className="text-text-secondary text-sm mb-3">Sent to +91 {phone}</p>
-              {import.meta.env.DEV && devOtp && (
+              {(import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === 'true') && devOtp && (
                 <div className="mb-4 px-4 py-2.5 rounded-xl flex items-center justify-between"
                   style={{ background: 'rgba(234,179,8,0.10)', border: '1px dashed rgba(234,179,8,0.45)' }}>
                   <span className="text-xs font-semibold text-yellow-600">Dev OTP</span>
