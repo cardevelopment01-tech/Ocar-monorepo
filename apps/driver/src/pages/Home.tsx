@@ -315,11 +315,11 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* Go offline confirmation */}
+      {/* Go offline confirmation — fixed so it covers BottomNav (z-100) */}
       {showOfflineConfirm && (
         <div
-          className="absolute inset-0 flex items-end justify-center pb-6 px-5"
-          style={{ zIndex: 30, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
+          className="fixed inset-0 flex items-end justify-center px-5"
+          style={{ zIndex: 110, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
           onClick={() => setShowOfflineConfirm(false)}
         >
           <div

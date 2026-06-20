@@ -305,29 +305,35 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Stepper({ value, min, max, unit, onChange }: {
   value: number; min: number; max: number; unit: string; onChange: (v: number) => void
 }) {
-  const label = value === 1 ? `1 ${unit}` : `${value} ${unit}s`
   return (
-    <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl h-[52px] px-2 gap-1"
-         style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-      <button
-        type="button"
-        onClick={() => onChange(Math.max(min, value - 1))}
-        disabled={value <= min}
-        aria-label={`Decrease ${unit}`}
-        className="w-9 h-9 rounded-lg flex items-center justify-center bg-slate-50 border border-slate-200 text-blue-600 active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100 flex-shrink-0"
-      >
-        <Minus size={15} />
-      </button>
-      <span className="font-bold text-sm text-slate-800 tabular-nums">{label}</span>
-      <button
-        type="button"
-        onClick={() => onChange(Math.min(max, value + 1))}
-        disabled={value >= max}
-        aria-label={`Increase ${unit}`}
-        className="w-9 h-9 rounded-lg flex items-center justify-center bg-slate-50 border border-slate-200 text-blue-600 active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100 flex-shrink-0"
-      >
-        <Plus size={15} />
-      </button>
+    <div
+      className="flex flex-col items-center justify-center gap-1 bg-white border border-slate-200 rounded-2xl py-4 px-3"
+      style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)', minHeight: 108 }}
+    >
+      <span className="text-[40px] font-black text-slate-800 leading-none tabular-nums">{value}</span>
+      <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-1">
+        {value === 1 ? unit : `${unit}s`}
+      </span>
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(min, value - 1))}
+          disabled={value <= min}
+          aria-label={`Decrease ${unit}`}
+          className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 border border-slate-200 text-blue-600 active:scale-90 transition-transform disabled:opacity-25 disabled:active:scale-100"
+        >
+          <Minus size={14} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(Math.min(max, value + 1))}
+          disabled={value >= max}
+          aria-label={`Increase ${unit}`}
+          className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 border border-slate-200 text-blue-600 active:scale-90 transition-transform disabled:opacity-25 disabled:active:scale-100"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
     </div>
   )
 }

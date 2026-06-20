@@ -77,7 +77,7 @@ export default function StandardConfirm() {
   }
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary px-5 pt-14 pb-10 flex flex-col">
+    <div className="min-h-screen bg-bg text-text-primary px-5 pt-14 pb-28 flex flex-col">
       <div className="flex items-center gap-3 mb-8">
         <button
           onClick={() => navigate(-1)}
@@ -132,16 +132,20 @@ export default function StandardConfirm() {
         <p className="text-accent-red text-sm text-center mb-4">{error}</p>
       )}
 
-      <div className="flex-1" />
-
-      <button
-        onClick={handleGoOnline}
-        disabled={goingOnline || loading || !vehicle}
-        className="btn-go w-full"
-        style={{ minHeight: 56 }}
+      {/* Fixed bottom CTA — always visible regardless of content length */}
+      <div
+        className="fixed bottom-0 left-0 right-0 px-5 bg-bg border-t border-border"
+        style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))', paddingTop: 16, zIndex: 10 }}
       >
-        {goingOnline ? 'Going online…' : 'Go Online Now'}
-      </button>
+        <button
+          onClick={handleGoOnline}
+          disabled={goingOnline || loading || !vehicle}
+          className="btn-go w-full"
+          style={{ minHeight: 56 }}
+        >
+          {goingOnline ? 'Going online…' : 'Go Online Now'}
+        </button>
+      </div>
     </div>
   )
 }
