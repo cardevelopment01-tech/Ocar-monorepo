@@ -1,1 +1,3 @@
-// TODO: implement in Module M11 — driver detail page
+export default function DriverDetailPage() {
+  return null
+}
