@@ -31,6 +31,10 @@ export default function DriverMapView({ center, zoom = 15, dimmed = false, child
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
           subdomains="abcd"
           maxZoom={19}
+          detectRetina={true}
+          keepBuffer={4}
+          updateWhenZooming={false}
+          updateInterval={150}
         />
         {children}
       </MapContainer>

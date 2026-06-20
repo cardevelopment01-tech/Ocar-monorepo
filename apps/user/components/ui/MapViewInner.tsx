@@ -39,6 +39,10 @@ export default function MapViewInner({ center, zoom, className, children }: MapV
         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         subdomains="abcd"
         maxZoom={19}
+        detectRetina={true}
+        keepBuffer={4}
+        updateWhenZooming={false}
+        updateInterval={150}
       />
       {children}
     </MapContainer>

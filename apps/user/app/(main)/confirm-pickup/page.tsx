@@ -3,12 +3,13 @@
 import { Suspense, useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Navigation2, Loader2, MapPin } from 'lucide-react'
+import { ArrowLeft, Navigation2, Loader2, MapPin, LocateFixed } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { geoApi } from '@/lib/geo-api'
 
 const MapViewInner       = dynamic(() => import('@/components/ui/MapViewInner'),       { ssr: false })
 const MapCenterTracker   = dynamic(() => import('@/components/map/MapCenterTracker'),   { ssr: false })
+const FlyTo              = dynamic(() => import('@/components/map/FlyTo'),              { ssr: false })
 
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
@@ -37,6 +38,8 @@ function ConfirmPickupContent() {
   const [geocoding,  setGeocoding]  = useState(false)
   const [dragging,   setDragging]   = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [locating,   setLocating]   = useState(false)
+  const [flyTarget,  setFlyTarget]  = useState<[number, number] | null>(null)
 
   const geocodeTimer       = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastGeocodedPos    = useRef<{ lat: number; lng: number } | null>(null)
@@ -80,6 +83,20 @@ function ConfirmPickupContent() {
     }, 400)
   }, [])
 
+  function locateMe() {
+    if (!navigator.geolocation) return
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude, longitude } = pos.coords
+        setFlyTarget([latitude, longitude])
+        setLocating(false)
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 8000 },
+    )
+  }
+
   async function handleConfirm() {
     if (!address) return
     setConfirming(true)
@@ -105,6 +122,7 @@ function ConfirmPickupContent() {
         <Suspense fallback={<div className="w-full h-full bg-surface-2 animate-pulse" />}>
           <MapViewInner center={[initLat, initLng]} zoom={16}>
             <MapCenterTracker onCenterChange={handleCenterChange} onDragStart={handleDragStart} />
+            <FlyTo target={flyTarget} zoom={16} />
           </MapViewInner>
         </Suspense>
       </div>
@@ -162,6 +180,22 @@ function ConfirmPickupContent() {
             {dragging ? 'Drag to position…' : 'Move map to set pickup'}
           </p>
         </div>
+      </div>
+
+      {/* ── Locate Me FAB ── */}
+      <div className="absolute bottom-52 right-4" style={{ zIndex: 20 }}>
+        <motion.button
+          onClick={locateMe}
+          disabled={locating}
+          className="w-12 h-12 rounded-full bg-surface shadow-card flex items-center justify-center"
+          whileTap={{ scale: 0.88 }} transition={SPRING}
+          aria-label="Use current location"
+        >
+          {locating
+            ? <Loader2 size={18} className="text-primary animate-spin" />
+            : <LocateFixed size={18} className="text-primary" strokeWidth={1.8} />
+          }
+        </motion.button>
       </div>
 
       {/* ── Bottom confirm card ── */}
