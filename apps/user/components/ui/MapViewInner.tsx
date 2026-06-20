@@ -1,10 +1,8 @@
 'use client'
 
-import { useEffect } from 'react'
 import { MapContainer, TileLayer } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import RecenterMap from '@/components/map/RecenterMap'
 
 // Fix Leaflet default marker icon broken in webpack
 // Must run before any map renders
@@ -25,16 +23,9 @@ interface MapViewInnerProps {
   children?: React.ReactNode
 }
 
-export default function MapViewInner({
-  center,
-  zoom,
-  className,
-  children,
-}: MapViewInnerProps) {
-  useEffect(() => {
-    fixLeafletIcons()
-  }, [])
+fixLeafletIcons()
 
+export default function MapViewInner({ center, zoom, className, children }: MapViewInnerProps) {
   return (
     <MapContainer
       center={center}
@@ -45,11 +36,10 @@ export default function MapViewInner({
       attributionControl={false}
     >
       <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         subdomains="abcd"
         maxZoom={19}
       />
-      <RecenterMap center={center} />
       {children}
     </MapContainer>
   )

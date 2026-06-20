@@ -42,6 +42,7 @@ function SelectRideContent() {
   const distanceKm         = parseFloat(sp.get('distanceKm') ?? '10')
   const durationMin        = parseFloat(sp.get('durationMin') ?? '20')
   const originCityId       = parseInt(sp.get('originCityId') ?? '1', 10)
+  const encodedPolyline    = sp.get('polyline') ?? undefined
 
   const [categories]     = useState<Category[]>(FALLBACK_CATEGORIES)
   const [estimates,      setEstimates]      = useState<Record<number, FareEstimate>>({})
@@ -61,7 +62,6 @@ function SelectRideContent() {
   }, [originLat, originLng])
 
   const center: [number, number] = [(originLat + destinationLat) / 2, (originLng + destinationLng) / 2]
-  const route: [number, number][] = [[originLat, originLng], [destinationLat, destinationLng]]
 
   const loadEstimates = useCallback(async () => {
     setLoading(true)
@@ -121,7 +121,7 @@ function SelectRideContent() {
           center={center}
           pickupPos={[originLat, originLng]}
           dropPos={[destinationLat, destinationLng]}
-          route={route}
+          encodedPolyline={encodedPolyline}
           nearbyDrivers={nearbyDrivers}
         />
         <button

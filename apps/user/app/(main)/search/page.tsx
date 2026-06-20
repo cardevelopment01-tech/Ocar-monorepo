@@ -99,12 +99,19 @@ function SearchContent() {
     try {
       const detail = await geoApi.placeDetails(suggestion.placeId)
       const route  = await geoApi.getRoute(originLat, originLng, detail.latitude, detail.longitude)
-      router.push(
-        `/select-ride` +
-        `?originLat=${originLat}&originLng=${originLng}&originAddress=${encodeURIComponent(originAddress)}` +
-        `&destinationLat=${detail.latitude}&destinationLng=${detail.longitude}&destinationAddress=${encodeURIComponent(detail.address)}` +
-        `&distanceKm=${route.distanceKm}&durationMin=${route.durationMin}&originCityId=1`,
-      )
+      const params = new URLSearchParams({
+        originLat:          String(originLat),
+        originLng:          String(originLng),
+        originAddress,
+        destinationLat:     String(detail.latitude),
+        destinationLng:     String(detail.longitude),
+        destinationAddress: detail.address,
+        distanceKm:         String(route.distanceKm),
+        durationMin:        String(route.durationMin),
+        originCityId:       '1',
+      })
+      if (route.polyline) params.set('polyline', route.polyline)
+      router.push(`/select-ride?${params.toString()}`)
     } catch {
       setResolving(false)
     }
@@ -114,12 +121,19 @@ function SearchContent() {
     setResolving(true)
     try {
       const route = await geoApi.getRoute(originLat, originLng, dest.lat, dest.lng)
-      router.push(
-        `/select-ride` +
-        `?originLat=${originLat}&originLng=${originLng}&originAddress=${encodeURIComponent(originAddress)}` +
-        `&destinationLat=${dest.lat}&destinationLng=${dest.lng}&destinationAddress=${encodeURIComponent(dest.address)}` +
-        `&distanceKm=${route.distanceKm}&durationMin=${route.durationMin}&originCityId=1`,
-      )
+      const params = new URLSearchParams({
+        originLat:          String(originLat),
+        originLng:          String(originLng),
+        originAddress,
+        destinationLat:     String(dest.lat),
+        destinationLng:     String(dest.lng),
+        destinationAddress: dest.address,
+        distanceKm:         String(route.distanceKm),
+        durationMin:        String(route.durationMin),
+        originCityId:       '1',
+      })
+      if (route.polyline) params.set('polyline', route.polyline)
+      router.push(`/select-ride?${params.toString()}`)
     } catch {
       setResolving(false)
     }

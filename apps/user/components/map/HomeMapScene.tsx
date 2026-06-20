@@ -1,6 +1,7 @@
 'use client'
 
 import MapViewInner from '@/components/ui/MapViewInner'
+import RecenterMap from './RecenterMap'
 import LocationPin from './LocationPin'
 import CarMarker from './CarMarker'
 
@@ -20,6 +21,7 @@ interface HomeMapSceneProps {
 export default function HomeMapScene({ center, pickupPos, drivers }: HomeMapSceneProps) {
   return (
     <MapViewInner center={center} zoom={14}>
+      <RecenterMap center={center} />
       <LocationPin position={pickupPos} variant="pickup" />
       {drivers.map(d => (
         <CarMarker key={d.id} position={[d.lat, d.lng]} heading={d.heading} />
