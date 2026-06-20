@@ -28,12 +28,11 @@ export default function VehicleDocuments() {
 
   const [docState, setDocState] = useState<Record<string, DocRowState>>(initDocState)
   const [validUntil, setValidUntil] = useState<Record<string, string>>({})
-  const [expiryErrors] = useState<Record<string, string>>({})
   const [isFetching, setIsFetching] = useState(true)
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
-  const steps = ['personal_info', 'vehicle_info', 'documents', 'vehicle_docs', 'selfie']
-  const stepIdx = steps.indexOf(driver?.onboarding_step ?? 'vehicle_docs')
+  const steps = ['personal_info', 'vehicle_info', 'documents', 'selfie']
+  const stepIdx = steps.indexOf(driver?.onboarding_step ?? 'documents')
 
   useEffect(() => {
     const load = async () => {
@@ -91,11 +90,11 @@ export default function VehicleDocuments() {
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center">
+        <button onClick={() => navigate(-1)} className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center">
           <ArrowLeft size={20} className="text-text-secondary" />
         </button>
         <div>
-          <p className="text-text-muted text-xs">Step 4 of 5</p>
+          <p className="text-text-muted text-xs">Step 3 of 4</p>
           <h1 className="text-xl font-bold">Vehicle Documents</h1>
         </div>
       </div>
@@ -114,7 +113,6 @@ export default function VehicleDocuments() {
             needsExpiry={doc.needsExpiry}
             docState={docState[doc.key]!}
             validUntil={validUntil[doc.key]}
-            expiryError={expiryErrors[doc.key]}
             inputRef={el => { fileRefs.current[doc.key] = el }}
             onFileChange={file => void handleFileSelect(doc.key, file)}
             onTrigger={() => handleTrigger(doc.key)}
@@ -148,14 +146,13 @@ interface DocCardProps {
   needsExpiry: boolean
   docState: DocRowState
   validUntil?: string
-  expiryError?: string
   inputRef: (el: HTMLInputElement | null) => void
   onFileChange: (file: File) => void
   onTrigger: () => void
   onValidUntilChange?: (val: string) => void
 }
 
-function DocCard({ label, required, accept, needsExpiry, docState, validUntil, expiryError, inputRef, onFileChange, onTrigger, onValidUntilChange }: DocCardProps) {
+function DocCard({ label, required, accept, needsExpiry, docState, validUntil, inputRef, onFileChange, onTrigger, onValidUntilChange }: DocCardProps) {
   const { state, url, error } = docState
   const isDone = state === 'done'
 
@@ -175,35 +172,37 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, e
       />
 
       {isDone ? (
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <CheckCircle2 size={18} className="text-green-500 flex-shrink-0" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-green-400">{label}</p>
-              {validUntil && <p className="text-xs text-text-muted">Expires {formatExpiry(validUntil)}</p>}
+        <>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <CheckCircle2 size={18} className="text-green-500 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-green-700">{label}</p>
+                {validUntil && <p className="text-xs text-text-muted">Expires {formatExpiry(validUntil)}</p>}
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {url && (
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {url && (
+                <button
+                  type="button"
+                  onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-green-700 bg-green-500/10 border border-green-500/20"
+                >
+                  <Eye size={12} /> View
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20"
+                onClick={onTrigger}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-text-secondary bg-surface-3 border border-border"
               >
-                <Eye size={12} /> View
+                <RefreshCw size={12} /> Replace
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onTrigger}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-text-secondary bg-surface-3 border border-border"
-            >
-              <RefreshCw size={12} /> Replace
-            </button>
+            </div>
           </div>
           {needsExpiry && (
             <div className="mt-3">
-              <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1.5 block">
+              <label className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-1.5 block">
                 Expiry Date <span className="text-accent-red">*</span>
               </label>
               <input
@@ -214,7 +213,7 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, e
               />
             </div>
           )}
-        </div>
+        </>
       ) : (
         <>
           <div className="flex items-center justify-between mb-3">
@@ -238,23 +237,22 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, e
             <p className="text-xs text-text-muted text-center px-4">
               {state === 'uploading' ? 'Uploading…'
                : state === 'error'   ? (error ?? 'Upload failed — tap to retry')
-               : 'Tap to upload · PDF or image · 5MB max'}
+               : 'Tap to upload · PDF or image · 20MB max'}
             </p>
           </div>
 
           {needsExpiry && (
             <div className="mt-3">
-              <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1.5 block">
+              <label className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-1.5 block">
                 Expiry Date <span className="text-accent-red">*</span>
               </label>
               <input
                 type="date"
-                className={`input-dark w-full ${expiryError ? 'border-accent-red' : ''}`}
+                className="input-dark w-full"
                 value={validUntil ?? ''}
                 onChange={e => onValidUntilChange?.(e.target.value)}
                 onClick={e => e.stopPropagation()}
               />
-              {expiryError && <p className="text-accent-red text-xs mt-1">{expiryError}</p>}
             </div>
           )}
         </>

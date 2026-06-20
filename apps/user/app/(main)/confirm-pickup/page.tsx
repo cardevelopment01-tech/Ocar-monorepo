@@ -10,11 +10,19 @@ import { geoApi } from '@/lib/geo-api'
 const MapViewInner       = dynamic(() => import('@/components/ui/MapViewInner'),       { ssr: false })
 const MapCenterTracker   = dynamic(() => import('@/components/map/MapCenterTracker'),   { ssr: false })
 
-const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
+
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6_371_000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.asin(Math.sqrt(a))
+}
 
 function ConfirmPickupContent() {
   const router = useRouter()
@@ -27,30 +35,47 @@ function ConfirmPickupContent() {
   const [centerLng,  setCenterLng]  = useState(initLng)
   const [address,    setAddress]    = useState<string | null>(null)
   const [geocoding,  setGeocoding]  = useState(false)
+  const [dragging,   setDragging]   = useState(false)
   const [confirming, setConfirming] = useState(false)
 
-  const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const geocodeTimer       = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastGeocodedPos    = useRef<{ lat: number; lng: number } | null>(null)
 
   // Initial reverse-geocode for the starting position
   useEffect(() => {
     setGeocoding(true)
     geoApi.reverseGeocode(initLat, initLng)
-      .then(addr => setAddress(addr))
+      .then(addr => {
+        setAddress(addr)
+        lastGeocodedPos.current = { lat: initLat, lng: initLng }
+      })
       .catch(() => setAddress(null))
       .finally(() => setGeocoding(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const handleDragStart = useCallback(() => {
+    setDragging(true)
+  }, [])
+
   const handleCenterChange = useCallback((lat: number, lng: number) => {
+    setDragging(false)
     setCenterLat(lat)
     setCenterLng(lng)
-    setAddress(null)
+
+    // Skip geocode if map hasn't moved meaningfully (e.g. zoom-only)
+    const last = lastGeocodedPos.current
+    if (last && haversineM(last.lat, last.lng, lat, lng) < 30) return
+
     setGeocoding(true)
     if (geocodeTimer.current) clearTimeout(geocodeTimer.current)
     geocodeTimer.current = setTimeout(() => {
       geoApi.reverseGeocode(lat, lng)
-        .then(addr => setAddress(addr))
-        .catch(() => setAddress(null))
+        .then(addr => {
+          setAddress(addr)
+          lastGeocodedPos.current = { lat, lng }
+        })
+        .catch(() => {})
         .finally(() => setGeocoding(false))
     }, 400)
   }, [])
@@ -58,14 +83,19 @@ function ConfirmPickupContent() {
   async function handleConfirm() {
     if (!address) return
     setConfirming(true)
-    // Navigate back to search with the confirmed pickup
-    const params = new URLSearchParams({
-      originLat:     String(centerLat),
-      originLng:     String(centerLng),
-      originAddress: address,
-    })
-    router.push(`/search?${params.toString()}`)
+    try {
+      const params = new URLSearchParams({
+        originLat:     String(centerLat),
+        originLng:     String(centerLng),
+        originAddress: address,
+      })
+      router.push(`/search?${params.toString()}`)
+    } finally {
+      setConfirming(false)
+    }
   }
+
+  const pinLifted = dragging || geocoding
 
   return (
     <div className="h-full flex flex-col bg-background relative overflow-hidden">
@@ -74,7 +104,7 @@ function ConfirmPickupContent() {
       <div className="absolute inset-0">
         <Suspense fallback={<div className="w-full h-full bg-surface-2 animate-pulse" />}>
           <MapViewInner center={[initLat, initLng]} zoom={16}>
-            <MapCenterTracker onCenterChange={handleCenterChange} />
+            <MapCenterTracker onCenterChange={handleCenterChange} onDragStart={handleDragStart} />
           </MapViewInner>
         </Suspense>
       </div>
@@ -84,22 +114,31 @@ function ConfirmPickupContent() {
         className="absolute inset-0 pointer-events-none flex items-center justify-center"
         style={{ zIndex: 10 }}
       >
-        <div className="relative flex flex-col items-center" style={{ marginTop: -36 }}>
-          {/* Pin icon */}
+        <div className="relative flex flex-col items-center" style={{ marginTop: -40 }}>
+          {/* Pin head + stem animate together */}
           <motion.div
-            animate={geocoding ? { y: [-4, 0, -4] } : { y: 0 }}
-            transition={geocoding ? { duration: 0.6, repeat: Infinity, ease: 'easeInOut' } : {}}
+            className="flex flex-col items-center"
+            animate={pinLifted ? { y: -8 } : { y: 0 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 28 }}
           >
             <div
               className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
               style={{ background: '#4F46E5' }}
             >
-              <Navigation2 size={18} className="text-white" strokeWidth={2.5} />
+              {geocoding
+                ? <Loader2 size={18} className="text-white animate-spin" />
+                : <Navigation2 size={18} className="text-white" strokeWidth={2.5} />
+              }
             </div>
+            <div className="w-0.5 h-4 bg-primary/60" />
           </motion.div>
-          {/* Pin stem + shadow */}
-          <div className="w-0.5 h-4 bg-primary opacity-60" />
-          <div className="w-3 h-1 rounded-full bg-black/20" />
+          {/* Shadow scales up as pin lifts */}
+          <motion.div
+            className="rounded-full bg-black/20"
+            animate={pinLifted ? { scaleX: 0.6, opacity: 0.4 } : { scaleX: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+            style={{ width: 12, height: 4 }}
+          />
         </div>
       </div>
 
@@ -108,7 +147,7 @@ function ConfirmPickupContent() {
         <div className="flex items-center pt-3">
           <motion.button
             onClick={() => router.back()}
-            className="w-10 h-10 rounded-full bg-surface shadow-card flex items-center justify-center"
+            className="w-11 h-11 rounded-full bg-surface shadow-card flex items-center justify-center"
             whileTap={{ scale: 0.88 }} transition={SPRING}
           >
             <ArrowLeft size={18} className="text-text-primary" strokeWidth={2} />
@@ -119,7 +158,9 @@ function ConfirmPickupContent() {
       {/* ── Top instruction pill ── */}
       <div className="absolute top-16 left-0 right-0 flex justify-center" style={{ zIndex: 20 }}>
         <div className="bg-surface rounded-full shadow-card px-5 py-2.5">
-          <p className="text-sm font-semibold text-text-primary">Move map to set pickup</p>
+          <p className="text-sm font-semibold text-text-primary">
+            {dragging ? 'Drag to position…' : 'Move map to set pickup'}
+          </p>
         </div>
       </div>
 
@@ -131,9 +172,9 @@ function ConfirmPickupContent() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', damping: 26, stiffness: 320, delay: 0.15 }}
       >
-        <div className="w-10 h-1 bg-border rounded-full mx-auto mb-4" />
+        <div className="w-9 h-[5px] bg-gray-300 rounded-full mx-auto mb-4" />
 
-        <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-2">Pickup location</p>
+        <p className="text-xs font-semibold text-text-secondary uppercase tracking-widest mb-2">Pickup location</p>
 
         <div className="flex items-start gap-3 mb-5">
           <div className="w-9 h-9 rounded-xl bg-primary-subtle flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -143,20 +184,25 @@ function ConfirmPickupContent() {
             }
           </div>
           <div className="flex-1 min-w-0">
-            {geocoding || !address ? (
+            {!address ? (
               <div className="space-y-1.5">
                 <div className="h-3.5 w-48 bg-surface-2 rounded animate-pulse" />
                 <div className="h-3 w-32 bg-surface-2 rounded animate-pulse" />
               </div>
             ) : (
-              <p className="text-sm font-semibold text-text-primary leading-snug">{address}</p>
+              <div>
+                <p className="text-sm font-semibold text-text-primary leading-snug">{address}</p>
+                {geocoding && (
+                  <p className="text-xs text-text-muted mt-0.5">Updating…</p>
+                )}
+              </div>
             )}
           </div>
         </div>
 
         <motion.button
           onClick={handleConfirm}
-          disabled={!address || geocoding || confirming}
+          disabled={!address || confirming}
           className="btn-primary w-full"
           whileTap={{ scale: 0.97 }}
           transition={SPRING}

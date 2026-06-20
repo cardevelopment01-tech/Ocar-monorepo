@@ -23,7 +23,7 @@ export default function ReferenceSelfie() {
   const [camError, setCamError] = useState('')
   const [submitError, setSubmitError] = useState('')
 
-  const steps = ['personal_info', 'vehicle_info', 'documents', 'vehicle_docs', 'selfie']
+  const steps = ['personal_info', 'vehicle_info', 'documents', 'selfie']
   const stepIdx = steps.indexOf(driver?.onboarding_step ?? 'selfie')
 
   useEffect(() => {
@@ -59,6 +59,7 @@ export default function ReferenceSelfie() {
     const video = videoRef.current
     const canvas = canvasRef.current
     if (!video || !canvas) return
+    if (!video.videoWidth || !video.videoHeight) return
 
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
@@ -147,7 +148,7 @@ export default function ReferenceSelfie() {
       <div className="relative z-20 px-5 pt-12 flex items-center gap-4">
         <button
           onClick={() => { stopCamera(); navigate(-1) }}
-          className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0"
+          className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0"
           aria-label="Go back"
         >
           <ArrowLeft size={18} className="text-white" />
@@ -207,7 +208,7 @@ export default function ReferenceSelfie() {
                   transition={{ delay: 0.5 }}
                   className="bg-black/40 backdrop-blur-md rounded-2xl px-5 py-2.5"
                 >
-                  <p className="text-white/65 text-xs text-center leading-relaxed">
+                  <p className="text-white/90 text-xs text-center leading-relaxed">
                     Look straight &nbsp;·&nbsp; Good lighting &nbsp;·&nbsp; No glasses
                   </p>
                 </motion.div>
@@ -228,7 +229,7 @@ export default function ReferenceSelfie() {
                 {/* Inner disc */}
                 <div className="w-[60px] h-[60px] rounded-full bg-white" />
               </motion.button>
-              <p className="text-white/40 text-xs">Tap to capture</p>
+              <p className="text-white/70 text-xs">Tap to capture</p>
             </div>
           </motion.div>
         )}
@@ -284,7 +285,7 @@ export default function ReferenceSelfie() {
               <button
                 onClick={retake}
                 disabled={stage === 'submitting'}
-                className="flex items-center justify-center gap-2 text-white/55 text-sm font-semibold py-2.5 disabled:opacity-40"
+                className="flex items-center justify-center gap-2 text-white/80 text-sm font-semibold py-3.5 min-h-[44px] disabled:opacity-40"
               >
                 <RefreshCw size={14} />
                 Retake

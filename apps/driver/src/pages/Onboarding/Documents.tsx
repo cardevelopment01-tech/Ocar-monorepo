@@ -44,7 +44,6 @@ export default function Documents() {
 
   const [docState, setDocState] = useState<Record<string, DocRowState>>(initDocState)
   const [validUntil, setValidUntil] = useState<Record<string, string>>({})
-  const [expiryErrors] = useState<Record<string, string>>({})
   const [isFetching, setIsFetching] = useState(true)
 
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -150,7 +149,7 @@ export default function Documents() {
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center">
+        <button onClick={() => navigate(-1)} className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center">
           <ArrowLeft size={20} className="text-text-secondary" />
         </button>
         <div>
@@ -162,12 +161,12 @@ export default function Documents() {
       {/* Identity numbers */}
       <section className="mb-6">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider">Identity Numbers</p>
+          <p className="text-sm font-bold text-text-primary">Identity Numbers</p>
           {identitySaved && <CheckCircle2 size={16} className="text-green-500" />}
         </div>
         <div className="space-y-3">
           <div>
-            <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2 block">Driving Licence Number</label>
+            <label className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2 block">Driving Licence Number</label>
             <input
               className="input-dark w-full font-mono uppercase"
               placeholder="OD0519910012345"
@@ -177,7 +176,7 @@ export default function Documents() {
             />
           </div>
           <div>
-            <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2 block">Aadhaar Number</label>
+            <label className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2 block">Aadhaar Number</label>
             <input
               className="input-dark w-full font-mono"
               placeholder="XXXXXXXXXXXX"
@@ -194,7 +193,7 @@ export default function Documents() {
 
       {/* Driver documents */}
       <section className="mb-6">
-        <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">Driver Documents</p>
+        <p className="text-sm font-bold text-text-primary mb-3">Driver Documents</p>
         <div className="space-y-3">
           {DRIVER_DOCS.map(doc => (
             <DocCard
@@ -205,7 +204,6 @@ export default function Documents() {
               needsExpiry={doc.needsExpiry}
               docState={docState[doc.key]!}
               validUntil={validUntil[doc.key]}
-              expiryError={expiryErrors[doc.key]}
               inputRef={el => { fileRefs.current[doc.key] = el }}
               onFileChange={file => void handleFileSelect(doc.key, false, file)}
               onTrigger={() => handleTrigger(doc.key)}
@@ -217,7 +215,7 @@ export default function Documents() {
 
       {/* Vehicle documents */}
       <section className="mb-8">
-        <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">Vehicle Documents</p>
+        <p className="text-sm font-bold text-text-primary mb-3">Vehicle Documents</p>
         <div className="space-y-3">
           {VEHICLE_DOCS.map(doc => (
             <DocCard
@@ -228,7 +226,6 @@ export default function Documents() {
               needsExpiry={doc.needsExpiry}
               docState={docState[doc.key]!}
               validUntil={validUntil[doc.key]}
-              expiryError={expiryErrors[doc.key]}
               inputRef={el => { fileRefs.current[doc.key] = el }}
               onFileChange={file => void handleFileSelect(doc.key, true, file)}
               onTrigger={() => handleTrigger(doc.key)}
@@ -239,7 +236,7 @@ export default function Documents() {
       </section>
 
       {!canContinue && (
-        <p className="text-text-muted text-xs text-center mb-4">
+        <p className="text-text-secondary text-sm text-center mb-4">
           Upload all documents and save your identity numbers to continue.
         </p>
       )}
@@ -278,14 +275,13 @@ interface DocCardProps {
   needsExpiry: boolean
   docState: DocRowState
   validUntil?: string
-  expiryError?: string
   inputRef: (el: HTMLInputElement | null) => void
   onFileChange: (file: File) => void
   onTrigger: () => void
   onValidUntilChange?: (val: string) => void
 }
 
-function DocCard({ label, required, accept, needsExpiry, docState, validUntil, expiryError, inputRef, onFileChange, onTrigger, onValidUntilChange }: DocCardProps) {
+function DocCard({ label, required, accept, needsExpiry, docState, validUntil, inputRef, onFileChange, onTrigger, onValidUntilChange }: DocCardProps) {
   const { state, url, error, docStatus, rejectionNote } = docState
   const isDone = state === 'done'
   const isRejected = isDone && docStatus === 'rejected'
@@ -315,7 +311,7 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, e
                 ? <AlertCircle size={18} className="text-amber-500 flex-shrink-0" />
                 : <CheckCircle2 size={18} className="text-green-500 flex-shrink-0" />}
               <div className="min-w-0">
-                <p className={`text-sm font-semibold ${isRejected ? 'text-amber-400' : 'text-green-400'}`}>{label}</p>
+                <p className={`text-sm font-semibold ${isRejected ? 'text-amber-700' : 'text-green-700'}`}>{label}</p>
                 {validUntil && <p className="text-xs text-text-muted">Expires {formatExpiry(validUntil)}</p>}
                 {docStatus === 'approved' && !isRejected && <p className="text-xs text-green-500/80">Approved</p>}
                 {docStatus === 'pending'  && !isRejected && <p className="text-xs text-text-muted">Pending review</p>}
@@ -328,8 +324,8 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, e
                   onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${
                     isRejected
-                      ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
-                      : 'text-green-400 bg-green-500/10 border-green-500/20'
+                      ? 'text-amber-700 bg-amber-500/10 border-amber-500/20'
+                      : 'text-green-700 bg-green-500/10 border-green-500/20'
                   }`}
                 >
                   <Eye size={12} /> View
@@ -345,7 +341,7 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, e
             </div>
           </div>
           {isRejected && rejectionNote && (
-            <p className="text-xs text-amber-400/90 mt-2 ml-7">{rejectionNote}</p>
+            <p className="text-xs text-amber-700 mt-2 ml-7">{rejectionNote}</p>
           )}
           {needsExpiry && (
             <div className="mt-3">
@@ -384,7 +380,7 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, e
             <p className="text-xs text-text-muted text-center px-4">
               {state === 'uploading' ? 'Uploading…'
                : state === 'error'   ? (error ?? 'Upload failed — tap to retry')
-               : 'Tap to upload · PDF or image · 5MB max'}
+               : 'Tap to upload · PDF or image · 20MB max'}
             </p>
           </div>
 
@@ -395,12 +391,11 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, e
               </label>
               <input
                 type="date"
-                className={`input-dark w-full ${expiryError ? 'border-accent-red' : ''}`}
+                className="input-dark w-full"
                 value={validUntil ?? ''}
                 onChange={e => onValidUntilChange?.(e.target.value)}
                 onClick={e => e.stopPropagation()}
               />
-              {expiryError && <p className="text-accent-red text-xs mt-1">{expiryError}</p>}
             </div>
           )}
         </>

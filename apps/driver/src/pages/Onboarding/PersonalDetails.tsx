@@ -32,6 +32,7 @@ export default function PersonalDetails() {
 
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(true)
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -81,6 +82,7 @@ export default function PersonalDetails() {
   const isValid = validationIssues.length === 0
 
   const handleContinue = async () => {
+    setSubmitAttempted(true)
     if (!isValid) return
     setError(null)
     setIsLoading(true)
@@ -131,7 +133,7 @@ export default function PersonalDetails() {
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center">
+        <button onClick={() => navigate(-1)} className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center">
           <ArrowLeft size={20} className="text-text-secondary" />
         </button>
         <div>
@@ -158,7 +160,7 @@ export default function PersonalDetails() {
           <div className="grid grid-cols-3 gap-2">
             {(['male', 'female', 'other'] as const).map(g => (
               <button key={g} onClick={() => setGender(g)}
-                className={`py-3 rounded-xl border-2 font-semibold text-sm capitalize transition-all ${gender === g ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
+                className={`py-3 min-h-[44px] rounded-xl border-2 font-semibold text-sm capitalize transition-all ${gender === g ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
                 {g === 'other' ? 'Other' : g.charAt(0).toUpperCase() + g.slice(1)}
               </button>
             ))}
@@ -217,7 +219,7 @@ export default function PersonalDetails() {
           <div className="flex flex-wrap gap-2">
             {INDIAN_LANGUAGES.map(lang => (
               <button key={lang} onClick={() => toggleLanguage(lang)}
-                className={`px-3 py-1.5 rounded-full border text-xs font-semibold transition-all ${languages.includes(lang) ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
+                className={`px-4 py-2.5 min-h-[44px] rounded-full border text-xs font-semibold transition-all ${languages.includes(lang) ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
                 {lang}
               </button>
             ))}
@@ -225,18 +227,18 @@ export default function PersonalDetails() {
         </Field>
       </div>
 
-      {!isValid && validationIssues.length > 0 && (
+      {submitAttempted && !isValid && validationIssues.length > 0 && (
         <div
           className="mb-4 rounded-2xl px-4 py-3"
           style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.18)' }}
         >
-          <p className="text-text-muted text-xs font-bold uppercase tracking-wider mb-2">Still needed</p>
+          <p className="text-text-secondary text-xs font-bold uppercase tracking-wider mb-2">Please complete</p>
           <div className="flex flex-wrap gap-1.5">
             {validationIssues.map(issue => (
               <span
                 key={issue}
                 className="text-xs font-semibold rounded-full px-2.5 py-1"
-                style={{ background: 'rgba(99,102,241,0.15)', color: '#A5B4FC' }}
+                style={{ background: 'rgba(99,102,241,0.15)', color: '#3730A3' }}
               >
                 {issue}
               </span>
@@ -263,7 +265,7 @@ export default function PersonalDetails() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2 block">{label}</label>
+      <label className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2 block">{label}</label>
       {children}
     </div>
   )

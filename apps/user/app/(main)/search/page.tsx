@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, MapPin, Clock, Plane, Train, Building2, ShoppingBag,
+  ArrowLeft, MapPin, Plane, Train, Building2, ShoppingBag,
   GraduationCap, Navigation2, X, Loader2, LocateFixed, Map,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -34,11 +34,6 @@ const POPULAR = [
   { Icon: ShoppingBag,    label: 'Esplanade One',           address: 'Rasulgarh, Bhubaneswar',           lat: 20.2877, lng: 85.8508 },
   { Icon: GraduationCap,  label: 'KIIT University',         address: 'Patia, Bhubaneswar',               lat: 20.3560, lng: 85.8181 },
   { Icon: Building2,      label: 'Cuttack City',            address: 'Cuttack, Odisha',                  lat: 20.4625, lng: 85.8830 },
-]
-
-const RECENTS = [
-  { label: 'KIIT University, Patia', destIndex: 4 },
-  { label: 'Esplanade One Mall',     destIndex: 3 },
 ]
 
 const ICON_BG  = '#F1F0FE'
@@ -245,7 +240,7 @@ function SearchContent() {
             <span className="flex-1 text-sm font-medium text-text-secondary truncate">{originAddress}</span>
           )}
           {mode === 'origin' && query && !searching && (
-            <motion.button onClick={(e: React.MouseEvent) => { e.stopPropagation(); setQuery(''); setSuggestions([]) }} whileTap={{ scale: 0.88 }}>
+            <motion.button onClick={(e: React.MouseEvent) => { e.stopPropagation(); setQuery(''); setSuggestions([]) }} whileTap={{ scale: 0.88 }} className="w-8 h-8 flex items-center justify-center">
               <X size={14} className="text-text-muted" />
             </motion.button>
           )}
@@ -278,7 +273,7 @@ function SearchContent() {
             <Loader2 size={14} className="text-primary animate-spin flex-shrink-0" />
           )}
           {mode === 'destination' && query && !searching && (
-            <motion.button onClick={() => { setQuery(''); setSuggestions([]) }} whileTap={{ scale: 0.88 }}>
+            <motion.button onClick={() => { setQuery(''); setSuggestions([]) }} whileTap={{ scale: 0.88 }} className="w-8 h-8 flex items-center justify-center">
               <X size={14} className="text-text-muted" />
             </motion.button>
           )}
@@ -423,26 +418,6 @@ function SearchContent() {
               </motion.div>
             ) : (
               <>
-                {/* Recents */}
-                <motion.div className="mb-5" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, ease: EASE }}>
-                  <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Recent</p>
-                  <div className="bg-surface rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}>
-                    {RECENTS.map((r, i) => (
-                      <motion.button
-                        key={r.label}
-                        onClick={() => { const d = POPULAR[r.destIndex]!; navigate(d.lat, d.lng, d.address) }}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < RECENTS.length - 1 ? ' border-b border-border' : ''}`}
-                        whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-                      >
-                        <span className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0">
-                          <Clock size={14} strokeWidth={1.6} className="text-text-muted" />
-                        </span>
-                        <span className="flex-1 text-sm font-medium text-text-primary truncate">{r.label}</span>
-                      </motion.button>
-                    ))}
-                  </div>
-                </motion.div>
-
                 {/* Popular destinations */}
                 <motion.div variants={listStagger} initial="hidden" animate="show">
                   <motion.p variants={fadeUp} className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">

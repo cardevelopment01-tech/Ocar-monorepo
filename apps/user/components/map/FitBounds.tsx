@@ -28,7 +28,8 @@ export default function FitBounds({ positions, padding = [56, 56], paddingBottom
       animate: true,
       duration: 0.7,
     })
-  })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
 
   return null
 }

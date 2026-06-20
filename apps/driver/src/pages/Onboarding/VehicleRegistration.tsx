@@ -168,7 +168,7 @@ export default function VehicleRegistration() {
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center">
+        <button onClick={() => navigate(-1)} className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center">
           <ArrowLeft size={20} className="text-text-secondary" />
         </button>
         <div>
@@ -298,7 +298,7 @@ export default function VehicleRegistration() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2 block">{label}</label>
+      <label className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2 block">{label}</label>
       {children}
     </div>
   )
