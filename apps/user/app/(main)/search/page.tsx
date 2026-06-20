@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, MapPin, Plane, Train, Building2, ShoppingBag,
-  GraduationCap, Navigation2, X, Loader2, LocateFixed, Map,
+  GraduationCap, Navigation2, X, Loader2, LocateFixed, Map, ArrowUpDown,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
@@ -114,6 +114,16 @@ function SearchContent() {
     setSuggestions([])
   }
 
+  function swapOriginDestination() {
+    // Only meaningful when there's a non-default origin set; swaps it into the destination input
+    setQuery(originAddress === DEFAULT_ORIGIN.address ? '' : originAddress)
+    setOriginLat(DEFAULT_ORIGIN.lat)
+    setOriginLng(DEFAULT_ORIGIN.lng)
+    setOriginAddress(DEFAULT_ORIGIN.address)
+    setMode('destination')
+    setSuggestions([])
+  }
+
   // Navigate to select-ride with real route
   async function navigate(dLat: number, dLng: number, dAddress: string, oLat = originLat, oLng = originLng, oAddress = originAddress) {
     setResolving(true)
@@ -202,7 +212,7 @@ function SearchContent() {
 
       {/* ── Header ── */}
       <div className="flex-shrink-0 bg-surface border-b border-border pt-safe-top">
-        <div className="flex items-center gap-3 px-4 pt-3 pb-3">
+        <div className="flex items-center gap-3 px-4 pt-3 pb-4">
           <motion.button
             onClick={() => router.back()}
             className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0"
@@ -213,70 +223,97 @@ function SearchContent() {
           <span className="text-base font-bold text-text-primary">Plan your trip</span>
         </div>
 
-        {/* Origin row — tappable to switch to origin-edit mode */}
-        <motion.button
-          onClick={() => switchMode('origin')}
-          className="w-full flex items-center gap-3 mx-4 mb-3 px-4 py-3 rounded-2xl text-left"
-          style={{
-            width: 'calc(100% - 32px)',
-            background: mode === 'origin' ? 'var(--color-primary-subtle, #EEF2FF)' : 'var(--color-surface-2, #F8FAFF)',
-            border: mode === 'origin' ? '2px solid var(--color-primary, #4F46E5)' : '1px solid var(--color-border, #E5E7EB)',
-          }}
-          whileTap={{ scale: 0.985 }} transition={SPRING}
-        >
-          <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-            <Navigation2 size={10} className="text-white" strokeWidth={2.5} />
-          </div>
-          {mode === 'origin' ? (
-            <input
-              ref={originInputRef}
-              value={query}
-              onChange={e => handleQueryChange(e.target.value)}
-              placeholder="Enter pickup location"
-              className="flex-1 bg-transparent text-sm font-medium text-text-primary placeholder:text-text-muted outline-none"
-              disabled={resolving}
-            />
-          ) : (
-            <span className="flex-1 text-sm font-medium text-text-secondary truncate">{originAddress}</span>
-          )}
-          {mode === 'origin' && query && !searching && (
-            <motion.button onClick={(e: React.MouseEvent) => { e.stopPropagation(); setQuery(''); setSuggestions([]) }} whileTap={{ scale: 0.88 }} className="w-8 h-8 flex items-center justify-center">
-              <X size={14} className="text-text-muted" />
-            </motion.button>
-          )}
-          {mode === 'origin' && searching && (
-            <Loader2 size={14} className="text-primary animate-spin flex-shrink-0" />
-          )}
-        </motion.button>
+        {/* Unified from → to card */}
+        <div className="mx-4 mb-4 rounded-2xl overflow-hidden border border-border bg-surface shadow-card">
+          <div className="flex items-stretch">
 
-        {/* Destination input */}
-        <div
-          className="flex items-center gap-3 mx-4 mb-4 px-4 py-3 rounded-2xl"
-          style={{
-            width: 'calc(100% - 32px)',
-            background: mode === 'destination' ? 'var(--color-primary-subtle, #EEF2FF)' : 'var(--color-surface-2, #F8FAFF)',
-            border: mode === 'destination' ? '2px solid var(--color-primary, #4F46E5)' : '1px solid var(--color-border, #E5E7EB)',
-          }}
-          onClick={() => mode !== 'destination' && switchMode('destination')}
-        >
-          <div className="w-2 h-2 rounded-full bg-text-primary flex-shrink-0" />
-          <input
-            ref={destInputRef}
-            value={mode === 'destination' ? query : ''}
-            onChange={e => handleQueryChange(e.target.value)}
-            onFocus={() => mode !== 'destination' && switchMode('destination')}
-            placeholder="Where to?"
-            className="flex-1 bg-transparent text-sm font-medium text-text-primary placeholder:text-text-muted outline-none"
-            disabled={resolving}
-          />
-          {mode === 'destination' && searching && (
-            <Loader2 size={14} className="text-primary animate-spin flex-shrink-0" />
-          )}
-          {mode === 'destination' && query && !searching && (
-            <motion.button onClick={() => { setQuery(''); setSuggestions([]) }} whileTap={{ scale: 0.88 }} className="w-8 h-8 flex items-center justify-center">
-              <X size={14} className="text-text-muted" />
+            {/* Left icon column: green dot → dashed line → dark square */}
+            <div className="flex flex-col items-center px-4 pt-[22px] pb-[22px]">
+              <div className="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 shadow-sm" />
+              <div
+                className="w-px flex-1 my-2"
+                style={{ background: 'repeating-linear-gradient(to bottom, #CBD5E1 0px, #CBD5E1 4px, transparent 4px, transparent 8px)' }}
+              />
+              <div className="w-3 h-3 rounded-sm bg-slate-800 flex-shrink-0 shadow-sm" />
+            </div>
+
+            {/* Input column */}
+            <div className="flex-1 min-w-0">
+              {/* FROM row */}
+              <motion.button
+                onClick={() => switchMode('origin')}
+                className="w-full text-left px-2 pt-3 pb-3 border-b border-border"
+                style={{ background: mode === 'origin' ? 'rgba(79,70,229,0.04)' : 'transparent' }}
+                whileTap={{ scale: 0.99 }} transition={SPRING}
+              >
+                <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 leading-none">From</p>
+                {mode === 'origin' ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      ref={originInputRef}
+                      value={query}
+                      onChange={e => handleQueryChange(e.target.value)}
+                      placeholder="Enter pickup location"
+                      className="flex-1 bg-transparent text-sm font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
+                      disabled={resolving}
+                    />
+                    {searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
+                    {query && !searching && (
+                      <motion.button
+                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); setQuery(''); setSuggestions([]) }}
+                        whileTap={{ scale: 0.85 }}
+                        className="w-7 h-7 flex items-center justify-center"
+                      >
+                        <X size={13} className="text-text-muted" />
+                      </motion.button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm font-semibold text-text-primary truncate">{originAddress}</p>
+                )}
+              </motion.button>
+
+              {/* TO row */}
+              <div
+                className="px-2 pt-3 pb-3 cursor-text"
+                style={{ background: mode === 'destination' ? 'rgba(79,70,229,0.04)' : 'transparent' }}
+                onClick={() => mode !== 'destination' && switchMode('destination')}
+              >
+                <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 leading-none">To</p>
+                <div className="flex items-center gap-1">
+                  <input
+                    ref={destInputRef}
+                    value={mode === 'destination' ? query : ''}
+                    onChange={e => handleQueryChange(e.target.value)}
+                    onFocus={() => mode !== 'destination' && switchMode('destination')}
+                    placeholder="Where to?"
+                    className="flex-1 bg-transparent text-sm font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
+                    disabled={resolving}
+                  />
+                  {mode === 'destination' && searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
+                  {mode === 'destination' && query && !searching && (
+                    <motion.button
+                      onClick={() => { setQuery(''); setSuggestions([]) }}
+                      whileTap={{ scale: 0.85 }}
+                      className="w-7 h-7 flex items-center justify-center"
+                    >
+                      <X size={13} className="text-text-muted" />
+                    </motion.button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Swap button */}
+            <motion.button
+              onClick={swapOriginDestination}
+              className="self-center flex-shrink-0 w-9 h-9 mr-3 rounded-xl bg-surface-2 flex items-center justify-center border border-border"
+              whileTap={{ scale: 0.88, rotate: 180 }} transition={SPRING}
+              title="Swap pickup and destination"
+            >
+              <ArrowUpDown size={15} className="text-text-muted" strokeWidth={2} />
             </motion.button>
-          )}
+          </div>
         </div>
       </div>
 
