@@ -64,6 +64,8 @@ function SearchContent() {
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const destInputRef   = useRef<HTMLInputElement>(null)
   const originInputRef = useRef<HTMLInputElement>(null)
+  // Tracks whether user has actually typed in origin mode (vs. the pre-populated default)
+  const originTouched  = useRef(false)
 
   // On mount: if no origin in URL, try to get GPS + reverse-geocode
   useEffect(() => {
@@ -83,12 +85,15 @@ function SearchContent() {
     )
   }, [sp])
 
-  // Focus the right input when mode changes
+  // Focus the right input when mode changes; select-all in origin so typing replaces pre-populated text
   useEffect(() => {
     if (mode === 'destination') {
       setTimeout(() => destInputRef.current?.focus(), 60)
     } else {
-      setTimeout(() => originInputRef.current?.focus(), 60)
+      setTimeout(() => {
+        originInputRef.current?.focus()
+        originInputRef.current?.select()
+      }, 60)
     }
   }, [mode])
 
@@ -102,6 +107,7 @@ function SearchContent() {
   }, [])
 
   function handleQueryChange(val: string) {
+    originTouched.current = true
     setQuery(val)
     setSuggestions([])
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -115,8 +121,14 @@ function SearchContent() {
 
   function switchMode(next: EditMode) {
     setMode(next)
-    setQuery('')
     setSuggestions([])
+    setSearching(false)
+    if (next === 'origin') {
+      originTouched.current = false
+      setQuery(originAddress)   // pre-populate so FROM never looks blank
+    } else {
+      setQuery('')
+    }
   }
 
   // Navigate to select-ride with real route
@@ -175,11 +187,10 @@ function SearchContent() {
       setOriginLng(detail.longitude)
       setOriginAddress(detail.address)
       setResolving(false)
-      // If destination already confirmed, go straight to prices
+      // Always switch to destination mode so FROM shows the resolved address (not old query text)
+      switchMode('destination')
       if (confirmedDest) {
         void navigateToRide(confirmedDest, detail.latitude, detail.longitude, detail.address)
-      } else {
-        switchMode('destination')
       }
     } catch {
       setResolving(false)
@@ -211,10 +222,9 @@ function SearchContent() {
           setOriginLat(latitude)
           setOriginLng(longitude)
           setOriginAddress(addr)
+          switchMode('destination')
           if (confirmedDest) {
             void navigateToRide(confirmedDest, latitude, longitude, addr)
-          } else {
-            switchMode('destination')
           }
         } catch {
           setOriginLat(latitude)
@@ -238,7 +248,8 @@ function SearchContent() {
     router.push(`/confirm-pickup?${params.toString()}`)
   }
 
-  const showSuggestions = query.length >= 2
+  // In origin mode, only show suggestions after the user has actually typed (not the pre-populated address)
+  const showSuggestions = query.length >= 2 && (mode === 'destination' || originTouched.current)
   const bothConfirmed   = confirmedDest !== null
 
   return (
@@ -275,7 +286,7 @@ function SearchContent() {
             <div className="flex-1 min-w-0">
               {/* FROM row */}
               <motion.button
-                onClick={() => switchMode('origin')}
+                onClick={() => { if (mode !== 'origin') switchMode('origin') }}
                 className="w-full text-left px-2 pt-3 pb-3 border-b border-border"
                 whileTap={{ scale: 0.99 }} transition={SPRING}
               >
@@ -309,11 +320,17 @@ function SearchContent() {
               {/* TO row */}
               <div
                 className="px-2 pt-3 pb-3 cursor-text"
-                onClick={() => { if (mode !== 'destination') { setConfirmedDest(null); switchMode('destination') } }}
+                onClick={() => {
+                  if (confirmedDest) {
+                    setConfirmedDest(null); switchMode('destination')
+                  } else if (mode !== 'destination') {
+                    switchMode('destination')
+                  }
+                }}
               >
                 <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 leading-none">To</p>
-                {confirmedDest && mode !== 'destination' ? (
-                  // Show confirmed destination as text (tappable to re-edit)
+                {confirmedDest ? (
+                  // Always show confirmed destination as text — never blank during navigation
                   <div className="flex items-center gap-1">
                     <p className="text-sm font-semibold text-text-primary truncate flex-1">{confirmedDest.address}</p>
                     <motion.button
@@ -324,19 +341,18 @@ function SearchContent() {
                       <X size={13} className="text-text-muted" />
                     </motion.button>
                   </div>
-                ) : (
+                ) : mode === 'destination' ? (
                   <div className="flex items-center gap-1">
                     <input
                       ref={destInputRef}
-                      value={mode === 'destination' ? query : ''}
+                      value={query}
                       onChange={e => handleQueryChange(e.target.value)}
-                      onFocus={() => mode !== 'destination' && switchMode('destination')}
                       placeholder="Where to?"
                       className="flex-1 bg-transparent text-sm font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
                       disabled={resolving}
                     />
-                    {mode === 'destination' && searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
-                    {mode === 'destination' && query && !searching && (
+                    {searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
+                    {query && !searching && (
                       <motion.button
                         onClick={() => { setQuery(''); setSuggestions([]) }}
                         whileTap={{ scale: 0.85 }}
@@ -346,6 +362,8 @@ function SearchContent() {
                       </motion.button>
                     )}
                   </div>
+                ) : (
+                  <p className="text-sm text-text-muted font-normal">Where to?</p>
                 )}
               </div>
             </div>
