@@ -41,6 +41,8 @@ const ICON_CLR = '#4F46E5'
 
 type EditMode = 'destination' | 'origin'
 
+type ConfirmedDest = { lat: number; lng: number; address: string }
+
 function SearchContent() {
   const router = useRouter()
   const sp     = useSearchParams()
@@ -48,6 +50,9 @@ function SearchContent() {
   const [originLat,     setOriginLat]     = useState(() => parseFloat(sp.get('originLat') ?? '') || DEFAULT_ORIGIN.lat)
   const [originLng,     setOriginLng]     = useState(() => parseFloat(sp.get('originLng') ?? '') || DEFAULT_ORIGIN.lng)
   const [originAddress, setOriginAddress] = useState(() => sp.get('originAddress') ?? DEFAULT_ORIGIN.address)
+
+  // Destination is stored explicitly so swap can exchange both ends
+  const [confirmedDest, setConfirmedDest] = useState<ConfirmedDest | null>(null)
 
   const [mode,        setMode]        = useState<EditMode>('destination')
   const [query,       setQuery]       = useState('')
@@ -114,28 +119,18 @@ function SearchContent() {
     setSuggestions([])
   }
 
-  function swapOriginDestination() {
-    // Only meaningful when there's a non-default origin set; swaps it into the destination input
-    setQuery(originAddress === DEFAULT_ORIGIN.address ? '' : originAddress)
-    setOriginLat(DEFAULT_ORIGIN.lat)
-    setOriginLng(DEFAULT_ORIGIN.lng)
-    setOriginAddress(DEFAULT_ORIGIN.address)
-    setMode('destination')
-    setSuggestions([])
-  }
-
   // Navigate to select-ride with real route
-  async function navigate(dLat: number, dLng: number, dAddress: string, oLat = originLat, oLng = originLng, oAddress = originAddress) {
+  async function navigateToRide(dest: ConfirmedDest, oLat = originLat, oLng = originLng, oAddress = originAddress) {
     setResolving(true)
     try {
-      const route = await geoApi.getRoute(oLat, oLng, dLat, dLng)
+      const route = await geoApi.getRoute(oLat, oLng, dest.lat, dest.lng)
       const params = new URLSearchParams({
         originLat:          String(oLat),
         originLng:          String(oLng),
         originAddress:      oAddress,
-        destinationLat:     String(dLat),
-        destinationLng:     String(dLng),
-        destinationAddress: dAddress,
+        destinationLat:     String(dest.lat),
+        destinationLng:     String(dest.lng),
+        destinationAddress: dest.address,
         distanceKm:         String(route.distanceKm),
         durationMin:        String(route.durationMin),
         originCityId:       '1',
@@ -147,11 +142,26 @@ function SearchContent() {
     }
   }
 
+  // Confirm a destination: store it in state, collapse suggestions, switch focus to origin if unset
+  function confirmDest(lat: number, lng: number, address: string) {
+    setConfirmedDest({ lat, lng, address })
+    setQuery('')
+    setSuggestions([])
+    setSearching(false)
+    // If origin is already a real location (not the bare city default), go straight to prices
+    if (originAddress !== DEFAULT_ORIGIN.address) {
+      void navigateToRide({ lat, lng, address })
+    } else {
+      switchMode('origin')
+    }
+  }
+
   async function selectDestinationSuggestion(s: PlaceSuggestion) {
     setResolving(true)
     try {
       const detail = await geoApi.placeDetails(s.placeId)
-      await navigate(detail.latitude, detail.longitude, detail.address)
+      setResolving(false)
+      confirmDest(detail.latitude, detail.longitude, detail.address)
     } catch {
       setResolving(false)
     }
@@ -165,10 +175,29 @@ function SearchContent() {
       setOriginLng(detail.longitude)
       setOriginAddress(detail.address)
       setResolving(false)
-      switchMode('destination')
+      // If destination already confirmed, go straight to prices
+      if (confirmedDest) {
+        void navigateToRide(confirmedDest, detail.latitude, detail.longitude, detail.address)
+      } else {
+        switchMode('destination')
+      }
     } catch {
       setResolving(false)
     }
+  }
+
+  // True bidirectional swap — exchanges origin ↔ confirmedDest then navigates
+  function swapOriginDestination() {
+    if (!confirmedDest) return
+    const prevOrigin: ConfirmedDest = { lat: originLat, lng: originLng, address: originAddress }
+    setOriginLat(confirmedDest.lat)
+    setOriginLng(confirmedDest.lng)
+    setOriginAddress(confirmedDest.address)
+    setConfirmedDest(prevOrigin)
+    setQuery('')
+    setSuggestions([])
+    setMode('destination')
+    void navigateToRide(prevOrigin, confirmedDest.lat, confirmedDest.lng, confirmedDest.address)
   }
 
   async function useCurrentLocation() {
@@ -182,7 +211,11 @@ function SearchContent() {
           setOriginLat(latitude)
           setOriginLng(longitude)
           setOriginAddress(addr)
-          switchMode('destination')
+          if (confirmedDest) {
+            void navigateToRide(confirmedDest, latitude, longitude, addr)
+          } else {
+            switchMode('destination')
+          }
         } catch {
           setOriginLat(latitude)
           setOriginLng(longitude)
@@ -206,6 +239,7 @@ function SearchContent() {
   }
 
   const showSuggestions = query.length >= 2
+  const bothConfirmed   = confirmedDest !== null
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -275,44 +309,79 @@ function SearchContent() {
               {/* TO row */}
               <div
                 className="px-2 pt-3 pb-3 cursor-text"
-                onClick={() => mode !== 'destination' && switchMode('destination')}
+                onClick={() => { if (mode !== 'destination') { setConfirmedDest(null); switchMode('destination') } }}
               >
                 <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 leading-none">To</p>
-                <div className="flex items-center gap-1">
-                  <input
-                    ref={destInputRef}
-                    value={mode === 'destination' ? query : ''}
-                    onChange={e => handleQueryChange(e.target.value)}
-                    onFocus={() => mode !== 'destination' && switchMode('destination')}
-                    placeholder="Where to?"
-                    className="flex-1 bg-transparent text-sm font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
-                    disabled={resolving}
-                  />
-                  {mode === 'destination' && searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
-                  {mode === 'destination' && query && !searching && (
+                {confirmedDest && mode !== 'destination' ? (
+                  // Show confirmed destination as text (tappable to re-edit)
+                  <div className="flex items-center gap-1">
+                    <p className="text-sm font-semibold text-text-primary truncate flex-1">{confirmedDest.address}</p>
                     <motion.button
-                      onClick={() => { setQuery(''); setSuggestions([]) }}
+                      onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConfirmedDest(null); switchMode('destination') }}
                       whileTap={{ scale: 0.85 }}
-                      className="w-7 h-7 flex items-center justify-center"
+                      className="w-7 h-7 flex items-center justify-center flex-shrink-0"
                     >
                       <X size={13} className="text-text-muted" />
                     </motion.button>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <input
+                      ref={destInputRef}
+                      value={mode === 'destination' ? query : ''}
+                      onChange={e => handleQueryChange(e.target.value)}
+                      onFocus={() => mode !== 'destination' && switchMode('destination')}
+                      placeholder="Where to?"
+                      className="flex-1 bg-transparent text-sm font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
+                      disabled={resolving}
+                    />
+                    {mode === 'destination' && searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
+                    {mode === 'destination' && query && !searching && (
+                      <motion.button
+                        onClick={() => { setQuery(''); setSuggestions([]) }}
+                        whileTap={{ scale: 0.85 }}
+                        className="w-7 h-7 flex items-center justify-center"
+                      >
+                        <X size={13} className="text-text-muted" />
+                      </motion.button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Swap button */}
+            {/* Swap button — only active when destination is confirmed */}
             <motion.button
               onClick={swapOriginDestination}
-              className="self-center flex-shrink-0 w-9 h-9 mr-3 rounded-xl bg-surface-2 flex items-center justify-center border border-border"
-              whileTap={{ scale: 0.88, rotate: 180 }} transition={SPRING}
+              disabled={!bothConfirmed}
+              className="self-center flex-shrink-0 w-9 h-9 mr-3 rounded-xl flex items-center justify-center border transition-colors"
+              style={{
+                background: bothConfirmed ? 'var(--color-primary-subtle, #EEF2FF)' : 'var(--color-surface-2, #F8FAFF)',
+                borderColor: bothConfirmed ? 'var(--color-primary, #4F46E5)' : 'var(--color-border, #E5E7EB)',
+              }}
+              whileTap={bothConfirmed ? { scale: 0.88, rotate: 180 } : {}}
+              transition={SPRING}
               title="Swap pickup and destination"
             >
-              <ArrowUpDown size={15} className="text-text-muted" strokeWidth={2} />
+              <ArrowUpDown size={15} className={bothConfirmed ? 'text-primary' : 'text-text-muted'} strokeWidth={2} />
             </motion.button>
           </div>
         </div>
+
+        {/* Get prices CTA — slides in when both ends are confirmed */}
+        <AnimatePresence>
+          {bothConfirmed && (
+            <motion.button
+              onClick={() => confirmedDest && void navigateToRide(confirmedDest)}
+              className="btn-primary mt-3"
+              initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2, ease: EASE }}
+              disabled={resolving}
+            >
+              {resolving ? <span className="flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Getting route…</span> : 'See ride prices →'}
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ── Body ── */}
@@ -462,7 +531,7 @@ function SearchContent() {
                     {POPULAR.map((d, i) => (
                       <motion.button
                         key={d.label}
-                        onClick={() => navigate(d.lat, d.lng, d.address)}
+                        onClick={() => confirmDest(d.lat, d.lng, d.address)}
                         className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < POPULAR.length - 1 ? ' border-b border-border' : ''}`}
                         variants={rowVariant}
                         whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
