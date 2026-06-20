@@ -11,7 +11,9 @@ import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { connectDriverSocket, disconnectDriverSocket, getDriverSocket } from '@/lib/socket'
 
-const DriverMapView = lazy(() => import('@/components/map/DriverMapView'))
+const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
+const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
+const SelfCarMarker  = lazy(() => import('@/components/map/SelfCarMarker'))
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
@@ -155,7 +157,10 @@ export default function Home() {
       {/* Map — full bleed behind everything */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface-2 animate-pulse" />}>
-          <DriverMapView center={mapCenter} zoom={15} dimmed={!isOnline} />
+          <DriverMapView center={mapCenter} zoom={15} dimmed={!isOnline}>
+            <RecenterMap center={mapCenter} />
+            <SelfCarMarker position={mapCenter} />
+          </DriverMapView>
         </Suspense>
       </div>
 

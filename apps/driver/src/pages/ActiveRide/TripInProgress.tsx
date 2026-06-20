@@ -8,7 +8,10 @@ import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi } from '@/lib/ride-api'
 
-const DriverMapView = lazy(() => import('@/components/map/DriverMapView'))
+const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
+const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
+const LocationPin    = lazy(() => import('@/components/map/LocationPin'))
+const SelfCarMarker  = lazy(() => import('@/components/map/SelfCarMarker'))
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
@@ -44,10 +47,13 @@ export default function TripInProgress() {
   const [completing, setCompleting] = useState(false)
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const dropCenter: [number, number] = [
+  const dropPos: [number, number] = [
     activeRide?.dropLat ?? DEFAULT_LAT,
     activeRide?.dropLng ?? DEFAULT_LNG,
   ]
+
+  const [selfPos,     setSelfPos]     = useState<[number, number]>(dropPos)
+  const [selfHeading, setSelfHeading] = useState(0)
 
   // Screen wake lock
   useEffect(() => {
@@ -64,6 +70,8 @@ export default function TripInProgress() {
     const send = async () => {
       const pos = await getCurrentPosition().catch(() => null)
       if (!pos) return  // never send fake coordinates on GPS failure
+      setSelfPos([pos.coords.latitude, pos.coords.longitude])
+      if (pos.coords.heading != null) setSelfHeading(pos.coords.heading)
       await driverRideApi.updateLocation({
         sessionId, lat: pos.coords.latitude, lng: pos.coords.longitude,
         recordedAt: new Date().toISOString(),
@@ -115,7 +123,11 @@ export default function TripInProgress() {
     <div className="relative w-full h-screen bg-bg overflow-hidden">
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
-          <DriverMapView center={dropCenter} zoom={14} />
+          <DriverMapView center={selfPos} zoom={15}>
+            <RecenterMap center={selfPos} />
+            <SelfCarMarker position={selfPos} heading={selfHeading} />
+            <LocationPin position={dropPos} variant="drop" />
+          </DriverMapView>
         </Suspense>
       </div>
 
@@ -153,7 +165,7 @@ export default function TripInProgress() {
         <div className="flex gap-3">
           <button
             className="w-12 h-12 rounded-2xl bg-surface-3 border border-border flex items-center justify-center flex-shrink-0"
-            onClick={() => window.open(`https://maps.google.com?q=${dropCenter[0]},${dropCenter[1]}`)}
+            onClick={() => window.open(`https://maps.google.com?q=${dropPos[0]},${dropPos[1]}`)}
           >
             <Navigation size={20} className="text-primary" />
           </button>

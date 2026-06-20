@@ -6,7 +6,10 @@ import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi } from '@/lib/ride-api'
 
-const DriverMapView = lazy(() => import('@/components/map/DriverMapView'))
+const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
+const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
+const LocationPin    = lazy(() => import('@/components/map/LocationPin'))
+const SelfCarMarker  = lazy(() => import('@/components/map/SelfCarMarker'))
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
@@ -28,10 +31,13 @@ export default function NavigateToPickup() {
   const [error, setError] = useState<string | null>(null)
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const pickupCenter: [number, number] = [
+  const pickupPos: [number, number] = [
     activeRide?.pickupLat ?? DEFAULT_LAT,
     activeRide?.pickupLng ?? DEFAULT_LNG,
   ]
+
+  const [selfPos,     setSelfPos]     = useState<[number, number]>(pickupPos)
+  const [selfHeading, setSelfHeading] = useState(0)
 
   // Location updates while navigating to pickup
   useEffect(() => {
@@ -39,6 +45,8 @@ export default function NavigateToPickup() {
     const sendLocation = async () => {
       const pos = await getCurrentPosition().catch(() => null)
       if (!pos) return  // never send fake coordinates on GPS failure
+      setSelfPos([pos.coords.latitude, pos.coords.longitude])
+      if (pos.coords.heading != null) setSelfHeading(pos.coords.heading)
       await driverRideApi.updateLocation({
         sessionId, lat: pos.coords.latitude, lng: pos.coords.longitude,
         recordedAt: new Date().toISOString(),
@@ -74,7 +82,11 @@ export default function NavigateToPickup() {
     <div className="relative w-full h-screen bg-bg overflow-hidden">
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
-          <DriverMapView center={pickupCenter} zoom={15} />
+          <DriverMapView center={selfPos} zoom={15}>
+            <RecenterMap center={selfPos} />
+            <SelfCarMarker position={selfPos} heading={selfHeading} />
+            <LocationPin position={pickupPos} variant="pickup" />
+          </DriverMapView>
         </Suspense>
       </div>
 
@@ -113,7 +125,7 @@ export default function NavigateToPickup() {
             )}
             <button
               className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button"
-              onClick={() => window.open(`https://maps.google.com?q=${pickupCenter[0]},${pickupCenter[1]}`)}
+              onClick={() => window.open(`https://maps.google.com?q=${pickupPos[0]},${pickupPos[1]}`)}
             >
               <Navigation size={18} className="text-text-inverse" />
             </button>
