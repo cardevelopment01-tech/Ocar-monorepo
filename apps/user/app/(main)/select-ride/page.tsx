@@ -1,7 +1,7 @@
 'use client'
 
-import { Suspense, useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, Users, Zap, Car, Truck, CreditCard } from 'lucide-react'
+import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
+import { ArrowLeft, Users, Zap, Car, Truck, CreditCard, Clock } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -27,6 +27,15 @@ const CATEGORY_ICON: Record<string, LucideIcon> = {
   suv:       Truck,
   luxury:    Car,
   van:       Truck,
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.asin(Math.sqrt(a))
 }
 
 function SelectRideContent() {
@@ -60,6 +69,20 @@ function SelectRideContent() {
     const id = setInterval(fetch, 8000)
     return () => clearInterval(id)
   }, [originLat, originLng])
+
+  // Per-category: count and ETA (minutes) of nearest driver
+  const driverEta = useMemo(() => {
+    const result: Record<number, { count: number; etaMin: number }> = {}
+    for (const cat of categories) {
+      const inCat = nearbyDrivers.filter(d => d.category_id === cat.id)
+      if (inCat.length === 0) { result[cat.id] = { count: 0, etaMin: -1 }; continue }
+      const nearest = Math.min(...inCat.map(d => haversineKm(originLat, originLng, d.lat, d.lng)))
+      // Assume 30 km/h average speed in city → nearest_km / 0.5 km/min
+      const etaMin = Math.max(1, Math.round(nearest / 0.5))
+      result[cat.id] = { count: inCat.length, etaMin }
+    }
+    return result
+  }, [nearbyDrivers, categories, originLat, originLng])
 
   const center: [number, number] = [(originLat + destinationLat) / 2, (originLng + destinationLng) / 2]
 
@@ -145,18 +168,23 @@ function SelectRideContent() {
 
           <div className="space-y-2 mb-6">
             {categories.map(cat => {
-              const est  = estimates[cat.id]
-              const fare = est?.breakdown.total
+              const est        = estimates[cat.id]
+              const fare       = est?.breakdown.total
               const isSelected = selected === cat.id
-              const CatIcon = CATEGORY_ICON[cat.slug] ?? Car
+              const CatIcon    = CATEGORY_ICON[cat.slug] ?? Car
+              const eta        = driverEta[cat.id]
+              const noCars     = eta != null && eta.count === 0
 
               return (
                 <button
                   key={cat.id}
-                  onClick={() => setSelected(cat.id)}
+                  onClick={() => !noCars && setSelected(cat.id)}
+                  disabled={noCars}
                   className={cn(
-                    'w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all duration-150 active:scale-[0.98] cursor-pointer',
-                    isSelected ? 'border-primary bg-primary-subtle' : 'border-transparent bg-background'
+                    'w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all duration-150 active:scale-[0.98]',
+                    noCars     ? 'border-transparent bg-background opacity-50 cursor-not-allowed' :
+                    isSelected ? 'border-primary bg-primary-subtle cursor-pointer' :
+                                 'border-transparent bg-background cursor-pointer'
                   )}
                 >
                   <div className={cn(
@@ -167,11 +195,19 @@ function SelectRideContent() {
                   </div>
                   <div className="flex-1 text-left">
                     <p className="font-bold text-text-primary">{cat.display_name}</p>
-                    <div className="flex items-center gap-1 text-xs text-text-muted mt-0.5">
-                      <Users size={11} />
-                      <span>{cat.max_passengers} seats</span>
+                    <div className="flex items-center gap-2 text-xs text-text-muted mt-0.5 flex-wrap">
+                      <span className="flex items-center gap-0.5">
+                        <Users size={10} /> {cat.max_passengers} seats
+                      </span>
+                      {noCars ? (
+                        <span className="text-status-error font-medium">No cars nearby</span>
+                      ) : eta != null && eta.etaMin > 0 ? (
+                        <span className="flex items-center gap-0.5 text-status-success font-medium">
+                          <Clock size={10} /> ~{eta.etaMin} min · {eta.count} car{eta.count !== 1 ? 's' : ''}
+                        </span>
+                      ) : null}
                       {est?.surge_multiplier != null && est.surge_multiplier > 1 && (
-                        <span className="ml-1 flex items-center gap-0.5 text-status-warning">
+                        <span className="flex items-center gap-0.5 text-status-warning">
                           <Zap size={10} /> {est.surge_multiplier}×
                         </span>
                       )}
@@ -216,7 +252,7 @@ function SelectRideContent() {
 
           <button
             onClick={handleBook}
-            disabled={isBooking || loading || selectedFare == null}
+            disabled={isBooking || loading || selectedFare == null || (driverEta[selected]?.count === 0)}
             className="btn-primary w-full"
           >
             {isBooking

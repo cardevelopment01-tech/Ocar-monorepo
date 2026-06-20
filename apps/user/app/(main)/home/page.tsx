@@ -7,9 +7,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Bell, User,
   Home, Briefcase, Car, RotateCcw, Clock,
-  ChevronRight, ArrowRight, MapPin,
+  ChevronRight, ArrowRight, MapPin, Loader2,
 } from 'lucide-react'
-// addr state is kept for passing GPS coords to search/ride pages, not displayed
+import { geoApi } from '@/lib/geo-api'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -92,12 +92,6 @@ function greeting() {
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
 }
 
-function haversinKm(a1: number, o1: number, a2: number, o2: number) {
-  const R = 6371, da = (a2 - a1) * Math.PI / 180, dо = (o2 - o1) * Math.PI / 180
-  const s = Math.sin(da / 2) ** 2 + Math.cos(a1 * Math.PI / 180) * Math.cos(a2 * Math.PI / 180) * Math.sin(dо / 2) ** 2
-  return Math.round(R * 2 * Math.asin(Math.sqrt(s)) * 1.3 * 10) / 10
-}
-
 // ─── component ────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
@@ -109,6 +103,7 @@ export default function HomePage() {
   const [lat,       setLat]       = useState(20.2961)
   const [lng,       setLng]       = useState(85.8245)
   const [collapsed, setCollapsed] = useState(false)
+  const [resolving, setResolving] = useState(false)
   const fetched = useRef(false)
 
   useEffect(() => {
@@ -124,18 +119,44 @@ export default function HomePage() {
   function toSearch() {
     router.push(`/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}`)
   }
-  function toRide(label: string, dLat: number, dLng: number) {
-    const km  = haversinKm(lat, lng, dLat, dLng)
-    const min = Math.round(km / 0.5)
-    router.push(
-      `/select-ride?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}` +
-      `&destinationLat=${dLat}&destinationLng=${dLng}&destinationAddress=${encodeURIComponent(label)}` +
-      `&distanceKm=${km}&durationMin=${min}&originCityId=1`,
-    )
+
+  async function toRide(destLabel: string, dLat: number, dLng: number) {
+    setResolving(true)
+    try {
+      const route = await geoApi.getRoute(lat, lng, dLat, dLng)
+      const params = new URLSearchParams({
+        originLat:          String(lat),
+        originLng:          String(lng),
+        originAddress:      addr,
+        destinationLat:     String(dLat),
+        destinationLng:     String(dLng),
+        destinationAddress: destLabel,
+        distanceKm:         String(route.distanceKm),
+        durationMin:        String(route.durationMin),
+        originCityId:       '1',
+      })
+      if (route.polyline) params.set('polyline', route.polyline)
+      router.push(`/select-ride?${params.toString()}`)
+    } catch {
+      setResolving(false)
+    }
   }
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background relative">
+
+      {/* Route-resolve overlay */}
+      <AnimatePresence>
+        {resolving && (
+          <motion.div
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background/80 backdrop-blur-sm"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          >
+            <Loader2 size={28} className="text-primary animate-spin" />
+            <span className="text-sm text-text-secondary font-medium">Getting route…</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Hero ──────────────────────────────────────────────── */}
       <motion.div
