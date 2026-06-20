@@ -1,6 +1,7 @@
 'use client'
 
-import { useMapEvents } from 'react-leaflet'
+import { useEffect } from 'react'
+import { useMap } from 'react-map-gl/maplibre'
 
 interface MapCenterTrackerProps {
   onCenterChange: (lat: number, lng: number) => void
@@ -8,14 +9,22 @@ interface MapCenterTrackerProps {
 }
 
 export default function MapCenterTracker({ onCenterChange, onDragStart }: MapCenterTrackerProps) {
-  useMapEvents({
-    movestart() {
-      onDragStart?.()
-    },
-    moveend(e) {
-      const c = e.target.getCenter()
+  const { current: map } = useMap()
+
+  useEffect(() => {
+    if (!map) return
+    const handleMoveStart = () => onDragStart?.()
+    const handleMoveEnd = () => {
+      const c = map.getCenter()
       onCenterChange(c.lat, c.lng)
-    },
-  })
+    }
+    map.on('movestart', handleMoveStart)
+    map.on('moveend', handleMoveEnd)
+    return () => {
+      map.off('movestart', handleMoveStart)
+      map.off('moveend', handleMoveEnd)
+    }
+  }, [map, onCenterChange, onDragStart])
+
   return null
 }

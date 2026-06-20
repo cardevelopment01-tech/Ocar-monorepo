@@ -1,47 +1,32 @@
 import { memo } from 'react'
-import { Marker } from 'react-leaflet'
-import L from 'leaflet'
+import { Marker } from 'react-map-gl/maplibre'
 
 type PinVariant = 'pickup' | 'drop'
 
-function createPinIcon(variant: PinVariant) {
+function LocationPin({ position, variant }: { position: [number, number]; variant: PinVariant }) {
   const isPickup = variant === 'pickup'
   const bg = isPickup ? '#22C55E' : '#0F172A'
 
-  const html = `
-    <div style="position:relative;width:20px;height:20px;display:flex;align-items:center;justify-content:center;">
-      ${isPickup ? `
-        <div style="
-          position:absolute;width:36px;height:36px;border-radius:50%;
-          background:rgba(34,197,94,0.18);
-          animation:ping 1.8s cubic-bezier(0,0,0.2,1) infinite;
-        "></div>
-      ` : ''}
-      <div style="
-        width:18px;height:18px;border-radius:50%;
-        background:${bg};border:2px solid white;
-        box-shadow:0 2px 8px rgba(0,0,0,0.25);
-        display:flex;align-items:center;justify-content:center;
-        position:relative;z-index:1;
-      ">
-        <div style="width:6px;height:6px;border-radius:50%;background:white;"></div>
+  return (
+    <Marker latitude={position[0]} longitude={position[1]} anchor="center">
+      <div style={{ position: 'relative', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {isPickup && (
+          <div
+            className="animate-ping"
+            style={{ position: 'absolute', width: 36, height: 36, borderRadius: '50%', background: 'rgba(34,197,94,0.18)' }}
+          />
+        )}
+        <div style={{
+          width: 18, height: 18, borderRadius: '50%', background: bg,
+          border: '2px solid white', boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'relative', zIndex: 1,
+        }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'white' }} />
+        </div>
       </div>
-    </div>
-    <style>
-      @keyframes ping { 75%,100% { transform:scale(2); opacity:0; } }
-    </style>
-  `
-
-  return L.divIcon({ html, className: '', iconSize: [20, 20], iconAnchor: [10, 10] })
-}
-
-const PIN_ICONS: Record<PinVariant, L.DivIcon> = {
-  pickup: createPinIcon('pickup'),
-  drop:   createPinIcon('drop'),
-}
-
-function LocationPin({ position, variant }: { position: [number, number]; variant: PinVariant }) {
-  return <Marker position={position} icon={PIN_ICONS[variant]} />
+    </Marker>
+  )
 }
 
 export default memo(LocationPin, (a, b) =>

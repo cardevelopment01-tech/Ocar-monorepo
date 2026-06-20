@@ -1,14 +1,7 @@
-import { MapContainer, TileLayer } from 'react-leaflet'
-import 'leaflet/dist/leaflet.css'
-import L from 'leaflet'
+import Map from 'react-map-gl/maplibre'
+import 'maplibre-gl/dist/maplibre-gl.css'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-delete (L.Icon.Default.prototype as any)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-})
+const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 
 interface DriverMapViewProps {
   center: [number, number]
@@ -20,25 +13,14 @@ interface DriverMapViewProps {
 export default function DriverMapView({ center, zoom = 15, dimmed = false, children }: DriverMapViewProps) {
   return (
     <div className="relative w-full h-full">
-      <MapContainer
-        center={center}
-        zoom={zoom}
+      <Map
+        initialViewState={{ latitude: center[0], longitude: center[1], zoom }}
+        mapStyle={MAP_STYLE}
         style={{ width: '100%', height: '100%' }}
-        zoomControl={false}
         attributionControl={false}
       >
-        <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-          subdomains="abcd"
-          maxZoom={19}
-          detectRetina={true}
-          keepBuffer={4}
-          updateWhenZooming={false}
-          updateInterval={150}
-        />
         {children}
-      </MapContainer>
-
+      </Map>
       {dimmed && (
         <div className="absolute inset-0 bg-bg/40 pointer-events-none" style={{ zIndex: 1 }} />
       )}

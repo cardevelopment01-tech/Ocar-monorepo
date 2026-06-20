@@ -1,13 +1,11 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Polyline } from 'react-leaflet'
+import { Source, Layer } from 'react-map-gl/maplibre'
 import { decodePolyline } from '@/lib/polyline'
 
 interface RoutePolylineProps {
-  /** Google encoded polyline string (preferred — real road shape) */
   encoded?: string
-  /** Fallback straight-line positions when no encoded polyline available */
   positions?: [number, number][]
 }
 
@@ -17,12 +15,25 @@ export default function RoutePolyline({ encoded, positions }: RoutePolylineProps
     return positions ?? []
   }, [encoded, positions])
 
+  const geojson = useMemo(() => ({
+    type: 'Feature' as const,
+    geometry: {
+      type: 'LineString' as const,
+      coordinates: pts.map(([lat, lng]) => [lng, lat]),
+    },
+    properties: {},
+  }), [pts])
+
   if (pts.length < 2) return null
 
   return (
-    <Polyline
-      positions={pts}
-      pathOptions={{ color: '#2563EB', weight: 4, opacity: 0.85, lineCap: 'round', lineJoin: 'round' }}
-    />
+    <Source id="route" type="geojson" data={geojson}>
+      <Layer
+        id="route-line"
+        type="line"
+        paint={{ 'line-color': '#2563EB', 'line-width': 4, 'line-opacity': 0.85 }}
+        layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+      />
+    </Source>
   )
 }

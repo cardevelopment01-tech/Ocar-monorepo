@@ -32,7 +32,6 @@ export default function PersonalDetails() {
 
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(true)
-  const [submitAttempted, setSubmitAttempted] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -66,23 +65,19 @@ export default function PersonalDetails() {
   const steps = ['personal_info', 'vehicle_info', 'documents', 'selfie']
   const stepIdx = steps.indexOf(currentStep)
 
-  const validationIssues = [
-    !fullName                          && 'Full Name',
-    !gender                            && 'Gender',
-    !dob                               && 'Date of Birth',
-    !address                           && 'Residential Address',
-    !state                             && 'State',
-    !city                              && 'City',
-    !(/^\d{6}$/.test(pincode))         && 'Pincode (6 digits)',
-    !experience                        && 'Driving Experience',
-    !(/^[6-9]\d{9}$/.test(emergency))  && 'Emergency Contact (10-digit Indian mobile)',
-    languages.length === 0             && 'At least one Language',
-  ].filter(Boolean) as string[]
-
-  const isValid = validationIssues.length === 0
+  const isValid =
+    !!fullName &&
+    !!gender &&
+    !!dob &&
+    !!address &&
+    !!state &&
+    !!city &&
+    /^\d{6}$/.test(pincode) &&
+    !!experience &&
+    /^[6-9]\d{9}$/.test(emergency) &&
+    languages.length > 0
 
   const handleContinue = async () => {
-    setSubmitAttempted(true)
     if (!isValid) return
     setError(null)
     setIsLoading(true)
@@ -226,26 +221,6 @@ export default function PersonalDetails() {
           </div>
         </Field>
       </div>
-
-      {submitAttempted && !isValid && validationIssues.length > 0 && (
-        <div
-          className="mb-4 rounded-2xl px-4 py-3"
-          style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.18)' }}
-        >
-          <p className="text-text-secondary text-xs font-bold uppercase tracking-wider mb-2">Please complete</p>
-          <div className="flex flex-wrap gap-1.5">
-            {validationIssues.map(issue => (
-              <span
-                key={issue}
-                className="text-xs font-semibold rounded-full px-2.5 py-1"
-                style={{ background: 'rgba(99,102,241,0.15)', color: '#3730A3' }}
-              >
-                {issue}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
 
       {error && <p className="text-accent-red text-sm mb-4">{error}</p>}
 
