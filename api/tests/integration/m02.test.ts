@@ -111,11 +111,10 @@ describe('M02 — Auth & Identity', () => {
       expect(badRes.body.code).toBe('AUTH_OTP_INVALID')
     })
 
-    it('TC-M02-004: 3 wrong OTPs locks account for 15 minutes', async () => {
+    it('TC-M02-004: 10 wrong OTPs locks account', async () => {
       const phone = '+919111111111'
       await requestOtp(phone)
-      await verifyOtp(phone, '000000')
-      await verifyOtp(phone, '000000')
+      for (let i = 0; i < 9; i++) await verifyOtp(phone, '000000')
       const lockedRes = await verifyOtp(phone, '000000')
       expect(lockedRes.status).toBe(429)
       expect(lockedRes.body.code).toBe('AUTH_OTP_LOCKED')
@@ -240,11 +239,9 @@ describe('M02 — Auth & Identity', () => {
       expect(res.body.role).not.toBe('driver')
     })
 
-    it('TC-M02-013: rate limiter blocks after 3 OTP requests in window', async () => {
+    it('TC-M02-013: rate limiter blocks after 10 OTP requests in window', async () => {
       const phone = '+919333333333'
-      await requestOtp(phone)
-      await requestOtp(phone)
-      await requestOtp(phone)
+      for (let i = 0; i < 10; i++) await requestOtp(phone)
       const blocked = await requestOtp(phone)
       expect(blocked.status).toBe(429)
       expect(blocked.body.code).toBe('AUTH_OTP_RATE_LIMITED')

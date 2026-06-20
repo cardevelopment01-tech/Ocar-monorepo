@@ -7,6 +7,7 @@ import { client as redis } from '@/db/redis'
 vi.mock('@/lib/storage', () => ({
   uploadFile: vi.fn().mockResolvedValue('https://storage.test/drivers/1/profile_photo/test.jpg'),
   deleteFile: vi.fn().mockResolvedValue(undefined),
+  getPresignedUrl: vi.fn().mockImplementation((url: string) => Promise.resolve(url)),
 }))
 
 const app = createApp()
@@ -233,11 +234,11 @@ describe('M03 — Driver Onboarding', () => {
       expect(rows).toHaveLength(1)
     })
 
-    it('TC-M03-010: file > 5MB → 422 FILE_TOO_LARGE', async () => {
+    it('TC-M03-010: file > 20MB → 422 FILE_TOO_LARGE', async () => {
       const phone = '+918100000010'
       const { accessToken } = await loginDriver(phone)
 
-      const bigFile = Buffer.alloc(6 * 1024 * 1024)
+      const bigFile = Buffer.alloc(21 * 1024 * 1024)
       const res = await request(app)
         .post('/api/v1/drivers/onboarding/documents/upload')
         .set('Authorization', `Bearer ${accessToken}`)
