@@ -4,7 +4,6 @@ import { IndianRupee, Clock, Star, TrendingUp, Bell, Wallet, ChevronRight } from
 import { AnimatePresence } from 'framer-motion'
 import OnlineToggle from '@/components/ui/OnlineToggle'
 import TripRequestCard from '@/components/ui/TripRequestCard'
-import LocationChip from '@/components/map/LocationChip'
 import { mockEarnings } from '@/lib/mock-data'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
@@ -217,17 +216,9 @@ export default function Home() {
               bottomPadding={bottomOcclusion}
               topPadding={110}
             />
-            <SelfCarMarker position={mapCenter} />
+            <SelfCarMarker position={mapCenter} areaName={areaName} loading={geoLoading} />
           </DriverMapView>
         </Suspense>
-      </div>
-
-      {/* Location chip — floats just above the bottom sheet */}
-      <div
-        className="absolute left-0 right-0 flex justify-center px-4 pointer-events-none"
-        style={{ bottom: bottomOcclusion + 12, zIndex: 10 }}
-      >
-        <LocationChip text={areaName} loading={geoLoading} />
       </div>
 
       {/* Floating header */}

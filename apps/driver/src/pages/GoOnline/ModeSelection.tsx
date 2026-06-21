@@ -50,52 +50,42 @@ export default function ModeSelection() {
           initial="hidden"
           animate="visible"
           whileTap={{ scale: 0.97 }}
-          transition={{ type: 'spring', stiffness: 340, damping: 30 }}
           onClick={() => navigate('/go-online/standard')}
-          className="w-full driver-card text-left overflow-hidden relative"
-          style={{ padding: 0 }}
+          className="w-full driver-card text-left relative overflow-hidden"
         >
-          {/* Accent band */}
-          <div
-            className="absolute top-0 left-0 right-0 h-1.5"
-            style={{ background: 'linear-gradient(90deg, #3B82F6 0%, #6366F1 100%)' }}
-          />
-          <div className="p-5 pt-6">
-            <div className="flex items-start gap-4">
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
-                style={{ background: 'rgba(37,99,235,0.10)' }}
-              >
-                <Car size={26} style={{ color: '#2563EB' }} strokeWidth={1.8} />
+          {/* Ghost numeral */}
+          <span className="absolute top-3 right-4 font-display text-[40px] font-black leading-none select-none pointer-events-none text-surface-3">
+            01
+          </span>
+
+          <div className="flex items-start gap-4 relative">
+            {/* Neutral icon tile */}
+            <div className="w-14 h-14 rounded-2xl bg-surface-2 flex items-center justify-center flex-shrink-0">
+              <Car size={26} className="text-text-primary" strokeWidth={1.8} />
+            </div>
+
+            <div className="flex-1 min-w-0 pr-8">
+              <div className="flex items-start justify-between mb-1.5">
+                <p className="font-display text-[17px] font-bold text-text-primary">Standard Mode</p>
+                <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-muted ml-2 flex-shrink-0 mt-0.5">
+                  Recommended
+                </span>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <p className="font-display text-[17px] font-bold text-text-primary">Standard Mode</p>
-                  <span
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto flex-shrink-0"
-                    style={{ background: 'rgba(37,99,235,0.10)', color: '#2563EB' }}
-                  >
-                    Recommended
-                  </span>
-                </div>
-                <p className="text-text-secondary text-sm leading-snug">
-                  Accept rides anywhere in the city. Best for maximising earnings.
-                </p>
-                <div className="flex flex-wrap gap-1.5 mt-3">
-                  <span
-                    className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
-                    style={{ background: 'rgba(37,99,235,0.08)', color: '#2563EB' }}
-                  >
-                    All areas
-                  </span>
-                  <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-surface-3 text-text-muted">
-                    No restriction
-                  </span>
-                </div>
+              <p className="text-text-secondary text-sm leading-snug mb-3">
+                Accept rides anywhere in the city. Best for maximising earnings.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-border text-text-secondary">
+                  All areas
+                </span>
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-border text-text-muted">
+                  No restriction
+                </span>
               </div>
-              <ChevronRight size={18} className="text-text-muted flex-shrink-0 mt-0.5" />
             </div>
           </div>
+
+          <ChevronRight size={16} className="text-text-muted absolute right-5 top-1/2 -translate-y-1/2" />
         </motion.button>
 
         {/* ── Return Cab ── */}
@@ -105,52 +95,42 @@ export default function ModeSelection() {
           initial="hidden"
           animate="visible"
           whileTap={{ scale: 0.97 }}
-          transition={{ type: 'spring', stiffness: 340, damping: 30 }}
           onClick={() => navigate('/go-online/return-cab')}
-          className="w-full driver-card text-left overflow-hidden relative"
-          style={{ padding: 0 }}
+          className="w-full driver-card text-left relative overflow-hidden"
         >
-          {/* Accent band */}
-          <div
-            className="absolute top-0 left-0 right-0 h-1.5"
-            style={{ background: 'linear-gradient(90deg, #F97316 0%, #EA580C 100%)' }}
-          />
-          <div className="p-5 pt-6">
-            <div className="flex items-start gap-4">
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
-                style={{ background: 'rgba(249,115,22,0.10)' }}
-              >
-                <CornerUpLeft size={26} style={{ color: '#F97316' }} strokeWidth={1.8} />
+          {/* Ghost numeral */}
+          <span className="absolute top-3 right-4 font-display text-[40px] font-black leading-none select-none pointer-events-none text-surface-3">
+            02
+          </span>
+
+          <div className="flex items-start gap-4 relative">
+            {/* Neutral icon tile */}
+            <div className="w-14 h-14 rounded-2xl bg-surface-2 flex items-center justify-center flex-shrink-0">
+              <CornerUpLeft size={26} className="text-text-primary" strokeWidth={1.8} />
+            </div>
+
+            <div className="flex-1 min-w-0 pr-8">
+              <div className="flex items-start justify-between mb-1.5">
+                <p className="font-display text-[17px] font-bold text-text-primary">Return Cab</p>
+                <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-muted ml-2 flex-shrink-0 mt-0.5">
+                  Headed home
+                </span>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <p className="font-display text-[17px] font-bold text-text-primary">Return Cab</p>
-                  <span
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto flex-shrink-0"
-                    style={{ background: 'rgba(249,115,22,0.10)', color: '#EA580C' }}
-                  >
-                    Headed home
-                  </span>
-                </div>
-                <p className="text-text-secondary text-sm leading-snug">
-                  Set a destination and only accept rides heading that way.
-                </p>
-                <div className="flex flex-wrap gap-1.5 mt-3">
-                  <span
-                    className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
-                    style={{ background: 'rgba(249,115,22,0.08)', color: '#EA580C' }}
-                  >
-                    Direction-based
-                  </span>
-                  <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-surface-3 text-text-muted">
-                    Earn on the way
-                  </span>
-                </div>
+              <p className="text-text-secondary text-sm leading-snug mb-3">
+                Set a destination and only accept rides heading that way.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-border text-text-secondary">
+                  One-way
+                </span>
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-border text-text-muted">
+                  Earn on the way
+                </span>
               </div>
-              <ChevronRight size={18} className="text-text-muted flex-shrink-0 mt-0.5" />
             </div>
           </div>
+
+          <ChevronRight size={16} className="text-text-muted absolute right-5 top-1/2 -translate-y-1/2" />
         </motion.button>
 
       </div>
