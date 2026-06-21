@@ -369,6 +369,70 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
   return { success: true, endOtp }
 }
 
+// ── Demo helpers (non-production only) ───────────────────────
+
+export async function demoForceComplete(rideId: bigint, userId: bigint) {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+  if (BigInt(ride.user_id) !== userId) throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
+
+  const completedAt = new Date().toISOString()
+  await repo.updateRideStatus(rideId, 'completed', { completed_at: completedAt })
+  await repo.logStatusHistory({
+    rideId,
+    fromStatus: ride.status,
+    toStatus:   'completed',
+    actor:      'system',
+    note:       'demo force-complete',
+  })
+
+  if (ride.driver_id) {
+    await pool.query(
+      `UPDATE driver_sessions
+       SET status = 'online', trips_completed = trips_completed + 1
+       WHERE driver_id = $1 AND status IN ('online', 'on_trip')`,
+      [BigInt(ride.driver_id)]
+    )
+    await pool.query(
+      `UPDATE driver_location_snapshots SET is_available = true WHERE driver_id = $1`,
+      [BigInt(ride.driver_id)]
+    )
+  }
+
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'completed', completedAt })
+  return { success: true }
+}
+
+export async function demoForceCancel(rideId: bigint, userId: bigint) {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+  if (BigInt(ride.user_id) !== userId) throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
+
+  await repo.updateRideStatus(rideId, 'cancelled')
+  await repo.logStatusHistory({
+    rideId,
+    fromStatus: ride.status,
+    toStatus:   'cancelled',
+    actor:      'user',
+    note:       'demo force-cancel',
+  })
+
+  if (ride.driver_id) {
+    await pool.query(
+      `UPDATE driver_sessions SET status = 'online'
+       WHERE driver_id = $1 AND status IN ('online', 'on_trip')`,
+      [BigInt(ride.driver_id)]
+    )
+    await pool.query(
+      `UPDATE driver_location_snapshots SET is_available = true WHERE driver_id = $1`,
+      [BigInt(ride.driver_id)]
+    )
+  }
+
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'cancelled' })
+  return { success: true }
+}
+
 export async function verifyEndOTP(
   driverId: bigint,
   rideId: bigint,

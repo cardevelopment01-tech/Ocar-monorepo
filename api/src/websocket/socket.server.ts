@@ -11,6 +11,12 @@ import { pool } from '@/db/client'
 
 let io: Server
 
+// Grace period before marking a driver offline after socket disconnect.
+// Cancels if the driver reconnects within the window — handles page refreshes
+// and brief mobile network blips without flipping the driver's DB status.
+const OFFLINE_GRACE_MS = 45_000
+const pendingOffline = new Map<string, ReturnType<typeof setTimeout>>()
+
 export function initSocketServer(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
     cors: {
@@ -44,6 +50,13 @@ export function initSocketServer(httpServer: HttpServer): Server {
     console.log(`Socket connected: ${user?.sub} (${user?.role})`)
 
     if (user?.role === 'driver') {
+      // Cancel any pending offline timer — driver reconnected within grace period
+      const pending = pendingOffline.get(user.sub)
+      if (pending) {
+        clearTimeout(pending)
+        pendingOffline.delete(user.sub)
+        console.log(`Driver ${user.sub} reconnected — offline grace period cancelled`)
+      }
       void socket.join(`driver:${user.sub}`)
     }
 
@@ -62,17 +75,27 @@ export function initSocketServer(httpServer: HttpServer): Server {
     socket.on('disconnect', () => {
       console.log(`Socket disconnected: ${user?.sub} (${user?.role})`)
       if (user?.role === 'driver') {
-        const driverId = BigInt(user.sub)
-        pool.query(
-          `UPDATE driver_sessions SET status = 'offline', went_offline_at = now(), offline_reason = 'socket_disconnect'
-           WHERE driver_id = $1 AND status IN ('online', 'on_trip')`,
-          [driverId]
-        ).then(() =>
+        const driverSub = user.sub
+        // Start grace period instead of marking offline immediately.
+        // If the driver reconnects (e.g. page refresh, brief network blip)
+        // within OFFLINE_GRACE_MS the timer is cancelled above and the DB
+        // session is left untouched.
+        const timer = setTimeout(() => {
+          pendingOffline.delete(driverSub)
+          const driverId = BigInt(driverSub)
           pool.query(
-            `UPDATE driver_location_snapshots SET is_available = false WHERE driver_id = $1`,
+            `UPDATE driver_sessions SET status = 'offline', went_offline_at = now(), offline_reason = 'socket_disconnect'
+             WHERE driver_id = $1 AND status IN ('online', 'on_trip')`,
             [driverId]
-          )
-        ).catch(() => {})
+          ).then(() =>
+            pool.query(
+              `UPDATE driver_location_snapshots SET is_available = false WHERE driver_id = $1`,
+              [driverId]
+            )
+          ).catch(() => {})
+          console.log(`Driver ${driverSub} grace period expired — marked offline`)
+        }, OFFLINE_GRACE_MS)
+        pendingOffline.set(driverSub, timer)
       }
     })
   })

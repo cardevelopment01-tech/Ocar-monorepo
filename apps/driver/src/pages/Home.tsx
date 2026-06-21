@@ -62,10 +62,15 @@ export default function Home() {
         if (session && (session.status === 'online' || session.status === 'on_trip')) {
           setOnline(Number(session.id), Number(session.vehicle_id), Number(session.category_id))
           connectDriverSocket()
+        } else {
+          // DB says no active session — clear any stale persisted online state
+          setOffline()
+          disconnectDriverSocket()
         }
       })
       .catch(() => {})
-  }, [setOnline])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!isOnline) return

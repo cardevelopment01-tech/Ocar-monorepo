@@ -130,4 +130,8 @@ export const rideApi = {
     const res = await api.get('/api/v1/rides/nearby-drivers', { params: { lat, lng } })
     return (res.data as { drivers: Array<{ driver_id: string; lat: number; lng: number; category_id: number }> }).drivers ?? []
   },
+
+  demoForce: async (rideId: string, action: 'complete' | 'cancel'): Promise<void> => {
+    await api.post(`/api/v1/rides/${rideId}/demo-force`, { action })
+  },
 }

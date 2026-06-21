@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 interface SessionState {
   isOnline: boolean
@@ -10,15 +11,20 @@ interface SessionState {
   setOffline: () => void
 }
 
-export const useSessionStore = create<SessionState>((set) => ({
-  isOnline:   false,
-  sessionId:  null,
-  vehicleId:  null,
-  categoryId: null,
+export const useSessionStore = create<SessionState>()(
+  persist(
+    (set) => ({
+      isOnline:   false,
+      sessionId:  null,
+      vehicleId:  null,
+      categoryId: null,
 
-  setOnline: (sessionId, vehicleId, categoryId) =>
-    set({ isOnline: true, sessionId, vehicleId, categoryId }),
+      setOnline: (sessionId, vehicleId, categoryId) =>
+        set({ isOnline: true, sessionId, vehicleId, categoryId }),
 
-  setOffline: () =>
-    set({ isOnline: false, sessionId: null, vehicleId: null, categoryId: null }),
-}))
+      setOffline: () =>
+        set({ isOnline: false, sessionId: null, vehicleId: null, categoryId: null }),
+    }),
+    { name: 'ocar_driver_session' }
+  )
+)

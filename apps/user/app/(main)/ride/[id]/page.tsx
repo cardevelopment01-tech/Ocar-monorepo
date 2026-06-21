@@ -130,6 +130,10 @@ export default function RidePage() {
     }
   }, [rideId, loadRide])
 
+  const handleDemoForce = async (action: 'complete' | 'cancel') => {
+    try { await rideApi.demoForce(rideId, action) } catch { /* socket event will drive the UI */ }
+  }
+
   useEffect(() => {
     if (DEMO_MODE) return
     if (rideStatus === 'completed') {
@@ -383,6 +387,30 @@ export default function RidePage() {
           )}
 
         </AnimatePresence>
+
+        {/* ── Demo controls — only visible in DEMO_MODE, never in production ── */}
+        {DEMO_MODE && hasDriver && (
+          <div className="mx-4 mb-5 mt-1 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-2.5">
+              Demo Controls
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => void handleDemoForce('complete')}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white transition-opacity active:opacity-70"
+                style={{ background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)' }}
+              >
+                Complete Ride
+              </button>
+              <button
+                onClick={() => void handleDemoForce('cancel')}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-red-600 bg-red-50 border border-red-200 transition-opacity active:opacity-70"
+              >
+                Cancel Ride
+              </button>
+            </div>
+          </div>
+        )}
       </motion.div>
     </div>
   )

@@ -139,4 +139,25 @@ router.post('/:id/end-otp', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// ── Demo force controls (blocked in production) ───────────────
+
+router.post('/:id/demo-force', authenticate(), async (req, res, next) => {
+  if (process.env['NODE_ENV'] === 'production') {
+    res.status(404).json({ error: 'Not found' }); return
+  }
+  try {
+    const userId = req.user!.id
+    const rideId = BigInt(req.params['id']!)
+    const { action } = req.body as { action: 'complete' | 'cancel' }
+    if (action === 'complete') {
+      await service.demoForceComplete(rideId, userId)
+    } else if (action === 'cancel') {
+      await service.demoForceCancel(rideId, userId)
+    } else {
+      res.status(400).json({ error: 'Invalid action' }); return
+    }
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
 export default router
