@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { MapPin, Navigation2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -10,6 +10,7 @@ interface TripRequestCardProps {
   tripDistance: number
   fare: number
   timeRemaining: number
+  isAccepting?: boolean
   onAccept: () => void
   onDecline: () => void
 }
@@ -34,14 +35,15 @@ function beep() {
 
 export default function TripRequestCard({
   pickup, drop, pickupDistance, tripDistance, fare,
-  timeRemaining: initialTime, onAccept, onDecline,
+  timeRemaining: initialTime, isAccepting, onAccept, onDecline,
 }: TripRequestCardProps) {
   const [time, setTime] = useState(initialTime)
   const [expired, setExpired] = useState(false)
+  const expireTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleExpire = useCallback(() => {
     setExpired(true)
-    setTimeout(onDecline, 1200)
+    expireTimeoutRef.current = setTimeout(onDecline, 1200)
   }, [onDecline])
 
   useEffect(() => {
@@ -53,7 +55,10 @@ export default function TripRequestCard({
         return t - 1
       })
     }, 1000)
-    return () => clearInterval(id)
+    return () => {
+      clearInterval(id)
+      if (expireTimeoutRef.current) clearTimeout(expireTimeoutRef.current)
+    }
   }, [handleExpire])
 
   const isUrgent = time <= 5
@@ -178,11 +183,11 @@ export default function TripRequestCard({
           </button>
           <button
             onClick={onAccept}
-            disabled={expired}
-            className="btn-go-online flex-1"
+            disabled={expired || isAccepting}
+            className="btn-go-online flex-1 disabled:opacity-60"
             style={{ minHeight: 56 }}
           >
-            Accept
+            {isAccepting ? 'Accepting…' : 'Accept'}
           </button>
         </div>
       </motion.div>

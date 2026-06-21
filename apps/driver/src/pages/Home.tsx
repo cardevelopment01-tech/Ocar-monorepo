@@ -53,6 +53,7 @@ export default function Home() {
   const [areaName,           setAreaName]          = useState<string | null>(null)
   const [geoLoading,         setGeoLoading]        = useState(false)
   const [showOfflineConfirm, setShowOfflineConfirm] = useState(false)
+  const [accepting,          setAccepting]         = useState(false)
   const e = mockEarnings.today
   const firstName = driver?.full_name?.split(' ')[0] ?? 'Driver'
 
@@ -141,6 +142,8 @@ export default function Home() {
   }
 
   const handleAcceptRide = async (rideId: string) => {
+    if (accepting) return
+    setAccepting(true)
     try {
       await driverRideApi.acceptRide(rideId)
       const ride = await driverRideApi.getRide(rideId)
@@ -155,7 +158,10 @@ export default function Home() {
       })
       clearIncomingRequest()
       navigate('/ride/navigate')
-    } catch { clearIncomingRequest() }
+    } catch {
+      setAccepting(false)
+      clearIncomingRequest()
+    }
   }
 
   // Measure the bottom sheet so we can offset the map camera above it
@@ -210,7 +216,7 @@ export default function Home() {
   const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-surface-2">
+    <div className="relative w-full h-[100dvh] overflow-hidden bg-surface-2">
 
       {/* Map — full bleed behind everything */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
@@ -365,6 +371,7 @@ export default function Home() {
             tripDistance={incomingRequest.tripDistance}
             fare={incomingRequest.fare}
             timeRemaining={incomingRequest.timeoutSeconds}
+            isAccepting={accepting}
             onAccept={() => void handleAcceptRide(incomingRequest.rideId)}
             onDecline={clearIncomingRequest}
           />
