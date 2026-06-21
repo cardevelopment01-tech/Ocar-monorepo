@@ -156,27 +156,27 @@ function SelectRideContent() {
           encodedPolyline={encodedPolyline}
           nearbyDrivers={nearbyDrivers}
         />
-        {/* Header bar — back + source › destination */}
-        <div className="absolute top-4 left-4 right-4 z-10 flex items-center gap-2">
-          <button
-            onClick={() => router.back()}
-            className="w-10 h-10 bg-white rounded-2xl shadow-md flex items-center justify-center flex-shrink-0"
-          >
-            <ArrowLeft size={17} strokeWidth={2} className="text-slate-800" />
-          </button>
-          <div className="flex-1 h-10 bg-white rounded-2xl shadow-md flex items-center overflow-hidden">
+        {/* Header bar — single pill: back | source › destination */}
+        <div className="absolute top-4 left-4 right-4 z-10">
+          <div className="bg-white rounded-2xl shadow-md h-12 flex items-center px-2 gap-1">
+            <button
+              onClick={() => router.back()}
+              className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0"
+            >
+              <ArrowLeft size={16} strokeWidth={2.2} className="text-slate-700" />
+            </button>
             <button
               onClick={() => goBackToSearch('origin')}
-              className="flex-1 min-w-0 h-full flex items-center pl-3 pr-1"
+              className="flex-1 min-w-0 h-full flex items-center px-2"
             >
-              <span className="text-[12px] font-medium text-slate-500 truncate">{originAddress}</span>
+              <span className="block w-full text-[12px] font-medium text-slate-500 truncate">{originAddress}</span>
             </button>
-            <ChevronRight size={13} strokeWidth={2.5} className="text-slate-300 flex-shrink-0" />
+            <ChevronRight size={12} strokeWidth={2.5} className="text-slate-300 flex-shrink-0" />
             <button
               onClick={() => goBackToSearch('destination')}
-              className="flex-1 min-w-0 h-full flex items-center pl-1 pr-3"
+              className="flex-1 min-w-0 h-full flex items-center px-2"
             >
-              <span className="text-[12px] font-semibold text-slate-900 truncate">{destinationAddress}</span>
+              <span className="block w-full text-[12px] font-semibold text-slate-900 truncate">{destinationAddress}</span>
             </button>
           </div>
         </div>
