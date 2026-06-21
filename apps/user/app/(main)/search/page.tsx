@@ -62,6 +62,8 @@ function SearchContent() {
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([])
   const [searching,   setSearching]   = useState(false)
   const [resolving,   setResolving]   = useState(false)
+  // true once GPS has responded (success or failure) — prevents Bhubaneswar flash
+  const [gpsReady,    setGpsReady]    = useState(() => !!sp.get('originLat'))
 
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const destInputRef   = useRef<HTMLInputElement>(null)
@@ -74,18 +76,20 @@ function SearchContent() {
 
   // On mount: if no origin in URL, try to get GPS + reverse-geocode
   useEffect(() => {
-    if (sp.get('originLat') || !navigator.geolocation) return
+    if (sp.get('originLat')) return
+    if (!navigator.geolocation) { setGpsReady(true); return }
     navigator.geolocation.getCurrentPosition(
       pos => {
         const { latitude, longitude } = pos.coords
         setOriginLat(latitude)
         setOriginLng(longitude)
         setOriginAddress('Current Location')
+        setGpsReady(true)
         geoApi.reverseGeocode(latitude, longitude)
           .then(addr => setOriginAddress(addr))
           .catch(() => {})
       },
-      () => {},
+      () => { setGpsReady(true) },   // denied/failed — fall back to Bhubaneswar
       { enableHighAccuracy: true, timeout: 8000 },
     )
   }, [sp])
@@ -330,7 +334,9 @@ function SearchContent() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-[14px] font-medium text-text-primary truncate">{originAddress}</p>
+                  <p className={`text-[14px] truncate ${gpsReady ? 'font-medium text-text-primary' : 'font-normal text-text-muted'}`}>
+                    {gpsReady ? originAddress : 'Detecting location…'}
+                  </p>
                 )}
               </motion.button>
 
@@ -469,156 +475,72 @@ function SearchContent() {
           )}
         </AnimatePresence>
 
-        {/* ── Origin edit mode ── */}
-        {mode === 'origin' && (
-          <motion.div
-            key="origin-panel"
-            initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2, ease: EASE }}
-          >
-            {showSuggestions ? (
-              /* Origin autocomplete suggestions */
-              <motion.div variants={listStagger} initial="hidden" animate="show">
-                {suggestions.length === 0 && !searching ? (
-                  <motion.p variants={fadeUp} className="text-center text-sm text-text-muted py-10">
-                    Nothing found. Try a different search.
-                  </motion.p>
-                ) : (
-                  <div className="mt-1">
-                    {suggestions.map((s, i) => (
-                      <div key={s.placeId}>
-                        <motion.button
-                          onClick={() => selectOriginSuggestion(s)}
-                          className="w-full flex items-center gap-3 px-1 py-3 text-left"
-                          variants={rowVariant}
-                          whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-                        >
-                          <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-                            <Clock size={16} className="text-text-muted" strokeWidth={1.6} />
-                          </span>
-                          <span className="flex-1 min-w-0">
-                            <span className="block text-[13px] font-medium text-text-primary truncate">{s.mainText}</span>
-                            {s.secondaryText && (
-                              <span className="block text-[11px] text-text-muted truncate mt-0.5">{s.secondaryText}</span>
-                            )}
-                          </span>
-                          <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
-                        </motion.button>
-                        {i < suggestions.length - 1 && (
-                          <div className="ml-12 border-t border-dashed border-border" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
+        {/* Autocomplete suggestions — only when typing; animate since data is live */}
+        {showSuggestions && (
+          <motion.div variants={listStagger} initial="hidden" animate="show" key={`ac-${mode}`}>
+            {suggestions.length === 0 && !searching ? (
+              <motion.p variants={fadeUp} className="text-center text-sm text-text-muted py-10">
+                Nothing found. Try a different search.
+              </motion.p>
             ) : (
-              /* Popular locations as pickup suggestions — tapping sets FROM and moves to TO */
-              <motion.div variants={listStagger} initial="hidden" animate="show">
-                <div className="mt-0">
-                  {POPULAR.map((d, i) => (
-                    <div key={d.label}>
-                      <motion.button
-                        onClick={() => {
-                          setOriginLat(d.lat)
-                          setOriginLng(d.lng)
-                          setOriginAddress(d.address)
-                          switchMode('destination')
-                        }}
-                        className="w-full flex items-center gap-3 px-1 py-3 text-left"
-                        variants={rowVariant}
-                        whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-                      >
-                        <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-                          <d.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
-                        </span>
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-[13px] font-medium text-text-primary">{d.label}</span>
-                          <span className="block text-[11px] text-text-muted truncate mt-0.5">{d.address}</span>
-                        </span>
-                        <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
-                      </motion.button>
-                      {i < POPULAR.length - 1 && (
-                        <div className="ml-12 border-t border-dashed border-border" />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
+              <div className="mt-1">
+                {suggestions.map((s, i) => (
+                  <div key={s.placeId}>
+                    <motion.button
+                      onClick={() => mode === 'origin' ? selectOriginSuggestion(s) : selectDestinationSuggestion(s)}
+                      className="w-full flex items-center gap-3 px-1 py-3 text-left"
+                      variants={rowVariant}
+                      whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
+                    >
+                      <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+                        <Clock size={16} className="text-text-muted" strokeWidth={1.6} />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[13px] font-medium text-text-primary truncate">{s.mainText}</span>
+                        {s.secondaryText && (
+                          <span className="block text-[11px] text-text-muted truncate mt-0.5">{s.secondaryText}</span>
+                        )}
+                      </span>
+                      <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
+                    </motion.button>
+                    {i < suggestions.length - 1 && (
+                      <div className="ml-12 border-t border-dashed border-border" />
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </motion.div>
         )}
 
-        {/* ── Destination edit mode ── */}
-        {mode === 'destination' && (
-          <>
-            {showSuggestions ? (
-              <motion.div variants={listStagger} initial="hidden" animate="show" key="suggestions">
-                {suggestions.length === 0 && !searching ? (
-                  <motion.p variants={fadeUp} className="text-center text-sm text-text-muted py-10">
-                    Nothing found. Try a different search.
-                  </motion.p>
-                ) : (
-                  <div className="mt-1">
-                    {suggestions.map((s, i) => (
-                      <div key={s.placeId}>
-                        <motion.button
-                          onClick={() => selectDestinationSuggestion(s)}
-                          className="w-full flex items-center gap-3 px-1 py-3 text-left"
-                          variants={rowVariant}
-                          whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-                        >
-                          <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-                            <Clock size={16} className="text-text-muted" strokeWidth={1.6} />
-                          </span>
-                          <span className="flex-1 min-w-0">
-                            <span className="block text-[13px] font-medium text-text-primary truncate">{s.mainText}</span>
-                            {s.secondaryText && (
-                              <span className="block text-[11px] text-text-muted truncate mt-0.5">{s.secondaryText}</span>
-                            )}
-                          </span>
-                          <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
-                        </motion.button>
-                        {i < suggestions.length - 1 && (
-                          <div className="ml-12 border-t border-dashed border-border" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
+        {/* Popular list — single mounted instance, NEVER re-animates on mode switch */}
+        {!showSuggestions && (
+          <div>
+            {POPULAR.map((d, i) => (
+              <div key={d.label}>
+                <motion.button
+                  onClick={() => mode === 'origin'
+                    ? (setOriginLat(d.lat), setOriginLng(d.lng), setOriginAddress(d.address), switchMode('destination'))
+                    : confirmDest(d.lat, d.lng, d.address)
+                  }
+                  className="w-full flex items-center gap-3 px-1 py-3 text-left"
+                  whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
+                >
+                  <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+                    <d.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13px] font-medium text-text-primary">{d.label}</span>
+                    <span className="block text-[11px] text-text-muted truncate mt-0.5">{d.address}</span>
+                  </span>
+                  <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
+                </motion.button>
+                {i < POPULAR.length - 1 && (
+                  <div className="ml-12 border-t border-dashed border-border" />
                 )}
-              </motion.div>
-            ) : (
-              <>
-                {/* Popular destinations */}
-                <motion.div variants={listStagger} initial="hidden" animate="show">
-                  <div className="mt-0">
-                    {POPULAR.map((d, i) => (
-                      <div key={d.label}>
-                        <motion.button
-                          onClick={() => confirmDest(d.lat, d.lng, d.address)}
-                          className="w-full flex items-center gap-3 px-1 py-3 text-left"
-                          variants={rowVariant}
-                          whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-                        >
-                          <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-                            <d.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
-                          </span>
-                          <span className="flex-1 min-w-0">
-                            <span className="block text-[13px] font-medium text-text-primary">{d.label}</span>
-                            <span className="block text-[11px] text-text-muted truncate mt-0.5">{d.address}</span>
-                          </span>
-                          <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
-                        </motion.button>
-                        {i < POPULAR.length - 1 && (
-                          <div className="ml-12 border-t border-dashed border-border" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              </>
-            )}
-          </>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
