@@ -26,8 +26,6 @@ const rowVariant = {
   show:   { opacity: 1, x: 0, transition: { duration: 0.25, ease: EASE } },
 }
 
-const DEFAULT_ORIGIN = { lat: 20.2961, lng: 85.8245, address: 'Bhubaneswar' }
-
 const POPULAR = [
   { Icon: Plane,          label: 'Bhubaneswar Airport',     address: 'Bhubaneswar Airport, Bhubaneswar', lat: 20.2444, lng: 85.8178 },
   { Icon: Train,          label: 'Bhubaneswar Railway Stn', address: 'Bhubaneswar Junction',             lat: 20.2663, lng: 85.8424 },
@@ -50,9 +48,9 @@ function SearchContent() {
   const router = useRouter()
   const sp     = useSearchParams()
 
-  const [originLat,     setOriginLat]     = useState(() => parseFloat(sp.get('originLat') ?? '') || DEFAULT_ORIGIN.lat)
-  const [originLng,     setOriginLng]     = useState(() => parseFloat(sp.get('originLng') ?? '') || DEFAULT_ORIGIN.lng)
-  const [originAddress, setOriginAddress] = useState(() => sp.get('originAddress') ?? DEFAULT_ORIGIN.address)
+  const [originLat,     setOriginLat]     = useState(() => parseFloat(sp.get('originLat') ?? '') || 0)
+  const [originLng,     setOriginLng]     = useState(() => parseFloat(sp.get('originLng') ?? '') || 0)
+  const [originAddress, setOriginAddress] = useState(() => sp.get('originAddress') ?? '')
 
   // Destination is stored explicitly so swap can exchange both ends
   const [confirmedDest, setConfirmedDest] = useState<ConfirmedDest | null>(null)
@@ -89,7 +87,7 @@ function SearchContent() {
           .then(addr => setOriginAddress(addr))
           .catch(() => {})
       },
-      () => { setGpsReady(true) },   // denied/failed — fall back to Bhubaneswar
+      () => { setGpsReady(true) },   // denied/failed — leave pickup empty, user sets it manually
       { enableHighAccuracy: true, timeout: 8000 },
     )
   }, [sp])
@@ -153,8 +151,8 @@ function SearchContent() {
   }
 
   function switchMode(next: EditMode) {
-    // Leaving origin with cleared FROM → silently restore GPS (Uber/Ola pattern)
-    if (mode === 'origin' && next === 'destination' && query.trim() === '') {
+    // Leaving origin with cleared FROM and still no origin set → silently try GPS again
+    if (mode === 'origin' && next === 'destination' && query.trim() === '' && originAddress.trim() === '') {
       refreshOriginInBackground()
     }
     setMode(next)
@@ -170,6 +168,11 @@ function SearchContent() {
 
   // Navigate to select-ride with real route
   async function navigateToRide(dest: ConfirmedDest, oLat = originLat, oLng = originLng, oAddress = originAddress) {
+    if (!oAddress.trim() || (oLat === 0 && oLng === 0)) {
+      setConfirmedDest(dest)
+      switchMode('origin')
+      return
+    }
     setResolving(true)
     try {
       const route = await geoApi.getRoute(oLat, oLng, dest.lat, dest.lng)
@@ -197,8 +200,7 @@ function SearchContent() {
     setQuery('')
     setSuggestions([])
     setSearching(false)
-    // If origin is already a real location (not the bare city default), go straight to prices
-    if (originAddress !== DEFAULT_ORIGIN.address) {
+    if (originAddress.trim() !== '') {
       void navigateToRide({ lat, lng, address })
     } else {
       switchMode('origin')
@@ -249,23 +251,26 @@ function SearchContent() {
   }
 
   function goToMapPicker() {
-    const params = new URLSearchParams({
-      centerLat: String(originLat),
-      centerLng: String(originLng),
-    })
-    router.push(`/confirm-pickup?${params.toString()}`)
+    const params = new URLSearchParams()
+    if (originLat !== 0 || originLng !== 0) {
+      params.set('centerLat', String(originLat))
+      params.set('centerLng', String(originLng))
+    }
+    const qs = params.toString()
+    router.push(qs ? `/confirm-pickup?${qs}` : '/confirm-pickup')
   }
 
   // In origin mode, only show suggestions after the user has actually typed (not the pre-populated address)
   const showSuggestions = query.length >= 2 && (mode === 'destination' || originTouched.current)
   const bothConfirmed   = confirmedDest !== null
+  const canSwap         = bothConfirmed && originAddress.trim() !== ''
 
   return (
     <div className="h-full flex flex-col bg-background relative">
 
       {/* ── Header ── */}
       <div className="flex-shrink-0 bg-white pt-safe-top">
-        <div className="flex items-center gap-3 px-4 pt-3 pb-3">
+        <div className="flex items-center gap-3 px-4 pt-2.5 pb-2">
           <motion.button
             onClick={() => router.back()}
             className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0"
@@ -290,36 +295,35 @@ function SearchContent() {
         </div>
 
         {/* Unified from → to card */}
-        <div className="mx-4 mb-2 rounded-2xl overflow-hidden border border-slate-100 bg-white">
+        <div className="mx-4 mb-2 rounded-xl overflow-hidden border border-slate-100 bg-white shadow-sm">
           <div className="flex items-stretch">
 
             {/* Left icon column: green dot → dashed line → amber dot */}
-            <div className="flex flex-col items-center px-4 pt-[22px] pb-[22px]">
-              <div className="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 shadow-sm" />
+            <div className="flex flex-col items-center pl-3 pr-2 py-2.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0" />
               <div
-                className="w-px flex-1 my-2"
+                className="w-px flex-1 my-1.5"
                 style={{ background: 'repeating-linear-gradient(to bottom, #CBD5E1 0px, #CBD5E1 4px, transparent 4px, transparent 8px)' }}
               />
-              <div className="w-3 h-3 rounded-full bg-amber-500 flex-shrink-0 shadow-sm" />
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-500 flex-shrink-0" />
             </div>
 
             {/* Input column */}
             <div className="flex-1 min-w-0">
-              {/* FROM row */}
+              {/* FROM row — single line, no label */}
               <motion.button
                 onClick={() => { if (mode !== 'origin') switchMode('origin') }}
-                className="w-full text-left px-3 pt-3 pb-3 border-b border-border"
+                className="w-full text-left px-3 py-2.5 border-b border-border"
                 whileTap={{ scale: 0.99 }} transition={SPRING}
               >
-                <p className="text-[9px] font-semibold uppercase tracking-widest text-text-muted mb-1.5 leading-none">From</p>
                 {mode === 'origin' ? (
                   <div className="flex items-center gap-1">
                     <input
                       ref={originInputRef}
                       value={query}
                       onChange={e => handleQueryChange(e.target.value)}
-                      placeholder="Enter pickup location"
-                      className="flex-1 bg-transparent text-[14px] font-medium text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
+                      placeholder="Enter your pickup"
+                      className="flex-1 bg-transparent text-[14px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
                       disabled={resolving}
                     />
                     {searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
@@ -327,22 +331,22 @@ function SearchContent() {
                       <motion.button
                         onClick={(e: React.MouseEvent) => { e.stopPropagation(); setQuery(''); setSuggestions([]) }}
                         whileTap={{ scale: 0.85 }}
-                        className="w-7 h-7 flex items-center justify-center"
+                        className="w-6 h-6 flex items-center justify-center"
                       >
-                        <X size={13} className="text-text-muted" />
+                        <X size={12} className="text-text-muted" />
                       </motion.button>
                     )}
                   </div>
                 ) : (
-                  <p className={`text-[14px] truncate ${gpsReady ? 'font-medium text-text-primary' : 'font-normal text-text-muted'}`}>
-                    {gpsReady ? originAddress : 'Detecting location…'}
+                  <p className={`text-[14px] truncate ${gpsReady && originAddress ? 'font-semibold text-text-primary' : 'font-normal text-text-muted'}`}>
+                    {!gpsReady ? 'Detecting location…' : (originAddress || 'Set pickup location')}
                   </p>
                 )}
               </motion.button>
 
-              {/* TO row */}
+              {/* TO row — single line, no label */}
               <div
-                className="px-3 pt-3 pb-3 cursor-text"
+                className="px-3 py-2.5 cursor-text"
                 onClick={() => {
                   if (confirmedDest) {
                     setConfirmedDest(null); switchMode('destination')
@@ -351,17 +355,15 @@ function SearchContent() {
                   }
                 }}
               >
-                <p className="text-[9px] font-semibold uppercase tracking-widest text-text-muted mb-1.5 leading-none">To</p>
                 {confirmedDest ? (
-                  // Always show confirmed destination as text — never blank during navigation
                   <div className="flex items-center gap-1">
-                    <p className="text-[14px] font-medium text-text-primary truncate flex-1">{confirmedDest.address}</p>
+                    <p className="text-[14px] font-semibold text-text-primary truncate flex-1">{confirmedDest.address}</p>
                     <motion.button
                       onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConfirmedDest(null); switchMode('destination') }}
                       whileTap={{ scale: 0.85 }}
-                      className="w-7 h-7 flex items-center justify-center flex-shrink-0"
+                      className="w-6 h-6 flex items-center justify-center flex-shrink-0"
                     >
-                      <X size={13} className="text-text-muted" />
+                      <X size={12} className="text-text-muted" />
                     </motion.button>
                   </div>
                 ) : mode === 'destination' ? (
@@ -371,7 +373,7 @@ function SearchContent() {
                       value={query}
                       onChange={e => handleQueryChange(e.target.value)}
                       placeholder="Where to?"
-                      className="flex-1 bg-transparent text-[14px] font-medium text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
+                      className="flex-1 bg-transparent text-[14px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
                       disabled={resolving}
                     />
                     {searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
@@ -379,9 +381,9 @@ function SearchContent() {
                       <motion.button
                         onClick={() => { setQuery(''); setSuggestions([]) }}
                         whileTap={{ scale: 0.85 }}
-                        className="w-7 h-7 flex items-center justify-center"
+                        className="w-6 h-6 flex items-center justify-center"
                       >
-                        <X size={13} className="text-text-muted" />
+                        <X size={12} className="text-text-muted" />
                       </motion.button>
                     )}
                   </div>
@@ -394,23 +396,23 @@ function SearchContent() {
             {/* Swap button */}
             <motion.button
               onClick={swapOriginDestination}
-              disabled={!bothConfirmed}
-              className="self-center mr-3 flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center border transition-colors"
+              disabled={!canSwap}
+              className="self-center mr-3 flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center border transition-colors"
               style={{
-                background: bothConfirmed ? 'var(--color-primary-subtle, #EEF2FF)' : 'var(--color-surface-2, #F8FAFF)',
-                borderColor: bothConfirmed ? 'var(--color-primary, #4F46E5)' : 'var(--color-border, #E5E7EB)',
+                background: canSwap ? 'var(--color-primary-subtle, #EEF2FF)' : 'var(--color-surface-2, #F8FAFF)',
+                borderColor: canSwap ? 'var(--color-primary, #4F46E5)' : 'var(--color-border, #E5E7EB)',
               }}
-              whileTap={bothConfirmed ? { scale: 0.88, rotate: 180 } : {}}
+              whileTap={canSwap ? { scale: 0.88, rotate: 180 } : {}}
               transition={SPRING}
               title="Swap pickup and destination"
             >
-              <ArrowUpDown size={15} className={bothConfirmed ? 'text-primary' : 'text-text-muted'} strokeWidth={2} />
+              <ArrowUpDown size={14} className={canSwap ? 'text-primary' : 'text-text-muted'} strokeWidth={2} />
             </motion.button>
           </div>
         </div>
 
         {/* Pinned action pills — always fixed, never scroll */}
-        <div className="flex gap-2.5 px-4 pb-2">
+        <div className="flex gap-2 px-4 pb-1.5">
           <motion.button
             onClick={goToMapPicker}
             className="flex-1 h-9 rounded-full flex items-center justify-center gap-1.5 border border-slate-200 bg-white"
