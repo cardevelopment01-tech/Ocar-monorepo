@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plane, Train, Building2, ShoppingBag,
-  GraduationCap, X, Loader2, LocateFixed, Map, ArrowUpDown,
+  GraduationCap, X, Loader2, Map, ArrowUpDown,
   Plus, ChevronDown, UserPlus, User, Info, Clock, Heart,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -62,7 +62,6 @@ function SearchContent() {
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([])
   const [searching,   setSearching]   = useState(false)
   const [resolving,   setResolving]   = useState(false)
-  const [locating,    setLocating]    = useState(false)
 
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const destInputRef   = useRef<HTMLInputElement>(null)
@@ -132,7 +131,28 @@ function SearchContent() {
     )
   }
 
+  function refreshOriginInBackground() {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude, longitude } = pos.coords
+        setOriginLat(latitude)
+        setOriginLng(longitude)
+        setOriginAddress('Current Location')
+        geoApi.reverseGeocode(latitude, longitude)
+          .then(addr => setOriginAddress(addr))
+          .catch(() => {})
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 8000 },
+    )
+  }
+
   function switchMode(next: EditMode) {
+    // Leaving origin with cleared FROM → silently restore GPS (Uber/Ola pattern)
+    if (mode === 'origin' && next === 'destination' && query.trim() === '') {
+      refreshOriginInBackground()
+    }
     setMode(next)
     setSuggestions([])
     setSearching(false)
@@ -224,35 +244,6 @@ function SearchContent() {
     void navigateToRide(prevOrigin, confirmedDest.lat, confirmedDest.lng, confirmedDest.address)
   }
 
-  async function useCurrentLocation() {
-    if (!navigator.geolocation) return
-    setLocating(true)
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        const { latitude, longitude } = pos.coords
-        try {
-          const addr = await geoApi.reverseGeocode(latitude, longitude)
-          setOriginLat(latitude)
-          setOriginLng(longitude)
-          setOriginAddress(addr)
-          switchMode('destination')
-          if (confirmedDest) {
-            void navigateToRide(confirmedDest, latitude, longitude, addr)
-          }
-        } catch {
-          setOriginLat(latitude)
-          setOriginLng(longitude)
-          setOriginAddress('Current Location')
-          switchMode('destination')
-        } finally {
-          setLocating(false)
-        }
-      },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 8000 },
-    )
-  }
-
   function goToMapPicker() {
     const params = new URLSearchParams({
       centerLat: String(originLat),
@@ -295,11 +286,11 @@ function SearchContent() {
         </div>
 
         {/* Unified from → to card */}
-        <div className="mx-4 mb-3 rounded-2xl overflow-hidden border border-slate-100 bg-white">
+        <div className="mx-4 mb-2 rounded-2xl overflow-hidden border border-slate-100 bg-white">
           <div className="flex items-stretch">
 
             {/* Left icon column: green dot → dashed line → amber dot */}
-            <div className="flex flex-col items-center px-4 pt-[26px] pb-[26px]">
+            <div className="flex flex-col items-center px-4 pt-[22px] pb-[22px]">
               <div className="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 shadow-sm" />
               <div
                 className="w-px flex-1 my-2"
@@ -313,7 +304,7 @@ function SearchContent() {
               {/* FROM row */}
               <motion.button
                 onClick={() => { if (mode !== 'origin') switchMode('origin') }}
-                className="w-full text-left px-3 pt-4 pb-4 border-b border-border"
+                className="w-full text-left px-3 pt-3 pb-3 border-b border-border"
                 whileTap={{ scale: 0.99 }} transition={SPRING}
               >
                 <p className="text-[9px] font-semibold uppercase tracking-widest text-text-muted mb-1.5 leading-none">From</p>
@@ -324,7 +315,7 @@ function SearchContent() {
                       value={query}
                       onChange={e => handleQueryChange(e.target.value)}
                       placeholder="Enter pickup location"
-                      className="flex-1 bg-transparent text-[15px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
+                      className="flex-1 bg-transparent text-[14px] font-medium text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
                       disabled={resolving}
                     />
                     {searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
@@ -339,13 +330,13 @@ function SearchContent() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-[15px] font-semibold text-text-primary truncate">{originAddress}</p>
+                  <p className="text-[14px] font-medium text-text-primary truncate">{originAddress}</p>
                 )}
               </motion.button>
 
               {/* TO row */}
               <div
-                className="px-3 pt-4 pb-4 cursor-text"
+                className="px-3 pt-3 pb-3 cursor-text"
                 onClick={() => {
                   if (confirmedDest) {
                     setConfirmedDest(null); switchMode('destination')
@@ -358,7 +349,7 @@ function SearchContent() {
                 {confirmedDest ? (
                   // Always show confirmed destination as text — never blank during navigation
                   <div className="flex items-center gap-1">
-                    <p className="text-[15px] font-semibold text-text-primary truncate flex-1">{confirmedDest.address}</p>
+                    <p className="text-[14px] font-medium text-text-primary truncate flex-1">{confirmedDest.address}</p>
                     <motion.button
                       onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConfirmedDest(null); switchMode('destination') }}
                       whileTap={{ scale: 0.85 }}
@@ -374,7 +365,7 @@ function SearchContent() {
                       value={query}
                       onChange={e => handleQueryChange(e.target.value)}
                       placeholder="Where to?"
-                      className="flex-1 bg-transparent text-[15px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
+                      className="flex-1 bg-transparent text-[14px] font-medium text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
                       disabled={resolving}
                     />
                     {searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
@@ -389,7 +380,7 @@ function SearchContent() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-[15px] text-text-muted font-normal">Where to?</p>
+                  <p className="text-[14px] text-text-muted font-normal">Where to?</p>
                 )}
               </div>
             </div>
@@ -413,10 +404,10 @@ function SearchContent() {
         </div>
 
         {/* Pinned action pills — always fixed, never scroll */}
-        <div className="flex gap-2.5 px-4 pb-3">
+        <div className="flex gap-2.5 px-4 pb-2">
           <motion.button
             onClick={goToMapPicker}
-            className="flex-1 h-10 rounded-full flex items-center justify-center gap-1.5 border border-slate-200 bg-white"
+            className="flex-1 h-9 rounded-full flex items-center justify-center gap-1.5 border border-slate-200 bg-white"
             whileTap={{ scale: 0.97 }} transition={SPRING}
           >
             <Map size={14} strokeWidth={1.8} style={{ color: ICON_CLR }} />
@@ -424,7 +415,7 @@ function SearchContent() {
           </motion.button>
           <motion.button
             onClick={() => setStopToast(true)}
-            className="flex-1 h-10 rounded-full flex items-center justify-center gap-1.5 bg-slate-900"
+            className="flex-1 h-9 rounded-full flex items-center justify-center gap-1.5 bg-slate-900"
             whileTap={{ scale: 0.97 }} transition={SPRING}
           >
             <Plus size={14} strokeWidth={2.2} className="text-white" />
@@ -442,7 +433,7 @@ function SearchContent() {
             >
               <motion.button
                 onClick={() => confirmedDest && void navigateToRide(confirmedDest)}
-                className="w-full py-3.5 rounded-2xl text-[15px] font-bold text-white"
+                className="w-full py-3 rounded-2xl text-[15px] font-bold text-white"
                 style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}
                 disabled={resolving}
                 whileTap={{ scale: 0.98 }}
@@ -485,27 +476,7 @@ function SearchContent() {
             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, ease: EASE }}
           >
-            {/* Use current location — flat row, no card */}
-            {!showSuggestions && (
-              <motion.button
-                onClick={useCurrentLocation}
-                disabled={locating}
-                className="w-full flex items-center gap-3 px-1 py-4 mb-1"
-                whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-              >
-                <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#ECFDF5' }}>
-                  {locating
-                    ? <Loader2 size={15} className="text-emerald-600 animate-spin" />
-                    : <LocateFixed size={15} strokeWidth={1.6} className="text-emerald-600" />
-                  }
-                </span>
-                <span className="text-[15px] font-semibold text-text-primary">
-                  {locating ? 'Getting location…' : 'Use current location'}
-                </span>
-              </motion.button>
-            )}
-
-            {/* Origin autocomplete suggestions */}
+            {/* Origin autocomplete suggestions — body is empty until user types 2+ chars */}
             {showSuggestions && (
               <motion.div variants={listStagger} initial="hidden" animate="show">
                 {suggestions.length === 0 && !searching ? (
@@ -518,7 +489,7 @@ function SearchContent() {
                       <div key={s.placeId}>
                         <motion.button
                           onClick={() => selectOriginSuggestion(s)}
-                          className="w-full flex items-center gap-3 px-1 py-4 text-left"
+                          className="w-full flex items-center gap-3 px-1 py-3 text-left"
                           variants={rowVariant}
                           whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
                         >
@@ -526,9 +497,9 @@ function SearchContent() {
                             <Clock size={16} className="text-text-muted" strokeWidth={1.6} />
                           </span>
                           <span className="flex-1 min-w-0">
-                            <span className="block text-[15px] font-semibold text-text-primary truncate">{s.mainText}</span>
+                            <span className="block text-[13px] font-medium text-text-primary truncate">{s.mainText}</span>
                             {s.secondaryText && (
-                              <span className="block text-xs text-text-muted truncate mt-0.5">{s.secondaryText}</span>
+                              <span className="block text-[11px] text-text-muted truncate mt-0.5">{s.secondaryText}</span>
                             )}
                           </span>
                           <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
@@ -560,7 +531,7 @@ function SearchContent() {
                       <div key={s.placeId}>
                         <motion.button
                           onClick={() => selectDestinationSuggestion(s)}
-                          className="w-full flex items-center gap-3 px-1 py-4 text-left"
+                          className="w-full flex items-center gap-3 px-1 py-3 text-left"
                           variants={rowVariant}
                           whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
                         >
@@ -568,9 +539,9 @@ function SearchContent() {
                             <Clock size={16} className="text-text-muted" strokeWidth={1.6} />
                           </span>
                           <span className="flex-1 min-w-0">
-                            <span className="block text-[15px] font-semibold text-text-primary truncate">{s.mainText}</span>
+                            <span className="block text-[13px] font-medium text-text-primary truncate">{s.mainText}</span>
                             {s.secondaryText && (
-                              <span className="block text-xs text-text-muted truncate mt-0.5">{s.secondaryText}</span>
+                              <span className="block text-[11px] text-text-muted truncate mt-0.5">{s.secondaryText}</span>
                             )}
                           </span>
                           <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
@@ -592,7 +563,7 @@ function SearchContent() {
                       <div key={d.label}>
                         <motion.button
                           onClick={() => confirmDest(d.lat, d.lng, d.address)}
-                          className="w-full flex items-center gap-3 px-1 py-4 text-left"
+                          className="w-full flex items-center gap-3 px-1 py-3 text-left"
                           variants={rowVariant}
                           whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
                         >
@@ -600,8 +571,8 @@ function SearchContent() {
                             <d.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
                           </span>
                           <span className="flex-1 min-w-0">
-                            <span className="block text-[15px] font-semibold text-text-primary">{d.label}</span>
-                            <span className="block text-xs text-text-muted truncate mt-0.5">{d.address}</span>
+                            <span className="block text-[13px] font-medium text-text-primary">{d.label}</span>
+                            <span className="block text-[11px] text-text-muted truncate mt-0.5">{d.address}</span>
                           </span>
                           <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
                         </motion.button>
