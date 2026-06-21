@@ -185,99 +185,120 @@ function SelectRideContent() {
       {/* ── Sheet ── */}
       <div
         className="flex-1 flex flex-col bg-white min-h-0"
-        style={{ boxShadow: '0 -8px 32px rgba(0,0,0,0.10)', borderRadius: '20px 20px 0 0', marginTop: -8, position: 'relative', zIndex: 2 }}
+        style={{ boxShadow: '0 -4px 24px rgba(0,0,0,0.08)', borderRadius: '20px 20px 0 0', marginTop: -8, position: 'relative', zIndex: 2 }}
       >
+        {/* Handle + header */}
+        <div className="flex-shrink-0 px-5 pt-3 pb-2">
+          <div className="w-9 h-1 rounded-full bg-slate-200 mx-auto mb-3" />
+          <div className="flex items-center justify-between">
+            <p className="text-[15px] font-bold text-slate-900">Choose a ride</p>
+            <span className="text-[12px] font-semibold text-slate-400 tabular-nums">
+              {distanceKm} km · {Math.round(durationMin)} min
+            </span>
+          </div>
+        </div>
+
         {/* No drivers banner */}
         {allUnavailable && (
-          <div className="mx-4 mt-3 mb-2 flex items-center gap-2 rounded-2xl px-4 py-2.5 bg-amber-50 border border-amber-200">
+          <div className="mx-4 mb-1 flex items-center gap-2 rounded-2xl px-4 py-2.5 bg-amber-50 border border-amber-200">
             <span className="text-base flex-shrink-0">😴</span>
             <p className="text-[12px] font-semibold text-amber-800">No drivers nearby. Try again in a few minutes.</p>
           </div>
         )}
 
-        {/* Ride cards */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-4 pt-3 pb-3 space-y-2 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
-          {categories.map(cat => {
+        {/* Ride list — thin rows with dividers */}
+        <div className="flex-1 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+          {categories.map((cat, i) => {
             const est    = estimates[cat.id]
             const fare   = est?.breakdown.total
             const isSel  = selected === cat.id
             const eta    = driverEta[cat.id]
             const noCars = etaReady && eta != null && eta.count === 0
             const emoji  = CAT_EMOJI[cat.slug] ?? '🚗'
-            // Only apply dark (inverted) styling when the card is both selected AND available
-            const dark   = isSel && !noCars
+            const active = isSel && !noCars
 
             return (
-              <button
-                key={cat.id}
-                onClick={() => !noCars && setSelected(cat.id)}
-                disabled={noCars}
-                className={cn(
-                  'w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-150 active:scale-[0.98]',
-                  noCars ? 'bg-slate-50 opacity-40 cursor-not-allowed' :
-                  dark   ? 'bg-slate-900 cursor-pointer' :
-                           'bg-slate-50 cursor-pointer active:bg-slate-100'
-                )}
-                style={dark ? { boxShadow: '0 4px 20px rgba(15,15,35,0.22)' } : undefined}
-              >
-                {/* Car emoji */}
-                <div className={cn(
-                  'w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 text-3xl select-none',
-                  dark ? 'bg-white/10' : 'bg-white border border-slate-100'
-                )}>
-                  {emoji}
-                </div>
-
-                {/* Name + meta */}
-                <div className="flex-1 text-left min-w-0">
-                  <p className={cn('text-[15px] font-bold leading-tight', dark ? 'text-white' : 'text-slate-900')}>
-                    {cat.display_name}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    <span className={cn('flex items-center gap-1 text-[11px] font-semibold', dark ? 'text-white/50' : 'text-slate-400')}>
-                      <Users size={9} strokeWidth={2.5} />{cat.max_passengers} seats
-                    </span>
-                    {noCars ? (
-                      <span className="text-[11px] font-bold text-red-400">No cars nearby</span>
-                    ) : eta != null && eta.etaMin > 0 ? (
-                      <span className={cn(
-                        'flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full',
-                        dark ? 'bg-emerald-400/20 text-emerald-300' : 'bg-emerald-50 text-emerald-700'
-                      )}>
-                        <Clock size={9} strokeWidth={2.5} />{eta.etaMin} min
-                      </span>
-                    ) : null}
-                    {est?.surge_multiplier != null && est.surge_multiplier > 1 && (
-                      <span className={cn('flex items-center gap-0.5 text-[11px] font-bold', dark ? 'text-amber-300' : 'text-amber-600')}>
-                        <Zap size={9} />{est.surge_multiplier}×
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Price */}
-                <div className="text-right flex-shrink-0 min-w-[64px]">
-                  {loading && !fare ? (
-                    <div className={cn('w-14 h-5 rounded-lg animate-pulse', dark ? 'bg-white/10' : 'bg-slate-200')} />
-                  ) : fare != null ? (
-                    <p className={cn('text-xl font-black tabular-nums', dark ? 'text-white' : 'text-slate-900')}>
-                      ₹<AnimatedNumber value={Math.round(fare)} />
-                    </p>
-                  ) : (
-                    <p className={cn('text-sm', dark ? 'text-white/40' : 'text-slate-400')}>—</p>
+              <div key={cat.id}>
+                <button
+                  onClick={() => !noCars && setSelected(cat.id)}
+                  disabled={noCars}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-5 py-3.5 transition-colors duration-150 text-left',
+                    noCars  ? 'opacity-35 cursor-not-allowed' :
+                    active  ? 'bg-violet-50' :
+                              'active:bg-slate-50 cursor-pointer'
                   )}
-                </div>
-              </button>
+                >
+                  {/* Emoji icon */}
+                  <div className={cn(
+                    'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 text-[26px] select-none',
+                    active ? 'bg-violet-100' : 'bg-slate-100'
+                  )}>
+                    {emoji}
+                  </div>
+
+                  {/* Name + meta */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className={cn('text-[14px] font-bold leading-tight', active ? 'text-violet-900' : 'text-slate-900')}>
+                        {cat.display_name}
+                      </p>
+                      {est?.surge_multiplier != null && est.surge_multiplier > 1 && (
+                        <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500">
+                          <Zap size={9} />{est.surge_multiplier}×
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2.5 mt-0.5">
+                      <span className="flex items-center gap-0.5 text-[11px] text-slate-400 font-medium">
+                        <Users size={9} strokeWidth={2.5} />{cat.max_passengers} seats
+                      </span>
+                      {noCars ? (
+                        <span className="text-[11px] font-semibold text-red-400">No cars nearby</span>
+                      ) : eta != null && eta.etaMin > 0 ? (
+                        <span className={cn('flex items-center gap-0.5 text-[11px] font-semibold',
+                          active ? 'text-violet-500' : 'text-emerald-600'
+                        )}>
+                          <Clock size={9} strokeWidth={2.5} />{eta.etaMin} min away
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Price + radio */}
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="text-right">
+                      {loading && fare == null ? (
+                        <div className="w-12 h-5 rounded-lg bg-slate-100 animate-pulse" />
+                      ) : fare != null ? (
+                        <p className={cn('text-[17px] font-black tabular-nums leading-tight',
+                          active ? 'text-violet-900' : 'text-slate-900'
+                        )}>
+                          ₹<AnimatedNumber value={Math.round(fare)} />
+                        </p>
+                      ) : (
+                        <p className="text-sm text-slate-400">—</p>
+                      )}
+                    </div>
+                    <div className={cn(
+                      'w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-150',
+                      active ? 'border-violet-500' : 'border-slate-200'
+                    )}>
+                      {active && <div className="w-2.5 h-2.5 rounded-full bg-violet-500" />}
+                    </div>
+                  </div>
+                </button>
+                {i < categories.length - 1 && <div className="mx-5 h-px bg-slate-100" />}
+              </div>
             )
           })}
         </div>
 
-        {/* Fixed book bar */}
+        {/* Book bar */}
         <div
           className="flex-shrink-0 bg-white border-t border-slate-100 px-4 pt-3"
           style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}
         >
-          {/* Payment row */}
           <div className="flex items-center justify-between mb-3 px-1">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center">
@@ -285,16 +306,14 @@ function SelectRideContent() {
               </div>
               <span className="text-sm font-semibold text-slate-700">Cash</span>
             </div>
-            <button className="text-xs text-primary font-bold">Change</button>
+            <button className="text-xs font-bold text-violet-600">Change</button>
           </div>
-          {bookError && (
-            <p className="text-red-500 text-sm text-center mb-2">{bookError}</p>
-          )}
+          {bookError && <p className="text-red-500 text-sm text-center mb-2">{bookError}</p>}
           <button
             onClick={handleBook}
             disabled={isBooking || loading || selectedFare == null || allUnavailable || (driverEta[selected]?.count === 0)}
             className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
-            style={{ background: isBooking ? '#374151' : 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', minHeight: 52 }}
+            style={{ background: isBooking ? '#6D28D9' : 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', minHeight: 52 }}
           >
             {isBooking
               ? 'Booking…'
