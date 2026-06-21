@@ -299,7 +299,7 @@ function SearchContent() {
           <div className="flex items-stretch">
 
             {/* Left icon column: green dot → dashed line → amber dot */}
-            <div className="flex flex-col items-center px-4 pt-[22px] pb-[22px]">
+            <div className="flex flex-col items-center px-4 pt-[26px] pb-[26px]">
               <div className="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 shadow-sm" />
               <div
                 className="w-px flex-1 my-2"
@@ -313,10 +313,10 @@ function SearchContent() {
               {/* FROM row */}
               <motion.button
                 onClick={() => { if (mode !== 'origin') switchMode('origin') }}
-                className="w-full text-left px-2 pt-3 pb-3 border-b border-border"
+                className="w-full text-left px-3 pt-4 pb-4 border-b border-border"
                 whileTap={{ scale: 0.99 }} transition={SPRING}
               >
-                <p className="text-[9px] font-semibold uppercase tracking-widest text-text-muted mb-1 leading-none">From</p>
+                <p className="text-[9px] font-semibold uppercase tracking-widest text-text-muted mb-1.5 leading-none">From</p>
                 {mode === 'origin' ? (
                   <div className="flex items-center gap-1">
                     <input
@@ -324,7 +324,7 @@ function SearchContent() {
                       value={query}
                       onChange={e => handleQueryChange(e.target.value)}
                       placeholder="Enter pickup location"
-                      className="flex-1 bg-transparent text-sm font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
+                      className="flex-1 bg-transparent text-[15px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
                       disabled={resolving}
                     />
                     {searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
@@ -339,13 +339,13 @@ function SearchContent() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-sm font-semibold text-text-primary truncate">{originAddress}</p>
+                  <p className="text-[15px] font-semibold text-text-primary truncate">{originAddress}</p>
                 )}
               </motion.button>
 
               {/* TO row */}
               <div
-                className="px-2 pt-3 pb-3 cursor-text"
+                className="px-3 pt-4 pb-4 cursor-text"
                 onClick={() => {
                   if (confirmedDest) {
                     setConfirmedDest(null); switchMode('destination')
@@ -354,11 +354,11 @@ function SearchContent() {
                   }
                 }}
               >
-                <p className="text-[9px] font-semibold uppercase tracking-widest text-text-muted mb-1 leading-none">To</p>
+                <p className="text-[9px] font-semibold uppercase tracking-widest text-text-muted mb-1.5 leading-none">To</p>
                 {confirmedDest ? (
                   // Always show confirmed destination as text — never blank during navigation
                   <div className="flex items-center gap-1">
-                    <p className="text-sm font-semibold text-text-primary truncate flex-1">{confirmedDest.address}</p>
+                    <p className="text-[15px] font-semibold text-text-primary truncate flex-1">{confirmedDest.address}</p>
                     <motion.button
                       onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConfirmedDest(null); switchMode('destination') }}
                       whileTap={{ scale: 0.85 }}
@@ -374,7 +374,7 @@ function SearchContent() {
                       value={query}
                       onChange={e => handleQueryChange(e.target.value)}
                       placeholder="Where to?"
-                      className="flex-1 bg-transparent text-sm font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
+                      className="flex-1 bg-transparent text-[15px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
                       disabled={resolving}
                     />
                     {searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
@@ -389,7 +389,7 @@ function SearchContent() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-sm text-text-muted font-normal">Where to?</p>
+                  <p className="text-[15px] text-text-muted font-normal">Where to?</p>
                 )}
               </div>
             </div>
@@ -412,20 +412,52 @@ function SearchContent() {
           </div>
         </div>
 
-        {/* Get prices CTA — slides in when both ends are confirmed */}
+        {/* Pinned action pills — always fixed, never scroll */}
+        <div className="flex gap-2.5 px-4 pb-3">
+          <motion.button
+            onClick={goToMapPicker}
+            className="flex-1 h-10 rounded-full flex items-center justify-center gap-1.5 border border-slate-200 bg-white"
+            whileTap={{ scale: 0.97 }} transition={SPRING}
+          >
+            <Map size={14} strokeWidth={1.8} style={{ color: ICON_CLR }} />
+            <span className="text-[13px] font-semibold text-slate-700">Select on map</span>
+          </motion.button>
+          <motion.button
+            onClick={() => setStopToast(true)}
+            className="flex-1 h-10 rounded-full flex items-center justify-center gap-1.5 bg-slate-900"
+            whileTap={{ scale: 0.97 }} transition={SPRING}
+          >
+            <Plus size={14} strokeWidth={2.2} className="text-white" />
+            <span className="text-[13px] font-semibold text-white">Add stops</span>
+          </motion.button>
+        </div>
+
+        {/* Get prices CTA — slides in when both confirmed */}
         <AnimatePresence>
           {bothConfirmed && (
-            <motion.button
-              onClick={() => confirmedDest && void navigateToRide(confirmedDest)}
-              className="btn-primary mt-3"
-              initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2, ease: EASE }}
-              disabled={resolving}
+            <motion.div
+              className="px-4 pb-3"
+              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.22, ease: EASE }}
             >
-              {resolving ? <span className="flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Getting route…</span> : 'See ride prices →'}
-            </motion.button>
+              <motion.button
+                onClick={() => confirmedDest && void navigateToRide(confirmedDest)}
+                className="w-full py-3.5 rounded-2xl text-[15px] font-bold text-white"
+                style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}
+                disabled={resolving}
+                whileTap={{ scale: 0.98 }}
+              >
+                {resolving
+                  ? <span className="flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Getting route…</span>
+                  : 'See ride prices →'
+                }
+              </motion.button>
+            </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Hairline divider — separates fixed header from scrollable body */}
+        <div className="h-px bg-slate-100" />
       </div>
 
       {/* ── Body ── */}
@@ -467,7 +499,7 @@ function SearchContent() {
                     : <LocateFixed size={15} strokeWidth={1.6} className="text-emerald-600" />
                   }
                 </span>
-                <span className="text-sm font-semibold text-text-primary">
+                <span className="text-[15px] font-semibold text-text-primary">
                   {locating ? 'Getting location…' : 'Use current location'}
                 </span>
               </motion.button>
@@ -494,7 +526,7 @@ function SearchContent() {
                             <Clock size={16} className="text-text-muted" strokeWidth={1.6} />
                           </span>
                           <span className="flex-1 min-w-0">
-                            <span className="block text-sm font-semibold text-text-primary truncate">{s.mainText}</span>
+                            <span className="block text-[15px] font-semibold text-text-primary truncate">{s.mainText}</span>
                             {s.secondaryText && (
                               <span className="block text-xs text-text-muted truncate mt-0.5">{s.secondaryText}</span>
                             )}
@@ -536,7 +568,7 @@ function SearchContent() {
                             <Clock size={16} className="text-text-muted" strokeWidth={1.6} />
                           </span>
                           <span className="flex-1 min-w-0">
-                            <span className="block text-sm font-semibold text-text-primary truncate">{s.mainText}</span>
+                            <span className="block text-[15px] font-semibold text-text-primary truncate">{s.mainText}</span>
                             {s.secondaryText && (
                               <span className="block text-xs text-text-muted truncate mt-0.5">{s.secondaryText}</span>
                             )}
@@ -553,27 +585,6 @@ function SearchContent() {
               </motion.div>
             ) : (
               <>
-                {/* Quick action pills — map + add stops */}
-                <div className="flex gap-2 mb-3">
-                  <motion.button
-                    onClick={goToMapPicker}
-                    className="flex-1 flex items-center justify-center gap-2 h-11 rounded-full bg-surface border border-border"
-                    whileTap={{ scale: 0.97 }} transition={SPRING}
-                    style={{ boxShadow: '0 2px 8px rgba(15,15,35,0.05)' }}
-                  >
-                    <Map size={15} strokeWidth={1.8} style={{ color: ICON_CLR }} />
-                    <span className="text-[13px] font-semibold text-text-primary">Select on map</span>
-                  </motion.button>
-                  <motion.button
-                    onClick={() => setStopToast(true)}
-                    className="flex-1 flex items-center justify-center gap-2 h-11 rounded-full bg-slate-900"
-                    whileTap={{ scale: 0.97 }} transition={SPRING}
-                  >
-                    <Plus size={15} strokeWidth={2.2} className="text-white" />
-                    <span className="text-[13px] font-semibold text-white">Add stops</span>
-                  </motion.button>
-                </div>
-
                 {/* Popular destinations */}
                 <motion.div variants={listStagger} initial="hidden" animate="show">
                   <div className="mt-0">
@@ -589,7 +600,7 @@ function SearchContent() {
                             <d.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
                           </span>
                           <span className="flex-1 min-w-0">
-                            <span className="block text-sm font-semibold text-text-primary">{d.label}</span>
+                            <span className="block text-[15px] font-semibold text-text-primary">{d.label}</span>
                             <span className="block text-xs text-text-muted truncate mt-0.5">{d.address}</span>
                           </span>
                           <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
