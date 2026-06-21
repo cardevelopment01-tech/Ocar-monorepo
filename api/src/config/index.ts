@@ -48,6 +48,9 @@ const envSchema = z.object({
 
   // Test
   TEST_DATABASE_URL: z.string().default(''),
+
+  // Demo — set DEMO_MODE=true on staging/demo VPS to unlock demo-force endpoints
+  DEMO_MODE: z.enum(['true', 'false']).default('false'),
 })
 
 function loadConfig() {

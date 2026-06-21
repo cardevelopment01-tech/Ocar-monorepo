@@ -139,10 +139,10 @@ router.post('/:id/end-otp', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-// ── Demo force controls (blocked in production) ───────────────
+// ── Demo force controls (gated by DEMO_MODE env var) ─────────
 
 router.post('/:id/demo-force', authenticate(), async (req, res, next) => {
-  if (process.env['NODE_ENV'] === 'production') {
+  if (process.env['DEMO_MODE'] !== 'true') {
     res.status(404).json({ error: 'Not found' }); return
   }
   try {
