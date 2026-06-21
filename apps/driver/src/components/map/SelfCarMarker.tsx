@@ -13,19 +13,32 @@ interface SelfCarMarkerProps {
   position: [number, number]
   areaName?: string | null
   loading?:  boolean
-  heading?:  number  // accepted for callers that track heading; pin doesn't rotate
+  heading?:  number
 }
 
-function SelfCarMarker({ position, areaName = null, loading = false }: SelfCarMarkerProps) {
+function SelfCarMarker({ position, areaName = null, loading = false, heading = 0 }: SelfCarMarkerProps) {
   const showLabel = areaName !== null || loading
+  const rotation  = (Math.round(heading / 5) * 5) % 360
 
   return (
-    <Marker latitude={position[0]} longitude={position[1]} anchor="bottom">
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <Marker latitude={position[0]} longitude={position[1]} anchor="center">
+      {/*
+        Label pill is positioned above the car via absolute so only the car
+        body rotates — text always stays upright regardless of heading.
+      */}
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
 
-        {/* ── Label pill + connecting caret ── */}
+        {/* ── Label pill + caret — floats above, never rotates ── */}
         {showLabel && (
-          <>
+          <div style={{
+            position: 'absolute',
+            bottom: '100%',
+            marginBottom: 6,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            pointerEvents: 'none',
+          }}>
             <div style={{
               ...GLASS,
               borderRadius: 9999,
@@ -51,7 +64,6 @@ function SelfCarMarker({ position, areaName = null, loading = false }: SelfCarMa
                 </svg>
               </span>
 
-              {/* Text or loading skeleton */}
               {loading && !areaName ? (
                 <div style={{
                   width: 72, height: 10, borderRadius: 5,
@@ -68,7 +80,7 @@ function SelfCarMarker({ position, areaName = null, loading = false }: SelfCarMa
               )}
             </div>
 
-            {/* Caret connects pill to pin */}
+            {/* Caret connecting pill to car */}
             <div style={{
               width: 0, height: 0,
               borderLeft: '5px solid transparent',
@@ -77,34 +89,42 @@ function SelfCarMarker({ position, areaName = null, loading = false }: SelfCarMa
               marginTop: -1,
               filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.08))',
             }} />
-          </>
+          </div>
         )}
 
-        {/* ── Teardrop pin ── */}
-        {/* car paths use transform="translate(6,4.5) scale(0.75)" to fit the white circle */}
-        <svg width="36" height="46" viewBox="0 0 36 46" fill="none" style={{ display: 'block' }}>
-          {/* Ground shadow */}
-          <ellipse cx="18" cy="44" rx="5" ry="2" fill="rgba(0,0,0,0.18)" />
-          {/* Dark slate pin body */}
-          <path
-            d="M18 2C9.7 2 3 8.6 3 17C3 26.4 14.2 37.6 17.1 40.3a1.3 1.3 0 0 0 1.8 0C21.8 37.6 33 26.4 33 17C33 8.6 26.3 2 18 2Z"
-            fill="#1E293B"
-            stroke="#FFFFFF"
-            strokeWidth="1.5"
-          />
-          {/* White head circle */}
-          <circle cx="18" cy="16.5" r="9" fill="white" />
-          {/* Car icon — scaled to fit inside the white head */}
-          <g transform="translate(6,4.5) scale(0.75)">
-            <path d="M9.5 16L11.5 12C11.9 11.1 12.8 10.5 13.8 10.5H18.2C19.2 10.5 20.1 11.1 20.5 12L22.5 16" fill="#1E293B" />
-            <rect x="9" y="16" width="14" height="3.5" rx="1.5" fill="#1E293B" />
-            <path d="M10 19.5H22" stroke="#1E293B" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M11 19.5V21.5" stroke="#1E293B" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M21 19.5V21.5" stroke="#1E293B" strokeWidth="1.5" strokeLinecap="round" />
-            <rect x="10" y="12.5" width="3.5" height="1.5" rx="0.5" fill="rgba(255,255,255,0.55)" />
-            <rect x="18.5" y="12.5" width="3.5" height="1.5" rx="0.5" fill="rgba(255,255,255,0.55)" />
-          </g>
-        </svg>
+        {/* ── Premium top-down car — rotates with heading ── */}
+        <div style={{
+          width: 40,
+          height: 56,
+          transform: `rotate(${rotation}deg)`,
+          transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1)',
+          filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.22))',
+        }}>
+          <svg viewBox="0 0 40 56" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+            {/* Direction indicator — slate-900 triangle, points UP at heading=0 */}
+            <path d="M20 1 L24 8 L16 8 Z" fill="#0F172A" />
+
+            {/* Car body — white rounded capsule */}
+            <path
+              d="M20 5 C28 5 34 12 34 24 C34 36 28 51 20 51 C12 51 6 36 6 24 C6 12 12 5 20 5 Z"
+              fill="#FFFFFF"
+              stroke="rgba(0,0,0,0.12)"
+              strokeWidth="1"
+            />
+
+            {/* Windshield (front) — slate tint */}
+            <rect x="11" y="9" width="18" height="9" rx="4" fill="rgba(15,23,42,0.14)" />
+
+            {/* Roof / cabin highlight */}
+            <rect x="12" y="20" width="16" height="9" rx="3" fill="rgba(0,0,0,0.04)" />
+
+            {/* Door division line */}
+            <line x1="7" y1="28" x2="33" y2="28" stroke="rgba(0,0,0,0.06)" strokeWidth="1" />
+
+            {/* Rear window — slate tint */}
+            <rect x="13" y="38" width="14" height="7" rx="3" fill="rgba(15,23,42,0.08)" />
+          </svg>
+        </div>
 
       </div>
     </Marker>
@@ -116,5 +136,5 @@ export default memo(SelfCarMarker, (a, b) =>
   a.position[1] === b.position[1] &&
   a.areaName    === b.areaName    &&
   a.loading     === b.loading     &&
-  a.heading     === b.heading
+  Math.round((a.heading ?? 0) / 5) === Math.round((b.heading ?? 0) / 5)
 )
