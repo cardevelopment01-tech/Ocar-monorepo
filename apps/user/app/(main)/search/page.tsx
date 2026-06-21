@@ -66,13 +66,13 @@ function SearchContent() {
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const destInputRef   = useRef<HTMLInputElement>(null)
   const originInputRef = useRef<HTMLInputElement>(null)
-  // Tracks whether user has actually typed in origin mode (vs. the pre-populated default)
   const originTouched  = useRef(false)
+  const modeRef        = useRef<EditMode>(mode)
 
   const [forMeOpen, setForMeOpen] = useState(false)
   const [stopToast, setStopToast] = useState(false)
 
-  // On mount: if no origin in URL, try to get GPS + reverse-geocode
+  // On mount: try GPS once — fast network-position fix, cached ok up to 1 min
   useEffect(() => {
     if (sp.get('originLat')) return
     if (!navigator.geolocation) { setGpsReady(true); return }
@@ -83,14 +83,21 @@ function SearchContent() {
         setOriginLng(longitude)
         setOriginAddress('Current Location')
         setGpsReady(true)
+        if (modeRef.current === 'origin') setQuery('Current Location')
         geoApi.reverseGeocode(latitude, longitude)
-          .then(addr => setOriginAddress(addr))
+          .then(addr => {
+            setOriginAddress(addr)
+            if (modeRef.current === 'origin') setQuery(addr)
+          })
           .catch(() => {})
       },
-      () => { setGpsReady(true) },   // denied/failed — leave pickup empty, user sets it manually
-      { enableHighAccuracy: true, timeout: 8000 },
+      () => { setGpsReady(true) },
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 },
     )
-  }, [sp])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => { modeRef.current = mode }, [mode])
 
   // Focus the right input when mode changes; select-all in origin so typing replaces pre-populated text
   useEffect(() => {
@@ -141,12 +148,16 @@ function SearchContent() {
         setOriginLat(latitude)
         setOriginLng(longitude)
         setOriginAddress('Current Location')
+        if (modeRef.current === 'origin') setQuery('Current Location')
         geoApi.reverseGeocode(latitude, longitude)
-          .then(addr => setOriginAddress(addr))
+          .then(addr => {
+            setOriginAddress(addr)
+            if (modeRef.current === 'origin') setQuery(addr)
+          })
           .catch(() => {})
       },
       () => {},
-      { enableHighAccuracy: true, timeout: 8000 },
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 },
     )
   }
 
@@ -298,14 +309,21 @@ function SearchContent() {
         <div className="mx-4 mb-2 rounded-xl overflow-hidden border border-slate-100 bg-white shadow-sm">
           <div className="flex items-stretch">
 
-            {/* Left icon column: green dot → dashed line → amber dot */}
-            <div className="flex flex-col items-center pl-3 pr-2 py-2.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0" />
+            {/* Left section: inline dots, each centered in its own row; absolute connector between them */}
+            <div className="relative flex flex-col pl-3 pr-2 flex-shrink-0">
+              <div className="flex-1 flex items-center justify-center">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 relative z-10" />
+              </div>
               <div
-                className="w-px flex-1 my-1.5"
-                style={{ background: 'repeating-linear-gradient(to bottom, #CBD5E1 0px, #CBD5E1 4px, transparent 4px, transparent 8px)' }}
+                className="absolute left-1/2 -translate-x-1/2 w-px"
+                style={{
+                  top: '25%', bottom: '25%',
+                  background: 'repeating-linear-gradient(to bottom, #CBD5E1 0px, #CBD5E1 4px, transparent 4px, transparent 8px)',
+                }}
               />
-              <div className="w-2.5 h-2.5 rounded-full bg-amber-500 flex-shrink-0" />
+              <div className="flex-1 flex items-center justify-center">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-500 relative z-10" />
+              </div>
             </div>
 
             {/* Input column */}
