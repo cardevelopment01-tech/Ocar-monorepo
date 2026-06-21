@@ -192,9 +192,9 @@ function SearchContent() {
     )
   }
 
-  function switchMode(next: EditMode) {
+  function switchMode(next: EditMode, skipGpsRefresh = false) {
     // Leaving origin with cleared FROM and still no origin set → silently try GPS again
-    if (mode === 'origin' && next === 'destination' && query.trim() === '' && originAddress.trim() === '') {
+    if (!skipGpsRefresh && mode === 'origin' && next === 'destination' && query.trim() === '' && (originAddress ?? '').trim() === '') {
       refreshOriginInBackground()
     }
     setMode(next)
@@ -210,7 +210,7 @@ function SearchContent() {
 
   // Navigate to select-ride with real route
   async function navigateToRide(dest: ConfirmedDest, oLat = originLat, oLng = originLng, oAddress = originAddress, useReplace = false) {
-    if (!oAddress.trim() || (oLat === 0 && oLng === 0)) {
+    if (!(oAddress ?? '').trim() || (oLat === 0 && oLng === 0)) {
       setConfirmedDest(dest)
       switchMode('origin')
       return
@@ -243,9 +243,10 @@ function SearchContent() {
     setQuery('')
     setSuggestions([])
     setSearching(false)
-    if (originAddress.trim() !== '') {
+    if ((originAddress ?? '').trim() !== '') {
       void navigateToRide({ lat, lng, address })
     } else {
+      setResolving(false)
       switchMode('origin')
     }
   }
@@ -537,7 +538,7 @@ function SearchContent() {
               <div key={d.label}>
                 <motion.button
                   onClick={() => mode === 'origin'
-                    ? (setOriginLat(d.lat), setOriginLng(d.lng), setOriginAddress(d.address), switchMode('destination'))
+                    ? (setOriginLat(d.lat), setOriginLng(d.lng), setOriginAddress(d.address), switchMode('destination', true))
                     : confirmDest(d.lat, d.lng, d.address)
                   }
                   className="w-full flex items-center gap-3 px-1 py-3 text-left"
