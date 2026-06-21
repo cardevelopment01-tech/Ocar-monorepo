@@ -447,21 +447,6 @@ function SearchContent() {
       {/* ── Body ── */}
       <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-2 pb-4 relative bg-white">
 
-        {/* Resolve overlay */}
-        <AnimatePresence>
-          {resolving && (
-            <motion.div
-              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/80 backdrop-blur-sm"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            >
-              <Loader2 size={28} className="text-primary animate-spin" />
-              <span className="text-sm text-text-secondary font-medium">
-                {mode === 'origin' ? 'Setting pickup…' : 'Getting route…'}
-              </span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* Autocomplete suggestions — only when typing; animate since data is live */}
         {showSuggestions && (
           <motion.div variants={listStagger} initial="hidden" animate="show" key={`ac-${mode}`}>
