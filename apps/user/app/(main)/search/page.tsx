@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plane, Train, Building2, ShoppingBag,
-  GraduationCap, X, Loader2, Map, ArrowUpDown,
+  GraduationCap, X, Loader2, Map,
   Plus, ChevronDown, UserPlus, User, Info, Clock, Heart,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -246,20 +246,6 @@ function SearchContent() {
     }
   }
 
-  // Swap and auto-navigate with flipped pair
-  function swapOriginDestination() {
-    if (!confirmedDest) return
-    const prevOrigin: ConfirmedDest = { lat: originLat, lng: originLng, address: originAddress }
-    setOriginLat(confirmedDest.lat)
-    setOriginLng(confirmedDest.lng)
-    setOriginAddress(confirmedDest.address)
-    setConfirmedDest(prevOrigin)
-    setQuery('')
-    setSuggestions([])
-    setMode('destination')
-    void navigateToRide(prevOrigin, confirmedDest.lat, confirmedDest.lng, confirmedDest.address)
-  }
-
   function goToMapPicker() {
     const params = new URLSearchParams()
     if (originLat !== 0 || originLng !== 0) {
@@ -273,7 +259,6 @@ function SearchContent() {
   // In origin mode, only show suggestions after the user has actually typed (not the pre-populated address)
   const showSuggestions = query.length >= 2 && (mode === 'destination' || originTouched.current)
   const bothConfirmed   = confirmedDest !== null
-  const canSwap         = bothConfirmed && originAddress.trim() !== ''
 
   return (
     <div className="h-full flex flex-col bg-background relative">
@@ -308,8 +293,8 @@ function SearchContent() {
         <div className="mx-4 mb-2 rounded-xl overflow-hidden border border-slate-100 bg-white shadow-sm">
           <div className="flex items-stretch">
 
-            {/* Left section: inline dots, each centered in its own row; absolute connector between them */}
-            <div className="relative flex flex-col pl-3 pr-2 flex-shrink-0">
+            {/* Left section: fixed-width so left-1/2 = exact dot center */}
+            <div className="relative flex flex-col w-10 flex-shrink-0">
               <div className="flex-1 flex items-center justify-center">
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 relative z-10" />
               </div>
@@ -409,22 +394,6 @@ function SearchContent() {
                 )}
               </div>
             </div>
-
-            {/* Swap button */}
-            <motion.button
-              onClick={swapOriginDestination}
-              disabled={!canSwap}
-              className="self-center mr-3 flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center border transition-colors"
-              style={{
-                background: canSwap ? 'var(--color-primary-subtle, #EEF2FF)' : 'var(--color-surface-2, #F8FAFF)',
-                borderColor: canSwap ? 'var(--color-primary, #4F46E5)' : 'var(--color-border, #E5E7EB)',
-              }}
-              whileTap={canSwap ? { scale: 0.88, rotate: 180 } : {}}
-              transition={SPRING}
-              title="Swap pickup and destination"
-            >
-              <ArrowUpDown size={14} className={canSwap ? 'text-primary' : 'text-text-muted'} strokeWidth={2} />
-            </motion.button>
           </div>
         </div>
 
@@ -448,20 +417,23 @@ function SearchContent() {
           </motion.button>
         </div>
 
-        {/* Resolving progress bar — slim bouncing line while route is being fetched */}
+        {/* Neon sweep loader — smooth violet shimmer while route is fetching */}
         <AnimatePresence>
           {resolving && (
             <motion.div
               className="px-4 pb-2"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
+              transition={{ duration: 0.2 }}
             >
-              <div className="relative h-0.5 rounded-full overflow-hidden bg-slate-100">
+              <div className="relative h-[2px] rounded-full overflow-hidden bg-slate-100">
                 <motion.div
-                  className="absolute inset-y-0 w-2/5 rounded-full"
-                  style={{ background: 'linear-gradient(90deg, #4F46E5, #818CF8)' }}
-                  animate={{ x: ['−100%', '300%'] }}
-                  transition={{ duration: 1.1, ease: 'easeInOut', repeat: Infinity }}
+                  className="absolute inset-y-0 w-full rounded-full"
+                  style={{
+                    background: 'linear-gradient(90deg, transparent 0%, #7C3AED 25%, #A78BFA 50%, #7C3AED 75%, transparent 100%)',
+                    filter: 'blur(0.5px)',
+                  }}
+                  animate={{ x: ['-100%', '100%'] }}
+                  transition={{ duration: 1.3, ease: [0.4, 0, 0.6, 1], repeat: Infinity }}
                 />
               </div>
             </motion.div>
