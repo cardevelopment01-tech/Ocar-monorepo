@@ -120,7 +120,7 @@ export default function LoginPage() {
 
   return (
     <div
-      className="min-h-screen flex flex-col"
+      className="min-h-[100dvh] flex flex-col"
       style={{ background: 'linear-gradient(160deg, #0F0F23 0%, #1E1B4B 100%)' }}
     >
       {/* ── Decorative orbs ── */}

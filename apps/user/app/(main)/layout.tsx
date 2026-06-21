@@ -26,7 +26,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   }
 
   return (
-    <div className="relative h-screen overflow-hidden">
+    <div className="relative h-[100dvh] overflow-hidden">
       {children}
       {showNav && <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />}
     </div>
