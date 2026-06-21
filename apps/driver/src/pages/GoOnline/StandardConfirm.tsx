@@ -180,7 +180,7 @@ export default function StandardConfirm() {
         transition={{ duration: 0.4, ease: EASE, delay: 0.10 }}
       >
         <div className="flex items-center gap-2 mb-3">
-          <Zap size={14} className="text-text-secondary" strokeWidth={2.2} />
+          <Zap size={14} className="text-[#0F172A]" strokeWidth={2} />
           <p className="text-text-primary text-sm font-bold">Pre-ride Checklist</p>
           <span className="ml-auto text-[10px] font-semibold text-text-muted">Tap to toggle</span>
         </div>
@@ -278,8 +278,13 @@ export default function StandardConfirm() {
         <button
           onClick={handleGoOnline}
           disabled={goingOnline || loading || !vehicle}
-          className="btn-go w-full flex items-center justify-center gap-2.5"
-          style={{ minHeight: 56, borderRadius: 24 }}
+          style={{
+            background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
+            boxShadow: '0 4px 20px rgba(15,23,42,0.30)',
+            minHeight: 56,
+            borderRadius: 24,
+          }}
+          className="w-full flex items-center justify-center gap-2.5 text-white font-bold text-base cursor-pointer active:scale-[0.98] transition-transform duration-150 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
         >
           {goingOnline ? (
             <>

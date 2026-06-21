@@ -28,6 +28,33 @@ import type { DriverProfile } from '@/store/useAuthStore'
 import { DEMO_MODE } from '@/lib/demo'
 import DemoBlock from '@/components/ui/DemoBlock'
 
+const TAB_PATHS = new Set(['/', '/earnings', '/wallet', '/profile'])
+
+function pageMotion(pathname: string) {
+  if (TAB_PATHS.has(pathname)) {
+    return {
+      initial:    { opacity: 0 } as const,
+      animate:    { opacity: 1 } as const,
+      exit:       { opacity: 0 } as const,
+      transition: { duration: 0.14, ease: 'easeInOut' as const },
+    }
+  }
+  if (pathname.startsWith('/ride/')) {
+    return {
+      initial:    { opacity: 0, y: 22 } as const,
+      animate:    { opacity: 1, y: 0  } as const,
+      exit:       { opacity: 0, y: 10 } as const,
+      transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] as const },
+    }
+  }
+  return {
+    initial:    { opacity: 0, scale: 0.97 } as const,
+    animate:    { opacity: 1, scale: 1    } as const,
+    exit:       { opacity: 0, scale: 0.97 } as const,
+    transition: { duration: 0.20, ease: [0.22, 1, 0.36, 1] as const },
+  }
+}
+
 export default function App() {
   const location = useLocation()
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
@@ -52,15 +79,17 @@ export default function App() {
       })
   }, [])
 
+  const mv = pageMotion(location.pathname)
+
   return (
     <>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={location.pathname}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.20, ease: [0.22, 1, 0.36, 1] }}
+          initial={mv.initial}
+          animate={mv.animate}
+          exit={mv.exit}
+          transition={mv.transition}
         >
           <Routes location={location}>
             {/* Auth */}

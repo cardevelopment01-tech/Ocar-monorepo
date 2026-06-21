@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Car, CornerUpLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Car, CornerUpLeft, ChevronRight, Clock } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -43,7 +43,7 @@ export default function ModeSelection() {
 
       <div className="space-y-3">
 
-        {/* ── Standard Mode ── */}
+        {/* ── Standard Mode — interactive ── */}
         <motion.button
           custom={0}
           variants={cardVariants}
@@ -53,85 +53,84 @@ export default function ModeSelection() {
           onClick={() => navigate('/go-online/standard')}
           className="w-full driver-card text-left relative overflow-hidden"
         >
-          {/* Ghost numeral */}
-          <span className="absolute top-3 right-4 font-display text-[40px] font-black leading-none select-none pointer-events-none text-surface-3">
+          <span className="absolute top-3 right-4 font-display text-[40px] font-black leading-none select-none pointer-events-none text-slate-200">
             01
           </span>
 
           <div className="flex items-start gap-4 relative">
-            {/* Neutral icon tile */}
-            <div className="w-14 h-14 rounded-2xl bg-surface-2 flex items-center justify-center flex-shrink-0">
-              <Car size={26} className="text-text-primary" strokeWidth={1.8} />
+            <div className="w-14 h-14 rounded-2xl bg-[#0F172A] flex items-center justify-center flex-shrink-0">
+              <Car size={26} className="text-white" strokeWidth={1.8} />
             </div>
 
             <div className="flex-1 min-w-0 pr-8">
               <div className="flex items-start justify-between mb-1.5">
                 <p className="font-display text-[17px] font-bold text-text-primary">Standard Mode</p>
-                <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-muted ml-2 flex-shrink-0 mt-0.5">
-                  Recommended
+                <span className="inline-flex items-center gap-1 ml-2 flex-shrink-0 mt-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-muted">
+                    Operational
+                  </span>
                 </span>
               </div>
               <p className="text-text-secondary text-sm leading-snug mb-3">
-                Accept rides anywhere in the city. Best for maximising earnings.
+                Accept rides anywhere in the city.
               </p>
               <div className="flex flex-wrap gap-1.5">
-                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-border text-text-secondary">
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
                   All areas
                 </span>
-                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-border text-text-muted">
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
                   No restriction
                 </span>
               </div>
             </div>
           </div>
 
-          <ChevronRight size={16} className="text-text-muted absolute right-5 top-1/2 -translate-y-1/2" />
+          <ChevronRight size={18} className="text-[#0F172A] absolute right-5 top-1/2 -translate-y-1/2" strokeWidth={2.2} />
         </motion.button>
 
-        {/* ── Return Cab ── */}
-        <motion.button
+        {/* ── Return Cab — coming soon, non-interactive ── */}
+        <motion.div
           custom={1}
           variants={cardVariants}
           initial="hidden"
           animate="visible"
-          whileTap={{ scale: 0.97 }}
-          onClick={() => navigate('/go-online/return-cab')}
-          className="w-full driver-card text-left relative overflow-hidden"
+          className="w-full driver-card text-left relative overflow-hidden opacity-55 cursor-not-allowed"
         >
-          {/* Ghost numeral */}
-          <span className="absolute top-3 right-4 font-display text-[40px] font-black leading-none select-none pointer-events-none text-surface-3">
+          <span className="absolute top-3 right-4 font-display text-[40px] font-black leading-none select-none pointer-events-none text-slate-200">
             02
           </span>
 
           <div className="flex items-start gap-4 relative">
-            {/* Neutral icon tile */}
-            <div className="w-14 h-14 rounded-2xl bg-surface-2 flex items-center justify-center flex-shrink-0">
-              <CornerUpLeft size={26} className="text-text-primary" strokeWidth={1.8} />
+            <div className="w-14 h-14 rounded-2xl bg-slate-200 flex items-center justify-center flex-shrink-0">
+              <CornerUpLeft size={26} className="text-slate-400" strokeWidth={1.8} />
             </div>
 
             <div className="flex-1 min-w-0 pr-8">
               <div className="flex items-start justify-between mb-1.5">
                 <p className="font-display text-[17px] font-bold text-text-primary">Return Cab</p>
-                <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-muted ml-2 flex-shrink-0 mt-0.5">
-                  Headed home
+                <span className="inline-flex items-center ml-2 flex-shrink-0 mt-0.5 px-2 py-0.5 rounded-full bg-[#FEF3C7]">
+                  <span className="text-[9px] font-bold uppercase tracking-[0.10em] text-[#B45309]">
+                    Coming Soon
+                  </span>
                 </span>
               </div>
               <p className="text-text-secondary text-sm leading-snug mb-3">
                 Set a destination and only accept rides heading that way.
               </p>
               <div className="flex flex-wrap gap-1.5">
-                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-border text-text-secondary">
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-400">
                   One-way
                 </span>
-                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-border text-text-muted">
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-400">
                   Earn on the way
                 </span>
               </div>
             </div>
           </div>
 
-          <ChevronRight size={16} className="text-text-muted absolute right-5 top-1/2 -translate-y-1/2" />
-        </motion.button>
+          <Clock size={18} className="text-amber-500 absolute right-5 top-1/2 -translate-y-1/2" strokeWidth={2.2} />
+        </motion.div>
 
       </div>
 
