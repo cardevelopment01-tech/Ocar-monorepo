@@ -6,6 +6,9 @@ import {
 } from 'lucide-react'
 import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
+import DatePickerSheet from '@/components/ui/DatePickerSheet'
+
+const TODAY_ISO = new Date().toISOString().slice(0, 10)
 
 type UploadState = 'idle' | 'uploading' | 'done' | 'error'
 
@@ -430,16 +433,16 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, i
 
       {/* Expiry date — shown below upload or done row when needed */}
       {needsExpiry && (
-        <div className="mt-2.5">
+        <div className="mt-2.5" onClick={e => e.stopPropagation()}>
           <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1.5 block">
             Expiry Date <span className="text-accent-red">*</span>
           </label>
-          <input
-            type="date"
-            className="input-dark w-full"
+          <DatePickerSheet
+            label="Expiry Date"
             value={validUntil ?? ''}
-            onChange={e => onValidUntilChange?.(e.target.value)}
-            onClick={e => e.stopPropagation()}
+            onChange={v => onValidUntilChange?.(v)}
+            minDate={TODAY_ISO}
+            placeholder="Select expiry date"
           />
         </div>
       )}

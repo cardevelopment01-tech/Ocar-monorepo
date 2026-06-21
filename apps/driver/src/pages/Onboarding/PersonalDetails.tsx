@@ -5,6 +5,7 @@ import { onboardingApi, type PersonalInfoPayload } from '@/lib/onboarding-api'
 import { STATE_CITY } from '@/lib/india-geo'
 import { useAuthStore } from '@/store/useAuthStore'
 import SelectSheet from '@/components/ui/SelectSheet'
+import DatePickerSheet from '@/components/ui/DatePickerSheet'
 
 const INDIAN_LANGUAGES = [
   'Hindi', 'English', 'Odia', 'Bengali', 'Tamil', 'Telugu',
@@ -222,21 +223,13 @@ export default function PersonalDetails() {
 
               {/* Date of Birth */}
               <Field label="Date of Birth" id="dob">
-                <input
-                  id="dob"
-                  type="date"
-                  className="input-dark w-full"
+                <DatePickerSheet
+                  label="Date of Birth"
                   value={dob}
-                  max={dobMax}
-                  min={dobMin}
-                  onChange={e => { setDob(e.target.value); setDobError('') }}
-                  onBlur={() => {
-                    if (dob && (dob > dobMax || dob < dobMin)) {
-                      setDobError('Driver must be 18–70 years old')
-                    } else {
-                      setDobError('')
-                    }
-                  }}
+                  onChange={v => { setDob(v); setDobError('') }}
+                  minDate={dobMin}
+                  maxDate={dobMax}
+                  placeholder="Select your date of birth"
                 />
                 {dobError && <p className="text-accent-red text-xs mt-1">{dobError}</p>}
               </Field>

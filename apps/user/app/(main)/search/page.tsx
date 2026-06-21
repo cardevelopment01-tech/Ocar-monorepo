@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plane, Train, Building2, ShoppingBag,
@@ -623,20 +624,30 @@ function SearchContent() {
         )}
       </AnimatePresence>
 
-      {/* Add stops coming-soon toast */}
-      <AnimatePresence>
-        {stopToast && (
-          <motion.div
-            key="stop-toast"
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}
-            transition={{ duration: 0.2, ease: EASE }}
-            className="fixed left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-full bg-slate-900 text-white text-xs font-semibold shadow-xl whitespace-nowrap"
-            style={{ bottom: 'max(88px, calc(env(safe-area-inset-bottom, 0px) + 80px))' }}
-          >
-            Multi-stop trips are coming soon 🛣️
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Add stops coming-soon toast — portal escapes Framer Motion transform context */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {stopToast && (
+            <motion.div
+              key="stop-toast"
+              initial={{ opacity: 0, y: 16, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.95 }}
+              transition={{ duration: 0.22, ease: EASE }}
+              className="fixed left-1/2 -translate-x-1/2 z-[999] flex items-center gap-2.5 px-5 py-3 rounded-2xl text-white text-[13px] font-semibold shadow-2xl whitespace-nowrap pointer-events-none"
+              style={{
+                bottom: 'max(84px, calc(env(safe-area-inset-bottom, 0px) + 76px))',
+                background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.28), 0 2px 8px rgba(0,0,0,0.2)',
+              }}
+            >
+              <span className="text-base">🛣️</span>
+              Multi-stop trips coming soon
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   )
 }
