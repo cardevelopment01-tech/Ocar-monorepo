@@ -254,18 +254,40 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 
 | Page | Status |
 |---|---|
-| overview | ✅ live |
+| overview | ⚠️ mock data (mockStats + mockRides hardcoded; layout SOS badge also reads mockSOS) |
 | drivers | ✅ live (list, detail slide-over, approve/reject/suspend) |
 | vehicles | ✅ live (categories, brands, models, fleet — 4 tabs) |
 | cities | ✅ live |
 | pricing | ✅ live (rate cards + surge events) |
-| disputes | ✅ live (wired to safety backend) |
-| sos | ✅ live (wired to safety backend) |
-| payments | ✅ live (wired to payments backend) |
+| disputes | ✅ live (wired to safety backend; hidden in DEMO_MODE) |
+| sos | ✅ live (wired to safety backend; hidden in DEMO_MODE) |
+| payments | ✅ live (wired to payments backend; hidden in DEMO_MODE) |
 | users | ✅ live (user list) |
 | rides | ✅ live (wired to admin rides backend; search, status filter, pagination) |
 | live-map | 🔲 TODO stub |
 | analytics | 🔲 TODO stub |
+
+---
+
+## Known UI Caveats (not bugs — intentional placeholders)
+
+### User app
+- Home saved places, recent ("Go again"), popular routes, and promo banner are **hardcoded constants**, not user-specific data from the backend
+- Profile "Account" menu items (Saved places, Payment methods, Notifications, Safety, Help & Support) are non-functional — no navigation wired yet
+- Payment method is display-only "Cash" — no payment selection flow yet
+- "Add new rider" (For me sheet) is `disabled`; "Add stops" shows a "coming soon" toast
+- Bottom nav: only **My Trip** and **Profile** are active — Messages and Help show "SOON"
+- Ride type on select-ride screen is hardcoded to `one_way` — return/rental fare differentiation not yet wired to booking
+- Message driver button on ride tracking screen has no handler
+
+### Driver app
+- Earnings page uses `mockEarnings` — not wired to real backend yet
+- Earnings/Wallet pages swap to `DemoBlock` when `DEMO_MODE=true`
+- Active-ride screens (NavigateToPickup, TripInProgress, etc.) swap to `DemoBlock` in DEMO_MODE
+
+### Admin portal
+- Overview dashboard is entirely mock data — needs wiring to real aggregate endpoints
+- SOS/notification badge in admin layout reads `mockSOS` count
 
 ---
 
