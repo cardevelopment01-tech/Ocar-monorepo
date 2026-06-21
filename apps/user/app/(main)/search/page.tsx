@@ -3,9 +3,9 @@
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, MapPin, Plane, Train, Building2, ShoppingBag,
-  GraduationCap, Navigation2, X, Loader2, LocateFixed, Map, ArrowUpDown,
-  Check, Plus, ChevronDown, UserPlus,
+  ArrowLeft, Plane, Train, Building2, ShoppingBag,
+  GraduationCap, X, Loader2, LocateFixed, Map, ArrowUpDown,
+  Plus, ChevronDown, UserPlus, User, Info, Clock, Heart,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
@@ -70,7 +70,6 @@ function SearchContent() {
 
   const [forMeOpen, setForMeOpen] = useState(false)
   const [stopToast, setStopToast] = useState(false)
-  const forMeRef = useRef<HTMLDivElement>(null)
 
   // On mount: if no origin in URL, try to get GPS + reverse-geocode
   useEffect(() => {
@@ -101,16 +100,6 @@ function SearchContent() {
       }, 60)
     }
   }, [mode])
-
-  // Close "for me" popover on outside click
-  useEffect(() => {
-    if (!forMeOpen) return
-    function onDown(e: MouseEvent) {
-      if (forMeRef.current && !forMeRef.current.contains(e.target as Node)) setForMeOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [forMeOpen])
 
   // Auto-dismiss "add stops" toast
   useEffect(() => {
@@ -290,70 +279,31 @@ function SearchContent() {
           <span className="text-base font-bold text-text-primary">Plan your trip</span>
 
           {/* For me pill */}
-          <div className="ml-auto relative" ref={forMeRef}>
-            <motion.button
-              onClick={() => setForMeOpen(o => !o)}
-              className="flex items-center gap-1.5 h-9 pl-2.5 pr-2 rounded-full bg-surface-2 border border-border"
-              whileTap={{ scale: 0.94 }} transition={SPRING}
-            >
-              <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
-                <span className="text-[10px] font-bold leading-none" style={{ color: ICON_CLR }}>Me</span>
-              </span>
-              <span className="text-xs font-semibold text-text-primary">For me</span>
-              <ChevronDown size={13} className="text-text-muted" strokeWidth={2.2} />
-            </motion.button>
-
-            <AnimatePresence>
-              {forMeOpen && (
-                <motion.div
-                  key="forme-pop"
-                  initial={{ opacity: 0, y: -6, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                  transition={{ duration: 0.16, ease: EASE }}
-                  className="absolute right-0 top-11 z-30 w-52 rounded-2xl bg-surface border border-border overflow-hidden"
-                  style={{ boxShadow: '0 8px 28px rgba(15,15,35,0.14)', transformOrigin: 'top right' }}
-                >
-                  <button
-                    onClick={() => setForMeOpen(false)}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left border-b border-border"
-                  >
-                    <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
-                      <span className="text-[11px] font-bold" style={{ color: ICON_CLR }}>Me</span>
-                    </span>
-                    <span className="flex-1 text-sm font-semibold text-text-primary">For myself</span>
-                    <Check size={16} className="text-primary flex-shrink-0" strokeWidth={2.5} />
-                  </button>
-                  <button
-                    disabled
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left opacity-50 cursor-not-allowed"
-                  >
-                    <span className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-                      <UserPlus size={15} className="text-text-muted" strokeWidth={1.8} />
-                    </span>
-                    <span className="flex-1">
-                      <span className="block text-sm font-semibold text-text-primary">Add new rider</span>
-                      <span className="block text-[11px] text-text-muted">Coming soon</span>
-                    </span>
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+          <motion.button
+            onClick={() => setForMeOpen(true)}
+            className="ml-auto flex items-center gap-1.5 h-9 pl-2.5 pr-2 rounded-full bg-surface border border-border"
+            whileTap={{ scale: 0.94 }} transition={SPRING}
+          >
+            <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
+              <span className="text-[10px] font-bold leading-none" style={{ color: ICON_CLR }}>Me</span>
+            </span>
+            <span className="text-xs font-semibold text-text-primary">For me</span>
+            <ChevronDown size={13} className="text-text-muted" strokeWidth={2.2} />
+          </motion.button>
         </div>
 
         {/* Unified from → to card */}
         <div className="mx-4 mb-2 rounded-2xl overflow-hidden border border-border bg-surface shadow-card">
           <div className="flex items-stretch">
 
-            {/* Left icon column: green dot → dashed line → dark square */}
+            {/* Left icon column: green dot → dashed line → amber dot */}
             <div className="flex flex-col items-center px-4 pt-[22px] pb-[22px]">
               <div className="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 shadow-sm" />
               <div
                 className="w-px flex-1 my-2"
                 style={{ background: 'repeating-linear-gradient(to bottom, #CBD5E1 0px, #CBD5E1 4px, transparent 4px, transparent 8px)' }}
               />
-              <div className="w-3 h-3 rounded-sm bg-slate-800 flex-shrink-0 shadow-sm" />
+              <div className="w-3 h-3 rounded-full bg-amber-500 flex-shrink-0 shadow-sm" />
             </div>
 
             {/* Input column */}
@@ -442,31 +392,21 @@ function SearchContent() {
               </div>
             </div>
 
-            {/* Swap + add stops — stacked on the right */}
-            <div className="self-center flex flex-col items-center gap-1.5 mr-3 flex-shrink-0">
-              <motion.button
-                onClick={swapOriginDestination}
-                disabled={!bothConfirmed}
-                className="w-9 h-9 rounded-xl flex items-center justify-center border transition-colors"
-                style={{
-                  background: bothConfirmed ? 'var(--color-primary-subtle, #EEF2FF)' : 'var(--color-surface-2, #F8FAFF)',
-                  borderColor: bothConfirmed ? 'var(--color-primary, #4F46E5)' : 'var(--color-border, #E5E7EB)',
-                }}
-                whileTap={bothConfirmed ? { scale: 0.88, rotate: 180 } : {}}
-                transition={SPRING}
-                title="Swap pickup and destination"
-              >
-                <ArrowUpDown size={15} className={bothConfirmed ? 'text-primary' : 'text-text-muted'} strokeWidth={2} />
-              </motion.button>
-              <motion.button
-                onClick={() => setStopToast(true)}
-                className="w-9 h-9 rounded-xl flex items-center justify-center border border-dashed border-border bg-surface-2"
-                whileTap={{ scale: 0.88 }} transition={SPRING}
-                title="Add stops"
-              >
-                <Plus size={15} className="text-text-muted" strokeWidth={2.2} />
-              </motion.button>
-            </div>
+            {/* Swap button */}
+            <motion.button
+              onClick={swapOriginDestination}
+              disabled={!bothConfirmed}
+              className="self-center mr-3 flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center border transition-colors"
+              style={{
+                background: bothConfirmed ? 'var(--color-primary-subtle, #EEF2FF)' : 'var(--color-surface-2, #F8FAFF)',
+                borderColor: bothConfirmed ? 'var(--color-primary, #4F46E5)' : 'var(--color-border, #E5E7EB)',
+              }}
+              whileTap={bothConfirmed ? { scale: 0.88, rotate: 180 } : {}}
+              transition={SPRING}
+              title="Swap pickup and destination"
+            >
+              <ArrowUpDown size={15} className={bothConfirmed ? 'text-primary' : 'text-text-muted'} strokeWidth={2} />
+            </motion.button>
           </div>
         </div>
 
@@ -555,25 +495,30 @@ function SearchContent() {
                     Nothing found. Try a different search.
                   </motion.p>
                 ) : (
-                  <div className="bg-surface rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}>
+                  <div className="mt-1">
                     {suggestions.map((s, i) => (
-                      <motion.button
-                        key={s.placeId}
-                        onClick={() => selectOriginSuggestion(s)}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < suggestions.length - 1 ? ' border-b border-border' : ''}`}
-                        variants={rowVariant}
-                        whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-                      >
-                        <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#ECFDF5' }}>
-                          <Navigation2 size={14} strokeWidth={1.6} className="text-emerald-600" />
-                        </span>
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-sm font-semibold text-text-primary truncate">{s.mainText}</span>
-                          {s.secondaryText && (
-                            <span className="block text-xs text-text-muted truncate mt-0.5">{s.secondaryText}</span>
-                          )}
-                        </span>
-                      </motion.button>
+                      <div key={s.placeId}>
+                        <motion.button
+                          onClick={() => selectOriginSuggestion(s)}
+                          className="w-full flex items-center gap-3 px-1 py-3.5 text-left"
+                          variants={rowVariant}
+                          whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
+                        >
+                          <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+                            <Clock size={16} className="text-text-muted" strokeWidth={1.6} />
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-semibold text-text-primary truncate">{s.mainText}</span>
+                            {s.secondaryText && (
+                              <span className="block text-xs text-text-muted truncate mt-0.5">{s.secondaryText}</span>
+                            )}
+                          </span>
+                          <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
+                        </motion.button>
+                        {i < suggestions.length - 1 && (
+                          <div className="ml-12 border-t border-dashed border-border" />
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -592,56 +537,54 @@ function SearchContent() {
                     Nothing found. Try a different search.
                   </motion.p>
                 ) : (
-                  <div className="bg-surface rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}>
+                  <div className="mt-1">
                     {suggestions.map((s, i) => (
-                      <motion.button
-                        key={s.placeId}
-                        onClick={() => selectDestinationSuggestion(s)}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < suggestions.length - 1 ? ' border-b border-border' : ''}`}
-                        variants={rowVariant}
-                        whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-                      >
-                        <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
-                          <MapPin size={14} strokeWidth={1.6} style={{ color: ICON_CLR }} />
-                        </span>
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-sm font-semibold text-text-primary truncate">{s.mainText}</span>
-                          {s.secondaryText && (
-                            <span className="block text-xs text-text-muted truncate mt-0.5">{s.secondaryText}</span>
-                          )}
-                        </span>
-                      </motion.button>
+                      <div key={s.placeId}>
+                        <motion.button
+                          onClick={() => selectDestinationSuggestion(s)}
+                          className="w-full flex items-center gap-3 px-1 py-3.5 text-left"
+                          variants={rowVariant}
+                          whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
+                        >
+                          <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+                            <Clock size={16} className="text-text-muted" strokeWidth={1.6} />
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-semibold text-text-primary truncate">{s.mainText}</span>
+                            {s.secondaryText && (
+                              <span className="block text-xs text-text-muted truncate mt-0.5">{s.secondaryText}</span>
+                            )}
+                          </span>
+                          <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
+                        </motion.button>
+                        {i < suggestions.length - 1 && (
+                          <div className="ml-12 border-t border-dashed border-border" />
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
               </motion.div>
             ) : (
               <>
-                {/* Quick action pills — GPS + map */}
+                {/* Quick action pills — map + add stops */}
                 <div className="flex gap-2 mb-3">
                   <motion.button
-                    onClick={useCurrentLocation}
-                    disabled={locating}
-                    className="flex-1 flex items-center justify-center gap-2 h-11 rounded-xl bg-surface border border-border"
-                    whileTap={{ scale: 0.97 }} transition={SPRING}
-                    style={{ boxShadow: '0 2px 8px rgba(15,15,35,0.05)' }}
-                  >
-                    {locating
-                      ? <Loader2 size={15} className="text-emerald-600 animate-spin" />
-                      : <LocateFixed size={15} strokeWidth={1.8} className="text-emerald-600" />
-                    }
-                    <span className="text-[13px] font-semibold text-text-primary">
-                      {locating ? 'Locating...' : 'Use my location'}
-                    </span>
-                  </motion.button>
-                  <motion.button
                     onClick={goToMapPicker}
-                    className="flex-1 flex items-center justify-center gap-2 h-11 rounded-xl bg-surface border border-border"
+                    className="flex-1 flex items-center justify-center gap-2 h-11 rounded-full bg-surface border border-border"
                     whileTap={{ scale: 0.97 }} transition={SPRING}
                     style={{ boxShadow: '0 2px 8px rgba(15,15,35,0.05)' }}
                   >
                     <Map size={15} strokeWidth={1.8} style={{ color: ICON_CLR }} />
                     <span className="text-[13px] font-semibold text-text-primary">Select on map</span>
+                  </motion.button>
+                  <motion.button
+                    onClick={() => setStopToast(true)}
+                    className="flex-1 flex items-center justify-center gap-2 h-11 rounded-full bg-slate-900"
+                    whileTap={{ scale: 0.97 }} transition={SPRING}
+                  >
+                    <Plus size={15} strokeWidth={2.2} className="text-white" />
+                    <span className="text-[13px] font-semibold text-white">Add stops</span>
                   </motion.button>
                 </div>
 
@@ -649,24 +592,28 @@ function SearchContent() {
 
                 {/* Popular destinations */}
                 <motion.div variants={listStagger} initial="hidden" animate="show">
-                  <div className="bg-surface rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}>
+                  <div className="mt-1">
                     {POPULAR.map((d, i) => (
-                      <motion.button
-                        key={d.label}
-                        onClick={() => confirmDest(d.lat, d.lng, d.address)}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < POPULAR.length - 1 ? ' border-b border-border' : ''}`}
-                        variants={rowVariant}
-                        whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-                      >
-                        <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
-                          <d.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
-                        </span>
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-sm font-semibold text-text-primary">{d.label}</span>
-                          <span className="block text-xs text-text-muted truncate mt-0.5">{d.address}</span>
-                        </span>
-                        <MapPin size={13} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
-                      </motion.button>
+                      <div key={d.label}>
+                        <motion.button
+                          onClick={() => confirmDest(d.lat, d.lng, d.address)}
+                          className="w-full flex items-center gap-3 px-1 py-3.5 text-left"
+                          variants={rowVariant}
+                          whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
+                        >
+                          <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+                            <d.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-semibold text-text-primary">{d.label}</span>
+                            <span className="block text-xs text-text-muted truncate mt-0.5">{d.address}</span>
+                          </span>
+                          <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
+                        </motion.button>
+                        {i < POPULAR.length - 1 && (
+                          <div className="ml-12 border-t border-dashed border-border" />
+                        )}
+                      </div>
                     ))}
                   </div>
                 </motion.div>
@@ -676,6 +623,69 @@ function SearchContent() {
         )}
       </div>
 
+      {/* Booking-for bottom sheet */}
+      <AnimatePresence>
+        {forMeOpen && (
+          <>
+            <motion.div
+              key="forme-backdrop"
+              className="absolute inset-0 z-40 bg-black/40"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setForMeOpen(false)}
+            />
+            <motion.div
+              key="forme-sheet"
+              className="absolute bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl px-6 pt-3"
+              style={{ paddingBottom: 'max(32px, env(safe-area-inset-bottom, 0px))' }}
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 380, damping: 40 }}
+            >
+              <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mb-5" />
+              <p className="text-xl font-bold text-text-primary mb-5">Booking ride for</p>
+
+              <button
+                onClick={() => setForMeOpen(false)}
+                className="w-full flex items-center gap-4 py-4 border-b border-border"
+              >
+                <span className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+                  <User size={18} className="text-text-secondary" strokeWidth={1.8} />
+                </span>
+                <span className="flex-1 text-[15px] font-semibold text-text-primary text-left">Myself</span>
+                <span className="w-5 h-5 rounded-full border-2 border-primary flex items-center justify-center flex-shrink-0">
+                  <span className="w-2.5 h-2.5 rounded-full bg-primary" />
+                </span>
+              </button>
+
+              <button
+                disabled
+                className="w-full flex items-center gap-4 py-4 border-b border-border opacity-50"
+              >
+                <span className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+                  <UserPlus size={18} className="text-primary" strokeWidth={1.8} />
+                </span>
+                <span className="flex-1 text-left">
+                  <span className="block text-[15px] font-semibold text-primary">Add new rider</span>
+                </span>
+              </button>
+
+              <div className="mt-4 mb-6 flex items-start gap-3 bg-surface-2 rounded-2xl px-4 py-3">
+                <Info size={15} className="text-text-muted flex-shrink-0 mt-0.5" strokeWidth={1.8} />
+                <p className="text-xs text-text-muted leading-relaxed">Contact name won&apos;t be shared with your driver</p>
+              </div>
+
+              <button
+                onClick={() => setForMeOpen(false)}
+                className="w-full py-4 rounded-full text-[15px] font-bold text-white"
+                style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)' }}
+              >
+                Done
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Add stops coming-soon toast */}
       <AnimatePresence>
         {stopToast && (
@@ -683,7 +693,8 @@ function SearchContent() {
             key="stop-toast"
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: EASE }}
-            className="absolute left-1/2 -translate-x-1/2 bottom-6 z-40 px-4 py-2.5 rounded-full bg-slate-900 text-white text-xs font-semibold shadow-lg whitespace-nowrap"
+            className="absolute left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-full bg-slate-900 text-white text-xs font-semibold shadow-lg whitespace-nowrap"
+            style={{ bottom: 'max(24px, env(safe-area-inset-bottom, 0px))' }}
           >
             Multi-stop trips are coming soon
           </motion.div>
