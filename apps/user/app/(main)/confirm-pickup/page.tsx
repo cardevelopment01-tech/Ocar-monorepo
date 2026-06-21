@@ -180,7 +180,14 @@ function ConfirmPickupContent() {
       <div className="absolute top-0 left-0 right-0 px-4 pt-safe-top" style={{ zIndex: 20 }}>
         <div className="flex items-center pt-3">
           <motion.button
-            onClick={() => router.back()}
+            onClick={() => {
+              const p = new URLSearchParams()
+              if (ptOriginLat)  p.set('originLat',     ptOriginLat)
+              if (ptOriginLng)  p.set('originLng',     ptOriginLng)
+              if (ptOriginAddr) p.set('originAddress', ptOriginAddr)
+              const qs = p.toString()
+              router.replace(qs ? `/search?${qs}` : '/search')
+            }}
             className="w-11 h-11 rounded-full bg-surface shadow-card flex items-center justify-center"
             whileTap={{ scale: 0.88 }} transition={SPRING}
           >
