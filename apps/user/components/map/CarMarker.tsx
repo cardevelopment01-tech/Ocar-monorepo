@@ -8,64 +8,56 @@ interface CarMarkerProps {
   heading?: number
 }
 
-/**
- * CarMarker — premium top-down car marker for the live map.
- *
- * The SVG points UP at heading=0; CSS `rotate` applies the live heading so the
- * car aligns with travel direction. Heading is bucketed to 5° to limit
- * re-renders and the transform is animated for a smooth, Uber/Rapido-style glide.
- */
 function CarMarker({ position, heading = 0 }: CarMarkerProps) {
   const rotation = (Math.round(heading / 5) * 5) % 360
   return (
     <Marker latitude={position[0]} longitude={position[1]} anchor="center">
       <div
         style={{
-          width: 40,
-          height: 56,
+          width: 32,
+          height: 52,
           transform: `rotate(${rotation}deg)`,
           transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1)',
-          filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.22))',
+          filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.35))',
         }}
       >
-        <svg
-          viewBox="0 0 40 56"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          style={{ width: '100%', height: '100%' }}
-        >
-          {/* Direction indicator — points UP, removes any heading ambiguity */}
-          <path d="M20 1 L24 8 L16 8 Z" fill="#4F46E5" />
-
-          {/* Car body — rounded capsule, slightly tapered at front/rear */}
+        <svg viewBox="0 0 32 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+          {/* Car body — dark slate, tapered at front, squared at rear */}
           <path
-            d="M20 5 C28 5 34 12 34 24 C34 36 28 51 20 51 C12 51 6 36 6 24 C6 12 12 5 20 5 Z"
-            fill="#FFFFFF"
-            stroke="rgba(0,0,0,0.12)"
-            strokeWidth="1"
+            d="M4,20 C4,11 8,4 16,4 C24,4 28,11 28,20 L28,42 C28,48 23,51 16,51 C9,51 4,48 4,42 Z"
+            fill="#1E293B"
           />
 
-          {/* Windshield (front) */}
-          <rect x="11" y="9" width="18" height="9" rx="4" fill="rgba(79,70,229,0.18)" />
+          {/* Windshield — large bright window at front; primary direction cue */}
+          <path d="M8,8 L24,8 L25,18 L7,18 Z" fill="rgba(255,255,255,0.82)" />
 
-          {/* Roof / cabin highlight */}
-          <rect x="12" y="20" width="16" height="9" rx="3" fill="rgba(0,0,0,0.04)" />
+          {/* Hood highlight line between windshield and bumper */}
+          <line x1="8" y1="8" x2="24" y2="8" stroke="rgba(255,255,255,0.20)" strokeWidth="1" />
 
-          {/* Door division line */}
-          <line x1="7" y1="28" x2="33" y2="28" stroke="rgba(0,0,0,0.06)" strokeWidth="1" />
+          {/* Cabin / roof centre — subtle lighter area */}
+          <rect x="7" y="20" width="18" height="12" rx="2" fill="rgba(255,255,255,0.07)" />
 
-          {/* Rear window */}
-          <rect x="13" y="38" width="14" height="7" rx="3" fill="rgba(79,70,229,0.10)" />
+          {/* Door divider */}
+          <line x1="5" y1="29" x2="27" y2="29" stroke="rgba(255,255,255,0.12)" strokeWidth="0.8" />
+
+          {/* Rear window — smaller, clearly rear */}
+          <rect x="9" y="36" width="14" height="8" rx="2" fill="rgba(255,255,255,0.30)" />
+
+          {/* Headlights — amber, front corners */}
+          <circle cx="9"  cy="7" r="2"   fill="#FCD34D" />
+          <circle cx="23" cy="7" r="2"   fill="#FCD34D" />
+
+          {/* Tail lights — red, rear corners */}
+          <circle cx="9"  cy="47" r="1.5" fill="#F87171" opacity="0.80" />
+          <circle cx="23" cy="47" r="1.5" fill="#F87171" opacity="0.80" />
         </svg>
       </div>
     </Marker>
   )
 }
 
-export default memo(
-  CarMarker,
-  (a, b) =>
-    a.position[0] === b.position[0] &&
-    a.position[1] === b.position[1] &&
-    Math.round((a.heading ?? 0) / 5) === Math.round((b.heading ?? 0) / 5)
+export default memo(CarMarker, (a, b) =>
+  a.position[0] === b.position[0] &&
+  a.position[1] === b.position[1] &&
+  Math.round((a.heading ?? 0) / 5) === Math.round((b.heading ?? 0) / 5)
 )

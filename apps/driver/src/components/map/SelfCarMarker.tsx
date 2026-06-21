@@ -22,13 +22,9 @@ function SelfCarMarker({ position, areaName = null, loading = false, heading = 0
 
   return (
     <Marker latitude={position[0]} longitude={position[1]} anchor="center">
-      {/*
-        Label pill is positioned above the car via absolute so only the car
-        body rotates — text always stays upright regardless of heading.
-      */}
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
 
-        {/* ── Label pill + caret — floats above, never rotates ── */}
+        {/* ── Label pill — floats above, never rotates ── */}
         {showLabel && (
           <div style={{
             position: 'absolute',
@@ -51,7 +47,6 @@ function SelfCarMarker({ position, areaName = null, loading = false, heading = 0
               paddingBottom: 4,
               maxWidth: 180,
             }}>
-              {/* Dark mini-pin badge */}
               <span style={{
                 width: 16, height: 16, borderRadius: '50%',
                 background: '#0F172A',
@@ -80,7 +75,7 @@ function SelfCarMarker({ position, areaName = null, loading = false, heading = 0
               )}
             </div>
 
-            {/* Caret connecting pill to car */}
+            {/* Caret */}
             <div style={{
               width: 0, height: 0,
               borderLeft: '5px solid transparent',
@@ -92,37 +87,43 @@ function SelfCarMarker({ position, areaName = null, loading = false, heading = 0
           </div>
         )}
 
-        {/* ── Premium top-down car — rotates with heading ── */}
+        {/* ── Dark car body — rotates with heading ── */}
         <div style={{
-          width: 40,
-          height: 56,
+          width: 32,
+          height: 52,
           transform: `rotate(${rotation}deg)`,
           transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1)',
-          filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.22))',
+          filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.35))',
         }}>
-          <svg viewBox="0 0 40 56" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-            {/* Direction indicator — slate-900 triangle, points UP at heading=0 */}
-            <path d="M20 1 L24 8 L16 8 Z" fill="#0F172A" />
-
-            {/* Car body — white rounded capsule */}
+          <svg viewBox="0 0 32 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+            {/* Car body — dark slate */}
             <path
-              d="M20 5 C28 5 34 12 34 24 C34 36 28 51 20 51 C12 51 6 36 6 24 C6 12 12 5 20 5 Z"
-              fill="#FFFFFF"
-              stroke="rgba(0,0,0,0.12)"
-              strokeWidth="1"
+              d="M4,20 C4,11 8,4 16,4 C24,4 28,11 28,20 L28,42 C28,48 23,51 16,51 C9,51 4,48 4,42 Z"
+              fill="#1E293B"
             />
 
-            {/* Windshield (front) — slate tint */}
-            <rect x="11" y="9" width="18" height="9" rx="4" fill="rgba(15,23,42,0.14)" />
+            {/* Windshield — large, bright, front direction cue */}
+            <path d="M8,8 L24,8 L25,18 L7,18 Z" fill="rgba(255,255,255,0.82)" />
 
-            {/* Roof / cabin highlight */}
-            <rect x="12" y="20" width="16" height="9" rx="3" fill="rgba(0,0,0,0.04)" />
+            {/* Hood line */}
+            <line x1="8" y1="8" x2="24" y2="8" stroke="rgba(255,255,255,0.20)" strokeWidth="1" />
 
-            {/* Door division line */}
-            <line x1="7" y1="28" x2="33" y2="28" stroke="rgba(0,0,0,0.06)" strokeWidth="1" />
+            {/* Cabin area */}
+            <rect x="7" y="20" width="18" height="12" rx="2" fill="rgba(255,255,255,0.07)" />
 
-            {/* Rear window — slate tint */}
-            <rect x="13" y="38" width="14" height="7" rx="3" fill="rgba(15,23,42,0.08)" />
+            {/* Door divider */}
+            <line x1="5" y1="29" x2="27" y2="29" stroke="rgba(255,255,255,0.12)" strokeWidth="0.8" />
+
+            {/* Rear window */}
+            <rect x="9" y="36" width="14" height="8" rx="2" fill="rgba(255,255,255,0.30)" />
+
+            {/* Headlights — amber */}
+            <circle cx="9"  cy="7" r="2"   fill="#FCD34D" />
+            <circle cx="23" cy="7" r="2"   fill="#FCD34D" />
+
+            {/* Tail lights — red */}
+            <circle cx="9"  cy="47" r="1.5" fill="#F87171" opacity="0.80" />
+            <circle cx="23" cy="47" r="1.5" fill="#F87171" opacity="0.80" />
           </svg>
         </div>
 
