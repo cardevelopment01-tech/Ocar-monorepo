@@ -8,29 +8,64 @@ interface CarMarkerProps {
   heading?: number
 }
 
-const CAR_SVG = `<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="14" cy="14" r="14" fill="white" fill-opacity="0.9"/>
-  <path d="M9 17H19M10 17V19M18 17V19" stroke="#1E293B" stroke-width="1.5" stroke-linecap="round"/>
-  <path d="M8.5 14L10 10.5C10.4 9.6 11.2 9 12.2 9H15.8C16.8 9 17.6 9.6 18 10.5L19.5 14H8.5Z" fill="#1E293B"/>
-  <rect x="8" y="14" width="12" height="4" rx="1.5" fill="#1E293B"/>
-  <rect x="9" y="11" width="3" height="1.5" rx="0.5" fill="#7DD3FC"/>
-  <rect x="16" y="11" width="3" height="1.5" rx="0.5" fill="#7DD3FC"/>
-</svg>`
-
+/**
+ * CarMarker — premium top-down car marker for the live map.
+ *
+ * The SVG points UP at heading=0; CSS `rotate` applies the live heading so the
+ * car aligns with travel direction. Heading is bucketed to 5° to limit
+ * re-renders and the transform is animated for a smooth, Uber/Rapido-style glide.
+ */
 function CarMarker({ position, heading = 0 }: CarMarkerProps) {
-  const bucket = (Math.round(heading / 5) * 5) % 360
+  const rotation = (Math.round(heading / 5) * 5) % 360
   return (
     <Marker latitude={position[0]} longitude={position[1]} anchor="center">
       <div
-        style={{ width: 28, height: 28, transform: `rotate(${bucket}deg)`, transition: 'transform 0.5s ease-out' }}
-        dangerouslySetInnerHTML={{ __html: CAR_SVG }}
-      />
+        style={{
+          width: 40,
+          height: 56,
+          transform: `rotate(${rotation}deg)`,
+          transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1)',
+          filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.22))',
+        }}
+      >
+        <svg
+          viewBox="0 0 40 56"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          style={{ width: '100%', height: '100%' }}
+        >
+          {/* Direction indicator — points UP, removes any heading ambiguity */}
+          <path d="M20 1 L24 8 L16 8 Z" fill="#4F46E5" />
+
+          {/* Car body — rounded capsule, slightly tapered at front/rear */}
+          <path
+            d="M20 5 C28 5 34 12 34 24 C34 36 28 51 20 51 C12 51 6 36 6 24 C6 12 12 5 20 5 Z"
+            fill="#FFFFFF"
+            stroke="rgba(0,0,0,0.12)"
+            strokeWidth="1"
+          />
+
+          {/* Windshield (front) */}
+          <rect x="11" y="9" width="18" height="9" rx="4" fill="rgba(79,70,229,0.18)" />
+
+          {/* Roof / cabin highlight */}
+          <rect x="12" y="20" width="16" height="9" rx="3" fill="rgba(0,0,0,0.04)" />
+
+          {/* Door division line */}
+          <line x1="7" y1="28" x2="33" y2="28" stroke="rgba(0,0,0,0.06)" strokeWidth="1" />
+
+          {/* Rear window */}
+          <rect x="13" y="38" width="14" height="7" rx="3" fill="rgba(79,70,229,0.10)" />
+        </svg>
+      </div>
     </Marker>
   )
 }
 
-export default memo(CarMarker, (a, b) =>
-  a.position[0] === b.position[0] &&
-  a.position[1] === b.position[1] &&
-  a.heading === b.heading
+export default memo(
+  CarMarker,
+  (a, b) =>
+    a.position[0] === b.position[0] &&
+    a.position[1] === b.position[1] &&
+    Math.round((a.heading ?? 0) / 5) === Math.round((b.heading ?? 0) / 5)
 )

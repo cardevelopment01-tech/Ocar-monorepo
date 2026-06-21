@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { rideApi, type FareEstimate } from '@/lib/ride-api'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
+import { VehicleIcon } from '@/components/ui/VehicleIcon'
 
 const SelectRideMapScene = dynamic(() => import('@/components/map/SelectRideMapScene'), { ssr: false })
 
@@ -18,15 +19,6 @@ const FALLBACK_CATEGORIES: Category[] = [
   { id: 3, slug: 'suv',       display_name: 'SUV',       max_passengers: 6 },
   { id: 4, slug: 'luxury',    display_name: 'Luxury',    max_passengers: 4 },
 ]
-
-// Car emoji per category — more evocative than a generic lucide icon
-const CAT_EMOJI: Record<string, string> = {
-  hatchback: '🚗',
-  sedan:     '🚖',
-  suv:       '🚙',
-  luxury:    '🏎️',
-  van:       '🚐',
-}
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   const R = 6371
@@ -201,7 +193,7 @@ function SelectRideContent() {
         {/* No drivers banner */}
         {allUnavailable && (
           <div className="mx-4 mb-1 flex items-center gap-2 rounded-2xl px-4 py-2.5 bg-amber-50 border border-amber-200">
-            <span className="text-base flex-shrink-0">😴</span>
+            <Clock size={14} className="text-amber-600 flex-shrink-0" />
             <p className="text-[12px] font-semibold text-amber-800">No drivers nearby. Try again in a few minutes.</p>
           </div>
         )}
@@ -214,7 +206,6 @@ function SelectRideContent() {
             const isSel  = selected === cat.id
             const eta    = driverEta[cat.id]
             const noCars = etaReady && eta != null && eta.count === 0
-            const emoji  = CAT_EMOJI[cat.slug] ?? '🚗'
             const active = isSel && !noCars
 
             return (
@@ -229,12 +220,16 @@ function SelectRideContent() {
                               'active:bg-slate-50 cursor-pointer'
                   )}
                 >
-                  {/* Emoji icon */}
+                  {/* Vehicle icon */}
                   <div className={cn(
-                    'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 text-[26px] select-none',
+                    'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0',
                     active ? 'bg-violet-100' : 'bg-slate-100'
                   )}>
-                    {emoji}
+                    <VehicleIcon
+                      slug={cat.slug}
+                      size={32}
+                      color={active ? '#4F46E5' : '#475569'}
+                    />
                   </div>
 
                   {/* Name + meta */}
