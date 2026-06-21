@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowLeft, Users, Zap, Clock, CreditCard } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -135,6 +135,15 @@ function SelectRideContent() {
   const selectedFare   = estimates[selected]?.breakdown.total
   const allUnavailable = etaReady && categories.every(c => (driverEta[c.id]?.count ?? 0) === 0)
 
+  function goBackToSearch(focus: 'origin' | 'destination') {
+    const params = new URLSearchParams({
+      originLat: String(originLat), originLng: String(originLng), originAddress,
+      destinationLat: String(destinationLat), destinationLng: String(destinationLng), destinationAddress,
+      focus,
+    })
+    router.push(`/search?${params.toString()}`)
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-white">
 
@@ -147,13 +156,30 @@ function SelectRideContent() {
           encodedPolyline={encodedPolyline}
           nearbyDrivers={nearbyDrivers}
         />
-        {/* Back button */}
-        <button
-          onClick={() => router.back()}
-          className="absolute top-4 left-4 z-10 w-9 h-9 bg-white rounded-full shadow-md flex items-center justify-center"
-        >
-          <ArrowLeft size={18} className="text-slate-800" />
-        </button>
+        {/* Header bar — back + source › destination */}
+        <div className="absolute top-4 left-4 right-4 z-10 flex items-center gap-2">
+          <button
+            onClick={() => router.back()}
+            className="w-10 h-10 bg-white rounded-2xl shadow-md flex items-center justify-center flex-shrink-0"
+          >
+            <ArrowLeft size={17} strokeWidth={2} className="text-slate-800" />
+          </button>
+          <div className="flex-1 h-10 bg-white rounded-2xl shadow-md flex items-center overflow-hidden">
+            <button
+              onClick={() => goBackToSearch('origin')}
+              className="flex-1 min-w-0 h-full flex items-center pl-3 pr-1"
+            >
+              <span className="text-[12px] font-medium text-slate-500 truncate">{originAddress}</span>
+            </button>
+            <ChevronRight size={13} strokeWidth={2.5} className="text-slate-300 flex-shrink-0" />
+            <button
+              onClick={() => goBackToSearch('destination')}
+              className="flex-1 min-w-0 h-full flex items-center pl-1 pr-3"
+            >
+              <span className="text-[12px] font-semibold text-slate-900 truncate">{destinationAddress}</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* ── Sheet ── */}
@@ -161,38 +187,16 @@ function SelectRideContent() {
         className="flex-1 flex flex-col bg-white min-h-0"
         style={{ boxShadow: '0 -8px 32px rgba(0,0,0,0.10)', borderRadius: '20px 20px 0 0', marginTop: -8, position: 'relative', zIndex: 2 }}
       >
-        {/* Route summary */}
-        <div className="flex-shrink-0 px-4 pt-4 pb-3">
-          <div className="flex items-stretch gap-3 bg-slate-50 rounded-2xl px-4 py-3 border border-slate-100">
-            {/* Visual connector */}
-            <div className="flex flex-col items-center gap-0 pt-[3px] pb-[3px]">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0" style={{ boxShadow: '0 0 0 3px rgba(16,185,129,0.15)' }} />
-              <div className="w-px flex-1 my-1.5 bg-slate-200" />
-              <div className="w-2.5 h-2.5 rounded-[3px] bg-slate-800 flex-shrink-0" />
-            </div>
-            {/* Addresses */}
-            <div className="flex-1 min-w-0 flex flex-col gap-2.5">
-              <p className="text-xs font-semibold text-slate-500 truncate leading-none">{originAddress}</p>
-              <p className="text-xs font-bold text-slate-800 truncate leading-none">{destinationAddress}</p>
-            </div>
-            {/* Distance + time */}
-            <div className="flex flex-col items-end justify-center gap-0.5 flex-shrink-0 pl-2 border-l border-slate-200">
-              <span className="text-sm font-black text-slate-800 tabular-nums">{distanceKm} km</span>
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">{Math.round(durationMin)} min</span>
-            </div>
-          </div>
-        </div>
-
         {/* No drivers banner */}
         {allUnavailable && (
-          <div className="mx-4 mb-2 flex items-center gap-2 rounded-2xl px-4 py-2.5 bg-amber-50 border border-amber-200">
+          <div className="mx-4 mt-3 mb-2 flex items-center gap-2 rounded-2xl px-4 py-2.5 bg-amber-50 border border-amber-200">
             <span className="text-base flex-shrink-0">😴</span>
             <p className="text-[12px] font-semibold text-amber-800">No drivers nearby. Try again in a few minutes.</p>
           </div>
         )}
 
         {/* Ride cards */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-3 space-y-2 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 pt-3 pb-3 space-y-2 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
           {categories.map(cat => {
             const est    = estimates[cat.id]
             const fare   = est?.breakdown.total

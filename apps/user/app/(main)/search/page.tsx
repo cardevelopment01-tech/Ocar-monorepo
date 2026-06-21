@@ -60,8 +60,10 @@ function SearchContent() {
     return null
   })
 
-  // If coming back from map picker with dest-only, prompt for origin
   const [mode, setMode] = useState<EditMode>(() => {
+    const focus = sp.get('focus')
+    if (focus === 'origin' || focus === 'destination') return focus as EditMode
+    // map picker returned dest-only → prompt for origin
     const hasDest   = !!sp.get('destinationAddress')
     const hasOrigin = !!sp.get('originAddress')
     return (hasDest && !hasOrigin) ? 'origin' : 'destination'
@@ -113,6 +115,7 @@ function SearchContent() {
   // Auto-navigate when map picker returns with both origin + destination in URL
   useEffect(() => {
     if (autoNavRef.current) return
+    if (sp.get('focus')) return  // came back from select-ride — don't auto-navigate forward
     const destLat  = parseFloat(sp.get('destinationLat') ?? '')
     const destLng  = parseFloat(sp.get('destinationLng') ?? '')
     const destAddr = sp.get('destinationAddress') ?? ''
