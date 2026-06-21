@@ -133,8 +133,7 @@ export default function RidePage() {
   const handleDemoForce = async (action: 'complete' | 'cancel') => {
     try {
       await rideApi.demoForce(rideId, action)
-      if (action === 'complete') router.push(`/ride/${rideId}/rate`)
-      else router.push('/home')
+      router.push('/home')
     } catch { /* ignore */ }
   }
 

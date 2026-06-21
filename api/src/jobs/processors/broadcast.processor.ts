@@ -1,7 +1,7 @@
 import { socketEvents } from '@/websocket/socket.server'
 import * as repo from '@/modules/rides/rides.repository'
 
-const BROADCAST_WINDOW_SECONDS = 30
+const BROADCAST_WINDOW_SECONDS = 120
 const MAX_DRIVERS = 5
 
 // Expanding search radius per round — generous for intercity context (Bhubaneswar city ~20km dia)
