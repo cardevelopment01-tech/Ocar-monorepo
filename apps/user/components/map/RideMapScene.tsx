@@ -11,8 +11,8 @@ interface RideMapSceneProps {
   center: [number, number]
   pickupPos: [number, number]
   dropPos: [number, number]
-  /** Straight-line route fallback (driver→pickup, driver→drop, etc.) */
-  route: [number, number][]
+  /** Encoded polyline from routing API (real roads). Falls back to straight line. */
+  encodedPolyline?: string
   driverPos?: [number, number]
   driverHeading?: number
 }
@@ -21,21 +21,19 @@ export default function RideMapScene({
   center,
   pickupPos,
   dropPos,
-  route,
+  encodedPolyline,
   driverPos,
   driverHeading = 0,
 }: RideMapSceneProps) {
   return (
     <MapViewInner center={center} zoom={13}>
       {driverPos
-        // Driver is live — follow the car
         ? <RecenterMap center={driverPos} />
-        // No driver yet — fit the whole pickup→drop route
-        : <FitBounds positions={[pickupPos, dropPos]} />
+        : <FitBounds positions={[pickupPos, dropPos]} paddingBottom={40} />
       }
       <LocationPin position={pickupPos} variant="pickup" />
       <LocationPin position={dropPos} variant="drop" />
-      <RoutePolyline positions={route} />
+      <RoutePolyline encoded={encodedPolyline} positions={[pickupPos, dropPos]} />
       {driverPos && <CarMarker position={driverPos} heading={driverHeading} />}
     </MapViewInner>
   )
