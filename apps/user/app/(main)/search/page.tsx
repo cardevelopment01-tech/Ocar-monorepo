@@ -298,7 +298,7 @@ function SearchContent() {
             whileTap={{ scale: 0.94 }} transition={SPRING}
           >
             <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
-              <span className="text-[10px] font-bold leading-none" style={{ color: ICON_CLR }}>Me</span>
+              <User size={11} strokeWidth={2} style={{ color: ICON_CLR }} />
             </span>
             <span className="text-xs font-semibold text-text-primary">For me</span>
             <ChevronDown size={13} className="text-text-muted" strokeWidth={2.2} />
