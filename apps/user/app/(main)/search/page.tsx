@@ -205,16 +205,17 @@ function SearchContent() {
     }
   }
 
-  // Confirm a destination: store it in state, collapse suggestions, switch focus to origin if unset
+  // Confirm a destination: fill TO field, stay on page so user can review/swap/edit
   function confirmDest(lat: number, lng: number, address: string) {
     setConfirmedDest({ lat, lng, address })
     setQuery('')
     setSuggestions([])
     setSearching(false)
-    if (originAddress.trim() !== '') {
-      void navigateToRide({ lat, lng, address })
-    } else {
+    // If origin not set yet, nudge user to fill it; otherwise stay in destination mode
+    if (originAddress.trim() === '') {
       switchMode('origin')
+    } else {
+      setMode('destination')
     }
   }
 
@@ -237,17 +238,14 @@ function SearchContent() {
       setOriginLng(detail.longitude)
       setOriginAddress(detail.address)
       setResolving(false)
-      // Always switch to destination mode so FROM shows the resolved address (not old query text)
+      // Stay on page — user taps the CTA to proceed
       switchMode('destination')
-      if (confirmedDest) {
-        void navigateToRide(confirmedDest, detail.latitude, detail.longitude, detail.address)
-      }
     } catch {
       setResolving(false)
     }
   }
 
-  // True bidirectional swap — exchanges origin ↔ confirmedDest then navigates
+  // Swap origin ↔ destination in place — user taps CTA to proceed when ready
   function swapOriginDestination() {
     if (!confirmedDest) return
     const prevOrigin: ConfirmedDest = { lat: originLat, lng: originLng, address: originAddress }
@@ -258,7 +256,6 @@ function SearchContent() {
     setQuery('')
     setSuggestions([])
     setMode('destination')
-    void navigateToRide(prevOrigin, confirmedDest.lat, confirmedDest.lng, confirmedDest.address)
   }
 
   function goToMapPicker() {
