@@ -421,11 +421,11 @@ function SearchContent() {
         <AnimatePresence>
           {resolving && (
             <motion.div
-              className="px-4 pb-2"
+              className="pb-2"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
             >
-              <div className="relative h-[2px] rounded-full overflow-hidden bg-slate-100">
+              <div className="relative h-[2px] overflow-hidden bg-slate-200">
                 <motion.div
                   className="absolute inset-y-0 rounded-full"
                   style={{
