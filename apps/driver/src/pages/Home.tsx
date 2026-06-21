@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { IndianRupee, Clock, Star, TrendingUp, Bell } from 'lucide-react'
+import { IndianRupee, Clock, Star, TrendingUp, Bell, Wallet, ChevronRight } from 'lucide-react'
 import { AnimatePresence } from 'framer-motion'
 import OnlineToggle from '@/components/ui/OnlineToggle'
 import TripRequestCard from '@/components/ui/TripRequestCard'
@@ -145,11 +145,7 @@ export default function Home() {
     } catch { clearIncomingRequest() }
   }
 
-  const STATS = [
-    { icon: IndianRupee, value: `₹${e.total.toLocaleString('en-IN')}`, label: 'Earned',  color: '#16A34A', bg: 'rgba(22,163,74,0.08)',  border: 'rgba(22,163,74,0.15)'  },
-    { icon: Clock,       value: String(e.trips),                        label: 'Trips',   color: '#2563EB', bg: 'rgba(37,99,235,0.08)',  border: 'rgba(37,99,235,0.15)'  },
-    { icon: Star,        value: String(e.rating),                       label: 'Rating',  color: '#D97706', bg: 'rgba(217,119,6,0.08)',  border: 'rgba(217,119,6,0.15)'  },
-  ]
+  const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-surface-2">
@@ -164,12 +160,11 @@ export default function Home() {
         </Suspense>
       </div>
 
-      {/* Floating header — Ocar logo + status pill + bell */}
+      {/* Floating header */}
       <div
         className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-12 pb-2"
         style={{ zIndex: 10 }}
       >
-        {/* Logo pill */}
         <div className="px-3.5 py-2 rounded-2xl" style={GLASS}>
           <span className="font-display font-black text-[17px] tracking-tight leading-none select-none">
             <span className="text-primary">O</span>
@@ -177,123 +172,116 @@ export default function Home() {
           </span>
         </div>
 
-        {/* Status + bell */}
         <div className="flex items-center gap-2">
+          {/* Live status pill */}
           <div
             className="flex items-center gap-1.5 rounded-full px-3 py-1.5"
-            style={isOnline ? {
-              ...GLASS,
-              background: 'rgba(255,255,255,0.92)',
-              border:     '1px solid rgba(249,115,22,0.28)',
-            } : GLASS}
+            style={isOnline ? { ...GLASS, border: '1px solid rgba(249,115,22,0.28)' } : GLASS}
           >
-            <span
-              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                isOnline ? 'bg-accent-orange animate-pulse-soft' : 'bg-text-muted'
-              }`}
-            />
-            <span
-              className={`text-[11px] font-bold ${isOnline ? 'text-amber-700' : 'text-text-muted'}`}
-            >
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isOnline ? 'bg-accent-orange animate-pulse-soft' : 'bg-text-muted'}`} />
+            <span className={`text-[11px] font-bold ${isOnline ? 'text-amber-700' : 'text-text-muted'}`}>
               {isOnline ? 'Online' : 'Offline'}
             </span>
           </div>
-
-          <button
-            aria-label="Notifications"
-            className="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-transform active:scale-90"
-            style={GLASS}
-          >
+          <button aria-label="Notifications" className="w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform" style={GLASS}>
             <Bell size={17} className="text-text-secondary" strokeWidth={1.8} />
           </button>
         </div>
       </div>
 
-      {/* Offline badge — centered below the header */}
-      {!isOnline && (
-        <div
-          className="absolute top-28 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full animate-fade-in"
-          style={{
-            zIndex:             10,
-            background:         'rgba(255,255,255,0.94)',
-            backdropFilter:     'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            border:             '1px solid rgba(0,0,0,0.08)',
-            boxShadow:          '0 2px 16px rgba(0,0,0,0.12)',
-          }}
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-text-muted flex-shrink-0" />
-          <p className="text-text-secondary text-xs font-semibold whitespace-nowrap">
-            You're offline. Tap the toggle to start earning.
-          </p>
-        </div>
-      )}
-
       {/* Bottom sheet — sits above BottomNav */}
       <div
         className="absolute left-0 right-0 rounded-t-[28px]"
-        style={{
-          bottom:    NAV_HEIGHT,
-          zIndex:    10,
-          background:'#FFFFFF',
-          borderTop: '1px solid rgba(0,0,0,0.06)',
-          boxShadow: '0 -6px 40px rgba(0,0,0,0.10)',
-        }}
+        style={{ bottom: NAV_HEIGHT, zIndex: 10, background: '#FFFFFF', borderTop: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 -8px 40px rgba(0,0,0,0.12)' }}
       >
         {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="w-8 h-[3px] rounded-full bg-border" />
+        <div className="flex justify-center pt-3 pb-0">
+          <div className="w-9 h-[3px] rounded-full bg-border" />
         </div>
 
-        <div className="px-5 pt-3 pb-5">
-          {/* Greeting row + toggle */}
+        <div className="px-5 pt-4 pb-5">
+
+          {/* ── Row 1: Greeting + Toggle ── */}
           <div className="flex items-center justify-between mb-5">
             <div>
-              <p className="text-text-muted text-[10px] font-bold uppercase tracking-[0.12em] mb-0.5">
-                {isOnline ? 'Looking for rides' : 'Ready to drive?'}
+              <p className="text-text-muted text-[10px] font-bold uppercase tracking-[0.13em] mb-0.5">{todayLabel}</p>
+              <p className="text-text-primary font-display font-bold text-[22px] leading-tight">
+                Hi, {firstName} 👋
               </p>
-              <p className="text-text-primary font-display font-bold text-xl leading-tight">
-                Hi, {firstName}
+              <p className="text-text-muted text-xs mt-0.5">
+                {isOnline ? 'You\'re live — ride requests incoming' : 'Go online to start earning'}
               </p>
             </div>
             <OnlineToggle isOnline={isOnline} onToggle={handleToggle} />
           </div>
 
-          {/* Today's stats */}
-          <div className="grid grid-cols-3 gap-2.5 mb-4">
-            {STATS.map(stat => (
-              <div
-                key={stat.label}
-                className="rounded-2xl p-3 text-center"
-                style={{ background: stat.bg, border: `1px solid ${stat.border}` }}
-              >
-                <div className="flex items-center justify-center gap-1 mb-1">
-                  <stat.icon size={11} style={{ color: stat.color }} aria-hidden="true" />
-                  <span className="font-black text-sm tabular-nums" style={{ color: stat.color }}>
-                    {stat.value}
-                  </span>
-                </div>
-                <p className="text-text-muted text-[10px] font-semibold">{stat.label}</p>
+          {/* ── Row 2: Today's stats ── */}
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            {/* Earnings — most prominent */}
+            <div className="rounded-2xl px-3 py-3 text-center" style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(22,163,74,0.14)' }}>
+              <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                <IndianRupee size={12} style={{ color: '#16A34A' }} />
+                <span className="font-black text-[15px] tabular-nums" style={{ color: '#16A34A' }}>
+                  {e.total.toLocaleString('en-IN')}
+                </span>
               </div>
-            ))}
+              <p className="text-text-muted text-[10px] font-semibold">Earned</p>
+            </div>
+            <div className="rounded-2xl px-3 py-3 text-center" style={{ background: 'rgba(37,99,235,0.07)', border: '1px solid rgba(37,99,235,0.13)' }}>
+              <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                <Clock size={11} style={{ color: '#2563EB' }} />
+                <span className="font-black text-[15px] tabular-nums" style={{ color: '#2563EB' }}>{e.trips}</span>
+              </div>
+              <p className="text-text-muted text-[10px] font-semibold">Trips</p>
+            </div>
+            <div className="rounded-2xl px-3 py-3 text-center" style={{ background: 'rgba(217,119,6,0.07)', border: '1px solid rgba(217,119,6,0.13)' }}>
+              <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                <Star size={11} style={{ color: '#D97706' }} />
+                <span className="font-black text-[15px] tabular-nums" style={{ color: '#D97706' }}>{e.rating}</span>
+              </div>
+              <p className="text-text-muted text-[10px] font-semibold">Rating</p>
+            </div>
           </div>
 
-          {/* Status banner */}
-          {isOnline ? (
-            <div
-              className="flex items-center gap-2.5 rounded-2xl px-4 py-3"
-              style={{ background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.18)' }}
-            >
-              <span className="w-2 h-2 rounded-full bg-accent-orange animate-pulse-soft flex-shrink-0" aria-hidden="true" />
-              <p className="text-amber-700 text-sm font-semibold">Online, looking for rides...</p>
-            </div>
-          ) : (
-            <div
-              className="flex items-center gap-2.5 rounded-2xl px-4 py-3"
+          {/* ── Row 3: Quick actions ── */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <button
+              onClick={() => navigate('/earnings')}
+              className="flex items-center justify-between px-4 py-3 rounded-2xl active:opacity-70 transition-opacity"
               style={{ background: '#F8FAFF', border: '1px solid #E2E8F0' }}
             >
-              <TrendingUp size={14} className="text-text-muted flex-shrink-0" aria-hidden="true" />
-              <p className="text-text-muted text-sm">Tap the toggle above to start earning</p>
+              <div className="flex items-center gap-2">
+                <TrendingUp size={15} className="text-primary" />
+                <span className="text-text-primary text-[13px] font-semibold">Earnings</span>
+              </div>
+              <ChevronRight size={14} className="text-text-muted" />
+            </button>
+            <button
+              onClick={() => navigate('/wallet')}
+              className="flex items-center justify-between px-4 py-3 rounded-2xl active:opacity-70 transition-opacity"
+              style={{ background: '#F8FAFF', border: '1px solid #E2E8F0' }}
+            >
+              <div className="flex items-center gap-2">
+                <Wallet size={15} className="text-primary" />
+                <span className="text-text-primary text-[13px] font-semibold">Wallet</span>
+              </div>
+              <ChevronRight size={14} className="text-text-muted" />
+            </button>
+          </div>
+
+          {/* ── Row 4: Live status banner ── */}
+          {isOnline ? (
+            <div className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.16)' }}>
+              <span className="w-2 h-2 rounded-full bg-accent-orange animate-pulse-soft flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-amber-700 text-[13px] font-bold leading-tight">Searching for nearby rides…</p>
+                <p className="text-amber-600/70 text-[11px] mt-0.5">Stay in the area for faster matching</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: '#F8FAFF', border: '1px solid #E2E8F0' }}>
+              <span className="w-2 h-2 rounded-full bg-text-muted flex-shrink-0" />
+              <p className="text-text-muted text-[13px]">Tap the toggle above to go online</p>
             </div>
           )}
         </div>

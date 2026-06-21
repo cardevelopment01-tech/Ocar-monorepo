@@ -628,12 +628,12 @@ function SearchContent() {
         {stopToast && (
           <motion.div
             key="stop-toast"
-            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}
             transition={{ duration: 0.2, ease: EASE }}
-            className="absolute left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-full bg-slate-900 text-white text-xs font-semibold shadow-lg whitespace-nowrap"
-            style={{ bottom: 'max(24px, env(safe-area-inset-bottom, 0px))' }}
+            className="fixed left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-full bg-slate-900 text-white text-xs font-semibold shadow-xl whitespace-nowrap"
+            style={{ bottom: 'max(88px, calc(env(safe-area-inset-bottom, 0px) + 80px))' }}
           >
-            Multi-stop trips are coming soon
+            Multi-stop trips are coming soon 🛣️
           </motion.div>
         )}
       </AnimatePresence>
