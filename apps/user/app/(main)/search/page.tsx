@@ -476,8 +476,8 @@ function SearchContent() {
             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, ease: EASE }}
           >
-            {/* Origin autocomplete suggestions — body is empty until user types 2+ chars */}
-            {showSuggestions && (
+            {showSuggestions ? (
+              /* Origin autocomplete suggestions */
               <motion.div variants={listStagger} initial="hidden" animate="show">
                 {suggestions.length === 0 && !searching ? (
                   <motion.p variants={fadeUp} className="text-center text-sm text-text-muted py-10">
@@ -511,6 +511,39 @@ function SearchContent() {
                     ))}
                   </div>
                 )}
+              </motion.div>
+            ) : (
+              /* Popular locations as pickup suggestions — tapping sets FROM and moves to TO */
+              <motion.div variants={listStagger} initial="hidden" animate="show">
+                <div className="mt-0">
+                  {POPULAR.map((d, i) => (
+                    <div key={d.label}>
+                      <motion.button
+                        onClick={() => {
+                          setOriginLat(d.lat)
+                          setOriginLng(d.lng)
+                          setOriginAddress(d.address)
+                          switchMode('destination')
+                        }}
+                        className="w-full flex items-center gap-3 px-1 py-3 text-left"
+                        variants={rowVariant}
+                        whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
+                      >
+                        <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+                          <d.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[13px] font-medium text-text-primary">{d.label}</span>
+                          <span className="block text-[11px] text-text-muted truncate mt-0.5">{d.address}</span>
+                        </span>
+                        <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
+                      </motion.button>
+                      {i < POPULAR.length - 1 && (
+                        <div className="ml-12 border-t border-dashed border-border" />
+                      )}
+                    </div>
+                  ))}
+                </div>
               </motion.div>
             )}
           </motion.div>
