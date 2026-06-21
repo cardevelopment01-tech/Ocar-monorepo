@@ -5,9 +5,10 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plane, Train, Building2, ShoppingBag,
-  GraduationCap, X, Loader2, Map,
+  GraduationCap, X, Map,
   Plus, ChevronDown, UserPlus, User, Info, Clock, Heart,
 } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
 
@@ -373,7 +374,7 @@ function SearchContent() {
                       className="flex-1 bg-transparent text-[14px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
                       disabled={resolving}
                     />
-                    {searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
+                    {searching && <OcarSpinner size={13} variant="color" className="flex-shrink-0" />}
                     {query && !searching && (
                       <motion.button
                         onClick={(e: React.MouseEvent) => { e.stopPropagation(); setQuery(''); setSuggestions([]) }}
@@ -423,7 +424,7 @@ function SearchContent() {
                       className="flex-1 bg-transparent text-[14px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
                       disabled={resolving}
                     />
-                    {searching && <Loader2 size={13} className="text-primary animate-spin flex-shrink-0" />}
+                    {searching && <OcarSpinner size={13} variant="color" className="flex-shrink-0" />}
                     {query && !searching && (
                       <motion.button
                         onClick={() => { setQuery(''); setSuggestions([]) }}
@@ -661,7 +662,7 @@ export default function SearchPage() {
   return (
     <Suspense fallback={
       <div className="h-full flex items-center justify-center bg-background">
-        <div className="w-8 h-8 rounded-full border-[3px] border-primary border-t-transparent animate-spin" />
+        <OcarSpinner size={32} variant="color" />
       </div>
     }>
       <SearchContent />

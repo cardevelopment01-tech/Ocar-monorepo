@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Phone, ArrowLeft, ArrowRight } from 'lucide-react'
 import OtpInput from '@/components/ui/OtpInput'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { authApi, storeAuth, formatPhone, isValidIndianPhone } from '@/lib/auth'
@@ -252,7 +253,7 @@ export default function LoginPage() {
                   transition={SPRING}
                 >
                   {loading ? (
-                    <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    <OcarSpinner size={20} variant="white" />
                   ) : (
                     <>Send OTP <ArrowRight size={17} /></>
                   )}
@@ -328,7 +329,7 @@ export default function LoginPage() {
                 transition={SPRING}
               >
                 {loading ? (
-                  <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  <OcarSpinner size={20} variant="white" />
                 ) : (
                   <>Verify OTP <ArrowRight size={17} /></>
                 )}

@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
 import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -327,7 +328,7 @@ export default function SelectRidePage() {
   return (
     <Suspense fallback={
       <div className="h-full flex items-center justify-center bg-white">
-        <div className="w-8 h-8 rounded-full border-[3px] border-slate-800 border-t-transparent animate-spin" />
+        <OcarSpinner size={32} variant="mono" />
       </div>
     }>
       <SelectRideContent />

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Check, ChevronDown, Minus, Plus, User, MapPin, Car } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import { onboardingApi, type PersonalInfoPayload } from '@/lib/onboarding-api'
 import { STATE_CITY } from '@/lib/india-geo'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -167,7 +168,7 @@ export default function PersonalDetails() {
   if (isFetching) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        <OcarSpinner size={32} variant="color" />
       </div>
     )
   }
@@ -508,7 +509,7 @@ export default function PersonalDetails() {
         >
           {isLoading
             ? <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                <OcarSpinner size={16} variant="white" />
                 Saving…
               </span>
             : 'Continue'}

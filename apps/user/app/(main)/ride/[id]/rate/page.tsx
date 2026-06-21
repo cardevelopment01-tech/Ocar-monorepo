@@ -5,6 +5,7 @@ import DemoBlock from '@/components/ui/DemoBlock'
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Star } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import { useParams, useRouter } from 'next/navigation'
 import { rideApi } from '@/lib/ride-api'
 import { safetyApi, type RatingTag } from '@/lib/safety-api'
@@ -78,7 +79,7 @@ export default function RateRidePage() {
         </motion.div>
         <h2 className="text-xl font-bold text-text-primary mb-2">Thanks for rating!</h2>
         <p className="text-text-muted text-sm">Your feedback helps drivers improve</p>
-        <div className="mt-6 w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        <div className="mt-6"><OcarSpinner size={24} variant="color" /></div>
       </div>
     )
   }

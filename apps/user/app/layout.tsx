@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 
 import './globals.css'
 import { AuthProvider } from '@/lib/auth-context'
+import SplashWrapper from '@/components/ui/SplashWrapper'
 
 export const metadata: Metadata = {
   title: 'Ocar',
@@ -26,7 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <main className="min-h-[100dvh] bg-background">
           <div className="mx-auto max-w-[430px] min-h-[100dvh] bg-background relative">
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider>
+              <SplashWrapper>{children}</SplashWrapper>
+            </AuthProvider>
           </div>
         </main>
       </body>

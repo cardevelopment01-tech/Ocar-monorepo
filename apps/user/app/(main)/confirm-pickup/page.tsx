@@ -3,7 +3,8 @@
 import { Suspense, useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Navigation2, Loader2, MapPin, LocateFixed } from 'lucide-react'
+import { ArrowLeft, Navigation2, MapPin, LocateFixed } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import dynamic from 'next/dynamic'
 import { geoApi } from '@/lib/geo-api'
 
@@ -160,7 +161,7 @@ function ConfirmPickupContent() {
               style={{ background: '#4F46E5' }}
             >
               {geocoding
-                ? <Loader2 size={18} className="text-white animate-spin" />
+                ? <OcarSpinner size={18} variant="white" />
                 : <Navigation2 size={18} className="text-white" strokeWidth={2.5} />
               }
             </div>
@@ -215,7 +216,7 @@ function ConfirmPickupContent() {
           aria-label="Use current location"
         >
           {locating
-            ? <Loader2 size={18} className="text-primary animate-spin" />
+            ? <OcarSpinner size={18} variant="color" />
             : <LocateFixed size={18} className="text-primary" strokeWidth={1.8} />
           }
         </motion.button>
@@ -236,7 +237,7 @@ function ConfirmPickupContent() {
         <div className="flex items-start gap-3 mb-5">
           <div className="w-9 h-9 rounded-xl bg-primary-subtle flex items-center justify-center flex-shrink-0 mt-0.5">
             {geocoding
-              ? <Loader2 size={15} className="text-primary animate-spin" />
+              ? <OcarSpinner size={15} variant="color" />
               : <MapPin size={15} className="text-primary" strokeWidth={1.8} />
             }
           </div>
@@ -266,7 +267,7 @@ function ConfirmPickupContent() {
         >
           {confirming ? (
             <span className="flex items-center justify-center gap-2">
-              <Loader2 size={16} className="animate-spin" /> {isDest ? 'Setting destination…' : 'Setting pickup…'}
+              <OcarSpinner size={16} variant="white" /> {isDest ? 'Setting destination…' : 'Setting pickup…'}
             </span>
           ) : isDest ? 'Confirm destination' : 'Confirm pickup location'}
         </motion.button>
@@ -279,7 +280,7 @@ export default function ConfirmPickupPage() {
   return (
     <Suspense fallback={
       <div className="h-full flex items-center justify-center bg-background">
-        <div className="w-8 h-8 rounded-full border-[3px] border-primary border-t-transparent animate-spin" />
+        <OcarSpinner size={32} variant="color" />
       </div>
     }>
       <ConfirmPickupContent />

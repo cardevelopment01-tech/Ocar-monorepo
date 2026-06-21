@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Car, AlertCircle, Check, Zap } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import { motion, AnimatePresence } from 'framer-motion'
 import { driverRideApi } from '@/lib/ride-api'
 import { connectDriverSocket } from '@/lib/socket'
@@ -288,7 +289,7 @@ export default function StandardConfirm() {
         >
           {goingOnline ? (
             <>
-              <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              <OcarSpinner size={20} variant="white" />
               Going online…
             </>
           ) : (

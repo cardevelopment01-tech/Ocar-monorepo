@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { KeyRound, ArrowRight } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import OtpInput from '@/components/ui/OtpInput'
 import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi } from '@/lib/ride-api'
@@ -88,7 +89,7 @@ export default function OTPVerify() {
           >
             {loading ? (
               <>
-                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                <OcarSpinner size={16} variant="white" />
                 Verifying…
               </>
             ) : (

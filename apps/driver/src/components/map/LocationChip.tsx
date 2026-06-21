@@ -1,4 +1,5 @@
-import { MapPin, LoaderCircle } from 'lucide-react'
+import { MapPin } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 
 const GLASS = {
   background:           'rgba(255,255,255,0.94)',
@@ -31,7 +32,7 @@ export default function LocationChip({ text, loading }: LocationChipProps) {
 
       {loading && !text ? (
         <span className="flex items-center gap-1.5 text-text-muted text-[12px] font-medium">
-          <LoaderCircle size={12} className="animate-spin" />
+          <OcarSpinner size={12} variant="color" />
           Locating…
         </span>
       ) : (

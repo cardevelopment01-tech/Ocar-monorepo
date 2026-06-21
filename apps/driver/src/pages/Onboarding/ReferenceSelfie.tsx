@@ -4,6 +4,7 @@ import { ArrowLeft, RefreshCw, Camera } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { onboardingApi } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 
 type Stage = 'camera' | 'preview' | 'submitting'
 
@@ -276,7 +277,7 @@ export default function ReferenceSelfie() {
               >
                 {stage === 'submitting'
                   ? <span className="flex items-center justify-center gap-2">
-                      <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      <OcarSpinner size={16} variant="white" />
                       Submitting…
                     </span>
                   : 'Submit & Start Driving'}

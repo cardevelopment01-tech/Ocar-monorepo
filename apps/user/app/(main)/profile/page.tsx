@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { userApi } from '@/lib/auth'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -337,7 +338,7 @@ export default function ProfilePage() {
                 transition={SPRING}
               >
                 {saving
-                  ? <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  ? <OcarSpinner size={20} variant="white" />
                   : <><Check size={15} /> Save changes</>
                 }
               </motion.button>

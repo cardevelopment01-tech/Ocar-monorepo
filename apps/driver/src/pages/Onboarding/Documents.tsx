@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Upload, CheckCircle2, AlertCircle, Loader2,
+  ArrowLeft, Upload, CheckCircle2, AlertCircle,
   Eye, RefreshCw, Shield, FileText, Car, X,
 } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
 import DatePickerSheet from '@/components/ui/DatePickerSheet'
@@ -127,7 +128,7 @@ export default function Documents() {
   if (isFetching) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        <OcarSpinner size={32} variant="color" />
       </div>
     )
   }
@@ -288,7 +289,7 @@ export default function Documents() {
         >
           {isSaving
             ? <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                <OcarSpinner size={16} variant="white" />
                 Saving…
               </span>
             : 'Continue to Selfie'}
@@ -410,7 +411,7 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, i
             :             'bg-surface-3'
           }`}>
             {isUploading
-              ? <Loader2 size={18} className="text-primary animate-spin" />
+              ? <OcarSpinner size={18} variant="color" />
               : isError
                 ? <AlertCircle size={18} className="text-accent-red" />
                 : <Upload size={18} className="text-text-muted" />}

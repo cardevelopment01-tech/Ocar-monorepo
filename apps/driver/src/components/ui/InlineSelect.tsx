@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { ChevronDown, Check, Search, X } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 
 interface Option {
   value: string | number
@@ -105,7 +106,7 @@ export default function InlineSelect({
             : selectedLabel ?? placeholder}
         </span>
         {loading ? (
-          <span className="w-4 h-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin flex-shrink-0" />
+          <OcarSpinner size={16} variant="color" className="flex-shrink-0" />
         ) : (
           <ChevronDown
             size={17}

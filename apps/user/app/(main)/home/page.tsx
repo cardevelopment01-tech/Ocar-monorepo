@@ -7,8 +7,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Bell, User,
   Home, Briefcase, Car, RotateCcw, Clock,
-  ChevronRight, ArrowRight, MapPin, Loader2,
+  ChevronRight, ArrowRight, MapPin,
 } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import { geoApi } from '@/lib/geo-api'
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -152,7 +153,7 @@ export default function HomePage() {
             className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background/80 backdrop-blur-sm"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           >
-            <Loader2 size={28} className="text-primary animate-spin" />
+            <OcarSpinner size={28} variant="color" />
             <span className="text-sm text-text-secondary font-medium">Getting route…</span>
           </motion.div>
         )}

@@ -1,23 +1,13 @@
-import { cn } from '@/lib/utils'
+import OcarLogoMark, { type LogoMarkSize, type LogoVariant } from './OcarLogoMark'
 
-type LogoSize = 'sm' | 'md' | 'lg'
+type LogoSize = 'sm' | 'md' | 'lg' | 'xl'
 
 interface OcarLogoProps {
   className?: string
   size?: LogoSize
+  variant?: LogoVariant
 }
 
-const sizeClasses: Record<LogoSize, string> = {
-  sm: 'text-lg',
-  md: 'text-2xl',
-  lg: 'text-4xl',
-}
-
-export default function OcarLogo({ className, size = 'md' }: OcarLogoProps) {
-  return (
-    <span className={cn('font-bold tracking-tight', sizeClasses[size], className)}>
-      <span className="text-gradient-primary">O</span>
-      <span className="text-text-primary">car</span>
-    </span>
-  )
+export default function OcarLogo({ className, size = 'md', variant = 'color' }: OcarLogoProps) {
+  return <OcarLogoMark size={size as LogoMarkSize} variant={variant} withWordmark className={className} />
 }

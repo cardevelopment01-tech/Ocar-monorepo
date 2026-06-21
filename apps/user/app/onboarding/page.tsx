@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { User, Mail, ArrowRight, Sparkles } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import { useRouter } from 'next/navigation'
 import { userApi } from '@/lib/auth'
 import { useAuth } from '@/lib/auth-context'
@@ -170,7 +171,7 @@ export default function OnboardingPage() {
           transition={SPRING}
         >
           {loading ? (
-            <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            <OcarSpinner size={20} variant="white" />
           ) : (
             <>Get Started <ArrowRight size={17} /></>
           )}

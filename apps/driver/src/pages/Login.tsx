@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { ArrowRight, ChevronLeft, Car } from 'lucide-react'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import { motion, AnimatePresence } from 'framer-motion'
 import OtpInput from '@/components/ui/OtpInput'
 import api from '@/lib/api'
@@ -211,7 +212,7 @@ export default function Login() {
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                    <OcarSpinner size={16} variant="white" />
                     Sending OTP…
                   </span>
                 ) : (
@@ -269,7 +270,7 @@ export default function Login() {
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                    <OcarSpinner size={16} variant="white" />
                     Verifying…
                   </span>
                 ) : (
