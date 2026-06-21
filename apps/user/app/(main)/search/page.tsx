@@ -35,6 +35,8 @@ const POPULAR = [
   { Icon: ShoppingBag,    label: 'Esplanade One',           address: 'Rasulgarh, Bhubaneswar',           lat: 20.2877, lng: 85.8508 },
   { Icon: GraduationCap,  label: 'KIIT University',         address: 'Patia, Bhubaneswar',               lat: 20.3560, lng: 85.8181 },
   { Icon: Building2,      label: 'Cuttack City',            address: 'Cuttack, Odisha',                  lat: 20.4625, lng: 85.8830 },
+  { Icon: Train,          label: 'Puri Railway Station',    address: 'Puri, Odisha',                     lat: 19.8014, lng: 85.8142 },
+  { Icon: Building2,      label: 'Infocity, Bhubaneswar',  address: 'Infocity, Patia, Bhubaneswar',     lat: 20.3474, lng: 85.8197 },
 ]
 
 const ICON_BG  = '#F1F0FE'
@@ -267,8 +269,8 @@ function SearchContent() {
     <div className="h-full flex flex-col bg-background relative">
 
       {/* ── Header ── */}
-      <div className="flex-shrink-0 bg-surface border-b border-border pt-safe-top">
-        <div className="flex items-center gap-3 px-4 pt-3 pb-4">
+      <div className="flex-shrink-0 bg-white pt-safe-top">
+        <div className="flex items-center gap-3 px-4 pt-3 pb-3">
           <motion.button
             onClick={() => router.back()}
             className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0"
@@ -293,7 +295,7 @@ function SearchContent() {
         </div>
 
         {/* Unified from → to card */}
-        <div className="mx-4 mb-2 rounded-2xl overflow-hidden border border-border bg-surface shadow-card">
+        <div className="mx-4 mb-3 rounded-2xl overflow-hidden border border-slate-100 bg-white">
           <div className="flex items-stretch">
 
             {/* Left icon column: green dot → dashed line → amber dot */}
@@ -314,7 +316,7 @@ function SearchContent() {
                 className="w-full text-left px-2 pt-3 pb-3 border-b border-border"
                 whileTap={{ scale: 0.99 }} transition={SPRING}
               >
-                <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 leading-none">From</p>
+                <p className="text-[9px] font-semibold uppercase tracking-widest text-text-muted mb-1 leading-none">From</p>
                 {mode === 'origin' ? (
                   <div className="flex items-center gap-1">
                     <input
@@ -352,7 +354,7 @@ function SearchContent() {
                   }
                 }}
               >
-                <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 leading-none">To</p>
+                <p className="text-[9px] font-semibold uppercase tracking-widest text-text-muted mb-1 leading-none">To</p>
                 {confirmedDest ? (
                   // Always show confirmed destination as text — never blank during navigation
                   <div className="flex items-center gap-1">
@@ -427,7 +429,7 @@ function SearchContent() {
       </div>
 
       {/* ── Body ── */}
-      <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-1 pb-4 relative">
+      <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-2 pb-4 relative bg-white">
 
         {/* Resolve overlay */}
         <AnimatePresence>
@@ -451,40 +453,24 @@ function SearchContent() {
             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, ease: EASE }}
           >
-            {/* Quick actions */}
+            {/* Use current location — flat row, no card */}
             {!showSuggestions && (
-              <div className="mb-3">
-                <div className="bg-surface rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}>
-                  {/* Use current location */}
-                  <motion.button
-                    onClick={useCurrentLocation}
-                    disabled={locating}
-                    className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-border"
-                    whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-                  >
-                    <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#ECFDF5' }}>
-                      {locating
-                        ? <Loader2 size={14} className="text-emerald-600 animate-spin" />
-                        : <LocateFixed size={14} strokeWidth={1.6} className="text-emerald-600" />
-                      }
-                    </span>
-                    <span className="text-sm font-medium text-text-primary">
-                      {locating ? 'Getting location…' : 'Use current location'}
-                    </span>
-                  </motion.button>
-                  {/* Set on map */}
-                  <motion.button
-                    onClick={goToMapPicker}
-                    className="w-full flex items-center gap-3 px-4 py-3.5"
-                    whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-                  >
-                    <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
-                      <Map size={14} strokeWidth={1.6} style={{ color: ICON_CLR }} />
-                    </span>
-                    <span className="text-sm font-medium text-text-primary">Set on map</span>
-                  </motion.button>
-                </div>
-              </div>
+              <motion.button
+                onClick={useCurrentLocation}
+                disabled={locating}
+                className="w-full flex items-center gap-3 px-1 py-4 mb-1"
+                whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
+              >
+                <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#ECFDF5' }}>
+                  {locating
+                    ? <Loader2 size={15} className="text-emerald-600 animate-spin" />
+                    : <LocateFixed size={15} strokeWidth={1.6} className="text-emerald-600" />
+                  }
+                </span>
+                <span className="text-sm font-semibold text-text-primary">
+                  {locating ? 'Getting location…' : 'Use current location'}
+                </span>
+              </motion.button>
             )}
 
             {/* Origin autocomplete suggestions */}
@@ -500,7 +486,7 @@ function SearchContent() {
                       <div key={s.placeId}>
                         <motion.button
                           onClick={() => selectOriginSuggestion(s)}
-                          className="w-full flex items-center gap-3 px-1 py-3.5 text-left"
+                          className="w-full flex items-center gap-3 px-1 py-4 text-left"
                           variants={rowVariant}
                           whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
                         >
@@ -542,7 +528,7 @@ function SearchContent() {
                       <div key={s.placeId}>
                         <motion.button
                           onClick={() => selectDestinationSuggestion(s)}
-                          className="w-full flex items-center gap-3 px-1 py-3.5 text-left"
+                          className="w-full flex items-center gap-3 px-1 py-4 text-left"
                           variants={rowVariant}
                           whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
                         >
@@ -588,16 +574,14 @@ function SearchContent() {
                   </motion.button>
                 </div>
 
-                <p className="text-[11px] font-bold uppercase tracking-wider text-text-muted px-1 mb-1.5">Popular destinations</p>
-
                 {/* Popular destinations */}
                 <motion.div variants={listStagger} initial="hidden" animate="show">
-                  <div className="mt-1">
+                  <div className="mt-0">
                     {POPULAR.map((d, i) => (
                       <div key={d.label}>
                         <motion.button
                           onClick={() => confirmDest(d.lat, d.lng, d.address)}
-                          className="w-full flex items-center gap-3 px-1 py-3.5 text-left"
+                          className="w-full flex items-center gap-3 px-1 py-4 text-left"
                           variants={rowVariant}
                           whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
                         >
