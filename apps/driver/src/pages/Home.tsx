@@ -4,11 +4,13 @@ import { IndianRupee, Clock, Star, TrendingUp, Bell, Wallet, ChevronRight } from
 import { AnimatePresence } from 'framer-motion'
 import OnlineToggle from '@/components/ui/OnlineToggle'
 import TripRequestCard from '@/components/ui/TripRequestCard'
+import LocationChip from '@/components/map/LocationChip'
 import { mockEarnings } from '@/lib/mock-data'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi } from '@/lib/ride-api'
+import api from '@/lib/api'
 import { connectDriverSocket, disconnectDriverSocket, getDriverSocket } from '@/lib/socket'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
@@ -43,7 +45,14 @@ export default function Home() {
   const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide } = useRideStore()
 
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const [mapCenter, setMapCenter] = useState<[number, number]>([20.2961, 85.8245])
+  const sheetRef            = useRef<HTMLDivElement | null>(null)
+  const geoTimer            = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastGeoCoord        = useRef<[number, number] | null>(null)
+
+  const [mapCenter,          setMapCenter]         = useState<[number, number]>([20.2961, 85.8245])
+  const [sheetHeight,        setSheetHeight]       = useState(320)
+  const [areaName,           setAreaName]          = useState<string | null>(null)
+  const [geoLoading,         setGeoLoading]        = useState(false)
   const [showOfflineConfirm, setShowOfflineConfirm] = useState(false)
   const e = mockEarnings.today
   const firstName = driver?.full_name?.split(' ')[0] ?? 'Driver'
@@ -145,6 +154,55 @@ export default function Home() {
     } catch { clearIncomingRequest() }
   }
 
+  // Measure the bottom sheet so we can offset the map camera above it
+  useEffect(() => {
+    const el = sheetRef.current
+    if (!el) return
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setSheetHeight(Math.round(entry.contentRect.height))
+      }
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // Reverse-geocode the driver's position whenever it meaningfully changes
+  useEffect(() => {
+    const [lat, lng] = mapCenter
+    const prev = lastGeoCoord.current
+    // Skip if barely moved (< ~30m ≈ 3e-4 deg) since last successful geocode
+    if (prev && Math.abs(prev[0] - lat) < 3e-4 && Math.abs(prev[1] - lng) < 3e-4) return
+
+    if (geoTimer.current) clearTimeout(geoTimer.current)
+    const controller = new AbortController()
+    setGeoLoading(true)
+
+    geoTimer.current = setTimeout(async () => {
+      try {
+        const { data } = await api.get<{ address: string }>('/api/v1/geo/reverse', {
+          params: { lat, lng },
+          signal: controller.signal,
+        })
+        if (data?.address) {
+          setAreaName(data.address)
+          lastGeoCoord.current = [lat, lng]
+        }
+      } catch {
+        // keep previous areaName — swallows abort + network errors
+      } finally {
+        setGeoLoading(false)
+      }
+    }, 800)
+
+    return () => {
+      if (geoTimer.current) clearTimeout(geoTimer.current)
+      controller.abort()
+    }
+  }, [mapCenter])
+
+  const bottomOcclusion = sheetHeight + NAV_HEIGHT
+
   const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 
   return (
@@ -154,10 +212,22 @@ export default function Home() {
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface-2 animate-pulse" />}>
           <DriverMapView center={mapCenter} zoom={15} dimmed={!isOnline}>
-            <RecenterMap center={mapCenter} />
+            <RecenterMap
+              center={mapCenter}
+              bottomPadding={bottomOcclusion}
+              topPadding={110}
+            />
             <SelfCarMarker position={mapCenter} />
           </DriverMapView>
         </Suspense>
+      </div>
+
+      {/* Location chip — floats just above the bottom sheet */}
+      <div
+        className="absolute left-0 right-0 flex justify-center px-4 pointer-events-none"
+        style={{ bottom: bottomOcclusion + 12, zIndex: 10 }}
+      >
+        <LocationChip text={areaName} loading={geoLoading} />
       </div>
 
       {/* Floating header */}
@@ -191,6 +261,7 @@ export default function Home() {
 
       {/* Bottom sheet — sits above BottomNav */}
       <div
+        ref={sheetRef}
         className="absolute left-0 right-0 rounded-t-[28px]"
         style={{ bottom: NAV_HEIGHT, zIndex: 10, background: '#FFFFFF', borderTop: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 -8px 40px rgba(0,0,0,0.12)' }}
       >
