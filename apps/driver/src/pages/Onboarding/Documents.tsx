@@ -452,42 +452,63 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, i
 function DocPreviewModal({ url, label, onClose }: { url: string; label: string; onClose: () => void }) {
   const isPdf = /\.pdf($|\?)/i.test(url) || url.includes('application%2Fpdf')
 
-  return (
-    <div className="fixed inset-0 z-[60] flex flex-col">
-      {/* Dark backdrop */}
-      <div className="absolute inset-0 bg-black/92" onClick={onClose} />
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
 
-      {/* Top bar */}
-      <div className="relative z-10 flex items-center justify-between px-4 pt-12 pb-3">
-        <p className="text-white text-sm font-semibold truncate flex-1 mr-3">{label}</p>
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: '#0d0d0d' }}>
+
+      {/* Top nav bar */}
+      <div
+        className="flex items-center gap-3 px-4 flex-shrink-0"
+        style={{
+          paddingTop: 'max(1rem, env(safe-area-inset-top))',
+          paddingBottom: '0.875rem',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+        }}
+      >
         <button
           onClick={onClose}
-          className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center flex-shrink-0"
+          className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 active:opacity-70 transition-opacity"
+          style={{ background: 'rgba(255,255,255,0.12)' }}
         >
-          <X size={18} className="text-white" />
+          <X size={20} className="text-white" strokeWidth={2.5} />
         </button>
+        <p className="flex-1 text-white text-[15px] font-semibold truncate">{label}</p>
       </div>
 
-      {/* Preview area */}
-      <div className="relative z-10 flex-1 flex items-center justify-center px-4 pb-10">
+      {/* Preview */}
+      <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
         {isPdf ? (
           <iframe
             src={url}
             title={label}
             className="w-full h-full rounded-2xl bg-white"
+            style={{ border: 'none' }}
           />
         ) : (
           <img
             src={url}
             alt={label}
-            className="max-w-full max-h-full object-contain rounded-2xl"
+            className="max-w-full max-h-full object-contain rounded-2xl select-none"
+            draggable={false}
+            style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
           />
         )}
       </div>
 
       {/* Bottom hint */}
-      <div className="relative z-10 pb-8 flex justify-center">
-        <p className="text-white/40 text-xs">Pinch to zoom · Tap outside to close</p>
+      <div
+        className="flex-shrink-0 flex justify-center"
+        style={{
+          paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))',
+          paddingTop: '0.5rem',
+        }}
+      >
+        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>Pinch to zoom</p>
       </div>
     </div>
   )
