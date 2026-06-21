@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Upload, CheckCircle2, AlertCircle, Loader2,
-  Eye, RefreshCw, Shield, FileText, Car,
+  Eye, RefreshCw, Shield, FileText, Car, X,
 } from 'lucide-react'
 import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -59,6 +59,7 @@ export default function Documents() {
   const [validUntil, setValidUntil] = useState<Record<string, string>>({})
   const [isFetching, setIsFetching] = useState(true)
   const [isSaving,   setIsSaving]   = useState(false)
+  const [preview,    setPreview]    = useState<{ url: string; label: string } | null>(null)
 
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
@@ -210,6 +211,7 @@ export default function Documents() {
                     onFileChange={file => void handleFileSelect(doc.key, false, file)}
                     onTrigger={() => fileRefs.current[doc.key]?.click()}
                     onValidUntilChange={val => setValidUntil(prev => ({ ...prev, [doc.key]: val }))}
+                    onPreview={() => { const u = docState[doc.key]?.url; if (u) setPreview({ url: u, label: doc.label }) }}
                   />
                   {i < DRIVER_DOCS.length - 1 && <div className="mt-3 h-px bg-border" />}
                 </div>
@@ -237,6 +239,7 @@ export default function Documents() {
                     onFileChange={file => void handleFileSelect(doc.key, true, file)}
                     onTrigger={() => fileRefs.current[doc.key]?.click()}
                     onValidUntilChange={val => setValidUntil(prev => ({ ...prev, [doc.key]: val }))}
+                    onPreview={() => { const u = docState[doc.key]?.url; if (u) setPreview({ url: u, label: doc.label }) }}
                   />
                   {i < VEHICLE_DOCS.length - 1 && <div className="mt-3 h-px bg-border" />}
                 </div>
@@ -288,6 +291,15 @@ export default function Documents() {
             : 'Continue to Selfie'}
         </button>
       </div>
+
+      {/* In-app doc preview modal */}
+      {preview && (
+        <DocPreviewModal
+          url={preview.url}
+          label={preview.label}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </>
   )
 }
@@ -305,9 +317,10 @@ interface DocCardProps {
   onFileChange: (file: File) => void
   onTrigger: () => void
   onValidUntilChange?: (val: string) => void
+  onPreview?: () => void
 }
 
-function DocCard({ label, required, accept, needsExpiry, docState, validUntil, inputRef, onFileChange, onTrigger, onValidUntilChange }: DocCardProps) {
+function DocCard({ label, required, accept, needsExpiry, docState, validUntil, inputRef, onFileChange, onTrigger, onValidUntilChange, onPreview }: DocCardProps) {
   const { state, url, error, docStatus, rejectionNote } = docState
   const isDone     = state === 'done'
   const isRejected = isDone && docStatus === 'rejected'
@@ -360,10 +373,10 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, i
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            {url && (
+            {url && onPreview && (
               <button
                 type="button"
-                onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+                onClick={onPreview}
                 className="w-9 h-9 rounded-xl bg-surface-3 border border-border flex items-center justify-center"
               >
                 <Eye size={15} className="text-text-secondary" />
@@ -430,6 +443,52 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, i
           />
         </div>
       )}
+    </div>
+  )
+}
+
+/* ─────────────── DocPreviewModal ─────────────── */
+
+function DocPreviewModal({ url, label, onClose }: { url: string; label: string; onClose: () => void }) {
+  const isPdf = /\.pdf($|\?)/i.test(url) || url.includes('application%2Fpdf')
+
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col">
+      {/* Dark backdrop */}
+      <div className="absolute inset-0 bg-black/92" onClick={onClose} />
+
+      {/* Top bar */}
+      <div className="relative z-10 flex items-center justify-between px-4 pt-12 pb-3">
+        <p className="text-white text-sm font-semibold truncate flex-1 mr-3">{label}</p>
+        <button
+          onClick={onClose}
+          className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center flex-shrink-0"
+        >
+          <X size={18} className="text-white" />
+        </button>
+      </div>
+
+      {/* Preview area */}
+      <div className="relative z-10 flex-1 flex items-center justify-center px-4 pb-10">
+        {isPdf ? (
+          <iframe
+            src={url}
+            title={label}
+            className="w-full h-full rounded-2xl bg-white"
+          />
+        ) : (
+          <img
+            src={url}
+            alt={label}
+            className="max-w-full max-h-full object-contain rounded-2xl"
+          />
+        )}
+      </div>
+
+      {/* Bottom hint */}
+      <div className="relative z-10 pb-8 flex justify-center">
+        <p className="text-white/40 text-xs">Pinch to zoom · Tap outside to close</p>
+      </div>
     </div>
   )
 }

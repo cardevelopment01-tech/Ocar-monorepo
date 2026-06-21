@@ -160,7 +160,8 @@ export default function VehicleRegistration() {
   }
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary px-5 pt-14 pb-10">
+    <>
+    <div className="min-h-screen bg-bg text-text-primary px-5 pt-14 pb-40">
       {/* Step bar */}
       <div className="flex gap-1.5 mb-8">
         {steps.map((s, i) => (
@@ -168,7 +169,7 @@ export default function VehicleRegistration() {
         ))}
       </div>
 
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-2">
         <button onClick={() => navigate(-1)} className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center">
           <ArrowLeft size={20} className="text-text-secondary" />
         </button>
@@ -177,8 +178,9 @@ export default function VehicleRegistration() {
           <h1 className="text-xl font-bold">Vehicle Details</h1>
         </div>
       </div>
+      <p className="text-text-muted text-xs mb-5">Progress is saved automatically</p>
 
-      <div className="space-y-4 mb-8">
+      <div className="space-y-4">
         {/* Brand */}
         <Field label="Brand">
           <InlineSelect
@@ -278,10 +280,24 @@ export default function VehicleRegistration() {
           </div>
         </Field>
       </div>
+    </div>
 
-      {error && <p className="text-accent-red text-sm mb-4">{error}</p>}
-
-      <button onClick={handleContinue} disabled={!isValid || isLoading} className="btn-go w-full" style={{ minHeight: 56 }}>
+    {/* Sticky footer CTA */}
+    <div className="fixed bottom-0 left-0 right-0 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-bg/95 backdrop-blur-sm border-t border-border z-20">
+      {!isValid && !error && (
+        <p className="text-text-muted text-xs text-center mb-2">
+          {!brandId    ? 'Select your vehicle brand'
+          : !modelId   ? 'Select your vehicle model'
+          : !color     ? 'Select vehicle colour'
+          : !fuelType  ? 'Select fuel type'
+          : !plate     ? 'Enter registration number'
+          : plate && !isValidPlate(plate) ? 'Enter a valid registration number'
+          : !modelYear ? 'Enter year of manufacture'
+          : ''}
+        </p>
+      )}
+      {error && <p className="text-accent-red text-xs text-center mb-2">{error}</p>}
+      <button onClick={handleContinue} disabled={!isValid || isLoading} className="btn-go w-full" style={{ minHeight: 52 }}>
         {isLoading
           ? <span className="flex items-center justify-center gap-2">
               <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
@@ -290,6 +306,7 @@ export default function VehicleRegistration() {
           : 'Continue'}
       </button>
     </div>
+    </>
   )
 }
 
