@@ -358,6 +358,7 @@ export default function Home() {
       <AnimatePresence>
         {incomingRequest && (
           <TripRequestCard
+            key={incomingRequest.rideId}
             pickup={incomingRequest.pickup}
             drop={incomingRequest.drop}
             pickupDistance={incomingRequest.pickupDistance}
