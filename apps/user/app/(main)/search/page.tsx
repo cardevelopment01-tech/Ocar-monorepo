@@ -417,7 +417,7 @@ function SearchContent() {
           </motion.button>
         </div>
 
-        {/* Neon bounce loader — 50%-wide beam bounces edge-to-edge */}
+        {/* Sweep loader — clean violet bar bouncing edge to edge */}
         <AnimatePresence>
           {resolving && (
             <motion.div
@@ -425,18 +425,16 @@ function SearchContent() {
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
             >
-              <div className="relative h-[3px] rounded-full bg-violet-100">
+              <div className="relative h-[2px] rounded-full overflow-hidden bg-slate-100">
                 <motion.div
                   className="absolute inset-y-0 rounded-full"
                   style={{
-                    width: '50%',
-                    background: 'linear-gradient(90deg, transparent 0%, #7C3AED 30%, #C4B5FD 55%, #7C3AED 70%, transparent 100%)',
-                    filter: 'blur(1px)',
-                    boxShadow: '0 0 6px 3px rgba(124, 58, 237, 0.55)',
+                    width: '40%',
+                    background: 'linear-gradient(90deg, transparent, #7C3AED 40%, #7C3AED 60%, transparent)',
                   }}
-                  initial={{ left: '-50%' }}
+                  initial={{ left: '-40%' }}
                   animate={{ left: '100%' }}
-                  transition={{ duration: 1.1, ease: [0.4, 0, 0.6, 1], repeat: Infinity, repeatType: 'mirror' }}
+                  transition={{ duration: 1.0, ease: [0.4, 0, 0.6, 1], repeat: Infinity, repeatType: 'mirror' }}
                 />
               </div>
             </motion.div>
