@@ -222,7 +222,7 @@ function SearchContent() {
     setResolving(true)
     try {
       const detail = await geoApi.placeDetails(s.placeId)
-      setResolving(false)
+      // keep resolving=true — confirmDest → navigateToRide holds it until navigation
       confirmDest(detail.latitude, detail.longitude, detail.address)
     } catch {
       setResolving(false)
@@ -236,10 +236,11 @@ function SearchContent() {
       setOriginLat(detail.latitude)
       setOriginLng(detail.longitude)
       setOriginAddress(detail.address)
-      setResolving(false)
       switchMode('destination')
       if (confirmedDest) {
         void navigateToRide(confirmedDest, detail.latitude, detail.longitude, detail.address)
+      } else {
+        setResolving(false)
       }
     } catch {
       setResolving(false)
