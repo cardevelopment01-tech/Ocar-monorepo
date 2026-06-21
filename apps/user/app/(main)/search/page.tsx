@@ -205,17 +205,16 @@ function SearchContent() {
     }
   }
 
-  // Confirm a destination: fill TO field, stay on page so user can review/swap/edit
+  // Confirm a destination — auto-navigates if origin is set
   function confirmDest(lat: number, lng: number, address: string) {
     setConfirmedDest({ lat, lng, address })
     setQuery('')
     setSuggestions([])
     setSearching(false)
-    // If origin not set yet, nudge user to fill it; otherwise stay in destination mode
-    if (originAddress.trim() === '') {
-      switchMode('origin')
+    if (originAddress.trim() !== '') {
+      void navigateToRide({ lat, lng, address })
     } else {
-      setMode('destination')
+      switchMode('origin')
     }
   }
 
@@ -238,14 +237,16 @@ function SearchContent() {
       setOriginLng(detail.longitude)
       setOriginAddress(detail.address)
       setResolving(false)
-      // Stay on page — user taps the CTA to proceed
       switchMode('destination')
+      if (confirmedDest) {
+        void navigateToRide(confirmedDest, detail.latitude, detail.longitude, detail.address)
+      }
     } catch {
       setResolving(false)
     }
   }
 
-  // Swap origin ↔ destination in place — user taps CTA to proceed when ready
+  // Swap and auto-navigate with flipped pair
   function swapOriginDestination() {
     if (!confirmedDest) return
     const prevOrigin: ConfirmedDest = { lat: originLat, lng: originLng, address: originAddress }
@@ -256,6 +257,7 @@ function SearchContent() {
     setQuery('')
     setSuggestions([])
     setMode('destination')
+    void navigateToRide(prevOrigin, confirmedDest.lat, confirmedDest.lng, confirmedDest.address)
   }
 
   function goToMapPicker() {
@@ -446,26 +448,22 @@ function SearchContent() {
           </motion.button>
         </div>
 
-        {/* Get prices CTA — slides in when both confirmed */}
+        {/* Resolving progress bar — slim bouncing line while route is being fetched */}
         <AnimatePresence>
-          {bothConfirmed && (
+          {resolving && (
             <motion.div
-              className="px-4 pb-3"
-              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.22, ease: EASE }}
+              className="px-4 pb-2"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
             >
-              <motion.button
-                onClick={() => confirmedDest && void navigateToRide(confirmedDest)}
-                className="w-full py-3 rounded-2xl text-[15px] font-bold text-white"
-                style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}
-                disabled={resolving}
-                whileTap={{ scale: 0.98 }}
-              >
-                {resolving
-                  ? <span className="flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Getting route…</span>
-                  : 'See ride prices →'
-                }
-              </motion.button>
+              <div className="relative h-0.5 rounded-full overflow-hidden bg-slate-100">
+                <motion.div
+                  className="absolute inset-y-0 w-2/5 rounded-full"
+                  style={{ background: 'linear-gradient(90deg, #4F46E5, #818CF8)' }}
+                  animate={{ x: ['−100%', '300%'] }}
+                  transition={{ duration: 1.1, ease: 'easeInOut', repeat: Infinity }}
+                />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
