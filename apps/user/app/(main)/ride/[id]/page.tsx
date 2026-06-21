@@ -131,7 +131,11 @@ export default function RidePage() {
   }, [rideId, loadRide])
 
   const handleDemoForce = async (action: 'complete' | 'cancel') => {
-    try { await rideApi.demoForce(rideId, action) } catch { /* socket event will drive the UI */ }
+    try {
+      await rideApi.demoForce(rideId, action)
+      if (action === 'complete') router.push(`/ride/${rideId}/rate`)
+      else router.push('/home')
+    } catch { /* ignore */ }
   }
 
   useEffect(() => {
