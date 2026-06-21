@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Car, AlertCircle, Check, Zap } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { driverRideApi } from '@/lib/ride-api'
 import { connectDriverSocket } from '@/lib/socket'
 import { useSessionStore } from '@/store/useSessionStore'
 
 const CHECKLIST = [
   'Vehicle is clean and ready',
-  'AC working properly',
+  'AC is working properly',
   'Phone is charged',
   'Documents are up to date',
 ]
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
+const EASE = [0.22, 1, 0.36, 1] as const
 
 function getCurrentPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) =>
@@ -33,6 +35,9 @@ export default function StandardConfirm() {
   const [goingOnline, setGoingOnline] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [locationWarning, setLocationWarning] = useState(false)
+  const [checked, setChecked] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(CHECKLIST.map(item => [item, true]))
+  )
 
   useEffect(() => {
     driverRideApi.getMyVehicle()
@@ -40,6 +45,9 @@ export default function StandardConfirm() {
       .catch(() => setError('Could not load vehicle info'))
       .finally(() => setLoading(false))
   }, [])
+
+  const toggleItem = (item: string) =>
+    setChecked(prev => ({ ...prev, [item]: !prev[item] }))
 
   const handleGoOnline = async () => {
     if (!vehicle) { setError('No active vehicle found. Add one in your profile.'); return }
@@ -77,73 +85,202 @@ export default function StandardConfirm() {
   }
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary px-5 pt-14 pb-28 flex flex-col">
-      <div className="flex items-center gap-3 mb-8">
+    <div className="min-h-screen bg-bg text-text-primary px-5 pt-14 pb-32 flex flex-col">
+
+      {/* Header */}
+      <motion.div
+        className="flex items-center gap-3 mb-7"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: EASE }}
+      >
         <button
           onClick={() => navigate(-1)}
-          className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center"
+          className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0"
         >
           <ArrowLeft size={20} className="text-text-secondary" />
         </button>
-        <h1 className="text-xl font-bold">Ready to Drive?</h1>
-      </div>
+        <div>
+          <p className="text-text-muted text-[10px] font-bold uppercase tracking-widest mb-0.5">
+            Standard Mode
+          </p>
+          <h1 className="font-display text-[22px] font-bold text-text-primary leading-tight">
+            You're almost online!
+          </h1>
+        </div>
+      </motion.div>
 
-      {/* Vehicle info */}
-      <div className="bg-surface rounded-3xl border border-border p-5 mb-4">
-        <p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-3">Your Vehicle</p>
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-surface-3 flex items-center justify-center text-3xl">
-            🚗
-          </div>
-          <div>
-            {loading ? (
-              <div className="w-32 h-4 bg-surface-3 rounded animate-pulse" />
-            ) : vehicle ? (
-              <>
-                <p className="text-text-primary font-bold text-lg">{vehicle.number_plate}</p>
-                <p className="text-text-muted text-sm">Category ID: {vehicle.category_id}</p>
-              </>
-            ) : (
-              <p className="text-accent-red text-sm">No vehicle registered</p>
-            )}
+      {/* ── Hero vehicle card — blue gradient ── */}
+      <motion.div
+        className="rounded-[22px] overflow-hidden mb-3"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: EASE, delay: 0.05 }}
+        style={{
+          background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 55%, #1D4ED8 100%)',
+          boxShadow: '0 10px 36px rgba(37,99,235,0.28)',
+        }}
+      >
+        <div className="p-5">
+          <p className="text-white/65 text-[10px] font-bold uppercase tracking-widest mb-3">
+            Your Vehicle
+          </p>
+          <div className="flex items-center gap-4">
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(255,255,255,0.16)', backdropFilter: 'blur(8px)' }}
+            >
+              <Car size={28} className="text-white" strokeWidth={1.8} />
+            </div>
+            <div className="flex-1 min-w-0">
+              {loading ? (
+                <div className="space-y-2">
+                  <div className="h-6 w-36 rounded-lg animate-pulse" style={{ background: 'rgba(255,255,255,0.2)' }} />
+                  <div className="h-4 w-20 rounded-lg animate-pulse" style={{ background: 'rgba(255,255,255,0.12)' }} />
+                </div>
+              ) : vehicle ? (
+                <>
+                  <p className="font-display text-[26px] font-black text-white tracking-widest leading-tight">
+                    {vehicle.number_plate}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white/85"
+                      style={{ background: 'rgba(255,255,255,0.16)' }}
+                    >
+                      Category {vehicle.category_id}
+                    </span>
+                    <span className="w-1 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.35)' }} />
+                    <span className="text-white/65 text-[11px] font-medium">Standard Mode</span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-red-200 text-sm font-semibold">No vehicle registered</p>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      {/* Checklist */}
-      <div className="bg-surface rounded-3xl border border-border p-5 mb-4">
-        <p className="text-text-secondary text-sm font-semibold mb-4">Pre-ride Checklist</p>
-        {CHECKLIST.map(item => (
-          <div key={item} className="flex items-center gap-3 py-2.5 border-b border-border last:border-0">
-            <CheckCircle size={18} className="text-primary flex-shrink-0" />
-            <span className="text-text-secondary text-sm">{item}</span>
-          </div>
-        ))}
-      </div>
-
-      {locationWarning && (
-        <div className="flex items-start gap-3 bg-accent-amber/10 border border-accent-amber/30 rounded-2xl px-4 py-3 mb-4">
-          <AlertCircle size={16} className="text-accent-amber flex-shrink-0 mt-0.5" />
-          <p className="text-accent-amber text-sm">GPS unavailable, using your default location</p>
+      {/* ── Pre-ride checklist ── */}
+      <motion.div
+        className="driver-card mb-3"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: EASE, delay: 0.10 }}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Zap size={14} className="text-primary" strokeWidth={2.2} />
+          <p className="text-text-primary text-sm font-bold">Pre-ride Checklist</p>
+          <span className="ml-auto text-[10px] font-semibold text-text-muted">Tap to toggle</span>
         </div>
-      )}
+        <div className="space-y-1">
+          {CHECKLIST.map((item, i) => {
+            const isChecked = checked[item] ?? true
+            return (
+              <motion.button
+                key={item}
+                onClick={() => toggleItem(item)}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors"
+                style={{ background: isChecked ? 'rgba(37,99,235,0.04)' : 'rgba(100,116,139,0.04)' }}
+                whileTap={{ scale: 0.98 }}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.15 + i * 0.05, duration: 0.28, ease: EASE }}
+              >
+                <motion.div
+                  className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 border-2"
+                  animate={isChecked
+                    ? { backgroundColor: '#2563EB', borderColor: '#2563EB' }
+                    : { backgroundColor: 'transparent', borderColor: '#CBD5E1' }
+                  }
+                  transition={{ type: 'spring', stiffness: 380, damping: 26 }}
+                >
+                  <AnimatePresence>
+                    {isChecked && (
+                      <motion.div
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0, opacity: 0 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+                      >
+                        <Check size={11} className="text-white" strokeWidth={3} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+                <span className={`text-sm font-medium transition-colors ${
+                  isChecked ? 'text-text-primary' : 'text-text-muted line-through'
+                }`}>
+                  {item}
+                </span>
+              </motion.button>
+            )
+          })}
+        </div>
+      </motion.div>
 
-      {error && (
-        <p className="text-accent-red text-sm text-center mb-4">{error}</p>
-      )}
+      {/* ── GPS warning ── */}
+      <AnimatePresence>
+        {locationWarning && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25, ease: EASE }}
+            className="flex items-start gap-3 rounded-2xl px-4 py-3 mb-3 overflow-hidden"
+            style={{ background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.28)' }}
+          >
+            <AlertCircle size={15} className="text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-amber-700 text-sm">GPS unavailable — using your default location</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Fixed bottom CTA — always visible regardless of content length */}
+      {/* ── Error ── */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25, ease: EASE }}
+            className="flex items-start gap-3 rounded-2xl px-4 py-3 mb-3 overflow-hidden"
+            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.20)' }}
+          >
+            <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-red-600 text-sm">{error}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Fixed CTA ── */}
       <div
-        className="fixed bottom-0 left-0 right-0 px-5 bg-bg border-t border-border"
-        style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))', paddingTop: 16, zIndex: 10 }}
+        className="fixed bottom-0 left-0 right-0 px-5 bg-bg/95 border-t border-border"
+        style={{
+          paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+          paddingTop: 16,
+          zIndex: 10,
+          backdropFilter: 'blur(12px)',
+        }}
       >
         <button
           onClick={handleGoOnline}
           disabled={goingOnline || loading || !vehicle}
-          className="btn-go w-full"
-          style={{ minHeight: 56 }}
+          className="btn-go w-full flex items-center justify-center gap-2.5"
+          style={{ minHeight: 56, borderRadius: 24 }}
         >
-          {goingOnline ? 'Going online…' : 'Go Online Now'}
+          {goingOnline ? (
+            <>
+              <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              Going online…
+            </>
+          ) : (
+            <>
+              <Zap size={18} strokeWidth={2.2} />
+              Go Online Now
+            </>
+          )}
         </button>
       </div>
     </div>
