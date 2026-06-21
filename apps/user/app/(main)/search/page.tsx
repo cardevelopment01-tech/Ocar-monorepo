@@ -52,10 +52,20 @@ function SearchContent() {
   const [originLng,     setOriginLng]     = useState(() => parseFloat(sp.get('originLng') ?? '') || 0)
   const [originAddress, setOriginAddress] = useState(() => sp.get('originAddress') ?? '')
 
-  // Destination is stored explicitly so swap can exchange both ends
-  const [confirmedDest, setConfirmedDest] = useState<ConfirmedDest | null>(null)
+  const [confirmedDest, setConfirmedDest] = useState<ConfirmedDest | null>(() => {
+    const lat     = parseFloat(sp.get('destinationLat') ?? '')
+    const lng     = parseFloat(sp.get('destinationLng') ?? '')
+    const address = sp.get('destinationAddress') ?? ''
+    if (!isNaN(lat) && !isNaN(lng) && address) return { lat, lng, address }
+    return null
+  })
 
-  const [mode,        setMode]        = useState<EditMode>('destination')
+  // If coming back from map picker with dest-only, prompt for origin
+  const [mode, setMode] = useState<EditMode>(() => {
+    const hasDest   = !!sp.get('destinationAddress')
+    const hasOrigin = !!sp.get('originAddress')
+    return (hasDest && !hasOrigin) ? 'origin' : 'destination'
+  })
   const [query,       setQuery]       = useState('')
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([])
   const [searching,   setSearching]   = useState(false)
@@ -68,6 +78,7 @@ function SearchContent() {
   const originInputRef = useRef<HTMLInputElement>(null)
   const originTouched  = useRef(false)
   const modeRef        = useRef<EditMode>(mode)
+  const autoNavRef     = useRef(false)
 
   const [forMeOpen, setForMeOpen] = useState(false)
   const [stopToast, setStopToast] = useState(false)
@@ -98,6 +109,22 @@ function SearchContent() {
   }, [])
 
   useEffect(() => { modeRef.current = mode }, [mode])
+
+  // Auto-navigate when map picker returns with both origin + destination in URL
+  useEffect(() => {
+    if (autoNavRef.current) return
+    const destLat  = parseFloat(sp.get('destinationLat') ?? '')
+    const destLng  = parseFloat(sp.get('destinationLng') ?? '')
+    const destAddr = sp.get('destinationAddress') ?? ''
+    const origAddr = sp.get('originAddress') ?? ''
+    const oLat     = parseFloat(sp.get('originLat') ?? '') || 0
+    const oLng     = parseFloat(sp.get('originLng') ?? '') || 0
+    if (destAddr && origAddr.trim() && !isNaN(destLat) && !isNaN(destLng)) {
+      autoNavRef.current = true
+      void navigateToRide({ lat: destLat, lng: destLng, address: destAddr }, oLat, oLng, origAddr)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Focus the right input when mode changes; select-all in origin so typing replaces pre-populated text
   useEffect(() => {
@@ -249,12 +276,23 @@ function SearchContent() {
 
   function goToMapPicker() {
     const params = new URLSearchParams()
-    if (originLat !== 0 || originLng !== 0) {
-      params.set('centerLat', String(originLat))
-      params.set('centerLng', String(originLng))
+    params.set('mode', mode)
+    if (mode === 'destination') {
+      // pass origin through so confirm-pickup can echo it back to search
+      if (originLat !== 0)  params.set('originLat',     String(originLat))
+      if (originLng !== 0)  params.set('originLng',     String(originLng))
+      if (originAddress)    params.set('originAddress', originAddress)
+      // center map on confirmed dest if exists, otherwise on origin
+      const cLat = confirmedDest?.lat ?? originLat
+      const cLng = confirmedDest?.lng ?? originLng
+      if (cLat !== 0 || cLng !== 0) { params.set('centerLat', String(cLat)); params.set('centerLng', String(cLng)) }
+    } else {
+      if (originLat !== 0 || originLng !== 0) {
+        params.set('centerLat', String(originLat))
+        params.set('centerLng', String(originLng))
+      }
     }
-    const qs = params.toString()
-    router.push(qs ? `/confirm-pickup?${qs}` : '/confirm-pickup')
+    router.push(`/confirm-pickup?${params.toString()}`)
   }
 
   // In origin mode, only show suggestions after the user has actually typed (not the pre-populated address)

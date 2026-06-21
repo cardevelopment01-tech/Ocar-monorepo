@@ -29,6 +29,14 @@ function ConfirmPickupContent() {
   const router = useRouter()
   const sp     = useSearchParams()
 
+  const pickerMode = sp.get('mode') ?? 'origin'   // 'origin' | 'destination'
+  const isDest     = pickerMode === 'destination'
+
+  // origin passthrough — only used when mode=destination so we can return it to search
+  const ptOriginLat  = sp.get('originLat')     ?? ''
+  const ptOriginLng  = sp.get('originLng')     ?? ''
+  const ptOriginAddr = sp.get('originAddress') ?? ''
+
   const initLat = parseFloat(sp.get('centerLat') ?? '') || DEFAULT_LAT
   const initLng = parseFloat(sp.get('centerLng') ?? '') || DEFAULT_LNG
 
@@ -101,11 +109,19 @@ function ConfirmPickupContent() {
     if (!address) return
     setConfirming(true)
     try {
-      const params = new URLSearchParams({
-        originLat:     String(centerLat),
-        originLng:     String(centerLng),
-        originAddress: address,
-      })
+      const params = new URLSearchParams()
+      if (isDest) {
+        params.set('destinationLat',     String(centerLat))
+        params.set('destinationLng',     String(centerLng))
+        params.set('destinationAddress', address)
+        if (ptOriginLat)  params.set('originLat',     ptOriginLat)
+        if (ptOriginLng)  params.set('originLng',     ptOriginLng)
+        if (ptOriginAddr) params.set('originAddress', ptOriginAddr)
+      } else {
+        params.set('originLat',     String(centerLat))
+        params.set('originLng',     String(centerLng))
+        params.set('originAddress', address)
+      }
       router.push(`/search?${params.toString()}`)
     } finally {
       setConfirming(false)
@@ -177,7 +193,7 @@ function ConfirmPickupContent() {
       <div className="absolute top-16 left-0 right-0 flex justify-center" style={{ zIndex: 20 }}>
         <div className="bg-surface rounded-full shadow-card px-5 py-2.5">
           <p className="text-sm font-semibold text-text-primary">
-            {dragging ? 'Drag to position…' : 'Move map to set pickup'}
+            {dragging ? 'Drag to position…' : isDest ? 'Move map to set destination' : 'Move map to set pickup'}
           </p>
         </div>
       </div>
@@ -208,7 +224,7 @@ function ConfirmPickupContent() {
       >
         <div className="w-9 h-[5px] bg-gray-300 rounded-full mx-auto mb-4" />
 
-        <p className="text-xs font-semibold text-text-secondary uppercase tracking-widest mb-2">Pickup location</p>
+        <p className="text-xs font-semibold text-text-secondary uppercase tracking-widest mb-2">{isDest ? 'Destination' : 'Pickup location'}</p>
 
         <div className="flex items-start gap-3 mb-5">
           <div className="w-9 h-9 rounded-xl bg-primary-subtle flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -243,9 +259,9 @@ function ConfirmPickupContent() {
         >
           {confirming ? (
             <span className="flex items-center justify-center gap-2">
-              <Loader2 size={16} className="animate-spin" /> Setting pickup…
+              <Loader2 size={16} className="animate-spin" /> {isDest ? 'Setting destination…' : 'Setting pickup…'}
             </span>
-          ) : 'Confirm pickup location'}
+          ) : isDest ? 'Confirm destination' : 'Confirm pickup location'}
         </motion.button>
       </motion.div>
     </div>
