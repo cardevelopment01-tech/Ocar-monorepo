@@ -43,7 +43,7 @@ export async function autocomplete(
 export async function getPlaceDetails(placeId: string) {
   const cacheKey = `place:${placeId}`
   const cached = await repo.lookupGeoCache(cacheKey)
-  if (cached) return { ...cached, placeId, from_cache: true }
+  if (cached) return { latitude: cached.latitude, longitude: cached.longitude, address: cached.raw_address, placeId }
 
   const detail = await google.placeDetails(placeId)
   await repo.storeGeoCache({

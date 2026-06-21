@@ -99,14 +99,14 @@ export async function insertGpsTracks(tracks: GpsTrackPayload[]): Promise<void> 
 
 export async function lookupGeoCache(
   normalizedAddress: string
-): Promise<{ latitude: number; longitude: number } | null> {
+): Promise<{ latitude: number; longitude: number; raw_address: string } | null> {
   const res = await pool.query(
     `UPDATE place_geocode_cache
      SET hit_count = hit_count + 1,
          last_hit_at = now()
      WHERE normalized_address = $1
        AND expires_at > now()
-     RETURNING latitude, longitude`,
+     RETURNING latitude, longitude, raw_address`,
     [normalizedAddress]
   )
   return res.rows[0] ?? null

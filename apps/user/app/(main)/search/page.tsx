@@ -202,7 +202,7 @@ function SearchContent() {
     setSearching(false)
     if (next === 'origin') {
       originTouched.current = false
-      setQuery(originAddress)   // pre-populate so FROM never looks blank
+      setQuery(originAddress ?? '')   // pre-populate so FROM never looks blank
     } else {
       setQuery('')
     }
