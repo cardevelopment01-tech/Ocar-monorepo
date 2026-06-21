@@ -121,7 +121,7 @@ function SearchContent() {
     const oLng     = parseFloat(sp.get('originLng') ?? '') || 0
     if (destAddr && origAddr.trim() && !isNaN(destLat) && !isNaN(destLng)) {
       autoNavRef.current = true
-      void navigateToRide({ lat: destLat, lng: destLng, address: destAddr }, oLat, oLng, origAddr)
+      void navigateToRide({ lat: destLat, lng: destLng, address: destAddr }, oLat, oLng, origAddr, true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -205,7 +205,7 @@ function SearchContent() {
   }
 
   // Navigate to select-ride with real route
-  async function navigateToRide(dest: ConfirmedDest, oLat = originLat, oLng = originLng, oAddress = originAddress) {
+  async function navigateToRide(dest: ConfirmedDest, oLat = originLat, oLng = originLng, oAddress = originAddress, useReplace = false) {
     if (!oAddress.trim() || (oLat === 0 && oLng === 0)) {
       setConfirmedDest(dest)
       switchMode('origin')
@@ -226,7 +226,8 @@ function SearchContent() {
         originCityId:       '1',
       })
       if (route.polyline) params.set('polyline', route.polyline)
-      router.push(`/select-ride?${params.toString()}`)
+      if (useReplace) router.replace(`/select-ride?${params.toString()}`)
+      else             router.push(`/select-ride?${params.toString()}`)
     } catch {
       setResolving(false)
     }

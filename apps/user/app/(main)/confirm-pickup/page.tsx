@@ -122,7 +122,7 @@ function ConfirmPickupContent() {
         params.set('originLng',     String(centerLng))
         params.set('originAddress', address)
       }
-      router.push(`/search?${params.toString()}`)
+      router.replace(`/search?${params.toString()}`)
     } finally {
       setConfirming(false)
     }
