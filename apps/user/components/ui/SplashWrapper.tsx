@@ -12,11 +12,14 @@ const useSplashGate = (callback: () => void) => {
 }
 
 export default function SplashWrapper({ children }: { children: React.ReactNode }) {
-  const [showSplash, setShowSplash] = useState(false)
+  // Start true so SSR HTML already has the splash covering the page.
+  // useLayoutEffect (client-only, fires before first paint) flips it off
+  // immediately if the splash was already shown this session.
+  const [showSplash, setShowSplash] = useState(true)
 
   useSplashGate(() => {
-    if (!sessionStorage.getItem('ocar_splash_shown')) {
-      setShowSplash(true)
+    if (sessionStorage.getItem('ocar_splash_shown')) {
+      setShowSplash(false)
     }
   })
 
