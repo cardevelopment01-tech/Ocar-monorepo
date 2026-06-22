@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { AnimatePresence } from 'framer-motion'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import BottomNav from '@/components/ui/BottomNav'
 import TripRequestCard from '@/components/ui/TripRequestCard'
@@ -33,49 +33,15 @@ import { connectDriverSocket, disconnectDriverSocket, getDriverSocket } from '@/
 import { DEMO_MODE } from '@/lib/demo'
 import DemoBlock from '@/components/ui/DemoBlock'
 
-const TAB_PATHS = new Set(['/', '/earnings', '/wallet', '/profile'])
-
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
 
-function pageMotion(pathname: string) {
-  if (TAB_PATHS.has(pathname)) {
-    return {
-      initial:    { opacity: 0 } as const,
-      animate:    { opacity: 1 } as const,
-      exit:       { opacity: 0 } as const,
-      transition: { duration: 0.10, ease: 'easeInOut' as const },
-    }
-  }
-  if (pathname.startsWith('/ride/')) {
-    return {
-      initial:    { opacity: 0, y: 22 } as const,
-      animate:    { opacity: 1, y: 0  } as const,
-      exit:       { opacity: 0, y: 10 } as const,
-      transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] as const },
-    }
-  }
-  return {
-    initial:    { opacity: 0, scale: 0.97 } as const,
-    animate:    { opacity: 1, scale: 1    } as const,
-    exit:       { opacity: 0, scale: 0.97 } as const,
-    transition: { duration: 0.20, ease: [0.22, 1, 0.36, 1] as const },
-  }
-}
-
 export default function App() {
-  const location = useLocation()
   const navigate = useNavigate()
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
   const { isOnline, setOnline, setOffline } = useSessionStore()
   const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide } = useRideStore()
   const [accepting, setAccepting] = useState(false)
-
-  // Scroll to top on every route change. Instant (not smooth) so it doesn't
-  // race the 200ms Framer AnimatePresence exit animation.
-  useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [location.pathname])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -165,19 +131,9 @@ export default function App() {
     }
   }
 
-  const mv = pageMotion(location.pathname)
-
   return (
     <>
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={location.pathname}
-          initial={mv.initial}
-          animate={mv.animate}
-          exit={mv.exit}
-          transition={mv.transition}
-        >
-          <Routes location={location}>
+      <Routes>
             {/* Auth */}
             <Route path="/login" element={<Login />} />
 
@@ -245,9 +201,7 @@ export default function App() {
 
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </motion.div>
-      </AnimatePresence>
+      </Routes>
 
       {/* Global ride request overlay — persists across all tabs, not just Home */}
       <AnimatePresence>
