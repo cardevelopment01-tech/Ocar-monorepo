@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 2,
+  "name": "Ocar",
+  "description": "Intercity cab booking for Odisha — reliable, efficient, local.",
+  "northStar": "The Reliable Route",
+  "narrative": "Ocar's system is built around reliability made visible. Indigo punctuates; it does not flood. Shadows carry the brand color. Orange is operational, never decorative. One font. Clean surfaces. The primary action on any screen is unmissable.",
+
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "Brand anchor — CTAs, active states, logomark gradient, focus rings",
+        "boundary": "≤25% of any screen surface",
+        "tonicRamp": [
+          "#1a1672",
+          "#2920a8",
+          "#3830cb",
+          "#4641e0",
+          "#4F46E5",
+          "#7a75ec",
+          "#a8a4f5",
+          "#dcdafc"
+        ]
+      },
+      "accent-violet": {
+        "role": "Gradient partner to primary — logomark arc endpoint and splash glow only",
+        "boundary": "Not used as a standalone UI color",
+        "tonicRamp": [
+          "#1a0540",
+          "#2d0e6e",
+          "#481b9c",
+          "#612bc7",
+          "#7C3AED",
+          "#9d6df4",
+          "#c4a7f8",
+          "#e9dffe"
+        ]
+      },
+      "accent-orange": {
+        "role": "Operational — driver go-online CTA, admin alerts. Never on the user booking flow.",
+        "boundary": "Driver app and admin portal only",
+        "tonicRamp": [
+          "#3d1a00",
+          "#6b2d00",
+          "#9c4200",
+          "#d05a02",
+          "#F97316",
+          "#fa9549",
+          "#fbb97c",
+          "#fde3c9"
+        ]
+      },
+      "success": {
+        "role": "Completed rides, verified status, positive earnings",
+        "tonicRamp": ["#052e16", "#065f46", "#059669", "#10B981", "#34d399", "#6ee7b7", "#a7f3d0", "#d1fae5"]
+      },
+      "warning": {
+        "role": "Pending states, time-sensitive conditions",
+        "tonicRamp": ["#451a03", "#92400e", "#b45309", "#d97706", "#F59E0B", "#fbbf24", "#fde68a", "#fef3c7"]
+      },
+      "error": {
+        "role": "Failed payments, form errors, disputes",
+        "tonicRamp": ["#450a0a", "#7f1d1d", "#991b1b", "#dc2626", "#EF4444", "#f87171", "#fca5a5", "#fee2e2"]
+      },
+      "ink-900": {
+        "role": "Primary text — headlines, body, labels, data",
+        "note": "Cool undertone (#0F172A) matches indigo-tinted surface family"
+      },
+      "ink-600": {
+        "role": "Secondary text — supporting labels, metadata, form hints. Passes 4.5:1 on white."
+      },
+      "ink-400": {
+        "role": "Muted — placeholders, disabled labels, nav at rest. Verify contrast on tinted backgrounds."
+      },
+      "splash-bg": {
+        "role": "Splash screen only — deep indigo-dark that lets the gradient logomark glow",
+        "boundary": "Not used as a UI surface in any app screen"
+      }
+    },
+
+    "shadows": {
+      "card": {
+        "value": "0 2px 16px rgba(79,70,229,0.07)",
+        "usage": "Default card on user app. Barely perceptible; separates card from indigo-tinted bg."
+      },
+      "card-admin": {
+        "value": "0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(79,70,229,0.06)",
+        "usage": "Admin portal cards and panels. Two-layer: structural + brand ambient."
+      },
+      "button-primary": {
+        "value": "0 4px 20px rgba(79,70,229,0.40)",
+        "usage": "Indigo CTA in user app. The shadow is the affordance signal — it marks the primary action."
+      },
+      "button-primary-hover": {
+        "value": "0 6px 32px rgba(79,70,229,0.50)",
+        "usage": "Hover state for indigo CTA. Shadow deepens; button does not move."
+      },
+      "button-go-online": {
+        "value": "0 4px 14px rgba(249,115,22,0.35)",
+        "usage": "Driver go-online CTA. Orange-tinted shadow matches button accent."
+      },
+      "sheet": {
+        "value": "0 -6px 32px rgba(79,70,229,0.10)",
+        "usage": "Bottom sheets. Directional upward to separate from scrollable content behind."
+      },
+      "float": {
+        "value": "0 4px 20px rgba(79,70,229,0.12)",
+        "usage": "Floating chips, active search bar, trip-type selector."
+      },
+      "glow": {
+        "value": "0 6px 32px rgba(79,70,229,0.35)",
+        "usage": "Focus rings and hover states on primary elements in the admin portal (desktop)."
+      }
+    },
+
+    "motion": {
+      "durations": {
+        "micro": "150ms",
+        "standard": "200ms",
+        "emphasis": "300ms",
+        "splash-arc": "700ms",
+        "splash-logo": "500ms",
+        "splash-exit": "350ms",
+        "splash-hold": "1600ms",
+        "splash-hold-reduced": "400ms",
+        "spinner": "0.8s"
+      },
+      "easings": {
+        "standard": "ease",
+        "easeOutExpo": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "easeInOut": "ease-in-out",
+        "easeOut": "ease-out",
+        "linear": "linear"
+      },
+      "rules": [
+        "150–250ms for all state transitions. No orchestrated page-load sequences.",
+        "Motion conveys state — feedback, reveal, loading. Never decoration.",
+        "prefers-reduced-motion: every animation has a fallback (instant or crossfade).",
+        "Splash is the single exception to the 250ms ceiling — it is a brand moment, not a state change."
+      ]
+    },
+
+    "breakpoints": {
+      "user-app": {
+        "maxWidth": "430px",
+        "layout": "Single column, centered with translateZ(0) containment",
+        "note": "User and driver apps are mobile-only. The 430px container is the entire canvas."
+      },
+      "admin-portal": {
+        "primary": "1024px+",
+        "sidebar": "240px fixed",
+        "content": "flex-1 with max-w-7xl",
+        "minimum": "768px"
+      }
+    },
+
+    "divergences": [
+      {
+        "app": "driver",
+        "issue": "Loads Poppins for some display text",
+        "canonical": "Inter",
+        "resolution": "Replace at next refactor pass"
+      },
+      {
+        "app": "admin",
+        "issue": "Loads DM Sans body font",
+        "canonical": "Inter",
+        "resolution": "Replace at next refactor pass"
+      },
+      {
+        "app": "driver",
+        "issue": "Primary color is #2563EB (blue) in some components, not #4F46E5 (indigo)",
+        "canonical": "#4F46E5",
+        "resolution": "Audit and replace at next refactor pass"
+      },
+      {
+        "file": "apps/driver/src/components/map/SelfCarMarker.tsx",
+        "line": 81,
+        "issue": "borderLeft: '5px solid' — side-stripe border (absolute ban)",
+        "resolution": "Replace with background tint or remove"
+      }
+    ]
+  },
+
+  "components": [
+    {
+      "name": "button-primary",
+      "description": "User app primary CTA — full-pill, indigo-violet gradient, drop shadow",
+      "apps": ["user", "admin"],
+      "html": "<button class=\"ds-btn-primary\">Book Ride</button>",
+      "css": ".ds-btn-primary {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 100%;\n  padding: 16px 24px;\n  background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);\n  color: #FFFFFF;\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 16px;\n  font-weight: 600;\n  line-height: 1;\n  letter-spacing: -0.01em;\n  border: none;\n  border-radius: 9999px;\n  cursor: pointer;\n  box-shadow: 0 4px 20px rgba(79,70,229,0.40);\n  transition: box-shadow 150ms ease, transform 150ms ease;\n  -webkit-font-smoothing: antialiased;\n}\n.ds-btn-primary:hover {\n  box-shadow: 0 6px 32px rgba(79,70,229,0.50);\n}\n.ds-btn-primary:active {\n  transform: scale(0.98);\n  box-shadow: 0 2px 10px rgba(79,70,229,0.32);\n}\n.ds-btn-primary:disabled {\n  opacity: 0.50;\n  cursor: not-allowed;\n  transform: none;\n  box-shadow: 0 4px 20px rgba(79,70,229,0.40);\n}"
+    },
+    {
+      "name": "button-go-online",
+      "description": "Driver app go-online CTA — rounded-2xl, orange gradient, driver-context only",
+      "apps": ["driver"],
+      "html": "<button class=\"ds-btn-go-online\">Go Online</button>",
+      "css": ".ds-btn-go-online {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 100%;\n  padding: 16px 24px;\n  background: linear-gradient(135deg, #FB923C 0%, #F97316 100%);\n  color: #FFFFFF;\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 16px;\n  font-weight: 700;\n  line-height: 1;\n  border: none;\n  border-radius: 24px;\n  cursor: pointer;\n  box-shadow: 0 4px 14px rgba(249,115,22,0.35);\n  transition: box-shadow 150ms ease, transform 150ms ease;\n  -webkit-font-smoothing: antialiased;\n}\n.ds-btn-go-online:hover {\n  box-shadow: 0 6px 22px rgba(249,115,22,0.45);\n}\n.ds-btn-go-online:active {\n  transform: scale(0.98);\n  box-shadow: 0 2px 8px rgba(249,115,22,0.28);\n}\n.ds-btn-go-online:disabled {\n  opacity: 0.50;\n  cursor: not-allowed;\n  transform: none;\n}"
+    },
+    {
+      "name": "input-field",
+      "description": "Text input — xl rounded, indigo-tinted bg, branded focus ring",
+      "apps": ["user", "driver", "admin"],
+      "html": "<div class=\"ds-input-wrap\">\n  <input class=\"ds-input\" type=\"text\" placeholder=\"Where to?\" />\n</div>",
+      "css": ".ds-input {\n  width: 100%;\n  padding: 14px 16px;\n  background: #F5F7FF;\n  color: #0F172A;\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 16px;\n  font-weight: 400;\n  line-height: 1.5;\n  border: 1px solid #E8EEFF;\n  border-radius: 20px;\n  outline: none;\n  transition: border-color 150ms ease, box-shadow 150ms ease;\n  -webkit-font-smoothing: antialiased;\n}\n.ds-input::placeholder {\n  color: #94A3B8;\n}\n.ds-input:focus {\n  border-color: #4F46E5;\n  box-shadow: 0 0 0 3px rgba(79,70,229,0.10);\n}\n.ds-input.ds-input--error {\n  border-color: #EF4444;\n}\n.ds-input.ds-input--error:focus {\n  box-shadow: 0 0 0 3px rgba(239,68,68,0.10);\n}"
+    },
+    {
+      "name": "card",
+      "description": "Default surface container — 2xl rounded, white, indigo-tinted ambient shadow",
+      "apps": ["user", "driver", "admin"],
+      "html": "<div class=\"ds-card\">\n  <p style=\"margin:0;font-family:'Inter',sans-serif;font-size:14px;color:#475569;\">Card content</p>\n</div>",
+      "css": ".ds-card {\n  background: #FFFFFF;\n  border-radius: 24px;\n  padding: 16px;\n  box-shadow: 0 2px 16px rgba(79,70,229,0.07);\n}\n.ds-card--admin {\n  background: #FFFFFF;\n  border-radius: 24px;\n  padding: 16px;\n  box-shadow: 0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(79,70,229,0.06);\n}"
+    },
+    {
+      "name": "status-pill",
+      "description": "Semantic status indicators — full pill, color-coded by semantic role",
+      "apps": ["user", "driver", "admin"],
+      "html": "<span class=\"ds-pill ds-pill-success\">Active</span>\n<span class=\"ds-pill ds-pill-warning\">Pending</span>\n<span class=\"ds-pill ds-pill-danger\">Suspended</span>\n<span class=\"ds-pill ds-pill-info\">In Progress</span>\n<span class=\"ds-pill ds-pill-muted\">Unknown</span>",
+      "css": ".ds-pill {\n  display: inline-flex;\n  align-items: center;\n  padding: 2px 10px;\n  border-radius: 9999px;\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 12px;\n  font-weight: 600;\n  line-height: 18px;\n  -webkit-font-smoothing: antialiased;\n}\n.ds-pill-success { background: #D1FAE5; color: #10B981; }\n.ds-pill-warning { background: #FEF3C7; color: #F59E0B; }\n.ds-pill-danger  { background: #FEE2E2; color: #EF4444; }\n.ds-pill-info    { background: #E0F2FE; color: #0EA5E9; }\n.ds-pill-muted   { background: #F5F7FF; color: #94A3B8; }\n.ds-pill-primary { background: #EEF2FF; color: #4F46E5; }"
+    },
+    {
+      "name": "bottom-sheet",
+      "description": "Bottom sheet container — 3xl top-radius, upward shadow, branded drag handle",
+      "apps": ["user", "driver"],
+      "html": "<div class=\"ds-sheet\">\n  <div class=\"ds-sheet-handle\"></div>\n  <p style=\"margin:0;font-family:'Inter',sans-serif;font-size:14px;color:#475569;\">Sheet content</p>\n</div>",
+      "css": ".ds-sheet {\n  background: #FFFFFF;\n  border-radius: 32px 32px 0 0;\n  padding: 0 16px 24px;\n  box-shadow: 0 -6px 32px rgba(79,70,229,0.10);\n}\n.ds-sheet-handle {\n  width: 40px;\n  height: 4px;\n  background: rgba(79,70,229,0.15);\n  border-radius: 9999px;\n  margin: 12px auto 16px;\n}"
+    },
+    {
+      "name": "admin-nav-item",
+      "description": "Admin sidebar navigation item — md rounded, active = solid primary fill",
+      "apps": ["admin"],
+      "html": "<div class=\"ds-nav-item ds-nav-item--active\">\n  <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z\"/><polyline points=\"9 22 9 12 15 12 15 22\"/></svg>\n  Overview\n</div>\n<div class=\"ds-nav-item\">\n  <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"12\" cy=\"8\" r=\"5\"/><path d=\"M3 21v-2a7 7 0 0114 0v2\"/></svg>\n  Drivers\n</div>",
+      "css": ".ds-nav-item {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  padding: 10px 12px;\n  border-radius: 12px;\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 13px;\n  font-weight: 500;\n  color: #94A3B8;\n  cursor: pointer;\n  transition: background 150ms ease, color 150ms ease;\n  -webkit-font-smoothing: antialiased;\n  user-select: none;\n}\n.ds-nav-item:hover {\n  background: #F5F7FF;\n  color: #475569;\n}\n.ds-nav-item--active {\n  background: #4F46E5;\n  color: #FFFFFF;\n}\n.ds-nav-item--active:hover {\n  background: #4338CA;\n  color: #FFFFFF;\n}"
+    },
+    {
+      "name": "ocar-logomark",
+      "description": "Brand Speed Ring logomark with wordmark — gradient arc + dot + 'ocar' wordmark",
+      "apps": ["user", "driver", "admin"],
+      "html": "<span class=\"ds-logo\">\n  <svg width=\"28\" height=\"28\" viewBox=\"0 0 100 100\" fill=\"none\" role=\"img\" aria-label=\"Ocar\">\n    <defs>\n      <linearGradient id=\"ds-logo-grad\" x1=\"0\" y1=\"0\" x2=\"100\" y2=\"100\" gradientUnits=\"userSpaceOnUse\">\n        <stop offset=\"0%\" stop-color=\"#4F46E5\"/>\n        <stop offset=\"100%\" stop-color=\"#7C3AED\"/>\n      </linearGradient>\n    </defs>\n    <path d=\"M 78.284 78.284 A 40 40 0 1 0 21.716 78.284\"\n          stroke=\"url(#ds-logo-grad)\" stroke-width=\"7.5\" stroke-linecap=\"round\" fill=\"none\"/>\n    <circle cx=\"78.284\" cy=\"78.284\" r=\"8\" fill=\"url(#ds-logo-grad)\"/>\n  </svg>\n  <span class=\"ds-logo-word\">ocar</span>\n</span>",
+      "css": ".ds-logo {\n  display: inline-flex;\n  align-items: center;\n  gap: 8px;\n  text-decoration: none;\n}\n.ds-logo-word {\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 22px;\n  font-weight: 700;\n  letter-spacing: -0.03em;\n  color: #0F172A;\n  line-height: 1;\n  -webkit-font-smoothing: antialiased;\n}\n.ds-logo--white .ds-logo-word {\n  color: #FFFFFF;\n}"
+    }
+  ]
+}
