@@ -202,7 +202,7 @@ export default function Home() {
           {/* ── Row 1: Greeting + Toggle ── */}
           <div className="flex items-center justify-between mb-5">
             <div>
-              <p className="text-text-muted text-[10px] font-bold uppercase tracking-[0.13em] mb-0.5">{todayLabel}</p>
+              <p className="text-text-muted text-xs mb-0.5">{todayLabel}</p>
               <p className="text-text-primary font-display font-bold text-[22px] leading-tight">
                 Hi, {firstName} 👋
               </p>
@@ -215,27 +215,29 @@ export default function Home() {
 
           {/* ── Row 2: Today's stats ── */}
           <div className="grid grid-cols-3 gap-2 mb-3">
-            {/* Earnings — most prominent */}
-            <div className="rounded-2xl px-3 py-3 text-center" style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(22,163,74,0.14)' }}>
+            {/* Earnings — orange accent (operational income signal) */}
+            <div className="rounded-2xl px-3 py-3 text-center" style={{ background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.14)' }}>
               <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                <IndianRupee size={12} style={{ color: '#16A34A' }} />
-                <span className="font-black text-[15px] tabular-nums" style={{ color: '#16A34A' }}>
+                <IndianRupee size={12} className="text-accent-orange" />
+                <span className="font-black text-[15px] tabular-nums text-accent-orange">
                   {e.total.toLocaleString('en-IN')}
                 </span>
               </div>
               <p className="text-text-muted text-[10px] font-semibold">Earned</p>
             </div>
-            <div className="rounded-2xl px-3 py-3 text-center" style={{ background: 'rgba(37,99,235,0.07)', border: '1px solid rgba(37,99,235,0.13)' }}>
+            {/* Trips — neutral */}
+            <div className="rounded-2xl px-3 py-3 text-center bg-surface-2 border border-border">
               <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                <Clock size={11} style={{ color: '#2563EB' }} />
-                <span className="font-black text-[15px] tabular-nums" style={{ color: '#2563EB' }}>{e.trips}</span>
+                <Clock size={11} className="text-text-secondary" />
+                <span className="font-black text-[15px] tabular-nums text-text-primary">{e.trips}</span>
               </div>
               <p className="text-text-muted text-[10px] font-semibold">Trips</p>
             </div>
-            <div className="rounded-2xl px-3 py-3 text-center" style={{ background: 'rgba(217,119,6,0.07)', border: '1px solid rgba(217,119,6,0.13)' }}>
+            {/* Rating — neutral */}
+            <div className="rounded-2xl px-3 py-3 text-center bg-surface-2 border border-border">
               <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                <Star size={11} style={{ color: '#D97706' }} />
-                <span className="font-black text-[15px] tabular-nums" style={{ color: '#D97706' }}>{e.rating}</span>
+                <Star size={11} className="text-text-secondary" />
+                <span className="font-black text-[15px] tabular-nums text-text-primary">{e.rating}</span>
               </div>
               <p className="text-text-muted text-[10px] font-semibold">Rating</p>
             </div>

@@ -107,9 +107,6 @@ export default function StandardConfirm() {
             <ArrowLeft size={20} className="text-text-secondary" />
           </button>
           <div>
-            <p className="text-text-muted text-[10px] font-bold uppercase tracking-widest mb-0.5">
-              Standard Mode
-            </p>
             <h1 className="font-display text-[22px] font-bold text-text-primary leading-tight">
               You're almost online!
             </h1>
@@ -125,9 +122,6 @@ export default function StandardConfirm() {
           style={{ background: '#0F172A', boxShadow: '0 10px 30px rgba(15,23,42,0.18)' }}
         >
           <div className="p-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: 'rgba(255,255,255,0.40)' }}>
-              Your Vehicle
-            </p>
             <div className="flex items-center gap-4">
               {/* Icon tile */}
               <div

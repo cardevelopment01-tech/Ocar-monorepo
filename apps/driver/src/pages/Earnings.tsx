@@ -64,11 +64,8 @@ export default function Earnings() {
       </div>
 
       {/* Total card */}
-      <div
-        className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border"
-        style={{ borderLeftColor: '#2563EB', borderLeftWidth: 3 }}
-      >
-        <p className="text-text-muted text-[11px] font-bold uppercase tracking-widest mb-1">
+      <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
+        <p className="text-text-muted text-xs font-medium mb-1">
           {PERIODS.find(p => p.key === period)!.label}
         </p>
         <p className="text-[44px] font-black text-text-primary leading-none tabular-nums">
@@ -88,10 +85,10 @@ export default function Earnings() {
             {e.hours} online
           </span>
           <span
-            className="rounded-full px-3 py-1 text-xs font-semibold flex items-center gap-1"
-            style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.18)', color: '#D97706' }}
+            className="rounded-full px-3 py-1 text-xs font-semibold flex items-center gap-1 text-text-secondary"
+            style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="#D97706" aria-hidden="true">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/>
             </svg>
             {e.rating}
@@ -101,7 +98,7 @@ export default function Earnings() {
 
       {/* Bar chart */}
       <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
-        <p className="text-text-secondary text-sm font-semibold mb-4">Breakdown</p>
+        <p className="text-text-secondary text-sm font-semibold mb-4">Daily Earnings</p>
         <div className="flex items-end gap-2 h-28" role="img" aria-label="Earnings chart">
           {e.chart.map((val, i) => (
             <div key={i} className="flex-1 flex flex-col items-center gap-1">
@@ -111,7 +108,7 @@ export default function Earnings() {
                   height: `${(val / maxBar) * 100}%`,
                   minHeight: 4,
                   background: val > 0
-                    ? 'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)'
+                    ? 'linear-gradient(180deg, #FB923C 0%, #F97316 100%)'
                     : '#F1F5F9',
                   borderRadius: '4px 4px 0 0',
                 }}
@@ -163,8 +160,7 @@ export default function Earnings() {
           trips.map(t => (
             <div key={t.id} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
               <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.15)' }}
+                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-surface-2 border border-border"
               >
                 <Car size={15} className="text-primary" aria-hidden="true" />
               </div>

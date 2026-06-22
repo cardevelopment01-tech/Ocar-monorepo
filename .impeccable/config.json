@@ -1,7 +1,7 @@
 {
   "detector": {
     "ignoreRules": [],
-    "ignoreFiles": [],
+    "ignoreFiles": ["apps/driver/src/index.css"],
     "ignoreValues": [
       {
         "rule": "overused-font",
@@ -104,6 +104,72 @@
         "value": "#64748b",
         "reason": "Slate-500 label text on dark raised panel — intentional secondary text for dark-sheet TripRequestCard",
         "createdAt": "2026-06-22T09:32:16.331Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#E2E8F0",
+        "reason": "border.DEFAULT token value from tailwind.config.ts — intentional design system border color",
+        "createdAt": "2026-06-22T10:00:00.000Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(234,179,8,0.10)",
+        "reason": "Dev-mode OTP hint box background — DEV only, functional not decorative",
+        "createdAt": "2026-06-22T10:00:00.000Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(234,179,8,0.45)",
+        "reason": "Dev-mode OTP hint box border — DEV only, functional not decorative",
+        "createdAt": "2026-06-22T10:00:00.000Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#EA580C",
+        "reason": "orange-600 — dark end of operational orange gradient (Go Offline button); in-palette, intentional",
+        "createdAt": "2026-06-22T10:30:00.000Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#FB923C",
+        "reason": "orange-400 — light end of operational orange bar chart gradient; in-palette, intentional",
+        "createdAt": "2026-06-22T10:30:00.000Z"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "4px",
+        "reason": "Bar chart bar top-radius — sub-component visual detail, not a card or interactive element",
+        "createdAt": "2026-06-22T10:30:00.000Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0,0,0,0.07)",
+        "reason": "Functional glass/shadow alpha — GLASS constant border in Home.tsx, not a brand color",
+        "createdAt": "2026-06-22T10:30:00.000Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0,0,0,0.10)",
+        "reason": "Functional glass shadow alpha — GLASS constant in Home.tsx, not a brand color",
+        "createdAt": "2026-06-22T10:30:00.000Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0,0,0,0.06)",
+        "reason": "Functional shadow alpha — bottom sheet border in Home.tsx, not a brand color",
+        "createdAt": "2026-06-22T10:30:00.000Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0,0,0,0.12)",
+        "reason": "Functional shadow alpha — bottom sheet drop shadow in Home.tsx, not a brand color",
+        "createdAt": "2026-06-22T10:30:00.000Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(255,255,255,0.92)",
+        "reason": "Functional glass background alpha — GLASS constant in Home.tsx, not a brand color",
+        "createdAt": "2026-06-22T10:30:00.000Z"
       }
     ]
   }

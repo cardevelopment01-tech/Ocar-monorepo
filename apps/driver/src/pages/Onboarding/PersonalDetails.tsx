@@ -29,7 +29,7 @@ function Field({ label, id, children }: { label: string; id?: string; children: 
     <div>
       <label
         htmlFor={id}
-        className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2 block"
+        className="text-text-secondary text-sm font-semibold mb-2 block"
       >
         {label}
       </label>

@@ -120,7 +120,7 @@ export default function Login() {
     <div
       className="min-h-screen flex flex-col items-center justify-center px-5"
       style={{
-        background: 'radial-gradient(ellipse at 50% -10%, rgba(37,99,235,0.08) 0%, #F5F8FF 55%)',
+        background: 'radial-gradient(ellipse at 50% -10%, rgba(15,23,42,0.05) 0%, #F5F8FF 55%)',
       }}
     >
       {/* Brand */}
@@ -134,8 +134,8 @@ export default function Login() {
           <div
             className="w-12 h-12 rounded-2xl flex items-center justify-center"
             style={{
-              background: 'linear-gradient(145deg, #3B82F6 0%, #2563EB 100%)',
-              boxShadow: '0 4px 16px rgba(37,99,235,0.30)',
+              background: 'linear-gradient(145deg, #1E293B 0%, #0F172A 100%)',
+              boxShadow: '0 4px 16px rgba(15,23,42,0.28)',
             }}
           >
             <Car size={22} className="text-white" strokeWidth={2} />
@@ -170,7 +170,7 @@ export default function Login() {
               <p className="text-text-secondary text-sm mb-7">Enter your registered mobile number</p>
 
               <div className="mb-5">
-                <label htmlFor="phone-input" className="block text-text-muted text-[11px] font-bold uppercase tracking-widest mb-2">
+                <label htmlFor="phone-input" className="block text-text-secondary text-sm font-semibold mb-2">
                   Mobile Number
                 </label>
                 <div

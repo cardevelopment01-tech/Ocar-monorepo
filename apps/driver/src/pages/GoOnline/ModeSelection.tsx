@@ -32,9 +32,6 @@ export default function ModeSelection() {
           <ArrowLeft size={20} className="text-text-secondary" />
         </button>
         <div>
-          <p className="text-text-muted text-[10px] font-bold uppercase tracking-widest mb-0.5">
-            Ready to earn?
-          </p>
           <h1 className="font-display text-[22px] font-bold text-text-primary leading-tight">
             How do you want to drive?
           </h1>
@@ -53,10 +50,6 @@ export default function ModeSelection() {
           onClick={() => navigate('/go-online/standard')}
           className="w-full driver-card text-left relative overflow-hidden"
         >
-          <span className="absolute top-3 right-4 font-display text-[40px] font-black leading-none select-none pointer-events-none text-slate-200">
-            01
-          </span>
-
           <div className="flex items-start gap-4 relative">
             <div className="w-14 h-14 rounded-2xl bg-[#0F172A] flex items-center justify-center flex-shrink-0">
               <Car size={26} className="text-white" strokeWidth={1.8} />
@@ -97,10 +90,6 @@ export default function ModeSelection() {
           animate="visible"
           className="w-full driver-card text-left relative overflow-hidden opacity-55 cursor-not-allowed"
         >
-          <span className="absolute top-3 right-4 font-display text-[40px] font-black leading-none select-none pointer-events-none text-slate-200">
-            02
-          </span>
-
           <div className="flex items-start gap-4 relative">
             <div className="w-14 h-14 rounded-2xl bg-slate-200 flex items-center justify-center flex-shrink-0">
               <CornerUpLeft size={26} className="text-slate-400" strokeWidth={1.8} />
