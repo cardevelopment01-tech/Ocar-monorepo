@@ -8,6 +8,7 @@ interface SplashScreenProps {
 }
 
 const EASE_OUT_EXPO = [0.16, 1, 0.3, 1] as const
+const APP_BG = '#F5F7FF'
 
 export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
   const reduce = useReducedMotion()
@@ -25,9 +26,13 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
       {show && (
         <motion.div
           key="ocar-splash"
-          initial={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.35, ease: 'easeInOut' }}
+          initial={{ opacity: 1, backgroundColor: '#0F0D1A' }}
+          exit={
+            reduce
+              ? { opacity: 0 }
+              : { opacity: 0, backgroundColor: APP_BG }
+          }
+          transition={{ duration: reduce ? 0.2 : 0.45, ease: EASE_OUT_EXPO }}
           style={{
             position: 'fixed',
             inset: 0,
@@ -39,25 +44,40 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
             justifyContent: 'center',
           }}
         >
-          <div
+          {/* Glow bloom — tracks arc completion, settles. Single premium technique. */}
+          <motion.div
+            initial={reduce ? false : { opacity: 0.15, scale: 0.9 }}
+            animate={
+              reduce
+                ? { opacity: 0.4, scale: 1 }
+                : { opacity: [0.15, 0.55, 0.4], scale: [0.9, 1.05, 1] }
+            }
+            transition={reduce ? { duration: 0 } : { duration: 0.85, delay: 0.1, ease: 'easeInOut' }}
             style={{
               position: 'absolute',
-              inset: 0,
+              width: 320,
+              height: 320,
+              borderRadius: '50%',
               background:
-                'radial-gradient(ellipse 55% 45% at 50% 50%, rgba(79,70,229,0.22) 0%, transparent 100%)',
+                'radial-gradient(circle at 50% 50%, rgba(124,58,237,0.45) 0%, rgba(79,70,229,0.28) 35%, transparent 70%)',
+              filter: 'blur(12px)',
               pointerEvents: 'none',
             }}
           />
 
+          {/* Logo group — subtle scale entrance; pushes through on exit */}
           <motion.div
             initial={reduce ? false : { scale: 0.96, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={
-              reduce
-                ? { duration: 0 }
-                : { duration: 0.5, ease: EASE_OUT_EXPO }
-            }
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}
+            exit={reduce ? undefined : { scale: 1.04, opacity: 0 }}
+            transition={reduce ? { duration: 0 } : { duration: 0.5, ease: EASE_OUT_EXPO }}
+            style={{
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 16,
+            }}
           >
             <svg
               width={72}
@@ -92,6 +112,7 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
                 </linearGradient>
               </defs>
 
+              {/* Arc draws on — signature motion */}
               <motion.path
                 d="M 78.284 78.284 A 40 40 0 1 0 21.716 78.284"
                 stroke={`url(#${gradientId})`}
@@ -103,10 +124,11 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
                 transition={
                   reduce
                     ? { duration: 0 }
-                    : { duration: 0.7, ease: 'easeInOut' }
+                    : { duration: 0.75, delay: 0.1, ease: 'easeInOut' }
                 }
               />
 
+              {/* Dot snaps in as the arc resolves */}
               <motion.circle
                 cx={78.284}
                 cy={78.284}
@@ -117,16 +139,21 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
                 transition={
                   reduce
                     ? { duration: 0 }
-                    : { duration: 0.25, delay: 0.55, ease: 'easeOut' }
+                    : { duration: 0.28, delay: 0.7, ease: EASE_OUT_EXPO }
                 }
                 style={{ transformOrigin: '78.284px 78.284px' }}
               />
             </svg>
 
+            {/* Wordmark resolves with the dot — upward settle, not an arbitrary fade */}
             <motion.span
-              initial={reduce ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={reduce ? { duration: 0 } : { duration: 0.3, delay: 0.5 }}
+              initial={reduce ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={
+                reduce
+                  ? { duration: 0 }
+                  : { duration: 0.4, delay: 0.7, ease: EASE_OUT_EXPO }
+              }
               style={{
                 fontFamily: 'Inter, sans-serif',
                 fontWeight: 700,

@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { type UserProfile, getStoredUser, getToken, getRefreshToken, clearAuth } from './auth'
 import api from './api'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 
 interface AuthContextType {
   user: UserProfile | null
@@ -78,19 +79,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('ocar_user_data', JSON.stringify(fresh))
   }
 
-  if (isLoading) {
+  // Only block render when we have NO user to show yet (first install / pre-redirect).
+  // Returning users see content instantly; verification happens silently in the background.
+  if (isLoading && !user) {
     return (
-      <div className="min-h-[100dvh] bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center shadow-lg">
-            <span className="text-white font-black text-3xl">O</span>
-          </div>
-          <div className="flex gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
-            <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
-        </div>
+      <div className="min-h-[100dvh] flex items-center justify-center" style={{ background: '#0F0D1A' }}>
+        <OcarSpinner size={32} variant="white" />
       </div>
     )
   }
