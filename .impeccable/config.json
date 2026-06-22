@@ -92,6 +92,18 @@
         "value": "#1e293b",
         "reason": "Pre-existing CTA button gradient — intentional slate dark end",
         "createdAt": "2026-06-22T09:18:18.759Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(8,11,22,0.62)",
+        "reason": "Dark sheet overlay scrim — intentional deep backdrop for premium ride request card",
+        "createdAt": "2026-06-22T09:32:16.262Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#64748b",
+        "reason": "Slate-500 label text on dark raised panel — intentional secondary text for dark-sheet TripRequestCard",
+        "createdAt": "2026-06-22T09:32:16.331Z"
       }
     ]
   }
