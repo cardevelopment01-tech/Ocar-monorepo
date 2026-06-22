@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { motion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 import { MapPin, Navigation2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -62,135 +62,174 @@ export default function TripRequestCard({
   }, [handleExpire])
 
   const isUrgent = time <= 5
-  const progress = (time / initialTime) * 100
-  const circumference = 2 * Math.PI * 30
+
+  const reduce = useReducedMotion()
+  const clock = `${Math.floor(time / 60)}:${String(time % 60).padStart(2, '0')}`
+  const etaMin = tripDistance > 0 ? Math.max(1, Math.round(tripDistance / 0.6)) : 0
+  const barFill =
+    isUrgent ? 'linear-gradient(90deg,#F87171,#EF4444)'
+    : time <= 10 ? '#F97316'
+    : 'linear-gradient(90deg,#FB923C,#F97316)'
+  const childVar = reduce
+    ? { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.15 } } }
+    : { hidden: { opacity: 0, y: 8, filter: 'blur(4px)' },
+        show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] as const } } }
+  const containerVar = {
+    hidden: {},
+    show: { transition: { staggerChildren: reduce ? 0 : 0.05, delayChildren: reduce ? 0 : 0.12 } },
+  }
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
       className="fixed inset-0 z-[200] flex items-end"
       style={{ background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(6px)' }}
     >
       <motion.div
-        initial={{ y: '100%', opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: '100%', opacity: 0 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 300, mass: 0.85 }}
-        className="w-full max-w-[430px] mx-auto rounded-t-3xl overflow-hidden"
+        initial={reduce ? { opacity: 0 } : { y: '100%' }}
+        animate={reduce ? { opacity: 1 } : { y: 0 }}
+        exit={reduce ? { opacity: 0 } : { y: '100%' }}
+        transition={reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 260, damping: 30, mass: 0.9 }}
+        className="relative w-full max-w-[430px] mx-auto rounded-t-3xl overflow-hidden"
         style={{
           background: '#FFFFFF',
-          boxShadow: '0 -8px 40px rgba(0,0,0,0.14)',
+          boxShadow: isUrgent
+            ? '0 -8px 44px rgba(239,68,68,0.18)'
+            : '0 -8px 40px rgba(0,0,0,0.14)',
+          transition: 'box-shadow 250ms ease-out',
         }}
       >
+        {/* [1] Linear timer bar — full bleed, drains left as time runs out */}
+        <div className="absolute top-0 left-0 right-0 h-1 bg-border z-10">
+          <motion.div
+            className="h-full rounded-r-full"
+            style={{ background: barFill }}
+            animate={{ width: `${Math.max(0, (time / initialTime) * 100)}%` }}
+            transition={{ duration: reduce ? 0 : 1, ease: 'linear' }}
+          />
+        </div>
+
         {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-0">
+        <div className="flex justify-center pt-3.5 pb-1">
           <div className="w-9 h-1 rounded-full bg-border" />
         </div>
 
-        {/* Header + countdown */}
-        <div className="flex items-center justify-between px-5 pt-4 pb-4" style={{ borderBottom: '1px solid #F1F5F9' }}>
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-text-muted mb-0.5">New Ride Request</p>
-            <p className={cn('text-base font-bold', isUrgent ? 'text-accent-red' : 'text-text-primary')}>
-              {expired ? 'Request expired' : isUrgent ? 'Hurry up!' : 'Respond quickly'}
-            </p>
-          </div>
+        <motion.div variants={containerVar} initial="hidden" animate="show">
 
-          {/* Circular timer */}
-          <div className="relative w-[68px] h-[68px] flex items-center justify-center">
-            <svg className="absolute inset-0 -rotate-90" width="68" height="68" aria-hidden="true">
-              <circle cx="34" cy="34" r="30" fill="none" stroke="#F1F5F9" strokeWidth="4" />
-              <circle
-                cx="34" cy="34" r="30" fill="none"
-                stroke={isUrgent ? '#EF4444' : '#F97316'}
-                strokeWidth="4"
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={circumference * (1 - progress / 100)}
-                className="transition-all duration-1000"
-              />
-            </svg>
-            <span className={cn(
-              'text-[32px] font-black tabular-nums leading-none',
-              isUrgent ? 'text-accent-red' : 'text-accent-orange'
-            )}>
-              {time}
-            </span>
-          </div>
-        </div>
-
-        {/* Route */}
-        <div className="px-5 py-4" style={{ borderBottom: '1px solid #F1F5F9' }}>
-          <div className="flex gap-3">
-            <div className="flex flex-col items-center pt-1 flex-shrink-0 w-4">
-              <div className="w-2.5 h-2.5 rounded-full bg-accent-orange flex-shrink-0" />
-              <div className="w-px flex-1 my-1.5 bg-border" />
-              <MapPin size={12} className="text-primary flex-shrink-0" />
-            </div>
-            <div className="flex-1 min-w-0 space-y-3">
-              <div>
-                <p className="text-text-primary font-semibold text-[15px] leading-snug">{pickup}</p>
-                <p className="text-text-muted text-xs mt-0.5">{pickupDistance.toFixed(1)} km away</p>
-              </div>
-              <div>
-                <p className="text-text-primary font-semibold text-[15px] leading-snug">{drop}</p>
-                <p className="text-text-muted text-xs mt-0.5">
-                  {tripDistance > 0 ? `${tripDistance} km trip` : 'Calculating…'}
-                </p>
-              </div>
-            </div>
-            <div className="flex-shrink-0">
-              <div
-                className="flex items-center gap-1 rounded-xl px-2.5 py-1.5"
-                style={{ background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.18)' }}
+          {/* [2] Header row — title + live clock + pickup-distance chip */}
+          <motion.div
+            variants={childVar}
+            className="flex items-center justify-between px-5 pt-3 pb-4"
+          >
+            <div className="flex items-baseline gap-2.5 min-w-0">
+              <p className="text-[15px] font-semibold text-text-primary">Trip request</p>
+              <motion.span
+                animate={!reduce && isUrgent ? { scale: [1, 1.12, 1] } : { scale: 1 }}
+                transition={{ duration: 1, repeat: isUrgent && !reduce ? Infinity : 0, ease: 'easeInOut' }}
+                className={cn(
+                  'text-[15px] font-bold tabular-nums origin-left',
+                  isUrgent ? 'text-accent-red' : 'text-text-muted'
+                )}
               >
-                <Navigation2 size={10} className="text-primary" />
-                <span className="text-primary text-xs font-bold">{pickupDistance.toFixed(1)} km</span>
+                {expired ? 'expired' : clock}
+              </motion.span>
+            </div>
+
+            <div
+              className="flex items-center gap-1 rounded-full px-2.5 py-1.5 flex-shrink-0"
+              style={{ background: '#EFF6FF', border: '1px solid #DBEAFE' }}
+            >
+              <Navigation2 size={11} className="text-primary" />
+              <span className="text-primary text-xs font-bold tabular-nums">
+                {pickupDistance.toFixed(1)} km away
+              </span>
+            </div>
+          </motion.div>
+
+          {/* [3] Fare + trip meta — inline row, not a hero-card */}
+          <motion.div variants={childVar} className="px-5 pb-4">
+            <div className="flex items-baseline gap-2 min-h-[34px]">
+              <span className="text-[28px] font-extrabold text-text-primary tracking-tight tabular-nums leading-none">
+                ₹{fare}
+              </span>
+              {tripDistance > 0 ? (
+                <span className="text-[13px] font-medium text-text-secondary">
+                  <span className="text-text-muted px-1.5">·</span>{tripDistance} km trip
+                  <span className="text-text-muted px-1.5">·</span>~{etaMin} min
+                </span>
+              ) : (
+                <span className="text-[13px] font-medium text-text-muted">
+                  <span className="px-1.5">·</span>calculating…
+                </span>
+              )}
+            </div>
+          </motion.div>
+
+          {/* [4] Route — spatial connector with orange→blue gradient rail */}
+          <motion.div variants={childVar} className="px-5 pb-5">
+            <div className="flex gap-3">
+              {/* Connector rail */}
+              <div className="flex flex-col items-center w-5 flex-shrink-0">
+                {/* origin node — orange filled dot in soft halo */}
+                <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: '#FFF7ED' }}>
+                  <div className="w-3 h-3 rounded-full bg-accent-orange" />
+                </div>
+                {/* gradient line + mid-distance pill */}
+                <div className="relative flex-1 w-0.5 my-1" style={{ background: 'linear-gradient(180deg,#F97316 0%,#2563EB 100%)' }}>
+                  {tripDistance > 0 && (
+                    <span
+                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] font-semibold text-text-secondary px-1.5"
+                      style={{ background: '#FFFFFF' }}
+                    >
+                      {tripDistance} km
+                    </span>
+                  )}
+                </div>
+                {/* destination node — square tile with MapPin */}
+                <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: '#EFF6FF' }}>
+                  <MapPin size={13} className="text-primary" />
+                </div>
+              </div>
+
+              {/* Address rows */}
+              <div className="flex-1 min-w-0 flex flex-col justify-between gap-5 py-0.5">
+                <div>
+                  <p className="text-[15px] font-semibold text-text-primary leading-snug truncate">{pickup}</p>
+                  <p className="text-xs text-text-muted mt-0.5">Pickup</p>
+                </div>
+                <div>
+                  <p className="text-[15px] font-semibold text-text-primary leading-snug truncate">{drop}</p>
+                  <p className="text-xs text-text-muted mt-0.5">Drop</p>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
 
-        {/* Fare */}
-        <div className="px-5 py-4 mb-1">
-          <div
-            className="flex items-center justify-between rounded-2xl px-5 py-4"
-            style={{
-              background: 'linear-gradient(135deg, #FFF7ED 0%, #FFF1E6 100%)',
-              border: '1px solid rgba(249,115,22,0.18)',
-            }}
-          >
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-600 mb-0.5">Estimated Fare</p>
-              <p className="text-[40px] font-black text-accent-orange leading-none tabular-nums">₹{fare}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-text-muted text-xs">Trip distance</p>
-              <p className="text-text-secondary font-bold text-sm mt-0.5">
-                {tripDistance > 0 ? `${tripDistance} km` : '—'}
-              </p>
-            </div>
-          </div>
-        </div>
+          {/* [5] Actions — asymmetric 30/70, accept-dominant */}
+          <motion.div variants={childVar} className="flex gap-3 px-5 pt-1 pb-8">
+            <button
+              onClick={onDecline}
+              className="w-[112px] h-14 rounded-2xl font-semibold text-[15px] text-text-secondary border border-border flex-shrink-0 active:scale-[0.97] transition-transform duration-150"
+              style={{ background: '#F0F4FD' }}
+            >
+              Decline
+            </button>
+            <motion.button
+              onClick={onAccept}
+              disabled={expired || isAccepting}
+              whileTap={reduce ? undefined : { scale: 0.97 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+              className="btn-primary flex-1 h-14 disabled:opacity-60"
+            >
+              {isAccepting ? 'Accepting…' : `Accept · ₹${fare}`}
+            </motion.button>
+          </motion.div>
 
-        {/* Actions */}
-        <div className="flex gap-3 px-5 pb-10 pt-1">
-          <button
-            onClick={onDecline}
-            className="btn-secondary flex-1"
-            style={{ minHeight: 56 }}
-          >
-            Decline
-          </button>
-          <button
-            onClick={onAccept}
-            disabled={expired || isAccepting}
-            className="btn-go-online flex-1 disabled:opacity-60"
-            style={{ minHeight: 56 }}
-          >
-            {isAccepting ? 'Accepting…' : 'Accept'}
-          </button>
-        </div>
+        </motion.div>
       </motion.div>
-    </div>
+    </motion.div>
   )
 }

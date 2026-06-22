@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import {
   Search, Bell, User,
   Home, Briefcase, Car, RotateCcw, Clock,
@@ -99,6 +99,7 @@ export default function HomePage() {
   const router   = useRouter()
   const { user } = useAuth()
   const name     = user?.name?.split(' ')[0] ?? 'there'
+  const reduce   = useReducedMotion()
 
   const [addr,      setAddr]      = useState('Bhubaneswar')
   const [lat,       setLat]       = useState(20.2961)
@@ -184,7 +185,7 @@ export default function HomePage() {
               background: 'radial-gradient(circle, rgba(99,102,241,0.45) 0%, transparent 68%)',
               filter: 'blur(48px)',
             }}
-            animate={{ x: [0, 18, -8, 0], y: [0, -14, 8, 0] }}
+            animate={reduce ? {} : { x: [0, 18, -8, 0], y: [0, -14, 8, 0] }}
             transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
           />
 
@@ -197,7 +198,7 @@ export default function HomePage() {
               background: 'radial-gradient(circle, rgba(124,58,237,0.40) 0%, transparent 68%)',
               filter: 'blur(42px)',
             }}
-            animate={{ x: [0, -12, 16, 0], y: [0, 10, -10, 0] }}
+            animate={reduce ? {} : { x: [0, -12, 16, 0], y: [0, 10, -10, 0] }}
             transition={{ duration: 11, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
           />
 
@@ -210,7 +211,7 @@ export default function HomePage() {
               background: 'radial-gradient(circle, rgba(56,189,248,0.18) 0%, transparent 68%)',
               filter: 'blur(32px)',
             }}
-            animate={{ y: [0, -20, 12, 0], opacity: [0.6, 1, 0.6] }}
+            animate={reduce ? { opacity: 0.6 } : { y: [0, -20, 12, 0], opacity: [0.6, 1, 0.6] }}
             transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 3 }}
           />
 
@@ -220,7 +221,7 @@ export default function HomePage() {
               key={i}
               className="absolute rounded-full bg-white"
               style={{ top: p.top, left: p.left, width: 2, height: 2 }}
-              animate={{ opacity: [0.08, 0.55, 0.08], scale: [1, 1.4, 1] }}
+              animate={reduce ? { opacity: 0.2 } : { opacity: [0.08, 0.55, 0.08], scale: [1, 1.4, 1] }}
               transition={{ duration: p.dur, repeat: Infinity, delay: p.delay, ease: 'easeInOut' }}
             />
           ))}
@@ -313,9 +314,9 @@ export default function HomePage() {
           onClick={toSearch}
           className="w-full flex items-center gap-3 bg-white rounded-2xl px-4"
           style={{ paddingTop: 14, paddingBottom: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.26)' }}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.4, ease: EASE }}
+          initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, filter: 'blur(4px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          transition={{ delay: 0.3, duration: 0.45, ease: EASE }}
           whileTap={{ scale: 0.985 }}
         >
           <Search size={17} strokeWidth={2} className="text-text-muted flex-shrink-0" />
@@ -378,7 +379,6 @@ export default function HomePage() {
 
           {/* Saved places */}
           <motion.div variants={section}>
-            <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Saved places</p>
             <motion.div
               className="bg-surface rounded-2xl border border-border overflow-hidden"
               style={{ boxShadow: SHADOW }}
@@ -408,7 +408,6 @@ export default function HomePage() {
 
           {/* Go again */}
           <motion.div variants={section}>
-            <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Go again</p>
             <motion.div
               className="bg-surface rounded-2xl border border-border overflow-hidden"
               style={{ boxShadow: SHADOW }}

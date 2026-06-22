@@ -1,5 +1,6 @@
 'use client'
 
+import { motion, useReducedMotion } from 'framer-motion'
 import { Car, MessageCircle, HelpCircle, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -11,6 +12,9 @@ interface NavItem {
   label: string
   soon?: boolean
 }
+
+const PILL_SPRING = { type: 'spring', stiffness: 420, damping: 35 } as const
+const TAP_SPRING  = { type: 'spring', stiffness: 400, damping: 25 } as const
 
 const items: NavItem[] = [
   { id: 'trip',     icon: Car,           label: 'My Trip'  },
@@ -25,6 +29,8 @@ interface BottomNavProps {
 }
 
 export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
+  const reduce = useReducedMotion()
+
   return (
     <nav
       className="fixed bottom-0 left-0 right-0"
@@ -45,29 +51,35 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
           {items.map(({ id, icon: Icon, label, soon }) => {
             const active = activeTab === id
             return (
-              <button
+              <motion.button
                 key={id}
                 onClick={() => !soon && onTabChange(id)}
                 disabled={soon}
                 className={cn(
-                  'flex flex-col items-center gap-1 min-w-[56px] min-h-[44px] justify-center relative transition-all duration-150',
+                  'flex flex-col items-center gap-1 min-w-[56px] min-h-[44px] justify-center relative',
                   soon ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                 )}
+                whileTap={soon || reduce ? undefined : { scale: 0.88 }}
+                transition={TAP_SPRING}
               >
-                <div
-                  className={cn(
-                    'w-10 h-7 rounded-full flex items-center justify-center transition-all duration-200',
-                    active ? 'bg-primary/10' : ''
+                {/* Active pill — slides between tabs via layoutId */}
+                <div className="relative w-10 h-7 rounded-full flex items-center justify-center">
+                  {active && (
+                    <motion.div
+                      layoutId={reduce ? undefined : 'nav-active-pill'}
+                      className="absolute inset-0 rounded-full bg-primary/10"
+                      transition={PILL_SPRING}
+                    />
                   )}
-                >
                   <Icon
                     className={cn(
-                      'w-5 h-5 transition-colors duration-150',
+                      'relative w-5 h-5 transition-colors duration-150',
                       active ? 'text-primary' : 'text-text-muted'
                     )}
                     strokeWidth={active ? 2.5 : 1.8}
                   />
                 </div>
+
                 {soon ? (
                   <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider">Soon</span>
                 ) : (
@@ -78,7 +90,7 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
                     {label}
                   </span>
                 )}
-              </button>
+              </motion.button>
             )
           })}
         </div>

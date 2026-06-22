@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { IndianRupee, Clock, Star, TrendingUp, Bell, Wallet, ChevronRight } from 'lucide-react'
-import { AnimatePresence } from 'framer-motion'
 import OnlineToggle from '@/components/ui/OnlineToggle'
-import TripRequestCard from '@/components/ui/TripRequestCard'
 import { mockEarnings } from '@/lib/mock-data'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
-import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi } from '@/lib/ride-api'
 import api from '@/lib/api'
-import { connectDriverSocket, disconnectDriverSocket, getDriverSocket } from '@/lib/socket'
+import { disconnectDriverSocket } from '@/lib/socket'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
@@ -40,69 +37,20 @@ const GLASS = {
 export default function Home() {
   const navigate = useNavigate()
   const driver = useAuthStore(s => s.driver)
-  const { isOnline, sessionId, setOnline, setOffline } = useSessionStore()
-  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide } = useRideStore()
+  const { isOnline, sessionId, setOffline } = useSessionStore()
 
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const sheetRef            = useRef<HTMLDivElement | null>(null)
   const geoTimer            = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastGeoCoord        = useRef<[number, number] | null>(null)
 
-  const [mapCenter,          setMapCenter]         = useState<[number, number]>([20.2961, 85.8245])
+  const [mapCenter,          setMapCenter]         = useState<[number, number]>([DEFAULT_LAT, DEFAULT_LNG])
   const [sheetHeight,        setSheetHeight]       = useState(320)
   const [areaName,           setAreaName]          = useState<string | null>(null)
   const [geoLoading,         setGeoLoading]        = useState(false)
   const [showOfflineConfirm, setShowOfflineConfirm] = useState(false)
-  const [accepting,          setAccepting]         = useState(false)
   const e = mockEarnings.today
   const firstName = driver?.full_name?.split(' ')[0] ?? 'Driver'
-
-  useEffect(() => {
-    driverRideApi.getCurrentSession()
-      .then(session => {
-        if (session && (session.status === 'online' || session.status === 'on_trip')) {
-          setOnline(Number(session.id), Number(session.vehicle_id), Number(session.category_id))
-          connectDriverSocket()
-        } else {
-          // DB says no active session — clear any stale persisted online state
-          setOffline()
-          disconnectDriverSocket()
-        }
-      })
-      .catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    if (!isOnline) return
-    const socket = getDriverSocket()
-    const onRideRequest = (data: {
-      rideId: string; pickup: string; drop: string; distanceToPickup: number;
-      estimatedFare: number; rideType: string; isReturnCab: boolean; expiresAt: string;
-      timeoutSeconds: number; pickupLat?: number; pickupLng?: number;
-      destinationLat?: number; destinationLng?: number;
-    }) => {
-      const pLat = data.pickupLat ?? DEFAULT_LAT
-      const pLng = data.pickupLng ?? DEFAULT_LNG
-      let tripDistance = 0
-      if (data.destinationLat != null && data.destinationLng != null) {
-        const R = 6371
-        const dLat = (data.destinationLat - pLat) * Math.PI / 180
-        const dLng = (data.destinationLng - pLng) * Math.PI / 180
-        const a = Math.sin(dLat / 2) ** 2 +
-          Math.cos(pLat * Math.PI / 180) * Math.cos(data.destinationLat * Math.PI / 180) *
-          Math.sin(dLng / 2) ** 2
-        tripDistance = Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 1.3 * 10) / 10
-      }
-      setIncomingRequest({
-        rideId: data.rideId, pickup: data.pickup, drop: data.drop,
-        pickupDistance: data.distanceToPickup / 1000, tripDistance, fare: data.estimatedFare,
-        timeoutSeconds: data.timeoutSeconds, pickupLat: pLat, pickupLng: pLng,
-      })
-    }
-    socket.on('ride:request', onRideRequest)
-    return () => { socket.off('ride:request', onRideRequest) }
-  }, [isOnline, setIncomingRequest])
 
   useEffect(() => {
     if (!isOnline || !sessionId) {
@@ -139,29 +87,6 @@ export default function Home() {
     disconnectDriverSocket()
     setOffline()
     await driverRideApi.goOffline('driver_choice').catch(() => {})
-  }
-
-  const handleAcceptRide = async (rideId: string) => {
-    if (accepting) return
-    setAccepting(true)
-    try {
-      await driverRideApi.acceptRide(rideId)
-      const ride = await driverRideApi.getRide(rideId)
-      setActiveRide({
-        id: rideId, status: 'accepted',
-        pickup: ride.origin_address ?? 'Pickup',
-        drop: ride.destination_address ?? 'Destination',
-        pickupLat: ride.origin_lat, pickupLng: ride.origin_lng,
-        dropLat: ride.dest_lat ?? undefined, dropLng: ride.dest_lng ?? undefined,
-        fare: ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
-        userPhone: ride.user_phone ?? undefined, userName: ride.user_name ?? undefined,
-      })
-      clearIncomingRequest()
-      navigate('/ride/navigate')
-    } catch {
-      setAccepting(false)
-      clearIncomingRequest()
-    }
   }
 
   // Measure the bottom sheet so we can offset the map camera above it
@@ -359,24 +284,6 @@ export default function Home() {
           )}
         </div>
       </div>
-
-      {/* Incoming ride request overlay */}
-      <AnimatePresence>
-        {incomingRequest && (
-          <TripRequestCard
-            key={incomingRequest.rideId}
-            pickup={incomingRequest.pickup}
-            drop={incomingRequest.drop}
-            pickupDistance={incomingRequest.pickupDistance}
-            tripDistance={incomingRequest.tripDistance}
-            fare={incomingRequest.fare}
-            timeRemaining={incomingRequest.timeoutSeconds}
-            isAccepting={accepting}
-            onAccept={() => void handleAcceptRide(incomingRequest.rideId)}
-            onDecline={clearIncomingRequest}
-          />
-        )}
-      </AnimatePresence>
 
       {/* Go offline confirmation — fixed so it covers BottomNav (z-100) */}
       {showOfflineConfirm && (
