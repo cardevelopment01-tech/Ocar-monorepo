@@ -170,6 +170,12 @@
         "value": "rgba(255,255,255,0.92)",
         "reason": "Functional glass background alpha — GLASS constant in Home.tsx, not a brand color",
         "createdAt": "2026-06-22T10:30:00.000Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0,0,0,0.14)",
+        "reason": "Functional bottom-sheet drop shadow — DatePickerSheet dialog, not a brand color",
+        "createdAt": "2026-06-22T14:30:00.000Z"
       }
     ]
   }

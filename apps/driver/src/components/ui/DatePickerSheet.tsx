@@ -56,8 +56,8 @@ function Drum({ items, format, scrollRef, onScroll }: DrumProps) {
         className="absolute left-1 right-1 rounded-xl pointer-events-none"
         style={{
           top: SPACER, height: ITEM_H, zIndex: 2,
-          background: 'rgba(37,99,235,0.09)',
-          border: '1.5px solid rgba(37,99,235,0.16)',
+          background: 'rgba(15,23,42,0.06)',
+          border: '1.5px solid rgba(15,23,42,0.14)',
         }}
       />
       {/* Top fade */}

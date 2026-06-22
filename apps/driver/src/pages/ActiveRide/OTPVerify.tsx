@@ -34,7 +34,7 @@ export default function OTPVerify() {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-6"
-      style={{ background: 'radial-gradient(ellipse at 50% -10%, rgba(37,99,235,0.06) 0%, #F5F8FF 50%)' }}
+      style={{ background: 'radial-gradient(ellipse at 50% -10%, rgba(15,23,42,0.04) 0%, #F5F8FF 50%)' }}
     >
       <motion.div
         initial={{ opacity: 0, y: 24 }}
@@ -46,8 +46,8 @@ export default function OTPVerify() {
         <div
           className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6"
           style={{
-            background: 'linear-gradient(145deg, #3B82F6 0%, #2563EB 100%)',
-            boxShadow: '0 4px 20px rgba(37,99,235,0.28)',
+            background: 'linear-gradient(145deg, #1E293B 0%, #0F172A 100%)',
+            boxShadow: '0 4px 20px rgba(15,23,42,0.28)',
           }}
         >
           <KeyRound size={34} className="text-white" strokeWidth={1.75} aria-hidden="true" />
