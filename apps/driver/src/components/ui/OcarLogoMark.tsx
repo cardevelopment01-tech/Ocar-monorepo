@@ -72,11 +72,11 @@ export default function OcarLogoMark({
         <path
           d={ARC_PATH}
           stroke={stroke}
-          strokeWidth={9}
+          strokeWidth={7.5}
           strokeLinecap="round"
           fill="none"
         />
-        <circle cx={DOT_CX} cy={DOT_CY} r={7} fill={stroke} />
+        <circle cx={DOT_CX} cy={DOT_CY} r={8} fill={stroke} />
       </svg>
       {withWordmark && (
         <span

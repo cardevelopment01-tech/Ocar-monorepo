@@ -1,6 +1,6 @@
 import { useId } from 'react'
 
-import { motion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 
 type SpinnerVariant = 'color' | 'white' | 'mono'
 
@@ -10,10 +10,18 @@ interface OcarSpinnerProps {
   className?: string
 }
 
+const ARC_PATH = 'M 50 10 A 40 40 0 0 1 84.641 70'
+const HEAD_CX = 50
+const HEAD_CY = 10
+
 export default function OcarSpinner({ size = 24, variant = 'color', className }: OcarSpinnerProps) {
   const gradientId = useId()
-  const stroke =
-    variant === 'white' ? '#FFFFFF' : variant === 'mono' ? '#334155' : `url(#${gradientId})`
+  const reduce = useReducedMotion()
+
+  const baseColor =
+    variant === 'white' ? '#FFFFFF' : variant === 'mono' ? '#334155' : '#4F46E5'
+  const headColor =
+    variant === 'white' ? '#FFFFFF' : variant === 'mono' ? '#334155' : '#7C3AED'
 
   return (
     <motion.svg
@@ -24,24 +32,29 @@ export default function OcarSpinner({ size = 24, variant = 'color', className }:
       role="status"
       aria-label="Loading"
       className={className}
-      animate={{ rotate: 360 }}
-      transition={{ duration: 1, ease: 'linear', repeat: Infinity }}
+      animate={reduce ? undefined : { rotate: 360 }}
+      transition={
+        reduce
+          ? undefined
+          : { duration: 0.8, ease: 'linear', repeat: Infinity }
+      }
       style={{ display: 'block' }}
     >
       <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#4F46E5" />
-          <stop offset="100%" stopColor="#7C3AED" />
+        <linearGradient id={gradientId} x1="50" y1="10" x2="84.641" y2="70" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor={headColor} stopOpacity="1" />
+          <stop offset="100%" stopColor={baseColor} stopOpacity="0" />
         </linearGradient>
       </defs>
       <path
-        d="M 78.284 78.284 A 40 40 0 1 0 21.716 78.284"
-        stroke={stroke}
-        strokeWidth={9}
+        d={ARC_PATH}
+        stroke={variant === 'color' ? `url(#${gradientId})` : baseColor}
+        strokeWidth={8}
         strokeLinecap="round"
         fill="none"
+        style={variant !== 'color' ? { opacity: 0.35 } : undefined}
       />
-      <circle cx={78.284} cy={78.284} r={7} fill={stroke} />
+      <circle cx={HEAD_CX} cy={HEAD_CY} r={5} fill={headColor} />
     </motion.svg>
   )
 }

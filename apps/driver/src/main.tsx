@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useLayoutEffect, useState } from 'react'
 
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
@@ -9,16 +9,16 @@ import './index.css'
 function Root() {
   const [showSplash, setShowSplash] = useState(false)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!sessionStorage.getItem('ocar_splash_shown')) {
       setShowSplash(true)
     }
   }, [])
 
-  function handleComplete() {
+  const handleComplete = useCallback(() => {
     sessionStorage.setItem('ocar_splash_shown', '1')
     setShowSplash(false)
-  }
+  }, [])
 
   return (
     <>
