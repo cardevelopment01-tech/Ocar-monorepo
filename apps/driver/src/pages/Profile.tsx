@@ -43,79 +43,85 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary pb-24">
+    <div className="h-[100dvh] bg-bg text-text-primary flex flex-col overflow-hidden">
       <StatusBar isOnline={isOnline} earningsToday={mockEarnings.today.total} />
 
-      <div className="px-5 pt-[64px] pb-4">
+      <div className="flex-shrink-0 px-5 pt-[64px] pb-4">
         <h1 className="font-display font-bold text-2xl text-text-primary">Profile</h1>
       </div>
 
-      {/* Avatar card */}
-      <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border flex items-center gap-4">
-        <div
-          className="w-[60px] h-[60px] rounded-2xl flex items-center justify-center flex-shrink-0"
-          style={{ background: 'linear-gradient(145deg, #3B82F6 0%, #2563EB 100%)' }}
-          aria-hidden="true"
-        >
-          <span className="text-2xl font-black text-white">{initial}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-text-primary font-bold text-lg leading-tight truncate">{displayName}</p>
-          <p className="text-text-muted text-sm mt-0.5">+91 {displayPhone}</p>
-          <div className="flex items-center gap-3 mt-2">
-            <div className="flex items-center gap-1">
-              <Star size={13} className="text-accent-amber fill-accent-amber" aria-hidden="true" />
-              <span className="text-text-secondary text-sm font-semibold">—</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Car size={13} className="text-text-muted" aria-hidden="true" />
-              <span className="text-text-muted text-xs">— trips</span>
+      {/* Scrollable content */}
+      <div
+        className="flex-1 overflow-y-auto min-h-0 pb-24"
+        style={{ overscrollBehaviorY: 'contain' }}
+      >
+        {/* Avatar card */}
+        <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border flex items-center gap-4">
+          <div
+            className="w-[60px] h-[60px] rounded-2xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'linear-gradient(145deg, #3B82F6 0%, #2563EB 100%)' }}
+            aria-hidden="true"
+          >
+            <span className="text-2xl font-black text-white">{initial}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-text-primary font-bold text-lg leading-tight truncate">{displayName}</p>
+            <p className="text-text-muted text-sm mt-0.5">+91 {displayPhone}</p>
+            <div className="flex items-center gap-3 mt-2">
+              <div className="flex items-center gap-1">
+                <Star size={13} className="text-accent-amber fill-accent-amber" aria-hidden="true" />
+                <span className="text-text-secondary text-sm font-semibold">—</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Car size={13} className="text-text-muted" aria-hidden="true" />
+                <span className="text-text-muted text-xs">— trips</span>
+              </div>
             </div>
           </div>
-        </div>
-        <span
-          className="text-xs font-bold px-2.5 py-1 rounded-full capitalize flex-shrink-0"
-          style={{ background: statusStyle.bg, color: statusStyle.text }}
-        >
-          {driver?.status ?? '—'}
-        </span>
-      </div>
-
-      {/* Menu */}
-      <div className="mx-5 bg-white rounded-3xl border border-border overflow-hidden mb-4">
-        {MENU_ITEMS.map((item, i) => (
-          <button
-            key={item.label}
-            className={`w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors cursor-pointer ${
-              i < MENU_ITEMS.length - 1 ? 'border-b border-border' : ''
-            }`}
+          <span
+            className="text-xs font-bold px-2.5 py-1 rounded-full capitalize flex-shrink-0"
+            style={{ background: statusStyle.bg, color: statusStyle.text }}
           >
-            <div className="text-left">
-              <p className="text-text-primary font-semibold text-sm">{item.label}</p>
-              {item.sub && <p className="text-text-muted text-xs mt-0.5">{item.sub}</p>}
-            </div>
-            <ChevronRight size={15} className="text-text-muted" aria-hidden="true" />
+            {driver?.status ?? '—'}
+          </span>
+        </div>
+
+        {/* Menu */}
+        <div className="mx-5 bg-white rounded-3xl border border-border overflow-hidden mb-4">
+          {MENU_ITEMS.map((item, i) => (
+            <button
+              key={item.label}
+              className={`w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors cursor-pointer ${
+                i < MENU_ITEMS.length - 1 ? 'border-b border-border' : ''
+              }`}
+            >
+              <div className="text-left">
+                <p className="text-text-primary font-semibold text-sm">{item.label}</p>
+                {item.sub && <p className="text-text-muted text-xs mt-0.5">{item.sub}</p>}
+              </div>
+              <ChevronRight size={15} className="text-text-muted" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+
+        {/* Sign out */}
+        <div className="mx-5">
+          <button
+            onClick={() => setShowSignOutConfirm(true)}
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-accent-red font-bold text-base border border-accent-red/20 bg-accent-red/5 hover:bg-accent-red/10 transition-colors cursor-pointer active:scale-[0.98]"
+            style={{ minHeight: 52 }}
+          >
+            <LogOut size={17} aria-hidden="true" />
+            Sign Out
           </button>
-        ))}
+        </div>
       </div>
 
-      {/* Sign out */}
-      <div className="mx-5">
-        <button
-          onClick={() => setShowSignOutConfirm(true)}
-          className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-accent-red font-bold text-base border border-accent-red/20 bg-accent-red/5 hover:bg-accent-red/10 transition-colors cursor-pointer active:scale-[0.98]"
-          style={{ minHeight: 52 }}
-        >
-          <LogOut size={17} aria-hidden="true" />
-          Sign Out
-        </button>
-      </div>
-
-      {/* Sign out confirmation */}
+      {/* Sign out confirmation — outside scroll region, above BottomNav */}
       {showSignOutConfirm && (
         <div
           className="fixed inset-0 flex items-end justify-center px-5 pb-6"
-          style={{ zIndex: 50, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
+          style={{ zIndex: 110, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
           onClick={() => setShowSignOutConfirm(false)}
         >
           <div

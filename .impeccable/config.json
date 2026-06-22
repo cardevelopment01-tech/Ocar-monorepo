@@ -6,7 +6,7 @@
       {
         "rule": "overused-font",
         "value": "inter",
-        "reason": "User confirmed Inter is the canonical Ocar typeface — canonised in DESIGN.md, all new work uses Inter",
+        "reason": "Inter is the intentional brand font for this project — confirmed design system choice",
         "createdAt": "2026-06-22T06:46:18.614Z"
       },
       {
@@ -14,6 +14,84 @@
         "value": "poppins",
         "reason": "Known legacy divergence documented in DESIGN.md — driver app loads Poppins for some display text, scheduled for removal at next refactor pass",
         "createdAt": "2026-06-22T06:46:18.716Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0f0f23",
+        "reason": "Intentional hero gradient start — dark navy-indigo brand colour for home/splash surfaces",
+        "createdAt": "2026-06-22T07:04:28.095Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#1e1b4b",
+        "reason": "Intentional hero gradient end — deep indigo brand colour for home hero",
+        "createdAt": "2026-06-22T07:04:28.159Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(56,189,248,0.18)",
+        "reason": "Ambient decorative orb at 0.18 opacity — intentional subtle depth in dark hero",
+        "createdAt": "2026-06-22T07:04:28.271Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0,0,0,0.26)",
+        "reason": "Functional box-shadow alpha — not a brand colour",
+        "createdAt": "2026-06-22T07:04:28.334Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(15,15,35,0.22)",
+        "reason": "Functional box-shadow alpha — not a brand colour",
+        "createdAt": "2026-06-22T07:04:28.397Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#a5b4fc",
+        "reason": "Indigo-300 tint on dark promo card — in-palette lighter shade of primary",
+        "createdAt": "2026-06-22T07:04:28.458Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#f87171",
+        "reason": "Spec-defined urgent timer bar gradient stop (red-400); intentional accent for isUrgent state in TripRequestCard redesign",
+        "createdAt": "2026-06-22T08:34:18.937Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#3b82f6",
+        "reason": "Pre-existing driver avatar gradient — intentional brand blue",
+        "createdAt": "2026-06-22T09:17:08.653Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#2563eb",
+        "reason": "Pre-existing driver avatar gradient — intentional brand blue",
+        "createdAt": "2026-06-22T09:17:08.738Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0,0,0,0.45)",
+        "reason": "Modal overlay scrim — intentional standard value",
+        "createdAt": "2026-06-22T09:17:08.800Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0,0,0,0.18)",
+        "reason": "Modal box-shadow — intentional standard value",
+        "createdAt": "2026-06-22T09:17:08.860Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#cbd5e1",
+        "reason": "Pre-existing unchecked checkbox border color — intentional slate-300",
+        "createdAt": "2026-06-22T09:18:18.694Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#1e293b",
+        "reason": "Pre-existing CTA button gradient — intentional slate dark end",
+        "createdAt": "2026-06-22T09:18:18.759Z"
       }
     ]
   }

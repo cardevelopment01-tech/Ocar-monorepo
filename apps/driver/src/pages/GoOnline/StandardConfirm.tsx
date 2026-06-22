@@ -88,7 +88,10 @@ export default function StandardConfirm() {
   return (
     <div className="h-[100dvh] bg-bg text-text-primary flex flex-col">
       {/* Scrollable content — min-h-0 is required so flex child can shrink below its natural size */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-5 pt-14 pb-4">
+      <div
+        className="flex-1 overflow-y-auto min-h-0 px-5 pt-14 pb-4"
+        style={{ overscrollBehaviorY: 'contain' }}
+      >
 
         {/* Header */}
         <motion.div
@@ -271,7 +274,7 @@ export default function StandardConfirm() {
 
       {/* ── CTA — always visible at bottom via flex layout ── */}
       <div
-        className="px-5 bg-bg/95 border-t border-border"
+        className="relative px-5 bg-bg/95 border-t border-border"
         style={{
           paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
           paddingTop: 16,
@@ -279,6 +282,19 @@ export default function StandardConfirm() {
           WebkitBackdropFilter: 'blur(12px)',
         }}
       >
+        {/* Scroll-affordance fade: softens content edge above the CTA */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: -32,
+            height: 32,
+            background: 'linear-gradient(to top, #F5F8FF 0%, rgba(245,248,255,0) 100%)',
+            pointerEvents: 'none',
+          }}
+        />
         <button
           onClick={handleGoOnline}
           disabled={goingOnline || loading || !vehicle}
