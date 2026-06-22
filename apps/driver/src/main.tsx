@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
@@ -7,11 +7,22 @@ import SplashScreen from './components/ui/SplashScreen'
 import './index.css'
 
 function Root() {
-  const [showSplash, setShowSplash] = useState(true)
+  const [showSplash, setShowSplash] = useState(false)
+
+  useEffect(() => {
+    if (!sessionStorage.getItem('ocar_splash_shown')) {
+      setShowSplash(true)
+    }
+  }, [])
+
+  function handleComplete() {
+    sessionStorage.setItem('ocar_splash_shown', '1')
+    setShowSplash(false)
+  }
 
   return (
     <>
-      <SplashScreen show={showSplash} onComplete={() => setShowSplash(false)} />
+      <SplashScreen show={showSplash} onComplete={handleComplete} />
       <div className="min-h-[100dvh] bg-[#0a0a0a]">
         <div
           className="mx-auto max-w-[430px] min-h-[100dvh] bg-background relative overflow-hidden"
