@@ -28,9 +28,11 @@ const DRIVER_DOCS = [
 ] as const
 
 const VEHICLE_DOCS = [
-  { key: 'vehicle_rc', label: 'Vehicle RC', required: true, accept: 'image/*,application/pdf', needsExpiry: true },
-  { key: 'insurance',  label: 'Insurance',  required: true, accept: 'image/*,application/pdf', needsExpiry: true },
-  { key: 'permit',     label: 'Permit',     required: true, accept: 'image/*,application/pdf', needsExpiry: true },
+  { key: 'vehicle_rc',     label: 'Vehicle RC',                  required: true,  accept: 'image/*,application/pdf', needsExpiry: true },
+  { key: 'insurance',      label: 'Insurance',                   required: true,  accept: 'image/*,application/pdf', needsExpiry: true },
+  { key: 'permit',         label: 'Permit',                      required: true,  accept: 'image/*,application/pdf', needsExpiry: true },
+  { key: 'pollution_cert', label: 'Pollution Certificate (PUC)', required: false, accept: 'image/*,application/pdf', needsExpiry: true },
+  { key: 'fitness_cert',   label: 'Fitness Certificate',         required: false, accept: 'image/*,application/pdf', needsExpiry: true },
 ] as const
 
 function initDocState(): Record<string, DocRowState> {
@@ -436,7 +438,7 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, i
       {needsExpiry && (
         <div className="mt-2.5" onClick={e => e.stopPropagation()}>
           <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1.5 block">
-            Expiry Date <span className="text-accent-red">*</span>
+            Expiry Date {required && <span className="text-accent-red">*</span>}
           </label>
           <DatePickerSheet
             label="Expiry Date"

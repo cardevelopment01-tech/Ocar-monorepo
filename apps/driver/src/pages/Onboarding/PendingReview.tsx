@@ -10,6 +10,7 @@ const DOC_LABELS: Record<string, string> = {
   profile_photo: 'Profile Photo', driving_license: 'Driving Licence',
   aadhaar_front: 'Aadhaar (Front)', aadhaar_back: 'Aadhaar (Back)',
   vehicle_rc: 'RC Book', insurance: 'Insurance Certificate', permit: 'Commercial Permit',
+  pollution_cert: 'Pollution Certificate (PUC)', fitness_cert: 'Fitness Certificate',
 }
 
 export default function PendingReview() {

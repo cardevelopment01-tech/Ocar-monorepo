@@ -17,9 +17,11 @@ interface DocRowState {
 }
 
 const VEHICLE_DOCS = [
-  { key: 'vehicle_rc', label: 'Registration Certificate (RC)', required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
-  { key: 'insurance',  label: 'Insurance Certificate',         required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
-  { key: 'permit',     label: 'Commercial Permit',             required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'vehicle_rc',     label: 'Registration Certificate (RC)',  required: true,  accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'insurance',      label: 'Insurance Certificate',          required: true,  accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'permit',         label: 'Commercial Permit',              required: true,  accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'pollution_cert', label: 'Pollution Certificate (PUC)',    required: false, accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'fitness_cert',   label: 'Fitness Certificate',            required: false, accept: 'image/*,application/pdf', needsExpiry: true  },
 ] as const
 
 function initDocState(): Record<string, DocRowState> {
@@ -104,7 +106,7 @@ export default function VehicleDocuments() {
       </div>
 
       <p className="text-text-secondary text-sm mb-6 leading-relaxed">
-        Upload your vehicle documents. All three are required to submit your application.
+        Upload your vehicle documents. RC, Insurance and Permit are required. Pollution and Fitness certificates are optional but recommended.
       </p>
 
       <div className="space-y-3 mb-8">
@@ -207,7 +209,7 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, i
           {needsExpiry && (
             <div className="mt-3">
               <label className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-1.5 block">
-                Expiry Date <span className="text-accent-red">*</span>
+                Expiry Date {required && <span className="text-accent-red">*</span>}
               </label>
               <DatePickerSheet
                 label="Expiry Date"
@@ -249,7 +251,7 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, i
           {needsExpiry && (
             <div className="mt-3">
               <label className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-1.5 block">
-                Expiry Date <span className="text-accent-red">*</span>
+                Expiry Date {required && <span className="text-accent-red">*</span>}
               </label>
               <input
                 type="date"

@@ -43,6 +43,8 @@ const DOC_LABELS: Record<string, string> = {
   vehicle_rc:      'RC Book',
   insurance:       'Insurance',
   permit:          'Commercial Permit',
+  pollution_cert:  'Pollution Certificate (PUC)',
+  fitness_cert:    'Fitness Certificate',
 }
 const label = (k: string) => DOC_LABELS[k] ?? k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
