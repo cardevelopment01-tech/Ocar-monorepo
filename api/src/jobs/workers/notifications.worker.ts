@@ -86,3 +86,11 @@ export const notificationsWorker = new Worker(
     limiter:     { max: 10, duration: 1000 },
   }
 )
+
+notificationsWorker.on('failed', (job, err) => {
+  console.error(`[Worker] Job failed: ${job?.name ?? 'unknown'} id=${job?.id}`, err)
+})
+
+notificationsWorker.on('error', (err) => {
+  console.error('[Worker] Notifications worker error:', err)
+})

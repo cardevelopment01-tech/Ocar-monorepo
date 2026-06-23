@@ -113,32 +113,12 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     })
   ))
 
-  for (const driver of drivers) {
-    socketEvents.sendRideRequest(driver.driver_id.toString(), {
-      rideId:            data.rideId,
-      pickup:            ride.origin_address   ?? 'Pickup location',
-      drop:              ride.destination_address ?? 'Destination',
-      pickupLat:         data.originLat,
-      pickupLng:         data.originLng,
-      destinationLat:    ride.dest_lat ?? undefined,
-      destinationLng:    ride.dest_lng ?? undefined,
-      distanceToPickup:  Math.round(driver.distance_metres),
-      estimatedFare:     ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
-      rideType:          data.rideType,
-      isReturnCab:       data.isReturnCab,
-      expiresAt:         expiresAt.toISOString(),
-      timeoutSeconds:    BROADCAST_WINDOW_SECONDS,
-    })
-  }
-
-  // Register ACK key per driver and enqueue a retry job.
-  // If the driver's socket was down when we emitted, the retry loop re-sends
-  // every 4s until the driver ACKs or the assignment window expires.
+  // Set ACK keys and queue retry jobs BEFORE emitting the socket.
+  // If the key is set after the emit, a fast ACK from the driver deletes a
+  // non-existent key (no-op), the key is then set, and the ack-check loop
+  // re-fires indefinitely thinking the driver never received the notification.
   await Promise.all(drivers.map(async (driver) => {
     const driverIdStr = driver.driver_id.toString()
-    // TTL is padded well beyond the assignment window so queue lag can never cause
-    // an expired key to be mistaken for a received ACK. The expiresAt check in
-    // processAckCheck is the real stop condition.
     await redis.set(rideAckKey(data.rideId, driverIdStr), '1', 'EX', BROADCAST_WINDOW_SECONDS + 30)
 
     const jobData: AckCheckJobData = {
@@ -163,6 +143,24 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       { delay: 4_000, attempts: 1, removeOnComplete: true, removeOnFail: true }
     )
   }))
+
+  for (const driver of drivers) {
+    socketEvents.sendRideRequest(driver.driver_id.toString(), {
+      rideId:            data.rideId,
+      pickup:            ride.origin_address   ?? 'Pickup location',
+      drop:              ride.destination_address ?? 'Destination',
+      pickupLat:         data.originLat,
+      pickupLng:         data.originLng,
+      destinationLat:    ride.dest_lat ?? undefined,
+      destinationLng:    ride.dest_lng ?? undefined,
+      distanceToPickup:  Math.round(driver.distance_metres),
+      estimatedFare:     ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
+      rideType:          data.rideType,
+      isReturnCab:       data.isReturnCab,
+      expiresAt:         expiresAt.toISOString(),
+      timeoutSeconds:    BROADCAST_WINDOW_SECONDS,
+    })
+  }
 
   console.log(
     `Broadcast round ${data.broadcastRound}: sent to ${drivers.length} drivers for ride ${data.rideId}`
