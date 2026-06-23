@@ -242,11 +242,11 @@ export default function Documents() {
         : ''
 
   return (
-    <div className="bg-bg text-text-primary min-h-screen">
+    <div className="flex flex-col h-[100dvh] bg-bg text-text-primary">
 
-      {/* ── Sticky header: step bar + back/title ── */}
+      {/* ── Header: always at top of flex column ── */}
       <div
-        className="sticky top-0 z-10 bg-bg px-5 pt-14 pb-4"
+        className="flex-shrink-0 bg-bg px-5 pt-14 pb-4"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
       >
         <div className="flex gap-1.5 mb-4">
@@ -265,8 +265,8 @@ export default function Documents() {
         </div>
       </div>
 
-      {/* ── Scrollable content ── */}
-      <div className="px-5 pt-4 pb-40">
+      {/* ── Scrollable content: flex-1 + overflow-y-auto so only this region scrolls ── */}
+      <div className="flex-1 overflow-y-auto px-5 pt-4 pb-4">
         <p className="text-text-muted text-xs mb-5">Progress is saved automatically</p>
 
         <div className="space-y-3">
@@ -350,8 +350,8 @@ export default function Documents() {
         </div>
       </div>
 
-      {/* ── Sticky footer CTA ── */}
-      <div className="fixed bottom-0 left-0 right-0 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-bg/95 backdrop-blur-sm border-t border-border z-20">
+      {/* ── Footer: always at bottom of flex column ── */}
+      <div className="flex-shrink-0 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-bg/95 backdrop-blur-sm border-t border-border">
         {!canContinue && missingHint && (
           <p className="text-text-muted text-xs text-center mb-2">{missingHint}</p>
         )}
