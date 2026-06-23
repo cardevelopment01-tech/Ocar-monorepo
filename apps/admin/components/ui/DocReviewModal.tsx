@@ -498,17 +498,17 @@ export default function DocReviewModal({
                     )}
                   </AnimatePresence>
 
-                  {/* Image — scrollable when zoomed past fit */}
-                  <div
-                    ref={scrollRef}
-                    className={cn(
-                      'w-full h-full',
-                      zoomLevel === 'fit'
-                        ? 'flex items-center justify-center overflow-hidden'
-                        : 'overflow-auto'
-                    )}
-                  >
-                    <div className="min-w-full min-h-full flex items-center justify-center p-4">
+                  {/* Image — fit mode centres in container; zoom mode grows wrapper so overflow scrolls */}
+                  <div ref={scrollRef} className="w-full h-full overflow-auto">
+                    <div
+                      className="flex items-center justify-center p-4"
+                      style={{
+                        minWidth: '100%',
+                        minHeight: '100%',
+                        width:  zoomLevel === 'fit' ? '100%' : `${(zoomLevel as number) * 100}%`,
+                        height: zoomLevel === 'fit' ? '100%' : `${(zoomLevel as number) * 100}%`,
+                      }}
+                    >
                       <img
                         key={doc.fileUrl}
                         src={doc.fileUrl}
@@ -519,11 +519,6 @@ export default function DocReviewModal({
                           'select-none max-w-full max-h-full object-contain transition-opacity duration-300',
                           imgLoaded ? 'opacity-100' : 'opacity-0'
                         )}
-                        style={
-                          zoomLevel !== 'fit'
-                            ? { transform: `scale(${zoomLevel})`, transformOrigin: 'center center', transition: 'opacity 300ms, transform 150ms' }
-                            : undefined
-                        }
                       />
                     </div>
                   </div>
