@@ -28,6 +28,7 @@ export interface VehicleInfoPayload {
   seating_capacity: number
   luggage_capacity: number
   ac_availability: boolean
+  registration_date?: string   // YYYY-MM-DD, date vehicle was first registered
 }
 
 export interface VehicleCategory {

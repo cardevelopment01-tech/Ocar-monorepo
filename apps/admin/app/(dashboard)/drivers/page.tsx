@@ -35,6 +35,7 @@ function fmt(iso: string) {
 
 const DOC_LABELS: Record<string, string> = {
   profile_photo: 'Profile Photo', driving_license: 'Driving Licence',
+  driving_license_front: 'Driving Licence (Front)', driving_license_back: 'Driving Licence (Back)',
   aadhaar_front: 'Aadhaar (Front)', aadhaar_back: 'Aadhaar (Back)',
   vehicle_rc: 'RC Book', insurance: 'Insurance Certificate', permit: 'Commercial Permit',
   pollution_cert: 'Pollution Certificate (PUC)', fitness_cert: 'Fitness Certificate',
@@ -43,7 +44,7 @@ function docLabel(key: string) {
   return DOC_LABELS[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
-const REQUIRED_DRIVER_DOCS  = ['profile_photo', 'driving_license', 'aadhaar_front', 'aadhaar_back']
+const REQUIRED_DRIVER_DOCS  = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
 const REQUIRED_VEHICLE_DOCS = ['vehicle_rc', 'insurance', 'permit']
 
 // ─── ReasonDialog (for list-level actions only) ───────────────────────────────

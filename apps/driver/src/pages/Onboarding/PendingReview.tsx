@@ -9,6 +9,7 @@ import type { DriverProfile } from '@/store/useAuthStore'
 const DOC_LABELS: Record<string, string> = {
   profile_photo: 'Profile Photo', driving_license: 'Driving Licence',
   aadhaar_front: 'Aadhaar (Front)', aadhaar_back: 'Aadhaar (Back)',
+  driving_license_front: 'Driving Licence (Front)', driving_license_back: 'Driving Licence (Back)',
   vehicle_rc: 'RC Book', insurance: 'Insurance Certificate', permit: 'Commercial Permit',
   pollution_cert: 'Pollution Certificate (PUC)', fitness_cert: 'Fitness Certificate',
 }

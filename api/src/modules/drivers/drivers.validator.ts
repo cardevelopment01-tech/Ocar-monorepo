@@ -53,6 +53,7 @@ export const vehicleInfoSchema = z.object({
   seating_capacity: z.number().int().min(1).max(10),
   luggage_capacity: z.number().int().min(0).max(10),
   ac_availability: z.boolean(),
+  registration_date: z.string().optional(),
 })
 
 export const identityDocumentSchema = z.object({
@@ -67,7 +68,7 @@ export const identityDocumentSchema = z.object({
 })
 
 export const identityUploadSchema = z.object({
-  doc_type:    z.enum(['profile_photo', 'driving_license', 'aadhaar_front', 'aadhaar_back']),
+  doc_type:    z.enum(['profile_photo', 'driving_license', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']),
   valid_from:  z.string().optional(),
   valid_until: z.string().optional(),
 })

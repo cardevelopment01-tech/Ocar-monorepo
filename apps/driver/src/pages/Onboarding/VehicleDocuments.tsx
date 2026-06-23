@@ -17,7 +17,7 @@ interface DocRowState {
 }
 
 const VEHICLE_DOCS = [
-  { key: 'vehicle_rc',     label: 'Registration Certificate (RC)',  required: true,  accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'vehicle_rc',     label: 'Registration Certificate (RC)',  required: true,  accept: 'image/*,application/pdf', needsExpiry: false },
   { key: 'insurance',      label: 'Insurance Certificate',          required: true,  accept: 'image/*,application/pdf', needsExpiry: true  },
   { key: 'permit',         label: 'Commercial Permit',              required: true,  accept: 'image/*,application/pdf', needsExpiry: true  },
   { key: 'pollution_cert', label: 'Pollution Certificate (PUC)',    required: false, accept: 'image/*,application/pdf', needsExpiry: true  },

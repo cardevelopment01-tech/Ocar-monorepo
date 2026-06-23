@@ -6,6 +6,8 @@ import { onboardingApi, type VehicleInfoPayload, type VehicleCategory, type Vehi
 import { useAuthStore } from '@/store/useAuthStore'
 import InlineSelect from '@/components/ui/InlineSelect'
 
+const TODAY_ISO = new Date().toISOString().slice(0, 10)
+
 const COLORS = ['White', 'Black', 'Silver', 'Grey', 'Red', 'Blue', 'Brown', 'Green', 'Yellow', 'Orange', 'Other'] as const
 const FUEL_TYPES = [
   { value: 'petrol',   label: 'Petrol' },
@@ -28,6 +30,7 @@ export default function VehicleRegistration() {
   const [brandId, setBrandId] = useState<number | null>(null)
   const [modelId, setModelId] = useState<number | null>(null)
   const [modelYear, setModelYear] = useState('')
+  const [registrationDate, setRegistrationDate] = useState('')
   const [plate, setPlate] = useState('')
   const [color, setColor] = useState('')
   const [fuelType, setFuelType] = useState('')
@@ -65,7 +68,8 @@ export default function VehicleRegistration() {
           setModels(m)
         }
         if (v.model_id) setModelId(Number(v.model_id))
-        if (v.model_year)   setModelYear(String(v.model_year))
+        if (v.model_year)        setModelYear(String(v.model_year))
+        if (v.registration_date) setRegistrationDate(String(v.registration_date).slice(0, 10))
         if (v.number_plate) setPlate(v.number_plate)
         if (v.color)        setColor(v.color)
         if (v.fuel_type)    setFuelType(v.fuel_type)
@@ -123,6 +127,7 @@ export default function VehicleRegistration() {
         luggage_capacity: luggage,
         ac_availability: ac,
       }
+      if (registrationDate) payload.registration_date = registrationDate
       const result = await onboardingApi.saveVehicleInfo(payload)
       updateDriver({ onboarding_step: result.next_step })
       navigate('/onboarding/documents')
@@ -233,6 +238,17 @@ export default function VehicleRegistration() {
         <Field label="Year of Manufacture">
           <input className="input-dark w-full" placeholder="2022" inputMode="numeric" maxLength={4}
             value={modelYear} onChange={e => setModelYear(e.target.value.replace(/\D/g, '').slice(0, 4))} />
+        </Field>
+
+        {/* Registration Date */}
+        <Field label="Registration Date">
+          <input
+            type="date"
+            className="input-dark w-full"
+            value={registrationDate}
+            max={TODAY_ISO}
+            onChange={e => setRegistrationDate(e.target.value)}
+          />
         </Field>
 
         {/* Fuel type */}

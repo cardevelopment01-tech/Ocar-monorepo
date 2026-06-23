@@ -22,13 +22,14 @@ interface DocRowState {
 }
 
 const DRIVER_DOCS = [
-  { key: 'driving_license', label: 'Driving Licence', required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
-  { key: 'aadhaar_front',   label: 'Aadhaar Front',   required: true, accept: 'image/*',                  needsExpiry: false },
-  { key: 'aadhaar_back',    label: 'Aadhaar Back',    required: true, accept: 'image/*',                  needsExpiry: false },
+  { key: 'driving_license_front', label: 'Driving Licence (Front)', required: true, accept: 'image/*,application/pdf', needsExpiry: true  },
+  { key: 'driving_license_back',  label: 'Driving Licence (Back)',  required: true, accept: 'image/*,application/pdf', needsExpiry: false },
+  { key: 'aadhaar_front',         label: 'Aadhaar Front',           required: true, accept: 'image/*',                  needsExpiry: false },
+  { key: 'aadhaar_back',          label: 'Aadhaar Back',            required: true, accept: 'image/*',                  needsExpiry: false },
 ] as const
 
 const VEHICLE_DOCS = [
-  { key: 'vehicle_rc',     label: 'Vehicle RC',                  required: true,  accept: 'image/*,application/pdf', needsExpiry: true },
+  { key: 'vehicle_rc',     label: 'Vehicle RC',                  required: true,  accept: 'image/*,application/pdf', needsExpiry: false },
   { key: 'insurance',      label: 'Insurance',                   required: true,  accept: 'image/*,application/pdf', needsExpiry: true },
   { key: 'permit',         label: 'Permit',                      required: true,  accept: 'image/*,application/pdf', needsExpiry: true },
   { key: 'pollution_cert', label: 'Pollution Certificate (PUC)', required: false, accept: 'image/*,application/pdf', needsExpiry: true },

@@ -22,7 +22,7 @@ function isPersonalInfoComplete(d: Driver): boolean {
   )
 }
 
-const REQUIRED_IDENTITY_DOCS = ['profile_photo', 'driving_license', 'aadhaar_front', 'aadhaar_back']
+const REQUIRED_IDENTITY_DOCS = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
 const REQUIRED_VEHICLE_DOCS  = ['vehicle_rc', 'insurance', 'permit']
 
 async function checkDocuments(driverId: bigint): Promise<{ complete: boolean; missing: string[] }> {
@@ -145,6 +145,7 @@ export async function saveVehicleInfo(
     seating_capacity: number
     luggage_capacity: number
     ac_availability: boolean
+    registration_date?: string
   }
 ): Promise<{ next_step: string; vehicle_id: string }> {
   const driver = await repo.findDriverById(driverId)
@@ -229,7 +230,7 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
   const docs = await repo.findDriverDocuments(driverId)
   const docMap = new Map(docs.map((d) => [d.doc_type, d]))
 
-  const photoTypes = ['profile_photo', 'driving_license', 'aadhaar_front', 'aadhaar_back']
+  const photoTypes = ['profile_photo', 'driving_license', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
   const photos: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null }> = {}
   for (const dt of photoTypes) {
     const doc = docMap.get(dt)
