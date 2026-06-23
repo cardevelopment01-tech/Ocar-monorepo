@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Upload, CheckCircle2, AlertCircle, Eye, RefreshCw } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import DatePickerSheet from '@/components/ui/DatePickerSheet'
 import { onboardingApi } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
-import DatePickerSheet from '@/components/ui/DatePickerSheet'
 
 const TODAY_ISO = new Date().toISOString().slice(0, 10)
 
@@ -253,12 +253,12 @@ function DocCard({ label, required, accept, needsExpiry, docState, validUntil, i
               <label className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-1.5 block">
                 Expiry Date {required && <span className="text-accent-red">*</span>}
               </label>
-              <input
-                type="date"
-                className="input-dark w-full"
+              <DatePickerSheet
+                label="Expiry Date"
                 value={validUntil ?? ''}
-                onChange={e => onValidUntilChange?.(e.target.value)}
-                onClick={e => e.stopPropagation()}
+                onChange={v => onValidUntilChange?.(v)}
+                minDate={TODAY_ISO}
+                placeholder="Select expiry date"
               />
             </div>
           )}

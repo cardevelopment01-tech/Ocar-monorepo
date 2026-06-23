@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, RefreshCw, Minus, Plus } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import DatePickerSheet from '@/components/ui/DatePickerSheet'
 import { onboardingApi, type VehicleInfoPayload, type VehicleCategory, type VehicleBrand, type VehicleModel } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
 import InlineSelect from '@/components/ui/InlineSelect'
@@ -242,12 +243,12 @@ export default function VehicleRegistration() {
 
         {/* Registration Date */}
         <Field label="Registration Date">
-          <input
-            type="date"
-            className="input-dark w-full"
+          <DatePickerSheet
+            label="Registration Date"
             value={registrationDate}
-            max={TODAY_ISO}
-            onChange={e => setRegistrationDate(e.target.value)}
+            onChange={setRegistrationDate}
+            maxDate={TODAY_ISO}
+            placeholder="Select registration date"
           />
         </Field>
 
