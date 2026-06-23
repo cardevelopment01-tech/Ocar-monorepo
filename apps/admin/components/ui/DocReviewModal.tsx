@@ -230,6 +230,16 @@ export default function DocReviewModal({
     scrollRef.current?.scrollTo(0, 0)
   }, [idx])
 
+  // After each zoom change, center the scroll so the image stays in view
+  useEffect(() => {
+    if (zoomLevel === 'fit' || !scrollRef.current) return
+    const el = scrollRef.current
+    requestAnimationFrame(() => {
+      el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2
+      el.scrollTop  = (el.scrollHeight - el.clientHeight) / 2
+    })
+  }, [zoomLevel])
+
   const doc        = allDocs[idx]
   const isMissing  = !doc?.fileUrl || doc.status === 'missing'
   const isPdf      = doc?.fileUrl && /\.pdf(\?|$)/i.test(doc.fileUrl)
