@@ -79,7 +79,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  const phones = Array.from({ length: 13 }, (_, i) => `+918100000${String(i + 1).padStart(3, '0')}`)
+  const phones = Array.from({ length: 16 }, (_, i) => `+918100000${String(i + 1).padStart(3, '0')}`)
   await pool.query(`DELETE FROM users WHERE phone = ANY($1)`, [phones])
   await pool.query(`DELETE FROM drivers WHERE phone = ANY($1)`, [phones])
   for (const p of phones) {
@@ -270,8 +270,8 @@ describe('M03 — Driver Onboarding', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ license_number: 'MH0120230012345', aadhaar_number: '123456789012' })
 
-      // Step 4: required photo uploads
-      const photoTypes = ['profile_photo', 'driving_license', 'aadhaar_front', 'aadhaar_back']
+      // Step 4: required photo uploads (DL is now split into front + back)
+      const photoTypes = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
       for (const dt of photoTypes) {
         await request(app)
           .post('/api/v1/drivers/onboarding/documents/upload')
@@ -327,6 +327,73 @@ describe('M03 — Driver Onboarding', () => {
       expect(meRes.status).toBe(200)
       expect(meRes.body.onboarding.current_step).toBe('vehicle_info')
       expect(meRes.body.onboarding.personal_info_complete).toBe(true)
+    })
+
+    it('TC-M03-014: driving_license_front upload with expiry → 201, doc_type=driving_license_front', async () => {
+      const phone = '+918100000014'
+      const { accessToken, driverId } = await loginDriver(phone)
+
+      const res = await request(app)
+        .post('/api/v1/drivers/onboarding/documents/upload')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .field('doc_type', 'driving_license_front')
+        .field('valid_until', '2030-12-31')
+        .attach('file', Buffer.alloc(512), { filename: 'dl_front.jpg', contentType: 'image/jpeg' })
+      expect(res.status).toBe(201)
+      expect(res.body.doc_type).toBe('driving_license_front')
+      expect(res.body.status).toBe('pending')
+
+      const { rows } = await pool.query<{ doc_type: string; valid_until: Date | null }>(
+        "SELECT doc_type, valid_until FROM driver_documents WHERE driver_id = $1 AND doc_type = 'driving_license_front'",
+        [driverId]
+      )
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.valid_until).not.toBeNull()
+    })
+
+    it('TC-M03-015: driving_license_back upload without expiry → 201, doc_type=driving_license_back', async () => {
+      const phone = '+918100000015'
+      const { accessToken, driverId } = await loginDriver(phone)
+
+      const res = await request(app)
+        .post('/api/v1/drivers/onboarding/documents/upload')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .field('doc_type', 'driving_license_back')
+        .attach('file', Buffer.alloc(512), { filename: 'dl_back.jpg', contentType: 'image/jpeg' })
+      expect(res.status).toBe(201)
+      expect(res.body.doc_type).toBe('driving_license_back')
+      expect(res.body.status).toBe('pending')
+
+      const { rows } = await pool.query<{ doc_type: string }>(
+        "SELECT doc_type FROM driver_documents WHERE driver_id = $1 AND doc_type = 'driving_license_back'",
+        [driverId]
+      )
+      expect(rows).toHaveLength(1)
+    })
+
+    it('TC-M03-016: vehicle info with registration_date → persisted to driver_vehicles', async () => {
+      const phone = '+918100000016'
+      const { accessToken, driverId } = await loginDriver(phone)
+
+      await request(app)
+        .post('/api/v1/drivers/onboarding/personal-info')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(VALID_PERSONAL_INFO)
+
+      const res = await request(app)
+        .post('/api/v1/drivers/onboarding/vehicle-info')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...VALID_VEHICLE_INFO, number_plate: 'OD05XY9999', registration_date: '2021-03-15' })
+      expect(res.status).toBe(200)
+      expect(res.body.next_step).toBe('documents')
+
+      const { rows } = await pool.query<{ registration_date: Date | null }>(
+        'SELECT registration_date FROM driver_vehicles WHERE driver_id = $1 LIMIT 1',
+        [driverId]
+      )
+      expect(rows).toHaveLength(1)
+      // DB returns a Date object; compare as ISO string prefix
+      expect(rows[0]?.registration_date?.toISOString().slice(0, 10)).toBe('2021-03-15')
     })
 
   })
