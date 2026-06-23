@@ -4,6 +4,7 @@ import { config } from '@/config'
 import { sendSms } from '@/providers/sms.provider'
 import * as notifService from '@/modules/notifications/notifications.service'
 import { processBroadcast, type BroadcastJobData } from '@/jobs/processors/broadcast.processor'
+import { processAckCheck, type AckCheckJobData } from '@/jobs/processors/ack-check.processor'
 
 type LogParams = Parameters<typeof notifService.logNotification>[0]
 
@@ -74,6 +75,8 @@ export const notificationsWorker = new Worker(
       }
     } else if (job.name === 'broadcast_ride') {
       await processBroadcast(job.data as BroadcastJobData)
+    } else if (job.name === 'broadcast_ride_ack_check') {
+      await processAckCheck(job.data as AckCheckJobData)
     }
     // Unknown job names complete silently
   },

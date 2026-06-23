@@ -102,6 +102,8 @@ export default function App() {
         pickupDistance: data.distanceToPickup / 1000, tripDistance, fare: data.estimatedFare,
         timeoutSeconds: data.timeoutSeconds, pickupLat: pLat, pickupLng: pLng,
       })
+      // Confirm receipt so the server stops the retry loop for this driver
+      socket.emit('ride:request:ack', { rideId: data.rideId })
     }
     socket.on('ride:request', onRideRequest)
     return () => { socket.off('ride:request', onRideRequest) }

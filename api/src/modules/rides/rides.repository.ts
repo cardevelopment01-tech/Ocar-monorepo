@@ -324,7 +324,8 @@ export async function createRideAssignment(data: {
     `INSERT INTO ride_assignments
        (ride_id, driver_id, session_id, expires_at,
         broadcast_round, driver_lat, driver_lng)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (ride_id, driver_id) DO NOTHING`,
     [
       data.rideId, data.driverId, data.sessionId,
       data.expiresAt, data.broadcastRound,
@@ -456,4 +457,57 @@ export async function getDriverTripHistory(
     ),
   ])
   return { rows: dataRes.rows, total: parseInt(countRes.rows[0]!.count, 10) }
+}
+
+export interface PendingAssignment {
+  ride_id: string
+  expires_at: string
+  origin_address: string | null
+  destination_address: string | null
+  origin_lat: number
+  origin_lng: number
+  dest_lat: number | null
+  dest_lng: number | null
+  total_estimated: string | null
+  ride_type: string
+  is_return_cab: boolean
+  distance_to_pickup_metres: number
+}
+
+export async function getPendingAssignmentsForDriver(
+  driverId: bigint
+): Promise<PendingAssignment[]> {
+  const res = await pool.query<PendingAssignment>(
+    `SELECT
+       ra.ride_id::text,
+       ra.expires_at,
+       r.origin_address,
+       r.destination_address,
+       ST_Y(r.origin::geometry)      AS origin_lat,
+       ST_X(r.origin::geometry)      AS origin_lng,
+       ST_Y(r.destination::geometry) AS dest_lat,
+       ST_X(r.destination::geometry) AS dest_lng,
+       r.ride_type,
+       r.is_return_cab,
+       fs.total_estimated,
+       COALESCE(
+         CASE
+           WHEN ra.driver_lat IS NOT NULL AND ra.driver_lng IS NOT NULL
+             THEN ST_Distance(
+               ST_SetSRID(ST_MakePoint(ra.driver_lng::float8, ra.driver_lat::float8), 4326)::geography,
+               r.origin
+             )
+         END,
+         0
+       ) AS distance_to_pickup_metres
+     FROM ride_assignments ra
+     JOIN rides r ON r.id = ra.ride_id
+     LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+     WHERE ra.driver_id = $1
+       AND ra.expires_at > now()
+       AND r.status = 'requested'
+       AND ra.status NOT IN ('accepted', 'cancelled')`,
+    [driverId]
+  )
+  return res.rows
 }

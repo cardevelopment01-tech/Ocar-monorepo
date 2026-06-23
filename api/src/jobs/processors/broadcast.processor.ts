@@ -1,8 +1,12 @@
 import { socketEvents } from '@/websocket/socket.server'
 import * as repo from '@/modules/rides/rides.repository'
+import { BROADCAST_WINDOW_SECONDS, BROADCAST_MAX_DRIVERS } from '@/constants/limits'
+import { rideAckKey } from '@/constants/redis-keys'
+import { client as redis } from '@/db/redis'
+import { queues, QUEUE_NAMES } from '@/jobs/queues'
+import type { AckCheckJobData } from './ack-check.processor'
 
-const BROADCAST_WINDOW_SECONDS = 120
-const MAX_DRIVERS = 5
+const MAX_DRIVERS = BROADCAST_MAX_DRIVERS
 
 // Expanding search radius per round — generous for intercity context (Bhubaneswar city ~20km dia)
 const ROUND_RADII: Record<number, number> = { 1: 5000, 2: 10000, 3: 20000 }
@@ -95,8 +99,10 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
 
   const expiresAt = new Date(Date.now() + BROADCAST_WINDOW_SECONDS * 1000)
 
-  for (const driver of drivers) {
-    await repo.createRideAssignment({
+  // Create all assignments in parallel — sequential awaits here were the source of
+  // stacking delay (driver N had to wait for N-1 DB round-trips before getting the socket).
+  await Promise.all(drivers.map(driver =>
+    repo.createRideAssignment({
       rideId,
       driverId:       driver.driver_id,
       sessionId:      driver.session_id,
@@ -105,7 +111,9 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       driverLat:      driver.lat,
       driverLng:      driver.lng,
     })
+  ))
 
+  for (const driver of drivers) {
     socketEvents.sendRideRequest(driver.driver_id.toString(), {
       rideId:            data.rideId,
       pickup:            ride.origin_address   ?? 'Pickup location',
@@ -122,6 +130,39 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       timeoutSeconds:    BROADCAST_WINDOW_SECONDS,
     })
   }
+
+  // Register ACK key per driver and enqueue a retry job.
+  // If the driver's socket was down when we emitted, the retry loop re-sends
+  // every 4s until the driver ACKs or the assignment window expires.
+  await Promise.all(drivers.map(async (driver) => {
+    const driverIdStr = driver.driver_id.toString()
+    // TTL is padded well beyond the assignment window so queue lag can never cause
+    // an expired key to be mistaken for a received ACK. The expiresAt check in
+    // processAckCheck is the real stop condition.
+    await redis.set(rideAckKey(data.rideId, driverIdStr), '1', 'EX', BROADCAST_WINDOW_SECONDS + 30)
+
+    const jobData: AckCheckJobData = {
+      rideId:           data.rideId,
+      driverId:         driverIdStr,
+      expiresAt:        expiresAt.toISOString(),
+      pickup:           ride.origin_address   ?? 'Pickup location',
+      drop:             ride.destination_address ?? 'Destination',
+      pickupLat:        data.originLat,
+      pickupLng:        data.originLng,
+      distanceToPickup: Math.round(driver.distance_metres),
+      estimatedFare:    ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
+      rideType:         data.rideType,
+      isReturnCab:      data.isReturnCab,
+    }
+    if (data.destinationLat !== undefined) jobData.destinationLat = data.destinationLat
+    if (data.destinationLng !== undefined) jobData.destinationLng = data.destinationLng
+
+    await queues[QUEUE_NAMES.NOTIFICATIONS].add(
+      'broadcast_ride_ack_check',
+      jobData,
+      { delay: 4_000, attempts: 1, removeOnComplete: true, removeOnFail: true }
+    )
+  }))
 
   console.log(
     `Broadcast round ${data.broadcastRound}: sent to ${drivers.length} drivers for ride ${data.rideId}`

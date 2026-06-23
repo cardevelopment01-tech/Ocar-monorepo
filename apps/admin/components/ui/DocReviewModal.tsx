@@ -1,11 +1,11 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, AlertCircle,
-  FileText, ZoomIn, ZoomOut, ExternalLink,
+  FileText, ZoomIn, ZoomOut, ExternalLink, Maximize2,
 } from 'lucide-react'
 import type { DriverDetail } from '@/lib/admin-api'
 import StatusPill from './StatusPill'
@@ -49,6 +49,14 @@ const label = (k: string) => DOC_LABELS[k] ?? k.replace(/_/g, ' ').replace(/\b\w
 const REQUIRED_DRIVER  = ['profile_photo', 'driving_license', 'aadhaar_front', 'aadhaar_back']
 const REQUIRED_VEHICLE = ['vehicle_rc', 'insurance', 'permit']
 
+function nextActionableIdx(docs: FlatDoc[], from: number): number | null {
+  for (let i = from + 1; i < docs.length; i++) {
+    const d = docs[i]
+    if (d && d.status === 'pending' && d.fileUrl) return i
+  }
+  return null
+}
+
 function buildDocs(d: DriverDetail): FlatDoc[] {
   const list: FlatDoc[] = []
   const addedD = new Set<string>()
@@ -72,10 +80,8 @@ function SidebarDoc({ doc, selected, idx, total, onClick }: {
     <button
       onClick={onClick}
       className={cn(
-        'group w-full flex items-center gap-3 px-3 py-2.5 text-left border-l-2 transition-all duration-100',
-        selected
-          ? 'bg-primary/8 border-l-primary'
-          : 'border-l-transparent hover:bg-black/4 hover:border-l-border'
+        'group w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all duration-100',
+        selected ? 'bg-primary/10' : 'hover:bg-black/4'
       )}
     >
       {/* Thumbnail */}
@@ -100,7 +106,7 @@ function SidebarDoc({ doc, selected, idx, total, onClick }: {
         )}>
           {label(doc.docType)}
         </p>
-        <p className={cn('text-[10px] mt-0.5 capitalize leading-none',
+        <p className={cn('text-[11px] mt-0.5 capitalize leading-none',
           doc.status === 'approved' ? 'text-success' :
           doc.status === 'rejected' ? 'text-danger'  :
           doc.status === 'pending' && doc.fileUrl ? 'text-warning' : 'text-text-muted'
@@ -133,6 +139,12 @@ function ReasonForm({ title, placeholder, confirmLabel, danger, loading, onSubmi
       <textarea
         value={value}
         onChange={e => setValue(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && !e.shiftKey && valid && !loading) {
+            e.preventDefault()
+            onSubmit(value.trim())
+          }
+        }}
         placeholder={placeholder}
         rows={2}
         autoFocus
@@ -171,36 +183,56 @@ export default function DocReviewModal({
   const allDocs = buildDocs(detail)
 
   const [idx, setIdx]                     = useState(() => Math.min(initialDocIndex, Math.max(0, allDocs.length - 1)))
-  const [zoomFit, setZoomFit]             = useState(true)
+  const [zoomLevel, setZoomLevel]         = useState<number | 'fit'>('fit')
   const [imgLoaded, setImgLoaded]         = useState(false)
   const [docLoading, setDocLoading]       = useState(false)
   const [driverLoading, setDriverLoading] = useState(false)
   const [rejectDoc, setRejectDoc]         = useState(false)
   const [driverMode, setDriverMode]       = useState<'rejectDocs' | 'ban' | 'suspend' | null>(null)
   const [mounted, setMounted]             = useState(false)
+  const scrollRef                         = useRef<HTMLDivElement>(null)
+
+  const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 2.5] as const
+
+  function zoomIn() {
+    setZoomLevel(z => {
+      if (z === 'fit') return 1
+      const next = ZOOM_STEPS.find(s => s > (z as number))
+      return next ?? z
+    })
+  }
+  function zoomOut() {
+    setZoomLevel(z => {
+      if (z === 'fit') return z
+      const lower = [...ZOOM_STEPS].reverse().find(s => s < (z as number))
+      return lower ?? 'fit'
+    })
+  }
+
+  // Non-passive wheel listener — required so we can preventDefault and prevent page scroll
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    function onWheel(e: WheelEvent) {
+      if (e.deltaY < 0) zoomIn(); else zoomOut()
+      e.preventDefault()
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx])
 
   useEffect(() => { setMounted(true) }, [])
-  useEffect(() => { setRejectDoc(false); setZoomFit(true); setImgLoaded(false) }, [idx])
-
-  // Keyboard nav
   useEffect(() => {
-    function handler(e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement).tagName
-      if (tag === 'TEXTAREA' || tag === 'INPUT') return
-      if (e.key === 'Escape') {
-        if (rejectDoc || driverMode) { setRejectDoc(false); setDriverMode(null) }
-        else onClose()
-      }
-      if (e.key === 'ArrowLeft'  && idx > 0)                  setIdx(i => i - 1)
-      if (e.key === 'ArrowRight' && idx < allDocs.length - 1) setIdx(i => i + 1)
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [idx, allDocs.length, onClose, rejectDoc, driverMode])
+    setRejectDoc(false)
+    setZoomLevel('fit')
+    setImgLoaded(false)
+    scrollRef.current?.scrollTo(0, 0)
+  }, [idx])
 
-  const doc       = allDocs[idx]
-  const isMissing = !doc?.fileUrl || doc.status === 'missing'
-  const isPdf     = doc?.fileUrl && /\.pdf(\?|$)/i.test(doc.fileUrl)
+  const doc        = allDocs[idx]
+  const isMissing  = !doc?.fileUrl || doc.status === 'missing'
+  const isPdf      = doc?.fileUrl && /\.pdf(\?|$)/i.test(doc.fileUrl)
   const canApprove = !!doc?.id && doc.status !== 'approved' && !isMissing
   const canReject  = !!doc?.id && doc.status !== 'rejected' && !isMissing
 
@@ -213,6 +245,8 @@ export default function DocReviewModal({
     try {
       if (doc.kind === 'driver') await onDriverDocApprove(doc.id)
       else                       await onVehicleDocApprove(doc.id)
+      const next = nextActionableIdx(allDocs, idx)
+      if (next !== null) setIdx(next)
     } finally { setDocLoading(false) }
   }
   async function doDocReject(reason: string) {
@@ -222,12 +256,38 @@ export default function DocReviewModal({
       if (doc.kind === 'driver') await onDriverDocReject(doc.id, reason)
       else                       await onVehicleDocReject(doc.id, reason)
       setRejectDoc(false)
+      const next = nextActionableIdx(allDocs, idx)
+      if (next !== null) setIdx(next)
     } finally { setDocLoading(false) }
   }
   async function doDriverAction(type: 'approve' | 'rejectDocs' | 'ban' | 'suspend' | 'reinstate', reason?: string) {
     setDriverLoading(true)
     try { await onDriverAction(type, reason); onClose() } finally { setDriverLoading(false) }
   }
+
+  // Keyboard nav + action shortcuts (A = approve, R = reject, ←/→ = navigate)
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'TEXTAREA' || tag === 'INPUT') return
+      if (e.key === 'Escape') {
+        if (rejectDoc || driverMode) { setRejectDoc(false); setDriverMode(null) }
+        else onClose()
+      }
+      if (e.key === 'ArrowLeft'  && idx > 0)                  setIdx(i => i - 1)
+      if (e.key === 'ArrowRight' && idx < allDocs.length - 1) setIdx(i => i + 1)
+      const k = e.key.toLowerCase()
+      if (!rejectDoc && !driverMode) {
+        if (k === 'a' && canApprove) { e.preventDefault(); void doDocApprove() }
+        if (k === 'r' && canReject)  { e.preventDefault(); setRejectDoc(true) }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  // doDocApprove closes over doc/idx/allDocs — re-bind on idx change (already in deps)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, allDocs.length, onClose, rejectDoc, driverMode, canApprove, canReject])
 
   if (!mounted || !doc) return null
 
@@ -337,16 +397,16 @@ export default function DocReviewModal({
                 </div>
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold text-text-primary truncate">{detail.full_name ?? '—'}</p>
-                  <p className="text-[10px] text-text-muted">{detail.phone}</p>
+                  <p className="text-[11px] text-text-muted">{detail.phone}</p>
                 </div>
               </div>
               <div className="space-y-1.5">
                 {[{ l: 'Aadhaar', v: detail.aadhaar_number }, { l: 'Licence', v: detail.license_number }].map(({ l, v }) => (
                   <div key={l} className="flex items-baseline gap-2">
-                    <span className="text-[10px] text-text-muted w-12 flex-shrink-0">{l}</span>
+                    <span className="text-[11px] text-text-muted w-12 flex-shrink-0">{l}</span>
                     {v
-                      ? <span className="font-mono text-[10px] text-text-secondary truncate">{v}</span>
-                      : <span className="text-[10px] text-danger font-semibold">Missing</span>}
+                      ? <span className="font-mono text-[11px] text-text-secondary truncate">{v}</span>
+                      : <span className="text-[11px] text-danger font-semibold">Missing</span>}
                   </div>
                 ))}
               </div>
@@ -354,11 +414,12 @@ export default function DocReviewModal({
 
             {/* Doc list */}
             <div className="flex-1 overflow-y-auto py-1">
-              <p className="px-3 pt-3 pb-1.5 text-[9px] font-black text-text-muted uppercase tracking-widest">Identity</p>
+              <p className="px-3 pt-3 pb-1.5 text-[11px] font-medium text-text-muted">Identity</p>
               {allDocs.filter(d => d.kind === 'driver').map(d => (
                 <SidebarDoc key={d.docType} doc={d} selected={allDocs.indexOf(d) === idx} idx={allDocs.indexOf(d)} total={allDocs.length} onClick={() => setIdx(allDocs.indexOf(d))} />
               ))}
-              <p className="px-3 pt-3 pb-1.5 text-[9px] font-black text-text-muted uppercase tracking-widest">Vehicle</p>
+              <div className="mx-3 mt-2 border-t border-border/60" />
+              <p className="px-3 pt-2.5 pb-1.5 text-[11px] font-medium text-text-muted">Vehicle</p>
               {allDocs.filter(d => d.kind === 'vehicle').map(d => (
                 <SidebarDoc key={d.docType} doc={d} selected={allDocs.indexOf(d) === idx} idx={allDocs.indexOf(d)} total={allDocs.length} onClick={() => setIdx(allDocs.indexOf(d))} />
               ))}
@@ -366,14 +427,14 @@ export default function DocReviewModal({
 
             {/* Stats footer */}
             <div className="px-4 py-3 border-t border-border/60 bg-surface-2/40">
-              <div className="flex justify-between items-center text-[10px] mb-1.5">
+              <div className="flex justify-between items-center text-[11px] mb-1.5">
                 <span className="font-semibold text-text-muted">Review progress</span>
                 <span className="font-bold text-text-primary">{approvedCount}/{totalUploaded}</span>
               </div>
               <div className="h-1 bg-border rounded-full overflow-hidden">
                 <div className="h-full bg-success rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
               </div>
-              <div className="flex justify-between mt-2 text-[10px]">
+              <div className="flex justify-between mt-2 text-[11px]">
                 {approvedCount > 0    && <span className="text-success font-semibold">{approvedCount} approved</span>}
                 {allDocs.filter(d => d.status === 'rejected').length > 0 && (
                   <span className="text-danger font-semibold">{allDocs.filter(d => d.status === 'rejected').length} rejected</span>
@@ -400,19 +461,23 @@ export default function DocReviewModal({
                 </div>
 
               ) : isPdf ? (
-                <div className="flex flex-col items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center">
-                    <FileText size={24} className="text-white/30" />
+                <div className="w-full h-full flex flex-col bg-[#0d0d0f]">
+                  <iframe
+                    src={doc.fileUrl}
+                    title={label(doc.docType)}
+                    className="flex-1 w-full border-0 bg-white"
+                  />
+                  <div className="flex-shrink-0 flex items-center justify-center gap-2 py-2 text-white/40 text-xs">
+                    Can&apos;t display the PDF?
+                    <a
+                      href={doc.fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-white/70 hover:text-white underline transition-colors"
+                    >
+                      <ExternalLink size={12} /> Open in new tab
+                    </a>
                   </div>
-                  <p className="text-white/40 text-sm">PDF, can't preview inline</p>
-                  <a
-                    href={doc.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-2 px-4 py-2 bg-white/8 text-white/80 text-sm font-semibold rounded-xl hover:bg-white/14 transition-colors"
-                  >
-                    <ExternalLink size={14} /> Open PDF
-                  </a>
                 </div>
 
               ) : (
@@ -433,34 +498,70 @@ export default function DocReviewModal({
                     )}
                   </AnimatePresence>
 
-                  {/* Image — fades in once loaded */}
-                  <div className={cn('w-full h-full flex items-center justify-center', !zoomFit && 'overflow-auto')}>
-                    <img
-                      key={doc.fileUrl}
-                      src={doc.fileUrl}
-                      alt={label(doc.docType)}
-                      draggable={false}
-                      onLoad={() => setImgLoaded(true)}
-                      className={cn(
-                        'select-none transition-opacity duration-300',
-                        zoomFit ? 'max-w-full max-h-full object-contain' : 'w-auto h-auto',
-                        imgLoaded ? 'opacity-100' : 'opacity-0'
-                      )}
-                      style={zoomFit ? { maxHeight: '100%' } : {}}
-                    />
+                  {/* Image — scrollable when zoomed past fit */}
+                  <div
+                    ref={scrollRef}
+                    className={cn(
+                      'w-full h-full',
+                      zoomLevel === 'fit'
+                        ? 'flex items-center justify-center overflow-hidden'
+                        : 'overflow-auto'
+                    )}
+                  >
+                    <div className="min-w-full min-h-full flex items-center justify-center p-4">
+                      <img
+                        key={doc.fileUrl}
+                        src={doc.fileUrl}
+                        alt={label(doc.docType)}
+                        draggable={false}
+                        onLoad={() => setImgLoaded(true)}
+                        className={cn(
+                          'select-none max-w-full max-h-full object-contain transition-opacity duration-300',
+                          imgLoaded ? 'opacity-100' : 'opacity-0'
+                        )}
+                        style={
+                          zoomLevel !== 'fit'
+                            ? { transform: `scale(${zoomLevel})`, transformOrigin: 'center center', transition: 'opacity 300ms, transform 150ms' }
+                            : undefined
+                        }
+                      />
+                    </div>
                   </div>
                 </>
               )}
 
-              {/* Zoom toggle */}
+              {/* Zoom controls */}
               {!isMissing && !isPdf && (
-                <button
-                  onClick={() => setZoomFit(z => !z)}
-                  aria-label={zoomFit ? 'Zoom to actual size' : 'Fit to window'}
-                  className="absolute top-3 right-3 w-8 h-8 bg-black/50 backdrop-blur-sm rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-black/70 transition-colors"
-                >
-                  {zoomFit ? <ZoomIn size={14} /> : <ZoomOut size={14} />}
-                </button>
+                <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/50 backdrop-blur-sm rounded-lg px-1.5 py-1">
+                  <button
+                    onClick={zoomOut}
+                    disabled={zoomLevel === 'fit'}
+                    aria-label="Zoom out"
+                    className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+                  >
+                    <ZoomOut size={13} />
+                  </button>
+                  <span className="text-[11px] text-white/60 tabular-nums w-9 text-center select-none">
+                    {zoomLevel === 'fit' ? 'Fit' : `${Math.round((zoomLevel as number) * 100)}%`}
+                  </span>
+                  <button
+                    onClick={zoomIn}
+                    disabled={zoomLevel === 2.5}
+                    aria-label="Zoom in"
+                    className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+                  >
+                    <ZoomIn size={13} />
+                  </button>
+                  {zoomLevel !== 'fit' && (
+                    <button
+                      onClick={() => setZoomLevel('fit')}
+                      aria-label="Reset to fit"
+                      className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors ml-0.5 border-l border-white/15 pl-1"
+                    >
+                      <Maximize2 size={12} />
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* Prev / Next overlays */}

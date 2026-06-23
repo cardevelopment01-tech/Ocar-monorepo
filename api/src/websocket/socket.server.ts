@@ -3,6 +3,9 @@ import type { Server as HttpServer } from 'http'
 import { verifyAccessToken } from '@/lib/jwt'
 import { config } from '@/config'
 import { pool } from '@/db/client'
+import { client as redis } from '@/db/redis'
+import { rideAckKey } from '@/constants/redis-keys'
+import { getPendingAssignmentsForDriver } from '@/modules/rides/rides.repository'
 
 // Room naming conventions:
 //   ride:{rideId}   — user + driver tracking a ride
@@ -58,6 +61,42 @@ export function initSocketServer(httpServer: HttpServer): Server {
         console.log(`Driver ${user.sub} reconnected — offline grace period cancelled`)
       }
       void socket.join(`driver:${user.sub}`)
+
+      // Clear ACK key when driver confirms receipt of a ride request
+      socket.on('ride:request:ack', ({ rideId }: { rideId: string }) => {
+        void redis.del(rideAckKey(rideId, user.sub))
+      })
+
+      // On reconnect, immediately re-deliver any assignments the driver may have
+      // missed while their socket was down (messages are not buffered by Socket.io).
+      void getPendingAssignmentsForDriver(BigInt(user.sub))
+        .then((assignments) => {
+          for (const a of assignments) {
+            const expiresMs = new Date(a.expires_at).getTime()
+            if (Date.now() >= expiresMs) continue
+            const timeoutSeconds = Math.max(1, Math.floor((expiresMs - Date.now()) / 1000))
+            const payload: Record<string, unknown> = {
+              rideId:           a.ride_id,
+              pickup:           a.origin_address    ?? 'Pickup location',
+              drop:             a.destination_address ?? 'Destination',
+              pickupLat:        a.origin_lat,
+              pickupLng:        a.origin_lng,
+              distanceToPickup: Math.round(a.distance_to_pickup_metres),
+              estimatedFare:    a.total_estimated != null ? parseFloat(a.total_estimated) : 0,
+              rideType:         a.ride_type,
+              isReturnCab:      a.is_return_cab,
+              expiresAt:        a.expires_at,
+              timeoutSeconds,
+            }
+            if (a.dest_lat != null)  payload['destinationLat'] = a.dest_lat
+            if (a.dest_lng != null)  payload['destinationLng'] = a.dest_lng
+            // Emit directly to this socket so the driver sees remaining time, not original
+            socket.emit('ride:request', payload)
+          }
+        })
+        .catch((err: unknown) => {
+          console.error(`Reconnect sync failed for driver ${user.sub}:`, err)
+        })
     }
 
     if (user?.role === 'admin') {

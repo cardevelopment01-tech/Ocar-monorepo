@@ -5,7 +5,6 @@ import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
 import { socketEvents } from '@/websocket/socket.server'
 import { generateOtp, hashOtp } from '@/lib/otp'
-import { processBroadcast } from '@/jobs/processors/broadcast.processor'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import type { BookingRequest } from './rides.types'
 import {
@@ -231,22 +230,25 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   if (data.destinationLat !== undefined) jobData.destinationLat = data.destinationLat
   if (data.destinationLng !== undefined) jobData.destinationLng = data.destinationLng
 
-  // Round 1: fire immediately inline
-  processBroadcast(jobData).catch(err =>
-    console.error('Broadcast round 1 error:', err)
-  )
-
-  // Rounds 2 and 3: BullMQ delayed jobs — survive server restarts unlike setTimeout
-  await queues[QUEUE_NAMES.NOTIFICATIONS].add(
-    'broadcast_ride',
-    { ...jobData, broadcastRound: 2 },
-    { delay: 25_000, attempts: 1, removeOnComplete: true }
-  )
-  await queues[QUEUE_NAMES.NOTIFICATIONS].add(
-    'broadcast_ride',
-    { ...jobData, broadcastRound: 3 },
-    { delay: 50_000, attempts: 1, removeOnComplete: true }
-  )
+  // All three rounds go through BullMQ so failures are logged consistently and
+  // broadcastRound numbering is always correct even if an earlier round fails.
+  await Promise.all([
+    queues[QUEUE_NAMES.NOTIFICATIONS].add(
+      'broadcast_ride',
+      { ...jobData, broadcastRound: 1 },
+      { delay: 0, attempts: 2, removeOnComplete: true }
+    ),
+    queues[QUEUE_NAMES.NOTIFICATIONS].add(
+      'broadcast_ride',
+      { ...jobData, broadcastRound: 2 },
+      { delay: 25_000, attempts: 1, removeOnComplete: true }
+    ),
+    queues[QUEUE_NAMES.NOTIFICATIONS].add(
+      'broadcast_ride',
+      { ...jobData, broadcastRound: 3 },
+      { delay: 50_000, attempts: 1, removeOnComplete: true }
+    ),
+  ])
 
   return {
     rideId:          ride.id.toString(),
