@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, AlertCircle,
-  FileText, ZoomIn, ZoomOut, ExternalLink, Maximize2,
+  FileText, ZoomIn, ZoomOut, ExternalLink, Minimize2,
 } from 'lucide-react'
 import type { DriverDetail } from '@/lib/admin-api'
 import StatusPill from './StatusPill'
@@ -191,6 +191,8 @@ export default function DocReviewModal({
   const [driverMode, setDriverMode]       = useState<'rejectDocs' | 'ban' | 'suspend' | null>(null)
   const [mounted, setMounted]             = useState(false)
   const scrollRef                         = useRef<HTMLDivElement>(null)
+  const isDragging                        = useRef(false)
+  const dragStart                         = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 })
 
   const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 2.5] as const
 
@@ -240,6 +242,48 @@ export default function DocReviewModal({
     })
   }, [zoomLevel])
 
+  // Drag-to-pan via Pointer Events — active only when zoomed
+  useEffect(() => {
+    const rawEl = scrollRef.current
+    if (!rawEl || zoomLevel === 'fit') return
+    const el = rawEl
+
+    function onPointerDown(e: PointerEvent) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return
+      isDragging.current = true
+      dragStart.current  = { x: e.clientX, y: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop }
+      el.setPointerCapture(e.pointerId)
+      el.style.cursor = 'grabbing'
+    }
+    function onPointerMove(e: PointerEvent) {
+      if (!isDragging.current) return
+      const dx = e.clientX - dragStart.current.x
+      const dy = e.clientY - dragStart.current.y
+      el.scrollLeft = dragStart.current.scrollLeft - dx
+      el.scrollTop  = dragStart.current.scrollTop  - dy
+      e.preventDefault()
+    }
+    function endDrag(e: PointerEvent) {
+      if (!isDragging.current) return
+      isDragging.current = false
+      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
+      el.style.cursor = 'grab'
+    }
+
+    el.addEventListener('pointerdown',   onPointerDown)
+    el.addEventListener('pointermove',   onPointerMove)
+    el.addEventListener('pointerup',     endDrag)
+    el.addEventListener('pointercancel', endDrag)
+    return () => {
+      el.removeEventListener('pointerdown',   onPointerDown)
+      el.removeEventListener('pointermove',   onPointerMove)
+      el.removeEventListener('pointerup',     endDrag)
+      el.removeEventListener('pointercancel', endDrag)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomLevel, idx])
+
+  const isZoomed   = zoomLevel !== 'fit'
   const doc        = allDocs[idx]
   const isMissing  = !doc?.fileUrl || doc.status === 'missing'
   const isPdf      = doc?.fileUrl && /\.pdf(\?|$)/i.test(doc.fileUrl)
@@ -281,6 +325,7 @@ export default function DocReviewModal({
     function handler(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'TEXTAREA' || tag === 'INPUT') return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === 'Escape') {
         if (rejectDoc || driverMode) { setRejectDoc(false); setDriverMode(null) }
         else onClose()
@@ -509,7 +554,11 @@ export default function DocReviewModal({
                   </AnimatePresence>
 
                   {/* Image — fit mode centres in container; zoom mode grows wrapper so overflow scrolls */}
-                  <div ref={scrollRef} className="w-full h-full overflow-auto">
+                  <div
+                    ref={scrollRef}
+                    className={cn('w-full h-full overflow-auto', isZoomed && 'cursor-grab')}
+                    style={isZoomed ? { touchAction: 'none' } : undefined}
+                  >
                     <div
                       className="flex items-center justify-center p-4"
                       style={{
@@ -557,15 +606,14 @@ export default function DocReviewModal({
                   >
                     <ZoomIn size={13} />
                   </button>
-                  {zoomLevel !== 'fit' && (
-                    <button
-                      onClick={() => setZoomLevel('fit')}
-                      aria-label="Reset to fit"
-                      className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors ml-0.5 border-l border-white/15 pl-1"
-                    >
-                      <Maximize2 size={12} />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setZoomLevel('fit')}
+                    disabled={!isZoomed}
+                    aria-label="Reset to fit"
+                    className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors ml-0.5 border-l border-white/15 pl-1 disabled:opacity-25 disabled:cursor-not-allowed"
+                  >
+                    <Minimize2 size={12} />
+                  </button>
                 </div>
               )}
 
