@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Upload, CheckCircle2, AlertCircle,
-  Eye, RefreshCw, Shield, Car, X, Lock,
+  Eye, RefreshCw, Shield, Car, X,
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import DatePickerSheet from '@/components/ui/DatePickerSheet'
@@ -24,19 +24,19 @@ interface SlotState {
 }
 
 interface SlotDef {
-  key: string         // doc_type sent to API
+  key: string
   slotLabel: string   // 'Front' | 'Back' | '' for single-slot groups
   accept: string
-  isVehicle: boolean  // true → uploadVehicleDoc, false → uploadDriverDoc
+  isVehicle: boolean
 }
 
 interface DocGroupDef {
-  groupKey: string        // namespace for the shared expiry date
-  label: string           // card header text
+  groupKey: string
+  label: string
   required: boolean
   slots: SlotDef[]
   hasExpiry: boolean
-  expiryRequired: boolean // if true, upload is blocked until expiry is set
+  expiryRequired: boolean
 }
 
 // ── Document group definitions ─────────────────────────────────────────────────
@@ -123,8 +123,8 @@ function initSlotState(): Record<string, SlotState> {
 const STEPS = ['personal_info', 'vehicle_info', 'documents', 'selfie']
 
 export default function Documents() {
-  const navigate    = useNavigate()
-  const driver      = useAuthStore(s => s.driver)
+  const navigate   = useNavigate()
+  const driver     = useAuthStore(s => s.driver)
 
   const [licenseNumber, setLicenseNumber] = useState('')
   const [aadhaarNumber, setAadhaarNumber] = useState('')
@@ -132,11 +132,11 @@ export default function Documents() {
   const [identityError, setIdentityError] = useState('')
 
   const [slotState, setSlotState] = useState<Record<string, SlotState>>(initSlotState)
-  // validUntil keyed by groupKey — one expiry per legal document, not per photo
+  // keyed by groupKey — one expiry per legal document, not per photo
   const [validUntil, setValidUntil] = useState<Record<string, string>>({})
-  const [isFetching, setIsFetching]   = useState(true)
-  const [isSaving,   setIsSaving]     = useState(false)
-  const [preview,    setPreview]      = useState<{ url: string; label: string } | null>(null)
+  const [isFetching, setIsFetching] = useState(true)
+  const [isSaving,   setIsSaving]   = useState(false)
+  const [preview,    setPreview]    = useState<{ url: string; label: string } | null>(null)
 
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const stepIdx  = STEPS.indexOf(driver?.onboarding_step ?? 'documents')
@@ -150,16 +150,9 @@ export default function Documents() {
         if (status.identity.license_number && status.identity.aadhaar_number) setIdentitySaved(true)
 
         const merged: Record<string, SlotState> = initSlotState()
-        const allDocs = { ...status.photos, ...status.vehicle_docs }
-        for (const [k, v] of Object.entries(allDocs)) {
+        for (const [k, v] of Object.entries({ ...status.photos, ...status.vehicle_docs })) {
           if (k in merged) {
-            merged[k] = {
-              state: v.uploaded ? 'done' : 'idle',
-              url:   v.url,
-              error: null,
-              docStatus:     v.status,
-              rejectionNote: v.rejection_note,
-            }
+            merged[k] = { state: v.uploaded ? 'done' : 'idle', url: v.url, error: null, docStatus: v.status, rejectionNote: v.rejection_note }
           }
         }
         setSlotState(merged)
@@ -202,10 +195,12 @@ export default function Documents() {
     }
   }
 
-  const requiredKeys    = ALL_GROUPS.filter(g => g.required).flatMap(g => g.slots.map(s => s.key))
-  const allDocsUploaded = requiredKeys.every(k => slotState[k]?.state === 'done')
-  const identityFilled  = licenseNumber.trim().length > 0 && aadhaarNumber.length === 12
-  const canContinue     = allDocsUploaded && (identitySaved || identityFilled)
+  const requiredKeys          = ALL_GROUPS.filter(g => g.required).flatMap(g => g.slots.map(s => s.key))
+  const allDocsUploaded       = requiredKeys.every(k => slotState[k]?.state === 'done')
+  const requiredExpiryGroups  = ALL_GROUPS.filter(g => g.required && g.hasExpiry && g.expiryRequired)
+  const allExpiriesFilled     = requiredExpiryGroups.every(g => !!validUntil[g.groupKey])
+  const identityFilled        = licenseNumber.trim().length > 0 && aadhaarNumber.length === 12
+  const canContinue           = allDocsUploaded && allExpiriesFilled && (identitySaved || identityFilled)
 
   const handleContinue = async () => {
     if (!identitySaved && identityFilled) {
@@ -238,20 +233,29 @@ export default function Documents() {
     )
   }
 
-  return (
-    <>
-      <div className="min-h-screen bg-bg text-text-primary px-5 pt-14 pb-40">
+  const missingHint = !identityFilled
+    ? 'Enter your licence and Aadhaar numbers'
+    : !allDocsUploaded
+      ? 'Upload all required documents to continue'
+      : !allExpiriesFilled
+        ? `Set expiry date for: ${requiredExpiryGroups.filter(g => !validUntil[g.groupKey]).map(g => g.label).join(', ')}`
+        : ''
 
-        {/* Step bar */}
-        <div className="flex gap-1.5 mb-8">
+  return (
+    <div className="bg-bg text-text-primary min-h-screen">
+
+      {/* ── Sticky header: step bar + back/title ── */}
+      <div
+        className="sticky top-0 z-10 bg-bg px-5 pt-14 pb-4"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+      >
+        <div className="flex gap-1.5 mb-4">
           {STEPS.map((s, i) => (
             <div key={s} className={`flex-1 h-1 rounded-full ${i <= stepIdx ? 'bg-primary' : 'bg-surface-3'}`} />
           ))}
         </div>
-
-        {/* Back + title */}
-        <div className="flex items-center gap-3 mb-2">
-          <button onClick={() => navigate(-1)} className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center">
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(-1)} className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
             <ArrowLeft size={20} className="text-text-secondary" />
           </button>
           <div>
@@ -259,11 +263,15 @@ export default function Documents() {
             <h1 className="text-xl font-bold">Documents</h1>
           </div>
         </div>
-        <p className="text-text-muted text-xs mb-6">Progress is saved automatically</p>
+      </div>
+
+      {/* ── Scrollable content ── */}
+      <div className="px-5 pt-4 pb-40">
+        <p className="text-text-muted text-xs mb-5">Progress is saved automatically</p>
 
         <div className="space-y-3">
 
-          {/* ── Identity Numbers ── */}
+          {/* Identity Numbers */}
           <div className="rounded-2xl border border-border bg-surface-2 p-4">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -309,7 +317,7 @@ export default function Documents() {
             </div>
           </div>
 
-          {/* ── Driver Documents section ── */}
+          {/* Driver Documents */}
           <SectionHeader icon="driver" label="Driver Documents" done={driverSectionDone} />
           {DRIVER_GROUPS.map(group => (
             <DocGroupCard
@@ -324,7 +332,7 @@ export default function Documents() {
             />
           ))}
 
-          {/* ── Vehicle Documents section ── */}
+          {/* Vehicle Documents */}
           <SectionHeader icon="vehicle" label="Vehicle Documents" done={vehicleSectionDone} />
           {VEHICLE_GROUPS.map(group => (
             <DocGroupCard
@@ -342,14 +350,10 @@ export default function Documents() {
         </div>
       </div>
 
-      {/* Sticky footer CTA */}
+      {/* ── Sticky footer CTA ── */}
       <div className="fixed bottom-0 left-0 right-0 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-bg/95 backdrop-blur-sm border-t border-border z-20">
-        {!canContinue && (
-          <p className="text-text-muted text-xs text-center mb-2">
-            {!identityFilled   ? 'Enter your licence and Aadhaar numbers'
-            : !allDocsUploaded ? 'Upload all required documents to continue'
-            : ''}
-          </p>
+        {!canContinue && missingHint && (
+          <p className="text-text-muted text-xs text-center mb-2">{missingHint}</p>
         )}
         <button
           onClick={() => void handleContinue()}
@@ -365,7 +369,7 @@ export default function Documents() {
 
       {/* In-app preview */}
       {preview && <DocPreviewModal url={preview.url} label={preview.label} onClose={() => setPreview(null)} />}
-    </>
+    </div>
   )
 }
 
@@ -398,25 +402,19 @@ interface DocGroupCardProps {
 }
 
 function DocGroupCard({ group, slotState, validUntil, fileRefs, onFileSelect, onValidUntilChange, onPreview }: DocGroupCardProps) {
-  const allUploaded  = group.slots.every(s => slotState[s.key]?.state === 'done')
-  const anyRejected  = group.slots.some(s => slotState[s.key]?.docStatus === 'rejected')
-  const isComplete   = allUploaded && (!group.hasExpiry || !group.expiryRequired || !!validUntil)
-  // block initial upload on expiry-required groups until expiry date is chosen
-  const expiryBlocked = group.hasExpiry && group.expiryRequired && !validUntil
+  const allUploaded = group.slots.every(s => slotState[s.key]?.state === 'done')
+  const anyRejected = group.slots.some(s => slotState[s.key]?.docStatus === 'rejected')
+  const isComplete  = allUploaded && (!group.hasExpiry || !group.expiryRequired || !!validUntil)
 
-  const borderClass = anyRejected
-    ? 'border-amber-500/40'
-    : isComplete
-      ? 'border-green-500/30'
-      : 'border-border'
+  const borderClass = anyRejected ? 'border-amber-500/40' : isComplete ? 'border-green-500/30' : 'border-border'
 
   return (
     <div className={`rounded-2xl border-2 bg-surface-2 transition-colors ${borderClass}`}>
 
-      {/* Card header */}
+      {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3">
         <div className="flex items-center gap-2 min-w-0">
-          {anyRejected  && <AlertCircle  size={15} className="text-amber-500 flex-shrink-0" />}
+          {anyRejected      && <AlertCircle  size={15} className="text-amber-500 flex-shrink-0" />}
           {isComplete && !anyRejected && <CheckCircle2 size={15} className="text-green-500 flex-shrink-0" />}
           <h3 className="text-sm font-bold text-text-primary truncate">{group.label}</h3>
         </div>
@@ -427,14 +425,13 @@ function DocGroupCard({ group, slotState, validUntil, fileRefs, onFileSelect, on
         </span>
       </div>
 
-      {/* Photo slots — 2-col for paired docs, full-width for single */}
+      {/* Slots — 2-col for paired docs, full-width for single */}
       <div className={`px-3 pb-3 ${group.slots.length === 2 ? 'grid grid-cols-2 gap-2.5' : ''}`}>
         {group.slots.map(slot => (
           <DocSlot
             key={slot.key}
             slot={slot}
             state={slotState[slot.key]!}
-            expiryBlocked={expiryBlocked}
             inputRef={el => { fileRefs.current[slot.key] = el }}
             onTrigger={() => fileRefs.current[slot.key]?.click()}
             onFileChange={file => onFileSelect(slot, file)}
@@ -446,7 +443,7 @@ function DocGroupCard({ group, slotState, validUntil, fileRefs, onFileSelect, on
         ))}
       </div>
 
-      {/* Shared expiry date — lives at card level, belongs to the whole document */}
+      {/* Shared expiry date — belongs to the whole document, not one photo */}
       {group.hasExpiry && (
         <div className="mx-3 mb-3 pt-3 border-t border-border/40">
           <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2 block">
@@ -470,14 +467,13 @@ function DocGroupCard({ group, slotState, validUntil, fileRefs, onFileSelect, on
 interface DocSlotProps {
   slot: SlotDef
   state: SlotState
-  expiryBlocked: boolean
   inputRef: (el: HTMLInputElement | null) => void
   onTrigger: () => void
   onFileChange: (file: File) => void
   onPreview: () => void
 }
 
-function DocSlot({ slot, state, expiryBlocked, inputRef, onTrigger, onFileChange, onPreview }: DocSlotProps) {
+function DocSlot({ slot, state, inputRef, onTrigger, onFileChange, onPreview }: DocSlotProps) {
   const { state: uploadState, url, error, docStatus, rejectionNote } = state
   const isDone      = uploadState === 'done'
   const isUploading = uploadState === 'uploading'
@@ -494,7 +490,6 @@ function DocSlot({ slot, state, expiryBlocked, inputRef, onTrigger, onFileChange
         onChange={e => { const f = e.target.files?.[0]; if (f) { onFileChange(f); e.target.value = '' } }}
       />
 
-      {/* Slot label (Front / Back) — only shown for paired docs */}
       {slot.slotLabel && (
         <p className="text-text-muted text-[10px] font-bold uppercase tracking-widest mb-1.5 text-center">
           {slot.slotLabel}
@@ -502,39 +497,32 @@ function DocSlot({ slot, state, expiryBlocked, inputRef, onTrigger, onFileChange
       )}
 
       {isDone ? (
-        /* ── Uploaded state ── */
-        <div className={`rounded-xl border aspect-[4/3] flex flex-col items-center justify-center gap-1 relative overflow-hidden ${
+        /* ── Uploaded state: natural-flow layout, no absolute overlap ── */
+        <div className={`rounded-xl border aspect-[4/3] flex flex-col items-center justify-center gap-1 ${
           isRejected ? 'border-amber-500/30 bg-amber-500/5' : 'border-green-500/30 bg-green-500/5'
         }`}>
           {isRejected
-            ? <AlertCircle size={22} className="text-amber-500" />
-            : <CheckCircle2 size={22} className="text-green-500" />}
+            ? <AlertCircle  size={20} className="text-amber-500" />
+            : <CheckCircle2 size={20} className="text-green-500" />}
           <p className={`text-[10px] font-bold ${isRejected ? 'text-amber-500' : 'text-green-600'}`}>
             {isRejected ? 'Rejected' : 'Uploaded'}
           </p>
           {isRejected && rejectionNote && (
-            <p className="text-[9px] text-amber-600 text-center px-2 leading-snug mt-0.5">{rejectionNote}</p>
+            <p className="text-[9px] text-amber-600 text-center px-2 leading-snug">{rejectionNote}</p>
           )}
-          {/* Action icons */}
-          <div className="absolute top-1.5 right-1.5 flex gap-1">
+          {/* Action row — in natural flow, no absolute crowding */}
+          <div className="flex gap-1 mt-1">
             {url && (
               <button type="button" onClick={onPreview}
-                className="w-7 h-7 rounded-lg bg-black/10 flex items-center justify-center active:opacity-70">
-                <Eye size={12} className="text-text-secondary" />
+                className="flex items-center gap-0.5 px-2 py-1 rounded-lg bg-black/10 text-[10px] font-medium text-text-secondary active:opacity-70">
+                <Eye size={10} /> View
               </button>
             )}
             <button type="button" onClick={onTrigger}
-              className="w-7 h-7 rounded-lg bg-black/10 flex items-center justify-center active:opacity-70">
-              <RefreshCw size={12} className="text-text-secondary" />
+              className="flex items-center gap-0.5 px-2 py-1 rounded-lg bg-black/10 text-[10px] font-medium text-text-secondary active:opacity-70">
+              <RefreshCw size={10} /> Replace
             </button>
           </div>
-        </div>
-
-      ) : expiryBlocked ? (
-        /* ── Blocked — expiry date must be set first ── */
-        <div className="rounded-xl border-2 border-dashed border-border/40 aspect-[4/3] flex flex-col items-center justify-center gap-1.5 opacity-50">
-          <Lock size={16} className="text-text-muted" />
-          <p className="text-[10px] text-text-muted text-center px-3 leading-snug">Set expiry date first</p>
         </div>
 
       ) : (
@@ -576,7 +564,10 @@ function DocPreviewModal({ url, label, onClose }: { url: string; label: string; 
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: '#0d0d0d' }}>
+    // overflow-hidden prevents body scroll leaking into the modal
+    <div className="fixed inset-0 z-[60] flex flex-col overflow-hidden" style={{ background: '#0d0d0d' }}>
+
+      {/* Top bar */}
       <div
         className="flex items-center gap-3 px-4 flex-shrink-0"
         style={{
@@ -594,12 +585,19 @@ function DocPreviewModal({ url, label, onClose }: { url: string; label: string; 
         </button>
         <p className="flex-1 text-white text-[15px] font-semibold truncate">{label}</p>
       </div>
-      <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+
+      {/* Document — min-h-0 allows flex-1 to shrink below natural content height */}
+      <div className="flex-1 min-h-0 flex items-center justify-center p-4">
         {isPdf
           ? <iframe src={url} title={label} className="w-full h-full rounded-2xl bg-white" style={{ border: 'none' }} />
           : <img src={url} alt={label} className="max-w-full max-h-full object-contain rounded-2xl select-none" draggable={false} style={{ touchAction: 'pan-x pan-y pinch-zoom' }} />}
       </div>
-      <div className="flex-shrink-0 flex justify-center" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))', paddingTop: '0.5rem' }}>
+
+      {/* Hint */}
+      <div
+        className="flex-shrink-0 flex justify-center"
+        style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))', paddingTop: '0.5rem' }}
+      >
         <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>Pinch to zoom</p>
       </div>
     </div>
