@@ -123,7 +123,7 @@ export default function ReferenceSelfie() {
   if (permissionDenied) {
     return (
       <div
-        className="min-h-screen bg-black flex flex-col"
+        className="min-h-[100dvh] bg-black flex flex-col"
         style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
@@ -171,7 +171,7 @@ export default function ReferenceSelfie() {
   if (camError) {
     return (
       <div
-        className="min-h-screen bg-black flex flex-col"
+        className="min-h-[100dvh] bg-black flex flex-col"
         style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
@@ -197,7 +197,7 @@ export default function ReferenceSelfie() {
   // ── Main UI ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-black flex flex-col overflow-hidden">
+    <div className="min-h-[100dvh] bg-black flex flex-col overflow-hidden">
       {/* Hidden canvas used only for frame capture */}
       <canvas ref={canvasRef} className="hidden" aria-hidden />
 
