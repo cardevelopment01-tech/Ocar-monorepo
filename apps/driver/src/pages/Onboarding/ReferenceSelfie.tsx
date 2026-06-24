@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, Camera } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Camera, Lock } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { onboardingApi } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -8,24 +8,24 @@ import OcarSpinner from '@/components/ui/OcarSpinner'
 
 type Stage = 'camera' | 'preview' | 'submitting'
 
+const STEPS = ['personal_info', 'vehicle_info', 'documents', 'selfie']
+const STEP_IDX = 3
+
 export default function ReferenceSelfie() {
   const navigate = useNavigate()
   const updateDriver = useAuthStore(s => s.updateDriver)
-  const driver = useAuthStore(s => s.driver)
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
   const [stage, setStage] = useState<Stage>('camera')
+  const [cameraReady, setCameraReady] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null)
   const [permissionDenied, setPermissionDenied] = useState(false)
   const [camError, setCamError] = useState('')
   const [submitError, setSubmitError] = useState('')
-
-  const steps = ['personal_info', 'vehicle_info', 'documents', 'selfie']
-  const stepIdx = steps.indexOf(driver?.onboarding_step ?? 'selfie')
 
   useEffect(() => {
     void startCamera()
@@ -34,13 +34,17 @@ export default function ReferenceSelfie() {
 
   async function startCamera() {
     setCamError('')
+    setCameraReady(false)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       })
       streamRef.current = stream
-      if (videoRef.current) videoRef.current.srcObject = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.onloadedmetadata = () => setCameraReady(true)
+      }
     } catch (err) {
       const name = (err as Error).name
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
@@ -89,6 +93,15 @@ export default function ReferenceSelfie() {
     void startCamera()
   }
 
+  function handleBack() {
+    if (stage === 'preview') {
+      retake()
+    } else {
+      stopCamera()
+      navigate(-1)
+    }
+  }
+
   async function handleSubmit() {
     if (!capturedBlob || stage === 'submitting') return
     setSubmitError('')
@@ -109,31 +122,74 @@ export default function ReferenceSelfie() {
 
   if (permissionDenied) {
     return (
-      <div className="min-h-screen bg-bg text-text-primary flex flex-col items-center justify-center px-8 text-center">
-        <div className="w-20 h-20 rounded-full bg-surface-2 flex items-center justify-center mb-6">
-          <Camera size={36} className="text-text-muted" />
+      <div
+        className="min-h-screen bg-black flex flex-col"
+        style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mb-6">
+            <Lock size={32} className="text-white/80" />
+          </div>
+          <h2 className="text-white text-xl font-bold mb-3">Camera access required</h2>
+          <p className="text-white/60 text-sm leading-relaxed mb-6">
+            Ocar needs your camera to verify your identity. Follow these steps to enable it:
+          </p>
+          <div
+            className="w-full rounded-2xl p-4 mb-2 text-left space-y-4"
+            style={{ background: 'rgba(255,255,255,0.07)' }}
+          >
+            {[
+              'Open Settings on your phone',
+              'Tap Privacy & Security → Camera',
+              'Find Ocar and switch it on',
+            ].map((instruction, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-white/15 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold mt-0.5">
+                  {i + 1}
+                </span>
+                <p className="text-white/80 text-sm leading-relaxed">{instruction}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-white/30 text-xs mt-3">
+            On Android: Apps → Ocar → Permissions → Camera → Allow
+          </p>
         </div>
-        <h2 className="text-xl font-bold mb-2">Camera access required</h2>
-        <p className="text-text-secondary text-sm leading-relaxed mb-8">
-          Please allow camera access in your browser or app settings, then try again.
-        </p>
-        <button
-          onClick={() => { setPermissionDenied(false); void startCamera() }}
-          className="text-primary font-semibold text-sm flex items-center gap-2"
-        >
-          <RefreshCw size={14} /> Try again
-        </button>
+        <div className="px-6 pb-8">
+          <button
+            onClick={() => { setPermissionDenied(false); void startCamera() }}
+            className="btn-go w-full flex items-center justify-center gap-2"
+          >
+            <RefreshCw size={16} />
+            I've enabled camera access
+          </button>
+        </div>
       </div>
     )
   }
 
   if (camError) {
     return (
-      <div className="min-h-screen bg-bg text-text-primary flex flex-col items-center justify-center px-8 text-center">
-        <p className="text-text-secondary text-sm mb-6">{camError}</p>
-        <button onClick={() => void startCamera()} className="text-primary font-semibold text-sm flex items-center gap-2">
-          <RefreshCw size={14} /> Retry
-        </button>
+      <div
+        className="min-h-screen bg-black flex flex-col"
+        style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mb-6">
+            <Camera size={32} className="text-white/60" />
+          </div>
+          <h2 className="text-white text-lg font-bold mb-2">Camera unavailable</h2>
+          <p className="text-white/60 text-sm leading-relaxed">{camError}</p>
+        </div>
+        <div className="px-6 pb-8">
+          <button
+            onClick={() => void startCamera()}
+            className="btn-go w-full flex items-center justify-center gap-2"
+          >
+            <RefreshCw size={16} />
+            Retry
+          </button>
+        </div>
       </div>
     )
   }
@@ -151,15 +207,16 @@ export default function ReferenceSelfie() {
         style={{ paddingTop: 'max(env(safe-area-inset-top), 0.75rem)' }}
       >
         <button
-          onClick={() => { stopCamera(); navigate(-1) }}
-          className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0"
-          aria-label="Go back"
+          onClick={handleBack}
+          disabled={stage === 'submitting'}
+          className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 disabled:opacity-40"
+          aria-label={stage === 'preview' ? 'Retake photo' : 'Go back'}
         >
           <ArrowLeft size={18} className="text-white" />
         </button>
         <div className="flex gap-1.5 flex-1">
-          {steps.map((s, i) => (
-            <div key={s} className={`flex-1 h-1.5 rounded-full transition-colors duration-300 ${i <= stepIdx ? 'bg-white' : 'bg-white/25'}`} />
+          {STEPS.map((s, i) => (
+            <div key={s} className={`flex-1 h-1.5 rounded-full transition-colors duration-300 ${i <= STEP_IDX ? 'bg-white' : 'bg-white/25'}`} />
           ))}
         </div>
       </div>
@@ -183,9 +240,25 @@ export default function ReferenceSelfie() {
                 autoPlay
                 playsInline
                 muted
+                aria-label="Front camera feed"
                 className="absolute inset-0 w-full h-full object-cover"
                 style={{ transform: 'scaleX(-1)' }}
               />
+
+              {/* Loading veil — fades out once the stream produces its first frame */}
+              <AnimatePresence>
+                {!cameraReady && (
+                  <motion.div
+                    key="cam-loading"
+                    initial={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="absolute inset-0 flex items-center justify-center z-20 bg-black"
+                  >
+                    <OcarSpinner size={40} variant="white" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Dark overlay with oval cutout */}
               <OvalOverlay />
@@ -210,10 +283,10 @@ export default function ReferenceSelfie() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.5 }}
-                  className="bg-black/40 backdrop-blur-md rounded-2xl px-5 py-2.5"
+                  className="bg-black/40 backdrop-blur-md rounded-full px-5 py-2.5"
                 >
                   <p className="text-white/90 text-xs text-center leading-relaxed">
-                    Look straight &nbsp;·&nbsp; Good lighting &nbsp;·&nbsp; No glasses
+                    Look straight &nbsp;·&nbsp; Good lighting &nbsp;·&nbsp; Clear view of face
                   </p>
                 </motion.div>
               </div>
@@ -224,8 +297,9 @@ export default function ReferenceSelfie() {
               <motion.button
                 onClick={capture}
                 whileTap={{ scale: 0.92 }}
+                disabled={!cameraReady}
                 aria-label="Capture selfie"
-                className="relative flex items-center justify-center"
+                className="relative flex items-center justify-center disabled:opacity-40"
                 style={{ width: 76, height: 76 }}
               >
                 {/* Outer ring */}
@@ -267,7 +341,7 @@ export default function ReferenceSelfie() {
             </div>
 
             {/* Action row */}
-            <div className="bg-black pt-5 pb-10 px-6 flex flex-col gap-3">
+            <div className="bg-black pt-6 pb-10 px-6 flex flex-col gap-3">
               {submitError && (
                 <p className="text-red-400 text-xs text-center mb-1">{submitError}</p>
               )}
@@ -289,7 +363,7 @@ export default function ReferenceSelfie() {
               <button
                 onClick={retake}
                 disabled={stage === 'submitting'}
-                className="flex items-center justify-center gap-2 text-white/80 text-sm font-semibold py-3.5 min-h-[44px] disabled:opacity-40"
+                className="flex items-center justify-center gap-2 text-white/80 text-sm font-semibold py-3 min-h-[44px] rounded-2xl border border-white/20 disabled:opacity-40"
               >
                 <RefreshCw size={14} />
                 Retake
@@ -306,6 +380,29 @@ export default function ReferenceSelfie() {
 // ── Oval guide overlay ─────────────────────────────────────────────────────────
 // Uses the box-shadow trick: the oval element IS the transparent hole;
 // a 9999px spread box-shadow fills everything outside it.
+// L-shaped corner brackets follow the Aadhaar/KYC convention — they mark the
+// four corners of the bounding box, not the ellipse border.
+
+const B = 18  // bracket arm length
+const T = 3   // arm thickness
+const R = 1.5 // border-radius
+
+const BRACKET_COLOR = 'rgba(255,255,255,0.95)'
+
+const CORNER_BRACKETS = [
+  // top-left
+  { key: 'tl-h', top: 0, left: 0, width: B, height: T },
+  { key: 'tl-v', top: 0, left: 0, width: T, height: B },
+  // top-right
+  { key: 'tr-h', top: 0, right: 0, width: B, height: T },
+  { key: 'tr-v', top: 0, right: 0, width: T, height: B },
+  // bottom-left
+  { key: 'bl-h', bottom: 0, left: 0, width: B, height: T },
+  { key: 'bl-v', bottom: 0, left: 0, width: T, height: B },
+  // bottom-right
+  { key: 'br-h', bottom: 0, right: 0, width: B, height: T },
+  { key: 'br-v', bottom: 0, right: 0, width: T, height: B },
+]
 
 function OvalOverlay({ dimmed = false }: { dimmed?: boolean }) {
   return (
@@ -322,17 +419,11 @@ function OvalOverlay({ dimmed = false }: { dimmed?: boolean }) {
             border: '2px solid rgba(255,255,255,0.55)',
           }}
         />
-
-        {/* Corner tick marks for a KYC/verification feel */}
-        {[
-          { top: -1, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, borderRadius: 2 },
-          { bottom: -1, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, borderRadius: 2 },
-          { left: -1, top: '50%', transform: 'translateY(-50%)', width: 3, height: 24, borderRadius: 2 },
-          { right: -1, top: '50%', transform: 'translateY(-50%)', width: 3, height: 24, borderRadius: 2 },
-        ].map((style, i) => (
+        {/* L-shaped corner brackets */}
+        {CORNER_BRACKETS.map(({ key, ...style }) => (
           <div
-            key={i}
-            style={{ position: 'absolute', background: 'rgba(255,255,255,0.9)', ...style }}
+            key={key}
+            style={{ position: 'absolute', background: BRACKET_COLOR, borderRadius: R, ...style }}
           />
         ))}
       </div>
