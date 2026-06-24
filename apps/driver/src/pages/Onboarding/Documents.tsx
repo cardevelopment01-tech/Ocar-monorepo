@@ -8,7 +8,6 @@ import OnboardingShell from '@/components/onboarding/OnboardingShell'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import DatePickerSheet from '@/components/ui/DatePickerSheet'
 import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
-import { useAuthStore } from '@/store/useAuthStore'
 
 const TODAY_ISO = new Date().toISOString().slice(0, 10)
 
@@ -121,11 +120,8 @@ function initSlotState(): Record<string, SlotState> {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-const STEPS = ['personal_info', 'vehicle_info', 'documents', 'selfie']
-
 export default function Documents() {
   const navigate   = useNavigate()
-  const driver     = useAuthStore(s => s.driver)
 
   const [licenseNumber, setLicenseNumber] = useState('')
   const [aadhaarNumber, setAadhaarNumber] = useState('')
@@ -140,8 +136,6 @@ export default function Documents() {
   const [preview,    setPreview]    = useState<{ url: string; label: string } | null>(null)
 
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
-  const stepIdx  = STEPS.indexOf(driver?.onboarding_step ?? 'documents')
-
   useEffect(() => {
     const load = async () => {
       try {
@@ -262,7 +256,7 @@ export default function Documents() {
 
   return (
     <>
-      <OnboardingShell stepIndex={stepIdx} title="Documents" footer={footer}>
+      <OnboardingShell stepIndex={2} title="Documents" footer={footer}>
         <div className="space-y-3">
 
           {/* Identity Numbers */}

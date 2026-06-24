@@ -21,7 +21,6 @@ const FUEL_TYPES = [
 export default function VehicleRegistration() {
   const navigate = useNavigate()
   const updateDriver = useAuthStore(s => s.updateDriver)
-  const driver = useAuthStore(s => s.driver)
 
   const [categories, setCategories] = useState<VehicleCategory[]>([])
   const [brands, setBrands] = useState<VehicleBrand[]>([])
@@ -44,10 +43,6 @@ export default function VehicleRegistration() {
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  const currentStep = driver?.onboarding_step ?? 'vehicle_info'
-  const steps = ['personal_info', 'vehicle_info', 'documents', 'selfie']
-  const stepIdx = steps.indexOf(currentStep)
 
   const loadDropdownData = async () => {
     setLoadError(false)
@@ -191,7 +186,7 @@ export default function VehicleRegistration() {
   )
 
   return (
-    <OnboardingShell stepIndex={stepIdx} title="Vehicle Details" footer={footer}>
+    <OnboardingShell stepIndex={1} title="Vehicle Details" footer={footer}>
       <div className="space-y-4">
         {/* Brand */}
         <Field label="Brand">

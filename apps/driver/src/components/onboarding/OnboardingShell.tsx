@@ -30,8 +30,11 @@ export default function OnboardingShell({
 
       {/* ── Header: back/title first, progress bars last (act as visual divider) ── */}
       <header
-        className="flex-shrink-0 bg-bg px-5 pb-4 border-b border-border"
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 0.75rem)' }}
+        className="flex-shrink-0 bg-bg px-5 pb-4"
+        style={{
+          paddingTop: 'max(env(safe-area-inset-top), 1.5rem)',
+          boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+        }}
       >
         <div className="flex items-center gap-3 mb-4">
           <button
@@ -67,13 +70,16 @@ export default function OnboardingShell({
       </header>
 
       {/* ── Scrollable content: only this region scrolls ── */}
-      <main className="flex-1 overflow-y-auto overscroll-contain px-5 pt-4 pb-4">
+      <main className="flex-1 overflow-y-auto px-5 pt-6 pb-4">
         {subtitle && <p className="text-text-muted text-xs mb-5">{subtitle}</p>}
         {children}
       </main>
 
       {/* ── Footer: always at bottom of flex column ── */}
-      <footer className="flex-shrink-0 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-bg/95 backdrop-blur-sm border-t border-border">
+      <footer
+        className="flex-shrink-0 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-bg/95 backdrop-blur-sm"
+        style={{ boxShadow: '0 -1px 2px rgba(15,23,42,0.04)' }}
+      >
         {footer}
       </footer>
 

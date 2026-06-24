@@ -42,7 +42,6 @@ function Field({ label, id, children }: { label: string; id?: string; children: 
 export default function PersonalDetails() {
   const navigate = useNavigate()
   const updateDriver = useAuthStore(s => s.updateDriver)
-  const driver = useAuthStore(s => s.driver)
 
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
@@ -106,10 +105,6 @@ export default function PersonalDetails() {
     setLanguages(prev =>
       prev.includes(lang) ? prev.filter(l => l !== lang) : [...prev, lang]
     )
-
-  const currentStep = driver?.onboarding_step ?? 'personal_info'
-  const steps = ['personal_info', 'vehicle_info', 'documents', 'selfie']
-  const stepIdx = steps.indexOf(currentStep)
 
   const isValid =
     !!fullName.trim() &&
@@ -206,7 +201,7 @@ export default function PersonalDetails() {
   )
 
   return (
-    <OnboardingShell stepIndex={stepIdx} title="Personal Details" footer={footer}>
+    <OnboardingShell stepIndex={0} title="Personal Details" footer={footer}>
         <div className="space-y-4">
           {/* ── Card 1: About you ── */}
           <div className="driver-card">
