@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, ChevronDown, Minus, Plus, User, MapPin, Car } from 'lucide-react'
+import { Check, ChevronDown, Minus, Plus, User, MapPin, Car } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import { onboardingApi, type PersonalInfoPayload } from '@/lib/onboarding-api'
 import { STATE_CITY } from '@/lib/india-geo'
 import { useAuthStore } from '@/store/useAuthStore'
 import SelectSheet from '@/components/ui/SelectSheet'
 import DatePickerSheet from '@/components/ui/DatePickerSheet'
+import OnboardingShell from '@/components/onboarding/OnboardingShell'
 
 const INDIAN_LANGUAGES = [
   'Hindi', 'English', 'Odia', 'Bengali', 'Tamil', 'Telugu',
@@ -173,36 +174,39 @@ export default function PersonalDetails() {
     )
   }
 
-  return (
+  const footer = (
     <>
-      {/* Main scrollable content */}
-      <div className="min-h-screen bg-bg text-text-primary px-5 pt-14 pb-40">
-        {/* Step bar */}
-        <div className="flex gap-1.5 mb-8">
-          {steps.map((s, i) => (
-            <div
-              key={s}
-              className={`flex-1 h-1 rounded-full ${i <= stepIdx ? 'bg-primary' : 'bg-surface-3'}`}
-            />
-          ))}
-        </div>
+      {!isValid && (
+        <p className="text-text-muted text-xs text-center mb-2">
+          {!fullName.trim() ? 'Enter your full name to continue'
+            : !gender ? 'Select your gender to continue'
+            : !dob ? 'Enter your date of birth to continue'
+            : !!dob && (dob > dobMax || dob < dobMin) ? 'Driver must be 18–70 years old'
+            : !address.trim() ? 'Enter your residential address'
+            : !state ? 'Select your state'
+            : !city ? 'Select your city'
+            : !/^\d{6}$/.test(pincode) ? 'Enter a valid 6-digit pincode'
+            : experience === null ? 'Set your driving experience'
+            : !/^[6-9]\d{9}$/.test(emergency) ? 'Enter a valid emergency contact number'
+            : languages.length === 0 ? 'Select at least one language'
+            : ''}
+        </p>
+      )}
+      <button
+        onClick={handleContinue}
+        disabled={!isValid || isLoading}
+        className="btn-go w-full"
+        style={{ minHeight: 52 }}
+      >
+        {isLoading
+          ? <span className="flex items-center justify-center gap-2"><OcarSpinner size={16} variant="white" />Saving…</span>
+          : 'Continue'}
+      </button>
+    </>
+  )
 
-        {/* Back + title */}
-        <div className="flex items-center gap-3 mb-2">
-          <button
-            onClick={() => navigate(-1)}
-            className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center"
-          >
-            <ArrowLeft size={20} className="text-text-secondary" />
-          </button>
-          <div>
-            <p className="text-text-muted text-xs">Step 1 of 4</p>
-            <h1 className="text-xl font-bold">Personal Details</h1>
-          </div>
-        </div>
-
-        <p className="text-text-muted text-xs mb-5">Progress is saved automatically</p>
-
+  return (
+    <OnboardingShell stepIndex={stepIdx} title="Personal Details" footer={footer}>
         <div className="space-y-4">
           {/* ── Card 1: About you ── */}
           <div className="driver-card">
@@ -481,40 +485,6 @@ export default function PersonalDetails() {
         </div>
 
         {error && <p className="text-accent-red text-sm mt-4">{error}</p>}
-      </div>
-
-      {/* Sticky footer CTA */}
-      <div className="fixed bottom-0 left-0 right-0 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-bg/95 backdrop-blur-sm border-t border-border z-20">
-        {!isValid && (
-          <p className="text-text-muted text-xs text-center mb-2">
-            {!fullName.trim() ? 'Enter your full name to continue'
-              : !gender ? 'Select your gender to continue'
-              : !dob ? 'Enter your date of birth to continue'
-              : !!dob && (dob > dobMax || dob < dobMin) ? 'Driver must be 18–70 years old'
-              : !address.trim() ? 'Enter your residential address'
-              : !state ? 'Select your state'
-              : !city ? 'Select your city'
-              : !/^\d{6}$/.test(pincode) ? 'Enter a valid 6-digit pincode'
-              : experience === null ? 'Set your driving experience'
-              : !/^[6-9]\d{9}$/.test(emergency) ? 'Enter a valid emergency contact number'
-              : languages.length === 0 ? 'Select at least one language'
-              : ''}
-          </p>
-        )}
-        <button
-          onClick={handleContinue}
-          disabled={!isValid || isLoading}
-          className="btn-go w-full"
-          style={{ minHeight: 52 }}
-        >
-          {isLoading
-            ? <span className="flex items-center justify-center gap-2">
-                <OcarSpinner size={16} variant="white" />
-                Saving…
-              </span>
-            : 'Continue'}
-        </button>
-      </div>
-    </>
+    </OnboardingShell>
   )
 }

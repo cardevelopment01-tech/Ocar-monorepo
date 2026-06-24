@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Upload, CheckCircle2, AlertCircle,
+  Upload, CheckCircle2, AlertCircle,
   Eye, RefreshCw, Shield, Car, X,
 } from 'lucide-react'
+import OnboardingShell from '@/components/onboarding/OnboardingShell'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import DatePickerSheet from '@/components/ui/DatePickerSheet'
 import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
@@ -241,34 +242,27 @@ export default function Documents() {
         ? `Set expiry date for: ${requiredExpiryGroups.filter(g => !validUntil[g.groupKey]).map(g => g.label).join(', ')}`
         : ''
 
-  return (
-    <div className="flex flex-col h-[100dvh] bg-bg text-text-primary">
-
-      {/* ── Header: always at top of flex column ── */}
-      <div
-        className="flex-shrink-0 bg-bg px-5 pt-14 pb-4"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+  const footer = (
+    <>
+      {!canContinue && missingHint && (
+        <p className="text-text-muted text-xs text-center mb-2">{missingHint}</p>
+      )}
+      <button
+        onClick={() => void handleContinue()}
+        disabled={!canContinue || isSaving}
+        className="btn-go w-full"
+        style={{ minHeight: 52 }}
       >
-        <div className="flex gap-1.5 mb-4">
-          {STEPS.map((s, i) => (
-            <div key={s} className={`flex-1 h-1 rounded-full ${i <= stepIdx ? 'bg-primary' : 'bg-surface-3'}`} />
-          ))}
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-            <ArrowLeft size={20} className="text-text-secondary" />
-          </button>
-          <div>
-            <p className="text-text-muted text-xs">Step 3 of 4</p>
-            <h1 className="text-xl font-bold">Documents</h1>
-          </div>
-        </div>
-      </div>
+        {isSaving
+          ? <span className="flex items-center justify-center gap-2"><OcarSpinner size={16} variant="white" />Saving…</span>
+          : 'Continue to Selfie'}
+      </button>
+    </>
+  )
 
-      {/* ── Scrollable content: flex-1 + overflow-y-auto so only this region scrolls ── */}
-      <div className="flex-1 overflow-y-auto px-5 pt-4 pb-4">
-        <p className="text-text-muted text-xs mb-5">Progress is saved automatically</p>
-
+  return (
+    <>
+      <OnboardingShell stepIndex={stepIdx} title="Documents" footer={footer}>
         <div className="space-y-3">
 
           {/* Identity Numbers */}
@@ -348,28 +342,9 @@ export default function Documents() {
           ))}
 
         </div>
-      </div>
-
-      {/* ── Footer: always at bottom of flex column ── */}
-      <div className="flex-shrink-0 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-bg/95 backdrop-blur-sm border-t border-border">
-        {!canContinue && missingHint && (
-          <p className="text-text-muted text-xs text-center mb-2">{missingHint}</p>
-        )}
-        <button
-          onClick={() => void handleContinue()}
-          disabled={!canContinue || isSaving}
-          className="btn-go w-full"
-          style={{ minHeight: 52 }}
-        >
-          {isSaving
-            ? <span className="flex items-center justify-center gap-2"><OcarSpinner size={16} variant="white" />Saving…</span>
-            : 'Continue to Selfie'}
-        </button>
-      </div>
-
-      {/* In-app preview */}
+      </OnboardingShell>
       {preview && <DocPreviewModal url={preview.url} label={preview.label} onClose={() => setPreview(null)} />}
-    </div>
+    </>
   )
 }
 

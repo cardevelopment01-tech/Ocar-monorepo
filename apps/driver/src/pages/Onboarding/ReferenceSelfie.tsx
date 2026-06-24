@@ -146,7 +146,10 @@ export default function ReferenceSelfie() {
       <canvas ref={canvasRef} className="hidden" aria-hidden />
 
       {/* Step bar + back button — white on dark bg */}
-      <div className="relative z-20 px-5 pt-12 flex items-center gap-4">
+      <div
+        className="relative z-20 px-5 flex items-center gap-4 pb-3"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 0.75rem)' }}
+      >
         <button
           onClick={() => { stopCamera(); navigate(-1) }}
           className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0"
@@ -156,7 +159,7 @@ export default function ReferenceSelfie() {
         </button>
         <div className="flex gap-1.5 flex-1">
           {steps.map((s, i) => (
-            <div key={s} className={`flex-1 h-1 rounded-full transition-colors ${i <= stepIdx ? 'bg-white' : 'bg-white/20'}`} />
+            <div key={s} className={`flex-1 h-1.5 rounded-full transition-colors duration-300 ${i <= stepIdx ? 'bg-white' : 'bg-white/25'}`} />
           ))}
         </div>
       </div>
