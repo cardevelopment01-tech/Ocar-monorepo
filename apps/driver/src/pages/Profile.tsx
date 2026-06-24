@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 import { Star, Car, ChevronRight, LogOut } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import StatusBar from '@/components/ui/StatusBar'
@@ -28,6 +29,7 @@ export default function Profile() {
   const { driver, refreshToken, clearAuth } = useAuthStore()
   const { isOnline } = useSessionStore()
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
+  const prefersReducedMotion = useReducedMotion()
 
   const displayName  = driver?.full_name ?? driver?.code ?? 'Driver'
   const displayPhone = driver?.phone?.replace('+91', '').trim() ?? '—'
@@ -56,51 +58,64 @@ export default function Profile() {
         style={{ overscrollBehaviorY: 'contain' }}
       >
         {/* Avatar card */}
-        <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border flex items-center gap-4">
-          <div
-            className="w-[60px] h-[60px] rounded-2xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'linear-gradient(145deg, #3B82F6 0%, #2563EB 100%)' }}
-            aria-hidden="true"
-          >
-            <span className="text-2xl font-black text-white">{initial}</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-text-primary font-bold text-lg leading-tight truncate">{displayName}</p>
-            <p className="text-text-muted text-sm mt-0.5">+91 {displayPhone}</p>
-            <div className="flex items-center gap-3 mt-2">
-              <div className="flex items-center gap-1">
-                <Star size={13} className="text-accent-amber fill-accent-amber" aria-hidden="true" />
-                <span className="text-text-secondary text-sm font-semibold">—</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Car size={13} className="text-text-muted" aria-hidden="true" />
-                <span className="text-text-muted text-xs">— trips</span>
+        <motion.div
+          className="mx-5 mb-4"
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <div className="bg-white rounded-3xl p-5 border border-border flex items-center gap-4" style={{ boxShadow: '0 2px 16px rgba(79,70,229,0.07)' }}>
+            <div
+              className="w-[60px] h-[60px] rounded-2xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}
+              aria-hidden="true"
+            >
+              <span className="text-2xl font-black text-white">{initial}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-text-primary font-bold text-lg leading-tight truncate">{displayName}</p>
+              <p className="text-text-muted text-sm mt-0.5">+91 {displayPhone}</p>
+              <div className="flex items-center gap-3 mt-2">
+                <div className="flex items-center gap-1">
+                  <Star size={13} className="text-accent-amber fill-accent-amber" aria-hidden="true" />
+                  <span className="text-text-secondary text-sm font-semibold">—</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Car size={13} className="text-text-muted" aria-hidden="true" />
+                  <span className="text-text-muted text-xs">— trips</span>
+                </div>
               </div>
             </div>
+            <span
+              className="text-xs font-bold px-2.5 py-1 rounded-full capitalize flex-shrink-0"
+              style={{ background: statusStyle.bg, color: statusStyle.text }}
+            >
+              {driver?.status ?? '—'}
+            </span>
           </div>
-          <span
-            className="text-xs font-bold px-2.5 py-1 rounded-full capitalize flex-shrink-0"
-            style={{ background: statusStyle.bg, color: statusStyle.text }}
-          >
-            {driver?.status ?? '—'}
-          </span>
-        </div>
+        </motion.div>
 
         {/* Menu */}
         <div className="mx-5 bg-white rounded-3xl border border-border overflow-hidden mb-4">
           {MENU_ITEMS.map((item, i) => (
-            <button
+            <motion.div
               key={item.label}
-              className={`w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors cursor-pointer ${
-                i < MENU_ITEMS.length - 1 ? 'border-b border-border' : ''
-              }`}
+              initial={prefersReducedMotion ? false : { opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.24, delay: i * 0.04, ease: [0.16, 1, 0.3, 1] }}
             >
-              <div className="text-left">
-                <p className="text-text-primary font-semibold text-sm">{item.label}</p>
-                {item.sub && <p className="text-text-muted text-xs mt-0.5">{item.sub}</p>}
-              </div>
-              <ChevronRight size={15} className="text-text-muted" aria-hidden="true" />
-            </button>
+              <button
+                className={`w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors cursor-pointer ${
+                  i < MENU_ITEMS.length - 1 ? 'border-b border-border' : ''
+                }`}
+              >
+                <div className="text-left">
+                  <p className="text-text-primary font-semibold text-sm">{item.label}</p>
+                  {item.sub && <p className="text-text-muted text-xs mt-0.5">{item.sub}</p>}
+                </div>
+                <ChevronRight size={15} className="text-text-muted" aria-hidden="true" />
+              </button>
+            </motion.div>
           ))}
         </div>
 
@@ -108,7 +123,7 @@ export default function Profile() {
         <div className="mx-5">
           <button
             onClick={() => setShowSignOutConfirm(true)}
-            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-accent-red font-bold text-base border border-accent-red/20 bg-accent-red/5 hover:bg-accent-red/10 transition-colors cursor-pointer active:scale-[0.98]"
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-accent-red font-bold text-base border border-accent-red/30 bg-accent-red/5 hover:bg-accent-red/10 transition-colors cursor-pointer active:scale-[0.98]"
             style={{ minHeight: 52 }}
           >
             <LogOut size={17} aria-hidden="true" />
@@ -126,7 +141,7 @@ export default function Profile() {
         >
           <div
             className="w-full rounded-3xl p-6"
-            style={{ background: '#FFFFFF', boxShadow: '0 -4px 32px rgba(0,0,0,0.18)' }}
+            style={{ background: '#FFFFFF', boxShadow: '0 -4px 32px rgba(79,70,229,0.12)' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="w-8 h-1 bg-border rounded-full mx-auto mb-5" />

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { IndianRupee, Clock, Star, TrendingUp, Bell, Wallet, ChevronRight } from 'lucide-react'
 import OnlineToggle from '@/components/ui/OnlineToggle'
@@ -30,14 +31,15 @@ const GLASS = {
   background:             'rgba(255,255,255,0.92)',
   backdropFilter:         'blur(16px)',
   WebkitBackdropFilter:   'blur(16px)',
-  border:                 '1px solid rgba(0,0,0,0.07)',
-  boxShadow:              '0 2px 12px rgba(0,0,0,0.10)',
+  border:                 '1px solid rgba(79,70,229,0.10)',
+  boxShadow:              '0 2px 16px rgba(79,70,229,0.10)',
 }
 
 export default function Home() {
   const navigate = useNavigate()
   const driver = useAuthStore(s => s.driver)
   const { isOnline, sessionId, setOffline } = useSessionStore()
+  const prefersReducedMotion = useReducedMotion()
 
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const sheetRef            = useRef<HTMLDivElement | null>(null)
@@ -187,14 +189,17 @@ export default function Home() {
       </div>
 
       {/* Bottom sheet — sits above BottomNav */}
-      <div
+      <motion.div
         ref={sheetRef}
         className="absolute left-0 right-0 rounded-t-[28px]"
-        style={{ bottom: NAV_HEIGHT, zIndex: 10, background: '#FFFFFF', borderTop: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 -8px 40px rgba(0,0,0,0.12)' }}
+        style={{ bottom: NAV_HEIGHT, zIndex: 10, background: '#FFFFFF', borderTop: '1px solid rgba(79,70,229,0.08)', boxShadow: '0 -8px 40px rgba(79,70,229,0.12)' }}
+        initial={prefersReducedMotion ? false : { y: 24, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
       >
         {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-0">
-          <div className="w-9 h-[3px] rounded-full bg-border" />
+          <div className="w-9 h-[3px] rounded-full" style={{ background: 'rgba(79,70,229,0.15)' }} />
         </div>
 
         <div className="px-5 pt-4 pb-5">
@@ -216,31 +221,49 @@ export default function Home() {
           {/* ── Row 2: Today's stats ── */}
           <div className="grid grid-cols-3 gap-2 mb-3">
             {/* Earnings — orange accent (operational income signal) */}
-            <div className="rounded-2xl px-3 py-3 text-center" style={{ background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.14)' }}>
-              <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                <IndianRupee size={12} className="text-accent-orange" />
-                <span className="font-black text-[15px] tabular-nums text-accent-orange">
-                  {e.total.toLocaleString('en-IN')}
-                </span>
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.28, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="rounded-2xl px-3 py-3 text-center" style={{ background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.14)' }}>
+                <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                  <IndianRupee size={12} className="text-accent-orange" />
+                  <span className="font-black text-[15px] tabular-nums text-accent-orange">
+                    {e.total.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <p className="text-text-muted text-[10px] font-semibold">Earned</p>
               </div>
-              <p className="text-text-muted text-[10px] font-semibold">Earned</p>
-            </div>
+            </motion.div>
             {/* Trips — neutral */}
-            <div className="rounded-2xl px-3 py-3 text-center bg-surface-2 border border-border">
-              <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                <Clock size={11} className="text-text-secondary" />
-                <span className="font-black text-[15px] tabular-nums text-text-primary">{e.trips}</span>
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.28, delay: 0.10, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="rounded-2xl px-3 py-3 text-center bg-surface-2 border border-border">
+                <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                  <Clock size={11} className="text-text-secondary" />
+                  <span className="font-black text-[15px] tabular-nums text-text-primary">{e.trips}</span>
+                </div>
+                <p className="text-text-muted text-[10px] font-semibold">Trips</p>
               </div>
-              <p className="text-text-muted text-[10px] font-semibold">Trips</p>
-            </div>
+            </motion.div>
             {/* Rating — neutral */}
-            <div className="rounded-2xl px-3 py-3 text-center bg-surface-2 border border-border">
-              <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                <Star size={11} className="text-text-secondary" />
-                <span className="font-black text-[15px] tabular-nums text-text-primary">{e.rating}</span>
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.28, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="rounded-2xl px-3 py-3 text-center bg-surface-2 border border-border">
+                <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                  <Star size={11} className="text-text-secondary" />
+                  <span className="font-black text-[15px] tabular-nums text-text-primary">{e.rating}</span>
+                </div>
+                <p className="text-text-muted text-[10px] font-semibold">Rating</p>
               </div>
-              <p className="text-text-muted text-[10px] font-semibold">Rating</p>
-            </div>
+            </motion.div>
           </div>
 
           {/* ── Row 3: Quick actions ── */}
@@ -285,7 +308,7 @@ export default function Home() {
             </div>
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* Go offline confirmation — fixed so it covers BottomNav (z-100) */}
       {showOfflineConfirm && (
@@ -296,7 +319,7 @@ export default function Home() {
         >
           <div
             className="w-full rounded-3xl p-6"
-            style={{ background: '#FFFFFF', boxShadow: '0 -4px 32px rgba(0,0,0,0.18)' }}
+            style={{ background: '#FFFFFF', boxShadow: '0 -4px 32px rgba(79,70,229,0.14)' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="w-8 h-1 bg-border rounded-full mx-auto mb-5" />

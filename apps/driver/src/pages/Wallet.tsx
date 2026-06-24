@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 import { AlertTriangle, ArrowDownLeft, ArrowUpRight, RefreshCw } from 'lucide-react'
 import StatusBar from '@/components/ui/StatusBar'
 import { useSessionStore } from '@/store/useSessionStore'
@@ -52,6 +53,7 @@ export default function Wallet() {
   const [selectedAmount, setSelectedAmount] = useState(1000)
   const [topupLoading,   setTopupLoading]   = useState(false)
   const [topupMsg,       setTopupMsg]       = useState<string | null>(null)
+  const prefersReducedMotion = useReducedMotion()
 
   const load = async () => {
     setLoading(true)
@@ -148,27 +150,33 @@ export default function Wallet() {
       ) : (
         <>
           {/* Balance card */}
-          <div
-            className="mx-5 rounded-3xl p-6 mb-4"
-            style={{
-              background: isLow
-                ? 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)'
-                : 'linear-gradient(135deg, #16A34A 0%, #22C55E 100%)',
-              boxShadow: isLow
-                ? '0 8px 28px rgba(217,119,6,0.22)'
-                : '0 8px 28px rgba(34,197,94,0.22)',
-            }}
+          <motion.div
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
           >
-            <p className="text-white/70 text-[11px] font-bold uppercase tracking-widest mb-1">
-              Compliance Deposit
-            </p>
-            <p className="text-white font-black text-[44px] leading-none tabular-nums">
-              ₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-            </p>
-            <p className="text-white/60 text-xs mt-2">
-              Minimum required: ₹{MIN_BALANCE.toLocaleString('en-IN')}
-            </p>
-          </div>
+            <div
+              className="mx-5 rounded-3xl p-6 mb-4"
+              style={{
+                background: isLow
+                  ? 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)'
+                  : 'linear-gradient(135deg, #16A34A 0%, #22C55E 100%)',
+                boxShadow: isLow
+                  ? '0 8px 28px rgba(217,119,6,0.22)'
+                  : '0 8px 28px rgba(34,197,94,0.22)',
+              }}
+            >
+              <p className="text-white/60 text-[13px] font-semibold mb-1">
+                Compliance deposit
+              </p>
+              <p className="text-white font-black text-[44px] leading-none tabular-nums">
+                ₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </p>
+              <p className="text-white/60 text-xs mt-2">
+                Minimum required: ₹{MIN_BALANCE.toLocaleString('en-IN')}
+              </p>
+            </div>
+          </motion.div>
 
           {isLow && (
             <div
@@ -211,7 +219,7 @@ export default function Wallet() {
               key={amt}
               onClick={() => setSelectedAmount(amt)}
               className={cn(
-                'border rounded-xl px-4 py-2 text-sm font-bold transition-colors cursor-pointer',
+                'border rounded-2xl px-4 py-2 text-sm font-bold transition-colors cursor-pointer',
                 selectedAmount === amt
                   ? 'bg-primary text-white border-primary'
                   : 'bg-surface-2 border-border text-text-secondary hover:border-primary hover:text-primary hover:bg-primary/5'
@@ -251,8 +259,14 @@ export default function Wallet() {
           <p className="text-text-muted text-sm text-center py-4">No transactions yet</p>
         )}
 
-        {ledger.map(tx => (
-          <div key={tx.id} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
+        {ledger.map((tx, index) => (
+          <motion.div
+            key={tx.id}
+            className="flex items-center gap-3 py-3 border-b border-border last:border-0"
+            initial={prefersReducedMotion ? false : { opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.22, delay: index * 0.04, ease: [0.16, 1, 0.3, 1] }}
+          >
             <div className={cn(
               'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0',
               tx.direction === 'credit' ? 'bg-accent-green/10' : 'bg-accent-red/10'
@@ -272,7 +286,7 @@ export default function Wallet() {
             )}>
               {tx.direction === 'credit' ? '+' : '-'}₹{parseFloat(tx.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </p>
-          </div>
+          </motion.div>
         ))}
       </div>
     </div>

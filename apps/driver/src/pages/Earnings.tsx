@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 import StatusBar from '@/components/ui/StatusBar'
 import { useSessionStore } from '@/store/useSessionStore'
 import { mockEarnings } from '@/lib/mock-data'
@@ -21,6 +22,7 @@ function fmtDate(iso: string) {
 export default function Earnings() {
   const { isOnline } = useSessionStore()
   const [period, setPeriod] = useState<Period>('today')
+  const prefersReducedMotion = useReducedMotion()
   const e = mockEarnings[period]
   const maxBar = Math.max(...e.chart, 1)
 
@@ -51,26 +53,43 @@ export default function Earnings() {
             key={p.key}
             onClick={() => setPeriod(p.key)}
             className={cn(
-              'flex-1 py-2 rounded-xl text-sm font-bold transition-all duration-200 cursor-pointer',
+              'relative flex-1 py-2 rounded-xl text-sm font-bold transition-all duration-200 cursor-pointer',
               period === p.key
-                ? 'bg-white text-primary shadow-card'
+                ? 'text-primary'
                 : 'text-text-muted hover:text-text-secondary'
             )}
             aria-pressed={period === p.key}
           >
-            {p.label}
+            {period === p.key && (
+              prefersReducedMotion
+                ? <div className="absolute inset-0 rounded-xl bg-white" />
+                : <motion.div
+                    layoutId="period-pill"
+                    className="absolute inset-0 rounded-xl bg-white"
+                    style={{ boxShadow: '0 2px 16px rgba(79,70,229,0.07)' }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+            )}
+            <span className="relative z-10">{p.label}</span>
           </button>
         ))}
       </div>
 
       {/* Total card */}
       <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
-        <p className="text-text-muted text-xs font-medium mb-1">
+        <p className="text-text-muted text-[11px] font-semibold mb-1">
           {PERIODS.find(p => p.key === period)!.label}
         </p>
-        <p className="text-[44px] font-black text-text-primary leading-none tabular-nums">
-          ₹{e.total.toLocaleString('en-IN')}
-        </p>
+        <motion.div
+          key={period}
+          initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <p className="text-[44px] font-black text-text-primary leading-none tabular-nums">
+            ₹{e.total.toLocaleString('en-IN')}
+          </p>
+        </motion.div>
         <div className="flex gap-2 mt-3 flex-wrap">
           <span
             className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary"
@@ -98,10 +117,17 @@ export default function Earnings() {
 
       {/* Bar chart */}
       <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
-        <p className="text-text-secondary text-sm font-semibold mb-4">Daily Earnings</p>
+        <p className="text-text-primary text-sm font-bold mb-4">Daily Earnings</p>
         <div className="flex items-end gap-2 h-28" role="img" aria-label="Earnings chart">
           {e.chart.map((val, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1">
+            <motion.div
+              key={`${period}-${i}`}
+              className="flex-1 flex flex-col items-center gap-1"
+              initial={prefersReducedMotion ? false : { opacity: 0, scaleY: 0 }}
+              animate={{ opacity: 1, scaleY: 1 }}
+              transition={{ duration: 0.28, delay: i * 0.03, ease: [0.16, 1, 0.3, 1] }}
+              style={{ transformOrigin: 'bottom' }}
+            >
               <div
                 className="w-full rounded-t-md transition-all duration-500"
                 style={{
@@ -114,14 +140,14 @@ export default function Earnings() {
                 }}
               />
               <span className="text-text-muted text-[10px]">{e.chartLabels[i]}</span>
-            </div>
+            </motion.div>
           ))}
         </div>
       </div>
 
       {/* Earnings breakdown */}
       <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
-        <p className="text-text-secondary text-sm font-semibold mb-3">Breakdown</p>
+        <p className="text-text-primary text-sm font-bold mb-3">Breakdown</p>
         {[
           { label: 'Base Fare',    value: e.breakdown.baseFare,    neg: false },
           { label: 'Tips',         value: e.breakdown.tips,        neg: false },
@@ -142,7 +168,7 @@ export default function Earnings() {
 
       {/* Trip history */}
       <div className="mx-5 bg-white rounded-3xl p-5 border border-border">
-        <p className="text-text-secondary text-sm font-semibold mb-3">Recent Trips</p>
+        <p className="text-text-primary text-sm font-bold mb-3">Recent Trips</p>
         {tripsLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
