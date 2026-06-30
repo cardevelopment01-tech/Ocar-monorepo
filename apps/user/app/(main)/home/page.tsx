@@ -68,9 +68,9 @@ const page = {
 // ─── data ─────────────────────────────────────────────────────────────────────
 
 const SERVICES = [
-  { id: 'oneway',     Icon: Car,       label: 'One Way',    sub: 'City to city' },
-  { id: 'roundtrip',  Icon: RotateCcw, label: 'Round Trip', sub: 'A→B & back'   },
-  { id: 'rental',     Icon: Clock,     label: 'Rental',     sub: 'Hourly hire'  },
+  { id: 'oneway',     Icon: Car,       label: 'One Way',    sub: 'City to city'  },
+  { id: 'roundtrip',  Icon: RotateCcw, label: 'Round Trip', sub: 'There & back'  },
+  { id: 'rental',     Icon: Clock,     label: 'Rental',     sub: 'By the hour'   },
 ]
 const SAVED = [
   { Icon: Home,      label: 'Home', sub: 'Sahid Nagar, Bhubaneswar',   lat: 20.2929, lng: 85.8363 },
@@ -365,7 +365,6 @@ export default function HomePage() {
 
           {/* Services */}
           <motion.div variants={section}>
-            <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Services</p>
             <motion.div className="grid grid-cols-3 gap-2.5" variants={sectionList} initial="hidden" animate="show">
               {SERVICES.map(s => (
                 <motion.button
@@ -461,7 +460,7 @@ export default function HomePage() {
 
           {/* Popular routes */}
           <motion.div variants={section}>
-            <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Popular routes</p>
+            <p className="text-[13px] font-semibold text-text-secondary mb-3">Popular routes</p>
             <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-0.5 scrollbar-none">
               {POPULAR.map((r, i) => (
                 <motion.button

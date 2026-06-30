@@ -197,11 +197,11 @@ function SelectRideContent() {
       {/* ── Sheet ── */}
       <div
         className="flex-1 flex flex-col bg-white min-h-0"
-        style={{ boxShadow: '0 -4px 24px rgba(0,0,0,0.08)', borderRadius: '20px 20px 0 0', marginTop: -8, position: 'relative', zIndex: 2 }}
+        style={{ boxShadow: '0 -6px 32px rgba(79,70,229,0.10)', borderRadius: '24px 24px 0 0', marginTop: -8, position: 'relative', zIndex: 2 }}
       >
         {/* Handle + header */}
         <div className="flex-shrink-0 px-5 pt-3 pb-2">
-          <div className="w-9 h-1 rounded-full bg-slate-200 mx-auto mb-3" />
+          <div className="w-9 h-1 rounded-full mx-auto mb-3" style={{ background: 'rgba(79,70,229,0.15)' }} />
           <div className="flex items-center justify-between mb-3">
             <p className="text-[15px] font-bold text-slate-900">Choose a ride</p>
             <span className="text-[12px] font-semibold text-slate-400 tabular-nums">
@@ -233,31 +233,42 @@ function SelectRideContent() {
 
           {/* Round Trip badge — shown instead of tabs when entering from /round-trip */}
           {fromRoundTripPage && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-50 border border-violet-100 w-fit">
-              <RotateCcw size={11} className="text-violet-500" strokeWidth={2.5} />
-              <span className="text-[12px] font-bold text-violet-600">Round Trip</span>
+            <div
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full w-fit"
+              style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
+            >
+              <RotateCcw size={10} strokeWidth={2.5} style={{ color: '#4F46E5' }} />
+              <span className="text-[12px] font-semibold" style={{ color: '#4338CA' }}>Round trip</span>
             </div>
           )}
 
           {/* Return date/time picker — shown for round trips; uses local time (not UTC) */}
           {rideType === 'round_trip' && (
-            <div className="mt-2 flex items-center gap-2 px-1">
-              <CalendarClock size={14} className="text-violet-500 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-[11px] font-semibold text-slate-500 mb-0.5">Return date &amp; time</p>
+            <div
+              className="mt-2.5 flex items-center gap-3 px-3 py-2.5 rounded-2xl bg-white"
+              style={{ border: '1px solid #E8EEFF' }}
+            >
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: '#EEF2FF' }}
+              >
+                <CalendarClock size={13} style={{ color: '#4F46E5' }} strokeWidth={1.8} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-semibold mb-0.5" style={{ color: '#94A3B8' }}>Return time</p>
                 <input
                   type="datetime-local"
                   min={minReturnDatetimeLocal()}
                   value={returnAt ? toDatetimeLocal(returnAt) : ''}
                   onChange={e => setReturnAt(e.target.value ? new Date(e.target.value) : null)}
-                  className="w-full text-[13px] font-semibold text-slate-900 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-200 transition-all"
+                  className="w-full bg-transparent text-[13px] font-semibold outline-none"
+                  style={{ color: '#0F172A' }}
                 />
               </div>
               {tripHours !== undefined && (
-                <div className="flex-shrink-0 text-right">
-                  <p className="text-[11px] text-slate-400">Duration</p>
-                  <p className="text-[13px] font-bold text-violet-700">{tripHours}h</p>
-                </div>
+                <span className="flex-shrink-0 text-[14px] font-black tabular-nums" style={{ color: '#4F46E5' }}>
+                  {tripHours}h
+                </span>
               )}
             </div>
           )}
@@ -371,35 +382,38 @@ function SelectRideContent() {
 
         {/* Round trip fare breakdown — shown when a vehicle is selected and estimate is ready */}
         {rideType === 'round_trip' && estimates[selected] && tripHours !== undefined && (
-          <div className="mx-4 mb-2 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 space-y-1.5">
+          <div
+            className="mx-4 mb-2 rounded-2xl px-4 py-3 space-y-1.5"
+            style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
+          >
             <div className="flex justify-between text-[11px]">
-              <span className="text-violet-500">Base fare</span>
-              <span className="font-semibold text-violet-800">₹{Math.round(Number(estimates[selected]!.breakdown.base_fare))}</span>
+              <span style={{ color: '#6366F1' }}>Base fare</span>
+              <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.base_fare))}</span>
             </div>
             <div className="flex justify-between text-[11px]">
-              <span className="text-violet-500">Distance</span>
-              <span className="font-semibold text-violet-800">₹{Math.round(Number(estimates[selected]!.breakdown.distance_fare))}</span>
+              <span style={{ color: '#6366F1' }}>Distance</span>
+              <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.distance_fare))}</span>
             </div>
             <div className="flex justify-between text-[11px]">
-              <span className="text-violet-500">Travel time</span>
-              <span className="font-semibold text-violet-800">₹{Math.round(Number(estimates[selected]!.breakdown.time_fare))}</span>
+              <span style={{ color: '#6366F1' }}>Travel time</span>
+              <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.time_fare))}</span>
             </div>
             {Number(estimates[selected]!.breakdown.hour_surcharge) > 0 && (
               <div className="flex justify-between text-[11px]">
-                <span className="text-violet-500">Waiting ({tripHours}h)</span>
-                <span className="font-semibold text-violet-800">₹{Math.round(Number(estimates[selected]!.breakdown.hour_surcharge))}</span>
+                <span style={{ color: '#6366F1' }}>Waiting ({tripHours}h)</span>
+                <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.hour_surcharge))}</span>
               </div>
             )}
             {Number(estimates[selected]!.breakdown.surge_fare) > 0 && (
               <div className="flex justify-between text-[11px]">
-                <span className="text-amber-500">Surge ({estimates[selected]!.surge_multiplier}×)</span>
-                <span className="font-semibold text-amber-600">₹{Math.round(Number(estimates[selected]!.breakdown.surge_fare))}</span>
+                <span style={{ color: '#F59E0B' }}>Surge ({estimates[selected]!.surge_multiplier}×)</span>
+                <span className="font-semibold" style={{ color: '#0F172A' }}>₹{Math.round(Number(estimates[selected]!.breakdown.surge_fare))}</span>
               </div>
             )}
-            <div className="h-px bg-violet-200" />
-            <div className="flex justify-between">
-              <span className="text-[12px] font-bold text-violet-900">Total</span>
-              <span className="text-[14px] font-black text-violet-900 tabular-nums">₹{Math.round(Number(estimates[selected]!.breakdown.total))}</span>
+            <div className="h-px" style={{ background: '#C7D2FE' }} />
+            <div className="flex justify-between items-baseline">
+              <span className="text-[12px] font-bold" style={{ color: '#0F172A' }}>Total</span>
+              <span className="text-[15px] font-black tabular-nums" style={{ color: '#4F46E5' }}>₹{Math.round(Number(estimates[selected]!.breakdown.total))}</span>
             </div>
           </div>
         )}
