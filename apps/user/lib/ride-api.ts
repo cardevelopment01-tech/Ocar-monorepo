@@ -26,6 +26,8 @@ export type BookingResult = {
 export type RideDetail = {
   id: string
   status: string
+  ride_type: string
+  trip_hours: number | null
   user_id: string
   driver_id: string | null
   origin_address: string | null

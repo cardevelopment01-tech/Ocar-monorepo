@@ -1,11 +1,11 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard, CalendarClock } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard, CalendarClock, RotateCcw } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { cn } from '@/lib/utils'
+import { cn, clampTripHours, toDatetimeLocal, minReturnDatetimeLocal } from '@/lib/utils'
 import { rideApi, type FareEstimate } from '@/lib/ride-api'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
@@ -49,7 +49,13 @@ function SelectRideContent() {
   const [rideType,      setRideType]      = useState<'one_way' | 'round_trip'>(
     () => sp.get('rideType') === 'round_trip' ? 'round_trip' : 'one_way'
   )
-  const [returnAt,      setReturnAt]      = useState<Date | null>(null)
+  // Seeded from URL when arriving from the dedicated /round-trip page
+  const [returnAt,      setReturnAt]      = useState<Date | null>(() => {
+    const r = sp.get('returnAt')
+    return r ? new Date(r) : null
+  })
+  // True when user arrived via /round-trip — they already committed to round trip
+  const fromRoundTripPage = sp.get('returnAt') !== null
   const [estimates,     setEstimates]     = useState<Record<number, FareEstimate>>({})
   const [loading,       setLoading]       = useState(true)
   const [selected,      setSelected]      = useState(2)
@@ -91,12 +97,10 @@ function SelectRideContent() {
 
   const center: [number, number] = [(originLat + destinationLat) / 2, (originLng + destinationLng) / 2]
 
-  // Whole-hour ceiling, minimum 4h for round trips (mirrors backend clampTripHours).
-  const tripHours = useMemo(() => {
-    if (rideType !== 'round_trip' || returnAt === null) return undefined
-    const rawHours = (returnAt.getTime() - Date.now()) / 3_600_000
-    return Math.max(4, Math.ceil(rawHours))
-  }, [rideType, returnAt])
+  const tripHours = useMemo(
+    () => rideType === 'round_trip' ? clampTripHours(returnAt) : undefined,
+    [rideType, returnAt],
+  )
 
   const loadEstimates = useCallback(async () => {
     setLoading(true)
@@ -201,28 +205,41 @@ function SelectRideContent() {
           <div className="flex items-center justify-between mb-3">
             <p className="text-[15px] font-bold text-slate-900">Choose a ride</p>
             <span className="text-[12px] font-semibold text-slate-400 tabular-nums">
-              {distanceKm} km · {Math.round(durationMin)} min
+              {rideType === 'round_trip' && tripHours !== undefined
+                ? `${distanceKm} km · round trip · ${tripHours}h`
+                : `${distanceKm} km · ${Math.round(durationMin)} min`}
             </span>
           </div>
-          {/* Ride type tabs */}
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-            {(['one_way', 'round_trip'] as const).map(t => (
-              <button
-                key={t}
-                onClick={() => { setRideType(t); if (t === 'one_way') setReturnAt(null) }}
-                className={cn(
-                  'flex-1 py-1.5 rounded-lg text-[13px] font-semibold transition-all',
-                  rideType === t
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500'
-                )}
-              >
-                {t === 'one_way' ? 'One Way' : 'Return'}
-              </button>
-            ))}
-          </div>
 
-          {/* Return date/time picker — only shown for round trips */}
+          {/* Ride type tabs — hidden when user arrived from /round-trip (already committed) */}
+          {!fromRoundTripPage && (
+            <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+              {(['one_way', 'round_trip'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => { setRideType(t); if (t === 'one_way') setReturnAt(null) }}
+                  className={cn(
+                    'flex-1 py-1.5 rounded-lg text-[13px] font-semibold transition-all',
+                    rideType === t
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500'
+                  )}
+                >
+                  {t === 'one_way' ? 'One Way' : 'Round Trip'}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Round Trip badge — shown instead of tabs when entering from /round-trip */}
+          {fromRoundTripPage && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-50 border border-violet-100 w-fit">
+              <RotateCcw size={11} className="text-violet-500" strokeWidth={2.5} />
+              <span className="text-[12px] font-bold text-violet-600">Round Trip</span>
+            </div>
+          )}
+
+          {/* Return date/time picker — shown for round trips; uses local time (not UTC) */}
           {rideType === 'round_trip' && (
             <div className="mt-2 flex items-center gap-2 px-1">
               <CalendarClock size={14} className="text-violet-500 flex-shrink-0" />
@@ -230,11 +247,8 @@ function SelectRideContent() {
                 <p className="text-[11px] font-semibold text-slate-500 mb-0.5">Return date &amp; time</p>
                 <input
                   type="datetime-local"
-                  min={(() => {
-                    const d = new Date(); d.setMinutes(d.getMinutes() + 240)
-                    return d.toISOString().slice(0, 16)
-                  })()}
-                  value={returnAt ? returnAt.toISOString().slice(0, 16) : ''}
+                  min={minReturnDatetimeLocal()}
+                  value={returnAt ? toDatetimeLocal(returnAt) : ''}
                   onChange={e => setReturnAt(e.target.value ? new Date(e.target.value) : null)}
                   className="w-full text-[13px] font-semibold text-slate-900 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-200 transition-all"
                 />
@@ -354,6 +368,41 @@ function SelectRideContent() {
             )
           })}
         </div>
+
+        {/* Round trip fare breakdown — shown when a vehicle is selected and estimate is ready */}
+        {rideType === 'round_trip' && estimates[selected] && tripHours !== undefined && (
+          <div className="mx-4 mb-2 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 space-y-1.5">
+            <div className="flex justify-between text-[11px]">
+              <span className="text-violet-500">Base fare</span>
+              <span className="font-semibold text-violet-800">₹{Math.round(Number(estimates[selected]!.breakdown.base_fare))}</span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-violet-500">Distance</span>
+              <span className="font-semibold text-violet-800">₹{Math.round(Number(estimates[selected]!.breakdown.distance_fare))}</span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-violet-500">Travel time</span>
+              <span className="font-semibold text-violet-800">₹{Math.round(Number(estimates[selected]!.breakdown.time_fare))}</span>
+            </div>
+            {Number(estimates[selected]!.breakdown.hour_surcharge) > 0 && (
+              <div className="flex justify-between text-[11px]">
+                <span className="text-violet-500">Waiting ({tripHours}h)</span>
+                <span className="font-semibold text-violet-800">₹{Math.round(Number(estimates[selected]!.breakdown.hour_surcharge))}</span>
+              </div>
+            )}
+            {Number(estimates[selected]!.breakdown.surge_fare) > 0 && (
+              <div className="flex justify-between text-[11px]">
+                <span className="text-amber-500">Surge ({estimates[selected]!.surge_multiplier}×)</span>
+                <span className="font-semibold text-amber-600">₹{Math.round(Number(estimates[selected]!.breakdown.surge_fare))}</span>
+              </div>
+            )}
+            <div className="h-px bg-violet-200" />
+            <div className="flex justify-between">
+              <span className="text-[12px] font-bold text-violet-900">Total</span>
+              <span className="text-[14px] font-black text-violet-900 tabular-nums">₹{Math.round(Number(estimates[selected]!.breakdown.total))}</span>
+            </div>
+          </div>
+        )}
 
         {/* Book bar */}
         <div

@@ -68,9 +68,9 @@ const page = {
 // ─── data ─────────────────────────────────────────────────────────────────────
 
 const SERVICES = [
-  { id: 'oneway', Icon: Car,       label: 'One Way', sub: 'City to city' },
-  { id: 'return', Icon: RotateCcw, label: 'Return',  sub: 'Round trip'  },
-  { id: 'rental', Icon: Clock,     label: 'Rental',  sub: 'Hourly hire' },
+  { id: 'oneway',     Icon: Car,       label: 'One Way',    sub: 'City to city' },
+  { id: 'roundtrip',  Icon: RotateCcw, label: 'Round Trip', sub: 'A→B & back'   },
+  { id: 'rental',     Icon: Clock,     label: 'Rental',     sub: 'Hourly hire'  },
 ]
 const SAVED = [
   { Icon: Home,      label: 'Home', sub: 'Sahid Nagar, Bhubaneswar',   lat: 20.2929, lng: 85.8363 },
@@ -122,9 +122,12 @@ export default function HomePage() {
     )
   }, [])
 
-  function toSearch(rideType?: 'round_trip') {
-    const base = `/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}`
-    router.push(rideType ? `${base}&rideType=${rideType}` : base)
+  function toSearch() {
+    router.push(`/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}`)
+  }
+
+  function toRoundTrip() {
+    router.push(`/round-trip?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&originCityId=1`)
   }
 
   function toRental() {
@@ -368,9 +371,9 @@ export default function HomePage() {
                 <motion.button
                   key={s.id}
                   onClick={
-                    s.id === 'rental' ? toRental :
-                    s.id === 'return' ? () => toSearch('round_trip') :
-                    () => toSearch()
+                    s.id === 'rental'    ? toRental :
+                    s.id === 'roundtrip' ? toRoundTrip :
+                    toSearch
                   }
                   className="flex flex-col items-center gap-2 py-4 bg-surface border border-border rounded-2xl"
                   style={{ boxShadow: SHADOW }}

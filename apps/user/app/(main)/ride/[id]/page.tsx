@@ -3,7 +3,7 @@
 import { DEMO_MODE } from '@/lib/demo'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Phone, MessageSquare, MapPin, Navigation, X } from 'lucide-react'
+import { Phone, MessageSquare, MapPin, Navigation, X, RotateCcw } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
@@ -262,16 +262,28 @@ export default function RidePage() {
                     <p className="text-sm font-medium text-gray-800 truncate">{ride?.origin_address ?? 'Your location'}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Drop</p>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                      {ride?.ride_type === 'round_trip' ? 'Drop & return' : 'Drop'}
+                    </p>
                     <p className="text-sm font-medium text-gray-800 truncate">{ride?.destination_address ?? 'Destination'}</p>
                   </div>
                 </div>
-                {fare && (
-                  <div className="flex-shrink-0 text-right">
-                    <p className="text-[10px] font-semibold text-gray-400">Est. fare</p>
-                    <p className="text-base font-black text-gray-900">{fare}</p>
-                  </div>
-                )}
+                <div className="flex-shrink-0 text-right space-y-1">
+                  {fare && (
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-400">Est. fare</p>
+                      <p className="text-base font-black text-gray-900">{fare}</p>
+                    </div>
+                  )}
+                  {ride?.ride_type === 'round_trip' && (
+                    <div className="flex items-center gap-1 justify-end">
+                      <RotateCcw size={9} className="text-violet-500" />
+                      <span className="text-[10px] font-bold text-violet-600">
+                        Round trip{ride.trip_hours ? ` · ${ride.trip_hours}h` : ''}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <button
@@ -351,9 +363,19 @@ export default function RidePage() {
                     <p className="text-sm font-medium text-gray-800 truncate">{ride?.origin_address ?? 'Your location'}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Drop</p>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                      {ride?.ride_type === 'round_trip' ? 'Drop & return' : 'Drop'}
+                    </p>
                     <p className="text-sm font-medium text-gray-800 truncate">{ride?.destination_address ?? 'Destination'}</p>
                   </div>
+                  {ride?.ride_type === 'round_trip' && (
+                    <div className="flex items-center gap-1 pt-0.5">
+                      <RotateCcw size={9} className="text-violet-500" />
+                      <span className="text-[10px] font-bold text-violet-600">
+                        Round trip{ride.trip_hours ? ` · ${ride.trip_hours}h` : ''}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 

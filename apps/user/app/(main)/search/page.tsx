@@ -63,6 +63,7 @@ function SearchContent() {
   })
 
   const rideType = sp.get('rideType') ?? undefined
+  const backTo   = sp.get('backTo')   ?? undefined
 
   const [mode, setMode] = useState<EditMode>(() => {
     const focus = sp.get('focus')
@@ -234,6 +235,14 @@ function SearchContent() {
       })
       if (route.polyline) params.set('polyline', route.polyline)
       if (rideType)      params.set('rideType', rideType)
+
+      // Return Cab destination picker navigates back to /round-trip with route data
+      if (backTo === 'round_trip') {
+        if (useReplace) router.replace(`/round-trip?${params.toString()}`)
+        else            router.push(`/round-trip?${params.toString()}`)
+        return
+      }
+
       if (useReplace) router.replace(`/select-ride?${params.toString()}`)
       else             router.push(`/select-ride?${params.toString()}`)
     } catch {
