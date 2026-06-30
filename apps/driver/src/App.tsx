@@ -30,8 +30,6 @@ import api from '@/lib/api'
 import type { DriverProfile } from '@/store/useAuthStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { connectDriverSocket, disconnectDriverSocket, getDriverSocket } from '@/lib/socket'
-import { DEMO_MODE } from '@/lib/demo'
-import DemoBlock from '@/components/ui/DemoBlock'
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
@@ -50,6 +48,7 @@ export default function App() {
         status: res.data.driver.status,
         onboarding_step: res.data.driver.onboarding_step,
         full_name: res.data.driver.full_name,
+        rating: res.data.driver.rating != null ? parseFloat(String(res.data.driver.rating)) : null,
       }))
       .catch((err: unknown) => {
         const status = (err as { response?: { status?: number } })?.response?.status
@@ -145,12 +144,12 @@ export default function App() {
             } />
             <Route path="/earnings" element={
               <ProtectedRoute requireApproved>
-                {DEMO_MODE ? <DemoBlock feature="Earnings" /> : <Earnings />}
+                <Earnings />
               </ProtectedRoute>
             } />
             <Route path="/wallet" element={
               <ProtectedRoute requireApproved>
-                {DEMO_MODE ? <DemoBlock feature="Driver Wallet" /> : <Wallet />}
+                <Wallet />
               </ProtectedRoute>
             } />
             <Route path="/profile" element={
@@ -174,22 +173,22 @@ export default function App() {
             } />
             <Route path="/ride/navigate" element={
               <ProtectedRoute requireApproved>
-                {DEMO_MODE ? <DemoBlock feature="Navigate to Pickup" /> : <NavigateToPickup />}
+                <NavigateToPickup />
               </ProtectedRoute>
             } />
             <Route path="/ride/otp" element={
               <ProtectedRoute requireApproved>
-                {DEMO_MODE ? <DemoBlock feature="OTP Verification" /> : <OTPVerify />}
+                <OTPVerify />
               </ProtectedRoute>
             } />
             <Route path="/ride/in-progress" element={
               <ProtectedRoute requireApproved>
-                {DEMO_MODE ? <DemoBlock feature="Trip in Progress" /> : <TripInProgress />}
+                <TripInProgress />
               </ProtectedRoute>
             } />
             <Route path="/ride/end" element={
               <ProtectedRoute requireApproved>
-                {DEMO_MODE ? <DemoBlock feature="Trip Completion" /> : <TripEnd />}
+                <TripEnd />
               </ProtectedRoute>
             } />
 

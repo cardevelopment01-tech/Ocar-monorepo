@@ -511,3 +511,136 @@ export async function getPendingAssignmentsForDriver(
   )
   return res.rows
 }
+
+// ── Driver earnings summary ───────────────────────────────────
+
+export async function getDriverEarningsSummary(
+  driverId: bigint,
+  period: 'today' | 'week' | 'month'
+): Promise<{
+  total_earnings: number
+  trip_count: number
+  online_hours: string
+  rating: number | null
+  chart: number[]
+  chart_labels: string[]
+  breakdown: { base_fare: number; tips: number; incentives: number; platform_fee: number }
+}> {
+  const IST = `'Asia/Kolkata'`
+  const rangeFrom = period === 'today'
+    ? `DATE_TRUNC('day', NOW() AT TIME ZONE ${IST}) AT TIME ZONE ${IST}`
+    : period === 'week'
+      ? `DATE_TRUNC('day', (NOW() - INTERVAL '6 days') AT TIME ZONE ${IST}) AT TIME ZONE ${IST}`
+      : `DATE_TRUNC('day', (NOW() - INTERVAL '29 days') AT TIME ZONE ${IST}) AT TIME ZONE ${IST}`
+  const rangeTo = period === 'today'
+    ? `DATE_TRUNC('day', NOW() AT TIME ZONE ${IST}) AT TIME ZONE ${IST} + INTERVAL '1 day'`
+    : `NOW()`
+
+  const where = `r.driver_id = $1 AND r.status = 'completed'
+                 AND r.completed_at >= ${rangeFrom} AND r.completed_at < ${rangeTo}`
+
+  const [summaryRes, hoursRes, chartRes, ratingRes] = await Promise.all([
+    pool.query<{ total_earnings: string; trip_count: string; total_fare: string }>(
+      `SELECT
+         COALESCE(SUM(p.driver_earning)::numeric, 0)::text                                AS total_earnings,
+         COUNT(r.id)::text                                                                  AS trip_count,
+         COALESCE(SUM(COALESCE(fs.total_final, fs.total_estimated)::numeric), 0)::text     AS total_fare
+       FROM rides r
+       LEFT JOIN payments p        ON p.ride_id = r.id
+       LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+       WHERE ${where}`,
+      [driverId]
+    ),
+    pool.query<{ online_hours: string }>(
+      `SELECT COALESCE(
+         EXTRACT(EPOCH FROM SUM(COALESCE(went_offline_at, NOW()) - start_time)) / 3600,
+         0
+       )::text AS online_hours
+       FROM driver_sessions
+       WHERE driver_id = $1
+         AND start_time >= ${rangeFrom} AND start_time < ${rangeTo}`,
+      [driverId]
+    ),
+    period === 'today'
+      ? pool.query<{ bucket: number; earnings: string }>(
+          `SELECT EXTRACT(HOUR FROM r.completed_at AT TIME ZONE ${IST})::int AS bucket,
+                  COALESCE(SUM(p.driver_earning)::numeric, 0)::text          AS earnings
+           FROM rides r
+           LEFT JOIN payments p ON p.ride_id = r.id
+           WHERE ${where}
+           GROUP BY bucket ORDER BY bucket`,
+          [driverId]
+        )
+      : pool.query<{ bucket: string; earnings: string }>(
+          `SELECT (DATE_TRUNC('day', r.completed_at AT TIME ZONE ${IST}) AT TIME ZONE ${IST})::date::text AS bucket,
+                  COALESCE(SUM(p.driver_earning)::numeric, 0)::text                                       AS earnings
+           FROM rides r
+           LEFT JOIN payments p ON p.ride_id = r.id
+           WHERE ${where}
+           GROUP BY bucket ORDER BY bucket`,
+          [driverId]
+        ),
+    pool.query<{ rating: string | null }>(
+      `SELECT rating::text FROM drivers WHERE id = $1`,
+      [driverId]
+    ),
+  ])
+
+  const totalEarnings = parseFloat(summaryRes.rows[0]?.total_earnings ?? '0')
+  const tripCount     = parseInt(summaryRes.rows[0]?.trip_count ?? '0', 10)
+  const totalFare     = parseFloat(summaryRes.rows[0]?.total_fare ?? '0')
+  const rawHours      = parseFloat(hoursRes.rows[0]?.online_hours ?? '0')
+  const rating        = ratingRes.rows[0]?.rating != null ? parseFloat(ratingRes.rows[0]!.rating) : null
+
+  const h = Math.floor(rawHours)
+  const m = Math.round((rawHours - h) * 60)
+  const onlineHours = h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`
+
+  // Build chart + labels
+  let chart: number[]
+  let chartLabels: string[]
+
+  if (period === 'today') {
+    const map = new Map<number, number>()
+    for (const row of chartRes.rows as { bucket: number; earnings: string }[]) {
+      const slot = Math.floor(row.bucket / 3)
+      map.set(slot, (map.get(slot) ?? 0) + parseFloat(row.earnings))
+    }
+    chart = Array.from({ length: 8 }, (_, i) => map.get(i) ?? 0)
+    chartLabels = ['12AM', '3AM', '6AM', '9AM', '12PM', '3PM', '6PM', '9PM']
+  } else {
+    const days = period === 'week' ? 7 : 30
+    const map = new Map<string, number>()
+    for (const row of chartRes.rows as { bucket: string; earnings: string }[]) {
+      map.set(row.bucket, parseFloat(row.earnings))
+    }
+    chart = []
+    chartLabels = []
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const iso = d.toISOString().split('T')[0]!
+      chart.push(map.get(iso) ?? 0)
+      if (period === 'week') {
+        chartLabels.push(d.toLocaleDateString('en-IN', { weekday: 'short' }))
+      } else {
+        chartLabels.push(i % 5 === 0 ? String(d.getDate()) : '')
+      }
+    }
+  }
+
+  return {
+    total_earnings: totalEarnings,
+    trip_count: tripCount,
+    online_hours: onlineHours,
+    rating,
+    chart,
+    chart_labels: chartLabels,
+    breakdown: {
+      base_fare: totalFare,
+      tips: 0,
+      incentives: 0,
+      platform_fee: Math.max(0, Math.round((totalFare - totalEarnings) * 100) / 100),
+    },
+  }
+}

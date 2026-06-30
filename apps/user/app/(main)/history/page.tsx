@@ -1,7 +1,5 @@
 'use client'
 
-import { DEMO_MODE } from '@/lib/demo'
-import DemoBlock from '@/components/ui/DemoBlock'
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Clock, MapPin, CheckCircle2, XCircle } from 'lucide-react'
@@ -57,8 +55,7 @@ function RideCard({ ride }: { ride: RideHistoryItem }) {
   return (
     <motion.div
       variants={cardVariant}
-      className="bg-surface rounded-2xl border border-border p-4"
-      style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}
+      className="bg-surface rounded-2xl border border-border p-4 shadow-card"
     >
       <div className="flex items-start justify-between mb-3">
         <StatusBadge status={ride.status} />
@@ -115,8 +112,6 @@ function SkeletonCard() {
 const LIMIT = 20
 
 export default function HistoryPage() {
-  if (DEMO_MODE) return <DemoBlock feature="Ride History" />
-
   const [tab,     setTab]     = useState<Tab>('all')
   const [rides,   setRides]   = useState<RideHistoryItem[]>([])
   const [page,    setPage]    = useState(1)

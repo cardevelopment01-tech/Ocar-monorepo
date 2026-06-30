@@ -1,6 +1,4 @@
 'use client'
-import { DEMO_MODE } from '@/lib/demo'
-import DemoBlock from '@/components/ui/DemoBlock'
 import { useState, useEffect, useCallback } from 'react'
 import { AlertTriangle, Clock, CheckCircle, Zap } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
@@ -41,8 +39,6 @@ const SLA_CLASSES: Record<string, string> = {
 }
 
 export default function DisputesPage() {
-  if (DEMO_MODE) return <DemoBlock feature="Disputes" />
-
   const [disputes,     setDisputes]     = useState<Dispute[]>([])
   const [total,        setTotal]        = useState(0)
   const [loading,      setLoading]      = useState(true)

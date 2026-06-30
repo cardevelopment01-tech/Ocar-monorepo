@@ -5,6 +5,7 @@ import { sendSms } from '@/providers/sms.provider'
 import * as notifService from '@/modules/notifications/notifications.service'
 import { processBroadcast, type BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import { processAckCheck, type AckCheckJobData } from '@/jobs/processors/ack-check.processor'
+import { pool } from '@/db/client'
 
 type LogParams = Parameters<typeof notifService.logNotification>[0]
 
@@ -73,6 +74,50 @@ export const notificationsWorker = new Worker(
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
         throw err
       }
+    } else if (job.name === 'ride_accepted') {
+      const data = job.data as {
+        rideId:      string
+        userPhone:   string
+        driverName:  string | null
+        driverPhone: string | null
+      }
+      const lp: LogParams = { jobName: job.name, templateKey: 'ride_accepted', recipientPhone: data.userPhone, payload: data as Record<string, unknown> }
+      const logId = await notifService.logNotification(lp)
+      try {
+        const name  = data.driverName  ?? 'Your driver'
+        const phone = data.driverPhone ? ` (${data.driverPhone})` : ''
+        const message = `Ocar: ${name}${phone} has accepted your ride and is on the way to pick you up.`
+        await sendSms(data.userPhone, message)
+        await notifService.markSent(logId)
+      } catch (err) {
+        await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
+        throw err
+      }
+
+    } else if (job.name === 'ride_completed') {
+      const data = job.data as {
+        rideId:     string
+        userPhone:  string
+        driverName: string | null
+      }
+      const lp: LogParams = { jobName: job.name, templateKey: 'ride_completed', recipientPhone: data.userPhone, payload: data as Record<string, unknown> }
+      const logId = await notifService.logNotification(lp)
+      try {
+        const fareRes = await pool.query<{ amount: string }>(
+          `SELECT COALESCE(total_final, total_estimated)::numeric AS amount
+           FROM fare_snapshots WHERE ride_id = $1`,
+          [BigInt(data.rideId)]
+        )
+        const fare    = fareRes.rows[0] ? Math.round(parseFloat(fareRes.rows[0].amount)) : null
+        const fareStr = fare != null && fare > 0 ? ` Total fare: ₹${fare}.` : ''
+        const message = `Ocar: Your ride is complete!${fareStr} Thank you for riding with Ocar.`
+        await sendSms(data.userPhone, message)
+        await notifService.markSent(logId)
+      } catch (err) {
+        await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
+        throw err
+      }
+
     } else if (job.name === 'broadcast_ride') {
       await processBroadcast(job.data as BroadcastJobData)
     } else if (job.name === 'broadcast_ride_ack_check') {

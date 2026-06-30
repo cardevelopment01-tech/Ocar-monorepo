@@ -31,7 +31,7 @@ const NAV: NavGroup[] = [
     label: 'Overview',
     items: [
       { href: '/overview', label: 'Dashboard', icon: LayoutDashboard, roles: ['super_admin','ops_admin','finance_admin','support_admin'] },
-      { href: '/live-map', label: 'Live Map',  icon: Map,             roles: ['super_admin','ops_admin'], demo: true },
+      { href: '/live-map', label: 'Live Map',  icon: Map,             roles: ['super_admin','ops_admin'] },
     ],
   },
   {
@@ -41,14 +41,14 @@ const NAV: NavGroup[] = [
       { href: '/drivers',  label: 'Drivers',    icon: Users,         roles: ['super_admin','ops_admin','support_admin'] },
       { href: '/vehicles', label: 'Vehicles',   icon: Truck,         roles: ['super_admin','ops_admin'] },
       { href: '/users',    label: 'Users',      icon: User,          roles: ['super_admin','ops_admin','support_admin'] },
-      { href: '/disputes', label: 'Disputes',   icon: AlertTriangle, roles: ['super_admin','ops_admin','support_admin'], demo: true },
-      { href: '/sos',      label: 'SOS Alerts', icon: Shield,        roles: ['super_admin','ops_admin'], demo: true },
+      { href: '/disputes', label: 'Disputes',   icon: AlertTriangle, roles: ['super_admin','ops_admin','support_admin'] },
+      { href: '/sos',      label: 'SOS Alerts', icon: Shield,        roles: ['super_admin','ops_admin'] },
     ],
   },
   {
     label: 'Finance',
     items: [
-      { href: '/payments',    label: 'Payments',    icon: CreditCard, roles: ['super_admin','finance_admin'], demo: true },
+      { href: '/payments',    label: 'Payments',    icon: CreditCard, roles: ['super_admin','finance_admin'] },
       { href: '/settlements', label: 'Settlements', icon: Wallet,     roles: ['super_admin','finance_admin'], demo: true },
       { href: '/refunds',     label: 'Refunds',     icon: RotateCcw,  roles: ['super_admin','finance_admin'], demo: true },
     ],
@@ -65,7 +65,7 @@ const NAV: NavGroup[] = [
   {
     label: 'Analytics',
     items: [
-      { href: '/analytics', label: 'Reports',   icon: BarChart2, roles: ['super_admin','finance_admin'], demo: true },
+      { href: '/analytics', label: 'Reports',   icon: BarChart2, roles: ['super_admin','finance_admin'] },
       { href: '/snapshots', label: 'Snapshots', icon: Camera,    roles: ['super_admin','finance_admin'], demo: true },
     ],
   },

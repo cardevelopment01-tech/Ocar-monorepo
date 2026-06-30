@@ -2,7 +2,7 @@ import { pool } from '@/db/client'
 import * as repo from './rides.repository'
 import { getFareEstimate } from '@/modules/pricing/pricing.service'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
-import { queues, QUEUE_NAMES } from '@/jobs/queues'
+import { queues, QUEUE_NAMES, gpsFlushQueue } from '@/jobs/queues'
 import { socketEvents } from '@/websocket/socket.server'
 import { generateOtp, hashOtp } from '@/lib/otp'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
@@ -135,12 +135,24 @@ export async function updateLocation(driverId: bigint, data: {
     [driverId]
   )
   if (activeRideRes.rows[0]) {
-    socketEvents.sendDriverLocation(activeRideRes.rows[0].id, {
-      lat:       data.lat,
-      lng:       data.lng,
-      heading:   data.heading ?? 0,
+    const rideId = activeRideRes.rows[0].id
+    socketEvents.sendDriverLocation(rideId, {
+      lat:        data.lat,
+      lng:        data.lng,
+      heading:    data.heading ?? 0,
       speed_kmph: data.speed ?? 0,
     })
+    // Async GPS track write — best-effort, does not block the response
+    gpsFlushQueue.add('gps_track', {
+      rideId,
+      driverId:  driverId.toString(),
+      sessionId: data.sessionId.toString(),
+      lat:       data.lat,
+      lng:       data.lng,
+      heading:   data.heading,
+      speed:     data.speed,
+      recordedAt: data.recordedAt,
+    }, { removeOnComplete: 200, removeOnFail: 50 }).catch(() => {})
   }
 }
 
@@ -283,6 +295,15 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
     driverName:  ride?.driver_name,
     driverPhone: ride?.driver_phone,
   })
+
+  if (ride?.user_phone) {
+    void queues[QUEUE_NAMES.NOTIFICATIONS].add('ride_accepted', {
+      rideId:      rideId.toString(),
+      userPhone:   ride.user_phone,
+      driverName:  ride.driver_name ?? null,
+      driverPhone: ride.driver_phone ?? null,
+    }, { attempts: 2, removeOnComplete: 50, removeOnFail: 20 }).catch(() => {})
+  }
 
   return { success: true, rideId: rideId.toString() }
 }
@@ -506,6 +527,14 @@ export async function verifyEndOTP(
     status:      'completed',
     completedAt,
   })
+
+  if (ride.user_phone) {
+    void queues[QUEUE_NAMES.NOTIFICATIONS].add('ride_completed', {
+      rideId:     rideId.toString(),
+      userPhone:  ride.user_phone,
+      driverName: ride.driver_name ?? null,
+    }, { attempts: 2, removeOnComplete: 50, removeOnFail: 20 }).catch(() => {})
+  }
 
   // Payment + wallet post-processing (non-blocking — ride is already completed)
   const rideData = await repo.getRideById(rideId)

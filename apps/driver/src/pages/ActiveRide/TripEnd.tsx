@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { Star, ArrowRight } from 'lucide-react'
 import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
-import { mockDriver } from '@/lib/mock-data'
+import { useAuthStore } from '@/store/useAuthStore'
 
 export default function TripEnd() {
   const navigate = useNavigate()
@@ -12,6 +12,7 @@ export default function TripEnd() {
   const { activeRide, clearRide } = useRideStore()
   const { setOnline, sessionId, vehicleId, categoryId } = useSessionStore()
 
+  const driver = useAuthStore(s => s.driver)
   const fare       = activeRide?.fare ?? 0
   const commission = Math.round(fare * 0.2)
   const net        = fare - commission
@@ -40,8 +41,8 @@ export default function TripEnd() {
         className="flex flex-col items-center mb-8"
       >
         <div
-          className="w-24 h-24 rounded-full bg-primary flex items-center justify-center mb-4"
-          style={{ boxShadow: '0 0 60px rgba(34,197,94,0.4)' }}
+          className="w-24 h-24 rounded-full bg-accent-green flex items-center justify-center mb-4"
+          style={{ boxShadow: '0 0 48px rgba(79,70,229,0.18)' }}
         >
           <span className="text-5xl">✓</span>
         </div>
@@ -91,7 +92,7 @@ export default function TripEnd() {
           <div className="text-center border-l border-border">
             <div className="flex items-center justify-center gap-1">
               <Star size={14} className="text-accent-amber fill-accent-amber" />
-              <p className="text-text-primary font-black text-xl">{mockDriver.rating}</p>
+              <p className="text-text-primary font-black text-xl">{driver?.rating ?? '—'}</p>
             </div>
             <p className="text-text-muted text-xs">Your rating</p>
           </div>

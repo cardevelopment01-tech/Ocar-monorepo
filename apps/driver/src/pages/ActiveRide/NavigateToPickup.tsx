@@ -5,6 +5,7 @@ import SOSButton from '@/components/ui/SOSButton'
 import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi } from '@/lib/ride-api'
+import { driverSafetyApi } from '@/lib/safety-api'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
@@ -61,6 +62,16 @@ export default function NavigateToPickup() {
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [sessionId])
+
+  const handleSOS = async () => {
+    const pos = await getCurrentPosition().catch(() => null)
+    await driverSafetyApi.triggerSos({
+      rideId:   activeRide?.id ?? '',
+      lat:      pos?.coords.latitude,
+      lng:      pos?.coords.longitude,
+      severity: 'high',
+    })
+  }
 
   const handleArrived = async () => {
     if (!activeRide) return
@@ -144,7 +155,7 @@ export default function NavigateToPickup() {
         </button>
       </div>
 
-      <SOSButton rideId={activeRide?.id ?? ''} onSOS={() => {}} />
+      <SOSButton rideId={activeRide?.id ?? ''} onSOS={handleSOS} />
     </div>
   )
 }

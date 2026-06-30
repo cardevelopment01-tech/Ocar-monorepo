@@ -5,6 +5,7 @@ import { testConnection, pool } from './db/client'
 import { testConnection as testRedis, client as redisClient } from './db/redis'
 import { initSocketServer } from './websocket/socket.server'
 import { notificationsWorker } from './jobs/workers/notifications.worker'
+import { gpsFlushWorker } from './jobs/workers/gps-flush.worker'
 
 async function start(): Promise<void> {
   const dbOk = await testConnection()
@@ -27,6 +28,8 @@ async function start(): Promise<void> {
 
   void notificationsWorker
   console.log('[Worker] Notifications worker started')
+  void gpsFlushWorker
+  console.log('[Worker] GPS flush worker started')
 
   httpServer.listen(config.API_PORT, () => {
     console.log(

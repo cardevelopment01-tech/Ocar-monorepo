@@ -13,8 +13,9 @@ import geoRouter from '@/modules/geo/geo.routes'
 import pricingRouter from '@/modules/pricing/pricing.routes'
 import ridesRouter from '@/modules/rides/rides.routes'
 import paymentsRouter from '@/modules/payments/payments.routes'
-import safetyRouter  from '@/modules/safety/safety.routes'
-import usersRouter from '@/modules/users/users.routes'
+import safetyRouter     from '@/modules/safety/safety.routes'
+import usersRouter      from '@/modules/users/users.routes'
+import analyticsRouter  from '@/modules/analytics/analytics.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -61,8 +62,9 @@ export function createApp(): Application {
   apiRouter.use('/pricing', pricingRouter)
   apiRouter.use('/rides', ridesRouter)
   apiRouter.use('/payments', paymentsRouter)
-  apiRouter.use('/safety',  safetyRouter)
-  apiRouter.use('/users', usersRouter)
+  apiRouter.use('/safety',    safetyRouter)
+  apiRouter.use('/users',     usersRouter)
+  apiRouter.use('/admin/analytics', analyticsRouter)
   app.use('/api/v1', apiRouter)
 
   // 7. 404 handler

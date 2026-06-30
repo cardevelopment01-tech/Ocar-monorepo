@@ -270,3 +270,11 @@ export async function updateAdminCity(
   if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
   return updated
 }
+
+export async function getDashboardStats() {
+  return repo.getAdminDashboardStats()
+}
+
+export async function getActiveSessions() {
+  return repo.getActiveDriverSessions()
+}

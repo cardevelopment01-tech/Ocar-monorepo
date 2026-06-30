@@ -19,6 +19,25 @@ router.get('/me/history', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// ── Driver earnings summary ───────────────────────────────────
+
+const VALID_PERIODS = new Set(['today', 'week', 'month'])
+
+router.get('/me/earnings-summary', authenticate(), async (req, res, next) => {
+  try {
+    const driverId = req.driver!.id
+    const period = (req.query['period'] as string) ?? 'today'
+    if (!VALID_PERIODS.has(period)) {
+      res.status(400).json({ error: 'period must be today, week, or month' }); return
+    }
+    const summary = await repo.getDriverEarningsSummary(
+      driverId,
+      period as 'today' | 'week' | 'month'
+    )
+    res.json(summary)
+  } catch (err) { next(err) }
+})
+
 // ── Driver trip history ────────────────────────────────────────
 
 router.get('/me/trips', authenticate(), async (req, res, next) => {

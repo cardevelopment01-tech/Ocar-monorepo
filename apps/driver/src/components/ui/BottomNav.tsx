@@ -1,17 +1,14 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Map, TrendingUp, Wallet, User } from 'lucide-react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { DEMO_MODE } from '@/lib/demo'
-
 const TABS = [
-  { path: '/',         Icon: Map,        label: 'Home',     demo: false },
-  { path: '/earnings', Icon: TrendingUp,  label: 'Earnings', demo: true  },
-  { path: '/wallet',   Icon: Wallet,      label: 'Wallet',   demo: true  },
-  { path: '/profile',  Icon: User,        label: 'Profile',  demo: false },
+  { path: '/',         Icon: Map,        label: 'Home'     },
+  { path: '/earnings', Icon: TrendingUp,  label: 'Earnings' },
+  { path: '/wallet',   Icon: Wallet,      label: 'Wallet'   },
+  { path: '/profile',  Icon: User,        label: 'Profile'  },
 ]
 
-const visibleTabs = TABS.filter(t => !DEMO_MODE || !t.demo)
-const MAIN = new Set(visibleTabs.map(t => t.path))
+const MAIN = new Set(TABS.map(t => t.path))
 
 export default function BottomNav() {
   const { pathname } = useLocation()
@@ -35,7 +32,7 @@ export default function BottomNav() {
       }}
       aria-label="Main navigation"
     >
-      {visibleTabs.map(({ path, Icon, label }) => {
+      {TABS.map(({ path, Icon, label }) => {
         const active = pathname === path
         return (
           <button

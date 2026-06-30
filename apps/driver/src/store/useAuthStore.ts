@@ -9,6 +9,7 @@ export interface DriverProfile {
   email: string | null
   status: string
   onboarding_step: string
+  rating: number | null
 }
 
 interface AuthState {

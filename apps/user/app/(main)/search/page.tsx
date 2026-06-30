@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plane, Train, Building2, ShoppingBag,
   GraduationCap, X, Map,
-  Plus, ChevronDown, UserPlus, User, Info, Clock, Heart,
+  Plus, ChevronDown, User, Info, Clock, Heart,
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -597,19 +597,7 @@ function SearchContent() {
                 </span>
               </button>
 
-              <button
-                disabled
-                className="w-full flex items-center gap-4 py-4 border-b border-border opacity-50"
-              >
-                <span className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-                  <UserPlus size={18} className="text-primary" strokeWidth={1.8} />
-                </span>
-                <span className="flex-1 text-left">
-                  <span className="block text-[15px] font-semibold text-primary">Add new rider</span>
-                </span>
-              </button>
-
-              <div className="mt-4 mb-6 flex items-start gap-3 bg-surface-2 rounded-2xl px-4 py-3">
+<div className="mt-4 mb-6 flex items-start gap-3 bg-surface-2 rounded-2xl px-4 py-3">
                 <Info size={15} className="text-text-muted flex-shrink-0 mt-0.5" strokeWidth={1.8} />
                 <p className="text-xs text-text-muted leading-relaxed">Contact name won&apos;t be shared with your driver</p>
               </div>

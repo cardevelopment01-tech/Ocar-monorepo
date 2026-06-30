@@ -46,6 +46,7 @@ function SelectRideContent() {
   const encodedPolyline    = sp.get('polyline') ?? undefined
 
   const [categories]    = useState<Category[]>(FALLBACK_CATEGORIES)
+  const [rideType,      setRideType]      = useState<'one_way' | 'round_trip'>('one_way')
   const [estimates,     setEstimates]     = useState<Record<number, FareEstimate>>({})
   const [loading,       setLoading]       = useState(true)
   const [selected,      setSelected]      = useState(2)
@@ -94,7 +95,7 @@ function SelectRideContent() {
       categories.map(async cat => {
         try {
           results[cat.id] = await rideApi.getEstimate({
-            categoryId: cat.id, rideType: 'one_way',
+            categoryId: cat.id, rideType,
             distanceKm, durationMin, originCityId,
           })
         } catch {}
@@ -102,7 +103,7 @@ function SelectRideContent() {
     )
     setEstimates(results)
     setLoading(false)
-  }, [categories, distanceKm, durationMin, originCityId])
+  }, [categories, rideType, distanceKm, durationMin, originCityId])
 
   useEffect(() => { void loadEstimates() }, [loadEstimates])
 
@@ -111,7 +112,7 @@ function SelectRideContent() {
     setBookError(null)
     try {
       const result = await rideApi.createBooking({
-        categoryId: selected, rideType: 'one_way',
+        categoryId: selected, rideType,
         originLat, originLng, originAddress,
         destinationLat, destinationLng, destinationAddress,
         distanceKm, durationMin, originCityId,
@@ -183,11 +184,28 @@ function SelectRideContent() {
         {/* Handle + header */}
         <div className="flex-shrink-0 px-5 pt-3 pb-2">
           <div className="w-9 h-1 rounded-full bg-slate-200 mx-auto mb-3" />
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-3">
             <p className="text-[15px] font-bold text-slate-900">Choose a ride</p>
             <span className="text-[12px] font-semibold text-slate-400 tabular-nums">
               {distanceKm} km · {Math.round(durationMin)} min
             </span>
+          </div>
+          {/* Ride type tabs */}
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+            {(['one_way', 'round_trip'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setRideType(t)}
+                className={cn(
+                  'flex-1 py-1.5 rounded-lg text-[13px] font-semibold transition-all',
+                  rideType === t
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500'
+                )}
+              >
+                {t === 'one_way' ? 'One Way' : 'Return'}
+              </button>
+            ))}
           </div>
         </div>
 

@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import StatusBar from '@/components/ui/StatusBar'
 import { useSessionStore } from '@/store/useSessionStore'
-import { mockEarnings } from '@/lib/mock-data'
-import { driverRideApi, type TripHistoryItem } from '@/lib/ride-api'
+import { driverRideApi, type TripHistoryItem, type EarningsSummary } from '@/lib/ride-api'
 import { cn } from '@/lib/utils'
 import { Car } from 'lucide-react'
 
@@ -15,6 +14,12 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: 'month', label: 'This Month' },
 ]
 
+const EMPTY_SUMMARY: EarningsSummary = {
+  total_earnings: 0, trip_count: 0, online_hours: '0m', rating: null,
+  chart: Array(8).fill(0), chart_labels: ['12AM','3AM','6AM','9AM','12PM','3PM','6PM','9PM'],
+  breakdown: { base_fare: 0, tips: 0, incentives: 0, platform_fee: 0 },
+}
+
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
 }
@@ -23,11 +28,16 @@ export default function Earnings() {
   const { isOnline } = useSessionStore()
   const [period, setPeriod] = useState<Period>('today')
   const prefersReducedMotion = useReducedMotion()
-  const e = mockEarnings[period]
-  const maxBar = Math.max(...e.chart, 1)
+  const [summary, setSummary] = useState<EarningsSummary>(EMPTY_SUMMARY)
 
   const [trips, setTrips] = useState<TripHistoryItem[]>([])
   const [tripsLoading, setTripsLoading] = useState(true)
+
+  useEffect(() => {
+    driverRideApi.getEarningsSummary(period)
+      .then(data => setSummary(data))
+      .catch(() => setSummary(EMPTY_SUMMARY))
+  }, [period])
 
   useEffect(() => {
     driverRideApi.getMyTrips(1, 10)
@@ -36,9 +46,12 @@ export default function Earnings() {
       .finally(() => setTripsLoading(false))
   }, [])
 
+  const e = summary
+  const maxBar = Math.max(...e.chart, 1)
+
   return (
     <div className="min-h-screen bg-bg text-text-primary pb-24">
-      <StatusBar isOnline={isOnline} earningsToday={mockEarnings.today.total} />
+      <StatusBar isOnline={isOnline} earningsToday={e.total_earnings} />
 
       {/* Page header */}
       <div className="px-5 pt-[64px] pb-2">
@@ -87,7 +100,7 @@ export default function Earnings() {
           transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
         >
           <p className="text-[44px] font-black text-text-primary leading-none tabular-nums">
-            ₹{e.total.toLocaleString('en-IN')}
+            ₹{e.total_earnings.toLocaleString('en-IN')}
           </p>
         </motion.div>
         <div className="flex gap-2 mt-3 flex-wrap">
@@ -95,13 +108,13 @@ export default function Earnings() {
             className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary"
             style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}
           >
-            {e.trips} trips
+            {e.trip_count} trips
           </span>
           <span
             className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary"
             style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}
           >
-            {e.hours} online
+            {e.online_hours} online
           </span>
           <span
             className="rounded-full px-3 py-1 text-xs font-semibold flex items-center gap-1 text-text-secondary"
@@ -110,7 +123,7 @@ export default function Earnings() {
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/>
             </svg>
-            {e.rating}
+            {e.rating ?? '—'}
           </span>
         </div>
       </div>
@@ -139,7 +152,7 @@ export default function Earnings() {
                   borderRadius: '4px 4px 0 0',
                 }}
               />
-              <span className="text-text-muted text-[10px]">{e.chartLabels[i]}</span>
+              <span className="text-text-muted text-[10px]">{e.chart_labels[i]}</span>
             </motion.div>
           ))}
         </div>
@@ -149,10 +162,10 @@ export default function Earnings() {
       <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
         <p className="text-text-primary text-sm font-bold mb-3">Breakdown</p>
         {[
-          { label: 'Base Fare',    value: e.breakdown.baseFare,    neg: false },
+          { label: 'Gross Fare',   value: e.breakdown.base_fare,    neg: false },
           { label: 'Tips',         value: e.breakdown.tips,        neg: false },
           { label: 'Incentives',   value: e.breakdown.incentives,  neg: false },
-          { label: 'Platform Fee', value: e.breakdown.platformFee, neg: true  },
+          { label: 'Platform Fee', value: e.breakdown.platform_fee, neg: true  },
         ].map(r => (
           <div key={r.label} className="flex justify-between items-center py-2.5 border-b border-border last:border-0">
             <span className="text-text-secondary text-sm">{r.label}</span>

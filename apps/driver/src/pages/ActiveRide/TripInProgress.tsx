@@ -7,6 +7,7 @@ import OtpInput from '@/components/ui/OtpInput'
 import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi } from '@/lib/ride-api'
+import { driverSafetyApi } from '@/lib/safety-api'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
@@ -86,6 +87,16 @@ export default function TripInProgress() {
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [sessionId])
+
+  const handleSOS = async () => {
+    const pos = await getCurrentPosition().catch(() => null)
+    await driverSafetyApi.triggerSos({
+      rideId:   activeRide?.id ?? '',
+      lat:      pos?.coords.latitude,
+      lng:      pos?.coords.longitude,
+      severity: 'high',
+    })
+  }
 
   const handleCompleteTrip = async () => {
     if (otp.length !== 6 || !activeRide) return
@@ -222,7 +233,7 @@ export default function TripInProgress() {
 
       <SOSButton
         rideId={activeRide?.id ?? ''}
-        onSOS={() => {}}
+        onSOS={handleSOS}
         style={{ bottom: '100px', right: '16px', zIndex: 50 }}
       />
     </div>

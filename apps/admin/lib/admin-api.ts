@@ -203,3 +203,74 @@ export const adminPaymentApi = {
     return res.data as AdminPaymentsResponse
   },
 }
+
+// ─── Dashboard stats ──────────────────────────────────────────────────────────
+
+export interface AdminDashboardStats {
+  total_rides_today: number
+  active_drivers_online: number
+  revenue_today: number
+  open_disputes: number
+  completed_rides: number
+  cancelled_rides: number
+  new_driver_signups: number
+  active_trips: number
+  rides_last_12h: number[]
+}
+
+export const adminStatsApi = {
+  get: async (): Promise<AdminDashboardStats> => {
+    const res = await api.get('/api/v1/admin/stats')
+    return res.data as AdminDashboardStats
+  },
+}
+
+// ─── Live map ─────────────────────────────────────────────────────────────────
+
+export interface ActiveDriverSession {
+  session_id: string
+  driver_id: string
+  driver_name: string | null
+  driver_phone: string
+  driver_code: string
+  session_status: 'online' | 'on_trip'
+  lat: number | null
+  lng: number | null
+  heading: number | null
+  speed_kmph: number | null
+  location_updated_at: string | null
+  ride_id: string | null
+  origin_address: string | null
+  destination_address: string | null
+}
+
+export const adminSessionsApi = {
+  getActive: async (): Promise<ActiveDriverSession[]> => {
+    const res = await api.get('/api/v1/admin/sessions/active')
+    return (res.data as { sessions: ActiveDriverSession[] }).sessions
+  },
+}
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+export interface DailyRevenue   { day: string; revenue: number; ride_count: number }
+export interface RideFunnel     { requested: number; accepted: number; completed: number; cancelled: number }
+export interface TopDriver      { driver_id: string; driver_name: string | null; driver_code: string; trip_count: number; total_earnings: number; rating_avg: string | null }
+export interface CityBreakdown  { city_name: string; ride_count: number; revenue: number }
+export interface CategoryBreakdown { category_name: string; ride_count: number; revenue: number }
+
+export interface AnalyticsSummary {
+  period_days: number
+  daily_revenue: DailyRevenue[]
+  funnel: RideFunnel
+  top_drivers: TopDriver[]
+  city_breakdown: CityBreakdown[]
+  category_breakdown: CategoryBreakdown[]
+}
+
+export const adminAnalyticsApi = {
+  getSummary: async (period: '7d' | '30d' | '90d'): Promise<AnalyticsSummary> => {
+    const res = await api.get('/api/v1/admin/analytics/summary', { params: { period } })
+    return res.data as AnalyticsSummary
+  },
+}

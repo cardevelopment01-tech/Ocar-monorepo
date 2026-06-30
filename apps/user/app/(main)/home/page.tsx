@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import { geoApi } from '@/lib/geo-api'
+import { rideApi, type RideHistoryItem } from '@/lib/ride-api'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -75,10 +76,6 @@ const SAVED = [
   { Icon: Home,      label: 'Home', sub: 'Sahid Nagar, Bhubaneswar',   lat: 20.2929, lng: 85.8363 },
   { Icon: Briefcase, label: 'Work', sub: 'Infocity, Chandrasekharpur', lat: 20.3506, lng: 85.8110 },
 ]
-const RECENT = [
-  { label: 'Cuttack Bus Stand',    sub: 'Badambadi, Cuttack', meta: '2 hrs ago', lat: 20.4625, lng: 85.8830 },
-  { label: 'Puri Railway Station', sub: 'Puri, Odisha',       meta: 'Yesterday', lat: 19.8010, lng: 85.8210 },
-]
 const POPULAR = [
   { from: 'Bhubaneswar', to: 'Cuttack',     lat: 20.4625, lng: 85.8830 },
   { from: 'Bhubaneswar', to: 'Puri',        lat: 19.8010, lng: 85.8210 },
@@ -101,12 +98,19 @@ export default function HomePage() {
   const name     = user?.name?.split(' ')[0] ?? 'there'
   const reduce   = useReducedMotion()
 
-  const [addr,      setAddr]      = useState('Bhubaneswar')
-  const [lat,       setLat]       = useState(20.2961)
-  const [lng,       setLng]       = useState(85.8245)
-  const [collapsed, setCollapsed] = useState(false)
-  const [resolving, setResolving] = useState(false)
+  const [addr,        setAddr]        = useState('Bhubaneswar')
+  const [lat,         setLat]         = useState(20.2961)
+  const [lng,         setLng]         = useState(85.8245)
+  const [collapsed,   setCollapsed]   = useState(false)
+  const [resolving,   setResolving]   = useState(false)
+  const [recentTrips, setRecentTrips] = useState<RideHistoryItem[]>([])
   const fetched = useRef(false)
+
+  useEffect(() => {
+    void rideApi.getHistory(1, 3)
+      .then(r => setRecentTrips(r.rides.filter(t => t.status === 'completed').slice(0, 2)))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (fetched.current || !navigator.geolocation) return
@@ -407,33 +411,41 @@ export default function HomePage() {
           </motion.div>
 
           {/* Go again */}
-          <motion.div variants={section}>
-            <motion.div
-              className="bg-surface rounded-2xl border border-border overflow-hidden"
-              style={{ boxShadow: SHADOW }}
-              variants={sectionList} initial="hidden" animate="show"
-            >
-              {RECENT.map((r, i) => (
-                <motion.button
-                  key={r.label}
-                  onClick={() => toRide(r.sub, r.lat, r.lng)}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < RECENT.length - 1 ? ' border-b border-border' : ''}`}
-                  variants={row}
-                  whileTap={{ backgroundColor: '#F8FAFF' }}
-                  transition={SPRING}
-                >
-                  <span className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0">
-                    <MapPin size={14} strokeWidth={1.6} className="text-text-muted" />
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-semibold text-text-primary">{r.label}</span>
-                    <span className="block text-xs text-text-muted mt-0.5">{r.meta}</span>
-                  </span>
-                  <ChevronRight size={14} className="text-text-muted flex-shrink-0" />
-                </motion.button>
-              ))}
+          {recentTrips.length > 0 && (
+            <motion.div variants={section}>
+              <motion.div
+                className="bg-surface rounded-2xl border border-border overflow-hidden"
+                style={{ boxShadow: SHADOW }}
+                variants={sectionList} initial="hidden" animate="show"
+              >
+                {recentTrips.map((r, i) => {
+                  const label = r.destination_address ?? 'Unknown destination'
+                  const meta  = r.completed_at
+                    ? new Date(r.completed_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                    : 'Recent'
+                  return (
+                    <motion.button
+                      key={r.id}
+                      onClick={toSearch}
+                      className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < recentTrips.length - 1 ? ' border-b border-border' : ''}`}
+                      variants={row}
+                      whileTap={{ backgroundColor: '#F8FAFF' }}
+                      transition={SPRING}
+                    >
+                      <span className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0">
+                        <MapPin size={14} strokeWidth={1.6} className="text-text-muted" />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-semibold text-text-primary truncate">{label}</span>
+                        <span className="block text-xs text-text-muted mt-0.5">{meta}</span>
+                      </span>
+                      <ChevronRight size={14} className="text-text-muted flex-shrink-0" />
+                    </motion.button>
+                  )
+                })}
+              </motion.div>
             </motion.div>
-          </motion.div>
+          )}
 
           {/* Popular routes */}
           <motion.div variants={section}>

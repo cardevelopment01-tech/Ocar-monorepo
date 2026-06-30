@@ -1,7 +1,5 @@
 'use client'
 
-import { DEMO_MODE } from '@/lib/demo'
-import DemoBlock from '@/components/ui/DemoBlock'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react'
@@ -65,8 +63,6 @@ function fmtExpiry(iso: string | null) {
 }
 
 export default function WalletPage() {
-  if (DEMO_MODE) return <DemoBlock feature="Wallet & Payments" />
-
   const [wallet,  setWallet]  = useState<UserWallet | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(false)
@@ -157,7 +153,7 @@ export default function WalletPage() {
 
         {!error && (
           loading ? (
-            <div className="bg-surface rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}>
+            <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-card">
               {[1, 2, 3].map(i => (
                 <div key={i} className="flex items-center gap-3 px-4 py-4 border-b border-border last:border-0 animate-pulse">
                   <div className="w-9 h-9 rounded-xl bg-surface-2 flex-shrink-0" />
@@ -171,8 +167,7 @@ export default function WalletPage() {
             </div>
           ) : ledger.length > 0 && (
             <motion.div
-              className="bg-surface rounded-2xl border border-border overflow-hidden"
-              style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}
+              className="bg-surface rounded-2xl border border-border overflow-hidden shadow-card"
               variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
               initial="hidden"
               animate="show"

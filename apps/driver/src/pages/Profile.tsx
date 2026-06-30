@@ -1,20 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Star, Car, ChevronRight, LogOut } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import StatusBar from '@/components/ui/StatusBar'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
-import { mockEarnings } from '@/lib/mock-data'
+import { driverRideApi } from '@/lib/ride-api'
 import api from '@/lib/api'
 
-const MENU_ITEMS = [
-  { label: 'Vehicle Details',    sub: 'Registered vehicle'  },
-  { label: 'Documents',          sub: 'Verified documents'  },
-  { label: 'Bank Account',       sub: 'Payout account'      },
-  { label: 'Emergency Contacts', sub: 'Safety contacts'     },
-  { label: 'Help & Support',     sub: 'FAQs, chat support'  },
-  { label: 'Terms & Privacy',    sub: ''                    },
+const MENU_ITEMS: { label: string; sub: string; action: 'vehicle' | 'documents' | 'soon' | 'email' | 'terms' }[] = [
+  { label: 'Vehicle Details',    sub: 'Registered vehicle',  action: 'vehicle'   },
+  { label: 'Documents',          sub: 'Verified documents',  action: 'documents' },
+  { label: 'Bank Account',       sub: 'Payout account',      action: 'soon'      },
+  { label: 'Emergency Contacts', sub: 'Safety contacts',     action: 'soon'      },
+  { label: 'Help & Support',     sub: 'FAQs, chat support',  action: 'email'     },
+  { label: 'Terms & Privacy',    sub: '',                    action: 'terms'     },
 ]
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
@@ -31,6 +31,29 @@ export default function Profile() {
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
   const prefersReducedMotion = useReducedMotion()
 
+  const [earningsToday, setEarningsToday] = useState(0)
+  const [toastMsg,      setToastMsg]      = useState<string | null>(null)
+
+  useEffect(() => {
+    void driverRideApi.getEarningsSummary('today')
+      .then(s => setEarningsToday(s.total_earnings))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!toastMsg) return
+    const t = setTimeout(() => setToastMsg(null), 2200)
+    return () => clearTimeout(t)
+  }, [toastMsg])
+
+  function handleMenu(action: (typeof MENU_ITEMS)[number]['action']) {
+    if (action === 'vehicle')   { navigate('/onboarding/vehicle');   return }
+    if (action === 'documents') { navigate('/onboarding/documents'); return }
+    if (action === 'email')     { window.open('mailto:support@ocar.in'); return }
+    if (action === 'terms')     { window.open('https://ocar.in/terms'); return }
+    setToastMsg('Coming soon')
+  }
+
   const displayName  = driver?.full_name ?? driver?.code ?? 'Driver'
   const displayPhone = driver?.phone?.replace('+91', '').trim() ?? '—'
   const initial      = displayName.charAt(0).toUpperCase()
@@ -46,7 +69,7 @@ export default function Profile() {
 
   return (
     <div className="h-[100dvh] bg-bg text-text-primary flex flex-col overflow-hidden">
-      <StatusBar isOnline={isOnline} earningsToday={mockEarnings.today.total} />
+      <StatusBar isOnline={isOnline} earningsToday={earningsToday} />
 
       <div className="flex-shrink-0 px-5 pt-[64px] pb-4">
         <h1 className="font-display font-bold text-2xl text-text-primary">Profile</h1>
@@ -105,6 +128,7 @@ export default function Profile() {
               transition={{ duration: 0.24, delay: i * 0.04, ease: [0.16, 1, 0.3, 1] }}
             >
               <button
+                onClick={() => handleMenu(item.action)}
                 className={`w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors cursor-pointer ${
                   i < MENU_ITEMS.length - 1 ? 'border-b border-border' : ''
                 }`}
@@ -131,6 +155,13 @@ export default function Profile() {
           </button>
         </div>
       </div>
+
+      {/* Toast snackbar */}
+      {toastMsg && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-text-primary text-white text-sm font-semibold shadow-lg pointer-events-none">
+          {toastMsg}
+        </div>
+      )}
 
       {/* Sign out confirmation — outside scroll region, above BottomNav */}
       {showSignOutConfirm && (

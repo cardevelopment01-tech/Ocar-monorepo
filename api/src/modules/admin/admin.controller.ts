@@ -402,3 +402,17 @@ export async function getAdminPayments(req: Request, res: Response, next: NextFu
     res.json(await service.listAdminPayments(q))
   } catch (err) { next(err) }
 }
+
+export async function getAdminStats(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const stats = await service.getDashboardStats()
+    res.json(stats)
+  } catch (err) { next(err) }
+}
+
+export async function getAdminActiveSessions(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const sessions = await service.getActiveSessions()
+    res.json({ sessions })
+  } catch (err) { next(err) }
+}

@@ -186,3 +186,36 @@ export interface AdminCity {
   is_return_cab_enabled: boolean
   created_at: string
 }
+
+// ─── Active driver sessions (live map) ───────────────────────────────────────
+
+export interface ActiveDriverSession {
+  session_id: string
+  driver_id: string
+  driver_name: string | null
+  driver_phone: string
+  driver_code: string
+  session_status: 'online' | 'on_trip'
+  lat: number | null
+  lng: number | null
+  heading: number | null
+  speed_kmph: number | null
+  location_updated_at: string | null
+  ride_id: string | null
+  origin_address: string | null
+  destination_address: string | null
+}
+
+// ─── Dashboard stats ──────────────────────────────────────────────────────────
+
+export interface AdminDashboardStats {
+  total_rides_today: number
+  active_drivers_online: number
+  revenue_today: number
+  open_disputes: number
+  completed_rides: number
+  cancelled_rides: number
+  new_driver_signups: number
+  active_trips: number
+  rides_last_12h: number[]
+}

@@ -133,4 +133,19 @@ export const driverRideApi = {
     const data = res.data as { vehicle: { id: number; category_id: number; number_plate: string; status: string } | null }
     return data.vehicle
   },
+
+  getEarningsSummary: async (period: 'today' | 'week' | 'month'): Promise<EarningsSummary> => {
+    const res = await api.get('/api/v1/rides/me/earnings-summary', { params: { period } })
+    return res.data as EarningsSummary
+  },
+}
+
+export type EarningsSummary = {
+  total_earnings: number
+  trip_count: number
+  online_hours: string
+  rating: number | null
+  chart: number[]
+  chart_labels: string[]
+  breakdown: { base_fare: number; tips: number; incentives: number; platform_fee: number }
 }

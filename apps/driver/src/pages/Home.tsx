@@ -3,10 +3,9 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { IndianRupee, Clock, Star, TrendingUp, Bell, Wallet, ChevronRight } from 'lucide-react'
 import OnlineToggle from '@/components/ui/OnlineToggle'
-import { mockEarnings } from '@/lib/mock-data'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
-import { driverRideApi } from '@/lib/ride-api'
+import { driverRideApi, type EarningsSummary } from '@/lib/ride-api'
 import api from '@/lib/api'
 import { disconnectDriverSocket } from '@/lib/socket'
 
@@ -51,7 +50,19 @@ export default function Home() {
   const [areaName,           setAreaName]          = useState<string | null>(null)
   const [geoLoading,         setGeoLoading]        = useState(false)
   const [showOfflineConfirm, setShowOfflineConfirm] = useState(false)
-  const e = mockEarnings.today
+  const [todayEarnings, setTodayEarnings] = useState<EarningsSummary>({
+    total_earnings: 0, trip_count: 0, online_hours: '0m', rating: null,
+    chart: [], chart_labels: [],
+    breakdown: { base_fare: 0, tips: 0, incentives: 0, platform_fee: 0 },
+  })
+
+  useEffect(() => {
+    driverRideApi.getEarningsSummary('today')
+      .then(setTodayEarnings)
+      .catch(() => {})
+  }, [])
+
+  const e = todayEarnings
   const firstName = driver?.full_name?.split(' ')[0] ?? 'Driver'
 
   useEffect(() => {
@@ -230,7 +241,7 @@ export default function Home() {
                 <div className="flex items-center justify-center gap-0.5 mb-0.5">
                   <IndianRupee size={12} className="text-accent-orange" />
                   <span className="font-black text-[15px] tabular-nums text-accent-orange">
-                    {e.total.toLocaleString('en-IN')}
+                    {e.total_earnings.toLocaleString('en-IN')}
                   </span>
                 </div>
                 <p className="text-text-muted text-[10px] font-semibold">Earned</p>
@@ -245,7 +256,7 @@ export default function Home() {
               <div className="rounded-2xl px-3 py-3 text-center bg-surface-2 border border-border">
                 <div className="flex items-center justify-center gap-0.5 mb-0.5">
                   <Clock size={11} className="text-text-secondary" />
-                  <span className="font-black text-[15px] tabular-nums text-text-primary">{e.trips}</span>
+                  <span className="font-black text-[15px] tabular-nums text-text-primary">{e.trip_count}</span>
                 </div>
                 <p className="text-text-muted text-[10px] font-semibold">Trips</p>
               </div>
@@ -259,7 +270,7 @@ export default function Home() {
               <div className="rounded-2xl px-3 py-3 text-center bg-surface-2 border border-border">
                 <div className="flex items-center justify-center gap-0.5 mb-0.5">
                   <Star size={11} className="text-text-secondary" />
-                  <span className="font-black text-[15px] tabular-nums text-text-primary">{e.rating}</span>
+                  <span className="font-black text-[15px] tabular-nums text-text-primary">{e.rating ?? driver?.rating ?? '—'}</span>
                 </div>
                 <p className="text-text-muted text-[10px] font-semibold">Rating</p>
               </div>

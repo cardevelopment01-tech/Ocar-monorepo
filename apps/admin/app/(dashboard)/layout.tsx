@@ -1,10 +1,13 @@
 'use client'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import AdminSidebar from '@/components/layout/AdminSidebar'
 import AdminTopBar from '@/components/layout/AdminTopBar'
 import { useAdminAuth } from '@/lib/auth-context'
-import { mockSOS } from '@/lib/mock-data'
 import type { AdminRole } from '@/lib/mock-data'
+import { safetyApi } from '@/lib/safety-api'
+
+const ACTIVE_SOS = new Set(['triggered', 'acknowledged', 'responding'])
 
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   '/overview':              { title: 'Dashboard',     subtitle: 'Platform health at a glance' },
@@ -32,7 +35,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const path = usePathname()
   const { admin, logout } = useAdminAuth()
   const meta = PAGE_META[path] ?? { title: 'Admin', subtitle: '' }
-  const sosActive = mockSOS.some(s => s.status === 'active')
+  const [sosCount, setSosCount] = useState(0)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await safetyApi.getSosAlerts({ limit: 50 })
+        setSosCount(data.alerts.filter(a => ACTIVE_SOS.has(a.status)).length)
+      } catch { /* silent — badge shows 0 */ }
+    }
+    void load()
+    const id = setInterval(() => void load(), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   const adminName = admin?.email?.split('@')[0] ?? 'Admin'
   const adminInitials = getInitials(adminName)
@@ -44,7 +59,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         role={role}
         adminName={adminName}
         adminInitials={adminInitials}
-        sosActive={sosActive}
+        sosActive={sosCount > 0}
         onLogout={logout}
       />
       <div className="flex-1 ml-[240px] flex flex-col h-full overflow-hidden">
@@ -53,7 +68,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           subtitle={meta.subtitle}
           adminName={adminName}
           adminInitials={adminInitials}
-          notificationCount={mockSOS.filter(s => s.status === 'active').length}
+          notificationCount={sosCount}
         />
         <main className="flex-1 overflow-y-auto bg-canvas">
           <div className="p-6 animate-fade-in">{children}</div>

@@ -1,8 +1,19 @@
 'use client'
-import DemoBlock from '@/components/ui/DemoBlock'
-import { DEMO_MODE } from '@/lib/demo'
+import dynamic from 'next/dynamic'
+
+const LiveMap = dynamic(() => import('@/components/LiveMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex-1 flex items-center justify-center">
+      <p className="text-sm text-text-muted">Loading map…</p>
+    </div>
+  ),
+})
 
 export default function LiveMapPage() {
-  if (DEMO_MODE) return <DemoBlock feature="Live Map" />
-  return <div className="p-6 text-text-muted">Live map coming soon (M11).</div>
+  return (
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
+      <LiveMap />
+    </div>
+  )
 }

@@ -8,6 +8,12 @@ const router: IRouter = Router()
 // All admin routes require a valid admin JWT
 router.use(authenticate())
 
+// ─── Dashboard stats ─────────────────────────────────────────────────────────
+router.get('/stats', controller.getAdminStats)
+
+// ─── Live map ─────────────────────────────────────────────────────────────────
+router.get('/sessions/active', controller.getAdminActiveSessions)
+
 // ─── Drivers ──────────────────────────────────────────────────────────────────
 router.get('/drivers',               controller.getDrivers)
 router.get('/drivers/:id',           controller.getDriver)

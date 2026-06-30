@@ -3,7 +3,7 @@ import type {
   AdminDriverListRow, AdminDriverDetail, DriverStatus,
   AdminVehicleCategory, AdminVehicleBrand, AdminVehicleModel,
   FleetVehicle, PendingVehicleDoc, ExpiringVehicleDoc,
-  AdminCity,
+  AdminCity, AdminDashboardStats, ActiveDriverSession,
 } from './admin.types'
 
 export async function listDrivers(filters: {
@@ -937,4 +937,117 @@ export async function createAdminRateCard(data: {
   } finally {
     client.release()
   }
+}
+
+// ─── Dashboard stats ──────────────────────────────────────────────────────────
+
+export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
+  const IST_TODAY = `(NOW() AT TIME ZONE 'Asia/Kolkata')::date`
+
+  const [statsRes, chartRes] = await Promise.all([
+    pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM rides
+         WHERE (requested_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
+        )::int                                                              AS total_rides_today,
+        (SELECT COUNT(*) FROM driver_sessions
+         WHERE status IN ('online', 'on_trip')
+        )::int                                                              AS active_drivers_online,
+        (SELECT COALESCE(SUM(amount), 0) FROM payments
+         WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
+           AND status = 'captured'
+        )::numeric                                                          AS revenue_today,
+        (SELECT COUNT(*) FROM disputes
+         WHERE status IN ('open', 'under_review', 'pending_info', 'escalated')
+        )::int                                                              AS open_disputes,
+        (SELECT COUNT(*) FROM rides
+         WHERE status = 'completed'
+           AND (requested_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
+        )::int                                                              AS completed_rides,
+        (SELECT COUNT(*) FROM rides
+         WHERE status = 'cancelled'
+           AND (requested_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
+        )::int                                                              AS cancelled_rides,
+        (SELECT COUNT(*) FROM drivers
+         WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
+        )::int                                                              AS new_driver_signups,
+        (SELECT COUNT(*) FROM rides
+         WHERE status IN ('accepted', 'confirmed', 'started', 'reached')
+        )::int                                                              AS active_trips
+    `),
+    pool.query(`
+      SELECT
+        (11 - FLOOR(EXTRACT(EPOCH FROM (NOW() - requested_at)) / 3600)::int) AS bucket,
+        COUNT(*)::int AS count
+      FROM rides
+      WHERE requested_at >= NOW() - INTERVAL '12 hours'
+      GROUP BY bucket
+      ORDER BY bucket
+    `),
+  ])
+
+  const s = statsRes.rows[0]
+  const chart = Array(12).fill(0) as number[]
+  for (const row of chartRes.rows) {
+    const b = parseInt(String(row.bucket), 10)
+    if (b >= 0 && b < 12) chart[b] = parseInt(String(row.count), 10)
+  }
+
+  return {
+    total_rides_today:     s.total_rides_today as number,
+    active_drivers_online: s.active_drivers_online as number,
+    revenue_today:         parseFloat(String(s.revenue_today)),
+    open_disputes:         s.open_disputes as number,
+    completed_rides:       s.completed_rides as number,
+    cancelled_rides:       s.cancelled_rides as number,
+    new_driver_signups:    s.new_driver_signups as number,
+    active_trips:          s.active_trips as number,
+    rides_last_12h:        chart,
+  }
+}
+
+// ─── Active driver sessions (live map) ────────────────────────────────────────
+
+export async function getActiveDriverSessions(): Promise<ActiveDriverSession[]> {
+  const res = await pool.query(`
+    SELECT
+      ds.id::text                          AS session_id,
+      ds.driver_id::text,
+      ds.status                            AS session_status,
+      d.full_name                          AS driver_name,
+      d.phone                              AS driver_phone,
+      d.code                               AS driver_code,
+      ST_Y(dls.location::geometry)         AS lat,
+      ST_X(dls.location::geometry)         AS lng,
+      dls.heading,
+      dls.speed_kmph,
+      dls.updated_at                       AS location_updated_at,
+      r.id::text                           AS ride_id,
+      r.origin_address,
+      r.destination_address
+    FROM driver_sessions ds
+    JOIN drivers d ON d.id = ds.driver_id
+    LEFT JOIN driver_location_snapshots dls ON dls.driver_id = ds.driver_id
+    LEFT JOIN rides r ON r.driver_id = ds.driver_id
+      AND r.status IN ('accepted', 'driver_arrived', 'in_progress')
+    WHERE ds.status IN ('online', 'on_trip')
+    ORDER BY ds.went_online_at DESC
+  `)
+
+  return res.rows.map(r => ({
+    session_id:          r.session_id as string,
+    driver_id:           r.driver_id as string,
+    driver_name:         r.driver_name as string | null,
+    driver_phone:        r.driver_phone as string,
+    driver_code:         r.driver_code as string,
+    session_status:      r.session_status as 'online' | 'on_trip',
+    lat:                 r.lat != null ? parseFloat(r.lat as string) : null,
+    lng:                 r.lng != null ? parseFloat(r.lng as string) : null,
+    heading:             r.heading != null ? parseFloat(r.heading as string) : null,
+    speed_kmph:          r.speed_kmph != null ? parseFloat(r.speed_kmph as string) : null,
+    location_updated_at: r.location_updated_at as string | null,
+    ride_id:             r.ride_id as string | null,
+    origin_address:      r.origin_address as string | null,
+    destination_address: r.destination_address as string | null,
+  }))
 }
