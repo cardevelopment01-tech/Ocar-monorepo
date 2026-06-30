@@ -9,9 +9,15 @@ interface TripRequestCardProps {
   tripDistance: number
   fare: number
   timeRemaining: number
+  rideType: string
   isAccepting?: boolean
   onAccept: () => void
   onDecline: () => void
+}
+
+const RIDE_TYPE_BADGE: Record<string, { label: string; bg: string; color: string } | undefined> = {
+  round_trip: { label: 'Return',  bg: 'rgba(245,158,11,0.18)', color: '#D97706' },
+  rental:     { label: 'Rental',  bg: 'rgba(79,70,229,0.18)',  color: '#6D28D9' },
 }
 
 function beep() {
@@ -34,7 +40,7 @@ function beep() {
 
 export default function TripRequestCard({
   pickup, drop, pickupDistance, tripDistance, fare,
-  timeRemaining: initialTime, isAccepting, onAccept, onDecline,
+  timeRemaining: initialTime, rideType, isAccepting, onAccept, onDecline,
 }: TripRequestCardProps) {
   const [time, setTime] = useState(initialTime)
   const [expired, setExpired] = useState(false)
@@ -115,10 +121,18 @@ export default function TripRequestCard({
 
         <motion.div variants={containerVar} initial="hidden" animate="show">
 
-          {/* [2] Header — title + clock + quiet distance (no chip) */}
+          {/* [2] Header — title + badge + clock + quiet distance */}
           <motion.div variants={childVar} className="flex items-center justify-between px-5 pt-3 pb-4">
-            <div className="flex items-baseline gap-2.5 min-w-0">
-              <p className="text-[15px] font-semibold" style={{ color: '#F8FAFC' }}>Trip request</p>
+            <div className="flex items-center gap-2 min-w-0">
+              <p className="text-[15px] font-semibold flex-shrink-0" style={{ color: '#F8FAFC' }}>Trip request</p>
+              {RIDE_TYPE_BADGE[rideType] && (
+                <span
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{ background: RIDE_TYPE_BADGE[rideType]!.bg, color: RIDE_TYPE_BADGE[rideType]!.color }}
+                >
+                  {RIDE_TYPE_BADGE[rideType]!.label}
+                </span>
+              )}
               <motion.span
                 animate={!reduce && isUrgent ? { scale: [1, 1.1, 1] } : { scale: 1 }}
                 transition={{ duration: 1, repeat: isUrgent && !reduce ? Infinity : 0, ease: 'easeInOut' }}
@@ -186,8 +200,12 @@ export default function TripRequestCard({
                     <p className="text-[11px] font-medium uppercase tracking-wide mt-0.5" style={{ color: '#64748B' }}>Pickup</p>
                   </div>
                   <div>
-                    <p className="text-[15px] font-semibold leading-snug truncate" style={{ color: '#F8FAFC' }}>{drop}</p>
-                    <p className="text-[11px] font-medium uppercase tracking-wide mt-0.5" style={{ color: '#64748B' }}>Drop</p>
+                    <p className="text-[15px] font-semibold leading-snug truncate" style={{ color: rideType === 'rental' ? '#A5B4FC' : '#F8FAFC' }}>
+                      {rideType === 'rental' ? 'Hourly rental' : drop}
+                    </p>
+                    <p className="text-[11px] font-medium uppercase tracking-wide mt-0.5" style={{ color: '#64748B' }}>
+                      {rideType === 'rental' ? 'Flexible route' : rideType === 'round_trip' ? 'Drop · return' : 'Drop'}
+                    </p>
                   </div>
                 </div>
               </div>

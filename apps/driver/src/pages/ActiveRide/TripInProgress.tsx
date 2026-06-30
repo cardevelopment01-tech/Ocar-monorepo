@@ -146,11 +146,21 @@ export default function TripInProgress() {
       <div className="absolute top-0 left-0 right-0 px-4 pt-12" style={{ zIndex: 10 }}>
         <div className="bg-surface/90 backdrop-blur-sm rounded-2xl border border-border px-4 py-3 flex items-center gap-3">
           <div className="w-2.5 h-2.5 rounded-full bg-accent-red flex-shrink-0 animate-pulse" />
-          <div className="flex-1">
-            <p className="text-accent-red text-xs font-bold uppercase tracking-wider">Trip in Progress</p>
-            <p className="text-text-primary font-bold text-sm truncate">{activeRide?.drop ?? '—'}</p>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-accent-red text-xs font-bold uppercase tracking-wider">Trip in Progress</p>
+              {activeRide?.rideType === 'rental' && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(109,40,217,0.12)', color: '#6D28D9' }}>RENTAL</span>
+              )}
+              {activeRide?.rideType === 'round_trip' && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: '#D97706' }}>RETURN</span>
+              )}
+            </div>
+            <p className="text-text-primary font-bold text-sm truncate">
+              {activeRide?.rideType === 'rental' ? 'Flexible route' : (activeRide?.drop ?? '—')}
+            </p>
           </div>
-          <div className="flex items-center gap-1 text-text-secondary">
+          <div className="flex items-center gap-1 text-text-secondary flex-shrink-0">
             <Clock size={14} />
             <span className="font-mono text-sm font-semibold">{elapsed}</span>
           </div>
@@ -165,11 +175,15 @@ export default function TripInProgress() {
         <div className="w-10 h-1 rounded-full bg-surface-3 mx-auto mb-4" />
 
         <div className="flex justify-between mb-0.5">
-          <p className="text-text-muted text-xs">Drop-off</p>
+          <p className="text-text-muted text-xs">
+            {activeRide?.rideType === 'rental' ? 'Route' : activeRide?.rideType === 'round_trip' ? 'Drop-off · return' : 'Drop-off'}
+          </p>
           <p className="text-text-muted text-xs">Fare</p>
         </div>
         <div className="flex justify-between items-start mb-4">
-          <p className="text-text-primary font-bold text-base flex-1 pr-4">{activeRide?.drop ?? '—'}</p>
+          <p className="text-text-primary font-bold text-base flex-1 pr-4">
+            {activeRide?.rideType === 'rental' ? 'Flexible · ends at rider request' : (activeRide?.drop ?? '—')}
+          </p>
           <p className="text-primary font-black text-2xl flex-shrink-0">₹{activeRide?.fare ?? 0}</p>
         </div>
 

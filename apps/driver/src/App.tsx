@@ -100,6 +100,7 @@ export default function App() {
         rideId: data.rideId, pickup: data.pickup, drop: data.drop,
         pickupDistance: data.distanceToPickup / 1000, tripDistance, fare: data.estimatedFare,
         timeoutSeconds: data.timeoutSeconds, pickupLat: pLat, pickupLng: pLng,
+        rideType: data.rideType,
       })
       // Confirm receipt so the server stops the retry loop for this driver
       socket.emit('ride:request:ack', { rideId: data.rideId })
@@ -108,21 +109,25 @@ export default function App() {
     return () => { socket.off('ride:request', onRideRequest) }
   }, [isOnline, setIncomingRequest])
 
-  const handleAcceptRide = async (rideId: string) => {
+  const handleAcceptRide = async (rideId: string, rideType: string) => {
     if (accepting) return
     setAccepting(true)
     try {
       await driverRideApi.acceptRide(rideId)
       const ride = await driverRideApi.getRide(rideId)
-      setActiveRide({
+      const activeRideInput: Parameters<typeof setActiveRide>[0] = {
         id: rideId, status: 'accepted',
         pickup: ride.origin_address ?? 'Pickup',
-        drop: ride.destination_address ?? 'Destination',
+        drop: ride.destination_address ?? (rideType === 'rental' ? 'Hourly rental' : 'Destination'),
         pickupLat: ride.origin_lat, pickupLng: ride.origin_lng,
-        dropLat: ride.dest_lat ?? undefined, dropLng: ride.dest_lng ?? undefined,
         fare: ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
-        userPhone: ride.user_phone ?? undefined, userName: ride.user_name ?? undefined,
-      })
+        rideType,
+      }
+      if (ride.dest_lat  != null) activeRideInput.dropLat  = ride.dest_lat
+      if (ride.dest_lng  != null) activeRideInput.dropLng  = ride.dest_lng
+      if (ride.user_phone != null) activeRideInput.userPhone = ride.user_phone
+      if (ride.user_name  != null) activeRideInput.userName  = ride.user_name
+      setActiveRide(activeRideInput)
       clearIncomingRequest()
       setAccepting(false)
       navigate('/ride/navigate')
@@ -215,8 +220,9 @@ export default function App() {
             tripDistance={incomingRequest.tripDistance}
             fare={incomingRequest.fare}
             timeRemaining={incomingRequest.timeoutSeconds}
+            rideType={incomingRequest.rideType}
             isAccepting={accepting}
-            onAccept={() => void handleAcceptRide(incomingRequest.rideId)}
+            onAccept={() => void handleAcceptRide(incomingRequest.rideId, incomingRequest.rideType)}
             onDecline={clearIncomingRequest}
           />
         )}

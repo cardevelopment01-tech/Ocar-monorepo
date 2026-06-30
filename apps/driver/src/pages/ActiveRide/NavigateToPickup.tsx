@@ -105,7 +105,15 @@ export default function NavigateToPickup() {
         <div className="bg-surface/90 backdrop-blur-sm rounded-2xl border border-border px-4 py-3 flex items-center gap-3">
           <div className="w-3 h-3 rounded-full bg-primary flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-text-muted text-xs">Heading to pickup</p>
+            <div className="flex items-center gap-2">
+              <p className="text-text-muted text-xs">Heading to pickup</p>
+              {activeRide?.rideType === 'rental' && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(109,40,217,0.12)', color: '#6D28D9' }}>RENTAL</span>
+              )}
+              {activeRide?.rideType === 'round_trip' && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: '#D97706' }}>RETURN</span>
+              )}
+            </div>
             <p className="text-text-primary font-bold text-base truncate">{activeRide?.pickup ?? '—'}</p>
           </div>
         </div>

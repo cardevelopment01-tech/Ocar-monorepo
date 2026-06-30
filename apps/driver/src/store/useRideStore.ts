@@ -10,6 +10,7 @@ export interface ActiveRide {
   dropLat?: number
   dropLng?: number
   fare: number
+  rideType: string
   startOtp?: string
   endOtp?: string
   userPhone?: string
@@ -28,6 +29,7 @@ interface RideState {
     timeoutSeconds: number
     pickupLat: number
     pickupLng: number
+    rideType: string
   } | null
 
   setActiveRide:     (ride: ActiveRide) => void

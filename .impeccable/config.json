@@ -184,6 +184,24 @@
         "value": "rgba(0,0,0,0.08)",
         "reason": "Pre-existing intentional bottom-sheet drop shadow in select-ride page",
         "createdAt": "2026-06-30T15:16:56.494Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#d97706",
+        "reason": "Return-trip badge amber — matches text-amber-700 driver app accent already used in Home.tsx online status",
+        "createdAt": "2026-06-30T18:26:01.084Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#6d28d9",
+        "reason": "Rental badge violet-700 — darker shade of #4F46E5 primary, intentional tonal variant for badge contrast",
+        "createdAt": "2026-06-30T18:26:01.157Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(109,40,217,0.12)",
+        "reason": "Rental badge bg tint — 12% opacity of suppressed #6D28D9 violet, same badge system",
+        "createdAt": "2026-06-30T18:27:16.512Z"
       }
     ]
   }
