@@ -1,35 +1,30 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Tag, Plus, Pencil, Zap, AlertTriangle, ChevronDown, ChevronUp, History } from 'lucide-react'
+import { Tag, Pencil, Zap, AlertTriangle, ChevronDown, ChevronUp, History, Package, Plus } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { pricingApi, type RateCard, type SurgeEvent } from '@/lib/pricing-api'
+import { pricingApi, rentalPackageApi, type RateCard, type SurgeEvent, type RentalPackageAdmin } from '@/lib/pricing-api'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Shared helpers ─────────────────────────────────────────────────────────────
 
 const RIDE_TYPE_LABEL: Record<string, string> = {
   one_way: 'One Way', round_trip: 'Round Trip', rental: 'Rental',
 }
 
 const SURGE_STATUS_CLS: Record<string, string> = {
-  scheduled: 'pill-info',
-  active:    'pill-warning',
-  expired:   'pill-muted',
-  cancelled: 'pill-danger',
+  scheduled: 'pill-info', active: 'pill-warning',
+  expired:   'pill-muted', cancelled: 'pill-danger',
 }
+
+const VALID_DURATIONS = [1, 2, 4, 6, 8, 10]
+const CATEGORY_ORDER  = ['hatchback', 'sedan', 'suv', 'luxury', 'van']
 
 function fmt(v: string | null): string {
-  if (!v) return '—'
-  return `₹${parseFloat(v).toFixed(2)}`
+  return v ? `₹${parseFloat(v).toFixed(2)}` : '—'
 }
 
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button type="button" onClick={() => onChange(!value)}
-      className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${value ? 'bg-primary' : 'bg-border'}`}>
-      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${value ? 'translate-x-5' : 'translate-x-0.5'}`} />
-    </button>
-  )
+function numFmt(v: string): string {
+  return `₹${parseFloat(v).toFixed(2)}`
 }
 
 function SkeletonRows({ cols, n }: { cols: number; n: number }) {
@@ -44,33 +39,38 @@ function SkeletonRows({ cols, n }: { cols: number; n: number }) {
   ))}</>
 }
 
+function Toggle({ value, onChange, disabled }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={() => { if (!disabled) onChange(!value) }}
+      disabled={disabled}
+      className={`relative w-10 h-5 rounded-full transition-colors duration-200 disabled:opacity-50 ${value ? 'bg-primary' : 'bg-border'}`}
+    >
+      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${value ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    </button>
+  )
+}
+
 const inputCls = 'w-full border border-border rounded-xl px-3 py-2 text-sm text-text-primary bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted'
 const labelCls = 'block text-xs font-semibold text-text-muted mb-1.5'
 
-// ── Update Rate Dialog ────────────────────────────────────────────────────────
+// ── Rate card dialog ───────────────────────────────────────────────────────────
 
 function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () => void }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
-    rate_per_km: card.rate_per_km,
-    rate_per_min: card.rate_per_min,
-    min_fare: card.min_fare,
-    return_rate_per_km: card.return_rate_per_km ?? '',
-    hour_rate: card.hour_rate ?? '',
-    notes: '',
+    rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
+    return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '', notes: '',
   })
 
   useEffect(() => {
     if (open) {
       setForm({
-        rate_per_km: card.rate_per_km,
-        rate_per_min: card.rate_per_min,
-        min_fare: card.min_fare,
-        return_rate_per_km: card.return_rate_per_km ?? '',
-        hour_rate: card.hour_rate ?? '',
-        notes: '',
+        rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
+        return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '', notes: '',
       })
       setError('')
     }
@@ -82,17 +82,14 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
     setLoading(true); setError('')
     try {
       await pricingApi.createRateCard({
-        category_id: card.category_id,
-        ride_type: card.ride_type,
-        rate_per_km: parseFloat(form.rate_per_km),
-        rate_per_min: parseFloat(form.rate_per_min),
+        category_id: card.category_id, ride_type: card.ride_type,
+        rate_per_km: parseFloat(form.rate_per_km), rate_per_min: parseFloat(form.rate_per_min),
         min_fare: parseFloat(form.min_fare),
         return_rate_per_km: form.return_rate_per_km ? parseFloat(form.return_rate_per_km) : null,
         hour_rate: form.hour_rate ? parseFloat(form.hour_rate) : null,
         notes: form.notes,
       })
-      setOpen(false)
-      onUpdated()
+      setOpen(false); onUpdated()
     } catch { setError('Failed to update rate card.') }
     finally { setLoading(false) }
   }
@@ -118,22 +115,19 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
               <div>
                 <label className={labelCls}>Per KM (₹)</label>
                 <input type="number" step="0.01" value={form.rate_per_km}
-                  onChange={e => setForm(f => ({ ...f, rate_per_km: e.target.value }))}
-                  className={inputCls} />
+                  onChange={e => setForm(f => ({ ...f, rate_per_km: e.target.value }))} className={inputCls} />
                 <p className="text-xs text-text-muted mt-1">was {fmt(card.rate_per_km)}</p>
               </div>
               <div>
                 <label className={labelCls}>Per Min (₹)</label>
                 <input type="number" step="0.01" value={form.rate_per_min}
-                  onChange={e => setForm(f => ({ ...f, rate_per_min: e.target.value }))}
-                  className={inputCls} />
+                  onChange={e => setForm(f => ({ ...f, rate_per_min: e.target.value }))} className={inputCls} />
                 <p className="text-xs text-text-muted mt-1">was {fmt(card.rate_per_min)}</p>
               </div>
               <div>
                 <label className={labelCls}>Min Fare (₹)</label>
                 <input type="number" step="0.01" value={form.min_fare}
-                  onChange={e => setForm(f => ({ ...f, min_fare: e.target.value }))}
-                  className={inputCls} />
+                  onChange={e => setForm(f => ({ ...f, min_fare: e.target.value }))} className={inputCls} />
                 <p className="text-xs text-text-muted mt-1">was {fmt(card.min_fare)}</p>
               </div>
             </div>
@@ -161,8 +155,7 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
               <label className={labelCls}>Change Reason *</label>
               <textarea rows={2} value={form.notes}
                 onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                className={`${inputCls} resize-none`}
-                placeholder="e.g. Fuel price increase" />
+                className={`${inputCls} resize-none`} placeholder="e.g. Fuel price increase" />
             </div>
             {error && <p className="text-xs text-danger font-semibold">{error}</p>}
             <div className="flex gap-3 pt-2">
@@ -181,12 +174,10 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
   )
 }
 
-// ── Create Surge Dialog ───────────────────────────────────────────────────────
+// ── Surge dialog ───────────────────────────────────────────────────────────────
 
 function CreateSurgeDialog({
-  cities,
-  categories,
-  onCreated,
+  cities, categories, onCreated,
 }: {
   cities: AdminCity[]
   categories: { id: number; slug: string; display_name: string }[]
@@ -195,27 +186,22 @@ function CreateSurgeDialog({
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [form, setForm] = useState({
-    city_id: '', category_id: '', multiplier: '1.5',
-    reason: '', starts_at: '', ends_at: '',
-  })
+  const [form, setForm] = useState({ city_id: '', category_id: '', multiplier: '1.5', reason: '', starts_at: '', ends_at: '' })
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
-
   const mult = parseFloat(form.multiplier) || 1
   const pct  = Math.round((mult - 1) * 100)
 
   async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true); setError('')
+    e.preventDefault(); setLoading(true); setError('')
     try {
       await pricingApi.createSurgeEvent({
-        city_id: parseInt(form.city_id, 10),
+        city_id:     parseInt(form.city_id, 10),
         category_id: form.category_id ? parseInt(form.category_id, 10) : null,
-        multiplier: mult,
-        reason: form.reason || undefined,
-        starts_at: form.starts_at,
-        ends_at: form.ends_at,
+        multiplier:  mult,
+        reason:      form.reason || undefined,
+        starts_at:   form.starts_at,
+        ends_at:     form.ends_at,
       })
       setOpen(false)
       setForm({ city_id: '', category_id: '', multiplier: '1.5', reason: '', starts_at: '', ends_at: '' })
@@ -249,9 +235,7 @@ function CreateSurgeDialog({
               <label className={labelCls}>Category</label>
               <select value={form.category_id} onChange={e => set('category_id', e.target.value)} className={inputCls}>
                 <option value="">All categories</option>
-                {categories.map(c => (
-                  <option key={c.id} value={c.id}>{c.display_name}</option>
-                ))}
+                {categories.map(c => <option key={c.id} value={c.id}>{c.display_name}</option>)}
               </select>
             </div>
             <div>
@@ -261,8 +245,7 @@ function CreateSurgeDialog({
               </label>
               <div className="flex items-center gap-3">
                 <input type="range" min="1.0" max="5.0" step="0.1" value={form.multiplier}
-                  onChange={e => set('multiplier', e.target.value)}
-                  className="flex-1 accent-warning" />
+                  onChange={e => set('multiplier', e.target.value)} className="flex-1 accent-warning" />
                 <input type="number" min="1.0" max="5.0" step="0.1" value={form.multiplier}
                   onChange={e => set('multiplier', e.target.value)}
                   className="w-20 border border-border rounded-xl px-3 py-2 text-sm text-text-primary bg-surface-2 text-center focus:outline-none focus:ring-2 focus:ring-primary/30" />
@@ -300,36 +283,283 @@ function CreateSurgeDialog({
   )
 }
 
+// ── Rental package dialogs ─────────────────────────────────────────────────────
+
+function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; onUpdated: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({
+    package_fare:  pkg.package_fare,
+    extra_per_km:  pkg.extra_per_km,
+    extra_per_min: pkg.extra_per_min,
+  })
+
+  useEffect(() => {
+    if (open) {
+      setForm({ package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min })
+      setError('')
+    }
+  }, [open, pkg])
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setLoading(true); setError('')
+    try {
+      await rentalPackageApi.update(pkg.id, {
+        package_fare:  parseFloat(form.package_fare),
+        extra_per_km:  parseFloat(form.extra_per_km),
+        extra_per_min: parseFloat(form.extra_per_min),
+      })
+      setOpen(false); onUpdated()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setError(msg ?? 'Failed to update package.')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-light rounded-lg transition-colors" title="Edit package">
+          <Pencil size={13} />
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[420px] bg-surface rounded-2xl shadow-hover p-6 z-[60]">
+          <Dialog.Title className="text-lg font-bold text-text-primary mb-1">
+            Edit {pkg.category_name} · {pkg.duration_hours} hr / {pkg.km_limit} km
+          </Dialog.Title>
+          <p className="text-xs text-text-muted mb-5">Updates take effect on the next booking.</p>
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <label className={labelCls}>Package Fare (₹) *</label>
+              <input type="number" step="0.01" min="0.01" required value={form.package_fare}
+                onChange={e => setForm(f => ({ ...f, package_fare: e.target.value }))} className={inputCls} />
+              <p className="text-xs text-text-muted mt-1">was {numFmt(pkg.package_fare)}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Extra per KM (₹) *</label>
+                <input type="number" step="0.01" min="0.01" required value={form.extra_per_km}
+                  onChange={e => setForm(f => ({ ...f, extra_per_km: e.target.value }))} className={inputCls} />
+                <p className="text-xs text-text-muted mt-1">was {numFmt(pkg.extra_per_km)}</p>
+              </div>
+              <div>
+                <label className={labelCls}>Extra per Min (₹)</label>
+                <input type="number" step="0.01" min="0" value={form.extra_per_min}
+                  onChange={e => setForm(f => ({ ...f, extra_per_min: e.target.value }))} className={inputCls} />
+                <p className="text-xs text-text-muted mt-1">was {numFmt(pkg.extra_per_min)}</p>
+              </div>
+            </div>
+            {error && <p className="text-xs text-danger font-semibold">{error}</p>}
+            <div className="flex gap-3 pt-2">
+              <Dialog.Close asChild>
+                <button type="button" className="btn-secondary flex-1 justify-center">Cancel</button>
+              </Dialog.Close>
+              <button type="submit" disabled={loading}
+                className="btn-primary flex-1 justify-center disabled:opacity-50 disabled:pointer-events-none">
+                {loading ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+}
+
+function CreateRentalPackageDialog({
+  categories,
+  existingKeys,
+  onCreated,
+}: {
+  categories: { id: number; display_name: string }[]
+  existingKeys: Set<string>
+  onCreated: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({
+    category_id: '', duration_hours: '', package_fare: '', extra_per_km: '', extra_per_min: '0',
+  })
+
+  useEffect(() => {
+    if (open) { setForm({ category_id: '', duration_hours: '', package_fare: '', extra_per_km: '', extra_per_min: '0' }); setError('') }
+  }, [open])
+
+  const takenDurations = form.category_id
+    ? VALID_DURATIONS.filter(d => existingKeys.has(`${form.category_id}-${d}`))
+    : []
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setLoading(true); setError('')
+    try {
+      await rentalPackageApi.create({
+        category_id:    parseInt(form.category_id, 10),
+        duration_hours: parseInt(form.duration_hours, 10),
+        package_fare:   parseFloat(form.package_fare),
+        extra_per_km:   parseFloat(form.extra_per_km),
+        extra_per_min:  parseFloat(form.extra_per_min),
+      })
+      setOpen(false); onCreated()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setError(msg ?? 'Failed to create package. A package for this duration may already exist.')
+    } finally { setLoading(false) }
+  }
+
+  const kmPreview = form.duration_hours ? parseInt(form.duration_hours, 10) * 10 : null
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-light border border-primary/20 text-primary text-sm font-semibold hover:bg-primary/10 transition-all duration-150">
+          <Plus size={14} />New Package
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[440px] bg-surface rounded-2xl shadow-hover p-6 z-[60]">
+          <Dialog.Title className="text-lg font-bold text-text-primary mb-1">Create Rental Package</Dialog.Title>
+          <p className="text-xs text-text-muted mb-5">
+            KM limit is fixed at <span className="font-semibold">duration × 10</span> by the pricing engine.
+          </p>
+          <form onSubmit={submit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Category *</label>
+                <select required value={form.category_id}
+                  onChange={e => setForm(f => ({ ...f, category_id: e.target.value, duration_hours: '' }))}
+                  className={inputCls}>
+                  <option value="">Select…</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Duration *</label>
+                <select required value={form.duration_hours}
+                  onChange={e => setForm(f => ({ ...f, duration_hours: e.target.value }))}
+                  className={inputCls}
+                  disabled={!form.category_id}>
+                  <option value="">Select…</option>
+                  {VALID_DURATIONS.map(d => {
+                    const taken = existingKeys.has(`${form.category_id}-${d}`)
+                    return (
+                      <option key={d} value={d} disabled={taken}>
+                        {d} hr{d > 1 ? 's' : ''} / {d * 10} km{taken ? ' (exists)' : ''}
+                      </option>
+                    )
+                  })}
+                </select>
+                {takenDurations.length > 0 && (
+                  <p className="text-[11px] text-text-muted mt-1">
+                    Taken: {takenDurations.map(d => `${d}h`).join(', ')}
+                  </p>
+                )}
+              </div>
+            </div>
+            {kmPreview && (
+              <p className="text-xs text-text-muted -mt-2">
+                KM limit will be <span className="font-semibold">{kmPreview} km</span>
+              </p>
+            )}
+            <div>
+              <label className={labelCls}>Package Fare (₹) *</label>
+              <input type="number" step="0.01" min="0.01" required value={form.package_fare}
+                onChange={e => setForm(f => ({ ...f, package_fare: e.target.value }))}
+                className={inputCls} placeholder="e.g. 350" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Extra per KM (₹) *</label>
+                <input type="number" step="0.01" min="0.01" required value={form.extra_per_km}
+                  onChange={e => setForm(f => ({ ...f, extra_per_km: e.target.value }))}
+                  className={inputCls} placeholder="e.g. 12" />
+              </div>
+              <div>
+                <label className={labelCls}>Extra per Min (₹)</label>
+                <input type="number" step="0.01" min="0" value={form.extra_per_min}
+                  onChange={e => setForm(f => ({ ...f, extra_per_min: e.target.value }))}
+                  className={inputCls} placeholder="0" />
+              </div>
+            </div>
+            {error && <p className="text-xs text-danger font-semibold">{error}</p>}
+            <div className="flex gap-3 pt-2">
+              <Dialog.Close asChild>
+                <button type="button" className="btn-secondary flex-1 justify-center">Cancel</button>
+              </Dialog.Close>
+              <button type="submit" disabled={loading}
+                className="btn-primary flex-1 justify-center disabled:opacity-50 disabled:pointer-events-none">
+                {loading ? 'Creating…' : 'Create Package'}
+              </button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+}
+
+// ── Inline ride-type badge ─────────────────────────────────────────────────────
+
+function StatusPillRideType({ type }: { type: string }) {
+  const cls = type === 'one_way' ? 'pill-info' : type === 'round_trip' ? 'pill-purple' : 'pill-muted'
+  return <span className={cls}>{RIDE_TYPE_LABEL[type] ?? type}</span>
+}
+
+// ── Tab types ─────────────────────────────────────────────────────────────────
+
+type Tab = 'rate_cards' | 'surge' | 'rental'
+
+const TABS: { key: Tab; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
+  { key: 'rate_cards', label: 'Rate Cards',       icon: Tag     },
+  { key: 'surge',      label: 'Surge Events',     icon: Zap     },
+  { key: 'rental',     label: 'Rental Packages',  icon: Package },
+]
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-const CATEGORY_ORDER = ['hatchback', 'sedan', 'suv', 'luxury', 'van']
-const RIDE_ORDER: RateCard['ride_type'][] = ['one_way', 'round_trip', 'rental']
-
 export default function RateCardsPage() {
-  const [cards, setCards]         = useState<RateCard[]>([])
-  const [surges, setSurges]       = useState<SurgeEvent[]>([])
-  const [cities, setCities]       = useState<AdminCity[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState('')
-  const [historyOpen, setHistoryOpen] = useState(false)
-  const [history, setHistory]     = useState<{ id: number; category_name: string; ride_type: string; rate_per_km: string; change_reason: string | null; created_at: string }[]>([])
+  const [activeTab, setActiveTab] = useState<Tab>('rate_cards')
+
+  // Rate cards + surge data
+  const [cards,   setCards]   = useState<RateCard[]>([])
+  const [surges,  setSurges]  = useState<SurgeEvent[]>([])
+  const [cities,  setCities]  = useState<AdminCity[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState('')
+  const [retry,   setRetry]   = useState(0)
+  const [historyOpen,    setHistoryOpen]    = useState(false)
+  const [history,        setHistory]        = useState<{ id: number; category_name: string; ride_type: string; rate_per_km: string; change_reason: string | null; created_at: string }[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
-  const [retry, setRetry]         = useState(0)
+
+  // Rental packages data
+  const [rentalPkgs,    setRentalPkgs]    = useState<RentalPackageAdmin[]>([])
+  const [rentalLoading, setRentalLoading] = useState(true)
+  const [rentalError,   setRentalError]   = useState('')
+  const [rentalRetry,   setRentalRetry]   = useState(0)
+  const [toggling,      setToggling]      = useState<number | null>(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true); setError('')
     try {
-      const [c, s, ci] = await Promise.all([
-        pricingApi.getRateCards(),
-        pricingApi.getSurgeEvents(),
-        cityApi.list(),
-      ])
+      const [c, s, ci] = await Promise.all([pricingApi.getRateCards(), pricingApi.getSurgeEvents(), cityApi.list()])
       setCards(c); setSurges(s); setCities(ci)
     } catch { setError('Failed to load pricing data.') }
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { fetchAll() }, [fetchAll, retry])
+  const fetchRental = useCallback(async () => {
+    setRentalLoading(true); setRentalError('')
+    try { setRentalPkgs(await rentalPackageApi.list()) }
+    catch { setRentalError('Failed to load rental packages.') }
+    finally { setRentalLoading(false) }
+  }, [])
+
+  useEffect(() => { void fetchAll() }, [fetchAll, retry])
+  useEffect(() => { void fetchRental() }, [fetchRental, rentalRetry])
 
   async function loadHistory() {
     if (historyLoading) return
@@ -338,241 +568,379 @@ export default function RateCardsPage() {
     finally { setHistoryLoading(false) }
   }
 
-  const grouped = CATEGORY_ORDER.reduce<Record<string, RateCard[]>>((acc, slug) => {
+  async function toggleRentalPackage(pkg: RentalPackageAdmin) {
+    setToggling(pkg.id)
+    try {
+      await rentalPackageApi.update(pkg.id, { is_active: !pkg.is_active })
+      await fetchRental()
+    } catch { /* silent — optimistic toggle failed, list stays stale */ }
+    finally { setToggling(null) }
+  }
+
+  async function cancelSurge(id: number) {
+    try { await pricingApi.cancelSurgeEvent(id); void fetchAll() }
+    catch { /* silent */ }
+  }
+
+  // Derived data
+  const CATEGORY_ORDER_ITEMS = ['hatchback', 'sedan', 'suv', 'luxury', 'van']
+
+  const grouped = CATEGORY_ORDER_ITEMS.reduce<Record<string, RateCard[]>>((acc, slug) => {
     acc[slug] = cards.filter(c => c.category_slug === slug)
-      .sort((a, b) => RIDE_ORDER.indexOf(a.ride_type) - RIDE_ORDER.indexOf(b.ride_type))
+      .sort((a, b) => (['one_way', 'round_trip', 'rental'] as string[]).indexOf(a.ride_type) - (['one_way', 'round_trip', 'rental'] as string[]).indexOf(b.ride_type))
     return acc
   }, {})
 
   const categoryOptions = [...new Map(cards.map(c => [c.category_id, { id: c.category_id, slug: c.category_slug, display_name: c.category_name }])).values()]
-  const activeSurges    = surges.filter(s => s.status === 'active')
+  const activeSurges = surges.filter(s => s.status === 'active')
   const configuredCategories = new Set(cards.map(c => c.category_id)).size
 
-  async function cancelSurge(id: number) {
-    try { await pricingApi.cancelSurgeEvent(id); fetchAll() }
-    catch { /* silent */ }
-  }
+  // Rental derived
+  const rentalGrouped = CATEGORY_ORDER.reduce<Record<string, RentalPackageAdmin[]>>((acc, slug) => {
+    acc[slug] = rentalPkgs.filter(p => p.category_slug === slug).sort((a, b) => a.duration_hours - b.duration_hours)
+    return acc
+  }, {})
+  const rentalCategories = [...new Map(rentalPkgs.map(p => [p.category_id, { id: p.category_id, display_name: p.category_name }])).values()]
+    .concat(categoryOptions.filter(c => !rentalPkgs.some(p => p.category_id === c.id)).map(c => ({ id: c.id, display_name: c.display_name })))
+  const existingKeys = new Set(rentalPkgs.map(p => `${p.category_id}-${p.duration_hours}`))
+  const activeRentalCount  = rentalPkgs.filter(p => p.is_active).length
+  const inactiveRentalCount = rentalPkgs.filter(p => !p.is_active).length
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-5">
+      {/* Page header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary-light flex items-center justify-center">
             <Tag size={20} className="text-primary" />
           </div>
           <div>
-            <h1 className="page-title">Rate Cards</h1>
-            <p className="page-subtitle">Fare structure and surge management</p>
+            <h1 className="page-title">Pricing</h1>
+            <p className="page-subtitle">Rate cards, surge events, and rental packages</p>
           </div>
         </div>
-        <CreateSurgeDialog cities={cities} categories={categoryOptions} onCreated={fetchAll} />
+        {activeTab === 'surge' && (
+          <CreateSurgeDialog cities={cities} categories={categoryOptions} onCreated={fetchAll} />
+        )}
+        {activeTab === 'rental' && (
+          <CreateRentalPackageDialog
+            categories={rentalCategories}
+            existingKeys={existingKeys}
+            onCreated={fetchRental}
+          />
+        )}
       </div>
 
-      {/* Stat tiles */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="admin-card flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-primary-light flex items-center justify-center flex-shrink-0">
-            <Tag size={18} className="text-primary" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-text-primary">{loading ? '—' : cards.length}</p>
-            <p className="text-xs text-text-muted mt-0.5">Active rate cards</p>
-          </div>
-        </div>
-        <div className="admin-card flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-success-light flex items-center justify-center flex-shrink-0">
-            <Tag size={18} className="text-success" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-text-primary">{loading ? '—' : configuredCategories}</p>
-            <p className="text-xs text-text-muted mt-0.5">Categories configured</p>
-          </div>
-        </div>
-        <div className={`admin-card flex items-center gap-4 ${activeSurges.length > 0 ? 'ring-1 ring-warning/30' : ''}`}>
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${activeSurges.length > 0 ? 'bg-warning-light' : 'bg-surface-2'}`}>
-            <Zap size={18} className={activeSurges.length > 0 ? 'text-warning' : 'text-text-muted'} />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-text-primary">{loading ? '—' : activeSurges.length}</p>
-            <p className="text-xs text-text-muted mt-0.5">Active surge events</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Active surge banner */}
-      {activeSurges.length > 0 && (
-        <div className="bg-warning-light border border-warning/20 rounded-2xl px-5 py-4 flex items-center gap-3">
-          <AlertTriangle size={18} className="text-warning flex-shrink-0" />
-          <p className="text-sm font-semibold text-warning">
-            {activeSurges.length} active surge event{activeSurges.length > 1 ? 's' : ''} — fares are currently elevated
-          </p>
-        </div>
-      )}
-
-      {/* Rate cards by category */}
-      {error ? (
-        <div className="admin-card text-center py-8">
-          <p className="text-text-muted mb-3">{error}</p>
-          <button onClick={() => setRetry(r => r + 1)} className="btn-secondary">Retry</button>
-        </div>
-      ) : loading ? (
-        <div className="admin-card !p-0 overflow-hidden">
-          <table className="data-table"><tbody><SkeletonRows cols={7} n={6} /></tbody></table>
-        </div>
-      ) : (
-        CATEGORY_ORDER.map(slug => {
-          const rows = grouped[slug]
-          if (!rows?.length) return null
-          const catName = rows[0]?.category_name ?? slug
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-border-light">
+        {TABS.map(tab => {
+          const Icon = tab.icon
+          const active = activeTab === tab.key
           return (
-            <div key={slug} className="admin-card !p-0 overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-border bg-surface-2 flex items-center gap-2.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                <h3 className="text-sm font-semibold text-text-primary">{catName}</h3>
-              </div>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Ride Type</th>
-                    <th className="!text-right">Per KM</th>
-                    <th className="!text-right">Per Min</th>
-                    <th className="!text-right">Min Fare</th>
-                    <th className="!text-right">Return Rate</th>
-                    <th className="!text-right">Hour Rate</th>
-                    <th className="!text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(card => (
-                    <tr key={card.id} className="cursor-default">
-                      <td>
-                        <StatusPillRideType type={card.ride_type} />
-                      </td>
-                      <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.rate_per_km)}</td>
-                      <td className="!text-right font-mono">{fmt(card.rate_per_min)}</td>
-                      <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.min_fare)}</td>
-                      <td className="!text-right font-mono text-text-muted">{fmt(card.return_rate_per_km)}</td>
-                      <td className="!text-right font-mono text-text-muted">{fmt(card.hour_rate)}</td>
-                      <td className="!text-right">
-                        <UpdateRateDialog card={card} onUpdated={fetchAll} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all duration-150 -mb-px ${
+                active
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-text-muted hover:text-text-secondary hover:border-border'
+              }`}
+            >
+              <Icon size={14} />
+              {tab.label}
+            </button>
           )
-        })
+        })}
+      </div>
+
+      {/* ── Rate Cards tab ────────────────────────────────────────────────── */}
+      {activeTab === 'rate_cards' && (
+        <div className="space-y-5">
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="admin-card flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-primary-light flex items-center justify-center flex-shrink-0">
+                <Tag size={18} className="text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-text-primary">{loading ? '—' : cards.length}</p>
+                <p className="text-xs text-text-muted mt-0.5">Active rate cards</p>
+              </div>
+            </div>
+            <div className="admin-card flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-success-light flex items-center justify-center flex-shrink-0">
+                <Tag size={18} className="text-success" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-text-primary">{loading ? '—' : configuredCategories}</p>
+                <p className="text-xs text-text-muted mt-0.5">Categories configured</p>
+              </div>
+            </div>
+            <div className={`admin-card flex items-center gap-4 ${activeSurges.length > 0 ? 'ring-1 ring-warning/30' : ''}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${activeSurges.length > 0 ? 'bg-warning-light' : 'bg-surface-2'}`}>
+                <Zap size={18} className={activeSurges.length > 0 ? 'text-warning' : 'text-text-muted'} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-text-primary">{loading ? '—' : activeSurges.length}</p>
+                <p className="text-xs text-text-muted mt-0.5">Active surge events</p>
+              </div>
+            </div>
+          </div>
+
+          {error ? (
+            <div className="admin-card text-center py-8">
+              <p className="text-text-muted mb-3">{error}</p>
+              <button onClick={() => setRetry(r => r + 1)} className="btn-secondary">Retry</button>
+            </div>
+          ) : loading ? (
+            <div className="admin-card !p-0 overflow-hidden">
+              <table className="data-table"><tbody><SkeletonRows cols={7} n={6} /></tbody></table>
+            </div>
+          ) : (
+            CATEGORY_ORDER_ITEMS.map(slug => {
+              const rows = grouped[slug]
+              if (!rows?.length) return null
+              const catName = rows[0]?.category_name ?? slug
+              return (
+                <div key={slug} className="admin-card !p-0 overflow-hidden">
+                  <div className="px-5 py-3.5 border-b border-border bg-surface-2 flex items-center gap-2.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    <h3 className="text-sm font-semibold text-text-primary">{catName}</h3>
+                  </div>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Ride Type</th>
+                        <th className="!text-right">Per KM</th>
+                        <th className="!text-right">Per Min</th>
+                        <th className="!text-right">Min Fare</th>
+                        <th className="!text-right">Return Rate</th>
+                        <th className="!text-right">Hour Rate</th>
+                        <th className="!text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(card => (
+                        <tr key={card.id} className="cursor-default">
+                          <td><StatusPillRideType type={card.ride_type} /></td>
+                          <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.rate_per_km)}</td>
+                          <td className="!text-right font-mono">{fmt(card.rate_per_min)}</td>
+                          <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.min_fare)}</td>
+                          <td className="!text-right font-mono text-text-muted">{fmt(card.return_rate_per_km)}</td>
+                          <td className="!text-right font-mono text-text-muted">{fmt(card.hour_rate)}</td>
+                          <td className="!text-right">
+                            <UpdateRateDialog card={card} onUpdated={fetchAll} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })
+          )}
+
+          {/* Rate change history */}
+          <div className="admin-card !p-0 overflow-hidden">
+            <button
+              className="w-full px-5 py-4 flex items-center justify-between hover:bg-surface-2 transition-colors text-left"
+              onClick={() => { setHistoryOpen(h => !h); if (!historyOpen) void loadHistory() }}
+            >
+              <div className="flex items-center gap-2.5">
+                <History size={15} className="text-text-muted" />
+                <span className="text-sm font-semibold text-text-primary">Rate Change History</span>
+              </div>
+              {historyOpen ? <ChevronUp size={16} className="text-text-muted" /> : <ChevronDown size={16} className="text-text-muted" />}
+            </button>
+            {historyOpen && (
+              historyLoading ? (
+                <div className="border-t border-border">
+                  <table className="data-table"><tbody><SkeletonRows cols={5} n={4} /></tbody></table>
+                </div>
+              ) : history.length === 0 ? (
+                <p className="border-t border-border px-5 py-8 text-center text-text-muted text-sm">No rate changes recorded yet.</p>
+              ) : (
+                <div className="border-t border-border">
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>Category</th><th>Ride Type</th><th>Per KM</th><th>Reason</th><th>Changed</th></tr>
+                    </thead>
+                    <tbody>
+                      {history.map(h => (
+                        <tr key={h.id} className="cursor-default">
+                          <td className="font-medium text-text-primary">{h.category_name}</td>
+                          <td>{RIDE_TYPE_LABEL[h.ride_type] ?? h.ride_type}</td>
+                          <td className="font-mono font-semibold text-text-primary">{fmt(h.rate_per_km)}</td>
+                          <td className="max-w-[240px] truncate">{h.change_reason ?? '—'}</td>
+                          <td className="text-xs">{new Date(h.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )}
+          </div>
+        </div>
       )}
 
-      {/* Surge events */}
-      <div className="admin-card !p-0 overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-border bg-surface-2 flex items-center gap-2.5">
-          <Zap size={14} className="text-warning" />
-          <h3 className="text-sm font-semibold text-text-primary">Surge Events</h3>
-        </div>
-        {surges.length === 0 ? (
-          <p className="px-5 py-8 text-center text-text-muted text-sm">
-            No surge events scheduled. Use the button above to create one.
-          </p>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                {['City', 'Category', 'Multiplier', 'Reason', 'Status', 'Starts', 'Ends', ''].map(h => (
-                  <th key={h}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {surges.map(s => (
-                <tr key={s.id} className="cursor-default">
-                  <td className="font-medium text-text-primary">{s.city_name}</td>
-                  <td>{s.category_name ?? 'All'}</td>
-                  <td>
-                    <span className="font-mono font-bold text-warning">{parseFloat(s.multiplier).toFixed(2)}×</span>
-                  </td>
-                  <td className="max-w-[160px] truncate">{s.reason ?? '—'}</td>
-                  <td>
-                    <span className={SURGE_STATUS_CLS[s.status] ?? 'pill-muted'}>
-                      {s.status.charAt(0).toUpperCase() + s.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="text-xs">{new Date(s.starts_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td className="text-xs">{new Date(s.ends_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td>
-                    {(s.status === 'scheduled' || s.status === 'active') && (
-                      <button onClick={() => cancelSurge(s.id)}
-                        className="text-xs text-danger font-semibold px-2.5 py-1 rounded-lg hover:bg-danger-light transition-colors">
-                        Cancel
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Rate change history (collapsible) */}
-      <div className="admin-card !p-0 overflow-hidden">
-        <button
-          className="w-full px-5 py-4 flex items-center justify-between hover:bg-surface-2 transition-colors text-left"
-          onClick={() => { setHistoryOpen(h => !h); if (!historyOpen) loadHistory() }}
-        >
-          <div className="flex items-center gap-2.5">
-            <History size={15} className="text-text-muted" />
-            <span className="text-sm font-semibold text-text-primary">Rate Change History</span>
-          </div>
-          {historyOpen
-            ? <ChevronUp size={16} className="text-text-muted" />
-            : <ChevronDown size={16} className="text-text-muted" />}
-        </button>
-        {historyOpen && (
-          historyLoading ? (
-            <div className="border-t border-border">
-              <table className="data-table"><tbody><SkeletonRows cols={5} n={4} /></tbody></table>
+      {/* ── Surge Events tab ──────────────────────────────────────────────── */}
+      {activeTab === 'surge' && (
+        <div className="space-y-5">
+          {activeSurges.length > 0 && (
+            <div className="bg-warning-light border border-warning/20 rounded-2xl px-5 py-4 flex items-center gap-3">
+              <AlertTriangle size={18} className="text-warning flex-shrink-0" />
+              <p className="text-sm font-semibold text-warning">
+                {activeSurges.length} active surge event{activeSurges.length > 1 ? 's' : ''} — fares are currently elevated
+              </p>
             </div>
-          ) : history.length === 0 ? (
-            <p className="border-t border-border px-5 py-8 text-center text-text-muted text-sm">
-              No rate changes recorded yet.
-            </p>
-          ) : (
-            <div className="border-t border-border">
+          )}
+          <div className="admin-card !p-0 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-border bg-surface-2 flex items-center gap-2.5">
+              <Zap size={14} className="text-warning" />
+              <h3 className="text-sm font-semibold text-text-primary">All Surge Events</h3>
+            </div>
+            {surges.length === 0 ? (
+              <p className="px-5 py-8 text-center text-text-muted text-sm">
+                No surge events scheduled. Use the button above to create one.
+              </p>
+            ) : (
               <table className="data-table">
                 <thead>
-                  <tr>
-                    <th>Category</th>
-                    <th>Ride Type</th>
-                    <th>Per KM</th>
-                    <th>Reason</th>
-                    <th>Changed</th>
-                  </tr>
+                  <tr>{['City', 'Category', 'Multiplier', 'Reason', 'Status', 'Starts', 'Ends', ''].map(h => <th key={h}>{h}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {history.map(h => (
-                    <tr key={h.id} className="cursor-default">
-                      <td className="font-medium text-text-primary">{h.category_name}</td>
-                      <td>{RIDE_TYPE_LABEL[h.ride_type] ?? h.ride_type}</td>
-                      <td className="font-mono font-semibold text-text-primary">{fmt(h.rate_per_km)}</td>
-                      <td className="max-w-[240px] truncate">{h.change_reason ?? '—'}</td>
-                      <td className="text-xs">{new Date(h.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                  {surges.map(s => (
+                    <tr key={s.id} className="cursor-default">
+                      <td className="font-medium text-text-primary">{s.city_name}</td>
+                      <td>{s.category_name ?? 'All'}</td>
+                      <td><span className="font-mono font-bold text-warning">{parseFloat(s.multiplier).toFixed(2)}×</span></td>
+                      <td className="max-w-[160px] truncate">{s.reason ?? '—'}</td>
+                      <td><span className={SURGE_STATUS_CLS[s.status] ?? 'pill-muted'}>{s.status.charAt(0).toUpperCase() + s.status.slice(1)}</span></td>
+                      <td className="text-xs">{new Date(s.starts_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                      <td className="text-xs">{new Date(s.ends_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                      <td>
+                        {(s.status === 'scheduled' || s.status === 'active') && (
+                          <button onClick={() => cancelSurge(s.id)}
+                            className="text-xs text-danger font-semibold px-2.5 py-1 rounded-lg hover:bg-danger-light transition-colors">
+                            Cancel
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Rental Packages tab ───────────────────────────────────────────── */}
+      {activeTab === 'rental' && (
+        <div className="space-y-5">
+          {/* Stats row */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="admin-card flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-primary-light flex items-center justify-center flex-shrink-0">
+                <Package size={18} className="text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-text-primary">{rentalLoading ? '—' : rentalPkgs.length}</p>
+                <p className="text-xs text-text-muted mt-0.5">Total packages</p>
+              </div>
             </div>
-          )
-        )}
-      </div>
+            <div className="admin-card flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-success-light flex items-center justify-center flex-shrink-0">
+                <Package size={18} className="text-success" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-text-primary">{rentalLoading ? '—' : activeRentalCount}</p>
+                <p className="text-xs text-text-muted mt-0.5">Active</p>
+              </div>
+            </div>
+            <div className="admin-card flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0">
+                <Package size={18} className="text-text-muted" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-text-primary">{rentalLoading ? '—' : inactiveRentalCount}</p>
+                <p className="text-xs text-text-muted mt-0.5">Inactive</p>
+              </div>
+            </div>
+          </div>
+
+          {rentalError ? (
+            <div className="admin-card text-center py-8">
+              <p className="text-text-muted mb-3">{rentalError}</p>
+              <button onClick={() => setRentalRetry(r => r + 1)} className="btn-secondary">Retry</button>
+            </div>
+          ) : rentalLoading ? (
+            <div className="admin-card !p-0 overflow-hidden">
+              <table className="data-table"><tbody><SkeletonRows cols={7} n={8} /></tbody></table>
+            </div>
+          ) : rentalPkgs.length === 0 ? (
+            <div className="admin-card text-center py-12">
+              <Package size={32} className="text-text-muted mx-auto mb-3" />
+              <p className="font-semibold text-text-primary mb-1">No rental packages yet</p>
+              <p className="text-sm text-text-muted">Create the first package using the button above.</p>
+            </div>
+          ) : (
+            CATEGORY_ORDER.map(slug => {
+              const rows = rentalGrouped[slug]
+              if (!rows?.length) return null
+              const catName = rows[0]?.category_name ?? slug
+              return (
+                <div key={slug} className="admin-card !p-0 overflow-hidden">
+                  <div className="px-5 py-3.5 border-b border-border bg-surface-2 flex items-center gap-2.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    <h3 className="text-sm font-semibold text-text-primary">{catName}</h3>
+                    <span className="ml-auto text-xs text-text-muted">
+                      {rows.filter(r => r.is_active).length}/{rows.length} active
+                    </span>
+                  </div>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Duration</th>
+                        <th>KM Limit</th>
+                        <th className="!text-right">Package Fare</th>
+                        <th className="!text-right">Extra/km</th>
+                        <th className="!text-right">Extra/min</th>
+                        <th className="!text-center">Active</th>
+                        <th className="!text-right">Edit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(pkg => (
+                        <tr key={pkg.id} className={`cursor-default ${!pkg.is_active ? 'opacity-50' : ''}`}>
+                          <td className="font-semibold text-text-primary">
+                            {pkg.duration_hours} hr{pkg.duration_hours > 1 ? 's' : ''}
+                          </td>
+                          <td className="text-text-secondary">{pkg.km_limit} km</td>
+                          <td className="!text-right font-mono font-bold text-text-primary">{numFmt(pkg.package_fare)}</td>
+                          <td className="!text-right font-mono text-text-secondary">{numFmt(pkg.extra_per_km)}</td>
+                          <td className="!text-right font-mono text-text-muted">{numFmt(pkg.extra_per_min)}</td>
+                          <td className="!text-center">
+                            <Toggle
+                              value={pkg.is_active}
+                              onChange={() => void toggleRentalPackage(pkg)}
+                              disabled={toggling === pkg.id}
+                            />
+                          </td>
+                          <td className="!text-right">
+                            <EditRentalPackageDialog pkg={pkg} onUpdated={fetchRental} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
     </div>
   )
-}
-
-// Inline ride type badge — avoids shared StatusPill for ride type display in table context
-function StatusPillRideType({ type }: { type: string }) {
-  const cls = type === 'one_way' ? 'pill-info' : type === 'round_trip' ? 'pill-purple' : 'pill-muted'
-  return <span className={cls}>{RIDE_TYPE_LABEL[type] ?? type}</span>
 }

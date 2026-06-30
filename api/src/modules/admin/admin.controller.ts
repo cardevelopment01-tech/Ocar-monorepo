@@ -361,12 +361,47 @@ export async function resolveAdminDispute(req: Request, res: Response, next: Nex
 
 export async function getAdminRides(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const q: { status?: string; search?: string; page?: number; limit?: number } = {}
-    if (req.query['status']) q.status = req.query['status'] as string
-    if (req.query['search']) q.search = req.query['search'] as string
-    if (req.query['page'])   q.page   = parseInt(req.query['page'] as string, 10)
-    if (req.query['limit'])  q.limit  = parseInt(req.query['limit'] as string, 10)
+    const q: { status?: string; ride_type?: string; search?: string; page?: number; limit?: number } = {}
+    if (req.query['status'])    q.status    = req.query['status'] as string
+    if (req.query['ride_type']) q.ride_type = req.query['ride_type'] as string
+    if (req.query['search'])    q.search    = req.query['search'] as string
+    if (req.query['page'])      q.page      = parseInt(req.query['page'] as string, 10)
+    if (req.query['limit'])     q.limit     = parseInt(req.query['limit'] as string, 10)
     res.json(await service.listAdminRides(q))
+  } catch (err) { next(err) }
+}
+
+// ─── Admin Rental Packages ────────────────────────────────────────────────────
+
+export async function getAdminRentalPackages(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json(await service.listAdminRentalPackages())
+  } catch (err) { next(err) }
+}
+
+export async function patchAdminRentalPackage(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { package_fare, extra_per_km, extra_per_min, is_active } = req.body as Record<string, unknown>
+    const fields: { package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean } = {}
+    if (package_fare  !== undefined) fields.package_fare  = Number(package_fare)
+    if (extra_per_km  !== undefined) fields.extra_per_km  = Number(extra_per_km)
+    if (extra_per_min !== undefined) fields.extra_per_min = Number(extra_per_min)
+    if (is_active     !== undefined) fields.is_active     = Boolean(is_active)
+    res.json(await service.updateAdminRentalPackage(BigInt(req.params['id']!), fields, req.admin!.id))
+  } catch (err) { next(err) }
+}
+
+export async function postAdminRentalPackage(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { category_id, duration_hours, package_fare, extra_per_km, extra_per_min } = req.body as Record<string, unknown>
+    const pkg = await service.createAdminRentalPackage({
+      category_id:    Number(category_id),
+      duration_hours: Number(duration_hours),
+      package_fare:   Number(package_fare),
+      extra_per_km:   Number(extra_per_km),
+      extra_per_min:  Number(extra_per_min),
+    }, req.admin!.id)
+    res.status(201).json(pkg)
   } catch (err) { next(err) }
 }
 

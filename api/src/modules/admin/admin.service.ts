@@ -212,15 +212,57 @@ export async function cancelAdminSurgeEvent(id: bigint, adminId: bigint) {
 // ─── Rides / Users / Payments ─────────────────────────────────────────────────
 
 export async function listAdminRides(query: {
-  status?: string; search?: string; page?: number; limit?: number
+  status?: string; ride_type?: string; search?: string; page?: number; limit?: number
 }) {
   const limit = Math.min(query.limit ?? 20, 100)
   const page  = Math.max(query.page ?? 1, 1)
-  const q: { status?: string; search?: string; limit: number; offset: number } = { limit, offset: (page - 1) * limit }
-  if (query.status !== undefined) q.status = query.status
-  if (query.search !== undefined) q.search = query.search
+  const q: { status?: string; ride_type?: string; search?: string; limit: number; offset: number } = { limit, offset: (page - 1) * limit }
+  if (query.status    !== undefined) q.status    = query.status
+  if (query.ride_type !== undefined) q.ride_type = query.ride_type
+  if (query.search    !== undefined) q.search    = query.search
   const { rows, total } = await repo.listAdminRides(q)
   return { rides: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
+}
+
+// ─── Rental Packages ──────────────────────────────────────────────────────────
+
+const VALID_DURATIONS = new Set([1, 2, 4, 6, 8, 10])
+
+export async function listAdminRentalPackages() {
+  return repo.listAdminRentalPackages()
+}
+
+export async function updateAdminRentalPackage(
+  id: bigint,
+  body: { package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean },
+  adminId: bigint,
+) {
+  if (body.package_fare  !== undefined && (isNaN(body.package_fare)  || body.package_fare  <= 0))
+    throw Object.assign(new Error('package_fare must be > 0'), { statusCode: 400 })
+  if (body.extra_per_km  !== undefined && (isNaN(body.extra_per_km)  || body.extra_per_km  <= 0))
+    throw Object.assign(new Error('extra_per_km must be > 0'), { statusCode: 400 })
+  if (body.extra_per_min !== undefined && (isNaN(body.extra_per_min) || body.extra_per_min < 0))
+    throw Object.assign(new Error('extra_per_min must be >= 0'), { statusCode: 400 })
+
+  const pkg = await repo.updateAdminRentalPackage(id, body, adminId)
+  if (!pkg) throw Object.assign(new Error('Rental package not found'), { statusCode: 404 })
+  return pkg
+}
+
+export async function createAdminRentalPackage(
+  body: { category_id: number; duration_hours: number; package_fare: number; extra_per_km: number; extra_per_min: number },
+  adminId: bigint,
+) {
+  if (!VALID_DURATIONS.has(body.duration_hours))
+    throw Object.assign(new Error('duration_hours must be one of 1, 2, 4, 6, 8, 10'), { statusCode: 400 })
+  if (isNaN(body.package_fare)  || body.package_fare  <= 0)
+    throw Object.assign(new Error('package_fare must be > 0'), { statusCode: 400 })
+  if (isNaN(body.extra_per_km)  || body.extra_per_km  <= 0)
+    throw Object.assign(new Error('extra_per_km must be > 0'), { statusCode: 400 })
+  if (isNaN(body.extra_per_min) || body.extra_per_min < 0)
+    throw Object.assign(new Error('extra_per_min must be >= 0'), { statusCode: 400 })
+
+  return repo.createAdminRentalPackage(body, adminId)
 }
 
 export async function listAdminUsers(query: {

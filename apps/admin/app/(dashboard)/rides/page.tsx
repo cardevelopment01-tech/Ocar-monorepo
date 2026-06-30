@@ -40,6 +40,7 @@ export default function RidesPage() {
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [rideTypeFilter, setRideTypeFilter] = useState('')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
@@ -54,10 +55,11 @@ export default function RidesPage() {
   const fetchRides = useCallback(async () => {
     setLoading(true)
     try {
-      const params: Record<string, unknown> = { page, limit: LIMIT }
-      if (statusFilter) params['status'] = statusFilter
-      if (debouncedSearch) params['search'] = debouncedSearch
-      const data = await adminRideApi.list(params as Parameters<typeof adminRideApi.list>[0])
+      const params: Parameters<typeof adminRideApi.list>[0] = { page, limit: LIMIT }
+      if (statusFilter)    params.status    = statusFilter
+      if (rideTypeFilter)  params.ride_type = rideTypeFilter
+      if (debouncedSearch) params.search    = debouncedSearch
+      const data = await adminRideApi.list(params)
       setRides(data.rides)
       setTotal(data.pagination.total)
       setPages(data.pagination.pages)
@@ -66,7 +68,7 @@ export default function RidesPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, statusFilter, debouncedSearch])
+  }, [page, statusFilter, rideTypeFilter, debouncedSearch])
 
   useEffect(() => { void fetchRides() }, [fetchRides])
 
@@ -139,19 +141,31 @@ export default function RidesPage() {
             search={search}
             onSearch={setSearch}
             searchPlaceholder="Search by user name or phone…"
-            filters={[{
-              key: 'status', label: 'All Statuses',
-              options: [
-                { value: 'requested',   label: 'Requested'   },
-                { value: 'accepted',    label: 'Accepted'    },
-                { value: 'arrived',     label: 'Arrived'     },
-                { value: 'in_progress', label: 'In Progress' },
-                { value: 'completed',   label: 'Completed'   },
-                { value: 'cancelled',   label: 'Cancelled'   },
-              ],
-              value: statusFilter,
-              onChange: (v) => { setStatusFilter(v); setPage(1) },
-            }]}
+            filters={[
+              {
+                key: 'status', label: 'All Statuses',
+                options: [
+                  { value: 'requested',   label: 'Requested'   },
+                  { value: 'accepted',    label: 'Accepted'    },
+                  { value: 'arrived',     label: 'Arrived'     },
+                  { value: 'in_progress', label: 'In Progress' },
+                  { value: 'completed',   label: 'Completed'   },
+                  { value: 'cancelled',   label: 'Cancelled'   },
+                ],
+                value: statusFilter,
+                onChange: (v) => { setStatusFilter(v); setPage(1) },
+              },
+              {
+                key: 'ride_type', label: 'All Types',
+                options: [
+                  { value: 'one_way',    label: 'One Way'     },
+                  { value: 'round_trip', label: 'Round Trip'  },
+                  { value: 'rental',     label: 'Rental'      },
+                ],
+                value: rideTypeFilter,
+                onChange: (v) => { setRideTypeFilter(v); setPage(1) },
+              },
+            ]}
             onExport={() => {}}
           />
         </div>

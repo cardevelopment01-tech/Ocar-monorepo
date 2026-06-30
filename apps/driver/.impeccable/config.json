@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "reason": "DESIGN.md documents Inter as the deliberate one-family system for Ocar — geometric precision + humanist warmth, no second font across all three apps",
+        "createdAt": "2026-06-24T12:21:55.526Z"
+      }
+    ]
+  }
+}

@@ -74,3 +74,28 @@ export const pricingApi = {
   cancelSurgeEvent: (id: number) =>
     api.patch(`/api/v1/admin/pricing/surge/${id}/cancel`).then(r => r.data),
 }
+
+export interface RentalPackageAdmin {
+  id: number
+  category_id: number
+  category_name: string
+  category_slug: string
+  duration_hours: number
+  km_limit: number
+  package_fare: string
+  extra_per_km: string
+  extra_per_min: string
+  is_active: boolean
+  updated_at: string
+}
+
+export const rentalPackageApi = {
+  list: (): Promise<RentalPackageAdmin[]> =>
+    api.get('/api/v1/admin/pricing/rental-packages').then(r => r.data as RentalPackageAdmin[]),
+
+  update: (id: number, data: { package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean }): Promise<RentalPackageAdmin> =>
+    api.patch(`/api/v1/admin/pricing/rental-packages/${id}`, data).then(r => r.data as RentalPackageAdmin),
+
+  create: (data: { category_id: number; duration_hours: number; package_fare: number; extra_per_km: number; extra_per_min: number }): Promise<RentalPackageAdmin> =>
+    api.post('/api/v1/admin/pricing/rental-packages', data).then(r => r.data as RentalPackageAdmin),
+}

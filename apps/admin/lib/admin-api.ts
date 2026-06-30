@@ -141,7 +141,7 @@ export interface AdminRidesResponse {
 }
 
 export const adminRideApi = {
-  list: async (params: { status?: string; search?: string; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
+  list: async (params: { status?: string; ride_type?: string; search?: string; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
     const res = await api.get('/api/v1/admin/rides', { params })
     return res.data as AdminRidesResponse
   },

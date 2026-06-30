@@ -3,7 +3,7 @@ import type {
   AdminDriverListRow, AdminDriverDetail, DriverStatus,
   AdminVehicleCategory, AdminVehicleBrand, AdminVehicleModel,
   FleetVehicle, PendingVehicleDoc, ExpiringVehicleDoc,
-  AdminCity, AdminDashboardStats, ActiveDriverSession,
+  AdminCity, AdminDashboardStats, ActiveDriverSession, AdminRentalPackage,
 } from './admin.types'
 
 export async function listDrivers(filters: {
@@ -714,6 +714,7 @@ export async function cancelAdminSurgeEvent(id: bigint, adminId: bigint) {
 
 export async function listAdminRides(filters: {
   status?: string
+  ride_type?: string
   search?: string
   limit: number
   offset: number
@@ -725,6 +726,10 @@ export async function listAdminRides(filters: {
   if (filters.status) {
     conditions.push(`r.status = $${p++}`)
     params.push(filters.status)
+  }
+  if (filters.ride_type) {
+    conditions.push(`r.ride_type = $${p++}`)
+    params.push(filters.ride_type)
   }
   if (filters.search) {
     conditions.push(`(u.name ILIKE $${p} OR u.phone ILIKE $${p} OR r.id::text = $${p})`)
@@ -759,6 +764,74 @@ export async function listAdminRides(filters: {
   )
 
   return { rows: dataRes.rows, total }
+}
+
+// ─── Rental Packages (admin CRUD) ────────────────────────────────────────────
+
+export async function listAdminRentalPackages() {
+  const res = await pool.query(
+    `SELECT rp.id, rp.category_id, vc.display_name AS category_name, vc.slug AS category_slug,
+            rp.duration_hours, rp.km_limit,
+            rp.package_fare::text, rp.extra_per_km::text, rp.extra_per_min::text,
+            rp.is_active, rp.updated_by, rp.created_at, rp.updated_at
+     FROM rental_packages rp
+     JOIN vehicle_categories vc ON vc.id = rp.category_id
+     ORDER BY vc.display_name, rp.duration_hours`
+  )
+  return res.rows as AdminRentalPackage[]
+}
+
+export async function updateAdminRentalPackage(
+  id: bigint,
+  fields: { package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean },
+  adminId: bigint,
+) {
+  const sets: string[] = []
+  const params: unknown[] = []
+  let p = 1
+
+  if (fields.package_fare  !== undefined) { sets.push(`package_fare  = $${p++}`); params.push(fields.package_fare) }
+  if (fields.extra_per_km  !== undefined) { sets.push(`extra_per_km  = $${p++}`); params.push(fields.extra_per_km) }
+  if (fields.extra_per_min !== undefined) { sets.push(`extra_per_min = $${p++}`); params.push(fields.extra_per_min) }
+  if (fields.is_active     !== undefined) { sets.push(`is_active     = $${p++}`); params.push(fields.is_active) }
+
+  sets.push(`updated_by = $${p++}`)
+  params.push(adminId)
+  params.push(id)
+
+  const res = await pool.query(
+    `UPDATE rental_packages SET ${sets.join(', ')} WHERE id = $${p} RETURNING
+       id, category_id, duration_hours, km_limit,
+       package_fare::text, extra_per_km::text, extra_per_min::text,
+       is_active, updated_by, created_at, updated_at`,
+    params,
+  )
+  return res.rows[0] as AdminRentalPackage | undefined
+}
+
+export async function createAdminRentalPackage(
+  fields: {
+    category_id: number
+    duration_hours: number
+    package_fare: number
+    extra_per_km: number
+    extra_per_min: number
+  },
+  adminId: bigint,
+) {
+  const km_limit = fields.duration_hours * 10
+  const res = await pool.query(
+    `INSERT INTO rental_packages
+       (category_id, duration_hours, km_limit, package_fare, extra_per_km, extra_per_min, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING
+       id, category_id, duration_hours, km_limit,
+       package_fare::text, extra_per_km::text, extra_per_min::text,
+       is_active, updated_by, created_at, updated_at`,
+    [fields.category_id, fields.duration_hours, km_limit,
+     fields.package_fare, fields.extra_per_km, fields.extra_per_min, adminId],
+  )
+  return res.rows[0] as AdminRentalPackage
 }
 
 // ─── Users (admin listing + status update) ────────────────────────────────────

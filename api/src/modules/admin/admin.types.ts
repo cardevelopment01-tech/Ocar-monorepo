@@ -206,6 +206,24 @@ export interface ActiveDriverSession {
   destination_address: string | null
 }
 
+// ─── Rental packages ──────────────────────────────────────────────────────────
+
+export interface AdminRentalPackage {
+  id: number
+  category_id: number
+  category_name?: string
+  category_slug?: string
+  duration_hours: number
+  km_limit: number
+  package_fare: string
+  extra_per_km: string
+  extra_per_min: string
+  is_active: boolean
+  updated_by: number | null
+  created_at: string
+  updated_at: string
+}
+
 // ─── Dashboard stats ──────────────────────────────────────────────────────────
 
 export interface AdminDashboardStats {
