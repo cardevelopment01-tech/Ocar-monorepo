@@ -46,7 +46,9 @@ function SelectRideContent() {
   const encodedPolyline    = sp.get('polyline') ?? undefined
 
   const [categories]    = useState<Category[]>(FALLBACK_CATEGORIES)
-  const [rideType,      setRideType]      = useState<'one_way' | 'round_trip'>('one_way')
+  const [rideType,      setRideType]      = useState<'one_way' | 'round_trip'>(
+    () => sp.get('rideType') === 'round_trip' ? 'round_trip' : 'one_way'
+  )
   const [returnAt,      setReturnAt]      = useState<Date | null>(null)
   const [estimates,     setEstimates]     = useState<Record<number, FareEstimate>>({})
   const [loading,       setLoading]       = useState(true)

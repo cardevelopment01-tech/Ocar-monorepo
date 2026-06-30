@@ -90,6 +90,47 @@ describe('calculateFare', () => {
     expect(result.total).toBe(355.00)
   })
 
+  it('rental: surge applied on top of package_fare + overage', () => {
+    const result = calculateFare({
+      rate_card: sedanCard, ride_type: 'rental', is_return_cab: false,
+      estimated_km: 20, estimated_min: 120,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 0, surge_multiplier: 1.5,
+      package_fare: 200.00, extra_per_km: 10.00, extra_per_min: 1.00,
+      overage_km: 10, overage_min: 0,
+    })
+    // subtotal = 200 + 10×10 = 300; surge = 300×0.5 = 150; total = 450
+    expect(result.overage_fare).toBe(100.00)
+    expect(result.surge_fare).toBe(150.00)
+    expect(result.total).toBe(450.00)
+  })
+
+  it('rental: zero-distance booking (estimate at booking time) uses package_fare only', () => {
+    const result = calculateFare({
+      rate_card: sedanCard, ride_type: 'rental', is_return_cab: false,
+      estimated_km: 0, estimated_min: 0,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 0, surge_multiplier: 1.0,
+      package_fare: 350.00, extra_per_km: 12.00, extra_per_min: 1.50,
+      overage_km: 0, overage_min: 0,
+    })
+    // At booking time distance=0 — no distance/time fare, just package
+    expect(result.distance_fare).toBe(0)
+    expect(result.time_fare).toBe(0)
+    expect(result.overage_fare).toBe(0)
+    expect(result.total).toBe(350.00)
+  })
+
+  it('rental: missing package_fare falls back to distance+time fare', () => {
+    const result = calculateFare({
+      rate_card: sedanCard, ride_type: 'rental', is_return_cab: false,
+      estimated_km: 15, estimated_min: 28,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 0, surge_multiplier: 1.0,
+      // no package_fare supplied → falls back to distance+time
+    })
+    // 15×10 + 28×1.2 = 150+33.6 = 183.6 ≥ min_fare 80
+    expect(result.total).toBe(183.60)
+    expect(result.overage_fare).toBe(0)
+  })
+
   it('round_trip: hour_rate applied', () => {
     const result = calculateFare({
       rate_card: sedanCard, ride_type: 'round_trip', is_return_cab: false,

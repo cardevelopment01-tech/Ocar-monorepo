@@ -60,6 +60,18 @@ export type RideHistoryResponse = {
   pagination: { total: number; page: number; limit: number; pages: number }
 }
 
+export type RentalPackage = {
+  id: number
+  category_id: number
+  category_name: string
+  duration_hours: number
+  km_limit: number
+  package_fare: number
+  extra_per_km: number
+  extra_per_min: number
+  is_active: boolean
+}
+
 export const rideApi = {
   getEstimate: async (params: {
     categoryId: number
@@ -138,6 +150,11 @@ export const rideApi = {
   getNearbyDrivers: async (lat: number, lng: number): Promise<Array<{ driver_id: string; lat: number; lng: number; category_id: number }>> => {
     const res = await api.get('/api/v1/rides/nearby-drivers', { params: { lat, lng } })
     return (res.data as { drivers: Array<{ driver_id: string; lat: number; lng: number; category_id: number }> }).drivers ?? []
+  },
+
+  getRentalPackages: async (categoryId: number): Promise<RentalPackage[]> => {
+    const res = await api.get(`/api/v1/pricing/rental-packages/${categoryId}`)
+    return res.data as RentalPackage[]
   },
 
   demoForce: async (rideId: string, action: 'complete' | 'cancel'): Promise<void> => {

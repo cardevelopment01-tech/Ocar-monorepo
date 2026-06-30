@@ -122,8 +122,13 @@ export default function HomePage() {
     )
   }, [])
 
-  function toSearch() {
-    router.push(`/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}`)
+  function toSearch(rideType?: 'round_trip') {
+    const base = `/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}`
+    router.push(rideType ? `${base}&rideType=${rideType}` : base)
+  }
+
+  function toRental() {
+    router.push(`/rental?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&originCityId=1`)
   }
 
   async function toRide(destLabel: string, dLat: number, dLng: number) {
@@ -315,7 +320,7 @@ export default function HomePage() {
 
         {/* Search bar — always visible */}
         <motion.button
-          onClick={toSearch}
+          onClick={() => toSearch()}
           className="w-full flex items-center gap-3 bg-white rounded-2xl px-4"
           style={{ paddingTop: 14, paddingBottom: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.26)' }}
           initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, filter: 'blur(4px)' }}
@@ -362,7 +367,11 @@ export default function HomePage() {
               {SERVICES.map(s => (
                 <motion.button
                   key={s.id}
-                  onClick={toSearch}
+                  onClick={
+                    s.id === 'rental' ? toRental :
+                    s.id === 'return' ? () => toSearch('round_trip') :
+                    () => toSearch()
+                  }
                   className="flex flex-col items-center gap-2 py-4 bg-surface border border-border rounded-2xl"
                   style={{ boxShadow: SHADOW }}
                   variants={cardV}
@@ -426,7 +435,7 @@ export default function HomePage() {
                   return (
                     <motion.button
                       key={r.id}
-                      onClick={toSearch}
+                      onClick={() => toSearch()}
                       className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < recentTrips.length - 1 ? ' border-b border-border' : ''}`}
                       variants={row}
                       whileTap={{ backgroundColor: '#F8FAFF' }}

@@ -62,6 +62,8 @@ function SearchContent() {
     return null
   })
 
+  const rideType = sp.get('rideType') ?? undefined
+
   const [mode, setMode] = useState<EditMode>(() => {
     const focus = sp.get('focus')
     if (focus === 'origin' || focus === 'destination') return focus as EditMode
@@ -231,6 +233,7 @@ function SearchContent() {
         originCityId:       '1',
       })
       if (route.polyline) params.set('polyline', route.polyline)
+      if (rideType)      params.set('rideType', rideType)
       if (useReplace) router.replace(`/select-ride?${params.toString()}`)
       else             router.push(`/select-ride?${params.toString()}`)
     } catch {
