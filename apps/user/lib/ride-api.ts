@@ -68,18 +68,22 @@ export const rideApi = {
     distanceKm: number
     durationMin: number
     stopCount?: number
+    tripHours?: number
+    rentalPackageId?: number
     originCityId?: number
   }): Promise<FareEstimate> => {
-    const res = await api.post('/api/v1/pricing/estimate', {
+    const body: Record<string, unknown> = {
       category_id:   params.categoryId,
       ride_type:     params.rideType,
       is_return_cab: params.isReturnCab ?? false,
       distance_km:   params.distanceKm,
       duration_min:  params.durationMin,
       stop_count:    params.stopCount ?? 0,
-      trip_hours:    0,
+      trip_hours:    params.tripHours ?? 0,
       city_id:       params.originCityId,
-    })
+    }
+    if (params.rentalPackageId !== undefined) body['rental_package_id'] = params.rentalPackageId
+    const res = await api.post('/api/v1/pricing/estimate', body)
     return res.data as FareEstimate
   },
 
@@ -90,29 +94,34 @@ export const rideApi = {
     originLat: number
     originLng: number
     originAddress: string
-    destinationLat: number
-    destinationLng: number
-    destinationAddress: string
+    destinationLat?: number
+    destinationLng?: number
+    destinationAddress?: string
     distanceKm: number
     durationMin: number
+    tripHours?: number
+    rentalPackageId?: number
     originCityId?: number
     destinationCityId?: number
   }): Promise<BookingResult> => {
-    const res = await api.post('/api/v1/rides', {
-      categoryId:          params.categoryId,
-      rideType:            params.rideType,
-      isReturnCab:         params.isReturnCab ?? false,
-      originLat:           params.originLat,
-      originLng:           params.originLng,
-      originAddress:       params.originAddress,
-      destinationLat:      params.destinationLat,
-      destinationLng:      params.destinationLng,
-      destinationAddress:  params.destinationAddress,
-      distanceKm:          params.distanceKm,
-      durationMin:         params.durationMin,
-      originCityId:        params.originCityId,
-      destinationCityId:   params.destinationCityId,
-    })
+    const body: Record<string, unknown> = {
+      categoryId:    params.categoryId,
+      rideType:      params.rideType,
+      isReturnCab:   params.isReturnCab ?? false,
+      originLat:     params.originLat,
+      originLng:     params.originLng,
+      originAddress: params.originAddress,
+      distanceKm:    params.distanceKm,
+      durationMin:   params.durationMin,
+    }
+    if (params.destinationLat      !== undefined) body['destinationLat']      = params.destinationLat
+    if (params.destinationLng      !== undefined) body['destinationLng']      = params.destinationLng
+    if (params.destinationAddress  !== undefined) body['destinationAddress']  = params.destinationAddress
+    if (params.tripHours           !== undefined) body['tripHours']           = params.tripHours
+    if (params.rentalPackageId     !== undefined) body['rentalPackageId']     = params.rentalPackageId
+    if (params.originCityId        !== undefined) body['originCityId']        = params.originCityId
+    if (params.destinationCityId   !== undefined) body['destinationCityId']   = params.destinationCityId
+    const res = await api.post('/api/v1/rides', body)
     return res.data as BookingResult
   },
 

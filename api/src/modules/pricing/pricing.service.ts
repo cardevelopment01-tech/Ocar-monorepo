@@ -2,6 +2,16 @@ import * as repo from './pricing.repository'
 import { estimateFare } from '@/lib/fare'
 import type { FareEstimateRequest, FareEstimateResponse } from './pricing.types'
 
+/**
+ * Round trips have a minimum 4-hour window (driver waits at destination).
+ * Raw hours from the client are fractional; we ceil to whole hours.
+ * One-way and rental rides pass through unchanged.
+ */
+export function clampTripHours(rideType: string, tripHours: number | undefined): number {
+  if (rideType === 'round_trip') return Math.max(4, Math.ceil(tripHours ?? 0))
+  return tripHours ?? 0
+}
+
 export async function getFareEstimate(
   req: FareEstimateRequest
 ): Promise<FareEstimateResponse> {
@@ -50,7 +60,7 @@ export async function getFareEstimate(
     duration_min:     req.duration_min,
     stop_count:       req.stop_count  ?? 0,
     charge_per_stop:  chargePerStop,
-    trip_hours:       req.trip_hours  ?? 0,
+    trip_hours:       clampTripHours(req.ride_type, req.trip_hours),
     surge_multiplier: surgeMultiplier,
     package_fare:     packageFare,
     extra_per_km:     extraPerKm,

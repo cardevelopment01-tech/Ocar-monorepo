@@ -100,4 +100,49 @@ describe('calculateFare', () => {
     expect(result.hour_surcharge).toBe(72.00)
     expect(result.total).toBe(255.60)
   })
+
+  it('round_trip: trip_hours=0 produces no hour_surcharge (clamp is service responsibility)', () => {
+    const result = calculateFare({
+      rate_card: sedanCard, ride_type: 'round_trip', is_return_cab: false,
+      estimated_km: 15, estimated_min: 28,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 0, surge_multiplier: 1.0,
+    })
+    // calculateFare is pure — it does not clamp; clampTripHours in pricing.service does
+    expect(result.hour_surcharge).toBe(0)
+    expect(result.total).toBe(183.60)
+  })
+
+  it('round_trip: fractional trip_hours used as-is (no rounding in calculateFare)', () => {
+    const result = calculateFare({
+      rate_card: sedanCard, ride_type: 'round_trip', is_return_cab: false,
+      estimated_km: 15, estimated_min: 28,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 5.5, surge_multiplier: 1.0,
+    })
+    // 183.6 + 5.5×18 = 183.6+99 = 282.6
+    expect(result.hour_surcharge).toBe(99.00)
+    expect(result.total).toBe(282.60)
+  })
+
+  it('round_trip: hour_surcharge + surge applied in correct order', () => {
+    const result = calculateFare({
+      rate_card: sedanCard, ride_type: 'round_trip', is_return_cab: false,
+      estimated_km: 15, estimated_min: 28,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 6, surge_multiplier: 1.5,
+    })
+    // subtotal = 183.6 + 6×18 = 291.6; surge = 291.6×0.5 = 145.8; total = 437.4
+    expect(result.hour_surcharge).toBe(108.00)
+    expect(result.surge_fare).toBe(145.80)
+    expect(result.total).toBe(437.40)
+  })
+
+  it('round_trip: card without hour_rate produces no hour_surcharge', () => {
+    const cardNoHourRate = { ...sedanCard, hour_rate: null }
+    const result = calculateFare({
+      rate_card: cardNoHourRate, ride_type: 'round_trip', is_return_cab: false,
+      estimated_km: 15, estimated_min: 28,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 8, surge_multiplier: 1.0,
+    })
+    expect(result.hour_surcharge).toBe(0)
+    expect(result.total).toBe(183.60)
+  })
 })

@@ -1,7 +1,9 @@
 {
   "detector": {
     "ignoreRules": [],
-    "ignoreFiles": ["apps/driver/src/index.css"],
+    "ignoreFiles": [
+      "apps/driver/src/index.css"
+    ],
     "ignoreValues": [
       {
         "rule": "overused-font",
@@ -107,7 +109,7 @@
       },
       {
         "rule": "design-system-color",
-        "value": "#E2E8F0",
+        "value": "#e2e8f0",
         "reason": "border.DEFAULT token value from tailwind.config.ts — intentional design system border color",
         "createdAt": "2026-06-22T10:00:00.000Z"
       },
@@ -125,13 +127,13 @@
       },
       {
         "rule": "design-system-color",
-        "value": "#EA580C",
+        "value": "#ea580c",
         "reason": "orange-600 — dark end of operational orange gradient (Go Offline button); in-palette, intentional",
         "createdAt": "2026-06-22T10:30:00.000Z"
       },
       {
         "rule": "design-system-color",
-        "value": "#FB923C",
+        "value": "#fb923c",
         "reason": "orange-400 — light end of operational orange bar chart gradient; in-palette, intentional",
         "createdAt": "2026-06-22T10:30:00.000Z"
       },
@@ -176,6 +178,12 @@
         "value": "rgba(0,0,0,0.14)",
         "reason": "Functional bottom-sheet drop shadow — DatePickerSheet dialog, not a brand color",
         "createdAt": "2026-06-22T14:30:00.000Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0,0,0,0.08)",
+        "reason": "Pre-existing intentional bottom-sheet drop shadow in select-ride page",
+        "createdAt": "2026-06-30T15:16:56.494Z"
       }
     ]
   }

@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard, CalendarClock } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -47,6 +47,7 @@ function SelectRideContent() {
 
   const [categories]    = useState<Category[]>(FALLBACK_CATEGORIES)
   const [rideType,      setRideType]      = useState<'one_way' | 'round_trip'>('one_way')
+  const [returnAt,      setReturnAt]      = useState<Date | null>(null)
   const [estimates,     setEstimates]     = useState<Record<number, FareEstimate>>({})
   const [loading,       setLoading]       = useState(true)
   const [selected,      setSelected]      = useState(2)
@@ -88,6 +89,13 @@ function SelectRideContent() {
 
   const center: [number, number] = [(originLat + destinationLat) / 2, (originLng + destinationLng) / 2]
 
+  // Whole-hour ceiling, minimum 4h for round trips (mirrors backend clampTripHours).
+  const tripHours = useMemo(() => {
+    if (rideType !== 'round_trip' || returnAt === null) return undefined
+    const rawHours = (returnAt.getTime() - Date.now()) / 3_600_000
+    return Math.max(4, Math.ceil(rawHours))
+  }, [rideType, returnAt])
+
   const loadEstimates = useCallback(async () => {
     setLoading(true)
     const results: Record<number, FareEstimate> = {}
@@ -97,13 +105,14 @@ function SelectRideContent() {
           results[cat.id] = await rideApi.getEstimate({
             categoryId: cat.id, rideType,
             distanceKm, durationMin, originCityId,
+            tripHours,
           })
         } catch {}
       })
     )
     setEstimates(results)
     setLoading(false)
-  }, [categories, rideType, distanceKm, durationMin, originCityId])
+  }, [categories, rideType, distanceKm, durationMin, originCityId, tripHours])
 
   useEffect(() => { void loadEstimates() }, [loadEstimates])
 
@@ -111,12 +120,15 @@ function SelectRideContent() {
     setIsBooking(true)
     setBookError(null)
     try {
-      const result = await rideApi.createBooking({
+      const bookingParams: Parameters<typeof rideApi.createBooking>[0] = {
         categoryId: selected, rideType,
         originLat, originLng, originAddress,
         destinationLat, destinationLng, destinationAddress,
-        distanceKm, durationMin, originCityId,
-      })
+        distanceKm, durationMin,
+      }
+      if (originCityId)  bookingParams.originCityId = originCityId
+      if (tripHours !== undefined) bookingParams.tripHours = tripHours
+      const result = await rideApi.createBooking(bookingParams)
       router.push(`/ride/${result.rideId}`)
     } catch {
       setBookError('Booking failed. Please try again.')
@@ -195,7 +207,7 @@ function SelectRideContent() {
             {(['one_way', 'round_trip'] as const).map(t => (
               <button
                 key={t}
-                onClick={() => setRideType(t)}
+                onClick={() => { setRideType(t); if (t === 'one_way') setReturnAt(null) }}
                 className={cn(
                   'flex-1 py-1.5 rounded-lg text-[13px] font-semibold transition-all',
                   rideType === t
@@ -207,6 +219,32 @@ function SelectRideContent() {
               </button>
             ))}
           </div>
+
+          {/* Return date/time picker — only shown for round trips */}
+          {rideType === 'round_trip' && (
+            <div className="mt-2 flex items-center gap-2 px-1">
+              <CalendarClock size={14} className="text-violet-500 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-[11px] font-semibold text-slate-500 mb-0.5">Return date &amp; time</p>
+                <input
+                  type="datetime-local"
+                  min={(() => {
+                    const d = new Date(); d.setMinutes(d.getMinutes() + 240)
+                    return d.toISOString().slice(0, 16)
+                  })()}
+                  value={returnAt ? returnAt.toISOString().slice(0, 16) : ''}
+                  onChange={e => setReturnAt(e.target.value ? new Date(e.target.value) : null)}
+                  className="w-full text-[13px] font-semibold text-slate-900 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-200 transition-all"
+                />
+              </div>
+              {tripHours !== undefined && (
+                <div className="flex-shrink-0 text-right">
+                  <p className="text-[11px] text-slate-400">Duration</p>
+                  <p className="text-[13px] font-bold text-violet-700">{tripHours}h</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* No drivers banner */}
@@ -285,11 +323,18 @@ function SelectRideContent() {
                       {loading && fare == null ? (
                         <div className="w-12 h-5 rounded-lg bg-slate-100 animate-pulse" />
                       ) : fare != null ? (
-                        <p className={cn('text-[17px] font-black tabular-nums leading-tight',
-                          active ? 'text-violet-900' : 'text-slate-900'
-                        )}>
-                          ₹<AnimatedNumber value={Math.round(fare)} />
-                        </p>
+                        <div className="text-right">
+                          <p className={cn('text-[17px] font-black tabular-nums leading-tight',
+                            active ? 'text-violet-900' : 'text-slate-900'
+                          )}>
+                            ₹<AnimatedNumber value={Math.round(fare)} />
+                          </p>
+                          {rideType === 'round_trip' && est.breakdown.hour_surcharge > 0 && (
+                            <p className="text-[10px] font-semibold text-violet-400 tabular-nums">
+                              +₹{Math.round(est.breakdown.hour_surcharge)} hrs
+                            </p>
+                          )}
+                        </div>
                       ) : (
                         <p className="text-sm text-slate-400">—</p>
                       )}
@@ -325,7 +370,7 @@ function SelectRideContent() {
           {bookError && <p className="text-red-500 text-sm text-center mb-2">{bookError}</p>}
           <button
             onClick={handleBook}
-            disabled={isBooking || loading || selectedFare == null || allUnavailable || (driverEta[selected]?.count === 0)}
+            disabled={isBooking || loading || selectedFare == null || allUnavailable || (driverEta[selected]?.count === 0) || (rideType === 'round_trip' && returnAt === null)}
             className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
             style={{ background: isBooking ? '#6D28D9' : 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', minHeight: 52 }}
           >

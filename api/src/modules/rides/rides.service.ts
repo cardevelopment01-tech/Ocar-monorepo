@@ -1,6 +1,6 @@
 import { pool } from '@/db/client'
 import * as repo from './rides.repository'
-import { getFareEstimate } from '@/modules/pricing/pricing.service'
+import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES, gpsFlushQueue } from '@/jobs/queues'
 import { socketEvents } from '@/websocket/socket.server'
@@ -167,6 +167,10 @@ export async function updateLocation(driverId: bigint, data: {
 // ── Ride booking ──────────────────────────────────────────────
 
 export async function createBooking(userId: bigint, data: BookingRequest) {
+  // Enforce minimum 4h for round trips — must match pricing.service clamp so
+  // fare_snapshots.trip_hours records the same value used to compute the fare.
+  const effectiveTripHours = clampTripHours(data.rideType, data.tripHours)
+
   const fareReq: FareEstimateRequest = {
     category_id:  data.categoryId,
     ride_type:    data.rideType,
@@ -174,7 +178,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     distance_km:  data.distanceKm,
     duration_min: data.durationMin,
     stop_count:   data.stopCount ?? 0,
-    trip_hours:   data.tripHours ?? 0,
+    trip_hours:   effectiveTripHours,
   }
   if (data.rentalPackageId !== undefined) fareReq.rental_package_id = data.rentalPackageId
   if (data.originCityId   !== undefined) fareReq.city_id            = data.originCityId
@@ -195,7 +199,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   if (data.originCityId       !== undefined) rideInput.originCityId       = BigInt(data.originCityId)
   if (data.destinationCityId  !== undefined) rideInput.destinationCityId  = BigInt(data.destinationCityId)
   if (data.rentalPackageId    !== undefined) rideInput.rentalPackageId    = BigInt(data.rentalPackageId)
-  if (data.tripHours          !== undefined) rideInput.tripHours          = data.tripHours
+  if (effectiveTripHours > 0) rideInput.tripHours = effectiveTripHours
   const ride = await repo.createRide(rideInput)
 
   await pool.query(
@@ -219,7 +223,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
       data.distanceKm,
       data.durationMin,
       data.stopCount ?? 0,
-      data.tripHours ?? 0,
+      effectiveTripHours,
       fareEstimate.breakdown.base_fare,
       fareEstimate.breakdown.distance_fare,
       fareEstimate.breakdown.time_fare,
