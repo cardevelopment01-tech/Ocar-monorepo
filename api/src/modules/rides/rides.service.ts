@@ -74,6 +74,14 @@ export async function goOnline(driverId: bigint, data: {
     isAvailable: true,
   })
 
+  socketEvents.sendAdminDriverUpdate({
+    driverId: String(driverId),
+    lat:      data.lat,
+    lng:      data.lng,
+    heading:  0,
+    speed:    0,
+  })
+
   return session
 }
 

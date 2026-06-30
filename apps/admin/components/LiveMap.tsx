@@ -1,10 +1,9 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import type { Map as LeafletMap } from 'leaflet'
+import type { Map as LeafletMap, Marker } from 'leaflet'
 import { adminSessionsApi, type ActiveDriverSession } from '@/lib/admin-api'
 import { getAdminSocket } from '@/lib/socket'
 
-// Bhubaneswar city centers for quick navigation
 const CITIES = [
   { label: 'Bhubaneswar', lat: 20.2961, lng: 85.8245, zoom: 13 },
   { label: 'Cuttack',     lat: 20.4625, lng: 85.8830, zoom: 13 },
@@ -13,6 +12,7 @@ const CITIES = [
 
 const DEFAULT_CENTER: [number, number] = [20.3493, 85.8412]
 const DEFAULT_ZOOM = 11
+const RECONCILE_INTERVAL_MS = 30_000
 
 type DriverMap = Map<string, ActiveDriverSession>
 
@@ -39,16 +39,18 @@ function markerHtml(session: ActiveDriverSession) {
 }
 
 export default function LiveMap() {
-  const mapRef      = useRef<LeafletMap | null>(null)
-  const mapDivRef   = useRef<HTMLDivElement>(null)
-  const markersRef  = useRef<Map<string, unknown>>(new Map())
-  const [drivers, setDrivers]     = useState<DriverMap>(new Map())
-  const [selected, setSelected]   = useState<ActiveDriverSession | null>(null)
-  const [loading, setLoading]     = useState(true)
+  const mapRef       = useRef<LeafletMap | null>(null)
+  const mapDivRef    = useRef<HTMLDivElement>(null)
+  const markersRef   = useRef<Map<string, Marker>>(new Map())
+  const intervalRef  = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reconcileRef = useRef<(() => Promise<void>) | null>(null)
+
+  const [drivers, setDrivers]         = useState<DriverMap>(new Map())
+  const [selected, setSelected]       = useState<ActiveDriverSession | null>(null)
+  const [loading, setLoading]         = useState(true)
   const [onlineCount, setOnlineCount] = useState(0)
   const [tripCount,   setTripCount]   = useState(0)
 
-  // Update counts whenever drivers map changes
   useEffect(() => {
     let online = 0, onTrip = 0
     drivers.forEach(d => {
@@ -59,7 +61,6 @@ export default function LiveMap() {
     setTripCount(onTrip)
   }, [drivers])
 
-  // Initialize Leaflet map
   useEffect(() => {
     if (typeof window === 'undefined' || !mapDivRef.current) return
     if (mapRef.current) return
@@ -81,43 +82,78 @@ export default function LiveMap() {
 
       mapRef.current = map
 
-      // Load initial sessions
-      try {
-        const sessions = await adminSessionsApi.getActive()
-        const driverMap: DriverMap = new Map()
-        for (const s of sessions) {
-          driverMap.set(s.driver_id, s)
-          if (s.lat != null && s.lng != null) {
-            const icon = L.divIcon({ className: '', html: markerHtml(s), iconSize: [16, 16], iconAnchor: [8, 8] })
-            const marker = L.marker([s.lat, s.lng], { icon })
-              .addTo(map)
-              .on('click', () => setSelected(s))
-            markersRef.current.set(s.driver_id, marker)
+      // Reconcile the full active-sessions list with the current marker set.
+      // Handles new drivers going online, position updates, and drivers going offline.
+      const reconcile = async () => {
+        try {
+          const sessions = await adminSessionsApi.getActive()
+          const nextMap: DriverMap = new Map()
+
+          for (const s of sessions) {
+            nextMap.set(s.driver_id, s)
+            if (s.lat != null && s.lng != null) {
+              const existing = markersRef.current.get(s.driver_id)
+              if (existing) {
+                existing.setLatLng([s.lat, s.lng])
+              } else {
+                const icon = L.divIcon({
+                  className: '',
+                  html: markerHtml(s),
+                  iconSize: [16, 16],
+                  iconAnchor: [8, 8],
+                })
+                const marker = L.marker([s.lat, s.lng], { icon })
+                  .addTo(map)
+                  .on('click', () => setSelected(s))
+                markersRef.current.set(s.driver_id, marker)
+              }
+            }
           }
-        }
-        setDrivers(driverMap)
-      } finally {
-        setLoading(false)
+
+          // Remove markers for drivers that are no longer active
+          for (const [driverId, marker] of markersRef.current) {
+            if (!nextMap.has(driverId)) {
+              marker.remove()
+              markersRef.current.delete(driverId)
+            }
+          }
+
+          setDrivers(nextMap)
+        } catch { /* silent — stale data is better than a crash */ }
       }
 
-      // Subscribe to real-time location updates
+      reconcileRef.current = reconcile
+
+      await reconcile()
+      setLoading(false)
+
+      // Periodic refresh — catches drivers going online/offline between socket events
+      intervalRef.current = setInterval(() => { void reconcile() }, RECONCILE_INTERVAL_MS)
+
+      // Real-time location updates: move known markers immediately; for unknown
+      // drivers (went online after initial load) trigger an early reconcile.
       const socket = getAdminSocket()
       socket.on('driver:location_update', (update: LocationUpdate) => {
-        setDrivers(prev => {
-          const existing = prev.get(update.driverId)
-          if (!existing) return prev
-          const updated = { ...existing, lat: update.lat, lng: update.lng, heading: update.heading }
-          const next = new Map(prev)
-          next.set(update.driverId, updated)
-          return next
-        })
-        // Move existing marker
-        const marker = markersRef.current.get(update.driverId) as { setLatLng?: (ll: [number, number]) => void }
-        marker?.setLatLng?.([update.lat, update.lng])
+        const marker = markersRef.current.get(update.driverId)
+        if (marker) {
+          marker.setLatLng([update.lat, update.lng])
+          setDrivers(prev => {
+            const existing = prev.get(update.driverId)
+            if (!existing) return prev
+            const next = new Map(prev)
+            next.set(update.driverId, { ...existing, lat: update.lat, lng: update.lng, heading: update.heading })
+            return next
+          })
+        } else {
+          // Driver not in our map yet — pull a fresh session list
+          void reconcile()
+        }
       })
     })()
 
     return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+      getAdminSocket().off('driver:location_update')
       mapRef.current?.remove()
       mapRef.current = null
     }
@@ -133,7 +169,7 @@ export default function LiveMap() {
       {/* Toolbar */}
       <div className="flex items-center gap-3 px-4 py-3 bg-surface border-b border-border flex-shrink-0">
         <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
           <span className="text-xs font-semibold text-text-secondary">{onlineCount} online</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -145,8 +181,7 @@ export default function LiveMap() {
           <button
             key={c.label}
             onClick={() => flyTo(c.lat, c.lng, c.zoom)}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors hover:bg-surface-2"
-            style={{ color: '#4F46E5' }}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors hover:bg-surface-2 text-primary"
           >
             {c.label}
           </button>
@@ -176,13 +211,9 @@ export default function LiveMap() {
               className="text-text-muted hover:text-text-primary text-lg leading-none"
             >×</button>
           </div>
-          <span
-            className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full mb-2"
-            style={{
-              background: selected.session_status === 'on_trip' ? '#EEF2FF' : '#D1FAE5',
-              color:      selected.session_status === 'on_trip' ? '#4F46E5' : '#10B981',
-            }}
-          >
+          <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full mb-2 ${
+            selected.session_status === 'on_trip' ? 'pill-info' : 'pill-success'
+          }`}>
             {selected.session_status === 'on_trip' ? 'On Trip' : 'Online'}
           </span>
           {selected.ride_id && (

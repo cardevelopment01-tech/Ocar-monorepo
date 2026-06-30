@@ -67,8 +67,8 @@ export default function OverviewPage() {
         <StatCard
           title="Total Rides Today"
           value={loading ? '—' : s.total_rides_today}
-          change="+12% from yesterday"
-          changeType="up"
+          change={loading ? '…' : s.active_trips > 0 ? `${s.active_trips} in progress` : 'Since midnight IST'}
+          changeType="neutral"
           icon={Car}
           gradient="blue"
         />
@@ -76,7 +76,7 @@ export default function OverviewPage() {
           title="Active Drivers Online"
           value={loading ? '—' : s.active_drivers_online}
           change="Live count"
-          changeType="up"
+          changeType="neutral"
           icon={Users}
           gradient="green"
         />
@@ -114,7 +114,7 @@ export default function OverviewPage() {
                   style={{ background: style.bg }}
                 >
                   <span className="text-lg font-black" style={{ color: style.color }}>
-                    {loading ? '—' : String(c.value.toLocaleString('en-IN')).slice(0, 1)}
+                    {c.label.slice(0, 1)}
                   </span>
                 </div>
                 <div>
@@ -209,23 +209,17 @@ export default function OverviewPage() {
               </span>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-5">
-              <div
-                className="rounded-xl p-3.5 text-center"
-                style={{ background: 'linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%)' }}
-              >
-                <p className="text-2xl font-black text-emerald-700">
+              <div className="rounded-xl p-3.5 text-center bg-success-light">
+                <p className="text-2xl font-black text-success">
                   {loading ? '—' : s.active_drivers_online}
                 </p>
-                <p className="text-xs text-emerald-600/80 mt-0.5 font-medium">Drivers Online</p>
+                <p className="text-xs text-success/70 mt-0.5 font-medium">Drivers Online</p>
               </div>
-              <div
-                className="rounded-xl p-3.5 text-center"
-                style={{ background: 'linear-gradient(135deg, #EEF2FF 0%, #DDD6FE 100%)' }}
-              >
-                <p className="text-2xl font-black text-indigo-700">
+              <div className="rounded-xl p-3.5 text-center bg-primary-light">
+                <p className="text-2xl font-black text-primary">
                   {loading ? '—' : s.active_trips}
                 </p>
-                <p className="text-xs text-indigo-500/80 mt-0.5 font-medium">Active Trips</p>
+                <p className="text-xs text-primary/70 mt-0.5 font-medium">Active Trips</p>
               </div>
             </div>
 
@@ -241,9 +235,7 @@ export default function OverviewPage() {
                     style={{
                       height: `${(v / maxBar) * 100}%`,
                       minHeight: 4,
-                      background: isLast
-                        ? 'linear-gradient(180deg, #4F46E5 0%, #7C3AED 100%)'
-                        : '#EEF2FF',
+                      background: isLast ? '#4F46E5' : '#EEF2FF',
                     }}
                   />
                 )
