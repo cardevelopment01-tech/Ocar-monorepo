@@ -16,6 +16,22 @@ const SelfCarMarker  = lazy(() => import('@/components/map/SelfCarMarker'))
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
+const EASE = [0.22, 1, 0.36, 1] as const
+
+const GLASS = {
+  background:           'rgba(255,255,255,0.92)',
+  backdropFilter:       'blur(16px)',
+  WebkitBackdropFilter: 'blur(16px)',
+  border:               '1px solid rgba(79,70,229,0.10)',
+  boxShadow:            '0 2px 16px rgba(79,70,229,0.10)',
+}
+
+function fmtReturn(iso: string): string {
+  const d = new Date(iso)
+  const z = (n: number) => String(n).padStart(2, '0')
+  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${d.getDate()} ${mo[d.getMonth()]} · ${z(d.getHours())}:${z(d.getMinutes())}`
+}
 
 function getCurrentPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) =>
@@ -43,8 +59,8 @@ export default function TripInProgress() {
   const { sessionId } = useSessionStore()
 
   const [showEndOtp, setShowEndOtp] = useState(false)
-  const [otp, setOtp] = useState('')
-  const [otpError, setOtpError] = useState(false)
+  const [otp, setOtp]               = useState('')
+  const [otpError, setOtpError]     = useState(false)
   const [completing, setCompleting] = useState(false)
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -52,7 +68,6 @@ export default function TripInProgress() {
     activeRide?.dropLat ?? DEFAULT_LAT,
     activeRide?.dropLng ?? DEFAULT_LNG,
   ]
-
   const [selfPos,     setSelfPos]     = useState<[number, number]>(dropPos)
   const [selfHeading, setSelfHeading] = useState(0)
 
@@ -65,12 +80,12 @@ export default function TripInProgress() {
     return () => { lock?.release() }
   }, [])
 
-  // Location updates while on trip
+  // Location updates
   useEffect(() => {
     if (!sessionId) return
     const send = async () => {
       const pos = await getCurrentPosition().catch(() => null)
-      if (!pos) return  // never send fake coordinates on GPS failure
+      if (!pos) return
       setSelfPos([pos.coords.latitude, pos.coords.longitude])
       if (pos.coords.heading != null) setSelfHeading(pos.coords.heading)
       await driverRideApi.updateLocation({
@@ -103,7 +118,6 @@ export default function TripInProgress() {
     setCompleting(true)
     setOtpError(false)
     try {
-      // Compute actual distance from pickup→drop coords (Haversine)
       let actualDistanceKm: number | undefined
       if (activeRide.dropLat != null && activeRide.dropLng != null) {
         const R = 6371
@@ -115,10 +129,8 @@ export default function TripInProgress() {
           Math.sin(dLng / 2) ** 2
         actualDistanceKm = Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 1.3 * 10) / 10
       }
-      // elapsed is "MM:SS" — convert to minutes
       const [mm, ss] = elapsed.split(':').map(Number)
       const actualDurationMin = mm + Math.round((ss ?? 0) / 60)
-
       await driverRideApi.verifyEndOtp(activeRide.id, otp, actualDistanceKm, actualDurationMin || undefined)
       updateRideStatus('completed')
       navigate('/ride/end')
@@ -131,7 +143,9 @@ export default function TripInProgress() {
   }
 
   return (
-    <div className="relative w-full h-screen bg-bg overflow-hidden">
+    <div className="relative w-full h-[100dvh] bg-bg overflow-hidden">
+
+      {/* Map */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
           <DriverMapView center={selfPos} zoom={15}>
@@ -143,8 +157,11 @@ export default function TripInProgress() {
       </div>
 
       {/* Top bar */}
-      <div className="absolute top-0 left-0 right-0 px-4 pt-12" style={{ zIndex: 10 }}>
-        <div className="bg-surface/90 backdrop-blur-sm rounded-2xl border border-border px-4 py-3 flex items-center gap-3">
+      <div
+        className="absolute top-0 left-0 right-0 px-4"
+        style={{ zIndex: 10, paddingTop: 'max(env(safe-area-inset-top), 2.5rem)' }}
+      >
+        <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={GLASS}>
           <div className="w-2.5 h-2.5 rounded-full bg-accent-red flex-shrink-0 animate-pulse" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -162,28 +179,27 @@ export default function TripInProgress() {
           </div>
           <div className="flex items-center gap-1 text-text-secondary flex-shrink-0">
             <Clock size={14} />
-            <span className="font-mono text-sm font-semibold">{elapsed}</span>
+            <span className="font-mono tabular-nums text-sm font-semibold">{elapsed}</span>
           </div>
         </div>
       </div>
 
       {/* Bottom sheet */}
-      <div
-        className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-3xl border-t border-border px-5 pt-4 pb-10"
-        style={{ zIndex: 10 }}
+      <motion.div
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.4, ease: EASE }}
+        className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-3xl border-t border-border px-5 pt-4"
+        style={{ zIndex: 10, paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
       >
         <div className="w-10 h-1 rounded-full bg-surface-3 mx-auto mb-4" />
 
+        {/* Context banners */}
         {activeRide?.rideType === 'round_trip' && activeRide.returnAt && (
           <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)' }}>
             <RotateCcw size={11} style={{ color: '#D97706' }} className="flex-shrink-0" />
             <p className="text-xs font-semibold" style={{ color: '#D97706' }}>
-              Return by {(() => {
-                const d = new Date(activeRide.returnAt)
-                const z = (n: number) => String(n).padStart(2, '0')
-                const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-                return `${d.getDate()} ${mo[d.getMonth()]} · ${z(d.getHours())}:${z(d.getMinutes())}`
-              })()}
+              Return by {fmtReturn(activeRide.returnAt)}
             </p>
           </div>
         )}
@@ -195,6 +211,7 @@ export default function TripInProgress() {
             </p>
           </div>
         )}
+
         <div className="flex justify-between mb-0.5">
           <p className="text-text-muted text-xs">
             {activeRide?.rideType === 'rental' ? 'Route' : 'Drop-off'}
@@ -210,66 +227,77 @@ export default function TripInProgress() {
 
         <div className="flex gap-3">
           <button
-            className="w-12 h-12 rounded-2xl bg-surface-3 border border-border flex items-center justify-center flex-shrink-0"
+            className="w-12 h-12 rounded-2xl bg-surface-3 border border-border flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform"
             onClick={() => window.open(`https://maps.google.com?q=${dropPos[0]},${dropPos[1]}`)}
           >
             <Navigation size={20} className="text-primary" />
           </button>
           <button
             onClick={() => setShowEndOtp(true)}
-            className="btn-go flex-1"
+            className="btn-go flex-1 active:scale-95 transition-transform"
             style={{ minHeight: 52 }}
           >
             Complete Trip
           </button>
         </div>
-      </div>
+      </motion.div>
 
-      {/* End OTP sheet */}
+      {/* Dim backdrop behind end-OTP sheet */}
       <AnimatePresence>
         {showEndOtp && (
-          <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-3xl border-t border-border px-5 pt-5 pb-10"
-            style={{ zIndex: 30 }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-text-primary font-bold text-lg">End Ride OTP</h2>
-                <p className="text-text-muted text-xs">Ask the rider for their end OTP</p>
-              </div>
-              <button
-                onClick={() => { setShowEndOtp(false); setOtp(''); setOtpError(false) }}
-                className="w-9 h-9 rounded-full bg-surface-3 flex items-center justify-center"
-              >
-                <X size={16} className="text-text-secondary" />
-              </button>
-            </div>
-
-            <OtpInput value={otp} onChange={v => { setOtp(v); setOtpError(false) }} error={otpError} />
-            {otpError && (
-              <p className="text-accent-red text-xs text-center mt-3 font-semibold">Wrong OTP, try again</p>
-            )}
-
-            <button
-              onClick={handleCompleteTrip}
-              disabled={otp.length !== 6 || completing}
-              className="btn-go w-full mt-5"
-              style={{ minHeight: 56 }}
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0"
+              style={{ zIndex: 20, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
+              onClick={() => { setShowEndOtp(false); setOtp(''); setOtpError(false) }}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-3xl border-t border-border px-5 pt-5"
+              style={{ zIndex: 30, paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
             >
-              {completing ? 'Completing…' : 'Complete Trip'}
-            </button>
-          </motion.div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-text-primary font-bold text-lg">End Ride OTP</h2>
+                  <p className="text-text-muted text-xs">Ask the rider for their end OTP</p>
+                </div>
+                <button
+                  onClick={() => { setShowEndOtp(false); setOtp(''); setOtpError(false) }}
+                  className="w-9 h-9 rounded-full bg-surface-3 flex items-center justify-center active:scale-95 transition-transform"
+                >
+                  <X size={16} className="text-text-secondary" />
+                </button>
+              </div>
+
+              <OtpInput value={otp} onChange={v => { setOtp(v); setOtpError(false) }} error={otpError} />
+              {otpError && (
+                <p className="text-accent-red text-xs text-center mt-3 font-semibold">Wrong OTP, try again</p>
+              )}
+
+              <button
+                onClick={handleCompleteTrip}
+                disabled={otp.length !== 6 || completing}
+                className="btn-go w-full mt-5 active:scale-95 transition-transform"
+                style={{ minHeight: 56 }}
+              >
+                {completing ? 'Completing…' : 'Complete Trip'}
+              </button>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 
       <SOSButton
         rideId={activeRide?.id ?? ''}
         onSOS={handleSOS}
-        style={{ bottom: '100px', right: '16px', zIndex: 50 }}
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 88px)', right: '16px', zIndex: 50 }}
       />
     </div>
   )

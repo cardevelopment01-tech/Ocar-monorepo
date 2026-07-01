@@ -1,5 +1,7 @@
+'use client'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { Navigation, Phone, RotateCcw, Clock } from 'lucide-react'
 import SOSButton from '@/components/ui/SOSButton'
 import { useRideStore } from '@/store/useRideStore'
@@ -14,6 +16,22 @@ const SelfCarMarker  = lazy(() => import('@/components/map/SelfCarMarker'))
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
+const EASE = [0.22, 1, 0.36, 1] as const
+
+const GLASS = {
+  background:           'rgba(255,255,255,0.92)',
+  backdropFilter:       'blur(16px)',
+  WebkitBackdropFilter: 'blur(16px)',
+  border:               '1px solid rgba(79,70,229,0.10)',
+  boxShadow:            '0 2px 16px rgba(79,70,229,0.10)',
+}
+
+function fmtReturn(iso: string): string {
+  const d = new Date(iso)
+  const z = (n: number) => String(n).padStart(2, '0')
+  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${d.getDate()} ${mo[d.getMonth()]} · ${z(d.getHours())}:${z(d.getMinutes())}`
+}
 
 function getCurrentPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) =>
@@ -29,23 +47,21 @@ export default function NavigateToPickup() {
   const { activeRide, setStartOtp, updateRideStatus } = useRideStore()
   const { sessionId } = useSessionStore()
   const [arriving, setArriving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError]       = useState<string | null>(null)
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const pickupPos: [number, number] = [
     activeRide?.pickupLat ?? DEFAULT_LAT,
     activeRide?.pickupLng ?? DEFAULT_LNG,
   ]
-
   const [selfPos,     setSelfPos]     = useState<[number, number]>(pickupPos)
   const [selfHeading, setSelfHeading] = useState(0)
 
-  // Location updates while navigating to pickup
   useEffect(() => {
     if (!sessionId) return
     const sendLocation = async () => {
       const pos = await getCurrentPosition().catch(() => null)
-      if (!pos) return  // never send fake coordinates on GPS failure
+      if (!pos) return
       setSelfPos([pos.coords.latitude, pos.coords.longitude])
       if (pos.coords.heading != null) setSelfHeading(pos.coords.heading)
       await driverRideApi.updateLocation({
@@ -89,8 +105,12 @@ export default function NavigateToPickup() {
     }
   }
 
+  const avatarLetter = (activeRide?.userName ?? 'R')[0]!.toUpperCase()
+
   return (
-    <div className="relative w-full h-screen bg-bg overflow-hidden">
+    <div className="relative w-full h-[100dvh] bg-bg overflow-hidden">
+
+      {/* Map */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
           <DriverMapView center={selfPos} zoom={15}>
@@ -101,9 +121,13 @@ export default function NavigateToPickup() {
         </Suspense>
       </div>
 
-      <div className="absolute top-0 left-0 right-0 px-4 pt-12" style={{ zIndex: 10 }}>
-        <div className="bg-surface/90 backdrop-blur-sm rounded-2xl border border-border px-4 py-3 flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full bg-primary flex-shrink-0" />
+      {/* Top bar */}
+      <div
+        className="absolute top-0 left-0 right-0 px-4"
+        style={{ zIndex: 10, paddingTop: 'max(env(safe-area-inset-top), 2.5rem)' }}
+      >
+        <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={GLASS}>
+          <div className="w-3 h-3 rounded-full bg-primary flex-shrink-0 animate-pulse" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <p className="text-text-muted text-xs">Heading to pickup</p>
@@ -119,22 +143,22 @@ export default function NavigateToPickup() {
         </div>
       </div>
 
-      <div
-        className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-3xl border-t border-border px-5 pt-4 pb-10"
-        style={{ zIndex: 10 }}
+      {/* Bottom sheet */}
+      <motion.div
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.4, ease: EASE }}
+        className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-3xl border-t border-border px-5 pt-4"
+        style={{ zIndex: 10, paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
       >
         <div className="w-10 h-1 rounded-full bg-surface-3 mx-auto mb-4" />
 
+        {/* Context banners */}
         {activeRide?.rideType === 'round_trip' && activeRide.returnAt && (
           <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)' }}>
             <RotateCcw size={11} style={{ color: '#D97706' }} className="flex-shrink-0" />
             <p className="text-xs font-semibold" style={{ color: '#D97706' }}>
-              Return by {(() => {
-                const d = new Date(activeRide.returnAt)
-                const z = (n: number) => String(n).padStart(2, '0')
-                const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-                return `${d.getDate()} ${mo[d.getMonth()]} · ${z(d.getHours())}:${z(d.getMinutes())}`
-              })()}
+              Return by {fmtReturn(activeRide.returnAt)}
             </p>
           </div>
         )}
@@ -146,25 +170,32 @@ export default function NavigateToPickup() {
             </p>
           </div>
         )}
+
+        {/* Rider row */}
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-text-muted text-xs">Rider</p>
-            <p className="text-text-primary font-bold">{activeRide?.userName ?? 'Rider'}</p>
-            {activeRide?.userPhone && (
-              <p className="text-text-muted text-xs">{activeRide.userPhone}</p>
-            )}
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center flex-shrink-0">
+              <span className="text-primary font-bold text-base">{avatarLetter}</span>
+            </div>
+            <div>
+              <p className="text-text-muted text-xs">Rider</p>
+              <p className="text-text-primary font-bold">{activeRide?.userName ?? 'Rider'}</p>
+              {activeRide?.userPhone && (
+                <p className="text-text-muted text-xs">{activeRide.userPhone}</p>
+              )}
+            </div>
           </div>
           <div className="flex gap-2">
             {activeRide?.userPhone && (
               <a
                 href={`tel:${activeRide.userPhone}`}
-                className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center"
+                className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform"
               >
                 <Phone size={18} className="text-text-secondary" />
               </a>
             )}
             <button
-              className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button"
+              className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-95 transition-transform"
               onClick={() => window.open(`https://maps.google.com?q=${pickupPos[0]},${pickupPos[1]}`)}
             >
               <Navigation size={18} className="text-text-inverse" />
@@ -177,12 +208,12 @@ export default function NavigateToPickup() {
         <button
           onClick={handleArrived}
           disabled={arriving}
-          className="btn-go w-full"
+          className="btn-go w-full active:scale-95 transition-transform"
           style={{ minHeight: 56 }}
         >
           {arriving ? 'Marking arrival…' : 'Arrived at Pickup'}
         </button>
-      </div>
+      </motion.div>
 
       <SOSButton rideId={activeRide?.id ?? ''} onSOS={handleSOS} />
     </div>

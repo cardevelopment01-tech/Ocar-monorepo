@@ -202,6 +202,12 @@
         "value": "rgba(109,40,217,0.12)",
         "reason": "Rental badge bg tint — 12% opacity of suppressed #6D28D9 violet, same badge system",
         "createdAt": "2026-06-30T18:27:16.512Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(34,197,94,0.28)",
+        "reason": "Intentional success-state glow behind accent-green circle on TripEnd; green semantically correct here (replaces wrong indigo)",
+        "createdAt": "2026-07-01T15:05:09.821Z"
       }
     ]
   }

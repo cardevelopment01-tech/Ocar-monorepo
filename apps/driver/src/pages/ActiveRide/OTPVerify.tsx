@@ -1,17 +1,24 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { KeyRound, ArrowRight } from 'lucide-react'
+import { KeyRound, ArrowRight, RotateCcw, Clock } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import OtpInput from '@/components/ui/OtpInput'
 import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi } from '@/lib/ride-api'
 
+function fmtReturn(iso: string): string {
+  const d = new Date(iso)
+  const z = (n: number) => String(n).padStart(2, '0')
+  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${d.getDate()} ${mo[d.getMonth()]} · ${z(d.getHours())}:${z(d.getMinutes())}`
+}
+
 export default function OTPVerify() {
   const navigate = useNavigate()
   const { activeRide, setEndOtp, updateRideStatus } = useRideStore()
-  const [otp, setOtp] = useState('')
-  const [error, setError] = useState(false)
+  const [otp, setOtp]       = useState('')
+  const [error, setError]   = useState(false)
   const [loading, setLoading] = useState(false)
 
   const handleVerify = async () => {
@@ -31,15 +38,22 @@ export default function OTPVerify() {
     }
   }
 
+  const isRental    = activeRide?.rideType === 'rental'
+  const isRoundTrip = activeRide?.rideType === 'round_trip'
+
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center px-6"
-      style={{ background: 'radial-gradient(ellipse at 50% -10%, rgba(15,23,42,0.04) 0%, #F5F8FF 50%)' }}
+      className="min-h-[100dvh] flex flex-col items-center justify-center px-6"
+      style={{
+        background: 'radial-gradient(ellipse at 50% -10%, rgba(15,23,42,0.04) 0%, #F5F8FF 50%)',
+        paddingTop: 'max(env(safe-area-inset-top), 1.5rem)',
+        paddingBottom: 'max(env(safe-area-inset-bottom), 1.5rem)',
+      }}
     >
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         className="w-full max-w-[360px]"
       >
         {/* Icon */}
@@ -59,9 +73,30 @@ export default function OTPVerify() {
         <p className="text-text-secondary text-sm text-center mb-2">
           Ask the rider for their 6-digit OTP
         </p>
-        <p className="text-text-muted text-xs text-center mb-8">
-          {activeRide?.pickup ?? '—'} → {activeRide?.drop ?? '—'}
+
+        {/* Route line */}
+        <p className="text-text-muted text-xs text-center mb-2">
+          {activeRide?.pickup ?? '—'} → {isRental ? 'Flexible route' : (activeRide?.drop ?? '—')}
         </p>
+
+        {/* Trip type context */}
+        {isRoundTrip && activeRide.returnAt && (
+          <div className="flex items-center justify-center gap-1.5 mb-6">
+            <RotateCcw size={11} style={{ color: '#D97706' }} />
+            <span className="text-xs font-semibold" style={{ color: '#D97706' }}>
+              Return by {fmtReturn(activeRide.returnAt)}
+            </span>
+          </div>
+        )}
+        {isRental && activeRide.tripHours != null && (
+          <div className="flex items-center justify-center gap-1.5 mb-6">
+            <Clock size={11} style={{ color: '#6D28D9' }} />
+            <span className="text-xs font-semibold" style={{ color: '#6D28D9' }}>
+              Rental · {activeRide.tripHours}h booked
+            </span>
+          </div>
+        )}
+        {!isRoundTrip && !isRental && <div className="mb-6" />}
 
         {/* Card */}
         <div
@@ -84,7 +119,7 @@ export default function OTPVerify() {
           <button
             onClick={handleVerify}
             disabled={otp.length !== 6 || loading}
-            className="btn-go w-full flex items-center justify-center gap-2"
+            className="btn-go w-full flex items-center justify-center gap-2 active:scale-95 transition-transform"
             style={{ minHeight: 56 }}
           >
             {loading ? (
