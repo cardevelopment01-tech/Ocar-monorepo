@@ -13,13 +13,13 @@ if (typeof window !== 'undefined') {
 }
 
 interface DriverMapViewProps {
-  center: [number, number]
+  initialCenter: [number, number]
   zoom?: number
   dimmed?: boolean
   children?: React.ReactNode
 }
 
-export default function DriverMapView({ center, zoom = 15, dimmed = false, children }: DriverMapViewProps) {
+export default function DriverMapView({ initialCenter, zoom = 15, dimmed = false, children }: DriverMapViewProps) {
   const [mapStyle, setMapStyle] = useState<StyleSpecification | string>(styleCache ?? STYLE_URL)
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export default function DriverMapView({ center, zoom = 15, dimmed = false, child
   return (
     <div className="relative w-full h-full">
       <Map
-        initialViewState={{ latitude: center[0], longitude: center[1], zoom }}
+        initialViewState={{ latitude: initialCenter[0], longitude: initialCenter[1], zoom }}
         mapStyle={mapStyle}
         style={{ width: '100%', height: '100%' }}
         attributionControl={false}

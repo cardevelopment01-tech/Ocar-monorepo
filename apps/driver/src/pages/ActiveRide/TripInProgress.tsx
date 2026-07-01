@@ -9,6 +9,7 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { driverSafetyApi } from '@/lib/safety-api'
 import { EASE, GLASS, fmtReturn } from '@/lib/constants'
+import { getCurrentPosition } from '@/lib/location'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
@@ -26,14 +27,6 @@ function haversineMetres(a: [number, number], b: [number, number]): number {
   const s = Math.sin(dLat / 2) ** 2
     + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLng / 2) ** 2
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
-}
-
-function getCurrentPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) =>
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true, timeout: 10000,
-    })
-  )
 }
 
 function useElapsed() {
@@ -82,7 +75,7 @@ export default function TripInProgress() {
   useEffect(() => {
     if (!sessionId) return
     const send = async () => {
-      const pos = await getCurrentPosition().catch(() => null)
+      const pos = await getCurrentPosition(true).catch(() => null)
       if (!pos) return
       setSelfPos([pos.coords.latitude, pos.coords.longitude])
       if (pos.coords.heading != null) setSelfHeading(pos.coords.heading)
@@ -122,7 +115,7 @@ export default function TripInProgress() {
   }, [selfPos, dropLat, dropLng])
 
   const handleSOS = async () => {
-    const pos = await getCurrentPosition().catch(() => null)
+    const pos = await getCurrentPosition(true).catch(() => null)
     await driverSafetyApi.triggerSos({
       rideId:   activeRide?.id ?? '',
       lat:      pos?.coords.latitude,
@@ -166,7 +159,7 @@ export default function TripInProgress() {
       {/* Map */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
-          <DriverMapView center={selfPos} zoom={15}>
+          <DriverMapView initialCenter={selfPos} zoom={15}>
             <RecenterMap center={selfPos} />
             {dropLat != null && dropLng != null && (
               <RoutePolyline encoded={encodedPolyline} positions={[selfPos, dropPos]} />

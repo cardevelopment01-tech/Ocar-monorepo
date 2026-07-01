@@ -4,13 +4,14 @@ import {
   useMotionValue, useTransform, useMotionValueEvent, animate,
 } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { IndianRupee, Clock, Star, TrendingUp, Bell, Wallet, ChevronRight } from 'lucide-react'
+import { IndianRupee, Clock, Star, TrendingUp, Bell, Wallet, ChevronRight, LocateOff } from 'lucide-react'
 import OnlineToggle from '@/components/ui/OnlineToggle'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi, type EarningsSummary } from '@/lib/ride-api'
 import api from '@/lib/api'
 import { disconnectDriverSocket } from '@/lib/socket'
+import { getCurrentPosition } from '@/lib/location'
 
 const DriverMapView = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap   = lazy(() => import('@/components/map/RecenterMap'))
@@ -19,15 +20,6 @@ const SelfCarMarker = lazy(() => import('@/components/map/SelfCarMarker'))
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
 const NAV_HEIGHT  = 60
-
-function getCurrentPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) =>
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: false,
-      timeout: 8000,
-    })
-  )
-}
 
 const GLASS = {
   background:           'rgba(255,255,255,0.92)',
@@ -74,6 +66,8 @@ export default function Home() {
   const [occlusion,          setOcclusion]         = useState(420)
   const [areaName,           setAreaName]          = useState<string | null>(null)
   const [geoLoading,         setGeoLoading]        = useState(false)
+  const [geoError,           setGeoError]           = useState(false)
+  const [positionReady,      setPositionReady]      = useState(false)
   const [showOfflineConfirm, setShowOfflineConfirm] = useState(false)
   const [todayEarnings, setTodayEarnings] = useState<EarningsSummary>({
     total_earnings: 0, trip_count: 0, online_hours: '0m', rating: null,
@@ -117,6 +111,27 @@ export default function Home() {
   const e         = todayEarnings
   const firstName = driver?.full_name?.split(' ')[0] ?? 'Driver'
 
+  // ── Offline position seed ────────────────────────────────────────────────────
+  // Gated on !isOnline so it never races the GPS loop's first sendLocation() call.
+  // Re-runs on going offline so the map stays current after the loop stops.
+  // Cancelled on unmount to avoid calling setMapCenter on a dead component.
+  useEffect(() => {
+    if (isOnline) return
+    let cancelled = false
+    getCurrentPosition()
+      .then(pos => {
+        if (cancelled) return
+        setGeoError(false)
+        setPositionReady(true)
+        setMapCenter([pos.coords.latitude, pos.coords.longitude])
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        if ((err as GeolocationPositionError)?.code === 1) setGeoError(true)
+      })
+    return () => { cancelled = true }
+  }, [isOnline])
+
   // ── GPS location loop ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOnline || !sessionId) {
@@ -124,8 +139,13 @@ export default function Home() {
       return
     }
     const sendLocation = async () => {
-      const pos = await getCurrentPosition().catch(() => null)
+      const pos = await getCurrentPosition().catch((err: unknown) => {
+        if ((err as GeolocationPositionError)?.code === 1) setGeoError(true)
+        return null
+      })
       if (!pos) return  // never send fake coordinates on GPS failure
+      setGeoError(false)
+      setPositionReady(true)
       setMapCenter([pos.coords.latitude, pos.coords.longitude])
       await driverRideApi.updateLocation({
         sessionId, lat: pos.coords.latitude, lng: pos.coords.longitude,
@@ -186,6 +206,7 @@ export default function Home() {
 
   // ── Reverse-geocode ──────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!positionReady) return  // don't geocode the default Bhubaneswar fallback coords
     const [lat, lng] = mapCenter
     const prev = lastGeoCoord.current
     if (prev && Math.abs(prev[0] - lat) < 3e-4 && Math.abs(prev[1] - lng) < 3e-4) return
@@ -212,7 +233,7 @@ export default function Home() {
       if (geoTimer.current) clearTimeout(geoTimer.current)
       controller.abort()
     }
-  }, [mapCenter])
+  }, [mapCenter, positionReady])
 
   // ── Drag gesture handlers ────────────────────────────────────────────────────
   function onHandlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
@@ -274,13 +295,13 @@ export default function Home() {
       {/* Map — full bleed behind everything */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface-2 animate-pulse" />}>
-          <DriverMapView center={mapCenter} zoom={15} dimmed={!isOnline}>
+          <DriverMapView initialCenter={mapCenter} zoom={15} dimmed={!isOnline}>
             <RecenterMap
               center={mapCenter}
               bottomPadding={occlusion}
               topPadding={110}
             />
-            <SelfCarMarker position={mapCenter} areaName={areaName} loading={geoLoading} />
+            {positionReady && <SelfCarMarker position={mapCenter} areaName={areaName} loading={geoLoading} />}
           </DriverMapView>
         </Suspense>
       </div>
@@ -317,6 +338,22 @@ export default function Home() {
           </button>
         </div>
       </div>
+
+      {/* GPS error — floats below the header, above the map */}
+      {geoError && (
+        <div
+          className="absolute left-4 right-4"
+          style={{ top: 'max(calc(env(safe-area-inset-top) + 80px), 96px)', zIndex: 10 }}
+        >
+          <div
+            className="flex items-center gap-2.5 rounded-2xl px-4 py-2.5"
+            style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.22)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+          >
+            <LocateOff size={14} className="text-red-500 flex-shrink-0" />
+            <span className="text-red-600 text-[12px] font-semibold">Location unavailable — enable GPS to receive rides</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Bottom sheet — draggable snap sheet ──────────────────────────────── */}
       <motion.div

@@ -559,12 +559,12 @@ export async function getDriverEarningsSummary(
     ),
     pool.query<{ online_hours: string }>(
       `SELECT COALESCE(
-         EXTRACT(EPOCH FROM SUM(COALESCE(went_offline_at, NOW()) - start_time)) / 3600,
+         EXTRACT(EPOCH FROM SUM(COALESCE(went_offline_at, NOW()) - went_online_at)) / 3600,
          0
        )::text AS online_hours
        FROM driver_sessions
        WHERE driver_id = $1
-         AND start_time >= ${rangeFrom} AND start_time < ${rangeTo}`,
+         AND went_online_at >= ${rangeFrom} AND went_online_at < ${rangeTo}`,
       [driverId]
     ),
     period === 'today'
@@ -586,8 +586,8 @@ export async function getDriverEarningsSummary(
            GROUP BY bucket ORDER BY bucket`,
           [driverId]
         ),
-    pool.query<{ rating: string | null }>(
-      `SELECT rating::text FROM drivers WHERE id = $1`,
+    pool.query<{ rating_avg: string | null }>(
+      `SELECT rating_avg::text FROM drivers WHERE id = $1`,
       [driverId]
     ),
   ])
@@ -596,7 +596,7 @@ export async function getDriverEarningsSummary(
   const tripCount     = parseInt(summaryRes.rows[0]?.trip_count ?? '0', 10)
   const totalFare     = parseFloat(summaryRes.rows[0]?.total_fare ?? '0')
   const rawHours      = parseFloat(hoursRes.rows[0]?.online_hours ?? '0')
-  const rating        = ratingRes.rows[0]?.rating != null ? parseFloat(ratingRes.rows[0]!.rating) : null
+  const rating        = ratingRes.rows[0]?.rating_avg != null ? parseFloat(ratingRes.rows[0]!.rating_avg) : null
 
   const h = Math.floor(rawHours)
   const m = Math.round((rawHours - h) * 60)
