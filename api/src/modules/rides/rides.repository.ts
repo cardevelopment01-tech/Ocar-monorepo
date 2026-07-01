@@ -214,6 +214,7 @@ export async function createRide(data: {
   rentalPackageId?: bigint
   tripHours?: number
   scheduledFor?: string
+  returnAt?: string
 }) {
   const res = await pool.query(
     `INSERT INTO rides (
@@ -221,14 +222,14 @@ export async function createRide(data: {
        origin, destination,
        origin_address, destination_address,
        origin_city_id, destination_city_id,
-       rental_package_id, trip_hours, scheduled_for
+       rental_package_id, trip_hours, scheduled_for, return_at
      ) VALUES (
        $1, $2, $3, $4,
        ST_SetSRID(ST_MakePoint($6::float8, $5::float8), 4326)::geography,
        CASE WHEN $7::float8 IS NOT NULL AND $8::float8 IS NOT NULL
          THEN ST_SetSRID(ST_MakePoint($8::float8, $7::float8), 4326)::geography
          ELSE NULL END,
-       $9, $10, $11, $12, $13, $14, $15
+       $9, $10, $11, $12, $13, $14, $15, $16
      )
      RETURNING *`,
     [
@@ -240,6 +241,7 @@ export async function createRide(data: {
       data.rentalPackageId ?? null,
       data.tripHours ?? null,
       data.scheduledFor ?? null,
+      data.returnAt ?? null,
     ]
   )
   return res.rows[0]

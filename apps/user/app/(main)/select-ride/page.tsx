@@ -136,6 +136,7 @@ function SelectRideContent() {
       }
       if (originCityId)  bookingParams.originCityId = originCityId
       if (tripHours !== undefined) bookingParams.tripHours = tripHours
+      if (rideType === 'round_trip' && returnAt) bookingParams.returnAt = returnAt.toISOString()
       const result = await rideApi.createBooking(bookingParams)
       router.push(`/ride/${result.rideId}`)
     } catch {

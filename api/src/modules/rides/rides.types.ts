@@ -49,6 +49,7 @@ export interface Ride {
   trip_hours: number | null
   rental_package_id: bigint | null
   scheduled_for: string | null
+  return_at: string | null
   start_otp_hash: string | null
   end_otp_hash: string | null
   requested_at: string
@@ -84,4 +85,5 @@ export interface BookingRequest {
   stopCount?: number
   tripHours?: number
   rentalPackageId?: number
+  returnAt?: string
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { clampTripHours, toDatetimeLocal, minReturnDatetimeLocal } from '../lib/utils'
+import { clampTripHours, toDatetimeLocal, minReturnDatetimeLocal, formatReturnAt } from '../lib/utils'
 
 const FIXED_NOW = new Date('2026-07-01T06:00:00.000Z')
 
@@ -73,6 +73,58 @@ describe('toDatetimeLocal', () => {
     const back = new Date(str)
     // datetime-local has no seconds — diff should be under 60s
     expect(Math.abs(back.getTime() - d.getTime())).toBeLessThan(60_000)
+  })
+})
+
+// ─── formatReturnAt ────────────────────────────────────────────────────────────
+
+describe('formatReturnAt', () => {
+  it('formats a standard afternoon time correctly', () => {
+    // 5 Jul 2026 18:30 local — construct in local time
+    const d = new Date(2026, 6, 5, 18, 30)
+    expect(formatReturnAt(d.toISOString())).toBe('5 Jul · 18:30')
+  })
+
+  it('zero-pads single-digit hours and minutes', () => {
+    const d = new Date(2026, 6, 5, 9, 5)
+    expect(formatReturnAt(d.toISOString())).toBe('5 Jul · 09:05')
+  })
+
+  it('handles midnight (00:00)', () => {
+    const d = new Date(2026, 6, 5, 0, 0)
+    expect(formatReturnAt(d.toISOString())).toBe('5 Jul · 00:00')
+  })
+
+  it('handles noon (12:00)', () => {
+    const d = new Date(2026, 6, 5, 12, 0)
+    expect(formatReturnAt(d.toISOString())).toBe('5 Jul · 12:00')
+  })
+
+  it('handles 23:59', () => {
+    const d = new Date(2026, 6, 5, 23, 59)
+    expect(formatReturnAt(d.toISOString())).toBe('5 Jul · 23:59')
+  })
+
+  it('uses correct month abbreviations for all 12 months', () => {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    months.forEach((abbr, i) => {
+      const d = new Date(2026, i, 1, 10, 0)
+      expect(formatReturnAt(d.toISOString())).toContain(abbr)
+    })
+  })
+
+  it('uses local hours — does not show UTC hours', () => {
+    // Use a known local datetime and verify hours match local, not UTC
+    const d = new Date(2026, 6, 5, 18, 30)
+    const result = formatReturnAt(d.toISOString())
+    const [, timePart] = result.split(' · ')
+    const [h] = timePart!.split(':')
+    expect(parseInt(h!)).toBe(d.getHours())
+  })
+
+  it('output always matches pattern "D Mon · HH:MM"', () => {
+    const d = new Date(2026, 6, 15, 14, 45)
+    expect(formatReturnAt(d.toISOString())).toMatch(/^\d{1,2} [A-Z][a-z]{2} · \d{2}:\d{2}$/)
   })
 })
 

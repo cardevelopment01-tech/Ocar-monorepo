@@ -20,6 +20,18 @@ export function clampTripHours(returnAt: Date | null): number | undefined {
   return Math.max(4, Math.ceil(rawHours))
 }
 
+/**
+ * Formats a stored return_at ISO string for display: "5 Jul · 18:00"
+ * Uses local hours/minutes and a hardcoded month list — avoids toLocaleTimeString
+ * which is unreliable across browsers with en-IN + hour12:false.
+ */
+export function formatReturnAt(iso: string): string {
+  const d = new Date(iso)
+  const z = (n: number) => String(n).padStart(2, '0')
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${d.getDate()} ${months[d.getMonth()]} · ${z(d.getHours())}:${z(d.getMinutes())}`
+}
+
 /** Returns the earliest valid return datetime (now + 4h) as a datetime-local string. */
 export function minReturnDatetimeLocal(): string {
   const d = new Date()

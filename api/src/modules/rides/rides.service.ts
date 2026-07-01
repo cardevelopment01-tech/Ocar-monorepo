@@ -200,6 +200,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   if (data.destinationCityId  !== undefined) rideInput.destinationCityId  = BigInt(data.destinationCityId)
   if (data.rentalPackageId    !== undefined) rideInput.rentalPackageId    = BigInt(data.rentalPackageId)
   if (effectiveTripHours > 0) rideInput.tripHours = effectiveTripHours
+  if (data.returnAt           !== undefined) rideInput.returnAt           = data.returnAt
   const ride = await repo.createRide(rideInput)
 
   await pool.query(

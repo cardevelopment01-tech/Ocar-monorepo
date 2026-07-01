@@ -7,6 +7,7 @@ import { Phone, MessageSquare, MapPin, Navigation, X, RotateCcw } from 'lucide-r
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
+import { formatReturnAt } from '@/lib/utils'
 import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
 
@@ -276,7 +277,7 @@ export default function RidePage() {
                     </div>
                   )}
                   {ride?.ride_type === 'round_trip' && (
-                    <div className="flex items-center gap-1 justify-end">
+                    <div className="flex items-center gap-1">
                       <RotateCcw size={9} className="text-violet-500" />
                       <span className="text-[10px] font-bold text-violet-600">
                         Round trip{ride.trip_hours ? ` · ${ride.trip_hours}h` : ''}
@@ -285,6 +286,19 @@ export default function RidePage() {
                   )}
                 </div>
               </div>
+
+              {ride?.ride_type === 'round_trip' && ride.return_at && (
+                <div
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-3"
+                  style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
+                >
+                  <RotateCcw size={13} className="text-violet-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-semibold text-violet-400 uppercase tracking-wide">Return by</p>
+                    <p className="text-[13px] font-bold text-violet-800">{formatReturnAt(ride.return_at)}</p>
+                  </div>
+                </div>
+              )}
 
               <button
                 onClick={() => router.back()}
@@ -369,11 +383,18 @@ export default function RidePage() {
                     <p className="text-sm font-medium text-gray-800 truncate">{ride?.destination_address ?? 'Destination'}</p>
                   </div>
                   {ride?.ride_type === 'round_trip' && (
-                    <div className="flex items-center gap-1 pt-0.5">
-                      <RotateCcw size={9} className="text-violet-500" />
-                      <span className="text-[10px] font-bold text-violet-600">
-                        Round trip{ride.trip_hours ? ` · ${ride.trip_hours}h` : ''}
-                      </span>
+                    <div className="pt-0.5 space-y-0.5">
+                      <div className="flex items-center gap-1">
+                        <RotateCcw size={9} className="text-violet-500" />
+                        <span className="text-[10px] font-bold text-violet-600">
+                          Round trip{ride.trip_hours ? ` · ${ride.trip_hours}h` : ''}
+                        </span>
+                      </div>
+                      {ride.return_at && (
+                        <p className="text-[10px] text-violet-400 pl-3.5">
+                          Back by {formatReturnAt(ride.return_at)}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

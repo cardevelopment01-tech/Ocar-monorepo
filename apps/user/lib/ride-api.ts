@@ -28,6 +28,7 @@ export type RideDetail = {
   status: string
   ride_type: string
   trip_hours: number | null
+  return_at: string | null
   user_id: string
   driver_id: string | null
   origin_address: string | null
@@ -117,6 +118,7 @@ export const rideApi = {
     rentalPackageId?: number
     originCityId?: number
     destinationCityId?: number
+    returnAt?: string
   }): Promise<BookingResult> => {
     const body: Record<string, unknown> = {
       categoryId:    params.categoryId,
@@ -135,6 +137,7 @@ export const rideApi = {
     if (params.rentalPackageId     !== undefined) body['rentalPackageId']     = params.rentalPackageId
     if (params.originCityId        !== undefined) body['originCityId']        = params.originCityId
     if (params.destinationCityId   !== undefined) body['destinationCityId']   = params.destinationCityId
+    if (params.returnAt            !== undefined) body['returnAt']            = params.returnAt
     const res = await api.post('/api/v1/rides', body)
     return res.data as BookingResult
   },
