@@ -35,12 +35,14 @@ export async function getFareEstimate(
   let packageFare: number | null = null
   let extraPerKm = 0
   let extraPerMin = 0
+  let rentalHours: number | undefined
   if (req.ride_type === 'rental' && req.rental_package_id) {
     const pkg = await repo.getRentalPackage(req.rental_package_id)
     if (pkg) {
-      packageFare = parseFloat(pkg.package_fare)
-      extraPerKm  = parseFloat(pkg.extra_per_km)
-      extraPerMin = parseFloat(pkg.extra_per_min)
+      packageFare  = parseFloat(pkg.package_fare)
+      extraPerKm   = parseFloat(pkg.extra_per_km)
+      extraPerMin  = parseFloat(pkg.extra_per_min)
+      rentalHours  = pkg.duration_hours
     }
   }
 
@@ -67,12 +69,14 @@ export async function getFareEstimate(
     extra_per_min:    extraPerMin,
   })
 
-  return {
+  const response: import('./pricing.types').FareEstimateResponse = {
     rate_card_id:     rateCard.id,
     surge_event_id:   surgeEvent?.id ?? null,
     surge_multiplier: surgeMultiplier,
     breakdown,
   }
+  if (rentalHours !== undefined) response.rental_hours = rentalHours
+  return response
 }
 
 export async function getAllRateCards() {

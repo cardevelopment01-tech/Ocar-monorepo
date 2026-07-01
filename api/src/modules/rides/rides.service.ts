@@ -199,7 +199,8 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   if (data.originCityId       !== undefined) rideInput.originCityId       = BigInt(data.originCityId)
   if (data.destinationCityId  !== undefined) rideInput.destinationCityId  = BigInt(data.destinationCityId)
   if (data.rentalPackageId    !== undefined) rideInput.rentalPackageId    = BigInt(data.rentalPackageId)
-  if (effectiveTripHours > 0) rideInput.tripHours = effectiveTripHours
+  const storedTripHours = fareEstimate.rental_hours ?? (effectiveTripHours > 0 ? effectiveTripHours : undefined)
+  if (storedTripHours !== undefined) rideInput.tripHours = storedTripHours
   if (data.returnAt           !== undefined) rideInput.returnAt           = data.returnAt
   const ride = await repo.createRide(rideInput)
 
@@ -254,6 +255,8 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   }
   if (data.destinationLat !== undefined) jobData.destinationLat = data.destinationLat
   if (data.destinationLng !== undefined) jobData.destinationLng = data.destinationLng
+  if (data.returnAt       !== undefined) jobData.returnAt       = data.returnAt
+  if (storedTripHours     !== undefined) jobData.tripHours      = storedTripHours
 
   // All three rounds go through BullMQ so failures are logged consistently and
   // broadcastRound numbering is always correct even if an earlier round fails.

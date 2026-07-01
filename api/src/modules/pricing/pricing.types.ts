@@ -80,4 +80,5 @@ export interface FareEstimateResponse {
     surge_fare: number
     total: number
   }
+  rental_hours?: number
 }

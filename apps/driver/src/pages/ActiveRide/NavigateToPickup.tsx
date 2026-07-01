@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Navigation, Phone } from 'lucide-react'
+import { Navigation, Phone, RotateCcw, Clock } from 'lucide-react'
 import SOSButton from '@/components/ui/SOSButton'
 import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
@@ -125,6 +125,27 @@ export default function NavigateToPickup() {
       >
         <div className="w-10 h-1 rounded-full bg-surface-3 mx-auto mb-4" />
 
+        {activeRide?.rideType === 'round_trip' && activeRide.returnAt && (
+          <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)' }}>
+            <RotateCcw size={11} style={{ color: '#D97706' }} className="flex-shrink-0" />
+            <p className="text-xs font-semibold" style={{ color: '#D97706' }}>
+              Return by {(() => {
+                const d = new Date(activeRide.returnAt)
+                const z = (n: number) => String(n).padStart(2, '0')
+                const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+                return `${d.getDate()} ${mo[d.getMonth()]} · ${z(d.getHours())}:${z(d.getMinutes())}`
+              })()}
+            </p>
+          </div>
+        )}
+        {activeRide?.rideType === 'rental' && activeRide.tripHours != null && (
+          <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl" style={{ background: 'rgba(109,40,217,0.12)', border: '1px solid rgba(109,40,217,0.12)' }}>
+            <Clock size={11} style={{ color: '#6D28D9' }} className="flex-shrink-0" />
+            <p className="text-xs font-semibold" style={{ color: '#6D28D9' }}>
+              Rental · {activeRide.tripHours}h booked
+            </p>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-text-muted text-xs">Rider</p>

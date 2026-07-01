@@ -123,10 +123,12 @@ export default function App() {
         fare: ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
         rideType,
       }
-      if (ride.dest_lat  != null) activeRideInput.dropLat  = ride.dest_lat
-      if (ride.dest_lng  != null) activeRideInput.dropLng  = ride.dest_lng
+      if (ride.dest_lat   != null) activeRideInput.dropLat   = ride.dest_lat
+      if (ride.dest_lng   != null) activeRideInput.dropLng   = ride.dest_lng
       if (ride.user_phone != null) activeRideInput.userPhone = ride.user_phone
       if (ride.user_name  != null) activeRideInput.userName  = ride.user_name
+      if (ride.return_at  != null) activeRideInput.returnAt  = ride.return_at
+      if (ride.trip_hours != null) activeRideInput.tripHours = ride.trip_hours
       setActiveRide(activeRideInput)
       clearIncomingRequest()
       setAccepting(false)

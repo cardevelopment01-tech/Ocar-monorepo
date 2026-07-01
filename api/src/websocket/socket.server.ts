@@ -88,8 +88,10 @@ export function initSocketServer(httpServer: HttpServer): Server {
               expiresAt:        a.expires_at,
               timeoutSeconds,
             }
-            if (a.dest_lat != null)  payload['destinationLat'] = a.dest_lat
-            if (a.dest_lng != null)  payload['destinationLng'] = a.dest_lng
+            if (a.dest_lat != null)   payload['destinationLat'] = a.dest_lat
+            if (a.dest_lng != null)   payload['destinationLng'] = a.dest_lng
+            if (a.return_at != null)  payload['returnAt']  = a.return_at
+            if (a.trip_hours != null) payload['tripHours'] = Number(a.trip_hours)
             // Emit directly to this socket so the driver sees remaining time, not original
             socket.emit('ride:request', payload)
           }

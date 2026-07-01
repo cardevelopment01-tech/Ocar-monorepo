@@ -22,6 +22,8 @@ export interface BroadcastJobData {
   destinationLng?: number
   broadcastRound: number
   radiusMetres?: number
+  returnAt?: string
+  tripHours?: number
 }
 
 export async function processBroadcast(data: BroadcastJobData): Promise<void> {
@@ -145,7 +147,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   }))
 
   for (const driver of drivers) {
-    socketEvents.sendRideRequest(driver.driver_id.toString(), {
+    const requestPayload: Record<string, unknown> = {
       rideId:            data.rideId,
       pickup:            ride.origin_address   ?? 'Pickup location',
       drop:              ride.destination_address ?? 'Destination',
@@ -159,7 +161,10 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       isReturnCab:       data.isReturnCab,
       expiresAt:         expiresAt.toISOString(),
       timeoutSeconds:    BROADCAST_WINDOW_SECONDS,
-    })
+    }
+    if (ride.return_at)   requestPayload['returnAt']  = ride.return_at
+    if (ride.trip_hours)  requestPayload['tripHours'] = Number(ride.trip_hours)
+    socketEvents.sendRideRequest(driver.driver_id.toString(), requestPayload)
   }
 
   console.log(

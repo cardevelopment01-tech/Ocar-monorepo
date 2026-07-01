@@ -474,6 +474,8 @@ export interface PendingAssignment {
   ride_type: string
   is_return_cab: boolean
   distance_to_pickup_metres: number
+  return_at: string | null
+  trip_hours: number | null
 }
 
 export async function getPendingAssignmentsForDriver(
@@ -491,6 +493,8 @@ export async function getPendingAssignmentsForDriver(
        ST_X(r.destination::geometry) AS dest_lng,
        r.ride_type,
        r.is_return_cab,
+       r.return_at,
+       r.trip_hours,
        fs.total_estimated,
        COALESCE(
          CASE

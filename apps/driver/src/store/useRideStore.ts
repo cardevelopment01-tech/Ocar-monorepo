@@ -15,6 +15,8 @@ export interface ActiveRide {
   endOtp?: string
   userPhone?: string
   userName?: string
+  returnAt?: string
+  tripHours?: number
 }
 
 interface RideState {

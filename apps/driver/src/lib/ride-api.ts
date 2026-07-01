@@ -13,6 +13,7 @@ export type DriverSession = {
 export type RideDetail = {
   id: string
   status: string
+  ride_type: string
   origin_address: string | null
   destination_address: string | null
   origin_lat: number
@@ -22,6 +23,8 @@ export type RideDetail = {
   user_name: string | null
   user_phone: string | null
   total_estimated: string | null
+  return_at: string | null
+  trip_hours: number | null
 }
 
 export type TripHistoryItem = {
