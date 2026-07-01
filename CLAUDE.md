@@ -277,7 +277,7 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 - Payment method is display-only "Cash" — no payment selection flow yet
 - "Add new rider" (For me sheet) is `disabled`; "Add stops" shows a "coming soon" toast
 - Bottom nav: only **My Trip** and **Profile** are active — Messages and Help show "SOON"
-- Ride type on select-ride screen is hardcoded to `one_way` — return/rental fare differentiation not yet wired to booking
+- Round-trip booking has a dedicated flow (`/round-trip` page → search → `/select-ride`); passes `rideType: 'round_trip'` and computed `tripHours` to the booking API. Rental fare differentiation is not yet wired.
 - Message driver button on ride tracking screen has no handler
 
 ### Driver app

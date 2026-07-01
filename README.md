@@ -16,7 +16,7 @@ End-to-end ride management: driver onboarding · real-time GPS · fare engine ·
 [![Redis](https://img.shields.io/badge/Redis-7_Alpine-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io)
 [![pnpm](https://img.shields.io/badge/pnpm-9+-F69220?style=flat-square&logo=pnpm&logoColor=white)](https://pnpm.io)
 
-[![Tests](https://img.shields.io/badge/tests-38_passing-22C55E?style=flat-square&logo=vitest&logoColor=white)](#-testing)
+[![Tests](https://img.shields.io/badge/tests-38_API_%2B_user_utils-22C55E?style=flat-square&logo=vitest&logoColor=white)](#-testing)
 [![Modules](https://img.shields.io/badge/modules-9%2F12_complete-8B5CF6?style=flat-square)](#-module-roadmap)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](./docker-compose.yml)
 [![Turborepo](https://img.shields.io/badge/Turborepo-monorepo-EF4444?style=flat-square&logo=turborepo&logoColor=white)](https://turbo.build)
@@ -429,7 +429,7 @@ Full ops portal at `apps/admin` — all pages wired to the backend.
 
 | Page       | Status | Notes                                             |
 | ---------- | :----: | ------------------------------------------------- |
-| Overview   | ✅     | Live stat cards                                   |
+| Overview   | ⚠️     | Mock data (mockStats + mockRides hardcoded; SOS badge reads mockSOS) |
 | Drivers    | ✅     | List, detail slide-over, approve / reject / ban   |
 | Vehicles   | ✅     | Categories, brands, models, fleet — 4 tabs        |
 | Cities     | ✅     | Create, edit, toggle rental/return-cab per city   |
@@ -458,7 +458,8 @@ Mobile-first PWA at `apps/driver`:
 Mobile-first booking app at `apps/user`:
 
 - Phone OTP login
-- Ride booking with city/route selection and fare estimate
+- One-way ride booking with city/route selection and fare estimate
+- **Round-trip booking** — dedicated `/round-trip` page, return date/time picker, per-vehicle fare breakdown (driver stays for both legs); `round_trip` ride type and computed `tripHours` wired to the booking API
 - Real-time ride tracking via Socket.IO
 - Post-ride rating with tags
 - Wallet balance + top-up
@@ -479,7 +480,7 @@ cd api && pnpm test:watch
 cd api && pnpm test:coverage
 ```
 
-Tests run against a **dedicated test database** on port `5433` — production data is never touched. Each file manages its own lifecycle with `beforeAll` / `afterAll` cleanup.
+API tests run against a **dedicated test database** on port `5433` — production data is never touched. Each file manages its own lifecycle with `beforeAll` / `afterAll` cleanup.
 
 ```
 Test Files   5 passed | 9 skipped (14)
@@ -488,6 +489,8 @@ Test Files   5 passed | 9 skipped (14)
 ```
 
 File uploads are mocked via `vi.mock('@/lib/storage')` so tests run without S3 or MinIO. Everything else hits real Postgres and Redis — no in-memory substitutes that hide integration bugs.
+
+The user app (`apps/user`) also has a Vitest suite covering round-trip datetime utilities (`clampTripHours`, `minReturnDatetimeLocal`, `toDatetimeLocal`). Run with `cd apps/user && pnpm test`.
 
 ---
 
