@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 export interface ActiveRide {
   id: string
@@ -43,28 +44,36 @@ interface RideState {
   clearIncomingRequest: () => void
 }
 
-export const useRideStore = create<RideState>((set) => ({
-  activeRide:       null,
-  incomingRequest:  null,
+export const useRideStore = create<RideState>()(
+  persist(
+    (set) => ({
+      activeRide:       null,
+      incomingRequest:  null,
 
-  setActiveRide: (ride) =>
-    set({ activeRide: ride }),
+      setActiveRide: (ride) =>
+        set({ activeRide: ride }),
 
-  updateRideStatus: (status) =>
-    set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, status } : null })),
+      updateRideStatus: (status) =>
+        set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, status } : null })),
 
-  setStartOtp: (otp) =>
-    set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, startOtp: otp } : null })),
+      setStartOtp: (otp) =>
+        set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, startOtp: otp } : null })),
 
-  setEndOtp: (otp) =>
-    set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, endOtp: otp } : null })),
+      setEndOtp: (otp) =>
+        set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, endOtp: otp } : null })),
 
-  clearRide: () =>
-    set({ activeRide: null, incomingRequest: null }),
+      clearRide: () =>
+        set({ activeRide: null, incomingRequest: null }),
 
-  setIncomingRequest: (req) =>
-    set({ incomingRequest: req }),
+      setIncomingRequest: (req) =>
+        set({ incomingRequest: req }),
 
-  clearIncomingRequest: () =>
-    set({ incomingRequest: null }),
-}))
+      clearIncomingRequest: () =>
+        set({ incomingRequest: null }),
+    }),
+    {
+      name: 'ocar_driver_ride',
+      partialize: (s) => ({ activeRide: s.activeRide }),
+    }
+  )
+)
