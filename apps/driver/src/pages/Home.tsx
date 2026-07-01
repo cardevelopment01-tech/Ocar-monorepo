@@ -11,7 +11,7 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi, type EarningsSummary } from '@/lib/ride-api'
 import api from '@/lib/api'
 import { disconnectDriverSocket } from '@/lib/socket'
-import { getCurrentPosition } from '@/lib/location'
+import { useDriverLocation } from '@/lib/useDriverLocation'
 
 const DriverMapView = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap   = lazy(() => import('@/components/map/RecenterMap'))
@@ -36,7 +36,6 @@ export default function Home() {
   const prefersReducedMotion = useReducedMotion()
 
   // ── Refs ────────────────────────────────────────────────────────────────────
-  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const sheetRef            = useRef<HTMLDivElement | null>(null)
   // contentRef wraps inner content (no height constraint) so ResizeObserver
   // sees the natural rendered height even when the outer sheet is clipped.
@@ -66,8 +65,6 @@ export default function Home() {
   const [occlusion,          setOcclusion]         = useState(420)
   const [areaName,           setAreaName]          = useState<string | null>(null)
   const [geoLoading,         setGeoLoading]        = useState(false)
-  const [geoError,           setGeoError]           = useState(false)
-  const [positionReady,      setPositionReady]      = useState(false)
   const [showOfflineConfirm, setShowOfflineConfirm] = useState(false)
   const [todayEarnings, setTodayEarnings] = useState<EarningsSummary>({
     total_earnings: 0, trip_count: 0, online_hours: '0m', rating: null,
@@ -111,56 +108,25 @@ export default function Home() {
   const e         = todayEarnings
   const firstName = driver?.full_name?.split(' ')[0] ?? 'Driver'
 
-  // ── Offline position seed ────────────────────────────────────────────────────
-  // Gated on !isOnline so it never races the GPS loop's first sendLocation() call.
-  // Re-runs on going offline so the map stays current after the loop stops.
-  // Cancelled on unmount to avoid calling setMapCenter on a dead component.
-  useEffect(() => {
-    if (isOnline) return
-    let cancelled = false
-    getCurrentPosition()
-      .then(pos => {
-        if (cancelled) return
-        setGeoError(false)
-        setPositionReady(true)
-        setMapCenter([pos.coords.latitude, pos.coords.longitude])
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        if ((err as GeolocationPositionError)?.code === 1) setGeoError(true)
-      })
-    return () => { cancelled = true }
-  }, [isOnline])
+  // ── GPS tracking via watchPosition ───────────────────────────────────────────
+  const { position: gpsPosition, heading: gpsHeading, error: gpsError } = useDriverLocation({
+    onSync: isOnline && sessionId
+      ? (lat, lng) => {
+          driverRideApi.updateLocation({
+            sessionId: sessionId!,
+            lat, lng,
+            recordedAt: new Date().toISOString(),
+          }).catch(() => {})
+        }
+      : undefined,
+  })
 
-  // ── GPS location loop ────────────────────────────────────────────────────────
+  const positionReady = gpsPosition !== null
+  const geoError      = gpsError?.code === 1
+
   useEffect(() => {
-    if (!isOnline || !sessionId) {
-      if (locationIntervalRef.current) { clearInterval(locationIntervalRef.current); locationIntervalRef.current = null }
-      return
-    }
-    const sendLocation = async () => {
-      const pos = await getCurrentPosition().catch((err: unknown) => {
-        if ((err as GeolocationPositionError)?.code === 1) setGeoError(true)
-        return null
-      })
-      if (!pos) return  // never send fake coordinates on GPS failure
-      setGeoError(false)
-      setPositionReady(true)
-      setMapCenter([pos.coords.latitude, pos.coords.longitude])
-      await driverRideApi.updateLocation({
-        sessionId, lat: pos.coords.latitude, lng: pos.coords.longitude,
-        recordedAt: new Date().toISOString(),
-      }).catch(() => {})
-    }
-    void sendLocation()
-    locationIntervalRef.current = setInterval(sendLocation, 30_000)
-    const onVisible = () => { if (document.visibilityState === 'visible') void sendLocation() }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [isOnline, sessionId])
+    if (gpsPosition) setMapCenter(gpsPosition)
+  }, [gpsPosition])
 
   const handleToggle = () => {
     if (!isOnline) navigate('/go-online/mode')
@@ -168,7 +134,6 @@ export default function Home() {
   }
 
   const handleGoOffline = async () => {
-    if (locationIntervalRef.current) { clearInterval(locationIntervalRef.current); locationIntervalRef.current = null }
     disconnectDriverSocket()
     setOffline()
     await driverRideApi.goOffline('driver_choice').catch(() => {})
@@ -301,7 +266,7 @@ export default function Home() {
               bottomPadding={occlusion}
               topPadding={110}
             />
-            {positionReady && <SelfCarMarker position={mapCenter} areaName={areaName} loading={geoLoading} />}
+            {positionReady && <SelfCarMarker position={mapCenter} areaName={areaName} loading={geoLoading} heading={gpsHeading} />}
           </DriverMapView>
         </Suspense>
       </div>

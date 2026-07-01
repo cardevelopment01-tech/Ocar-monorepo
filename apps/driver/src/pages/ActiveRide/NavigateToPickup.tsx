@@ -8,7 +8,7 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { driverSafetyApi } from '@/lib/safety-api'
 import { EASE, GLASS, fmtReturn } from '@/lib/constants'
-import { getCurrentPosition } from '@/lib/location'
+import { useDriverLocation } from '@/lib/useDriverLocation'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
@@ -35,41 +35,25 @@ export default function NavigateToPickup() {
   const [arriving, setArriving] = useState(false)
   const [error, setError]       = useState<string | null>(null)
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
-  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const lastRouteFetch      = useRef<{ origin: [number, number]; at: number } | null>(null)
-  const fetchSeq            = useRef(0)
+  const lastRouteFetch = useRef<{ origin: [number, number]; at: number } | null>(null)
+  const fetchSeq       = useRef(0)
 
   const pickupPos: [number, number] = [
     activeRide?.pickupLat ?? DEFAULT_LAT,
     activeRide?.pickupLng ?? DEFAULT_LNG,
   ]
-  const [selfPos,     setSelfPos]     = useState<[number, number]>(pickupPos)
-  const [selfHeading, setSelfHeading] = useState(0)
-
   const pickupLat = activeRide?.pickupLat ?? DEFAULT_LAT
   const pickupLng = activeRide?.pickupLng ?? DEFAULT_LNG
 
-  useEffect(() => {
-    if (!sessionId) return
-    const sendLocation = async () => {
-      const pos = await getCurrentPosition(true).catch(() => null)
-      if (!pos) return
-      setSelfPos([pos.coords.latitude, pos.coords.longitude])
-      if (pos.coords.heading != null) setSelfHeading(pos.coords.heading)
-      await driverRideApi.updateLocation({
-        sessionId, lat: pos.coords.latitude, lng: pos.coords.longitude,
-        recordedAt: new Date().toISOString(),
-      }).catch(() => {})
-    }
-    void sendLocation()
-    locationIntervalRef.current = setInterval(sendLocation, 30_000)
-    const onVisible = () => { if (document.visibilityState === 'visible') void sendLocation() }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [sessionId])
+  const { position, heading: selfHeading } = useDriverLocation({
+    highAccuracy: true,
+    onSync: sessionId
+      ? (lat, lng) => {
+          driverRideApi.updateLocation({ sessionId: sessionId!, lat, lng, recordedAt: new Date().toISOString() }).catch(() => {})
+        }
+      : undefined,
+  })
+  const selfPos: [number, number] = position ?? pickupPos
 
   useEffect(() => {
     const dest: [number, number] = [pickupLat, pickupLng]
@@ -87,11 +71,10 @@ export default function NavigateToPickup() {
   }, [selfPos, pickupLat, pickupLng])
 
   const handleSOS = async () => {
-    const pos = await getCurrentPosition(true).catch(() => null)
     await driverSafetyApi.triggerSos({
       rideId:   activeRide?.id ?? '',
-      lat:      pos?.coords.latitude,
-      lng:      pos?.coords.longitude,
+      lat:      position?.[0],
+      lng:      position?.[1],
       severity: 'high',
     })
   }

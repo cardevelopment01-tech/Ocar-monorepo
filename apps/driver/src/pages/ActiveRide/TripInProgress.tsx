@@ -9,7 +9,7 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { driverSafetyApi } from '@/lib/safety-api'
 import { EASE, GLASS, fmtReturn } from '@/lib/constants'
-import { getCurrentPosition } from '@/lib/location'
+import { useDriverLocation } from '@/lib/useDriverLocation'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
@@ -51,16 +51,23 @@ export default function TripInProgress() {
   const [otpError, setOtpError]     = useState(false)
   const [completing, setCompleting] = useState(false)
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
-  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const lastRouteFetch      = useRef<{ origin: [number, number]; at: number } | null>(null)
-  const fetchSeq            = useRef(0)
+  const lastRouteFetch = useRef<{ origin: [number, number]; at: number } | null>(null)
+  const fetchSeq       = useRef(0)
 
   const dropPos: [number, number] = [
     activeRide?.dropLat ?? DEFAULT_LAT,
     activeRide?.dropLng ?? DEFAULT_LNG,
   ]
-  const [selfPos,     setSelfPos]     = useState<[number, number]>(dropPos)
-  const [selfHeading, setSelfHeading] = useState(0)
+
+  const { position, heading: selfHeading } = useDriverLocation({
+    highAccuracy: true,
+    onSync: sessionId
+      ? (lat, lng) => {
+          driverRideApi.updateLocation({ sessionId: sessionId!, lat, lng, recordedAt: new Date().toISOString() }).catch(() => {})
+        }
+      : undefined,
+  })
+  const selfPos: [number, number] = position ?? dropPos
 
   // Screen wake lock
   useEffect(() => {
@@ -70,29 +77,6 @@ export default function TripInProgress() {
     }
     return () => { lock?.release() }
   }, [])
-
-  // Location updates
-  useEffect(() => {
-    if (!sessionId) return
-    const send = async () => {
-      const pos = await getCurrentPosition(true).catch(() => null)
-      if (!pos) return
-      setSelfPos([pos.coords.latitude, pos.coords.longitude])
-      if (pos.coords.heading != null) setSelfHeading(pos.coords.heading)
-      await driverRideApi.updateLocation({
-        sessionId, lat: pos.coords.latitude, lng: pos.coords.longitude,
-        recordedAt: new Date().toISOString(),
-      }).catch(() => {})
-    }
-    void send()
-    locationIntervalRef.current = setInterval(send, 30_000)
-    const onVisible = () => { if (document.visibilityState === 'visible') void send() }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [sessionId])
 
   const dropLat = activeRide?.dropLat
   const dropLng = activeRide?.dropLng
@@ -115,11 +99,10 @@ export default function TripInProgress() {
   }, [selfPos, dropLat, dropLng])
 
   const handleSOS = async () => {
-    const pos = await getCurrentPosition(true).catch(() => null)
     await driverSafetyApi.triggerSos({
       rideId:   activeRide?.id ?? '',
-      lat:      pos?.coords.latitude,
-      lng:      pos?.coords.longitude,
+      lat:      position?.[0],
+      lng:      position?.[1],
       severity: 'high',
     })
   }
