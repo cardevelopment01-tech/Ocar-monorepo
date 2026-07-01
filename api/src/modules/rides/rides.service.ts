@@ -342,8 +342,8 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
   })
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
-    status:  'driver_arrived',
-    message: 'Driver has arrived at pickup',
+    status:   'driver_arrived',
+    startOtp: otp,
   })
 
   const ride = await repo.getRideById(rideId)
@@ -395,6 +395,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status:    'in_progress',
     startedAt: new Date().toISOString(),
+    endOtp,
   })
 
   if (ride.user_phone) {
@@ -406,6 +407,29 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
   }
 
   return { success: true, endOtp }
+}
+
+// ── User ride cancellation ────────────────────────────────────
+
+export async function cancelRide(userId: bigint, rideId: bigint) {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+  if (BigInt(ride.user_id) !== userId) throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
+  if (ride.status !== 'requested') {
+    throw Object.assign(new Error('Ride cannot be cancelled at this stage'), { statusCode: 409 })
+  }
+
+  await repo.updateRideStatus(rideId, 'cancelled', { cancelled_at: new Date().toISOString() })
+  await repo.logStatusHistory({
+    rideId,
+    fromStatus: 'requested',
+    toStatus:   'cancelled',
+    actor:      'user',
+    actorId:    userId,
+  })
+
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'cancelled' })
+  return { success: true }
 }
 
 // ── Demo helpers (non-production only) ───────────────────────

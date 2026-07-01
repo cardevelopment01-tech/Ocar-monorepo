@@ -113,6 +113,16 @@ router.get('/:id', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// ── User ride cancellation ────────────────────────────────────
+
+router.post('/:id/cancel', authenticate(), async (req, res, next) => {
+  try {
+    const userId = req.user!.id
+    const result = await service.cancelRide(userId, BigInt(req.params['id']!))
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
 // ── Driver ride actions ───────────────────────────────────────
 
 router.post('/:id/accept', authenticate(), async (req, res, next) => {

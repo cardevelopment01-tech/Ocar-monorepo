@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Phone, MessageSquare, MapPin, Navigation, X, RotateCcw, CheckCircle } from 'lucide-react'
+import { Phone, MessageSquare, MapPin, Navigation, X, RotateCcw, CheckCircle, Shield, Copy, Check } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
@@ -60,6 +60,11 @@ export default function RidePage() {
   const [driverHeading,  setDriverHeading]  = useState(0)
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
   const [socketOk,       setSocketOk]       = useState(false)
+  const [cancelling,     setCancelling]     = useState(false)
+  const [startOtp,       setStartOtp]       = useState<string | null>(null)
+  const [otpCopied,      setOtpCopied]      = useState(false)
+  const [endOtp,         setEndOtp]         = useState<string | null>(null)
+  const [endOtpCopied,   setEndOtpCopied]   = useState(false)
   const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null)
   const routeRef = useRef(false)
 
@@ -98,7 +103,11 @@ export default function RidePage() {
       if (!pollRef.current) pollRef.current = setInterval(() => void loadRide(), 10_000)
     })
 
-    socket.on('ride:status_update', (data: { status: string }) => setRideStatus(data.status))
+    socket.on('ride:status_update', (data: { status: string; startOtp?: string; endOtp?: string }) => {
+      setRideStatus(data.status)
+      if (data.startOtp) setStartOtp(data.startOtp)
+      if (data.endOtp)   setEndOtp(data.endOtp)
+    })
 
     socket.on('ride:driver_assigned', (data: { driverName?: string; driverPhone?: string }) => {
       setRideStatus('accepted')
@@ -293,12 +302,24 @@ export default function RidePage() {
               )}
 
               <button
-                onClick={() => router.back()}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold text-red-600 active:opacity-70 transition-opacity"
+                onClick={async () => {
+                  if (cancelling) return
+                  setCancelling(true)
+                  try {
+                    await rideApi.cancelRide(rideId)
+                    setRideStatus('cancelled')
+                  } catch {
+                    router.push('/home')
+                  } finally {
+                    setCancelling(false)
+                  }
+                }}
+                disabled={cancelling}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold text-red-600 active:opacity-70 transition-opacity disabled:opacity-50"
                 style={{ background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.16)' }}
               >
                 <X size={15} strokeWidth={2.5} />
-                Cancel ride
+                {cancelling ? 'Cancelling…' : 'Cancel ride'}
               </button>
             </motion.div>
           )}
@@ -401,7 +422,7 @@ export default function RidePage() {
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2, ease: EASE }}
                 >
-                  {(rideStatus === 'accepted' || rideStatus === 'in_progress') && fare && (
+                  {rideStatus === 'accepted' && fare && (
                     <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl"
                       style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
                       <div className="flex items-center gap-2">
@@ -411,6 +432,70 @@ export default function RidePage() {
                       <span className="text-base font-black text-gray-900">{fare}</span>
                     </div>
                   )}
+                  {rideStatus === 'in_progress' && (
+                    <div className="space-y-2">
+                      {fare && (
+                        <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl"
+                          style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                          <div className="flex items-center gap-2">
+                            <Navigation size={14} className="text-blue-600" />
+                            <span className="text-sm font-semibold text-gray-700">Estimated fare</span>
+                          </div>
+                          <span className="text-base font-black text-gray-900">{fare}</span>
+                        </div>
+                      )}
+                      {endOtp ? (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.97 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ type: 'spring', damping: 22, stiffness: 320 }}
+                          className="rounded-2xl overflow-hidden"
+                          style={{ background: 'linear-gradient(135deg, #F5F3FF, #EDE9FE)', border: '1.5px solid rgba(109,40,217,0.25)' }}
+                        >
+                          <div className="px-4 pt-3 pb-3">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-1.5">
+                                <Shield size={13} className="text-violet-600" />
+                                <span className="text-[11px] font-bold text-violet-700 uppercase tracking-wider">End Trip OTP</span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  void navigator.clipboard.writeText(endOtp)
+                                  setEndOtpCopied(true)
+                                  setTimeout(() => setEndOtpCopied(false), 2000)
+                                }}
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all active:scale-95"
+                                style={{ background: 'rgba(109,40,217,0.10)', color: '#6D28D9' }}
+                              >
+                                {endOtpCopied ? <Check size={11} /> : <Copy size={11} />}
+                                {endOtpCopied ? 'Copied!' : 'Copy'}
+                              </button>
+                            </div>
+                            <div className="flex justify-center gap-2 mb-3">
+                              {endOtp.split('').map((digit, i) => (
+                                <div
+                                  key={i}
+                                  className="w-10 h-12 rounded-xl bg-white flex items-center justify-center shadow-sm"
+                                  style={{ border: '1.5px solid rgba(109,40,217,0.18)' }}
+                                >
+                                  <span className="text-[22px] font-black text-gray-900 tabular-nums select-all">{digit}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-xs text-center font-medium text-violet-700">
+                              Your driver will ask for this code to complete the ride
+                            </p>
+                          </div>
+                        </motion.div>
+                      ) : (
+                        <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl"
+                          style={{ background: 'rgba(109,40,217,0.05)', border: '1px solid rgba(109,40,217,0.15)' }}>
+                          <div className="w-3.5 h-3.5 rounded-full border-2 border-violet-400 border-t-transparent animate-spin flex-shrink-0" />
+                          <span className="text-sm font-medium text-violet-700">Generating end trip OTP…</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {rideStatus === 'driver_arrived' && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl"
@@ -418,11 +503,56 @@ export default function RidePage() {
                         <MapPin size={14} className="text-green-600 flex-shrink-0" />
                         <span className="text-sm font-semibold text-green-700">Driver is at your pickup point</span>
                       </div>
-                      <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl"
-                        style={{ background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.15)' }}>
-                        <MessageSquare size={14} className="text-blue-600 flex-shrink-0" />
-                        <span className="text-sm font-medium text-blue-700">Check your SMS for the trip OTP and share it with your driver to start the ride.</span>
-                      </div>
+                      {startOtp ? (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.97 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ type: 'spring', damping: 22, stiffness: 320 }}
+                          className="rounded-2xl overflow-hidden"
+                          style={{ background: 'linear-gradient(135deg, #F0FDF4, #DCFCE7)', border: '1.5px solid rgba(22,163,74,0.30)' }}
+                        >
+                          <div className="px-4 pt-3 pb-3">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-1.5">
+                                <Shield size={13} className="text-green-600" />
+                                <span className="text-[11px] font-bold text-green-700 uppercase tracking-wider">Trip OTP</span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  void navigator.clipboard.writeText(startOtp)
+                                  setOtpCopied(true)
+                                  setTimeout(() => setOtpCopied(false), 2000)
+                                }}
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all active:scale-95"
+                                style={{ background: 'rgba(22,163,74,0.12)', color: '#16A34A' }}
+                              >
+                                {otpCopied ? <Check size={11} /> : <Copy size={11} />}
+                                {otpCopied ? 'Copied!' : 'Copy'}
+                              </button>
+                            </div>
+                            <div className="flex justify-center gap-2 mb-3">
+                              {startOtp.split('').map((digit, i) => (
+                                <div
+                                  key={i}
+                                  className="w-10 h-12 rounded-xl bg-white flex items-center justify-center shadow-sm"
+                                  style={{ border: '1.5px solid rgba(22,163,74,0.22)' }}
+                                >
+                                  <span className="text-[22px] font-black text-gray-900 tabular-nums select-all">{digit}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-xs text-center font-medium text-green-700">
+                              Tell this code to your driver to start the ride
+                            </p>
+                          </div>
+                        </motion.div>
+                      ) : (
+                        <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl"
+                          style={{ background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.15)' }}>
+                          <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-400 border-t-transparent animate-spin flex-shrink-0" />
+                          <span className="text-sm font-medium text-blue-700">Generating your trip OTP…</span>
+                        </div>
+                      )}
                     </div>
                   )}
                   {rideStatus === 'completed' && (
