@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plane, Train, Building2, ShoppingBag,
   GraduationCap, X, Map,
-  Plus, ChevronDown, User, Info, Clock, Heart,
+  Plus, ChevronDown, User, Clock, Heart,
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -581,46 +581,77 @@ function SearchContent() {
           <>
             <motion.div
               key="forme-backdrop"
-              className="absolute inset-0 z-40 bg-black/40"
+              className="absolute inset-0 z-40"
+              style={{ background: 'rgba(15,23,42,0.48)' }}
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               onClick={() => setForMeOpen(false)}
             />
             <motion.div
               key="forme-sheet"
-              className="absolute bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl px-6 pt-3"
-              style={{ paddingBottom: 'max(32px, env(safe-area-inset-bottom, 0px))' }}
+              className="absolute bottom-0 left-0 right-0 z-50 bg-white overflow-hidden"
+              style={{
+                borderRadius: '32px 32px 0 0',
+                boxShadow: '0 -6px 32px rgba(79,70,229,0.10)',
+                paddingBottom: 'max(32px, env(safe-area-inset-bottom, 0px))',
+              }}
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
               transition={{ type: 'spring', stiffness: 380, damping: 40 }}
             >
-              <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mb-5" />
-              <p className="text-xl font-bold text-text-primary mb-5">Booking ride for</p>
+              {/* Handle */}
+              <div className="w-9 h-1 rounded-full mx-auto mt-3 mb-5" style={{ background: 'rgba(79,70,229,0.15)' }} />
 
+              {/* Title */}
+              <p
+                className="text-[18px] font-bold px-6 mb-4"
+                style={{ color: '#0F172A', letterSpacing: '-0.01em' }}
+              >
+                Who&apos;s travelling?
+              </p>
+
+              {/* Myself — selected state */}
               <button
                 onClick={() => setForMeOpen(false)}
-                className="w-full flex items-center gap-4 py-4 border-b border-border"
+                className="w-full flex items-center gap-3.5 px-6 py-3.5 text-left"
+                style={{ background: '#EEF2FF' }}
               >
-                <span className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-                  <User size={18} className="text-text-secondary" strokeWidth={1.8} />
+                <span
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: '#4F46E5' }}
+                >
+                  <User size={16} color="white" strokeWidth={1.8} />
                 </span>
-                <span className="flex-1 text-[15px] font-semibold text-text-primary text-left">Myself</span>
-                <span className="w-5 h-5 rounded-full border-2 border-primary flex items-center justify-center flex-shrink-0">
-                  <span className="w-2.5 h-2.5 rounded-full bg-primary" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[15px] font-semibold" style={{ color: '#0F172A' }}>Myself</span>
+                  <span className="block text-[12px] font-medium mt-0.5" style={{ color: '#6366F1' }}>My own trip</span>
+                </span>
+                <span
+                  className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0"
+                  style={{ borderColor: '#4F46E5' }}
+                >
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: '#4F46E5' }} />
                 </span>
               </button>
 
-<div className="mt-4 mb-6 flex items-start gap-3 bg-surface-2 rounded-2xl px-4 py-3">
-                <Info size={15} className="text-text-muted flex-shrink-0 mt-0.5" strokeWidth={1.8} />
-                <p className="text-xs text-text-muted leading-relaxed">Contact name won&apos;t be shared with your driver</p>
+              {/* Privacy note */}
+              <p className="text-[11px] font-medium px-6 pt-3 pb-5" style={{ color: '#94A3B8' }}>
+                Your contact details are never shared with the driver.
+              </p>
+
+              {/* CTA */}
+              <div className="px-6">
+                <button
+                  onClick={() => setForMeOpen(false)}
+                  className="w-full py-4 rounded-full text-[15px] font-bold text-white active:scale-[0.98] transition-transform"
+                  style={{
+                    background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+                    boxShadow: '0 4px 20px rgba(79,70,229,0.40)',
+                    minHeight: 52,
+                  }}
+                >
+                  Confirm
+                </button>
               </div>
-
-              <button
-                onClick={() => setForMeOpen(false)}
-                className="w-full py-4 rounded-full text-[15px] font-bold text-white"
-                style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)' }}
-              >
-                Done
-              </button>
             </motion.div>
           </>
         )}
