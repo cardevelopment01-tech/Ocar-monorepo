@@ -163,7 +163,7 @@ function SelectRideContent() {
     <div className="h-full flex flex-col overflow-hidden bg-white">
 
       {/* ── Map ── */}
-      <div className="relative flex-shrink-0" style={{ height: '42%' }}>
+      <div className="relative flex-shrink-0" style={{ height: '36%' }}>
         <SelectRideMapScene
           center={center}
           pickupPos={[originLat, originLng]}
@@ -203,20 +203,18 @@ function SelectRideContent() {
         style={{ boxShadow: '0 -6px 32px rgba(79,70,229,0.10)', borderRadius: '24px 24px 0 0', marginTop: -8, position: 'relative', zIndex: 2 }}
       >
         {/* Handle + header */}
-        <div className="flex-shrink-0 px-5 pt-3 pb-2">
-          <div className="w-9 h-1 rounded-full mx-auto mb-3" style={{ background: 'rgba(79,70,229,0.15)' }} />
-          <div className="flex items-center justify-between mb-3">
+        <div className="flex-shrink-0 px-5 pt-2 pb-2">
+          <div className="w-9 h-1 rounded-full mx-auto mb-2.5" style={{ background: 'rgba(79,70,229,0.15)' }} />
+          <div className="flex items-center justify-between mb-2">
             <p className="text-[15px] font-bold text-slate-900">Choose a ride</p>
-            <span className="text-[12px] font-semibold text-slate-400 tabular-nums">
-              {rideType === 'round_trip' && tripHours !== undefined
-                ? `${distanceKm} km · round trip · ${tripHours}h`
-                : `${distanceKm} km · ${Math.round(durationMin)} min`}
+            <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
+              {distanceKm} km · {rideType === 'round_trip' ? 'round trip' : `${Math.round(durationMin)} min`}
             </span>
           </div>
 
           {/* Ride type tabs — hidden when user arrived from /round-trip (already committed) */}
           {!fromRoundTripPage && (
-            <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+            <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-2">
               {(['one_way', 'round_trip'] as const).map(t => (
                 <button
                   key={t}
@@ -234,43 +232,24 @@ function SelectRideContent() {
             </div>
           )}
 
-          {/* Round Trip badge — shown instead of tabs when entering from /round-trip */}
-          {fromRoundTripPage && (
-            <div
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full w-fit"
-              style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
-            >
-              <RotateCcw size={10} strokeWidth={2.5} style={{ color: '#4F46E5' }} />
-              <span className="text-[12px] font-semibold" style={{ color: '#4338CA' }}>Round trip</span>
-            </div>
-          )}
-
-          {/* Return date/time picker — shown for round trips */}
+          {/* Return time row — single compact line for both badge + picker */}
           {rideType === 'round_trip' && (
             <button
               onClick={() => setPickerOpen(true)}
-              className="mt-2.5 w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl bg-white text-left transition-opacity active:opacity-70"
-              style={{ border: '1px solid #E8EEFF' }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-opacity active:opacity-70"
+              style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
             >
-              <div
-                className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: '#EEF2FF' }}
-              >
-                <CalendarClock size={13} style={{ color: '#4F46E5' }} strokeWidth={1.8} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-semibold mb-0.5" style={{ color: '#94A3B8' }}>Return time</p>
-                <p className="text-[13px] font-semibold" style={{ color: returnAt ? '#0F172A' : '#94A3B8' }}>
-                  {returnAt
-                    ? returnAt.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) +
-                      ' · ' + String(returnAt.getHours()).padStart(2, '0') + ':' + String(returnAt.getMinutes()).padStart(2, '0')
-                    : 'Tap to set return time'}
-                </p>
-              </div>
+              <RotateCcw size={11} strokeWidth={2.5} className="flex-shrink-0" style={{ color: '#4F46E5' }} />
+              <span className="text-[12px] font-semibold flex-shrink-0" style={{ color: '#4338CA' }}>Return</span>
+              <span className="text-[12px] text-indigo-300 flex-shrink-0">·</span>
+              <span className="flex-1 text-[12px] font-semibold truncate" style={{ color: returnAt ? '#1E1B4B' : '#94A3B8' }}>
+                {returnAt
+                  ? returnAt.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) +
+                    ' · ' + String(returnAt.getHours()).padStart(2, '0') + ':' + String(returnAt.getMinutes()).padStart(2, '0')
+                  : 'Tap to set return time'}
+              </span>
               {tripHours !== undefined && (
-                <span className="flex-shrink-0 text-[14px] font-black tabular-nums" style={{ color: '#4F46E5' }}>
-                  {tripHours}h
-                </span>
+                <span className="flex-shrink-0 text-[12px] font-black tabular-nums" style={{ color: '#4F46E5' }}>{tripHours}h</span>
               )}
             </button>
           )}
@@ -278,7 +257,7 @@ function SelectRideContent() {
 
         {/* No drivers banner */}
         {allUnavailable && (
-          <div className="mx-4 mb-1 flex items-center gap-2 rounded-2xl px-4 py-2.5 bg-amber-50 border border-amber-200">
+          <div className="mx-4 mb-1 flex items-center gap-2 rounded-xl px-3 py-2 bg-amber-50 border border-amber-200">
             <Clock size={14} className="text-amber-600 flex-shrink-0" />
             <p className="text-[12px] font-semibold text-amber-800">No drivers nearby. Try again in a few minutes.</p>
           </div>
@@ -300,7 +279,7 @@ function SelectRideContent() {
                   onClick={() => !noCars && setSelected(cat.id)}
                   disabled={noCars}
                   className={cn(
-                    'w-full flex items-center gap-3 px-5 py-3.5 transition-colors duration-150 text-left',
+                    'w-full flex items-center gap-3 px-4 py-3 transition-colors duration-150 text-left',
                     noCars  ? 'opacity-35 cursor-not-allowed' :
                     active  ? 'bg-violet-50' :
                               'active:bg-slate-50 cursor-pointer'
@@ -358,11 +337,6 @@ function SelectRideContent() {
                           )}>
                             ₹<AnimatedNumber value={Math.round(fare)} />
                           </p>
-                          {rideType === 'round_trip' && est.breakdown.hour_surcharge > 0 && (
-                            <p className="text-[10px] font-semibold text-violet-400 tabular-nums">
-                              +₹{Math.round(est.breakdown.hour_surcharge)} hrs
-                            </p>
-                          )}
                         </div>
                       ) : (
                         <p className="text-sm text-slate-400">—</p>
@@ -376,7 +350,7 @@ function SelectRideContent() {
                     </div>
                   </div>
                 </button>
-                {i < categories.length - 1 && <div className="mx-5 h-px bg-slate-100" />}
+                {i < categories.length - 1 && <div className="mx-4 h-px bg-slate-100" />}
               </div>
             )
           })}
@@ -384,7 +358,7 @@ function SelectRideContent() {
           {/* Round trip fare breakdown — inside scroll so book bar stays pinned */}
           {rideType === 'round_trip' && estimates[selected] && tripHours !== undefined && (
             <div
-              className="mx-4 mt-1 mb-3 rounded-2xl px-4 py-3 space-y-1.5"
+              className="mx-4 mt-1 mb-2 rounded-2xl px-3 py-2.5 space-y-1"
               style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
             >
               <div className="flex justify-between text-[11px]">
@@ -422,10 +396,10 @@ function SelectRideContent() {
 
         {/* Book bar */}
         <div
-          className="flex-shrink-0 bg-white border-t border-slate-100 px-4 pt-3"
+          className="flex-shrink-0 bg-white border-t border-slate-100 px-4 pt-2.5"
           style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}
         >
-          <div className="flex items-center justify-between mb-3 px-1">
+          <div className="flex items-center justify-between mb-2 px-1">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center">
                 <CreditCard size={14} className="text-slate-600" />
