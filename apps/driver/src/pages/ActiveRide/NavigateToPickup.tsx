@@ -13,9 +13,19 @@ const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
 const LocationPin    = lazy(() => import('@/components/map/LocationPin'))
 const SelfCarMarker  = lazy(() => import('@/components/map/SelfCarMarker'))
+const RoutePolyline  = lazy(() => import('@/components/map/RoutePolyline'))
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
+
+function haversineMetres(a: [number, number], b: [number, number]): number {
+  const R = 6_371_000
+  const dLat = (b[0] - a[0]) * Math.PI / 180
+  const dLng = (b[1] - a[1]) * Math.PI / 180
+  const s = Math.sin(dLat / 2) ** 2
+    + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
+}
 
 function getCurrentPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) =>
@@ -32,7 +42,10 @@ export default function NavigateToPickup() {
   const { sessionId } = useSessionStore()
   const [arriving, setArriving] = useState(false)
   const [error, setError]       = useState<string | null>(null)
+  const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastRouteFetch      = useRef<{ origin: [number, number]; at: number } | null>(null)
+  const fetchSeq            = useRef(0)
 
   const pickupPos: [number, number] = [
     activeRide?.pickupLat ?? DEFAULT_LAT,
@@ -40,6 +53,9 @@ export default function NavigateToPickup() {
   ]
   const [selfPos,     setSelfPos]     = useState<[number, number]>(pickupPos)
   const [selfHeading, setSelfHeading] = useState(0)
+
+  const pickupLat = activeRide?.pickupLat ?? DEFAULT_LAT
+  const pickupLng = activeRide?.pickupLng ?? DEFAULT_LNG
 
   useEffect(() => {
     if (!sessionId) return
@@ -62,6 +78,21 @@ export default function NavigateToPickup() {
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [sessionId])
+
+  useEffect(() => {
+    const dest: [number, number] = [pickupLat, pickupLng]
+    const prev     = lastRouteFetch.current
+    const deviated = prev ? haversineMetres(selfPos, prev.origin) > 200 : false
+    const stale    = prev ? (Date.now() - prev.at) > 60_000 : false
+    if (prev && !deviated && !stale) return
+
+    const seq = ++fetchSeq.current
+    lastRouteFetch.current = { origin: selfPos, at: Date.now() }
+
+    driverRideApi.getRoute(selfPos[0], selfPos[1], dest[0], dest[1])
+      .then(r => { if (fetchSeq.current === seq) setEncodedPolyline(r.polyline || undefined) })
+      .catch(() => { if (fetchSeq.current === seq) setEncodedPolyline(undefined) })
+  }, [selfPos, pickupLat, pickupLng])
 
   const handleSOS = async () => {
     const pos = await getCurrentPosition().catch(() => null)
@@ -99,6 +130,7 @@ export default function NavigateToPickup() {
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
           <DriverMapView center={selfPos} zoom={15}>
             <RecenterMap center={selfPos} />
+            <RoutePolyline encoded={encodedPolyline} positions={[selfPos, pickupPos]} />
             <SelfCarMarker position={selfPos} heading={selfHeading} />
             <LocationPin position={pickupPos} variant="pickup" />
           </DriverMapView>

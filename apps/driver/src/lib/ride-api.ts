@@ -141,6 +141,18 @@ export const driverRideApi = {
     const res = await api.get('/api/v1/rides/me/earnings-summary', { params: { period } })
     return res.data as EarningsSummary
   },
+
+  getRoute: async (
+    originLat: number,
+    originLng: number,
+    destLat: number,
+    destLng: number,
+  ): Promise<{ polyline: string; distanceKm: number; durationMin: number }> => {
+    const res = await api.get('/api/v1/geo/route', {
+      params: { originLat, originLng, destLat, destLng },
+    })
+    return res.data as { polyline: string; distanceKm: number; durationMin: number }
+  },
 }
 
 export type EarningsSummary = {
