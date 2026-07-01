@@ -921,12 +921,14 @@ export default function RateCardsPage() {
                           <td className="!text-right font-mono font-bold text-text-primary">{numFmt(pkg.package_fare)}</td>
                           <td className="!text-right font-mono text-text-secondary">{numFmt(pkg.extra_per_km)}</td>
                           <td className="!text-right font-mono text-text-muted">{numFmt(pkg.extra_per_min)}</td>
-                          <td className="!text-center">
-                            <Toggle
-                              value={pkg.is_active}
-                              onChange={() => void toggleRentalPackage(pkg)}
-                              disabled={toggling === pkg.id}
-                            />
+                          <td>
+                            <div className="flex justify-center">
+                              <Toggle
+                                value={pkg.is_active}
+                                onChange={() => void toggleRentalPackage(pkg)}
+                                disabled={toggling === pkg.id}
+                              />
+                            </div>
                           </td>
                           <td className="!text-right">
                             <EditRentalPackageDialog pkg={pkg} onUpdated={fetchRental} />

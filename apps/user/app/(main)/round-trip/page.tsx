@@ -4,8 +4,9 @@ import { Suspense, useState, useMemo } from 'react'
 import { ArrowLeft, RotateCcw, CalendarClock, ArrowRight, CreditCard, MapPin } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { clampTripHours, minReturnDatetimeLocal, toDatetimeLocal } from '@/lib/utils'
+import { clampTripHours } from '@/lib/utils'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import DateTimePickerSheet from '@/components/ui/DateTimePickerSheet'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
@@ -34,7 +35,8 @@ function RoundTripContent() {
 
   const hasDestination = destLat !== null && destLng !== null && destAddress !== null
 
-  const [returnAt, setReturnAt] = useState<Date | null>(null)
+  const [returnAt,    setReturnAt]    = useState<Date | null>(null)
+  const [pickerOpen,  setPickerOpen]  = useState(false)
 
   const tripHours = useMemo(() => clampTripHours(returnAt), [returnAt])
 
@@ -180,7 +182,10 @@ function RoundTripContent() {
                 className="rounded-2xl bg-white overflow-hidden"
                 style={{ border: '1px solid #E8EEFF', boxShadow: '0 2px 16px rgba(79,70,229,0.07)' }}
               >
-                <div className="flex items-center gap-3 px-4 py-3.5">
+                <button
+                  onClick={() => setPickerOpen(true)}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-opacity active:opacity-70"
+                >
                   <div
                     className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ background: '#EEF2FF' }}
@@ -189,14 +194,12 @@ function RoundTripContent() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[11px] font-semibold mb-0.5" style={{ color: '#475569' }}>Return date &amp; time</p>
-                    <input
-                      type="datetime-local"
-                      min={minReturnDatetimeLocal()}
-                      value={returnAt ? toDatetimeLocal(returnAt) : ''}
-                      onChange={e => setReturnAt(e.target.value ? new Date(e.target.value) : null)}
-                      className="w-full bg-transparent text-[14px] font-semibold outline-none"
-                      style={{ color: returnAt ? '#0F172A' : '#94A3B8' }}
-                    />
+                    <p className="text-[14px] font-semibold" style={{ color: returnAt ? '#0F172A' : '#94A3B8' }}>
+                      {returnAt
+                        ? returnAt.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) +
+                          ' · ' + String(returnAt.getHours()).padStart(2, '0') + ':' + String(returnAt.getMinutes()).padStart(2, '0')
+                        : 'Pick a date & time'}
+                    </p>
                   </div>
                   {tripHours !== undefined && (
                     <motion.div
@@ -211,7 +214,7 @@ function RoundTripContent() {
                       </p>
                     </motion.div>
                   )}
-                </div>
+                </button>
                 {!returnAt && (
                   <div className="px-4 pb-3.5" style={{ borderTop: '1px solid #F1F5FF' }}>
                     <p className="text-[11px] pt-2.5" style={{ color: '#94A3B8' }}>
@@ -279,6 +282,14 @@ function RoundTripContent() {
           {buttonLabel}
         </button>
       </div>
+
+      <DateTimePickerSheet
+        open={pickerOpen}
+        value={returnAt}
+        min={new Date(Date.now() + 4 * 60 * 60 * 1000)}
+        onConfirm={setReturnAt}
+        onClose={() => setPickerOpen(false)}
+      />
     </div>
   )
 }
