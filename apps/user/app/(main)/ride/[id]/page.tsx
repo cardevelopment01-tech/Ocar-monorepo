@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Phone, MessageSquare, MapPin, Navigation, X, RotateCcw, CheckCircle, Shield, Copy, Check } from 'lucide-react'
 import dynamic from 'next/dynamic'
@@ -16,6 +16,24 @@ const PICKUP = { lat: 20.2961, lng: 85.8245 }
 const DROP   = { lat: 20.2726, lng: 85.8385 }
 
 const EASE = [0.22, 1, 0.36, 1] as const
+
+type RouteMode = 'pickup-dest' | 'driver-pickup' | 'driver-dest' | 'recap'
+
+function routeModeFor(status: string): RouteMode {
+  if (status === 'accepted' || status === 'driver_arrived') return 'driver-pickup'
+  if (status === 'in_progress') return 'driver-dest'
+  if (status === 'completed' || status === 'cancelled') return 'recap'
+  return 'pickup-dest'
+}
+
+function haversineMetres(a: [number, number], b: [number, number]): number {
+  const R = 6_371_000
+  const dLat = (b[0] - a[0]) * Math.PI / 180
+  const dLng = (b[1] - a[1]) * Math.PI / 180
+  const s = Math.sin(dLat / 2) ** 2
+    + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
+}
 
 type StatusKey = 'requested' | 'accepted' | 'driver_arrived' | 'in_progress' | 'completed' | 'cancelled' | 'no_drivers'
 
@@ -65,8 +83,9 @@ export default function RidePage() {
   const [otpCopied,      setOtpCopied]      = useState(false)
   const [endOtp,         setEndOtp]         = useState<string | null>(null)
   const [endOtpCopied,   setEndOtpCopied]   = useState(false)
-  const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null)
-  const routeRef = useRef(false)
+  const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastFetch = useRef<{ mode: RouteMode; origin: [number, number]; at: number } | null>(null)
+  const fetchSeq  = useRef(0)
 
   const loadRide = useCallback(async () => {
     try {
@@ -74,13 +93,6 @@ export default function RidePage() {
       setRide(data)
       setRideStatus(data.status)
 
-      // Fetch real road route once (when coords are available)
-      if (!routeRef.current && data.origin_lat && data.dest_lat && data.dest_lng) {
-        routeRef.current = true
-        geoApi.getRoute(data.origin_lat, data.origin_lng, data.dest_lat, data.dest_lng)
-          .then(r => setEncodedPolyline(r.polyline))
-          .catch(() => { /* use straight-line fallback */ })
-      }
     } catch { /* ignore */ }
   }, [rideId])
 
@@ -151,9 +163,55 @@ export default function RidePage() {
     }
   }, [rideStatus, rideId, router])
 
-  const pickupPos: [number, number] = ride ? [ride.origin_lat, ride.origin_lng] : [PICKUP.lat, PICKUP.lng]
-  const dropPos:   [number, number] = ride?.dest_lat && ride.dest_lng ? [ride.dest_lat, ride.dest_lng] : [DROP.lat, DROP.lng]
+  const pickupPos = useMemo<[number, number]>(
+    () => ride ? [ride.origin_lat, ride.origin_lng] : [PICKUP.lat, PICKUP.lng],
+    [ride]
+  )
+  const dropPos = useMemo<[number, number]>(
+    () => ride?.dest_lat != null && ride.dest_lng != null ? [ride.dest_lat, ride.dest_lng] : [DROP.lat, DROP.lng],
+    [ride]
+  )
+  const hasDest   = ride?.dest_lat != null && ride?.dest_lng != null
+  const routeMode = routeModeFor(rideStatus)
   const mapCenter: [number, number] = driverPos ?? pickupPos
+
+  useEffect(() => {
+    if (!ride) return
+    const hd = ride.dest_lat != null && ride.dest_lng != null
+
+    let origin: [number, number]
+    let dest: [number, number]
+
+    if (routeMode === 'driver-pickup') {
+      if (!driverPos) return
+      origin = driverPos
+      dest   = pickupPos
+    } else if (routeMode === 'driver-dest') {
+      if (!driverPos || !hd) return
+      origin = driverPos
+      dest   = dropPos
+    } else {
+      if (!hd) return
+      origin = pickupPos
+      dest   = dropPos
+    }
+
+    const prev        = lastFetch.current
+    const modeChanged = !prev || prev.mode !== routeMode
+    const deviated    = prev && driverPos ? haversineMetres(driverPos, prev.origin) > 200 : false
+    const stale       = prev ? (Date.now() - prev.at) > 60_000 : false
+
+    if (!modeChanged && !deviated && !stale) return
+    if (routeMode === 'recap' && prev?.mode === 'recap') return
+
+    const seq = ++fetchSeq.current
+    lastFetch.current = { mode: routeMode, origin, at: Date.now() }
+    if (modeChanged) setEncodedPolyline(undefined)
+
+    geoApi.getRoute(origin[0], origin[1], dest[0], dest[1])
+      .then(r => { if (fetchSeq.current === seq) setEncodedPolyline(r.polyline || undefined) })
+      .catch(() => { if (fetchSeq.current === seq) setEncodedPolyline(undefined) })
+  }, [routeMode, driverPos, pickupPos, dropPos, ride])
 
   const status    = (rideStatus as StatusKey) in STATUS_CONFIG ? (rideStatus as StatusKey) : 'requested'
   const cfg       = STATUS_CONFIG[status]
@@ -173,6 +231,8 @@ export default function RidePage() {
           encodedPolyline={encodedPolyline}
           driverPos={driverPos}
           driverHeading={driverHeading}
+          routeMode={routeMode}
+          showDrop={hasDest}
         />
 
         {/* Dev socket indicator */}
