@@ -6,13 +6,7 @@ import OcarSpinner from '@/components/ui/OcarSpinner'
 import OtpInput from '@/components/ui/OtpInput'
 import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi } from '@/lib/ride-api'
-
-function fmtReturn(iso: string): string {
-  const d = new Date(iso)
-  const z = (n: number) => String(n).padStart(2, '0')
-  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  return `${d.getDate()} ${mo[d.getMonth()]} · ${z(d.getHours())}:${z(d.getMinutes())}`
-}
+import { fmtReturn } from '@/lib/constants'
 
 export default function OTPVerify() {
   const navigate = useNavigate()

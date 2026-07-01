@@ -1,4 +1,3 @@
-'use client'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
@@ -8,6 +7,7 @@ import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { driverSafetyApi } from '@/lib/safety-api'
+import { EASE, GLASS, fmtReturn } from '@/lib/constants'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
@@ -16,22 +16,6 @@ const SelfCarMarker  = lazy(() => import('@/components/map/SelfCarMarker'))
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
-const EASE = [0.22, 1, 0.36, 1] as const
-
-const GLASS = {
-  background:           'rgba(255,255,255,0.92)',
-  backdropFilter:       'blur(16px)',
-  WebkitBackdropFilter: 'blur(16px)',
-  border:               '1px solid rgba(79,70,229,0.10)',
-  boxShadow:            '0 2px 16px rgba(79,70,229,0.10)',
-}
-
-function fmtReturn(iso: string): string {
-  const d = new Date(iso)
-  const z = (n: number) => String(n).padStart(2, '0')
-  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  return `${d.getDate()} ${mo[d.getMonth()]} · ${z(d.getHours())}:${z(d.getMinutes())}`
-}
 
 function getCurrentPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) =>
@@ -149,7 +133,7 @@ export default function NavigateToPickup() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.4, ease: EASE }}
         className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-3xl border-t border-border px-5 pt-4"
-        style={{ zIndex: 10, paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
+        style={{ zIndex: 10, paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}
       >
         <div className="w-10 h-1 rounded-full bg-surface-3 mx-auto mb-4" />
 

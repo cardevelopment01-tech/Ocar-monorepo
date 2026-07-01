@@ -1,9 +1,8 @@
 'use client'
 
-import { DEMO_MODE } from '@/lib/demo'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Phone, MessageSquare, MapPin, Navigation, X, RotateCcw } from 'lucide-react'
+import { Phone, MessageSquare, MapPin, Navigation, X, RotateCcw, CheckCircle } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
@@ -64,13 +63,11 @@ export default function RidePage() {
   const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null)
   const routeRef = useRef(false)
 
-  const DEMO_ALLOWED = new Set(['requested', 'accepted', 'cancelled', 'no_drivers'])
-
   const loadRide = useCallback(async () => {
     try {
       const data = await rideApi.getRide(rideId)
       setRide(data)
-      setRideStatus(DEMO_MODE && !DEMO_ALLOWED.has(data.status) ? 'accepted' : data.status)
+      setRideStatus(data.status)
 
       // Fetch real road route once (when coords are available)
       if (!routeRef.current && data.origin_lat && data.dest_lat && data.dest_lng) {
@@ -86,17 +83,20 @@ export default function RidePage() {
     if (!rideId) return
     void loadRide()
 
-    if (DEMO_MODE) {
-      pollRef.current = setInterval(() => void loadRide(), 4_000)
-      return () => { if (pollRef.current) clearInterval(pollRef.current) }
-    }
-
     connectSocket()
     const socket = getSocket()
     joinRideRoom(rideId)
 
-    socket.on('connect',    () => { setSocketOk(true); if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } })
-    socket.on('disconnect', () => setSocketOk(false))
+    socket.on('connect', () => {
+      setSocketOk(true)
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      joinRideRoom(rideId)
+      void loadRide()
+    })
+    socket.on('disconnect', () => {
+      setSocketOk(false)
+      if (!pollRef.current) pollRef.current = setInterval(() => void loadRide(), 10_000)
+    })
 
     socket.on('ride:status_update', (data: { status: string }) => setRideStatus(data.status))
 
@@ -131,15 +131,7 @@ export default function RidePage() {
     }
   }, [rideId, loadRide])
 
-  const handleDemoForce = async (action: 'complete' | 'cancel') => {
-    try {
-      await rideApi.demoForce(rideId, action)
-      router.push('/home')
-    } catch { /* ignore */ }
-  }
-
   useEffect(() => {
-    if (DEMO_MODE) return
     if (rideStatus === 'completed') {
       const t = setTimeout(() => router.push(`/ride/${rideId}/rate`), 2000)
       return () => clearTimeout(t)
@@ -420,10 +412,27 @@ export default function RidePage() {
                     </div>
                   )}
                   {rideStatus === 'driver_arrived' && (
-                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl"
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl"
+                        style={{ background: 'rgba(22,163,74,0.06)', border: '1px solid rgba(22,163,74,0.18)' }}>
+                        <MapPin size={14} className="text-green-600 flex-shrink-0" />
+                        <span className="text-sm font-semibold text-green-700">Driver is at your pickup point</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl"
+                        style={{ background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.15)' }}>
+                        <MessageSquare size={14} className="text-blue-600 flex-shrink-0" />
+                        <span className="text-sm font-medium text-blue-700">Check your SMS for the trip OTP and share it with your driver to start the ride.</span>
+                      </div>
+                    </div>
+                  )}
+                  {rideStatus === 'completed' && (
+                    <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl"
                       style={{ background: 'rgba(22,163,74,0.06)', border: '1px solid rgba(22,163,74,0.18)' }}>
-                      <MapPin size={14} className="text-green-600" />
-                      <span className="text-sm font-semibold text-green-700">Driver is at your pickup point</span>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle size={14} className="text-green-600" />
+                        <span className="text-sm font-semibold text-green-700">Trip complete</span>
+                      </div>
+                      {fare && <span className="text-base font-black text-gray-900">{fare}</span>}
                     </div>
                   )}
                 </motion.div>
@@ -434,29 +443,6 @@ export default function RidePage() {
 
         </AnimatePresence>
 
-        {/* ── Demo controls — only visible in DEMO_MODE, never in production ── */}
-        {DEMO_MODE && hasDriver && (
-          <div className="mx-4 mb-5 mt-1 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-2.5">
-              Demo Controls
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => void handleDemoForce('complete')}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white transition-opacity active:opacity-70"
-                style={{ background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)' }}
-              >
-                Complete Ride
-              </button>
-              <button
-                onClick={() => void handleDemoForce('cancel')}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-red-600 bg-red-50 border border-red-200 transition-opacity active:opacity-70"
-              >
-                Cancel Ride
-              </button>
-            </div>
-          </div>
-        )}
       </motion.div>
     </div>
   )

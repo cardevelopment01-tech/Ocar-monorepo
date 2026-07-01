@@ -5,13 +5,7 @@ import { Star, ArrowRight, RotateCcw, Clock } from 'lucide-react'
 import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useAuthStore } from '@/store/useAuthStore'
-
-function fmtReturn(iso: string): string {
-  const d = new Date(iso)
-  const z = (n: number) => String(n).padStart(2, '0')
-  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  return `${d.getDate()} ${mo[d.getMonth()]} · ${z(d.getHours())}:${z(d.getMinutes())}`
-}
+import { fmtReturn } from '@/lib/constants'
 
 export default function TripEnd() {
   const navigate = useNavigate()
