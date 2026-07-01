@@ -14,6 +14,11 @@ function fmt(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+function initials(name: string | null) {
+  if (!name) return '?'
+  return name.split(' ').map(p => p[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
+}
+
 function SkeletonRows({ cols }: { cols: number }) {
   return (
     <>
@@ -93,7 +98,7 @@ export default function UsersPage() {
       render: (u: AdminUserItem) => (
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-info-light flex items-center justify-center flex-shrink-0">
-            <span className="font-bold text-info text-xs">{u.name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}</span>
+            <span className="font-bold text-info text-xs">{initials(u.name)}</span>
           </div>
           <div>
             <p className="font-semibold text-text-primary">{u.name}</p>
@@ -185,7 +190,7 @@ export default function UsersPage() {
           <div className="p-6 space-y-5">
             <div className="flex items-center gap-3">
               <div className="w-16 h-16 rounded-full bg-info-light flex items-center justify-center">
-                <span className="font-black text-info text-xl">{selected.name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}</span>
+                <span className="font-black text-info text-xl">{initials(selected.name)}</span>
               </div>
               <div>
                 <div className="flex items-center gap-2 mb-1">
