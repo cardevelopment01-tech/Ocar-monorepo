@@ -18,6 +18,7 @@ export interface ActiveRide {
   userName?: string
   returnAt?: string
   tripHours?: number
+  rideStartedAt?: string
 }
 
 interface RideState {
@@ -39,6 +40,7 @@ interface RideState {
   updateRideStatus:  (status: string) => void
   setStartOtp:       (otp: string) => void
   setEndOtp:         (otp: string) => void
+  setRideStartedAt:  (ts: string) => void
   clearRide:         () => void
   setIncomingRequest: (req: RideState['incomingRequest']) => void
   clearIncomingRequest: () => void
@@ -61,6 +63,9 @@ export const useRideStore = create<RideState>()(
 
       setEndOtp: (otp) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, endOtp: otp } : null })),
+
+      setRideStartedAt: (ts) =>
+        set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, rideStartedAt: ts } : null })),
 
       clearRide: () =>
         set({ activeRide: null, incomingRequest: null }),

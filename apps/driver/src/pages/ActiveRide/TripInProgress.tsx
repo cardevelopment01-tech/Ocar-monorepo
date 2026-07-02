@@ -50,8 +50,9 @@ function haversineMetres(a: [number, number], b: [number, number]): number {
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
 }
 
-function useElapsed() {
-  const [seconds, setSeconds] = useState(0)
+function useElapsed(startedAt?: string) {
+  const initial = startedAt ? Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000)) : 0
+  const [seconds, setSeconds] = useState(initial)
   useEffect(() => {
     const id = setInterval(() => setSeconds(s => s + 1), 1000)
     return () => clearInterval(id)
@@ -63,8 +64,8 @@ function useElapsed() {
 
 export default function TripInProgress() {
   const navigate = useNavigate()
-  const elapsed = useElapsed()
   const { activeRide, updateRideStatus } = useRideStore()
+  const elapsed = useElapsed(activeRide?.rideStartedAt)
   const { sessionId } = useSessionStore()
 
   const [showEndOtp, setShowEndOtp] = useState(false)

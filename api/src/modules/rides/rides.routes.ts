@@ -50,6 +50,17 @@ router.get('/me/trips', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// ── Driver active ride ────────────────────────────────────────
+
+router.get('/me/active', authenticate(), async (req, res, next) => {
+  try {
+    const driverId = req.driver!.id
+    const ride = await repo.getActiveRideForDriver(driverId)
+    if (!ride) { res.status(404).json({ error: 'No active ride' }); return }
+    res.json(ride)
+  } catch (err) { next(err) }
+})
+
 // ── Driver session ────────────────────────────────────────────
 
 router.post('/sessions/online', authenticate(), async (req, res, next) => {

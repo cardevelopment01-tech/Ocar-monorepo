@@ -38,7 +38,7 @@ export default function App() {
   const navigate = useNavigate()
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
   const { isOnline, setOnline, setOffline } = useSessionStore()
-  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide } = useRideStore()
+  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, clearRide } = useRideStore()
   const [accepting, setAccepting] = useState(false)
 
   useEffect(() => {
@@ -61,13 +61,39 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated) return
     driverRideApi.getCurrentSession()
-      .then(session => {
+      .then(async session => {
         if (session && (session.status === 'online' || session.status === 'on_trip')) {
           setOnline(Number(session.id), Number(session.vehicle_id), Number(session.category_id))
           connectDriverSocket()
+          if (session.status === 'on_trip') {
+            const ride = await driverRideApi.getActiveRide()
+            if (!ride) { clearRide(); return }
+            const activeRideInput: Parameters<typeof setActiveRide>[0] = {
+              id: ride.id,
+              status: ride.status,
+              pickup: ride.origin_address ?? 'Pickup',
+              drop: ride.destination_address ?? (ride.ride_type === 'rental' ? 'Hourly rental' : 'Destination'),
+              pickupLat: ride.origin_lat,
+              pickupLng: ride.origin_lng,
+              fare: ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
+              rideType: ride.ride_type,
+            }
+            if (ride.dest_lat    != null) activeRideInput.dropLat       = ride.dest_lat
+            if (ride.dest_lng    != null) activeRideInput.dropLng       = ride.dest_lng
+            if (ride.user_phone  != null) activeRideInput.userPhone     = ride.user_phone
+            if (ride.user_name   != null) activeRideInput.userName      = ride.user_name
+            if (ride.return_at   != null) activeRideInput.returnAt      = ride.return_at
+            if (ride.trip_hours  != null) activeRideInput.tripHours     = ride.trip_hours
+            if (ride.started_at  != null) activeRideInput.rideStartedAt = ride.started_at
+            setActiveRide(activeRideInput)
+            if (ride.status === 'accepted')        navigate('/ride/navigate')
+            else if (ride.status === 'driver_arrived') navigate('/ride/otp')
+            else if (ride.status === 'in_progress')    navigate('/ride/in-progress')
+          }
         } else {
           setOffline()
           disconnectDriverSocket()
+          clearRide()
         }
       })
       .catch(() => {})

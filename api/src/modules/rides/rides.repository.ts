@@ -247,6 +247,32 @@ export async function createRide(data: {
   return res.rows[0]
 }
 
+export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | null> {
+  const res = await pool.query<Ride>(
+    `SELECT
+       r.*,
+       ST_Y(r.origin::geometry)      AS origin_lat,
+       ST_X(r.origin::geometry)      AS origin_lng,
+       ST_Y(r.destination::geometry) AS dest_lat,
+       ST_X(r.destination::geometry) AS dest_lng,
+       u.phone      AS user_phone,
+       u.name       AS user_name,
+       d.full_name  AS driver_name,
+       d.phone      AS driver_phone,
+       fs.total_estimated
+     FROM rides r
+     LEFT JOIN users u           ON u.id = r.user_id
+     LEFT JOIN drivers d         ON d.id = r.driver_id
+     LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+     WHERE r.driver_id = $1
+       AND r.status IN ('accepted', 'driver_arrived', 'in_progress')
+     ORDER BY r.accepted_at DESC
+     LIMIT 1`,
+    [driverId]
+  )
+  return res.rows[0] ?? null
+}
+
 export async function getRideById(rideId: bigint): Promise<Ride | null> {
   const res = await pool.query<Ride>(
     `SELECT

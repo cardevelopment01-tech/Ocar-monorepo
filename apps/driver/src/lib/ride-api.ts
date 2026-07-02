@@ -25,6 +25,7 @@ export type RideDetail = {
   total_estimated: string | null
   return_at: string | null
   trip_hours: number | null
+  started_at: string | null
 }
 
 export type TripHistoryItem = {
@@ -121,6 +122,16 @@ export const driverRideApi = {
   getRide: async (rideId: string): Promise<RideDetail> => {
     const res = await api.get(`/api/v1/rides/${rideId}`)
     return res.data as RideDetail
+  },
+
+  getActiveRide: async (): Promise<RideDetail | null> => {
+    try {
+      const res = await api.get('/api/v1/rides/me/active')
+      return res.data as RideDetail
+    } catch (err: unknown) {
+      if ((err as { response?: { status?: number } })?.response?.status === 404) return null
+      throw err
+    }
   },
 
   getMyTrips: async (page = 1, limit = 20): Promise<{
