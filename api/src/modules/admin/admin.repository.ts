@@ -1097,7 +1097,11 @@ export async function getActiveDriverSessions(): Promise<ActiveDriverSession[]> 
       dls.updated_at                       AS location_updated_at,
       r.id::text                           AS ride_id,
       r.origin_address,
-      r.destination_address
+      r.destination_address,
+      r.origin_lat,
+      r.origin_lng,
+      r.dest_lat,
+      r.dest_lng
     FROM driver_sessions ds
     JOIN drivers d ON d.id = ds.driver_id
     LEFT JOIN driver_location_snapshots dls ON dls.driver_id = ds.driver_id
@@ -1122,5 +1126,9 @@ export async function getActiveDriverSessions(): Promise<ActiveDriverSession[]> 
     ride_id:             r.ride_id as string | null,
     origin_address:      r.origin_address as string | null,
     destination_address: r.destination_address as string | null,
+    origin_lat:          r.origin_lat != null ? parseFloat(r.origin_lat as string) : null,
+    origin_lng:          r.origin_lng != null ? parseFloat(r.origin_lng as string) : null,
+    dest_lat:            r.dest_lat   != null ? parseFloat(r.dest_lat   as string) : null,
+    dest_lng:            r.dest_lng   != null ? parseFloat(r.dest_lng   as string) : null,
   }))
 }

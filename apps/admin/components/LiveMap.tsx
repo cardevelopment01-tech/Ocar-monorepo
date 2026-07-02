@@ -1,8 +1,21 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
-import type { Map as LeafletMap, Marker } from 'leaflet'
+
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import MapGL, { Source, Layer } from 'react-map-gl/maplibre'
+import type { MapRef, MapLayerMouseEvent } from 'react-map-gl/maplibre'
+import type { FeatureCollection, Point } from 'geojson'
+import type { StyleSpecification } from 'maplibre-gl'
 import { adminSessionsApi, type ActiveDriverSession } from '@/lib/admin-api'
 import { getAdminSocket } from '@/lib/socket'
+import api from '@/lib/api'
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const STYLE_URL = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
+const ODISHA_BOUNDS: [[number, number], [number, number]] = [[82.0, 17.5], [88.5, 23.0]]
+const DEFAULT_CENTER: [number, number] = [20.3493, 85.8412]
+const DEFAULT_ZOOM = 11
+const RECONCILE_MS = 30_000
 
 const CITIES = [
   { label: 'Bhubaneswar', lat: 20.2961, lng: 85.8245, zoom: 13 },
@@ -10,9 +23,35 @@ const CITIES = [
   { label: 'Puri',        lat: 19.8135, lng: 85.8312, zoom: 13 },
 ]
 
-const DEFAULT_CENTER: [number, number] = [20.3493, 85.8412]
-const DEFAULT_ZOOM = 11
-const RECONCILE_INTERVAL_MS = 30_000
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+let styleCache: StyleSpecification | null = null
+let styleFetch: Promise<StyleSpecification> | null = null
+function getStyle(): Promise<StyleSpecification> {
+  if (styleCache) return Promise.resolve(styleCache)
+  if (!styleFetch) {
+    styleFetch = fetch(STYLE_URL)
+      .then(r => r.json() as Promise<StyleSpecification>)
+      .then(s => { styleCache = s; return s })
+  }
+  return styleFetch
+}
+
+// Google encoded polyline decoder — same algorithm as user/driver apps
+function decodePolyline(encoded: string): [number, number][] {
+  const pts: [number, number][] = []
+  let i = 0, lat = 0, lng = 0
+  while (i < encoded.length) {
+    let b, shift = 0, result = 0
+    do { b = encoded.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5 } while (b >= 0x20)
+    lat += result & 1 ? ~(result >> 1) : result >> 1
+    shift = 0; result = 0
+    do { b = encoded.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5 } while (b >= 0x20)
+    lng += result & 1 ? ~(result >> 1) : result >> 1
+    pts.push([lat / 1e5, lng / 1e5])
+  }
+  return pts
+}
 
 type DriverMap = Map<string, ActiveDriverSession>
 
@@ -24,144 +63,136 @@ interface LocationUpdate {
   speed: number
 }
 
-function statusColor(status: 'online' | 'on_trip') {
-  return status === 'on_trip' ? '#4F46E5' : '#10B981'
+function buildGeoJSON(drivers: DriverMap): FeatureCollection<Point> {
+  const features: FeatureCollection<Point>['features'] = []
+  for (const s of drivers.values()) {
+    if (s.lat == null || s.lng == null) continue
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
+      properties: {
+        driver_id:      s.driver_id,
+        driver_name:    s.driver_name ?? s.driver_code,
+        session_status: s.session_status,
+      },
+    })
+  }
+  return { type: 'FeatureCollection', features }
 }
 
-function markerHtml(session: ActiveDriverSession) {
-  const color = statusColor(session.session_status)
-  return `<div style="
-    width:16px;height:16px;border-radius:50%;
-    background:${color};border:2.5px solid white;
-    box-shadow:0 0 0 3px ${color}40,0 2px 6px rgba(79,70,229,0.15);
-    cursor:pointer;
-  "></div>`
-}
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function LiveMap() {
-  const mapRef       = useRef<LeafletMap | null>(null)
-  const mapDivRef    = useRef<HTMLDivElement>(null)
-  const markersRef   = useRef<Map<string, Marker>>(new Map())
-  const intervalRef  = useRef<ReturnType<typeof setInterval> | null>(null)
-  const reconcileRef = useRef<(() => Promise<void>) | null>(null)
+  const mapRef      = useRef<MapRef>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const hoverRef    = useRef(false)
 
-  const [drivers, setDrivers]         = useState<DriverMap>(new Map())
-  const [selected, setSelected]       = useState<ActiveDriverSession | null>(null)
-  const [loading, setLoading]         = useState(true)
+  const [mapStyle,    setMapStyle]    = useState<StyleSpecification | string>(styleCache ?? STYLE_URL)
+  const [geojson,     setGeojson]     = useState<FeatureCollection<Point>>({ type: 'FeatureCollection', features: [] })
+  const driversRef    = useRef<DriverMap>(new Map())
+  const [selected,    setSelected]    = useState<ActiveDriverSession | null>(null)
+  const [loading,     setLoading]     = useState(true)
   const [onlineCount, setOnlineCount] = useState(0)
   const [tripCount,   setTripCount]   = useState(0)
+  const [tripRoute,   setTripRoute]   = useState<[number, number][] | null>(null)
+  const [cursor,      setCursor]      = useState('grab')
 
   useEffect(() => {
-    let online = 0, onTrip = 0
-    drivers.forEach(d => {
-      if (d.session_status === 'online') online++
-      else onTrip++
+    if (styleCache) return
+    getStyle().then(setMapStyle).catch(() => {})
+  }, [])
+
+  // Fetch trip route when selected on_trip driver changes
+  useEffect(() => {
+    setTripRoute(null)
+    if (
+      !selected ||
+      selected.session_status !== 'on_trip' ||
+      selected.origin_lat == null || selected.origin_lng == null ||
+      selected.dest_lat   == null || selected.dest_lng   == null
+    ) return
+
+    api.get<{ polyline: string }>('/api/v1/geo/route', {
+      params: {
+        originLat: selected.origin_lat,
+        originLng: selected.origin_lng,
+        destLat:   selected.dest_lat,
+        destLng:   selected.dest_lng,
+      },
     })
-    setOnlineCount(online)
-    setTripCount(onTrip)
-  }, [drivers])
+      .then(r => { if (r.data.polyline) setTripRoute(decodePolyline(r.data.polyline)) })
+      .catch(() => {})
+  }, [selected])
+
+  const reconcile = useCallback(async () => {
+    try {
+      const sessions = await adminSessionsApi.getActive()
+      const next: DriverMap = new Map(sessions.map(s => [s.driver_id, s]))
+      driversRef.current = next
+
+      let online = 0, onTrip = 0
+      next.forEach(d => { if (d.session_status === 'online') online++; else onTrip++ })
+      setOnlineCount(online)
+      setTripCount(onTrip)
+      setGeojson(buildGeoJSON(next))
+    } catch { /* stale data is better than a crash */ }
+  }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !mapDivRef.current) return
-    if (mapRef.current) return
+    void reconcile().then(() => setLoading(false))
+    intervalRef.current = setInterval(() => void reconcile(), RECONCILE_MS)
 
-    void (async () => {
-      const L = (await import('leaflet')).default
-      await import('leaflet/dist/leaflet.css')
-
-      const map = L.map(mapDivRef.current!, {
-        center: DEFAULT_CENTER,
-        zoom:   DEFAULT_ZOOM,
-        zoomControl: true,
-      })
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 19,
-      }).addTo(map)
-
-      mapRef.current = map
-
-      // Reconcile the full active-sessions list with the current marker set.
-      // Handles new drivers going online, position updates, and drivers going offline.
-      const reconcile = async () => {
-        try {
-          const sessions = await adminSessionsApi.getActive()
-          const nextMap: DriverMap = new Map()
-
-          for (const s of sessions) {
-            nextMap.set(s.driver_id, s)
-            if (s.lat != null && s.lng != null) {
-              const existing = markersRef.current.get(s.driver_id)
-              if (existing) {
-                existing.setLatLng([s.lat, s.lng])
-              } else {
-                const icon = L.divIcon({
-                  className: '',
-                  html: markerHtml(s),
-                  iconSize: [16, 16],
-                  iconAnchor: [8, 8],
-                })
-                const marker = L.marker([s.lat, s.lng], { icon })
-                  .addTo(map)
-                  .on('click', () => setSelected(s))
-                markersRef.current.set(s.driver_id, marker)
-              }
-            }
-          }
-
-          // Remove markers for drivers that are no longer active
-          for (const [driverId, marker] of markersRef.current) {
-            if (!nextMap.has(driverId)) {
-              marker.remove()
-              markersRef.current.delete(driverId)
-            }
-          }
-
-          setDrivers(nextMap)
-        } catch { /* silent — stale data is better than a crash */ }
+    const socket = getAdminSocket()
+    socket.on('driver:location_update', (update: LocationUpdate) => {
+      const drivers = driversRef.current
+      const existing = drivers.get(update.driverId)
+      if (!existing) {
+        void reconcile()
+        return
       }
-
-      reconcileRef.current = reconcile
-
-      await reconcile()
-      setLoading(false)
-
-      // Periodic refresh — catches drivers going online/offline between socket events
-      intervalRef.current = setInterval(() => { void reconcile() }, RECONCILE_INTERVAL_MS)
-
-      // Real-time location updates: move known markers immediately; for unknown
-      // drivers (went online after initial load) trigger an early reconcile.
-      const socket = getAdminSocket()
-      socket.on('driver:location_update', (update: LocationUpdate) => {
-        const marker = markersRef.current.get(update.driverId)
-        if (marker) {
-          marker.setLatLng([update.lat, update.lng])
-          setDrivers(prev => {
-            const existing = prev.get(update.driverId)
-            if (!existing) return prev
-            const next = new Map(prev)
-            next.set(update.driverId, { ...existing, lat: update.lat, lng: update.lng, heading: update.heading })
-            return next
-          })
-        } else {
-          // Driver not in our map yet — pull a fresh session list
-          void reconcile()
-        }
-      })
-    })()
+      const next = new Map(drivers)
+      next.set(update.driverId, { ...existing, lat: update.lat, lng: update.lng, heading: update.heading })
+      driversRef.current = next
+      setGeojson(buildGeoJSON(next))
+    })
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
-      getAdminSocket().off('driver:location_update')
-      mapRef.current?.remove()
-      mapRef.current = null
+      socket.off('driver:location_update')
+    }
+  }, [reconcile])
+
+  const handleMapClick = useCallback((e: MapLayerMouseEvent) => {
+    const feat = e.features?.[0]
+    if (!feat?.properties) { setSelected(null); return }
+    const driverId = feat.properties['driver_id'] as string
+    const session  = driversRef.current.get(driverId)
+    setSelected(session ?? null)
+  }, [])
+
+  const handleMouseMove = useCallback((e: MapLayerMouseEvent) => {
+    const over = (e.features?.length ?? 0) > 0
+    if (over !== hoverRef.current) {
+      hoverRef.current = over
+      setCursor(over ? 'pointer' : 'grab')
     }
   }, [])
 
   const flyTo = (lat: number, lng: number, zoom: number) => {
-    mapRef.current?.flyTo([lat, lng], zoom, { duration: 1.2 })
+    mapRef.current?.flyTo({ center: [lng, lat], zoom, duration: 1200 })
   }
+
+  const tripRouteGeojson = useMemo(() => {
+    if (!tripRoute || tripRoute.length < 2) return null
+    return {
+      type: 'Feature' as const,
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: tripRoute.map(([lat, lng]) => [lng, lat]),
+      },
+      properties: {},
+    }
+  }, [tripRoute])
 
   return (
     <div className="relative w-full h-full flex flex-col">
@@ -189,13 +220,72 @@ export default function LiveMap() {
       </div>
 
       {/* Map */}
-      <div className="relative flex-1">
+      <div className="relative flex-1" style={{ minHeight: 500 }}>
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface/80">
             <div className="text-sm text-text-muted font-medium">Loading map…</div>
           </div>
         )}
-        <div ref={mapDivRef} className="w-full h-full" style={{ minHeight: 500 }} />
+
+        <MapGL
+          ref={mapRef}
+          initialViewState={{ latitude: DEFAULT_CENTER[0], longitude: DEFAULT_CENTER[1], zoom: DEFAULT_ZOOM }}
+          mapStyle={mapStyle}
+          style={{ width: '100%', height: '100%' }}
+          minZoom={6}
+          maxZoom={19}
+          maxBounds={ODISHA_BOUNDS}
+          reuseMaps
+          cursor={cursor}
+          interactiveLayerIds={['drivers-circle']}
+          onClick={handleMapClick}
+          onMouseMove={handleMouseMove}
+          pixelRatio={typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1}
+        >
+          {/* Trip route for selected on_trip driver */}
+          {tripRouteGeojson && (
+            <Source id="trip-route" type="geojson" data={tripRouteGeojson}>
+              <Layer
+                id="trip-route-casing"
+                type="line"
+                paint={{ 'line-color': '#ffffff', 'line-width': 7, 'line-opacity': 0.75 }}
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+              />
+              <Layer
+                id="trip-route-line"
+                type="line"
+                paint={{ 'line-color': '#4F46E5', 'line-width': 4, 'line-opacity': 0.9 }}
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+              />
+            </Source>
+          )}
+
+          {/* Driver dots — single GeoJSON source, two layers (halo + fill) */}
+          <Source id="drivers" type="geojson" data={geojson}>
+            {/* Soft halo */}
+            <Layer
+              id="drivers-halo"
+              type="circle"
+              paint={{
+                'circle-radius': 14,
+                'circle-color': ['match', ['get', 'session_status'], 'on_trip', '#4F46E5', '#10B981'],
+                'circle-opacity': 0.18,
+              }}
+            />
+            {/* Solid dot */}
+            <Layer
+              id="drivers-circle"
+              type="circle"
+              paint={{
+                'circle-radius': 8,
+                'circle-color': ['match', ['get', 'session_status'], 'on_trip', '#4F46E5', '#10B981'],
+                'circle-stroke-width': 2.5,
+                'circle-stroke-color': '#ffffff',
+                'circle-opacity': 0.92,
+              }}
+            />
+          </Source>
+        </MapGL>
       </div>
 
       {/* Driver detail panel */}

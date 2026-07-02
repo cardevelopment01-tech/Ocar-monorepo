@@ -242,6 +242,10 @@ export interface ActiveDriverSession {
   ride_id: string | null
   origin_address: string | null
   destination_address: string | null
+  origin_lat: number | null
+  origin_lng: number | null
+  dest_lat: number | null
+  dest_lng: number | null
 }
 
 export const adminSessionsApi = {
