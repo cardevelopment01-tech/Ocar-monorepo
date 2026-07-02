@@ -9,6 +9,7 @@ import { rideApi, type RideDetail } from '@/lib/ride-api'
 import { formatReturnAt } from '@/lib/utils'
 import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
+import { useInterpolatedPosition } from '@/lib/useInterpolatedPosition'
 
 const RideMapScene = dynamic(() => import('@/components/map/RideMapScene'), { ssr: false })
 
@@ -83,9 +84,17 @@ export default function RidePage() {
   const [otpCopied,      setOtpCopied]      = useState(false)
   const [endOtp,         setEndOtp]         = useState<string | null>(null)
   const [endOtpCopied,   setEndOtpCopied]   = useState(false)
-  const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null)
-  const lastFetch = useRef<{ mode: RouteMode; origin: [number, number]; at: number } | null>(null)
-  const fetchSeq  = useRef(0)
+  const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastFetch      = useRef<{ mode: RouteMode; origin: [number, number]; at: number } | null>(null)
+  const fetchSeq       = useRef(0)
+  const breadcrumbRef  = useRef<[number, number][]>([])
+  const [breadcrumb, setBreadcrumb] = useState<[number, number][]>([])
+  const rideStatusRef  = useRef(rideStatus)
+
+  // Keep ref in sync so the driver:location handler reads the live status without stale closure
+  useEffect(() => { rideStatusRef.current = rideStatus }, [rideStatus])
+
+  const { pos: smoothPos, heading: smoothHeading } = useInterpolatedPosition(driverPos, driverHeading)
 
   const loadRide = useCallback(async () => {
     try {
@@ -119,6 +128,10 @@ export default function RidePage() {
       setRideStatus(data.status)
       if (data.startOtp) setStartOtp(data.startOtp)
       if (data.endOtp)   setEndOtp(data.endOtp)
+      if (data.status === 'in_progress') {
+        breadcrumbRef.current = []
+        setBreadcrumb([])
+      }
     })
 
     socket.on('ride:driver_assigned', (data: { driverName?: string; driverPhone?: string }) => {
@@ -134,6 +147,11 @@ export default function RidePage() {
     socket.on('driver:location', (data: { lat: number; lng: number; heading: number }) => {
       setDriverPos([data.lat, data.lng])
       setDriverHeading(data.heading)
+      if (rideStatusRef.current === 'in_progress') {
+        const next: [number, number][] = [...breadcrumbRef.current, [data.lat, data.lng]]
+        breadcrumbRef.current = next
+        setBreadcrumb(next)
+      }
     })
 
     const fallbackTimer = setTimeout(() => {
@@ -173,7 +191,7 @@ export default function RidePage() {
   )
   const hasDest   = ride?.dest_lat != null && ride?.dest_lng != null
   const routeMode = routeModeFor(rideStatus)
-  const mapCenter: [number, number] = driverPos ?? pickupPos
+  const mapCenter: [number, number] = smoothPos ?? pickupPos
 
   useEffect(() => {
     if (!ride) return
@@ -229,10 +247,11 @@ export default function RidePage() {
           pickupPos={pickupPos}
           dropPos={dropPos}
           encodedPolyline={encodedPolyline}
-          driverPos={driverPos}
-          driverHeading={driverHeading}
+          driverPos={smoothPos}
+          driverHeading={smoothHeading}
           routeMode={routeMode}
           showDrop={hasDest}
+          breadcrumb={breadcrumb}
         />
 
         {/* Dev socket indicator */}

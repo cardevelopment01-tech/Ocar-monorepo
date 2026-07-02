@@ -1,6 +1,7 @@
 'use client'
 
 import MapViewInner from '@/components/ui/MapViewInner'
+import BreadcrumbTrail from './BreadcrumbTrail'
 import FitBounds from './FitBounds'
 import RecenterMap from './RecenterMap'
 import LocationPin from './LocationPin'
@@ -16,6 +17,7 @@ interface RideMapSceneProps {
   driverHeading?: number
   routeMode: 'pickup-dest' | 'driver-pickup' | 'driver-dest' | 'recap'
   showDrop?: boolean
+  breadcrumb?: [number, number][]
 }
 
 export default function RideMapScene({
@@ -27,10 +29,11 @@ export default function RideMapScene({
   driverHeading = 0,
   routeMode,
   showDrop = true,
+  breadcrumb,
 }: RideMapSceneProps) {
-  const isRecap = routeMode === 'recap'
-
-  const isPickupLeg = routeMode === 'driver-pickup'
+  const isRecap      = routeMode === 'recap'
+  const isPickupLeg  = routeMode === 'driver-pickup'
+  const isInProgress = routeMode === 'driver-dest'
 
   return (
     <MapViewInner center={center} zoom={13}>
@@ -42,6 +45,7 @@ export default function RideMapScene({
       }
       <LocationPin position={pickupPos} variant="pickup" />
       {showDrop && <LocationPin position={dropPos} variant="drop" />}
+      {isInProgress && breadcrumb && <BreadcrumbTrail positions={breadcrumb} />}
       <RoutePolyline encoded={encodedPolyline} variant={isPickupLeg ? 'pickup-leg' : 'default'} />
       {driverPos && !isRecap && <CarMarker position={driverPos} heading={driverHeading} />}
     </MapViewInner>

@@ -104,7 +104,7 @@ export default function NavigateToPickup() {
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
           <DriverMapView initialCenter={selfPos} zoom={15}>
-            <RecenterMap center={selfPos} />
+            <RecenterMap center={selfPos} heading={selfHeading} />
             <RoutePolyline encoded={encodedPolyline} variant="pickup-leg" />
             <SelfCarMarker position={selfPos} heading={selfHeading} />
             <LocationPin position={pickupPos} variant="pickup" />

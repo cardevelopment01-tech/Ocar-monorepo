@@ -1,8 +1,28 @@
 'use client'
 
-import { useMemo } from 'react'
-import { Source, Layer } from 'react-map-gl/maplibre'
+import { useMemo, useEffect } from 'react'
+import { Source, Layer, useMap } from 'react-map-gl/maplibre'
 import { decodePolyline } from '@/lib/polyline'
+
+const ARROW_ID = 'route-arrow'
+
+function drawArrowImage(map: ReturnType<typeof useMap>['current']) {
+  if (!map || map.hasImage(ARROW_ID)) return
+  const canvas = document.createElement('canvas')
+  canvas.width  = 20
+  canvas.height = 20
+  const ctx = canvas.getContext('2d')!
+  ctx.strokeStyle = 'rgba(255,255,255,0.88)'
+  ctx.lineWidth   = 2.5
+  ctx.lineCap     = 'round'
+  ctx.lineJoin    = 'round'
+  ctx.beginPath()
+  ctx.moveTo(4, 10); ctx.lineTo(16, 10)       // stem
+  ctx.moveTo(10, 4); ctx.lineTo(16, 10); ctx.lineTo(10, 16)  // head
+  ctx.stroke()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  map.addImage(ARROW_ID, canvas as any)
+}
 
 interface RoutePolylineProps {
   encoded?: string
@@ -13,6 +33,8 @@ interface RoutePolylineProps {
 }
 
 export default function RoutePolyline({ encoded, positions, variant = 'default' }: RoutePolylineProps) {
+  const { current: map } = useMap()
+
   const pts = useMemo<[number, number][]>(() => {
     if (encoded) return decodePolyline(encoded)
     if (positions && positions.length >= 3) return positions
@@ -27,6 +49,16 @@ export default function RoutePolyline({ encoded, positions, variant = 'default' 
     },
     properties: {},
   }), [pts])
+
+  // Register the directional arrow icon on the map sprite (default variant only)
+  useEffect(() => {
+    if (!map || variant === 'pickup-leg') return
+    if (map.isStyleLoaded()) {
+      drawArrowImage(map)
+    } else {
+      map.once('styledata', () => drawArrowImage(map))
+    }
+  }, [map, variant])
 
   if (pts.length < 2) return null
 
@@ -55,6 +87,21 @@ export default function RoutePolyline({ encoded, positions, variant = 'default' 
           type="line"
           paint={{ 'line-color': '#2563EB', 'line-width': 4.5, 'line-opacity': 0.92 }}
           layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+        />
+      )}
+      {/* Directional arrows along the route (default variant only) */}
+      {!isPickup && (
+        <Layer
+          id="route-arrows"
+          type="symbol"
+          layout={{
+            'symbol-placement': 'line',
+            'symbol-spacing': 100,
+            'icon-image': ARROW_ID,
+            'icon-size': 1,
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true,
+          }}
         />
       )}
     </Source>
