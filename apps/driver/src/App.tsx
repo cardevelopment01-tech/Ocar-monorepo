@@ -38,8 +38,9 @@ export default function App() {
   const navigate = useNavigate()
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
   const { isOnline, setOnline, setOffline } = useSessionStore()
-  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, clearRide } = useRideStore()
+  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, clearRide, activeRide } = useRideStore()
   const [accepting, setAccepting] = useState(false)
+  const [rideCancelled, setRideCancelled] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -86,6 +87,7 @@ export default function App() {
             if (ride.trip_hours  != null) activeRideInput.tripHours     = ride.trip_hours
             if (ride.started_at  != null) activeRideInput.rideStartedAt = ride.started_at
             setActiveRide(activeRideInput)
+            getDriverSocket().emit('join:ride', ride.id)
             if (ride.status === 'accepted')        navigate('/ride/navigate')
             else if (ride.status === 'driver_arrived') navigate('/ride/otp')
             else if (ride.status === 'in_progress')    navigate('/ride/in-progress')
@@ -135,6 +137,28 @@ export default function App() {
     return () => { socket.off('ride:request', onRideRequest) }
   }, [isOnline, setIncomingRequest])
 
+  // Listen for user-initiated cancellation while a ride is active.
+  // Scoped to activeRide.id so it attaches/detaches with the ride lifecycle.
+  useEffect(() => {
+    if (!activeRide) return
+    const socket = getDriverSocket()
+    const onStatusUpdate = (data: { status: string }) => {
+      if (data.status !== 'cancelled') return
+      socket.emit('leave:ride', activeRide.id)
+      clearRide()
+      setRideCancelled(true)
+      navigate('/')
+    }
+    socket.on('ride:status_update', onStatusUpdate)
+    return () => { socket.off('ride:status_update', onStatusUpdate) }
+  }, [activeRide?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!rideCancelled) return
+    const t = setTimeout(() => setRideCancelled(false), 3000)
+    return () => clearTimeout(t)
+  }, [rideCancelled])
+
   const handleAcceptRide = async (rideId: string, rideType: string) => {
     if (accepting) return
     setAccepting(true)
@@ -156,6 +180,7 @@ export default function App() {
       if (ride.return_at  != null) activeRideInput.returnAt  = ride.return_at
       if (ride.trip_hours != null) activeRideInput.tripHours = ride.trip_hours
       setActiveRide(activeRideInput)
+      getDriverSocket().emit('join:ride', rideId)
       clearIncomingRequest()
       setAccepting(false)
       navigate('/ride/navigate')
@@ -255,6 +280,16 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      {/* Cancellation banner — shown when user cancels an active ride */}
+      {rideCancelled && (
+        <div
+          className="fixed top-4 left-4 right-4 z-50 rounded-2xl px-4 py-3 text-sm font-semibold text-white text-center"
+          style={{ background: '#DC2626', boxShadow: '0 4px 16px rgba(220,38,38,0.35)' }}
+        >
+          Ride cancelled by the passenger
+        </div>
+      )}
 
       {/* Persistent tab bar — renders null on non-main routes */}
       <BottomNav />
