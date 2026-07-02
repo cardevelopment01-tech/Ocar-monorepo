@@ -6,6 +6,7 @@ import {
   ChevronRight, Star, MapPin, CreditCard, Bell,
   Shield, HelpCircle, LogOut, User, Mail, X, Check,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { userApi } from '@/lib/auth'
 import OcarSpinner from '@/components/ui/OcarSpinner'
@@ -23,11 +24,11 @@ const stagger = {
 }
 
 const MENU = [
-  { Icon: MapPin,     label: 'Saved places',    sub: 'Home, Work & more'    },
-  { Icon: CreditCard, label: 'Payment methods', sub: 'UPI, Cards & Wallet'  },
-  { Icon: Bell,       label: 'Notifications',   sub: 'Push & SMS alerts'    },
-  { Icon: Shield,     label: 'Safety',          sub: 'Emergency contacts'   },
-  { Icon: HelpCircle, label: 'Help & Support',  sub: 'FAQs, raise a ticket' },
+  { Icon: MapPin,     label: 'Saved places',    sub: 'Home, Work & more',    href: '/saved-places'    },
+  { Icon: CreditCard, label: 'Payment methods', sub: 'UPI, Cards & Wallet',  href: '/payment-methods' },
+  { Icon: Bell,       label: 'Notifications',   sub: 'Push & SMS alerts',    href: '/notifications'   },
+  { Icon: Shield,     label: 'Safety',          sub: 'Emergency contacts',   href: '/safety'          },
+  { Icon: HelpCircle, label: 'Help & Support',  sub: 'FAQs, raise a ticket', href: '/help'            },
 ]
 
 interface UserStats {
@@ -50,6 +51,7 @@ const ICON_BG  = '#F1F0FE'
 const ICON_CLR = '#4F46E5'
 
 export default function ProfilePage() {
+  const router = useRouter()
   const { user, logout, refreshUser } = useAuth()
 
   const [stats,           setStats]           = useState<UserStats | null>(null)
@@ -183,6 +185,7 @@ export default function ProfilePage() {
             {MENU.map((item, i) => (
               <motion.button
                 key={item.label}
+                onClick={() => router.push(item.href)}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < MENU.length - 1 ? ' border-b border-border' : ''}`}
                 whileTap={{ backgroundColor: '#F8FAFF' }}
                 transition={SPRING}
