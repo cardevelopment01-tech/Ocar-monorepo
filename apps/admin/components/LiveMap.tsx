@@ -11,7 +11,7 @@ import api from '@/lib/api'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STYLE_URL = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
+const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
 const ODISHA_BOUNDS: [[number, number], [number, number]] = [[82.0, 17.5], [88.5, 23.0]]
 const DEFAULT_CENTER: [number, number] = [20.3493, 85.8412]
 const DEFAULT_ZOOM = 11
