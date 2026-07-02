@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, Navigation, X, RotateCcw } from 'lucide-react'
+import { Clock, Crosshair, X, RotateCcw } from 'lucide-react'
+import { useMap } from 'react-map-gl/maplibre'
 import { motion, AnimatePresence } from 'framer-motion'
 import SOSButton from '@/components/ui/SOSButton'
 import OtpInput from '@/components/ui/OtpInput'
@@ -19,6 +20,26 @@ const RoutePolyline  = lazy(() => import('@/components/map/RoutePolyline'))
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
+
+// Must render inside DriverMapView children so useMap() has map context
+function LocateMeButton({ position }: { position: [number, number] }) {
+  const { current: map } = useMap()
+  return (
+    <button
+      aria-label="Center on my location"
+      style={{ position: 'absolute', left: 16, bottom: 'calc(env(safe-area-inset-bottom) + 224px)', zIndex: 5 }}
+      className="w-12 h-12 rounded-2xl bg-surface border border-border shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+      onClick={() => map?.flyTo({
+        center:  [position[1], position[0]],
+        zoom:    16,
+        duration: 700,
+        padding: { top: 0, bottom: 220, left: 0, right: 0 },
+      })}
+    >
+      <Crosshair size={20} className="text-primary" />
+    </button>
+  )
+}
 
 function haversineMetres(a: [number, number], b: [number, number]): number {
   const R = 6_371_000
@@ -143,12 +164,13 @@ export default function TripInProgress() {
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
           <DriverMapView initialCenter={selfPos} zoom={15}>
-            <RecenterMap center={selfPos} heading={selfHeading} />
+            <RecenterMap center={selfPos} heading={selfHeading} bottomPadding={220} />
             {dropLat != null && dropLng != null && (
               <RoutePolyline encoded={encodedPolyline} />
             )}
             <SelfCarMarker position={selfPos} heading={selfHeading} />
             <LocationPin position={dropPos} variant="drop" />
+            <LocateMeButton position={selfPos} />
           </DriverMapView>
         </Suspense>
       </div>
@@ -222,21 +244,13 @@ export default function TripInProgress() {
           <p className="text-primary font-black text-2xl flex-shrink-0">₹{activeRide?.fare ?? 0}</p>
         </div>
 
-        <div className="flex gap-3">
-          <button
-            className="w-12 h-12 rounded-2xl bg-surface-3 border border-border flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform"
-            onClick={() => window.open(`https://maps.google.com?q=${dropPos[0]},${dropPos[1]}`)}
-          >
-            <Navigation size={20} className="text-primary" />
-          </button>
-          <button
-            onClick={() => setShowEndOtp(true)}
-            className="btn-go flex-1 active:scale-95 transition-transform"
-            style={{ minHeight: 52 }}
-          >
-            Complete Trip
-          </button>
-        </div>
+        <button
+          onClick={() => setShowEndOtp(true)}
+          className="btn-go w-full active:scale-95 transition-transform"
+          style={{ minHeight: 52 }}
+        >
+          Complete Trip
+        </button>
       </motion.div>
 
       {/* Dim backdrop behind end-OTP sheet */}
@@ -294,7 +308,7 @@ export default function TripInProgress() {
       <SOSButton
         rideId={activeRide?.id ?? ''}
         onSOS={handleSOS}
-        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 88px)', right: '16px', zIndex: 50 }}
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 224px)', right: '16px', zIndex: 50 }}
       />
     </div>
   )
