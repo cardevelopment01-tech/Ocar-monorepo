@@ -1,12 +1,11 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard, CalendarClock, RotateCcw } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard, RotateCcw } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { cn, clampTripHours } from '@/lib/utils'
-import DateTimePickerSheet from '@/components/ui/DateTimePickerSheet'
+import { cn } from '@/lib/utils'
 import { rideApi, type FareEstimate } from '@/lib/ride-api'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
@@ -21,6 +20,8 @@ const FALLBACK_CATEGORIES: Category[] = [
   { id: 3, slug: 'suv',       display_name: 'SUV',       max_passengers: 6 },
   { id: 4, slug: 'luxury',    display_name: 'Luxury',    max_passengers: 4 },
 ]
+
+const HOUR_OPTIONS = [4, 6, 8, 10, 12] as const
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   const R = 6371
@@ -46,25 +47,31 @@ function SelectRideContent() {
   const originCityId       = parseInt(sp.get('originCityId') ?? '1', 10)
   const encodedPolyline    = sp.get('polyline') ?? undefined
 
-  const [categories]    = useState<Category[]>(FALLBACK_CATEGORIES)
-  const [rideType,      setRideType]      = useState<'one_way' | 'round_trip'>(
+  // When arriving from /round-trip, tripHours is in the URL and rideType is round_trip
+  const tripHoursFromUrl   = sp.get('tripHours') ? parseInt(sp.get('tripHours')!) : undefined
+  const fromRoundTripPage  = tripHoursFromUrl !== undefined && sp.get('rideType') === 'round_trip'
+
+  const [categories]        = useState<Category[]>(FALLBACK_CATEGORIES)
+  const [rideType,          setRideType]          = useState<'one_way' | 'round_trip'>(
     () => sp.get('rideType') === 'round_trip' ? 'round_trip' : 'one_way'
   )
-  // Seeded from URL when arriving from the dedicated /round-trip page
-  const [returnAt,      setReturnAt]      = useState<Date | null>(() => {
-    const r = sp.get('returnAt')
-    return r ? new Date(r) : null
-  })
-  // True when user arrived via /round-trip — they already committed to round trip
-  const fromRoundTripPage = sp.get('returnAt') !== null
-  const [estimates,     setEstimates]     = useState<Record<number, FareEstimate>>({})
-  const [loading,       setLoading]       = useState(true)
-  const [selected,      setSelected]      = useState(2)
-  const [pickerOpen,    setPickerOpen]    = useState(false)
-  const [isBooking,     setIsBooking]     = useState(false)
-  const [etaReady,      setEtaReady]      = useState(false)
-  const [bookError,     setBookError]     = useState<string | null>(null)
-  const [nearbyDrivers, setNearbyDrivers] = useState<Array<{ driver_id: string; lat: number; lng: number; category_id: number }>>([])
+  // Only used when user switches to round_trip inline (without coming from /round-trip)
+  const [inlineTripHours,   setInlineTripHours]   = useState<number | null>(null)
+  const [estimates,         setEstimates]         = useState<Record<number, FareEstimate>>({})
+  const [loading,           setLoading]           = useState(true)
+  const [selected,          setSelected]          = useState(2)
+  const [isReturnCab,       setIsReturnCab]       = useState(false)
+  const [isBooking,         setIsBooking]         = useState(false)
+  const [etaReady,          setEtaReady]          = useState(false)
+  const [bookError,         setBookError]         = useState<string | null>(null)
+  const [nearbyDrivers,     setNearbyDrivers]     = useState<Array<{ driver_id: string; lat: number; lng: number; category_id: number }>>([])
+  const [returnCabCategories, setReturnCabCategories] = useState<Set<number>>(new Set())
+  const [returnCabEstimates,  setReturnCabEstimates]  = useState<Record<number, FareEstimate>>({})
+
+  // tripHours: from URL (round_trip from /round-trip page) or inline selection
+  const tripHours = rideType === 'round_trip'
+    ? (tripHoursFromUrl ?? inlineTripHours ?? undefined)
+    : undefined
 
   useEffect(() => {
     const fetch = async () => {
@@ -99,14 +106,12 @@ function SelectRideContent() {
 
   const center: [number, number] = [(originLat + destinationLat) / 2, (originLng + destinationLng) / 2]
 
-  const tripHours = useMemo(
-    () => rideType === 'round_trip' ? clampTripHours(returnAt) : undefined,
-    [rideType, returnAt],
-  )
-
   const loadEstimates = useCallback(async () => {
     setLoading(true)
     const results: Record<number, FareEstimate> = {}
+    const rcResults: Record<number, FareEstimate> = {}
+    const rcAvailable = new Set<number>()
+
     await Promise.allSettled(
       categories.map(async cat => {
         try {
@@ -116,11 +121,33 @@ function SelectRideContent() {
             tripHours,
           })
         } catch {}
+
+        // Parallel: check return cab availability for one_way rides
+        if (rideType === 'one_way') {
+          try {
+            const rc = await rideApi.getReturnCabAvailable({
+              pickupLat: originLat, pickupLng: originLng,
+              dropLat: destinationLat, dropLng: destinationLng,
+              categoryId: cat.id,
+            })
+            if (rc.count > 0) {
+              rcAvailable.add(cat.id)
+              rcResults[cat.id] = await rideApi.getEstimate({
+                categoryId: cat.id, rideType: 'one_way',
+                isReturnCab: true,
+                distanceKm, durationMin, originCityId,
+              })
+            }
+          } catch {}
+        }
       })
     )
+
     setEstimates(results)
+    setReturnCabCategories(rcAvailable)
+    setReturnCabEstimates(rcResults)
     setLoading(false)
-  }, [categories, rideType, distanceKm, durationMin, originCityId, tripHours])
+  }, [categories, rideType, distanceKm, durationMin, originCityId, tripHours, originLat, originLng, destinationLat, destinationLng])
 
   useEffect(() => { void loadEstimates() }, [loadEstimates])
 
@@ -134,9 +161,9 @@ function SelectRideContent() {
         destinationLat, destinationLng, destinationAddress,
         distanceKm, durationMin,
       }
-      if (originCityId)  bookingParams.originCityId = originCityId
-      if (tripHours !== undefined) bookingParams.tripHours = tripHours
-      if (rideType === 'round_trip' && returnAt) bookingParams.returnAt = returnAt.toISOString()
+      if (originCityId)            bookingParams.originCityId  = originCityId
+      if (tripHours !== undefined) bookingParams.tripHours     = tripHours
+      if (isReturnCab)             bookingParams.isReturnCab   = true
       const result = await rideApi.createBooking(bookingParams)
       router.push(`/ride/${result.rideId}`)
     } catch {
@@ -146,9 +173,10 @@ function SelectRideContent() {
     }
   }
 
-  const selectedCat    = categories.find(c => c.id === selected)!
-  const selectedFare   = estimates[selected]?.breakdown.total
-  const allUnavailable = etaReady && categories.every(c => (driverEta[c.id]?.count ?? 0) === 0)
+  const activeEst       = isReturnCab ? returnCabEstimates[selected] : estimates[selected]
+  const selectedFare    = activeEst?.breakdown.total
+  const selectedCat     = categories.find(c => c.id === selected)!
+  const allUnavailable  = etaReady && categories.every(c => (driverEta[c.id]?.count ?? 0) === 0)
 
   function goBackToSearch(focus: 'origin' | 'destination') {
     const params = new URLSearchParams({
@@ -158,6 +186,9 @@ function SelectRideContent() {
     })
     router.push(`/search?${params.toString()}`)
   }
+
+  // Round trip disabled when no hours selected
+  const roundTripMissingHours = rideType === 'round_trip' && tripHours === undefined
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-white">
@@ -171,7 +202,6 @@ function SelectRideContent() {
           encodedPolyline={encodedPolyline}
           nearbyDrivers={nearbyDrivers}
         />
-        {/* Header bar — standalone back + address pill, both h-10 */}
         <div className="absolute top-4 left-4 right-4 z-10 flex items-center gap-2">
           <button
             onClick={() => router.back()}
@@ -218,7 +248,11 @@ function SelectRideContent() {
               {(['one_way', 'round_trip'] as const).map(t => (
                 <button
                   key={t}
-                  onClick={() => { setRideType(t); if (t === 'one_way') setReturnAt(null) }}
+                  onClick={() => {
+                    setRideType(t)
+                    setIsReturnCab(false)
+                    if (t === 'one_way') setInlineTripHours(null)
+                  }}
                   className={cn(
                     'flex-1 py-1.5 rounded-lg text-[13px] font-semibold transition-all',
                     rideType === t
@@ -232,26 +266,45 @@ function SelectRideContent() {
             </div>
           )}
 
-          {/* Return time row — single compact line for both badge + picker */}
+          {/* Round trip hours row */}
           {rideType === 'round_trip' && (
-            <button
-              onClick={() => setPickerOpen(true)}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-opacity active:opacity-70"
-              style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
-            >
-              <RotateCcw size={11} strokeWidth={2.5} className="flex-shrink-0" style={{ color: '#4F46E5' }} />
-              <span className="text-[12px] font-semibold flex-shrink-0" style={{ color: '#4338CA' }}>Return</span>
-              <span className="text-[12px] text-indigo-300 flex-shrink-0">·</span>
-              <span className="flex-1 text-[12px] font-semibold truncate" style={{ color: returnAt ? '#1E1B4B' : '#94A3B8' }}>
-                {returnAt
-                  ? returnAt.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) +
-                    ' · ' + String(returnAt.getHours()).padStart(2, '0') + ':' + String(returnAt.getMinutes()).padStart(2, '0')
-                  : 'Tap to set return time'}
-              </span>
-              {tripHours !== undefined && (
-                <span className="flex-shrink-0 text-[12px] font-black tabular-nums" style={{ color: '#4F46E5' }}>{tripHours}h</span>
-              )}
-            </button>
+            fromRoundTripPage && tripHoursFromUrl ? (
+              // Arrived from /round-trip with hours already selected — show compact info
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-xl mb-1"
+                style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
+              >
+                <RotateCcw size={11} strokeWidth={2.5} className="flex-shrink-0" style={{ color: '#4F46E5' }} />
+                <span className="text-[12px] font-semibold" style={{ color: '#4338CA' }}>
+                  Round Trip · {tripHoursFromUrl}h
+                </span>
+                <span className="text-[12px] text-indigo-300 ml-auto">Driver stays with you</span>
+              </div>
+            ) : (
+              // Inline hour chip selector
+              <div className="mb-2">
+                <p className="text-[11px] font-semibold text-slate-500 mb-1.5">How long do you need the driver?</p>
+                <div className="flex gap-1.5">
+                  {HOUR_OPTIONS.map(h => {
+                    const active = inlineTripHours === h
+                    return (
+                      <button
+                        key={h}
+                        onClick={() => setInlineTripHours(h)}
+                        className="flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all"
+                        style={{
+                          background: active ? '#4F46E5' : '#EEF2FF',
+                          color:      active ? '#FFFFFF' : '#4F46E5',
+                          border:     active ? '1.5px solid #4F46E5' : '1.5px solid #C7D2FE',
+                        }}
+                      >
+                        {h}h
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
           )}
         </div>
 
@@ -263,12 +316,92 @@ function SelectRideContent() {
           </div>
         )}
 
-        {/* Ride list + fare breakdown — scrollable so book bar always stays visible */}
+        {/* Ride list — scrollable */}
         <div className="flex-1 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+
+          {/* ── Return Cab section (one_way only, when available) ── */}
+          {rideType === 'one_way' && returnCabCategories.size > 0 && (
+            <div>
+              <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#059669' }}>
+                Return Cab Available
+              </p>
+              {categories
+                .filter(cat => returnCabCategories.has(cat.id))
+                .map(cat => {
+                  const rcEst   = returnCabEstimates[cat.id]
+                  const stdEst  = estimates[cat.id]
+                  const rcFare  = rcEst?.breakdown.total
+                  const stdFare = stdEst?.breakdown.total
+                  const isSel   = isReturnCab && selected === cat.id
+
+                  return (
+                    <button
+                      key={`rc-${cat.id}`}
+                      onClick={() => { setSelected(cat.id); setIsReturnCab(true) }}
+                      className={cn(
+                        'w-full flex items-center gap-3 px-4 py-3 transition-colors duration-150 text-left',
+                        isSel ? 'bg-emerald-50' : 'active:bg-slate-50 cursor-pointer'
+                      )}
+                    >
+                      <div className={cn(
+                        'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0',
+                        isSel ? 'bg-emerald-100' : 'bg-emerald-50'
+                      )}>
+                        <VehicleIcon slug={cat.slug} size={32} color="#059669" />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase tracking-wide">
+                            Return Cab
+                          </span>
+                          <p className={cn('text-[14px] font-bold leading-tight', isSel ? 'text-emerald-900' : 'text-slate-900')}>
+                            {cat.display_name}
+                          </p>
+                        </div>
+                        {rcFare != null && stdFare != null && Math.round(stdFare) > Math.round(rcFare) ? (
+                          <p className="text-[11px] font-semibold text-emerald-600">
+                            Save ₹{Math.round(stdFare - rcFare)} vs standard
+                          </p>
+                        ) : (
+                          <p className="text-[11px] font-medium text-slate-400">Discounted return rate</p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <div className="text-right">
+                          {loading && rcFare == null ? (
+                            <div className="w-12 h-5 rounded-lg bg-slate-100 animate-pulse" />
+                          ) : rcFare != null ? (
+                            <p className={cn('text-[17px] font-black tabular-nums leading-tight',
+                              isSel ? 'text-emerald-700' : 'text-slate-900'
+                            )}>
+                              ₹<AnimatedNumber value={Math.round(rcFare)} />
+                            </p>
+                          ) : (
+                            <p className="text-sm text-slate-400">—</p>
+                          )}
+                        </div>
+                        <div className={cn(
+                          'w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-150',
+                          isSel ? 'border-emerald-500' : 'border-slate-200'
+                        )}>
+                          {isSel && <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />}
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })
+              }
+              <div className="mx-4 h-px bg-slate-100 mt-1 mb-1" />
+            </div>
+          )}
+
+          {/* ── Standard category list ── */}
           {categories.map((cat, i) => {
             const est    = estimates[cat.id]
             const fare   = est?.breakdown.total
-            const isSel  = selected === cat.id
+            const isSel  = !isReturnCab && selected === cat.id
             const eta    = driverEta[cat.id]
             const noCars = etaReady && eta != null && eta.count === 0
             const active = isSel && !noCars
@@ -276,7 +409,7 @@ function SelectRideContent() {
             return (
               <div key={cat.id}>
                 <button
-                  onClick={() => !noCars && setSelected(cat.id)}
+                  onClick={() => { if (!noCars) { setSelected(cat.id); setIsReturnCab(false) } }}
                   disabled={noCars}
                   className={cn(
                     'w-full flex items-center gap-3 px-4 py-3 transition-colors duration-150 text-left',
@@ -285,7 +418,6 @@ function SelectRideContent() {
                               'active:bg-slate-50 cursor-pointer'
                   )}
                 >
-                  {/* Vehicle icon */}
                   <div className={cn(
                     'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0',
                     active ? 'bg-violet-100' : 'bg-slate-100'
@@ -297,7 +429,6 @@ function SelectRideContent() {
                     />
                   </div>
 
-                  {/* Name + meta */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className={cn('text-[14px] font-bold leading-tight', active ? 'text-violet-900' : 'text-slate-900')}>
@@ -325,19 +456,16 @@ function SelectRideContent() {
                     </div>
                   </div>
 
-                  {/* Price + radio */}
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <div className="text-right">
                       {loading && fare == null ? (
                         <div className="w-12 h-5 rounded-lg bg-slate-100 animate-pulse" />
                       ) : fare != null ? (
-                        <div className="text-right">
-                          <p className={cn('text-[17px] font-black tabular-nums leading-tight',
-                            active ? 'text-violet-900' : 'text-slate-900'
-                          )}>
-                            ₹<AnimatedNumber value={Math.round(fare)} />
-                          </p>
-                        </div>
+                        <p className={cn('text-[17px] font-black tabular-nums leading-tight',
+                          active ? 'text-violet-900' : 'text-slate-900'
+                        )}>
+                          ₹<AnimatedNumber value={Math.round(fare)} />
+                        </p>
                       ) : (
                         <p className="text-sm text-slate-400">—</p>
                       )}
@@ -355,7 +483,7 @@ function SelectRideContent() {
             )
           })}
 
-          {/* Round trip fare breakdown — inside scroll so book bar stays pinned */}
+          {/* Round trip fare breakdown */}
           {rideType === 'round_trip' && estimates[selected] && tripHours !== undefined && (
             <div
               className="mx-4 mt-1 mb-2 rounded-2xl px-3 py-2.5 space-y-1"
@@ -411,7 +539,11 @@ function SelectRideContent() {
           {bookError && <p className="text-red-500 text-sm text-center mb-2">{bookError}</p>}
           <button
             onClick={handleBook}
-            disabled={isBooking || loading || selectedFare == null || allUnavailable || (driverEta[selected]?.count === 0) || (rideType === 'round_trip' && returnAt === null)}
+            disabled={
+              isBooking || loading || selectedFare == null || allUnavailable ||
+              (!isReturnCab && (driverEta[selected]?.count === 0)) ||
+              roundTripMissingHours
+            }
             className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
             style={{ background: isBooking ? '#6D28D9' : 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', minHeight: 52 }}
           >
@@ -419,19 +551,13 @@ function SelectRideContent() {
               ? 'Booking…'
               : allUnavailable
               ? 'No drivers available'
+              : roundTripMissingHours
+              ? 'Select duration first'
               : `Book ${selectedCat?.display_name ?? ''} · ${selectedFare != null ? `₹${Math.round(selectedFare)}` : '—'}`
             }
           </button>
         </div>
       </div>
-
-      <DateTimePickerSheet
-        open={pickerOpen}
-        value={returnAt}
-        min={new Date(Date.now() + 4 * 60 * 60 * 1000)}
-        onConfirm={setReturnAt}
-        onClose={() => setPickerOpen(false)}
-      />
     </div>
   )
 }

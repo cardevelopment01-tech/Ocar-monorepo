@@ -1,14 +1,13 @@
 'use client'
 
-import { Suspense, useState, useMemo } from 'react'
-import { ArrowLeft, RotateCcw, CalendarClock, ArrowRight, CreditCard, MapPin } from 'lucide-react'
+import { Suspense, useState } from 'react'
+import { ArrowLeft, RotateCcw, ArrowRight, CreditCard, MapPin } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { clampTripHours } from '@/lib/utils'
 import OcarSpinner from '@/components/ui/OcarSpinner'
-import DateTimePickerSheet from '@/components/ui/DateTimePickerSheet'
 
 const EASE = [0.22, 1, 0.36, 1] as const
+const HOUR_OPTIONS = [4, 6, 8, 10, 12] as const
 
 const fadeUp = (delay = 0) => ({
   initial:    { opacity: 0, y: 10 },
@@ -35,12 +34,9 @@ function RoundTripContent() {
 
   const hasDestination = destLat !== null && destLng !== null && destAddress !== null
 
-  const [returnAt,    setReturnAt]    = useState<Date | null>(null)
-  const [pickerOpen,  setPickerOpen]  = useState(false)
+  const [selectedHours, setSelectedHours] = useState<number | null>(null)
 
-  const tripHours = useMemo(() => clampTripHours(returnAt), [returnAt])
-
-  const canProceed = hasDestination && returnAt !== null
+  const canProceed = hasDestination && selectedHours !== null
 
   function goToSearch() {
     const params = new URLSearchParams({
@@ -54,7 +50,7 @@ function RoundTripContent() {
   }
 
   function handleProceed() {
-    if (!hasDestination || returnAt === null || distanceKm === null || durationMin === null) return
+    if (!hasDestination || selectedHours === null || distanceKm === null || durationMin === null) return
     const params = new URLSearchParams({
       originLat:          String(originLat),
       originLng:          String(originLng),
@@ -66,7 +62,7 @@ function RoundTripContent() {
       durationMin:        String(durationMin),
       originCityId:       String(originCityId),
       rideType:           'round_trip',
-      returnAt:           returnAt.toISOString(),
+      tripHours:          String(selectedHours),
     })
     if (polyline) params.set('polyline', polyline)
     router.push(`/select-ride?${params.toString()}`)
@@ -74,11 +70,9 @@ function RoundTripContent() {
 
   const buttonLabel = !hasDestination
     ? 'Set a destination first'
-    : !returnAt
-    ? 'Set return date & time'
-    : tripHours !== undefined
-    ? `Choose your cab · ${tripHours}h round trip`
-    : 'Choose your cab'
+    : selectedHours === null
+    ? 'Choose how many hours'
+    : `Choose your cab · ${selectedHours}h round trip`
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: '#F5F7FF' }}>
@@ -175,53 +169,39 @@ function RoundTripContent() {
             )}
           </motion.div>
 
-          {/* Return time — shown when destination is set */}
+          {/* Hour selector — shown when destination is set */}
           {hasDestination && (
             <motion.section {...fadeUp(0.06)}>
               <div
-                className="rounded-2xl bg-white overflow-hidden"
+                className="rounded-2xl bg-white overflow-hidden px-4 py-4"
                 style={{ border: '1px solid #E8EEFF', boxShadow: '0 2px 16px rgba(79,70,229,0.07)' }}
               >
-                <button
-                  onClick={() => setPickerOpen(true)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-opacity active:opacity-70"
-                >
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ background: '#EEF2FF' }}
-                  >
-                    <CalendarClock size={15} style={{ color: '#4F46E5' }} strokeWidth={1.8} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-semibold mb-0.5" style={{ color: '#475569' }}>Return date &amp; time</p>
-                    <p className="text-[14px] font-semibold" style={{ color: returnAt ? '#0F172A' : '#94A3B8' }}>
-                      {returnAt
-                        ? returnAt.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) +
-                          ' · ' + String(returnAt.getHours()).padStart(2, '0') + ':' + String(returnAt.getMinutes()).padStart(2, '0')
-                        : 'Pick a date & time'}
-                    </p>
-                  </div>
-                  {tripHours !== undefined && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.88 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.2, ease: EASE }}
-                      className="flex-shrink-0 px-3 py-2 rounded-xl text-center"
-                      style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
-                    >
-                      <p className="text-[16px] font-black tabular-nums leading-none" style={{ color: '#4F46E5' }}>
-                        {tripHours}<span className="text-[11px] font-bold">h</span>
-                      </p>
-                    </motion.div>
-                  )}
-                </button>
-                {!returnAt && (
-                  <div className="px-4 pb-3.5" style={{ borderTop: '1px solid #F1F5FF' }}>
-                    <p className="text-[11px] pt-2.5" style={{ color: '#94A3B8' }}>
-                      Minimum 4 hours · Driver stays with you throughout
-                    </p>
-                  </div>
-                )}
+                <p className="text-[12px] font-semibold mb-3" style={{ color: '#475569' }}>
+                  How long do you need the driver?
+                </p>
+                <div className="flex gap-2">
+                  {HOUR_OPTIONS.map(h => {
+                    const active = selectedHours === h
+                    return (
+                      <motion.button
+                        key={h}
+                        onClick={() => setSelectedHours(h)}
+                        whileTap={{ scale: 0.93 }}
+                        className="flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-all"
+                        style={{
+                          background: active ? '#4F46E5' : '#EEF2FF',
+                          color:      active ? '#FFFFFF' : '#4F46E5',
+                          border:     active ? '1.5px solid #4F46E5' : '1.5px solid #C7D2FE',
+                        }}
+                      >
+                        {h}h
+                      </motion.button>
+                    )
+                  })}
+                </div>
+                <p className="text-[11px] mt-3" style={{ color: '#94A3B8' }}>
+                  Minimum 4 hours · Driver stays with you throughout
+                </p>
               </div>
             </motion.section>
           )}
@@ -282,14 +262,6 @@ function RoundTripContent() {
           {buttonLabel}
         </button>
       </div>
-
-      <DateTimePickerSheet
-        open={pickerOpen}
-        value={returnAt}
-        min={new Date(Date.now() + 4 * 60 * 60 * 1000)}
-        onConfirm={setReturnAt}
-        onClose={() => setPickerOpen(false)}
-      />
     </div>
   )
 }

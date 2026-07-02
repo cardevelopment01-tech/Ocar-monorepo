@@ -68,9 +68,9 @@ const page = {
 // ─── data ─────────────────────────────────────────────────────────────────────
 
 const SERVICES = [
-  { id: 'oneway',     Icon: Car,       label: 'One Way',    sub: 'City to city'  },
-  { id: 'roundtrip',  Icon: RotateCcw, label: 'Round Trip', sub: 'There & back'  },
-  { id: 'rental',     Icon: Clock,     label: 'Rental',     sub: 'By the hour'   },
+  { id: 'oneway',     Icon: Car,       label: 'One Way',    sub: 'One way · best fare'    },
+  { id: 'roundtrip',  Icon: RotateCcw, label: 'Round Trip', sub: 'Driver stays with you'  },
+  { id: 'rental',     Icon: Clock,     label: 'Rental',     sub: 'Within city · hourly'   },
 ]
 const SAVED = [
   { Icon: Home,      label: 'Home', sub: 'Sahid Nagar, Bhubaneswar',   lat: 20.2929, lng: 85.8363 },

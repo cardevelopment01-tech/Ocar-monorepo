@@ -32,7 +32,7 @@ const GLASS = {
 export default function Home() {
   const navigate = useNavigate()
   const driver   = useAuthStore(s => s.driver)
-  const { isOnline, sessionId, setOffline } = useSessionStore()
+  const { isOnline, sessionId, mode, destinationCityName, setOffline } = useSessionStore()
   const prefersReducedMotion = useReducedMotion()
 
   // ── Refs ────────────────────────────────────────────────────────────────────
@@ -303,6 +303,24 @@ export default function Home() {
           </button>
         </div>
       </div>
+
+      {/* Return Cab mode indicator — floats below the header */}
+      {isOnline && mode === 'return_cab' && (
+        <div
+          className="absolute left-4 right-4"
+          style={{ top: 'max(calc(env(safe-area-inset-top) + 80px), 96px)', zIndex: 10 }}
+        >
+          <div
+            className="flex items-center gap-2.5 rounded-2xl px-4 py-2.5 bg-emerald-50 border border-emerald-200"
+            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse-soft" />
+            <span className="text-emerald-800 text-[12px] font-semibold">
+              Return Cab Mode{destinationCityName ? ` — heading to ${destinationCityName}` : ''}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* GPS error — floats below the header, above the map */}
       {geoError && (

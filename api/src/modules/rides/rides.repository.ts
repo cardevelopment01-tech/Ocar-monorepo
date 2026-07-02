@@ -339,7 +339,7 @@ export async function createRideAssignment(data: {
 export async function acceptAssignment(
   rideId: bigint,
   driverId: bigint
-): Promise<boolean> {
+): Promise<string[] | false> {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -366,12 +366,14 @@ export async function acceptAssignment(
     )
     const sessionId: bigint | undefined = sessionRes.rows[0]?.id
 
-    await client.query(
+    const cancelRes = await client.query<{ driver_id: string }>(
       `UPDATE ride_assignments
        SET status = 'cancelled', cancelled_at = now()
-       WHERE ride_id = $1 AND driver_id != $2 AND status = 'offered'`,
+       WHERE ride_id = $1 AND driver_id != $2 AND status = 'offered'
+       RETURNING driver_id::text`,
       [rideId, driverId]
     )
+    const cancelledDriverIds = cancelRes.rows.map(r => r.driver_id)
 
     await client.query(
       `UPDATE ride_assignments
@@ -396,7 +398,7 @@ export async function acceptAssignment(
     }
 
     await client.query('COMMIT')
-    return true
+    return cancelledDriverIds
   } catch (err) {
     await client.query('ROLLBACK')
     throw err

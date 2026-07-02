@@ -157,6 +157,23 @@ export const rideApi = {
     return (res.data as { drivers: Array<{ driver_id: string; lat: number; lng: number; category_id: number }> }).drivers ?? []
   },
 
+  getReturnCabAvailable: async (params: {
+    pickupLat: number
+    pickupLng: number
+    dropLat: number
+    dropLng: number
+    categoryId: number
+  }): Promise<{ count: number }> => {
+    const res = await api.get('/api/v1/rides/return-cab-available', { params: {
+      pickupLat:  params.pickupLat,
+      pickupLng:  params.pickupLng,
+      dropLat:    params.dropLat,
+      dropLng:    params.dropLng,
+      categoryId: params.categoryId,
+    }})
+    return res.data as { count: number }
+  },
+
   getRentalPackages: async (categoryId: number): Promise<RentalPackage[]> => {
     const res = await api.get(`/api/v1/pricing/rental-packages/${categoryId}`)
     return res.data as RentalPackage[]

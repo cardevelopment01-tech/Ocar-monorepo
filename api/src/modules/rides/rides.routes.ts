@@ -94,6 +94,21 @@ router.post('/', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+router.get('/return-cab-available', async (req, res, next) => {
+  try {
+    const pickupLat = parseFloat(req.query['pickupLat'] as string)
+    const pickupLng = parseFloat(req.query['pickupLng'] as string)
+    const dropLat   = parseFloat(req.query['dropLat']   as string)
+    const dropLng   = parseFloat(req.query['dropLng']   as string)
+    const categoryId = BigInt(req.query['categoryId'] as string)
+    if ([pickupLat, pickupLng, dropLat, dropLng].some(isNaN)) {
+      res.status(400).json({ error: 'pickupLat, pickupLng, dropLat, dropLng required' }); return
+    }
+    const drivers = await repo.findReturnCabDrivers({ pickupLat, pickupLng, dropLat, dropLng, categoryId })
+    res.json({ drivers, count: drivers.length })
+  } catch (err) { next(err) }
+})
+
 router.get('/nearby-drivers', async (req, res, next) => {
   try {
     const lat = parseFloat(req.query['lat'] as string)

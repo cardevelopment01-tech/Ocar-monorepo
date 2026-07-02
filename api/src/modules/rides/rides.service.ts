@@ -289,9 +289,13 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
 // ── Driver ride actions ───────────────────────────────────────
 
 export async function acceptRide(driverId: bigint, rideId: bigint) {
-  const accepted = await repo.acceptAssignment(rideId, driverId)
-  if (!accepted) {
+  const cancelledDriverIds = await repo.acceptAssignment(rideId, driverId)
+  if (cancelledDriverIds === false) {
     throw Object.assign(new Error('Ride no longer available'), { statusCode: 409 })
+  }
+
+  for (const id of cancelledDriverIds) {
+    socketEvents.sendRequestExpired(id, rideId.toString())
   }
 
   const ride = await repo.getRideById(rideId)

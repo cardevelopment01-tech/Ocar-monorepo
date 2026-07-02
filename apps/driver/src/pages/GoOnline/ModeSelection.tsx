@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Car, CornerUpLeft, ChevronRight, Clock } from 'lucide-react'
+import { ArrowLeft, Car, CornerUpLeft, ChevronRight } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -40,7 +40,7 @@ export default function ModeSelection() {
 
       <div className="space-y-3">
 
-        {/* ── Standard Mode — interactive ── */}
+        {/* ── Standard Mode ── */}
         <motion.button
           custom={0}
           variants={cardVariants}
@@ -82,25 +82,28 @@ export default function ModeSelection() {
           <ChevronRight size={18} className="text-[#0F172A] absolute right-5 top-1/2 -translate-y-1/2" strokeWidth={2.2} />
         </motion.button>
 
-        {/* ── Return Cab — coming soon, non-interactive ── */}
-        <motion.div
+        {/* ── Return Cab ── */}
+        <motion.button
           custom={1}
           variants={cardVariants}
           initial="hidden"
           animate="visible"
-          className="w-full driver-card text-left relative overflow-hidden opacity-55 cursor-not-allowed"
+          whileTap={{ scale: 0.97 }}
+          onClick={() => navigate('/go-online/return-cab')}
+          className="w-full driver-card text-left relative overflow-hidden"
         >
           <div className="flex items-start gap-4 relative">
-            <div className="w-14 h-14 rounded-2xl bg-slate-200 flex items-center justify-center flex-shrink-0">
-              <CornerUpLeft size={26} className="text-slate-400" strokeWidth={1.8} />
+            <div className="w-14 h-14 rounded-2xl bg-emerald-600 flex items-center justify-center flex-shrink-0">
+              <CornerUpLeft size={26} className="text-white" strokeWidth={1.8} />
             </div>
 
             <div className="flex-1 min-w-0 pr-8">
               <div className="flex items-start justify-between mb-1.5">
                 <p className="font-display text-[17px] font-bold text-text-primary">Return Cab</p>
-                <span className="inline-flex items-center ml-2 flex-shrink-0 mt-0.5 px-2 py-0.5 rounded-full bg-[#FEF3C7]">
-                  <span className="text-[9px] font-bold uppercase tracking-[0.10em] text-[#B45309]">
-                    Coming Soon
+                <span className="inline-flex items-center gap-1 ml-2 flex-shrink-0 mt-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-muted">
+                    Active
                   </span>
                 </span>
               </div>
@@ -108,18 +111,18 @@ export default function ModeSelection() {
                 Set a destination and only accept rides heading that way.
               </p>
               <div className="flex flex-wrap gap-1.5">
-                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-400">
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">
                   One-way
                 </span>
-                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-400">
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">
                   Earn on the way
                 </span>
               </div>
             </div>
           </div>
 
-          <Clock size={18} className="text-amber-500 absolute right-5 top-1/2 -translate-y-1/2" strokeWidth={2.2} />
-        </motion.div>
+          <ChevronRight size={18} className="text-emerald-600 absolute right-5 top-1/2 -translate-y-1/2" strokeWidth={2.2} />
+        </motion.button>
 
       </div>
 
