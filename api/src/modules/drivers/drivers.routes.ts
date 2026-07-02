@@ -12,9 +12,18 @@ import {
   vehicleUploadSchema,
 } from './drivers.validator'
 
+const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'application/pdf'])
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIME.has(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error('Only JPEG, PNG, and PDF files are allowed'))
+    }
+  },
 })
 
 const router: IRouter = Router()

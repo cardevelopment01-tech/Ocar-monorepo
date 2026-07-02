@@ -135,6 +135,16 @@ router.get('/:id', authenticate(), async (req, res, next) => {
   try {
     const ride = await repo.getRideById(BigInt(req.params['id']!))
     if (!ride) { res.status(404).json({ error: 'Ride not found' }); return }
+
+    const callerId = req.user?.id ?? req.driver?.id ?? req.admin?.id
+    const isOwner =
+      req.admin ||
+      (req.user   && String(ride.user_id)   === String(req.user.id)) ||
+      (req.driver && String(ride.driver_id) === String(req.driver.id))
+    if (!callerId || !isOwner) {
+      res.status(403).json({ error: 'Forbidden', code: 'AUTH_FORBIDDEN' }); return
+    }
+
     res.json(ride)
   } catch (err) { next(err) }
 })

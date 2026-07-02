@@ -54,6 +54,12 @@ export function authenticate(): RequestHandler {
           return
         }
         req.admin = { id: BigInt(admin.id), code: admin.code, role: admin.role }
+      } else {
+        res.status(403).json({
+          error: AppErrors.AUTH_FORBIDDEN.message,
+          code: AppErrors.AUTH_FORBIDDEN.code,
+        })
+        return
       }
 
       next()

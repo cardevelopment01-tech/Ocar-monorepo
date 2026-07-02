@@ -74,15 +74,23 @@ router.post('/webhook/razorpay', async (req, res, next) => {
     const signature = req.headers['x-razorpay-signature'] as string | undefined
     const webhookSecret = process.env['RAZORPAY_WEBHOOK_SECRET']
 
-    if (webhookSecret && signature) {
-      const { createHmac } = await import('crypto')
-      const expected = createHmac('sha256', webhookSecret)
-        .update(JSON.stringify(req.body))
-        .digest('hex')
-      if (signature !== expected) {
-        res.status(400).json({ error: 'Invalid signature', code: 'WEBHOOK_INVALID_SIGNATURE' })
-        return
-      }
+    if (!webhookSecret) {
+      res.status(500).json({ error: 'Webhook not configured', code: 'WEBHOOK_NOT_CONFIGURED' })
+      return
+    }
+
+    if (!signature) {
+      res.status(400).json({ error: 'Missing signature', code: 'WEBHOOK_INVALID_SIGNATURE' })
+      return
+    }
+
+    const { createHmac } = await import('crypto')
+    const expected = createHmac('sha256', webhookSecret)
+      .update(JSON.stringify(req.body))
+      .digest('hex')
+    if (signature !== expected) {
+      res.status(400).json({ error: 'Invalid signature', code: 'WEBHOOK_INVALID_SIGNATURE' })
+      return
     }
 
     await service.handleWebhookEvent(req.body as Record<string, unknown>)

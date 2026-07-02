@@ -5,6 +5,7 @@ import { config } from '@/config'
 import { testConnection } from '@/db/client'
 import { testConnection as testRedis } from '@/db/redis'
 import { errorMiddleware } from '@/middleware/error.middleware'
+import { generalLimiter, authLimiter } from '@/middleware/rateLimit.middleware'
 import authRouter from '@/modules/auth/auth.routes'
 import driversRouter from '@/modules/drivers/drivers.routes'
 import vehiclesRouter from '@/modules/vehicles/vehicles.routes'
@@ -37,8 +38,8 @@ export function createApp(): Application {
   )
 
   // 4. Body parsing
-  app.use(express.json({ limit: '10mb' }))
-  app.use(express.urlencoded({ extended: true }))
+  app.use(express.json({ limit: '100kb' }))
+  app.use(express.urlencoded({ extended: true, limit: '100kb' }))
 
   // 5. Health check
   app.get('/health', async (_req, res) => {
@@ -54,7 +55,8 @@ export function createApp(): Application {
 
   // 6. API router
   const apiRouter = Router()
-  apiRouter.use('/auth', authRouter)
+  apiRouter.use(generalLimiter)
+  apiRouter.use('/auth', authLimiter, authRouter)
   apiRouter.use('/drivers', driversRouter)
   apiRouter.use('/vehicles', vehiclesRouter)
   apiRouter.use('/admin', adminRouter)

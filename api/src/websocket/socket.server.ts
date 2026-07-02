@@ -106,7 +106,20 @@ export function initSocketServer(httpServer: HttpServer): Server {
     }
 
     socket.on('join:ride', (rideId: string) => {
-      void socket.join(`ride:${rideId}`)
+      const callerSub = user?.sub
+      if (!callerSub || !rideId) return
+      void pool.query<{ user_id: string; driver_id: string | null }>(
+        `SELECT user_id::text, driver_id::text FROM rides WHERE id = $1`,
+        [BigInt(rideId)]
+      ).then((result) => {
+        const ride = result.rows[0]
+        if (!ride) return
+        const isParticipant =
+          ride.user_id === callerSub ||
+          ride.driver_id === callerSub ||
+          user?.role === 'admin'
+        if (isParticipant) void socket.join(`ride:${rideId}`)
+      }).catch(() => {})
     })
 
     socket.on('leave:ride', (rideId: string) => {
