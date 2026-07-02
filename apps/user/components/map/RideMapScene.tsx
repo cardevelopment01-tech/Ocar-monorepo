@@ -1,6 +1,5 @@
 'use client'
 
-import { useMemo } from 'react'
 import MapViewInner from '@/components/ui/MapViewInner'
 import FitBounds from './FitBounds'
 import RecenterMap from './RecenterMap'
@@ -31,11 +30,7 @@ export default function RideMapScene({
 }: RideMapSceneProps) {
   const isRecap = routeMode === 'recap'
 
-  const fallbackPositions = useMemo<[number, number][]>(() => {
-    if (routeMode === 'driver-pickup' && driverPos) return [driverPos, pickupPos]
-    if (routeMode === 'driver-dest'   && driverPos) return [driverPos, dropPos]
-    return [pickupPos, dropPos]
-  }, [routeMode, driverPos, pickupPos, dropPos])
+  const isPickupLeg = routeMode === 'driver-pickup'
 
   return (
     <MapViewInner center={center} zoom={13}>
@@ -47,7 +42,7 @@ export default function RideMapScene({
       }
       <LocationPin position={pickupPos} variant="pickup" />
       {showDrop && <LocationPin position={dropPos} variant="drop" />}
-      <RoutePolyline encoded={encodedPolyline} positions={fallbackPositions} />
+      <RoutePolyline encoded={encodedPolyline} variant={isPickupLeg ? 'pickup-leg' : 'default'} />
       {driverPos && !isRecap && <CarMarker position={driverPos} heading={driverHeading} />}
     </MapViewInner>
   )

@@ -18,7 +18,7 @@ interface SelfCarMarkerProps {
 
 function SelfCarMarker({ position, areaName = null, loading = false, heading = 0 }: SelfCarMarkerProps) {
   const showLabel = areaName !== null || loading
-  const rotation  = (Math.round(heading / 5) * 5) % 360
+  const rotation  = heading % 360
 
   return (
     <Marker latitude={position[0]} longitude={position[1]} anchor="center">
@@ -76,14 +76,9 @@ function SelfCarMarker({ position, areaName = null, loading = false, heading = 0
             </div>
 
             {/* Caret */}
-            <div style={{
-              width: 0, height: 0,
-              borderLeft: '5px solid transparent',
-              borderRight: '5px solid transparent',
-              borderTop: '5px solid rgba(255,255,255,0.92)',
-              marginTop: -1,
-              filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.08))',
-            }} />
+            <svg width="10" height="5" viewBox="0 0 10 5" fill="none" style={{ marginTop: -1, filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.08))' }}>
+              <path d="M0 0L5 5L10 0Z" fill="rgba(255,255,255,0.92)" />
+            </svg>
           </div>
         )}
 
@@ -137,5 +132,5 @@ export default memo(SelfCarMarker, (a, b) =>
   a.position[1] === b.position[1] &&
   a.areaName    === b.areaName    &&
   a.loading     === b.loading     &&
-  Math.round((a.heading ?? 0) / 5) === Math.round((b.heading ?? 0) / 5)
+  (a.heading ?? 0) === (b.heading ?? 0)
 )

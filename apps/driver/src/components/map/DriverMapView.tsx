@@ -4,12 +4,19 @@ import type { StyleSpecification } from 'maplibre-gl'
 
 const STYLE_URL = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
 
+const ODISHA_BOUNDS: [[number, number], [number, number]] = [[82.0, 17.5], [88.5, 23.0]]
+
 let styleCache: StyleSpecification | null = null
-if (typeof window !== 'undefined') {
-  fetch(STYLE_URL)
-    .then(r => r.json() as Promise<StyleSpecification>)
-    .then(s => { styleCache = s })
-    .catch(() => {})
+let styleFetch: Promise<StyleSpecification> | null = null
+
+function getStyle(): Promise<StyleSpecification> {
+  if (styleCache) return Promise.resolve(styleCache)
+  if (!styleFetch) {
+    styleFetch = fetch(STYLE_URL)
+      .then(r => r.json() as Promise<StyleSpecification>)
+      .then(s => { styleCache = s; return s })
+  }
+  return styleFetch
 }
 
 interface DriverMapViewProps {
@@ -23,11 +30,8 @@ export default function DriverMapView({ initialCenter, zoom = 15, dimmed = false
   const [mapStyle, setMapStyle] = useState<StyleSpecification | string>(styleCache ?? STYLE_URL)
 
   useEffect(() => {
-    if (styleCache) { setMapStyle(styleCache); return }
-    fetch(STYLE_URL)
-      .then(r => r.json() as Promise<StyleSpecification>)
-      .then(s => { styleCache = s; setMapStyle(s) })
-      .catch(() => {})
+    if (styleCache) return
+    getStyle().then(setMapStyle).catch(() => {})
   }, [])
 
   return (
@@ -36,9 +40,11 @@ export default function DriverMapView({ initialCenter, zoom = 15, dimmed = false
         initialViewState={{ latitude: initialCenter[0], longitude: initialCenter[1], zoom }}
         mapStyle={mapStyle}
         style={{ width: '100%', height: '100%' }}
-        attributionControl={false}
+        minZoom={6}
+        maxZoom={19}
+        maxBounds={ODISHA_BOUNDS}
         reuseMaps
-        pixelRatio={typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1}
+        pixelRatio={typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1}
       >
         {children}
       </Map>

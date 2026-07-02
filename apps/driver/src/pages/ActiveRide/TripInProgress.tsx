@@ -145,7 +145,7 @@ export default function TripInProgress() {
           <DriverMapView initialCenter={selfPos} zoom={15}>
             <RecenterMap center={selfPos} />
             {dropLat != null && dropLng != null && (
-              <RoutePolyline encoded={encodedPolyline} positions={[selfPos, dropPos]} />
+              <RoutePolyline encoded={encodedPolyline} />
             )}
             <SelfCarMarker position={selfPos} heading={selfHeading} />
             <LocationPin position={dropPos} variant="drop" />

@@ -9,7 +9,7 @@ interface CarMarkerProps {
 }
 
 function CarMarker({ position, heading = 0 }: CarMarkerProps) {
-  const rotation = (Math.round(heading / 5) * 5) % 360
+  const rotation = heading % 360
   return (
     <Marker latitude={position[0]} longitude={position[1]} anchor="center">
       <div
@@ -59,5 +59,5 @@ function CarMarker({ position, heading = 0 }: CarMarkerProps) {
 export default memo(CarMarker, (a, b) =>
   a.position[0] === b.position[0] &&
   a.position[1] === b.position[1] &&
-  Math.round((a.heading ?? 0) / 5) === Math.round((b.heading ?? 0) / 5)
+  (a.heading ?? 0) === (b.heading ?? 0)
 )

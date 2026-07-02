@@ -12,25 +12,27 @@ interface LocationPinProps {
 
 function LocationPin({ position, variant }: LocationPinProps) {
   const isPickup = variant === 'pickup'
-  const bg = isPickup ? '#2563EB' : '#0F172A'
+  const fill = isPickup ? '#2563EB' : '#0F172A'
 
   return (
-    <Marker latitude={position[0]} longitude={position[1]} anchor="center">
-      <div style={{ position: 'relative', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <Marker latitude={position[0]} longitude={position[1]} anchor="bottom">
+      <div style={{ position: 'relative', width: 28, height: 38 }}>
         {isPickup && (
           <div
-            className="animate-ping"
-            style={{ position: 'absolute', width: 36, height: 36, borderRadius: '50%', background: 'rgba(37,99,235,0.18)' }}
+            className="animate-ping rounded-full bg-indigo-600/15 pointer-events-none w-10 h-10"
+            style={{ position: 'absolute', top: -6, left: -6 }}
           />
         )}
-        <div style={{
-          width: 18, height: 18, borderRadius: '50%', background: bg,
-          border: '2px solid white', boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          position: 'relative', zIndex: 1,
-        }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'white' }} />
-        </div>
+        <svg width="28" height="38" viewBox="0 0 28 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="14" cy="36.5" rx="5" ry="1.5" fill="rgba(0,0,0,0.18)" />
+          <path
+            d="M14 1C6.82 1 1 6.82 1 14C1 21.2 7.4 28.6 14 37C20.6 28.6 27 21.2 27 14C27 6.82 21.18 1 14 1Z"
+            fill={fill}
+            stroke="white"
+            strokeWidth="2"
+          />
+          <circle cx="14" cy="13.5" r="4.5" fill="white" opacity="0.9" />
+        </svg>
       </div>
     </Marker>
   )
