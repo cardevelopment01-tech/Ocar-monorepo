@@ -20,6 +20,7 @@ import analyticsRouter  from '@/modules/analytics/analytics.routes'
 
 export function createApp(): Application {
   const app = express()
+  app.set('trust proxy', 1)
 
   // 1. Attach requestId to every request
   app.use((req, _res, next) => {
