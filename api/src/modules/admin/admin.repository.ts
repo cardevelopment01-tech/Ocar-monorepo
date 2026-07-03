@@ -1028,7 +1028,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
         )::int                                                              AS active_drivers_online,
         (SELECT COALESCE(SUM(amount), 0) FROM payments
          WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
-           AND status = 'captured'
+           AND status = 'completed'
         )::numeric                                                          AS revenue_today,
         (SELECT COUNT(*) FROM disputes
          WHERE status IN ('open', 'under_review', 'pending_info', 'escalated')

@@ -25,7 +25,10 @@ export async function goOnline(driverId: bigint, data: {
 }) {
   const existing = await repo.getActiveSession(driverId)
   if (existing) {
-    throw Object.assign(new Error('Driver already has an active session'), { statusCode: 409 })
+    if (existing.status === 'on_trip') {
+      throw Object.assign(new Error('Driver has an active ride in progress'), { statusCode: 409 })
+    }
+    await repo.endSession(BigInt(existing.id), 'reconnected')
   }
 
   const session = await repo.createSession({
@@ -54,7 +57,7 @@ export async function goOnline(driverId: bigint, data: {
             origin_lat, origin_lng,
             destination_lat, destination_lng,
             corridor)
-         VALUES ($1,$2,$3,$4,$5,$6,
+         VALUES ($1,$2,$3::float8,$4::float8,$5::float8,$6::float8,
            ST_MakeLine(
              ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326),
              ST_SetSRID(ST_MakePoint($6::float8, $5::float8), 4326)
