@@ -69,14 +69,17 @@ export default function App() {
           if (session.status === 'on_trip') {
             const ride = await driverRideApi.getActiveRide()
             if (!ride) { clearRide(); return }
+            const prev = useRideStore.getState().activeRide
             const activeRideInput: Parameters<typeof setActiveRide>[0] = {
               id: ride.id,
               status: ride.status,
-              pickup: ride.origin_address ?? 'Pickup',
-              drop: ride.destination_address ?? (ride.ride_type === 'rental' ? 'Hourly rental' : 'Destination'),
+              pickup: ride.origin_address ?? prev?.pickup ?? 'Pickup',
+              drop: ride.destination_address ?? prev?.drop ?? (ride.ride_type === 'rental' ? 'Hourly rental' : 'Destination'),
               pickupLat: ride.origin_lat,
               pickupLng: ride.origin_lng,
-              fare: ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
+              fare: ride.total_estimated != null
+                ? parseFloat(ride.total_estimated)
+                : (prev?.fare ?? 0),
               rideType: ride.ride_type,
             }
             if (ride.dest_lat    != null) activeRideInput.dropLat       = ride.dest_lat
@@ -167,12 +170,13 @@ export default function App() {
     try {
       await driverRideApi.acceptRide(rideId)
       const ride = await driverRideApi.getRide(rideId)
+      const req = incomingRequest  // capture before clearIncomingRequest clears it
       const activeRideInput: Parameters<typeof setActiveRide>[0] = {
         id: rideId, status: 'accepted',
-        pickup: ride.origin_address ?? 'Pickup',
-        drop: ride.destination_address ?? (rideType === 'rental' ? 'Hourly rental' : 'Destination'),
+        pickup: ride.origin_address ?? req?.pickup ?? 'Pickup',
+        drop: ride.destination_address ?? req?.drop ?? (rideType === 'rental' ? 'Hourly rental' : 'Destination'),
         pickupLat: ride.origin_lat, pickupLng: ride.origin_lng,
-        fare: ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
+        fare: ride.total_estimated != null ? parseFloat(ride.total_estimated) : (req?.fare ?? 0),
         rideType,
       }
       if (ride.dest_lat   != null) activeRideInput.dropLat   = ride.dest_lat
