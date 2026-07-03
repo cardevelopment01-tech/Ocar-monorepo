@@ -1045,7 +1045,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
          WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
         )::int                                                              AS new_driver_signups,
         (SELECT COUNT(*) FROM rides
-         WHERE status IN ('accepted', 'confirmed', 'started', 'reached')
+         WHERE status IN ('accepted', 'driver_arrived', 'in_progress')
         )::int                                                              AS active_trips
     `),
     pool.query(`
