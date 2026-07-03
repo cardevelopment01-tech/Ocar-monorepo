@@ -147,7 +147,7 @@ export default function RidesPage() {
                 options: [
                   { value: 'requested',   label: 'Requested'   },
                   { value: 'accepted',    label: 'Accepted'    },
-                  { value: 'arrived',     label: 'Arrived'     },
+                  { value: 'driver_arrived', label: 'Arrived'  },
                   { value: 'in_progress', label: 'In Progress' },
                   { value: 'completed',   label: 'Completed'   },
                   { value: 'cancelled',   label: 'Cancelled'   },
