@@ -122,7 +122,7 @@ export default function Home() {
   })
 
   const positionReady = gpsPosition !== null
-  const geoError      = gpsError?.code === 1
+  const geoError      = gpsError !== null
 
   useEffect(() => {
     if (gpsPosition) setMapCenter(gpsPosition)
@@ -333,7 +333,13 @@ export default function Home() {
             style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.22)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
           >
             <LocateOff size={14} className="text-red-500 flex-shrink-0" />
-            <span className="text-red-600 text-[12px] font-semibold">Location unavailable — enable GPS to receive rides</span>
+            <span className="text-red-600 text-[12px] font-semibold">
+              {gpsError?.code === 1
+                ? 'Location access denied — allow in browser settings'
+                : gpsError?.code === 2
+                ? 'GPS signal unavailable — check device location settings'
+                : 'Location timed out — ensure GPS is enabled'}
+            </span>
           </div>
         </div>
       )}
