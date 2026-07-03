@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Navigation2 } from 'lucide-react'
+import { Navigation2, RotateCcw, Clock } from 'lucide-react'
 
 interface TripRequestCardProps {
   pickup: string
@@ -10,6 +10,8 @@ interface TripRequestCardProps {
   fare: number
   timeRemaining: number
   rideType: string
+  tripHours?: number
+  returnAt?: string
   isAccepting?: boolean
   onAccept: () => void
   onDecline: () => void
@@ -17,7 +19,7 @@ interface TripRequestCardProps {
 
 const RIDE_TYPE_BADGE: Record<string, { label: string; bg: string; color: string } | undefined> = {
   round_trip: { label: 'Return',  bg: 'rgba(245,158,11,0.18)', color: '#D97706' },
-  rental:     { label: 'Rental',  bg: 'rgba(79,70,229,0.18)',  color: '#6D28D9' },
+  rental:     { label: 'Rental',  bg: 'rgba(14,165,233,0.15)',  color: '#0EA5E9' },
 }
 
 function beep() {
@@ -40,7 +42,7 @@ function beep() {
 
 export default function TripRequestCard({
   pickup, drop, pickupDistance, tripDistance, fare,
-  timeRemaining: initialTime, rideType, isAccepting, onAccept, onDecline,
+  timeRemaining: initialTime, rideType, tripHours, returnAt, isAccepting, onAccept, onDecline,
 }: TripRequestCardProps) {
   const [time, setTime] = useState(initialTime)
   const [expired, setExpired] = useState(false)
@@ -71,7 +73,13 @@ export default function TripRequestCard({
   const reduce = useReducedMotion()
   const clock = `${Math.floor(time / 60)}:${String(time % 60).padStart(2, '0')}`
   const etaMin = tripDistance > 0 ? Math.max(1, Math.round(tripDistance / 0.6)) : 0
-  const barFill = isUrgent ? '#EF4444' : '#4F46E5'
+  const returnAtFormatted = returnAt
+    ? new Date(returnAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    : null
+  const barFill = isUrgent ? '#EF4444'
+    : rideType === 'round_trip' ? '#F59E0B'
+    : rideType === 'rental' ? '#0EA5E9'
+    : '#4F46E5'
   const childVar = reduce
     ? { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.15 } } }
     : { hidden: { opacity: 0, y: 8 },
@@ -124,7 +132,9 @@ export default function TripRequestCard({
           {/* [2] Header — title + badge + clock + quiet distance */}
           <motion.div variants={childVar} className="flex items-center justify-between px-5 pt-3 pb-4">
             <div className="flex items-center gap-2 min-w-0">
-              <p className="text-[15px] font-semibold flex-shrink-0" style={{ color: '#F8FAFC' }}>Trip request</p>
+              <p className="text-[15px] font-semibold flex-shrink-0" style={{ color: '#F8FAFC' }}>
+                {rideType === 'round_trip' ? 'Round trip' : rideType === 'rental' ? 'Rental request' : 'Trip request'}
+              </p>
               {RIDE_TYPE_BADGE[rideType] && (
                 <span
                   className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
@@ -211,6 +221,46 @@ export default function TripRequestCard({
               </div>
             </div>
           </motion.div>
+
+          {/* [4.5] Ride type disclosure band — round_trip / rental only */}
+          {(rideType === 'round_trip' || rideType === 'rental') && (
+            <motion.div variants={childVar} className="px-5 pb-4">
+              {rideType === 'round_trip' && (
+                <div
+                  className="flex items-start gap-3 rounded-xl px-3.5 py-3"
+                  style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.22)' }}
+                >
+                  <RotateCcw size={14} style={{ color: '#F59E0B', flexShrink: 0, marginTop: 2 }} />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold leading-tight" style={{ color: '#FDE68A' }}>
+                      Outstation return trip
+                    </p>
+                    <p className="text-[12px] font-medium mt-0.5 leading-snug" style={{ color: '#D97706' }}>
+                      {returnAtFormatted
+                        ? `Must return by ${returnAtFormatted}`
+                        : 'You must drive back to the pickup point'}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {rideType === 'rental' && (
+                <div
+                  className="flex items-start gap-3 rounded-xl px-3.5 py-3"
+                  style={{ background: 'rgba(14,165,233,0.10)', border: '1px solid rgba(14,165,233,0.20)' }}
+                >
+                  <Clock size={14} style={{ color: '#0EA5E9', flexShrink: 0, marginTop: 2 }} />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold leading-tight" style={{ color: '#BAE6FD' }}>
+                      {tripHours ? `${tripHours}-hour rental` : 'Hourly rental'}
+                    </p>
+                    <p className="text-[12px] font-medium mt-0.5 leading-snug" style={{ color: '#7DD3FC' }}>
+                      Stay with the passenger for the full duration
+                    </p>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
 
           {/* [5] Actions — 30/70, accept-dominant bright-on-dark */}
           <motion.div variants={childVar} className="flex gap-3 px-5 pt-1 pb-8">

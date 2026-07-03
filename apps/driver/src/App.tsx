@@ -110,7 +110,7 @@ export default function App() {
       rideId: string; pickup: string; drop: string; distanceToPickup: number;
       estimatedFare: number; rideType: string; isReturnCab: boolean; expiresAt: string;
       timeoutSeconds: number; pickupLat?: number; pickupLng?: number;
-      destinationLat?: number; destinationLng?: number;
+      destinationLat?: number; destinationLng?: number; returnAt?: string; tripHours?: number;
     }) => {
       const pLat = data.pickupLat ?? DEFAULT_LAT
       const pLng = data.pickupLng ?? DEFAULT_LNG
@@ -129,6 +129,8 @@ export default function App() {
         pickupDistance: data.distanceToPickup / 1000, tripDistance, fare: data.estimatedFare,
         timeoutSeconds: data.timeoutSeconds, pickupLat: pLat, pickupLng: pLng,
         rideType: data.rideType,
+        returnAt: data.returnAt,
+        tripHours: data.tripHours,
       })
       // Confirm receipt so the server stops the retry loop for this driver
       socket.emit('ride:request:ack', { rideId: data.rideId })
@@ -274,6 +276,8 @@ export default function App() {
             fare={incomingRequest.fare}
             timeRemaining={incomingRequest.timeoutSeconds}
             rideType={incomingRequest.rideType}
+            tripHours={incomingRequest.tripHours}
+            returnAt={incomingRequest.returnAt}
             isAccepting={accepting}
             onAccept={() => void handleAcceptRide(incomingRequest.rideId, incomingRequest.rideType)}
             onDecline={clearIncomingRequest}

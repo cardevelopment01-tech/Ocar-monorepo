@@ -34,6 +34,8 @@ interface RideState {
     pickupLat: number
     pickupLng: number
     rideType: string
+    tripHours?: number
+    returnAt?: string
   } | null
 
   setActiveRide:     (ride: ActiveRide) => void
