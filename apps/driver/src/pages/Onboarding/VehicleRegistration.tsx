@@ -227,7 +227,12 @@ export default function VehicleRegistration() {
         {/* Number plate */}
         <Field label="Registration Number">
           <input className="input-dark w-full font-mono uppercase" placeholder="OD05AB1234"
-            value={plate} onChange={e => { setPlate(e.target.value.toUpperCase()); setPlateError('') }} />
+            maxLength={11}
+            value={plate}
+            onChange={e => {
+              setPlate(e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 11))
+              setPlateError('')
+            }} />
           {plateError
             ? <p className="text-accent-red text-xs mt-1">{plateError}</p>
             : plate && !isValidPlate(plate)

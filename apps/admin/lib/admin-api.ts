@@ -127,12 +127,19 @@ export interface AdminRideItem {
   origin_address: string | null
   destination_address: string | null
   requested_at: string
+  accepted_at: string | null
+  driver_arrived_at: string | null
+  started_at: string | null
   completed_at: string | null
   user_name: string
   user_phone: string
   driver_name: string | null
   driver_phone: string | null
   fare: string | null
+  payment_status: string | null
+  payment_channel: string | null
+  cancellation_reason: string | null
+  cancellation_actor: string | null
 }
 
 export interface AdminRidesResponse {

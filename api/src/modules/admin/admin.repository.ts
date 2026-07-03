@@ -752,11 +752,15 @@ export async function listAdminRides(filters: {
        r.requested_at, r.accepted_at, r.driver_arrived_at, r.started_at, r.completed_at,
        u.name AS user_name, u.phone AS user_phone,
        d.full_name AS driver_name, d.phone AS driver_phone,
-       COALESCE(fs.total_final, fs.total_estimated)::text AS fare
+       COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
+       pay.status AS payment_status, pay.channel AS payment_channel,
+       rc.reason AS cancellation_reason, rc.actor AS cancellation_actor
      FROM rides r
      JOIN users u ON u.id = r.user_id
      LEFT JOIN drivers d ON d.id = r.driver_id
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+     LEFT JOIN payments pay ON pay.ride_id = r.id
+     LEFT JOIN ride_cancellations rc ON rc.ride_id = r.id
      ${where}
      ORDER BY r.requested_at DESC
      LIMIT $${p} OFFSET $${p + 1}`,

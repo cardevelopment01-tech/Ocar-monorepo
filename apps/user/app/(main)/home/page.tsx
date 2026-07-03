@@ -116,7 +116,13 @@ export default function HomePage() {
     if (fetched.current || !navigator.geolocation) return
     fetched.current = true
     navigator.geolocation.getCurrentPosition(
-      p => { setLat(p.coords.latitude); setLng(p.coords.longitude); setAddr('Current Location') },
+      p => {
+        setLat(p.coords.latitude)
+        setLng(p.coords.longitude)
+        geoApi.reverseGeocode(p.coords.latitude, p.coords.longitude)
+          .then(address => setAddr(address))
+          .catch(() => {})
+      },
       () => {},
       { enableHighAccuracy: false, timeout: 8000 },
     )
