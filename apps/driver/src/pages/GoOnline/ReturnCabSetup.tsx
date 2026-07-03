@@ -38,7 +38,7 @@ export default function ReturnCabSetup() {
 
   useEffect(() => {
     Promise.all([
-      api.get<{ cities: City[] }>('/api/v1/geo/cities').then(r => r.data.cities ?? []),
+      api.get<City[]>('/api/v1/geo/cities').then(r => r.data ?? []),
       driverRideApi.getMyVehicle(),
     ])
       .then(([cityList, v]) => {
