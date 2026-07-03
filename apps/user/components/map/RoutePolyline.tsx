@@ -20,12 +20,18 @@ function drawArrowImage(map: ReturnType<typeof useMap>['current']) {
   ctx.moveTo(4, 10); ctx.lineTo(16, 10)
   ctx.moveTo(10, 4); ctx.lineTo(16, 10); ctx.lineTo(10, 16)
   ctx.stroke()
+  // Try addImage first; if a stale/0-size placeholder exists, remove it and retry.
   try {
-    if (map.hasImage(ARROW_ID)) map.removeImage(ARROW_ID)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     map.addImage(ARROW_ID, canvas as any)
   } catch {
-    // style rebuilt mid-flight; the next style.load will retry
+    try {
+      map.removeImage(ARROW_ID)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      map.addImage(ARROW_ID, canvas as any)
+    } catch {
+      // style rebuilt mid-flight; the next style.load will retry
+    }
   }
 }
 
@@ -56,14 +62,20 @@ export default function RoutePolyline({ encoded, positions, variant = 'default' 
   }), [pts])
 
   // Register the directional arrow icon on the map sprite (default variant only).
-  // Re-register on every style.load because MapLibre clears custom images on style rebuild.
+  // Re-register on style.load (style rebuild clears custom images) and on
+  // styleimagemissing (fires before MapLibre creates a 0-size placeholder, which
+  // would cause a "mismatched image size" crash when addImage is called).
   useEffect(() => {
     if (!map || variant === 'pickup-leg') return
     const register = () => drawArrowImage(map)
+    const onMissing = (e: { id: string }) => { if (e.id === ARROW_ID) drawArrowImage(map) }
     if (map.isStyleLoaded()) register()
-    else map.once('style.load', register)
     map.on('style.load', register)
-    return () => { map.off('style.load', register) }
+    map.on('styleimagemissing', onMissing)
+    return () => {
+      map.off('style.load', register)
+      map.off('styleimagemissing', onMissing)
+    }
   }, [map, variant])
 
   if (pts.length < 2) return null

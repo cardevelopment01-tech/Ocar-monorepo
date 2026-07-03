@@ -5,7 +5,7 @@ import { decodePolyline } from '@/lib/polyline'
 const ARROW_ID = 'route-arrow'
 
 function drawArrowImage(map: ReturnType<typeof useMap>['current']) {
-  if (!map || map.hasImage(ARROW_ID)) return
+  if (!map) return
   const canvas = document.createElement('canvas')
   canvas.width  = 20
   canvas.height = 20
@@ -18,8 +18,18 @@ function drawArrowImage(map: ReturnType<typeof useMap>['current']) {
   ctx.moveTo(4, 10); ctx.lineTo(16, 10)
   ctx.moveTo(10, 4); ctx.lineTo(16, 10); ctx.lineTo(10, 16)
   ctx.stroke()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  map.addImage(ARROW_ID, canvas as any)
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    map.addImage(ARROW_ID, canvas as any)
+  } catch {
+    try {
+      map.removeImage(ARROW_ID)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      map.addImage(ARROW_ID, canvas as any)
+    } catch {
+      // style rebuilt mid-flight; the next style.load will retry
+    }
+  }
 }
 
 interface RoutePolylineProps {
@@ -50,10 +60,14 @@ export default function RoutePolyline({ encoded, positions, variant = 'default' 
 
   useEffect(() => {
     if (!map || variant === 'pickup-leg') return
-    if (map.isStyleLoaded()) {
-      drawArrowImage(map)
-    } else {
-      map.once('styledata', () => drawArrowImage(map))
+    const register = () => drawArrowImage(map)
+    const onMissing = (e: { id: string }) => { if (e.id === ARROW_ID) drawArrowImage(map) }
+    if (map.isStyleLoaded()) register()
+    map.on('style.load', register)
+    map.on('styleimagemissing', onMissing)
+    return () => {
+      map.off('style.load', register)
+      map.off('styleimagemissing', onMissing)
     }
   }, [map, variant])
 
