@@ -1098,10 +1098,10 @@ export async function getActiveDriverSessions(): Promise<ActiveDriverSession[]> 
       r.id::text                           AS ride_id,
       r.origin_address,
       r.destination_address,
-      r.origin_lat,
-      r.origin_lng,
-      r.dest_lat,
-      r.dest_lng
+      ST_Y(r.origin::geometry)             AS origin_lat,
+      ST_X(r.origin::geometry)             AS origin_lng,
+      ST_Y(r.destination::geometry)        AS dest_lat,
+      ST_X(r.destination::geometry)        AS dest_lng
     FROM driver_sessions ds
     JOIN drivers d ON d.id = ds.driver_id
     LEFT JOIN driver_location_snapshots dls ON dls.driver_id = ds.driver_id
