@@ -10,6 +10,7 @@ import { formatReturnAt } from '@/lib/utils'
 import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
 import { useInterpolatedPosition } from '@/lib/useInterpolatedPosition'
+import CancelSheet from './CancelSheet'
 
 const RideMapScene = dynamic(() => import('@/components/map/RideMapScene'), { ssr: false })
 
@@ -84,6 +85,7 @@ export default function RidePage() {
   const [otpCopied,      setOtpCopied]      = useState(false)
   const [endOtp,         setEndOtp]         = useState<string | null>(null)
   const [endOtpCopied,   setEndOtpCopied]   = useState(false)
+  const [showCancelSheet, setShowCancelSheet] = useState(false)
   const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastFetch      = useRef<{ mode: RouteMode; origin: [number, number]; at: number } | null>(null)
   const fetchSeq       = useRef(0)
@@ -113,18 +115,17 @@ export default function RidePage() {
     const socket = getSocket()
     joinRideRoom(rideId)
 
-    socket.on('connect', () => {
+    const onConnect = () => {
       setSocketOk(true)
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
       joinRideRoom(rideId)
       void loadRide()
-    })
-    socket.on('disconnect', () => {
+    }
+    const onDisconnect = () => {
       setSocketOk(false)
       if (!pollRef.current) pollRef.current = setInterval(() => void loadRide(), 10_000)
-    })
-
-    socket.on('ride:status_update', (data: { status: string; startOtp?: string; endOtp?: string }) => {
+    }
+    const onStatusUpdate = (data: { status: string; startOtp?: string; endOtp?: string }) => {
       setRideStatus(data.status)
       if (data.startOtp) setStartOtp(data.startOtp)
       if (data.endOtp)   setEndOtp(data.endOtp)
@@ -132,9 +133,8 @@ export default function RidePage() {
         breadcrumbRef.current = []
         setBreadcrumb([])
       }
-    })
-
-    socket.on('ride:driver_assigned', (data: { driverName?: string; driverPhone?: string }) => {
+    }
+    const onDriverAssigned = (data: { driverName?: string; driverPhone?: string }) => {
       setRideStatus('accepted')
       if (data.driverName || data.driverPhone) {
         setRide(prev => prev
@@ -142,9 +142,8 @@ export default function RidePage() {
           : prev
         )
       }
-    })
-
-    socket.on('driver:location', (data: { lat: number; lng: number; heading: number }) => {
+    }
+    const onDriverLocation = (data: { lat: number; lng: number; heading: number }) => {
       setDriverPos([data.lat, data.lng])
       setDriverHeading(data.heading)
       if (rideStatusRef.current === 'in_progress') {
@@ -152,7 +151,13 @@ export default function RidePage() {
         breadcrumbRef.current = next
         setBreadcrumb(next)
       }
-    })
+    }
+
+    socket.on('connect',            onConnect)
+    socket.on('disconnect',         onDisconnect)
+    socket.on('ride:status_update', onStatusUpdate)
+    socket.on('ride:driver_assigned', onDriverAssigned)
+    socket.on('driver:location',    onDriverLocation)
 
     const fallbackTimer = setTimeout(() => {
       if (!socket.connected) pollRef.current = setInterval(() => void loadRide(), 10_000)
@@ -160,11 +165,11 @@ export default function RidePage() {
 
     return () => {
       leaveRideRoom(rideId)
-      socket.off('ride:status_update')
-      socket.off('ride:driver_assigned')
-      socket.off('driver:location')
-      socket.off('connect')
-      socket.off('disconnect')
+      socket.off('connect',            onConnect)
+      socket.off('disconnect',         onDisconnect)
+      socket.off('ride:status_update', onStatusUpdate)
+      socket.off('ride:driver_assigned', onDriverAssigned)
+      socket.off('driver:location',    onDriverLocation)
       clearTimeout(fallbackTimer)
       if (pollRef.current) clearInterval(pollRef.current)
     }
@@ -381,24 +386,12 @@ export default function RidePage() {
               )}
 
               <button
-                onClick={async () => {
-                  if (cancelling) return
-                  setCancelling(true)
-                  try {
-                    await rideApi.cancelRide(rideId)
-                    setRideStatus('cancelled')
-                  } catch {
-                    router.push('/home')
-                  } finally {
-                    setCancelling(false)
-                  }
-                }}
-                disabled={cancelling}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold text-red-600 active:opacity-70 transition-opacity disabled:opacity-50"
+                onClick={() => setShowCancelSheet(true)}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold text-red-600 active:opacity-70 transition-opacity"
                 style={{ background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.16)' }}
               >
                 <X size={15} strokeWidth={2.5} />
-                {cancelling ? 'Cancelling…' : 'Cancel ride'}
+                Cancel ride
               </button>
             </motion.div>
           )}
@@ -647,12 +640,42 @@ export default function RidePage() {
                 </motion.div>
               </AnimatePresence>
 
+              {(rideStatus === 'accepted' || rideStatus === 'driver_arrived') && (
+                <button
+                  onClick={() => setShowCancelSheet(true)}
+                  className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm font-medium text-red-500 active:opacity-70 transition-opacity"
+                  style={{ background: 'rgba(220,38,38,0.05)', border: '1px solid rgba(220,38,38,0.12)' }}
+                >
+                  <X size={14} strokeWidth={2} />
+                  Cancel ride
+                </button>
+              )}
+
             </motion.div>
           )}
 
         </AnimatePresence>
 
       </motion.div>
+
+      {showCancelSheet && (
+        <CancelSheet
+          feeWarning={rideStatus === 'accepted' || rideStatus === 'driver_arrived'}
+          onClose={() => setShowCancelSheet(false)}
+          onConfirm={async (reasonCode, reason) => {
+            setCancelling(true)
+            try {
+              await rideApi.cancelRide(rideId, reasonCode, reason)
+              setRideStatus('cancelled')
+            } catch {
+              router.push('/home')
+            } finally {
+              setCancelling(false)
+              setShowCancelSheet(false)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

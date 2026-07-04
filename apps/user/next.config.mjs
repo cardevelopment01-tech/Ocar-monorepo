@@ -1,6 +1,4 @@
 /** @type {import('next').NextConfig} */
-const config = {
-  transpilePackages: ['leaflet', 'react-leaflet'],
-}
+const config = {}
 
 export default config
