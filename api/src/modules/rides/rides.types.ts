@@ -65,7 +65,14 @@ export interface Ride {
   user_name: string | null
   driver_name: string | null
   driver_phone: string | null
+  driver_rating: string | null
+  driver_photo: string | null
   total_estimated: string | null
+  vehicle_number_plate: string | null
+  vehicle_color: string | null
+  vehicle_name: string | null
+  vehicle_model: string | null
+  vehicle_brand: string | null
 }
 
 export interface BookingRequest {

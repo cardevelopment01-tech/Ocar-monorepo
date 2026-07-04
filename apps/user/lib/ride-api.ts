@@ -39,6 +39,13 @@ export type RideDetail = {
   dest_lng: number | null
   driver_name: string | null
   driver_phone: string | null
+  driver_rating: string | null
+  driver_photo: string | null
+  vehicle_number_plate: string | null
+  vehicle_color: string | null
+  vehicle_name: string | null
+  vehicle_model: string | null
+  vehicle_brand: string | null
   total_estimated: string | null
   requested_at: string
   accepted_at: string | null

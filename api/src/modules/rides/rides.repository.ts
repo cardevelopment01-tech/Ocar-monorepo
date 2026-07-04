@@ -285,11 +285,21 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
        u.name       AS user_name,
        d.full_name  AS driver_name,
        d.phone      AS driver_phone,
-       fs.total_estimated
+       d.rating_avg           AS driver_rating,
+       d.reference_selfie_url AS driver_photo,
+       fs.total_estimated,
+       dv.number_plate  AS vehicle_number_plate,
+       dv.color         AS vehicle_color,
+       dv.vehicle_name  AS vehicle_name,
+       vm.name          AS vehicle_model,
+       vb.name          AS vehicle_brand
      FROM rides r
-     LEFT JOIN users u           ON u.id = r.user_id
-     LEFT JOIN drivers d         ON d.id = r.driver_id
-     LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+     LEFT JOIN users u             ON u.id = r.user_id
+     LEFT JOIN drivers d           ON d.id = r.driver_id
+     LEFT JOIN fare_snapshots fs   ON fs.ride_id = r.id
+     LEFT JOIN driver_vehicles dv  ON dv.driver_id = r.driver_id AND dv.is_primary = true AND dv.status != 'blacklisted'
+     LEFT JOIN vehicle_models vm   ON vm.id = dv.model_id
+     LEFT JOIN vehicle_brands vb   ON vb.id = dv.brand_id
      WHERE r.id = $1`,
     [rideId]
   )

@@ -2,6 +2,7 @@ import { Router, IRouter } from 'express'
 import { authenticate } from '@/middleware/auth.middleware'
 import { client as redis } from '@/db/redis'
 import { startOtpKey, endOtpKey } from '@/constants/redis-keys'
+import { getPresignedUrl } from '@/lib/storage'
 import * as service from './rides.service'
 import * as repo from './rides.repository'
 
@@ -153,7 +154,13 @@ router.get('/:id', authenticate(), async (req, res, next) => {
       redis.get(endOtpKey(rideIdStr)),
     ])
 
-    res.json({ ...ride, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
+    let driverPhoto = ride.driver_photo ?? null
+    if (driverPhoto) {
+      try { driverPhoto = await getPresignedUrl(driverPhoto) }
+      catch { driverPhoto = null }
+    }
+
+    res.json({ ...ride, driver_photo: driverPhoto, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
   } catch (err) { next(err) }
 })
 

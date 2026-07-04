@@ -134,14 +134,26 @@ export default function RidePage() {
         setBreadcrumb([])
       }
     }
-    const onDriverAssigned = (data: { driverName?: string; driverPhone?: string }) => {
+    const onDriverAssigned = (data: {
+      driverName?: string | null; driverPhone?: string | null
+      driverRating?: string | null; driverPhoto?: string | null
+      vehicleModel?: string | null; vehicleBrand?: string | null
+      vehicleColor?: string | null; vehicleName?: string | null
+      vehicleNumberPlate?: string | null
+    }) => {
       setRideStatus('accepted')
-      if (data.driverName || data.driverPhone) {
-        setRide(prev => prev
-          ? { ...prev, driver_name: data.driverName ?? prev.driver_name, driver_phone: data.driverPhone ?? prev.driver_phone }
-          : prev
-        )
-      }
+      setRide(prev => prev ? {
+        ...prev,
+        driver_name:          data.driverName          ?? prev.driver_name,
+        driver_phone:         data.driverPhone         ?? prev.driver_phone,
+        driver_rating:        data.driverRating        ?? prev.driver_rating,
+        driver_photo:         data.driverPhoto         ?? prev.driver_photo,
+        vehicle_model:        data.vehicleModel        ?? prev.vehicle_model,
+        vehicle_brand:        data.vehicleBrand        ?? prev.vehicle_brand,
+        vehicle_color:        data.vehicleColor        ?? prev.vehicle_color,
+        vehicle_name:         data.vehicleName         ?? prev.vehicle_name,
+        vehicle_number_plate: data.vehicleNumberPlate  ?? prev.vehicle_number_plate,
+      } : prev)
     }
     const onDriverLocation = (data: { lat: number; lng: number; heading: number }) => {
       setDriverPos([data.lat, data.lng])
@@ -444,21 +456,47 @@ export default function RidePage() {
               {/* Driver card */}
               <div className="flex items-center gap-3 mb-4">
                 {/* Avatar */}
-                <div
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 text-white text-[15px] font-black"
-                  style={{ background: 'linear-gradient(135deg, #3B82F6, #2563EB)' }}
-                >
-                  {ride?.driver_name ? getInitials(ride.driver_name) : '?'}
-                </div>
+                {ride?.driver_photo ? (
+                  <img
+                    src={ride.driver_photo}
+                    alt={ride?.driver_name ?? 'Driver'}
+                    className="w-12 h-12 rounded-2xl object-cover flex-shrink-0"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                  />
+                ) : (
+                  <div
+                    className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 text-white text-[15px] font-black"
+                    style={{ background: 'linear-gradient(135deg, #3B82F6, #2563EB)' }}
+                  >
+                    {ride?.driver_name ? getInitials(ride.driver_name) : '?'}
+                  </div>
+                )}
 
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-gray-900 text-[15px] leading-tight">{ride?.driver_name ?? 'Your Driver'}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-amber-400 text-xs">★</span>
-                    <span className="text-xs font-semibold text-gray-600">4.8</span>
-                    <span className="text-gray-300 text-xs">·</span>
-                    <span className="text-xs text-gray-500">Sedan</span>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    {ride?.driver_rating ? (
+                      <>
+                        <span className="text-amber-400 text-xs">★</span>
+                        <span className="text-xs font-semibold text-gray-600">{Number(ride.driver_rating).toFixed(1)}</span>
+                      </>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">New</span>
+                    )}
+                    {(ride?.vehicle_model || ride?.vehicle_name) && (
+                      <>
+                        <span className="text-gray-300 text-xs">·</span>
+                        <span className="text-xs text-gray-500">
+                          {[ride?.vehicle_color, ride?.vehicle_model ?? ride?.vehicle_name].filter(Boolean).join(' ')}
+                        </span>
+                      </>
+                    )}
                   </div>
+                  {ride?.vehicle_number_plate && (
+                    <span className="inline-block mt-1 text-[11px] font-bold tracking-wider text-gray-700 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5">
+                      {ride.vehicle_number_plate}
+                    </span>
+                  )}
                 </div>
 
                 {/* Actions */}

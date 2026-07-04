@@ -1,6 +1,7 @@
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import { startOtpKey, endOtpKey } from '@/constants/redis-keys'
+import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './rides.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
@@ -313,12 +314,25 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
     actorId:    driverId,
   })
 
+  let driverPhoto = ride?.driver_photo ?? null
+  if (driverPhoto) {
+    try { driverPhoto = await getPresignedUrl(driverPhoto) }
+    catch { driverPhoto = null }
+  }
+
   socketEvents.sendDriverAssigned(rideId.toString(), {
-    rideId:      rideId.toString(),
-    status:      'accepted',
-    driverId:    driverId.toString(),
-    driverName:  ride?.driver_name,
-    driverPhone: ride?.driver_phone,
+    rideId:             rideId.toString(),
+    status:             'accepted',
+    driverId:           driverId.toString(),
+    driverName:         ride?.driver_name ?? null,
+    driverPhone:        ride?.driver_phone ?? null,
+    driverRating:       ride?.driver_rating ?? null,
+    driverPhoto:        driverPhoto,
+    vehicleModel:       ride?.vehicle_model ?? null,
+    vehicleBrand:       ride?.vehicle_brand ?? null,
+    vehicleColor:       ride?.vehicle_color ?? null,
+    vehicleName:        ride?.vehicle_name ?? null,
+    vehicleNumberPlate: ride?.vehicle_number_plate ?? null,
   })
 
   if (ride?.user_phone) {
