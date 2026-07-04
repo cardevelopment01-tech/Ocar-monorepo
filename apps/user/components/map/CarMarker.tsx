@@ -17,7 +17,6 @@ function CarMarker({ position, heading = 0 }: CarMarkerProps) {
           width: 32,
           height: 52,
           transform: `rotate(${rotation}deg)`,
-          transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1)',
           filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.35))',
         }}
       >

@@ -8,7 +8,7 @@ export interface DriverLocationState {
 
 interface UseDriverLocationOptions {
   highAccuracy?:  boolean
-  onSync?:        (lat: number, lng: number) => void
+  onSync?:        (lat: number, lng: number, heading: number) => void
   syncIntervalMs?: number
 }
 
@@ -45,7 +45,8 @@ export function useDriverLocation({
       const now = Date.now()
       if (onSyncRef.current && now - lastSyncAt.current >= syncIntervalMs) {
         lastSyncAt.current = now
-        onSyncRef.current(lat, lng)
+        const hdg = pos.coords.heading
+        onSyncRef.current(lat, lng, (hdg == null || isNaN(hdg)) ? 0 : hdg)
       }
     }
 

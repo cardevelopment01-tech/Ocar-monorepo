@@ -67,9 +67,10 @@ export default function NavigateToPickup() {
 
   const { position, heading: selfHeading } = useDriverLocation({
     highAccuracy: true,
+    syncIntervalMs: 3_000,
     onSync: sessionId
-      ? (lat, lng) => {
-          driverRideApi.updateLocation({ sessionId: sessionId!, lat, lng, recordedAt: new Date().toISOString() }).catch(() => {})
+      ? (lat, lng, heading) => {
+          driverRideApi.updateLocation({ sessionId: sessionId!, lat, lng, heading, recordedAt: new Date().toISOString() }).catch(() => {})
         }
       : undefined,
   })

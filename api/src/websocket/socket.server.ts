@@ -115,6 +115,10 @@ export function initSocketServer(httpServer: HttpServer): Server {
         })
     }
 
+    if (user?.role === 'user') {
+      void socket.join(`user:${user.sub}`)
+    }
+
     if (user?.role === 'admin') {
       void socket.join('admin:ops')
     }

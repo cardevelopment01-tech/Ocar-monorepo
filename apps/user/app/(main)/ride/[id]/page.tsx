@@ -77,7 +77,6 @@ export default function RidePage() {
   const [ride,           setRide]           = useState<RideDetail | null>(null)
   const [rideStatus,     setRideStatus]     = useState<string>('requested')
   const [driverPos,      setDriverPos]      = useState<[number, number] | undefined>(undefined)
-  const [driverHeading,  setDriverHeading]  = useState(0)
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
   const [socketOk,       setSocketOk]       = useState(false)
   const [cancelling,     setCancelling]     = useState(false)
@@ -96,7 +95,7 @@ export default function RidePage() {
   // Keep ref in sync so the driver:location handler reads the live status without stale closure
   useEffect(() => { rideStatusRef.current = rideStatus }, [rideStatus])
 
-  const { pos: smoothPos, heading: smoothHeading } = useInterpolatedPosition(driverPos, driverHeading)
+  const { pos: smoothPos, heading: smoothHeading } = useInterpolatedPosition(driverPos, 0)
 
   const loadRide = useCallback(async () => {
     try {
@@ -145,7 +144,6 @@ export default function RidePage() {
     }
     const onDriverLocation = (data: { lat: number; lng: number; heading: number }) => {
       setDriverPos([data.lat, data.lng])
-      setDriverHeading(data.heading)
       if (rideStatusRef.current === 'in_progress') {
         const next: [number, number][] = [...breadcrumbRef.current, [data.lat, data.lng]]
         breadcrumbRef.current = next

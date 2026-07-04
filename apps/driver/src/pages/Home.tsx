@@ -111,10 +111,10 @@ export default function Home() {
   // ── GPS tracking via watchPosition ───────────────────────────────────────────
   const { position: gpsPosition, heading: gpsHeading, error: gpsError } = useDriverLocation({
     onSync: isOnline && sessionId
-      ? (lat, lng) => {
+      ? (lat, lng, heading) => {
           driverRideApi.updateLocation({
             sessionId: sessionId!,
-            lat, lng,
+            lat, lng, heading,
             recordedAt: new Date().toISOString(),
           }).catch(() => {})
         }
