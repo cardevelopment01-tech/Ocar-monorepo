@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import {
   ArrowLeft, MapPin, Clock, CalendarClock,
-  CreditCard, Zap, Users,
+  CreditCard, Zap, Users, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
@@ -35,21 +35,20 @@ const fadeUp = (delay = 0) => ({
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function toDatetimeLocal(d: Date): string {
-  const z = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`
-}
-
 function defaultStartAt(): Date {
   const d = new Date()
-  d.setMinutes(d.getMinutes() + 30, 0, 0)
+  // round up to next 15-min slot, at least 30 min from now
+  d.setMinutes(Math.ceil((d.getMinutes() + 30) / 15) * 15, 0, 0)
   return d
 }
 
-function minStartAt(): string {
-  const d = new Date()
-  d.setMinutes(d.getMinutes() + 15, 0, 0)
-  return toDatetimeLocal(d)
+function buildDateStrip(): Date[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() + i)
+    d.setHours(0, 0, 0, 0)
+    return d
+  })
 }
 
 /** pg returns NUMERIC as string — coerce safely for display */
@@ -121,6 +120,18 @@ function RentalContent() {
   useEffect(() => {
     if (selectedPkgId !== null) void loadEstimate(selectedPkgId, selectedCatId)
   }, [selectedPkgId, selectedCatId, loadEstimate])
+
+  const dateStrip = buildDateStrip()
+
+  function adjustTime(dHours: number, dMinutes: number) {
+    setStartAt(prev => {
+      const next = new Date(prev)
+      next.setHours(next.getHours() + dHours)
+      next.setMinutes(next.getMinutes() + dMinutes)
+      const min = new Date(Date.now() + 15 * 60_000)
+      return next < min ? min : next
+    })
+  }
 
   const selectedCat = CATEGORIES.find(c => c.id === selectedCatId)!
   const selectedPkg = packages.find(p => p.id === selectedPkgId) ?? null
@@ -302,16 +313,89 @@ function RentalContent() {
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
               Start time
             </p>
-            <label className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 cursor-pointer focus-within:border-violet-400 focus-within:ring-1 focus-within:ring-violet-200 transition-all">
-              <CalendarClock size={15} className="text-violet-500 flex-shrink-0" />
-              <input
-                type="datetime-local"
-                min={minStartAt()}
-                value={toDatetimeLocal(startAt)}
-                onChange={e => e.target.value && setStartAt(new Date(e.target.value))}
-                className="flex-1 bg-transparent text-[13px] font-semibold text-slate-900 outline-none"
-              />
-            </label>
+
+            {/* Date strip */}
+            <div
+              className="flex gap-2 overflow-x-auto pb-1 mb-2.5 [&::-webkit-scrollbar]:hidden"
+              style={{ scrollbarWidth: 'none' }}
+            >
+              {dateStrip.map((d, i) => {
+                const sel = startAt.toDateString() === d.toDateString()
+                const label = i === 0
+                  ? 'Today'
+                  : i === 1
+                  ? 'Tomorrow'
+                  : d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+                return (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      const next = new Date(startAt)
+                      next.setFullYear(d.getFullYear(), d.getMonth(), d.getDate())
+                      const min = new Date(Date.now() + 15 * 60_000)
+                      setStartAt(next < min ? min : next)
+                    }}
+                    className={cn(
+                      'flex-shrink-0 px-3 py-2 rounded-xl border text-[12px] font-semibold transition-all duration-150',
+                      sel
+                        ? 'bg-violet-50 border-violet-300 text-violet-700'
+                        : 'bg-slate-50 border-slate-100 text-slate-600 active:bg-slate-100'
+                    )}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Time stepper */}
+            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-1.5">
+                <CalendarClock size={14} className="text-violet-500" />
+                <span className="text-[12px] font-semibold text-slate-500">
+                  {startAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                {/* Hour */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => adjustTime(-1, 0)}
+                    className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center active:bg-slate-100 transition-colors"
+                  >
+                    <ChevronLeft size={13} className="text-slate-600" />
+                  </button>
+                  <span className="text-[16px] font-black text-slate-900 w-6 text-center tabular-nums">
+                    {String(startAt.getHours()).padStart(2, '0')}
+                  </span>
+                  <button
+                    onClick={() => adjustTime(1, 0)}
+                    className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center active:bg-slate-100 transition-colors"
+                  >
+                    <ChevronRight size={13} className="text-slate-600" />
+                  </button>
+                </div>
+                <span className="text-[16px] font-black text-slate-300">:</span>
+                {/* Minute */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => adjustTime(0, -15)}
+                    className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center active:bg-slate-100 transition-colors"
+                  >
+                    <ChevronLeft size={13} className="text-slate-600" />
+                  </button>
+                  <span className="text-[16px] font-black text-slate-900 w-6 text-center tabular-nums">
+                    {String(startAt.getMinutes()).padStart(2, '0')}
+                  </span>
+                  <button
+                    onClick={() => adjustTime(0, 15)}
+                    className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center active:bg-slate-100 transition-colors"
+                  >
+                    <ChevronRight size={13} className="text-slate-600" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </motion.section>
 
           {/* Fare summary — only once a package is selected */}
