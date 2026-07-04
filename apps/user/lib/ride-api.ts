@@ -179,8 +179,11 @@ export const rideApi = {
     return res.data as RentalPackage[]
   },
 
-  cancelRide: async (rideId: string): Promise<void> => {
-    await api.post(`/api/v1/rides/${rideId}/cancel`)
+  cancelRide: async (rideId: string, reasonCode?: string, reason?: string): Promise<void> => {
+    const body: Record<string, string> = {}
+    if (reasonCode !== undefined) body['reasonCode'] = reasonCode
+    if (reason     !== undefined) body['reason']     = reason
+    await api.post(`/api/v1/rides/${rideId}/cancel`, body)
   },
 
   demoForce: async (rideId: string, action: 'complete' | 'cancel'): Promise<void> => {

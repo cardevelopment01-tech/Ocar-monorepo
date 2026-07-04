@@ -416,26 +416,153 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
   return { success: true, endOtp }
 }
 
-// ── User ride cancellation ────────────────────────────────────
+// ── Ride cancellation ─────────────────────────────────────────
 
-export async function cancelRide(userId: bigint, rideId: bigint) {
+const CANCELLABLE_BY_USER   = new Set(['requested', 'accepted', 'driver_arrived'])
+const CANCELLABLE_BY_DRIVER = new Set(['accepted', 'driver_arrived'])
+
+function cancelStageFor(status: string): string {
+  if (status === 'accepted')        return 'after_acceptance'
+  if (status === 'driver_arrived')  return 'after_arrival'
+  return 'before_acceptance'
+}
+
+export async function cancelRide(
+  userId: bigint,
+  rideId: bigint,
+  reasonCode?: string,
+  reason?: string,
+) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
   if (BigInt(ride.user_id) !== userId) throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
-  if (ride.status !== 'requested') {
+  if (!CANCELLABLE_BY_USER.has(ride.status)) {
     throw Object.assign(new Error('Ride cannot be cancelled at this stage'), { statusCode: 409 })
   }
 
-  await repo.updateRideStatus(rideId, 'cancelled', { cancelled_at: new Date().toISOString() })
-  await repo.logStatusHistory({
-    rideId,
-    fromStatus: 'requested',
-    toStatus:   'cancelled',
-    actor:      'user',
-    actorId:    userId,
-  })
+  const stage = cancelStageFor(ride.status)
+  const feeApplicable = stage !== 'before_acceptance'
 
-  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'cancelled' })
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const upd = await client.query(
+      `UPDATE rides SET status = 'cancelled', cancelled_at = now(), updated_at = now()
+       WHERE id = $1 AND status = $2`,
+      [rideId, ride.status]
+    )
+    if ((upd.rowCount ?? 0) === 0) {
+      throw Object.assign(new Error('Ride status changed — please refresh'), { statusCode: 409 })
+    }
+
+    await client.query(
+      `INSERT INTO ride_cancellations
+         (ride_id, actor, stage, cancelled_by_user_id, reason_code, reason, fee_applicable, fee_amount, fee_waived)
+       VALUES ($1, 'user', $2, $3, $4, $5, $6, 0, false)`,
+      [rideId, stage, userId, reasonCode ?? null, reason ?? null, feeApplicable]
+    )
+
+    await client.query(
+      `INSERT INTO ride_status_history (ride_id, from_status, to_status, actor, actor_id)
+       VALUES ($1, $2, 'cancelled', 'user', $3)`,
+      [rideId, ride.status, userId]
+    )
+
+    if (ride.driver_id) {
+      await client.query(
+        `UPDATE driver_sessions SET status = 'online'
+         WHERE driver_id = $1 AND status = 'on_trip'`,
+        [BigInt(ride.driver_id)]
+      )
+      await client.query(
+        `UPDATE driver_location_snapshots SET is_available = true WHERE driver_id = $1`,
+        [BigInt(ride.driver_id)]
+      )
+    }
+
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+
+  socketEvents.sendRideStatusUpdate(rideId.toString(), {
+    status: 'cancelled',
+    cancelledBy: 'user',
+    reasonCode: reasonCode ?? null,
+  })
+  return { success: true }
+}
+
+export async function cancelRideAsDriver(
+  driverId: bigint,
+  rideId: bigint,
+  reasonCode?: string,
+  reason?: string,
+) {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+  if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
+    throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
+  }
+  if (!CANCELLABLE_BY_DRIVER.has(ride.status)) {
+    throw Object.assign(new Error('Ride cannot be cancelled at this stage'), { statusCode: 409 })
+  }
+
+  const stage = cancelStageFor(ride.status)
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const upd = await client.query(
+      `UPDATE rides SET status = 'cancelled', cancelled_at = now(), updated_at = now()
+       WHERE id = $1 AND status = $2`,
+      [rideId, ride.status]
+    )
+    if ((upd.rowCount ?? 0) === 0) {
+      throw Object.assign(new Error('Ride status changed — please refresh'), { statusCode: 409 })
+    }
+
+    await client.query(
+      `INSERT INTO ride_cancellations
+         (ride_id, actor, stage, cancelled_by_driver_id, reason_code, reason, fee_applicable, fee_amount, fee_waived)
+       VALUES ($1, 'driver', $2, $3, $4, $5, false, 0, false)`,
+      [rideId, stage, driverId, reasonCode ?? null, reason ?? null]
+    )
+
+    await client.query(
+      `INSERT INTO ride_status_history (ride_id, from_status, to_status, actor, actor_id)
+       VALUES ($1, $2, 'cancelled', 'driver', $3)`,
+      [rideId, ride.status, driverId]
+    )
+
+    await client.query(
+      `UPDATE driver_sessions SET status = 'online'
+       WHERE driver_id = $1 AND status = 'on_trip'`,
+      [driverId]
+    )
+    await client.query(
+      `UPDATE driver_location_snapshots SET is_available = true WHERE driver_id = $1`,
+      [driverId]
+    )
+
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+
+  socketEvents.sendRideStatusUpdate(rideId.toString(), {
+    status: 'cancelled',
+    cancelledBy: 'driver',
+    reasonCode: reasonCode ?? null,
+  })
   return { success: true }
 }
 

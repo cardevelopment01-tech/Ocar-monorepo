@@ -153,6 +153,14 @@ export const driverRideApi = {
     return res.data as EarningsSummary
   },
 
+  cancelRideAsDriver: async (rideId: string, reasonCode?: string, reason?: string): Promise<{ success: boolean }> => {
+    const body: Record<string, string> = {}
+    if (reasonCode !== undefined) body['reasonCode'] = reasonCode
+    if (reason     !== undefined) body['reason']     = reason
+    const res = await api.post(`/api/v1/rides/${rideId}/cancel-driver`, body)
+    return res.data as { success: boolean }
+  },
+
   getRoute: async (
     originLat: number,
     originLng: number,

@@ -149,12 +149,22 @@ router.get('/:id', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-// ── User ride cancellation ────────────────────────────────────
+// ── Ride cancellation ─────────────────────────────────────────
 
 router.post('/:id/cancel', authenticate(), async (req, res, next) => {
   try {
     const userId = req.user!.id
-    const result = await service.cancelRide(userId, BigInt(req.params['id']!))
+    const { reasonCode, reason } = req.body as { reasonCode?: string; reason?: string }
+    const result = await service.cancelRide(userId, BigInt(req.params['id']!), reasonCode, reason)
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
+router.post('/:id/cancel-driver', authenticate(), async (req, res, next) => {
+  try {
+    const driverId = req.driver!.id
+    const { reasonCode, reason } = req.body as { reasonCode?: string; reason?: string }
+    const result = await service.cancelRideAsDriver(driverId, BigInt(req.params['id']!), reasonCode, reason)
     res.json(result)
   } catch (err) { next(err) }
 })

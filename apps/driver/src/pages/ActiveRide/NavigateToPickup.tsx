@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Navigation, Phone, RotateCcw, Clock } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Navigation, Phone, RotateCcw, Clock, X } from 'lucide-react'
 import SOSButton from '@/components/ui/SOSButton'
 import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
@@ -30,11 +30,14 @@ function haversineMetres(a: [number, number], b: [number, number]): number {
 
 export default function NavigateToPickup() {
   const navigate = useNavigate()
-  const { activeRide, setStartOtp, updateRideStatus } = useRideStore()
+  const { activeRide, setStartOtp, updateRideStatus, clearRide } = useRideStore()
   const { sessionId } = useSessionStore()
   const [arriving, setArriving] = useState(false)
   const [error, setError]       = useState<string | null>(null)
-  const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
+  const [encodedPolyline,  setEncodedPolyline]  = useState<string | undefined>(undefined)
+  const [showCancelSheet,  setShowCancelSheet]  = useState(false)
+  const [cancelReason,     setCancelReason]     = useState<string | null>(null)
+  const [cancellingRide,   setCancellingRide]   = useState(false)
   const lastRouteFetch = useRef<{ origin: [number, number]; at: number } | null>(null)
   const fetchSeq       = useRef(0)
 
@@ -92,6 +95,18 @@ export default function NavigateToPickup() {
       setError('Failed to mark arrival. Please try again.')
     } finally {
       setArriving(false)
+    }
+  }
+
+  const handleCancelRide = async () => {
+    if (!activeRide || !cancelReason || cancellingRide) return
+    setCancellingRide(true)
+    try {
+      await driverRideApi.cancelRideAsDriver(activeRide.id, cancelReason)
+      clearRide()
+      navigate('/')
+    } catch {
+      setCancellingRide(false)
     }
   }
 
@@ -204,9 +219,100 @@ export default function NavigateToPickup() {
         >
           {arriving ? 'Marking arrival…' : 'Arrived at Pickup'}
         </button>
+
+        <button
+          onClick={() => setShowCancelSheet(true)}
+          className="w-full mt-3 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium text-red-400 active:opacity-70 transition-opacity"
+        >
+          <X size={14} strokeWidth={2} />
+          Cancel ride
+        </button>
       </motion.div>
 
       <SOSButton rideId={activeRide?.id ?? ''} onSOS={handleSOS} />
+
+      <AnimatePresence>
+        {showCancelSheet && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-20 flex items-end"
+          >
+            <div
+              className="absolute inset-0 bg-black/50"
+              onClick={() => { if (!cancellingRide) setShowCancelSheet(false) }}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 350 }}
+              className="relative w-full rounded-t-3xl px-5 pt-5 bg-white"
+              style={{ paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}
+            >
+              <div className="w-10 h-1 rounded-full bg-gray-200 mx-auto mb-4" />
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-black text-gray-900">Cancel this ride?</h3>
+                <button
+                  onClick={() => setShowCancelSheet(false)}
+                  disabled={cancellingRide}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center active:scale-95 transition-transform"
+                >
+                  <X size={15} className="text-gray-500" />
+                </button>
+              </div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2.5">Why are you cancelling?</p>
+              <div className="space-y-2 mb-5">
+                {[
+                  { code: 'passenger_not_found', label: 'Passenger not at pickup' },
+                  { code: 'vehicle_breakdown',   label: 'Vehicle breakdown' },
+                  { code: 'wrong_booking',        label: 'Wrong booking details' },
+                  { code: 'emergency',            label: 'Emergency' },
+                  { code: 'other',                label: 'Other reason' },
+                ].map(r => (
+                  <button
+                    key={r.code}
+                    onClick={() => setCancelReason(r.code)}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left active:scale-[0.98] transition-transform"
+                    style={cancelReason === r.code
+                      ? { background: 'rgba(220,38,38,0.07)', border: '1.5px solid rgba(220,38,38,0.40)' }
+                      : { background: '#F8FAFC', border: '1.5px solid #E2E8F0' }
+                    }
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={cancelReason === r.code
+                        ? { border: '5px solid #DC2626' }
+                        : { border: '2px solid #CBD5E1' }
+                      }
+                    />
+                    <span className={`text-sm font-medium ${cancelReason === r.code ? 'text-red-700' : 'text-gray-700'}`}>
+                      {r.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleCancelRide}
+                disabled={!cancelReason || cancellingRide}
+                className="w-full py-3.5 rounded-2xl text-sm font-bold text-white mb-2.5 disabled:opacity-40 active:scale-[0.98] transition-transform"
+                style={{ background: '#DC2626' }}
+              >
+                {cancellingRide ? 'Cancelling…' : 'Confirm cancellation'}
+              </button>
+              <button
+                onClick={() => setShowCancelSheet(false)}
+                disabled={cancellingRide}
+                className="w-full py-3 rounded-2xl text-sm font-semibold text-gray-700 disabled:opacity-50 active:scale-[0.98] transition-transform"
+                style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}
+              >
+                Keep my ride
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
