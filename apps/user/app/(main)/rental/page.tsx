@@ -22,6 +22,7 @@ const CATEGORIES: Category[] = [
   { id: 2, slug: 'sedan',     display_name: 'Sedan',     max_passengers: 4 },
   { id: 3, slug: 'suv',       display_name: 'SUV',       max_passengers: 6 },
   { id: 4, slug: 'luxury',    display_name: 'Luxury',    max_passengers: 4 },
+  { id: 5, slug: 'van',       display_name: 'Van',        max_passengers: 8 },
 ]
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -185,7 +186,7 @@ function RentalContent() {
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
               Vehicle
             </p>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-5 gap-1.5">
               {CATEGORIES.map(cat => {
                 const active = cat.id === selectedCatId
                 return (
@@ -193,7 +194,7 @@ function RentalContent() {
                     key={cat.id}
                     onClick={() => setSelectedCatId(cat.id)}
                     className={cn(
-                      'flex flex-col items-center gap-1.5 py-3 rounded-2xl border transition-all duration-150',
+                      'flex flex-col items-center gap-1 py-2.5 rounded-2xl border transition-all duration-150',
                       active
                         ? 'bg-violet-50 border-violet-300 shadow-sm'
                         : 'bg-slate-50 border-slate-100 active:bg-slate-100'

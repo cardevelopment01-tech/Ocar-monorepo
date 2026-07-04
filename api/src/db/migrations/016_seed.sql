@@ -208,6 +208,22 @@ CROSS JOIN (VALUES
 WHERE vc.slug = 'sedan'
 ON CONFLICT (category_id, duration_hours) DO NOTHING;
 
+-- Van rental packages (6 packages)
+INSERT INTO rental_packages
+  (category_id, duration_hours, km_limit, package_fare, extra_per_km, extra_per_min)
+SELECT vc.id, rp.hours, rp.hours * 10, rp.fare, rp.extra_km, rp.extra_min
+FROM vehicle_categories vc
+CROSS JOIN (VALUES
+  (1::smallint,   240.00::numeric, 12.00::numeric, 2.00::numeric),
+  (2,             460.00,          12.00,          2.00),
+  (4,             850.00,          12.00,          2.00),
+  (6,            1220.00,          12.00,          2.00),
+  (8,            1580.00,          12.00,          2.00),
+  (10,           1940.00,          12.00,          2.00)
+) AS rp(hours, fare, extra_km, extra_min)
+WHERE vc.slug = 'van'
+ON CONFLICT (category_id, duration_hours) DO NOTHING;
+
 -- ── System config seed ───────────────────────────────────────
 INSERT INTO system_config (key, value, value_type, description) VALUES
   ('commission_percent',      '15',   'decimal', 'Platform commission % per ride'),

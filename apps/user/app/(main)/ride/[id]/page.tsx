@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Phone, MessageSquare, MapPin, Navigation, X, RotateCcw, CheckCircle, Shield, Copy, Check } from 'lucide-react'
+import { Phone, MessageSquare, MapPin, Navigation, X, RotateCcw, CheckCircle, Shield, Copy, Check, Clock } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
@@ -237,7 +237,12 @@ export default function RidePage() {
   }, [routeMode, driverPos, pickupPos, dropPos, ride])
 
   const status    = (rideStatus as StatusKey) in STATUS_CONFIG ? (rideStatus as StatusKey) : 'requested'
-  const cfg       = STATUS_CONFIG[status]
+  const cfg       = {
+    ...STATUS_CONFIG[status],
+    ...(status === 'in_progress' && ride?.ride_type === 'rental'
+      ? { label: 'Rental in progress', sub: 'Flexible route active' }
+      : {}),
+  }
   const hasDriver = rideStatus !== 'requested'
 
   const fare = ride?.total_estimated != null ? `₹${Math.round(parseFloat(ride.total_estimated))}` : null
@@ -349,9 +354,13 @@ export default function RidePage() {
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
-                      {ride?.ride_type === 'round_trip' ? 'Drop & return' : 'Drop'}
+                      {ride?.ride_type === 'round_trip' ? 'Drop & return' : ride?.ride_type === 'rental' ? 'Route' : 'Drop'}
                     </p>
-                    <p className="text-sm font-medium text-gray-800 truncate">{ride?.destination_address ?? 'Destination'}</p>
+                    <p className="text-sm font-medium text-gray-800 truncate">
+                      {ride?.ride_type === 'rental'
+                        ? (ride.trip_hours ? `${ride.trip_hours}h rental · flexible` : 'Hourly rental · flexible')
+                        : (ride?.destination_address ?? 'Destination')}
+                    </p>
                   </div>
                 </div>
                 <div className="flex-shrink-0 text-right space-y-1">
@@ -369,6 +378,12 @@ export default function RidePage() {
                       </span>
                     </div>
                   )}
+                  {ride?.ride_type === 'rental' && (
+                    <div className="flex items-center gap-1">
+                      <Clock size={9} className="text-sky-500" />
+                      <span className="text-[10px] font-bold text-sky-600">Rental</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -381,6 +396,21 @@ export default function RidePage() {
                   <div>
                     <p className="text-[10px] font-semibold text-violet-400 uppercase tracking-wide">Return by</p>
                     <p className="text-[13px] font-bold text-violet-800">{formatReturnAt(ride.return_at)}</p>
+                  </div>
+                </div>
+              )}
+
+              {ride?.ride_type === 'rental' && (
+                <div
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-3"
+                  style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.20)' }}
+                >
+                  <Clock size={13} className="text-sky-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-semibold text-sky-400 uppercase tracking-wide">Rental package</p>
+                    <p className="text-[13px] font-bold text-sky-800">
+                      {ride.trip_hours ? `${ride.trip_hours}-hour package · flexible route` : 'Hourly rental · flexible route'}
+                    </p>
                   </div>
                 </div>
               )}
@@ -463,9 +493,13 @@ export default function RidePage() {
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
-                      {ride?.ride_type === 'round_trip' ? 'Drop & return' : 'Drop'}
+                      {ride?.ride_type === 'round_trip' ? 'Drop & return' : ride?.ride_type === 'rental' ? 'Route' : 'Drop'}
                     </p>
-                    <p className="text-sm font-medium text-gray-800 truncate">{ride?.destination_address ?? 'Destination'}</p>
+                    <p className="text-sm font-medium text-gray-800 truncate">
+                      {ride?.ride_type === 'rental'
+                        ? (ride.trip_hours ? `${ride.trip_hours}h rental · flexible` : 'Hourly rental · flexible')
+                        : (ride?.destination_address ?? 'Destination')}
+                    </p>
                   </div>
                   {ride?.ride_type === 'round_trip' && (
                     <div className="pt-0.5 space-y-0.5">
@@ -480,6 +514,14 @@ export default function RidePage() {
                           Back by {formatReturnAt(ride.return_at)}
                         </p>
                       )}
+                    </div>
+                  )}
+                  {ride?.ride_type === 'rental' && (
+                    <div className="pt-0.5 flex items-center gap-1">
+                      <Clock size={9} className="text-sky-500" />
+                      <span className="text-[10px] font-bold text-sky-600">
+                        {ride.trip_hours ? `${ride.trip_hours}h package` : 'Hourly rental'}
+                      </span>
                     </div>
                   )}
                 </div>

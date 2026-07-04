@@ -26,7 +26,7 @@ function drawArrowImage(map: ReturnType<typeof useMap>['current']) {
     map.addImage(ARROW_ID, canvas as any)
   } catch {
     try {
-      map.removeImage(ARROW_ID)
+      if (map.hasImage(ARROW_ID)) map.removeImage(ARROW_ID)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       map.addImage(ARROW_ID, canvas as any)
     } catch {
