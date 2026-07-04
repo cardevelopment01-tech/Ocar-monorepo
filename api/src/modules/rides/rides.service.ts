@@ -1,4 +1,6 @@
 import { pool } from '@/db/client'
+import { client as redis } from '@/db/redis'
+import { startOtpKey, endOtpKey } from '@/constants/redis-keys'
 import * as repo from './rides.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
@@ -348,6 +350,8 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
     actorId:    driverId,
   })
 
+  await redis.set(startOtpKey(rideId.toString()), otp, 'EX', 7200)
+
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status:   'driver_arrived',
     startOtp: otp,
@@ -398,6 +402,9 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     actor:      'driver',
     actorId:    driverId,
   })
+
+  await redis.del(startOtpKey(rideId.toString()))
+  await redis.set(endOtpKey(rideId.toString()), endOtp, 'EX', 43200)
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status:    'in_progress',
@@ -653,6 +660,8 @@ export async function verifyEndOTP(
   )
 
   if (!valid) throw Object.assign(new Error('Invalid OTP'), { statusCode: 422 })
+
+  await redis.del(endOtpKey(rideId.toString()))
 
   const completedAt = new Date().toISOString()
 

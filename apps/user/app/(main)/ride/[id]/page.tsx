@@ -102,7 +102,8 @@ export default function RidePage() {
       const data = await rideApi.getRide(rideId)
       setRide(data)
       setRideStatus(data.status)
-
+      if (data.startOtp) setStartOtp(data.startOtp)
+      if (data.endOtp)   setEndOtp(data.endOtp)
     } catch { /* ignore */ }
   }, [rideId])
 

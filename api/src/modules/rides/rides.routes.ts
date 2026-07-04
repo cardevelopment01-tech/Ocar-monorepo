@@ -1,5 +1,7 @@
 import { Router, IRouter } from 'express'
 import { authenticate } from '@/middleware/auth.middleware'
+import { client as redis } from '@/db/redis'
+import { startOtpKey, endOtpKey } from '@/constants/redis-keys'
 import * as service from './rides.service'
 import * as repo from './rides.repository'
 
@@ -145,7 +147,13 @@ router.get('/:id', authenticate(), async (req, res, next) => {
       res.status(403).json({ error: 'Forbidden', code: 'AUTH_FORBIDDEN' }); return
     }
 
-    res.json(ride)
+    const rideIdStr = req.params['id']!
+    const [startOtp, endOtp] = await Promise.all([
+      redis.get(startOtpKey(rideIdStr)),
+      redis.get(endOtpKey(rideIdStr)),
+    ])
+
+    res.json({ ...ride, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
   } catch (err) { next(err) }
 })
 

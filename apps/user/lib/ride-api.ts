@@ -44,6 +44,8 @@ export type RideDetail = {
   accepted_at: string | null
   started_at: string | null
   completed_at: string | null
+  startOtp: string | undefined
+  endOtp: string | undefined
 }
 
 export type RideHistoryItem = {
