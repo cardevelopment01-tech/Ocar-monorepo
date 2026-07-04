@@ -91,13 +91,21 @@ export default function TripInProgress() {
   })
   const selfPos: [number, number] = position ?? dropPos
 
-  // Screen wake lock
+  // Screen wake lock — re-acquire on page resume because the browser
+  // auto-releases WakeLock when the page is hidden.
   useEffect(() => {
     let lock: WakeLockSentinel | null = null
-    if ('wakeLock' in navigator) {
-      navigator.wakeLock.request('screen').then(l => { lock = l }).catch(() => {})
+    const acquire = () => {
+      if ('wakeLock' in navigator && document.visibilityState === 'visible') {
+        navigator.wakeLock.request('screen').then(l => { lock = l }).catch(() => {})
+      }
     }
-    return () => { lock?.release() }
+    acquire()
+    document.addEventListener('visibilitychange', acquire)
+    return () => {
+      document.removeEventListener('visibilitychange', acquire)
+      lock?.release()
+    }
   }, [])
 
   const dropLat = activeRide?.dropLat
