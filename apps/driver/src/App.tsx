@@ -144,6 +144,8 @@ export default function App() {
 
   // Listen for user-initiated cancellation while a ride is active.
   // Scoped to activeRide.id so it attaches/detaches with the ride lifecycle.
+  // Also re-joins the ride room on socket reconnect — room membership is lost
+  // on every reconnect and must be reasserted so cancellation events still arrive.
   useEffect(() => {
     if (!activeRide) return
     const socket = getDriverSocket()
@@ -154,8 +156,16 @@ export default function App() {
       setRideCancelled(true)
       navigate('/')
     }
+    const onConnect = () => { socket.emit('join:ride', activeRide.id) }
     socket.on('ride:status_update', onStatusUpdate)
-    return () => { socket.off('ride:status_update', onStatusUpdate) }
+    socket.on('connect', onConnect)
+    // Session-restore path: socket may already be connected before this effect
+    // mounts, so the 'connect' event never fires. Emit join:ride immediately.
+    if (socket.connected) socket.emit('join:ride', activeRide.id)
+    return () => {
+      socket.off('ride:status_update', onStatusUpdate)
+      socket.off('connect', onConnect)
+    }
   }, [activeRide?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

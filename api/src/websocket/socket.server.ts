@@ -62,6 +62,20 @@ export function initSocketServer(httpServer: HttpServer): Server {
       }
       void socket.join(`driver:${user.sub}`)
 
+      // On reconnect, re-join the active ride room so cancellation / status
+      // updates still reach the driver. Socket.io does not persist room
+      // membership across reconnects, so we re-assert it here.
+      void pool.query<{ id: string }>(
+        `SELECT id::text FROM rides
+         WHERE driver_id = $1
+           AND status IN ('accepted', 'driver_arrived', 'in_progress')
+         ORDER BY accepted_at DESC NULLS LAST LIMIT 1`,
+        [BigInt(user.sub)]
+      ).then((res) => {
+        const rideId = res.rows[0]?.id
+        if (rideId) void socket.join(`ride:${rideId}`)
+      }).catch(() => {})
+
       // Clear ACK key when driver confirms receipt of a ride request
       socket.on('ride:request:ack', ({ rideId }: { rideId: string }) => {
         void redis.del(rideAckKey(rideId, user.sub))

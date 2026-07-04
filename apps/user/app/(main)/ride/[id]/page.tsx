@@ -159,6 +159,11 @@ export default function RidePage() {
     socket.on('ride:driver_assigned', onDriverAssigned)
     socket.on('driver:location',    onDriverLocation)
 
+    // Reconcile ride state when the tab resumes from background —
+    // the poll and socket may have stalled while the screen was off.
+    const onVisible = () => { if (document.visibilityState === 'visible') void loadRide() }
+    document.addEventListener('visibilitychange', onVisible)
+
     const fallbackTimer = setTimeout(() => {
       if (!socket.connected) pollRef.current = setInterval(() => void loadRide(), 10_000)
     }, 3000)
@@ -170,6 +175,7 @@ export default function RidePage() {
       socket.off('ride:status_update', onStatusUpdate)
       socket.off('ride:driver_assigned', onDriverAssigned)
       socket.off('driver:location',    onDriverLocation)
+      document.removeEventListener('visibilitychange', onVisible)
       clearTimeout(fallbackTimer)
       if (pollRef.current) clearInterval(pollRef.current)
     }

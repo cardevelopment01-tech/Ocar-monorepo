@@ -48,6 +48,23 @@ export default function NavigateToPickup() {
   const pickupLat = activeRide?.pickupLat ?? DEFAULT_LAT
   const pickupLng = activeRide?.pickupLng ?? DEFAULT_LNG
 
+  // Keep screen awake while navigating to pickup. Re-acquire on page resume
+  // because the browser auto-releases WakeLock when the page is hidden.
+  useEffect(() => {
+    let lock: WakeLockSentinel | null = null
+    const acquire = () => {
+      if ('wakeLock' in navigator && document.visibilityState === 'visible') {
+        navigator.wakeLock.request('screen').then(l => { lock = l }).catch(() => {})
+      }
+    }
+    acquire()
+    document.addEventListener('visibilitychange', acquire)
+    return () => {
+      document.removeEventListener('visibilitychange', acquire)
+      lock?.release()
+    }
+  }, [])
+
   const { position, heading: selfHeading } = useDriverLocation({
     highAccuracy: true,
     onSync: sessionId
