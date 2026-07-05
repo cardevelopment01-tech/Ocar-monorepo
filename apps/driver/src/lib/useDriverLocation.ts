@@ -7,8 +7,10 @@ export interface DriverLocationState {
 }
 
 interface UseDriverLocationOptions {
-  highAccuracy?:  boolean
-  onSync?:        (lat: number, lng: number, heading: number) => void
+  highAccuracy?:   boolean
+  /** Drop any fix whose accuracy radius (metres) exceeds this. Default 80 m. */
+  maxAccuracyM?:   number
+  onSync?:         (lat: number, lng: number, heading: number) => void
   syncIntervalMs?: number
 }
 
@@ -21,6 +23,7 @@ interface UseDriverLocationOptions {
  */
 export function useDriverLocation({
   highAccuracy   = false,
+  maxAccuracyM   = 80,
   onSync,
   syncIntervalMs = 30_000,
 }: UseDriverLocationOptions = {}): DriverLocationState {
@@ -36,6 +39,8 @@ export function useDriverLocation({
     let watchId: number
 
     const handlePosition = (pos: GeolocationPosition) => {
+      // Discard fixes that are too imprecise to be useful (e.g. cell-tower only).
+      if (pos.coords.accuracy > maxAccuracyM) return
       const lat = pos.coords.latitude
       const lng = pos.coords.longitude
       setPosition([lat, lng])
@@ -74,7 +79,7 @@ export function useDriverLocation({
       navigator.geolocation.clearWatch(watchId)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [highAccuracy, syncIntervalMs])
+  }, [highAccuracy, maxAccuracyM, syncIntervalMs])
 
   return { position, heading, error }
 }
