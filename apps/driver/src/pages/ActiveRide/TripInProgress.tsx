@@ -173,7 +173,7 @@ export default function TripInProgress() {
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
           <DriverMapView initialCenter={selfPos} zoom={15}>
-            <RecenterMap center={selfPos} heading={selfHeading} bottomPadding={220} />
+            <RecenterMap center={selfPos} heading={selfHeading} topPadding={100} bottomPadding={220} />
             {dropLat != null && dropLng != null && (
               <RoutePolyline encoded={encodedPolyline} />
             )}

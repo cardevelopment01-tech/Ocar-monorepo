@@ -149,7 +149,7 @@ function ConfirmPickupContent() {
         className="absolute inset-0 pointer-events-none flex items-center justify-center"
         style={{ zIndex: 10 }}
       >
-        <div className="relative flex flex-col items-center" style={{ marginTop: -40 }}>
+        <div className="relative flex flex-col items-center" style={{ marginTop: -28 }}>
           {/* Pin head + stem animate together */}
           <motion.div
             className="flex flex-col items-center"

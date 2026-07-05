@@ -10,6 +10,36 @@ interface RecenterMapProps {
   heading?: number
 }
 
+// Compute a shifted lat/lng so that the target appears at the visible-area
+// center (between topPadding and bottomPadding), not the geometric viewport center.
+function shiftedCenter(
+  map: ReturnType<typeof useMap>,
+  lat: number,
+  lng: number,
+  topPadding: number,
+  bottomPadding: number,
+): { lat: number; lng: number } {
+  if (!map || (topPadding === 0 && bottomPadding === 0)) return { lat, lng }
+  try {
+    const proj = map.getProjection()
+    const zoom = map.getZoom()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const g = (window as any).google
+    if (!proj || zoom == null || !g?.maps) return { lat, lng }
+    const worldPt = proj.fromLatLngToPoint(new g.maps.LatLng(lat, lng))
+    if (!worldPt) return { lat, lng }
+    // Shift the pan center south so the target appears in the visible area
+    // (above the sheet). bottomPadding > topPadding → positive deltaY → south.
+    const scale  = Math.pow(2, zoom)
+    const deltaY = (bottomPadding - topPadding) / 2 / scale
+    const shifted = proj.fromPointToLatLng(new g.maps.Point(worldPt.x, worldPt.y + deltaY))
+    if (!shifted) return { lat, lng }
+    return { lat: shifted.lat(), lng: shifted.lng() }
+  } catch {
+    return { lat, lng }
+  }
+}
+
 export default function RecenterMap({
   center,
   bottomPadding = 0,
@@ -39,15 +69,12 @@ export default function RecenterMap({
       map.setHeading(heading)
     }
 
-    const paddingOption = (topPadding > 0 || bottomPadding > 0)
-      ? { top: topPadding, bottom: bottomPadding, left: 0, right: 0 }
-      : undefined
+    const target = shiftedCenter(map, lat, lng, topPadding, bottomPadding)
 
     if (animate && moved) {
-      map.panTo({ lat, lng })
-      if (paddingOption) map.setOptions({ paddingFraction: undefined })
+      map.panTo(target)
     } else {
-      map.moveCamera({ center: { lat, lng } })
+      map.moveCamera({ center: target })
     }
   }, [center, bottomPadding, topPadding, map, animate, heading])
 
