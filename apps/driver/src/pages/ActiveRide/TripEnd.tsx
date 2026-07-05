@@ -1,11 +1,16 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Star, ArrowRight, RotateCcw, Clock } from 'lucide-react'
+import { Star, ArrowRight, RotateCcw, Clock, MapPin } from 'lucide-react'
 import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { fmtReturn } from '@/lib/constants'
+
+function fmt(n: number) {
+  const s = n.toFixed(2)
+  return s.endsWith('.00') ? s.slice(0, -3) : s
+}
 
 export default function TripEnd() {
   const navigate = useNavigate()
@@ -14,9 +19,9 @@ export default function TripEnd() {
   const { setOnline, sessionId, vehicleId, categoryId } = useSessionStore()
   const driver = useAuthStore(s => s.driver)
 
-  const fare       = activeRide?.fare ?? 0
-  const commission = Math.round(fare * 0.2)
-  const net        = fare - commission
+  const fare        = activeRide?.fare ?? 0
+  const commission  = Math.round(fare * 0.2)
+  const net         = parseFloat((fare - commission).toFixed(2))
   const isRental    = activeRide?.rideType === 'rental'
   const isRoundTrip = activeRide?.rideType === 'round_trip'
 
@@ -30,7 +35,7 @@ export default function TripEnd() {
 
   const handleBackHome = () => {
     clearRide()
-    navigate('/')
+    navigate('/', { replace: true })
   }
 
   return (
@@ -41,26 +46,40 @@ export default function TripEnd() {
         paddingBottom: 'max(env(safe-area-inset-bottom), 1.5rem)',
       }}
     >
+      {/* Hero */}
       <motion.div
         initial={{ scale: 0.6, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', damping: 15 }}
-        className="flex flex-col items-center mb-8 mt-4"
+        className="flex flex-col items-center mb-6 mt-4"
       >
         <div
-          className="w-24 h-24 rounded-full bg-accent-green flex items-center justify-center mb-4"
-          style={{ boxShadow: '0 0 48px rgba(34,197,94,0.28)' }}
+          className="w-20 h-20 rounded-full bg-accent-green flex items-center justify-center mb-4"
+          style={{ boxShadow: '0 0 40px rgba(34,197,94,0.28)' }}
         >
-          <span className="text-5xl">✓</span>
+          <span className="text-4xl">✓</span>
         </div>
         <h1 className="text-text-primary font-black text-3xl">Trip Complete!</h1>
 
-        {/* Route line */}
-        <p className="text-text-secondary text-sm mt-1">
-          {activeRide?.pickup ?? '—'} → {isRental ? 'Flexible route' : (activeRide?.drop ?? '—')}
-        </p>
+        {/* Route — compact, truncated to single line */}
+        <div className="flex items-center gap-1.5 mt-2 w-full max-w-xs px-1 min-w-0">
+          <MapPin size={11} className="text-primary flex-shrink-0" />
+          <span className="text-text-secondary text-xs truncate min-w-0">
+            {activeRide?.pickup ?? '—'}
+          </span>
+          {!isRental && (
+            <>
+              <ArrowRight size={10} className="text-text-muted flex-shrink-0" />
+              <span className="text-text-secondary text-xs truncate min-w-0">
+                {activeRide?.drop ?? '—'}
+              </span>
+            </>
+          )}
+          {isRental && (
+            <span className="text-text-secondary text-xs truncate min-w-0">Flexible route</span>
+          )}
+        </div>
 
-        {/* Trip-type recap */}
         {isRoundTrip && activeRide.returnAt && (
           <div className="flex items-center gap-1.5 mt-2">
             <RotateCcw size={11} style={{ color: '#D97706' }} />
@@ -79,6 +98,7 @@ export default function TripEnd() {
         )}
       </motion.div>
 
+      {/* Earnings card */}
       <motion.div
         initial={{ y: 30, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -86,13 +106,13 @@ export default function TripEnd() {
         className="bg-surface rounded-3xl border border-border p-5 mb-4"
         style={{ borderTopColor: '#22C55E', borderTopWidth: 3 }}
       >
-        <p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-3">You Earned</p>
-        <p className="text-[48px] font-black text-primary leading-none mb-4">₹{net}</p>
+        <p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">You Earned</p>
+        <p className="text-[44px] font-black text-primary leading-none mb-4">₹{fmt(net)}</p>
 
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-text-secondary">Ride fare</span>
-            <span className="text-text-primary font-semibold">₹{fare}</span>
+            <span className="text-text-primary font-semibold">₹{fmt(fare)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-text-secondary">Platform commission (20%)</span>
@@ -100,11 +120,12 @@ export default function TripEnd() {
           </div>
           <div className="border-t border-border pt-2 flex justify-between text-sm">
             <span className="text-text-primary font-bold">Net earnings</span>
-            <span className="text-primary font-black">₹{net}</span>
+            <span className="text-primary font-black">₹{fmt(net)}</span>
           </div>
         </div>
       </motion.div>
 
+      {/* Stats row */}
       <motion.div
         initial={{ y: 30, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -113,15 +134,17 @@ export default function TripEnd() {
       >
         <div className="grid grid-cols-2 gap-3">
           <div className="text-center">
-            <p className="text-text-primary font-black text-xl">₹{fare}</p>
-            <p className="text-text-muted text-xs">Fare</p>
+            <p className="text-text-primary font-black text-xl">₹{fmt(fare)}</p>
+            <p className="text-text-muted text-xs mt-0.5">Fare</p>
           </div>
           <div className="text-center border-l border-border">
             <div className="flex items-center justify-center gap-1">
               <Star size={14} className="text-accent-amber fill-accent-amber" />
-              <p className="text-text-primary font-black text-xl">{driver?.rating ?? '—'}</p>
+              <p className="text-text-primary font-black text-xl">
+                {driver?.rating ? Number(driver.rating).toFixed(1) : '—'}
+              </p>
             </div>
-            <p className="text-text-muted text-xs">Your rating</p>
+            <p className="text-text-muted text-xs mt-0.5">Your rating</p>
           </div>
         </div>
       </motion.div>

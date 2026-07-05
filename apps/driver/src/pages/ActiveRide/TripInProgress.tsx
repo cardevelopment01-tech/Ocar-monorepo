@@ -158,7 +158,7 @@ export default function TripInProgress() {
       const actualDurationMin = mm + Math.round((ss ?? 0) / 60)
       await driverRideApi.verifyEndOtp(activeRide.id, otp, actualDistanceKm, actualDurationMin || undefined)
       updateRideStatus('completed')
-      navigate('/ride/end')
+      navigate('/ride/end', { replace: true })
     } catch {
       setOtpError(true)
       setOtp('')

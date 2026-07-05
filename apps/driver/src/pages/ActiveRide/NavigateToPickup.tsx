@@ -108,7 +108,7 @@ export default function NavigateToPickup() {
       const { startOtp } = await driverRideApi.markArrived(activeRide.id)
       setStartOtp(startOtp)
       updateRideStatus('driver_arrived')
-      navigate('/ride/otp')
+      navigate('/ride/otp', { replace: true })
     } catch {
       setError('Failed to mark arrival. Please try again.')
     } finally {

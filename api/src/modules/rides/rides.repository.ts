@@ -292,7 +292,9 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
        dv.color         AS vehicle_color,
        dv.vehicle_name  AS vehicle_name,
        vm.name          AS vehicle_model,
-       vb.name          AS vehicle_brand
+       vb.name          AS vehicle_brand,
+       ST_Y(dls.location::geometry) AS driver_current_lat,
+       ST_X(dls.location::geometry) AS driver_current_lng
      FROM rides r
      LEFT JOIN users u             ON u.id = r.user_id
      LEFT JOIN drivers d           ON d.id = r.driver_id
@@ -300,6 +302,7 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
      LEFT JOIN driver_vehicles dv  ON dv.driver_id = r.driver_id AND dv.is_primary = true AND dv.status != 'blacklisted'
      LEFT JOIN vehicle_models vm   ON vm.id = dv.model_id
      LEFT JOIN vehicle_brands vb   ON vb.id = dv.brand_id
+     LEFT JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
      WHERE r.id = $1`,
     [rideId]
   )

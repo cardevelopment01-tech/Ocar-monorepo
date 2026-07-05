@@ -24,7 +24,7 @@ export default function OTPVerify() {
       setEndOtp(endOtp)
       setRideStartedAt(new Date().toISOString())
       updateRideStatus('in_progress')
-      navigate('/ride/in-progress')
+      navigate('/ride/in-progress', { replace: true })
     } catch {
       setError(true)
       setOtp('')

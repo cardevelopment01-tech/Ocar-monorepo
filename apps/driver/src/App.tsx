@@ -91,9 +91,9 @@ export default function App() {
             if (ride.started_at  != null) activeRideInput.rideStartedAt = ride.started_at
             setActiveRide(activeRideInput)
             getDriverSocket().emit('join:ride', ride.id)
-            if (ride.status === 'accepted')        navigate('/ride/navigate')
-            else if (ride.status === 'driver_arrived') navigate('/ride/otp')
-            else if (ride.status === 'in_progress')    navigate('/ride/in-progress')
+            if (ride.status === 'accepted')        navigate('/ride/navigate', { replace: true })
+            else if (ride.status === 'driver_arrived') navigate('/ride/otp', { replace: true })
+            else if (ride.status === 'in_progress')    navigate('/ride/in-progress', { replace: true })
           }
         } else {
           setOffline()
@@ -154,7 +154,7 @@ export default function App() {
       socket.emit('leave:ride', activeRide.id)
       clearRide()
       setRideCancelled(true)
-      navigate('/')
+      navigate('/', { replace: true })
     }
     const onConnect = () => { socket.emit('join:ride', activeRide.id) }
     socket.on('ride:status_update', onStatusUpdate)

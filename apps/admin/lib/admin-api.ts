@@ -138,6 +138,7 @@ export interface AdminRideItem {
   fare: string | null
   payment_status: string | null
   payment_channel: string | null
+  cancellation_reason_code: string | null
   cancellation_reason: string | null
   cancellation_actor: string | null
 }

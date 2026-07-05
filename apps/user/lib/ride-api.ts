@@ -53,6 +53,8 @@ export type RideDetail = {
   completed_at: string | null
   startOtp: string | undefined
   endOtp: string | undefined
+  driver_current_lat: number | null
+  driver_current_lng: number | null
 }
 
 export type RideHistoryItem = {

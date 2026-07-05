@@ -104,6 +104,9 @@ export default function RidePage() {
       setRideStatus(data.status)
       if (data.startOtp) setStartOtp(data.startOtp)
       if (data.endOtp)   setEndOtp(data.endOtp)
+      if (data.driver_current_lat != null && data.driver_current_lng != null) {
+        setDriverPos(prev => prev ?? [data.driver_current_lat!, data.driver_current_lng!])
+      }
     } catch { /* ignore */ }
   }, [rideId])
 
@@ -194,11 +197,11 @@ export default function RidePage() {
 
   useEffect(() => {
     if (rideStatus === 'completed') {
-      const t = setTimeout(() => router.push(`/ride/${rideId}/rate`), 2000)
+      const t = setTimeout(() => router.replace(`/ride/${rideId}/rate`), 2000)
       return () => clearTimeout(t)
     }
     if (rideStatus === 'cancelled' || rideStatus === 'no_drivers') {
-      const t = setTimeout(() => router.push('/home'), 3000)
+      const t = setTimeout(() => router.replace('/home'), 3000)
       return () => clearTimeout(t)
     }
   }, [rideStatus, rideId, router])

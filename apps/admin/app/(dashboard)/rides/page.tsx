@@ -263,7 +263,12 @@ export default function RidesPage() {
                 {selected.cancellation_actor && (
                   <p className="text-xs text-text-muted capitalize mb-1">By: {selected.cancellation_actor}</p>
                 )}
-                <p className="text-sm text-text-primary">{selected.cancellation_reason ?? 'No reason provided'}</p>
+                <p className="text-sm text-text-primary">
+                  {selected.cancellation_reason
+                    ?? (selected.cancellation_reason_code
+                        ? selected.cancellation_reason_code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+                        : 'No reason provided')}
+                </p>
               </div>
             )}
           </div>

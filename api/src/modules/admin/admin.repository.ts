@@ -754,7 +754,7 @@ export async function listAdminRides(filters: {
        d.full_name AS driver_name, d.phone AS driver_phone,
        COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
        pay.status AS payment_status, pay.channel AS payment_channel,
-       rc.reason AS cancellation_reason, rc.actor AS cancellation_actor
+       rc.reason_code AS cancellation_reason_code, rc.reason AS cancellation_reason, rc.actor AS cancellation_actor
      FROM rides r
      JOIN users u ON u.id = r.user_id
      LEFT JOIN drivers d ON d.id = r.driver_id
