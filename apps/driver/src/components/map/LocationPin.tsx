@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Marker } from 'react-map-gl/maplibre'
+import { AdvancedMarker } from '@vis.gl/react-google-maps'
 
 type PinVariant = 'pickup' | 'drop'
 
@@ -8,8 +8,8 @@ function LocationPin({ position, variant }: { position: [number, number]; varian
   const fill = isPickup ? '#2563EB' : '#0F172A'
 
   return (
-    <Marker latitude={position[0]} longitude={position[1]} anchor="bottom">
-      <div style={{ position: 'relative', width: 28, height: 38 }}>
+    <AdvancedMarker position={{ lat: position[0], lng: position[1] }}>
+      <div style={{ position: 'relative', width: 28, height: 38, marginBottom: -38 }}>
         {isPickup && (
           <div
             className="animate-ping rounded-full bg-indigo-600/15 pointer-events-none w-10 h-10"
@@ -27,7 +27,7 @@ function LocationPin({ position, variant }: { position: [number, number]; varian
           <circle cx="14" cy="13.5" r="4.5" fill="white" opacity="0.9" />
         </svg>
       </div>
-    </Marker>
+    </AdvancedMarker>
   )
 }
 

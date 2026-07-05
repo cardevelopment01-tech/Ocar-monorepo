@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { useMap } from 'react-map-gl/maplibre'
+import { useMap } from '@vis.gl/react-google-maps'
 
 interface RecenterMapProps {
   center: [number, number]
@@ -9,7 +9,7 @@ interface RecenterMapProps {
 }
 
 export default function RecenterMap({ center, animate = true }: RecenterMapProps) {
-  const { current: map } = useMap()
+  const map = useMap()
   const last = useRef<[number, number] | null>(null)
 
   useEffect(() => {
@@ -18,7 +18,11 @@ export default function RecenterMap({ center, animate = true }: RecenterMapProps
     const prev = last.current
     if (prev && Math.abs(prev[0] - lat) < 2e-5 && Math.abs(prev[1] - lng) < 2e-5) return
     last.current = [lat, lng]
-    map.panTo([lng, lat], { duration: animate ? 600 : 0 })
+    if (animate) {
+      map.panTo({ lat, lng })
+    } else {
+      map.moveCamera({ center: { lat, lng } })
+    }
   }, [center, map, animate])
 
   return null

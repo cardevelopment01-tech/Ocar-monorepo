@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+import { APIProvider } from '@vis.gl/react-google-maps'
 import { motion } from 'framer-motion'
 import App from './App'
 import SplashScreen from './components/ui/SplashScreen'
@@ -15,8 +16,8 @@ function Root() {
 
   const handleComplete = useCallback(() => {
     sessionStorage.setItem('ocar_splash_shown', '1')
-    setShowSplash(false)   // SplashScreen AnimatePresence exit fades out
-    setAppVisible(true)    // app content fades in simultaneously
+    setShowSplash(false)
+    setAppVisible(true)
   }, [])
 
   return (
@@ -40,6 +41,8 @@ function Root() {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Root />
+    <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_KEY} libraries={['places']}>
+      <Root />
+    </APIProvider>
   </React.StrictMode>
 )

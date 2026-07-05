@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useMap } from 'react-map-gl/maplibre'
+import { useMap } from '@vis.gl/react-google-maps'
 
 interface MapCenterTrackerProps {
   onCenterChange: (lat: number, lng: number) => void
@@ -9,20 +9,20 @@ interface MapCenterTrackerProps {
 }
 
 export default function MapCenterTracker({ onCenterChange, onDragStart }: MapCenterTrackerProps) {
-  const { current: map } = useMap()
+  const map = useMap()
 
   useEffect(() => {
     if (!map) return
-    const handleMoveStart = () => onDragStart?.()
-    const handleMoveEnd = () => {
+
+    const dragListener = map.addListener('dragstart', () => onDragStart?.())
+    const idleListener = map.addListener('idle', () => {
       const c = map.getCenter()
-      onCenterChange(c.lat, c.lng)
-    }
-    map.on('movestart', handleMoveStart)
-    map.on('moveend', handleMoveEnd)
+      if (c) onCenterChange(c.lat(), c.lng())
+    })
+
     return () => {
-      map.off('movestart', handleMoveStart)
-      map.off('moveend', handleMoveEnd)
+      dragListener.remove()
+      idleListener.remove()
     }
   }, [map, onCenterChange, onDragStart])
 

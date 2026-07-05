@@ -1,7 +1,7 @@
 'use client'
 
 import { memo } from 'react'
-import { Marker } from 'react-map-gl/maplibre'
+import { AdvancedMarker } from '@vis.gl/react-google-maps'
 
 type PinVariant = 'pickup' | 'drop' | 'user'
 
@@ -13,12 +13,12 @@ interface LocationPinProps {
 function LocationPin({ position, variant }: LocationPinProps) {
   if (variant === 'user') {
     return (
-      <Marker latitude={position[0]} longitude={position[1]} anchor="center">
+      <AdvancedMarker position={{ lat: position[0], lng: position[1] }}>
         <div style={{ position: 'relative', width: 20, height: 20 }}>
           <div className="absolute inset-0 rounded-full animate-ping bg-blue-600/30" />
           <div className="relative w-5 h-5 rounded-full bg-blue-600 border-2 border-white shadow" />
         </div>
-      </Marker>
+      </AdvancedMarker>
     )
   }
 
@@ -26,8 +26,8 @@ function LocationPin({ position, variant }: LocationPinProps) {
   const fill = isPickup ? '#2563EB' : '#0F172A'
 
   return (
-    <Marker latitude={position[0]} longitude={position[1]} anchor="bottom">
-      <div style={{ position: 'relative', width: 28, height: 38 }}>
+    <AdvancedMarker position={{ lat: position[0], lng: position[1] }}>
+      <div style={{ position: 'relative', width: 28, height: 38, marginBottom: -38 }}>
         {isPickup && (
           <div
             className="animate-ping rounded-full bg-indigo-600/15 pointer-events-none w-10 h-10"
@@ -45,7 +45,7 @@ function LocationPin({ position, variant }: LocationPinProps) {
           <circle cx="14" cy="13.5" r="4.5" fill="white" opacity="0.9" />
         </svg>
       </div>
-    </Marker>
+    </AdvancedMarker>
   )
 }
 

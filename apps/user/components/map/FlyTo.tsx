@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useMap } from 'react-map-gl/maplibre'
+import { useMap } from '@vis.gl/react-google-maps'
 
 interface FlyToProps {
   target: [number, number] | null
@@ -9,10 +9,13 @@ interface FlyToProps {
 }
 
 export default function FlyTo({ target, zoom = 16 }: FlyToProps) {
-  const { current: map } = useMap()
+  const map = useMap()
+
   useEffect(() => {
     if (!map || !target) return
-    map.flyTo({ center: [target[1], target[0]], zoom, speed: 1.4 })
+    map.panTo({ lat: target[0], lng: target[1] })
+    map.setZoom(zoom)
   }, [target, zoom, map])
+
   return null
 }

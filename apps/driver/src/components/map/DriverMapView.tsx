@@ -1,23 +1,6 @@
-import { useState, useEffect } from 'react'
-import Map from 'react-map-gl/maplibre'
-import type { StyleSpecification } from 'maplibre-gl'
+import { Map } from '@vis.gl/react-google-maps'
 
-const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
-
-const ODISHA_BOUNDS: [[number, number], [number, number]] = [[82.0, 17.5], [88.5, 23.0]]
-
-let styleCache: StyleSpecification | null = null
-let styleFetch: Promise<StyleSpecification> | null = null
-
-function getStyle(): Promise<StyleSpecification> {
-  if (styleCache) return Promise.resolve(styleCache)
-  if (!styleFetch) {
-    styleFetch = fetch(STYLE_URL)
-      .then(r => r.json() as Promise<StyleSpecification>)
-      .then(s => { styleCache = s; return s })
-  }
-  return styleFetch
-}
+const ODISHA_BOUNDS = { north: 23.0, south: 17.5, east: 88.5, west: 82.0 }
 
 interface DriverMapViewProps {
   initialCenter: [number, number]
@@ -27,24 +10,16 @@ interface DriverMapViewProps {
 }
 
 export default function DriverMapView({ initialCenter, zoom = 15, dimmed = false, children }: DriverMapViewProps) {
-  const [mapStyle, setMapStyle] = useState<StyleSpecification | string>(styleCache ?? STYLE_URL)
-
-  useEffect(() => {
-    if (styleCache) return
-    getStyle().then(setMapStyle).catch(() => {})
-  }, [])
-
   return (
     <div className="relative w-full h-full">
       <Map
-        initialViewState={{ latitude: initialCenter[0], longitude: initialCenter[1], zoom }}
-        mapStyle={mapStyle}
+        defaultCenter={{ lat: initialCenter[0], lng: initialCenter[1] }}
+        defaultZoom={zoom}
+        mapId={import.meta.env.VITE_GOOGLE_MAPS_ID}
+        gestureHandling="greedy"
+        disableDefaultUI
+        restriction={{ latLngBounds: ODISHA_BOUNDS, strictBounds: false }}
         style={{ width: '100%', height: '100%' }}
-        minZoom={6}
-        maxZoom={19}
-        maxBounds={ODISHA_BOUNDS}
-        reuseMaps
-        pixelRatio={typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1}
       >
         {children}
       </Map>

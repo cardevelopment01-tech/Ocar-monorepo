@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth-context'
 import SplashWrapper from '@/components/ui/SplashWrapper'
+import GoogleMapsProvider from '@/components/ui/GoogleMapsProvider'
 
 export const metadata: Metadata = {
   title: 'Ocar',
@@ -21,15 +22,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        <link rel="preconnect" href="https://tiles.openfreemap.org" crossOrigin="anonymous" />
-        <link rel="dns-prefetch" href="https://tiles.openfreemap.org" />
+        <link rel="preconnect" href="https://maps.googleapis.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://maps.googleapis.com" />
       </head>
       <body>
         <main className="min-h-[100dvh] bg-background">
           <div className="mx-auto max-w-[430px] min-h-[100dvh] bg-background relative">
-            <AuthProvider>
-              <SplashWrapper>{children}</SplashWrapper>
-            </AuthProvider>
+            <GoogleMapsProvider>
+              <AuthProvider>
+                <SplashWrapper>{children}</SplashWrapper>
+              </AuthProvider>
+            </GoogleMapsProvider>
           </div>
         </main>
       </body>

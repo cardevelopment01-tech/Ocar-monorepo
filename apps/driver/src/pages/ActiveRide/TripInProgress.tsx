@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Clock, Crosshair, X, RotateCcw } from 'lucide-react'
-import { useMap } from 'react-map-gl/maplibre'
+import { useMap } from '@vis.gl/react-google-maps'
 import { motion, AnimatePresence } from 'framer-motion'
 import SOSButton from '@/components/ui/SOSButton'
 import OtpInput from '@/components/ui/OtpInput'
@@ -23,18 +23,17 @@ const DEFAULT_LNG = 85.8245
 
 // Must render inside DriverMapView children so useMap() has map context
 function LocateMeButton({ position }: { position: [number, number] }) {
-  const { current: map } = useMap()
+  const map = useMap()
   return (
     <button
       aria-label="Center on my location"
       style={{ position: 'absolute', left: 16, bottom: 'calc(env(safe-area-inset-bottom) + 224px)', zIndex: 5 }}
       className="w-12 h-12 rounded-2xl bg-surface border border-border shadow-lg flex items-center justify-center active:scale-95 transition-transform"
-      onClick={() => map?.flyTo({
-        center:  [position[1], position[0]],
-        zoom:    16,
-        duration: 700,
-        padding: { top: 0, bottom: 220, left: 0, right: 0 },
-      })}
+      onClick={() => {
+        if (!map) return
+        map.panTo({ lat: position[0], lng: position[1] })
+        map.setZoom(16)
+      }}
     >
       <Crosshair size={20} className="text-primary" />
     </button>

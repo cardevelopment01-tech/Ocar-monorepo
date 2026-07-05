@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { DM_Sans } from 'next/font/google'
 import './globals.css'
 import { AdminAuthProvider } from '@/lib/auth-context'
+import GoogleMapsProvider from '@/components/GoogleMapsProvider'
 
 const dmSans = DM_Sans({ subsets: ['latin'] })
 
@@ -15,9 +16,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className={dmSans.className}>
-        <AdminAuthProvider>
-          {children}
-        </AdminAuthProvider>
+        <GoogleMapsProvider>
+          <AdminAuthProvider>
+            {children}
+          </AdminAuthProvider>
+        </GoogleMapsProvider>
       </body>
     </html>
   )
