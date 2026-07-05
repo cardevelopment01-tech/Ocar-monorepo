@@ -73,7 +73,11 @@ function SearchContent() {
     const hasOrigin = !!sp.get('originAddress')
     return (hasDest && !hasOrigin) ? 'origin' : 'destination'
   })
-  const [query,       setQuery]       = useState('')
+  const [query,       setQuery]       = useState(() => {
+    const dq = sp.get('destinationQuery')
+    if (dq && !sp.get('focus') && !sp.get('destinationAddress')) return dq
+    return ''
+  })
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([])
   const [searching,   setSearching]   = useState(false)
   const [resolving,   setResolving]   = useState(false)
@@ -116,6 +120,15 @@ function SearchContent() {
   }, [])
 
   useEffect(() => { modeRef.current = mode }, [mode])
+
+  // Trigger autocomplete when arriving from home's "Go again" with a pre-filled destination query
+  useEffect(() => {
+    const dq = sp.get('destinationQuery')
+    if (dq && mode === 'destination') {
+      runSearch(dq, originLat, originLng)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Auto-navigate when map picker returns with both origin + destination in URL
   useEffect(() => {

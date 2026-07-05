@@ -443,7 +443,9 @@ export default function HomePage() {
                   return (
                     <motion.button
                       key={r.id}
-                      onClick={() => toSearch()}
+                      onClick={() => router.push(
+                        `/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&destinationQuery=${encodeURIComponent(label)}`
+                      )}
                       className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < recentTrips.length - 1 ? ' border-b border-border' : ''}`}
                       variants={row}
                       whileTap={{ backgroundColor: '#F8FAFF' }}
