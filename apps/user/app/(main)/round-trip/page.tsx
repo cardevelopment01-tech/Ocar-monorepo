@@ -160,7 +160,7 @@ function RoundTripContent() {
             {/* Route meta */}
             {hasDestination && distanceKm !== null && durationMin !== null && (
               <motion.div {...fadeUp(0.05)} className="flex items-center gap-1.5 px-1 mt-2">
-                <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>{distanceKm} km each way</span>
+                <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>2 × {distanceKm} km = {distanceKm * 2} km total</span>
                 <span style={{ color: '#C7D2FE' }}>·</span>
                 <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>{Math.round(durationMin)} min</span>
                 <span style={{ color: '#C7D2FE' }}>·</span>
@@ -216,6 +216,7 @@ function RoundTripContent() {
                 'Same driver for both legs — no second booking needed',
                 'Fare covers travel, waiting time, and the return',
                 'Minimum booking duration is 4 hours',
+                'If you end early at a different location, return distance to pickup is added to your fare',
               ].map(text => (
                 <div key={text} className="flex items-start gap-2.5">
                   <div

@@ -77,7 +77,9 @@ export function calculateFare(input: FareInput): FareBreakdown {
     ? rate_card.return_rate_per_km
     : rate_card.rate_per_km
 
-  const distance_fare  = round2(estimated_km  * per_km)
+  // Round trip covers origin→destination→origin; charge both legs
+  const effective_km   = ride_type === 'round_trip' ? estimated_km * 2 : estimated_km
+  const distance_fare  = round2(effective_km * per_km)
   const time_fare      = round2(estimated_min * rate_card.rate_per_min)
   const stop_fare      = round2(stop_count    * charge_per_stop)
   const hour_surcharge = (ride_type === 'round_trip' && rate_card.hour_rate)

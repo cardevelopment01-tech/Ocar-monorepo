@@ -15,6 +15,7 @@ import {
   deductCommission,
   creditCashback,
 } from '@/modules/payments/payments.service'
+import { calculateFare } from '@/lib/fare'
 
 // ── Driver session management ─────────────────────────────────
 
@@ -656,7 +657,9 @@ export async function verifyEndOTP(
   rideId: bigint,
   otp: string,
   actualDistanceKm?: number,
-  actualDurationMin?: number
+  actualDurationMin?: number,
+  actualEndLat?: number,
+  actualEndLng?: number
 ) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
@@ -692,17 +695,99 @@ export async function verifyEndOTP(
     actor:      'ride_completion',
   })
 
+  let finalFare: number | null = null
+
   if (actualDistanceKm != null && actualDurationMin != null) {
+    let totalFinal: number | null = null
+    let earlyTermKm:  number | null = null
+    let earlyTermMin: number | null = null
+    let billedKm  = actualDistanceKm
+    let billedMin = actualDurationMin
+
+    // Early termination check: only for round_trip when we have end coordinates
+    if (
+      ride.ride_type === 'round_trip' &&
+      actualEndLat != null && actualEndLng != null
+    ) {
+      const distRes = await pool.query<{ metres: string }>(
+        `SELECT ST_Distance(
+           ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography,
+           ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)::geography
+         ) AS metres`,
+        [actualEndLng, actualEndLat, ride.origin_lng, ride.origin_lat]
+      )
+      const metres = parseFloat(distRes.rows[0]?.metres ?? '0')
+
+      if (metres > 500) {
+        // Load fare snapshot + rate card for recalculation
+        const snapRes = await pool.query<{
+          surge_multiplier: string
+          stop_fare:        string
+          is_return_cab:    boolean
+          rate_per_km:      string
+          rate_per_min:     string
+          min_fare:         string
+          return_rate_per_km: string | null
+        }>(
+          `SELECT fs.surge_multiplier, fs.stop_fare, fs.is_return_cab,
+                  rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km
+           FROM fare_snapshots fs
+           JOIN rate_cards rc ON rc.id = fs.rate_card_id
+           WHERE fs.ride_id = $1`,
+          [rideId]
+        )
+        const snap = snapRes.rows[0]
+
+        if (snap) {
+          const returnKm  = metres / 1000
+          const returnMin = returnKm / 0.5  // assume 30 km/h for return leg
+
+          // Use PostGIS distance as the driven km — actualDistanceKm points at the
+          // booked destination, not the actual early-stop location, so it would overcharge.
+          const drivenKm = metres / 1000
+          billedKm  = drivenKm + returnKm
+          billedMin = actualDurationMin + returnMin
+
+          const recalc = calculateFare({
+            rate_card: {
+              rate_per_km:         parseFloat(snap.rate_per_km),
+              rate_per_min:        parseFloat(snap.rate_per_min),
+              min_fare:            parseFloat(snap.min_fare),
+              return_rate_per_km:  snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
+            },
+            ride_type:        'one_way',  // no hour_surcharge on early termination
+            is_return_cab:    snap.is_return_cab,
+            estimated_km:     billedKm,
+            estimated_min:    billedMin,
+            stop_count:       0,
+            charge_per_stop:  0,
+            trip_hours:       0,
+            surge_multiplier: parseFloat(snap.surge_multiplier),
+          })
+
+          // Stops were already driven — add the pre-computed stop_fare unchanged
+          const stopFare = parseFloat(snap.stop_fare ?? '0')
+          totalFinal     = Math.round((recalc.total + stopFare) * 100) / 100
+          earlyTermKm    = Math.round(returnKm  * 100) / 100
+          earlyTermMin   = Math.round(returnMin * 100) / 100
+        }
+      }
+    }
+
     await pool.query(
       `UPDATE fare_snapshots
-       SET actual_km    = $2,
-           actual_min   = $3,
-           total_final  = total_estimated,
-           status       = 'final',
-           finalised_at = now()
+       SET actual_km               = $2,
+           actual_min              = $3,
+           total_final             = COALESCE($4::numeric, total_estimated),
+           early_termination_km    = $5,
+           early_termination_min   = $6,
+           status                  = 'final',
+           finalised_at            = now()
        WHERE ride_id = $1`,
-      [rideId, actualDistanceKm, actualDurationMin]
+      [rideId, billedKm, billedMin, totalFinal, earlyTermKm, earlyTermMin]
     )
+
+    finalFare = totalFinal
   }
 
   await pool.query(
@@ -720,10 +805,10 @@ export async function verifyEndOTP(
     [driverId]
   )
 
-  socketEvents.sendRideStatusUpdate(rideId.toString(), {
-    status:      'completed',
-    completedAt,
-  })
+  const statusPayload: Record<string, unknown> = { status: 'completed', completedAt }
+  if (finalFare !== null) statusPayload['finalFare'] = finalFare
+
+  socketEvents.sendRideStatusUpdate(rideId.toString(), statusPayload)
 
   if (ride.user_phone) {
     void queues[QUEUE_NAMES.NOTIFICATIONS].add('ride_completed', {

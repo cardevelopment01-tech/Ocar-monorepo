@@ -217,13 +217,15 @@ router.post('/:id/start-otp', authenticate(), async (req, res, next) => {
 router.post('/:id/end-otp', authenticate(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id
-    const body = req.body as { otp: string; actual_distance_km?: number; actual_duration_min?: number }
+    const body = req.body as { otp: string; actual_distance_km?: number; actual_duration_min?: number; actual_end_lat?: number; actual_end_lng?: number }
     const result = await service.verifyEndOTP(
       driverId,
       BigInt(req.params['id']!),
       body.otp,
       body.actual_distance_km,
-      body.actual_duration_min
+      body.actual_duration_min,
+      body.actual_end_lat,
+      body.actual_end_lng
     )
     res.json(result)
   } catch (err) { next(err) }
