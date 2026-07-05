@@ -137,9 +137,9 @@ describe('calculateFare', () => {
       estimated_km: 15, estimated_min: 28,
       stop_count: 0, charge_per_stop: 25, trip_hours: 4, surge_multiplier: 1.0,
     })
-    // 183.6 + 4×18 = 183.6+72 = 255.6
+    // effective_km=30: 30×10 + 28×1.2 = 333.6; hour_surcharge = 4×18 = 72; total = 405.6
     expect(result.hour_surcharge).toBe(72.00)
-    expect(result.total).toBe(255.60)
+    expect(result.total).toBe(405.60)
   })
 
   it('round_trip: trip_hours=0 produces no hour_surcharge (clamp is service responsibility)', () => {
@@ -149,8 +149,9 @@ describe('calculateFare', () => {
       stop_count: 0, charge_per_stop: 0, trip_hours: 0, surge_multiplier: 1.0,
     })
     // calculateFare is pure — it does not clamp; clampTripHours in pricing.service does
+    // effective_km=30: 30×10 + 28×1.2 = 333.6; no hour_surcharge
     expect(result.hour_surcharge).toBe(0)
-    expect(result.total).toBe(183.60)
+    expect(result.total).toBe(333.60)
   })
 
   it('round_trip: fractional trip_hours used as-is (no rounding in calculateFare)', () => {
@@ -159,9 +160,9 @@ describe('calculateFare', () => {
       estimated_km: 15, estimated_min: 28,
       stop_count: 0, charge_per_stop: 0, trip_hours: 5.5, surge_multiplier: 1.0,
     })
-    // 183.6 + 5.5×18 = 183.6+99 = 282.6
+    // effective_km=30: 333.6 + 5.5×18 = 333.6+99 = 432.6
     expect(result.hour_surcharge).toBe(99.00)
-    expect(result.total).toBe(282.60)
+    expect(result.total).toBe(432.60)
   })
 
   it('round_trip: hour_surcharge + surge applied in correct order', () => {
@@ -170,10 +171,10 @@ describe('calculateFare', () => {
       estimated_km: 15, estimated_min: 28,
       stop_count: 0, charge_per_stop: 0, trip_hours: 6, surge_multiplier: 1.5,
     })
-    // subtotal = 183.6 + 6×18 = 291.6; surge = 291.6×0.5 = 145.8; total = 437.4
+    // effective_km=30: subtotal = 333.6 + 6×18 = 441.6; surge = 441.6×0.5 = 220.8; total = 662.4
     expect(result.hour_surcharge).toBe(108.00)
-    expect(result.surge_fare).toBe(145.80)
-    expect(result.total).toBe(437.40)
+    expect(result.surge_fare).toBe(220.80)
+    expect(result.total).toBe(662.40)
   })
 
   it('round_trip: card without hour_rate produces no hour_surcharge', () => {
@@ -183,7 +184,8 @@ describe('calculateFare', () => {
       estimated_km: 15, estimated_min: 28,
       stop_count: 0, charge_per_stop: 0, trip_hours: 8, surge_multiplier: 1.0,
     })
+    // effective_km=30: 30×10 + 28×1.2 = 333.6; no hour_surcharge
     expect(result.hour_surcharge).toBe(0)
-    expect(result.total).toBe(183.60)
+    expect(result.total).toBe(333.60)
   })
 })
