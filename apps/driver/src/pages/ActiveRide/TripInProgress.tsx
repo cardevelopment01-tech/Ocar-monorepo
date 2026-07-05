@@ -89,7 +89,10 @@ export default function TripInProgress() {
         }
       : undefined,
   })
-  const selfPos: [number, number] = position ?? dropPos
+  // Fall back to drop only for map centering — never for the car marker or route fetch.
+  // Without this guard, the car appears AT the drop pin before GPS resolves, making
+  // it look like the driver has already reached the destination.
+  const mapCenter: [number, number] = position ?? dropPos
 
   // Screen wake lock — re-acquire on page resume because the browser
   // auto-releases WakeLock when the page is hidden.
@@ -113,20 +116,21 @@ export default function TripInProgress() {
 
   useEffect(() => {
     if (dropLat == null || dropLng == null) return
+    if (!position) return
 
     const dest: [number, number] = [dropLat, dropLng]
     const prev     = lastRouteFetch.current
-    const deviated = prev ? haversineMetres(selfPos, prev.origin) > 200 : false
+    const deviated = prev ? haversineMetres(position, prev.origin) > 200 : false
     const stale    = prev ? (Date.now() - prev.at) > 60_000 : false
     if (prev && !deviated && !stale) return
 
     const seq = ++fetchSeq.current
-    lastRouteFetch.current = { origin: selfPos, at: Date.now() }
+    lastRouteFetch.current = { origin: position, at: Date.now() }
 
-    driverRideApi.getRoute(selfPos[0], selfPos[1], dest[0], dest[1])
+    driverRideApi.getRoute(position[0], position[1], dest[0], dest[1])
       .then(r => { if (fetchSeq.current === seq) setEncodedPolyline(r.polyline || undefined) })
       .catch(() => { if (fetchSeq.current === seq) setEncodedPolyline(undefined) })
-  }, [selfPos, dropLat, dropLng])
+  }, [position, dropLat, dropLng])
 
   const handleSOS = async () => {
     await driverSafetyApi.triggerSos({
@@ -172,14 +176,14 @@ export default function TripInProgress() {
       {/* Map */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
-          <DriverMapView initialCenter={selfPos} zoom={15}>
-            <RecenterMap center={selfPos} heading={selfHeading} topPadding={100} bottomPadding={220} />
+          <DriverMapView initialCenter={mapCenter} zoom={15}>
+            <RecenterMap center={mapCenter} heading={selfHeading} topPadding={100} bottomPadding={220} />
             {dropLat != null && dropLng != null && (
               <RoutePolyline encoded={encodedPolyline} />
             )}
-            <SelfCarMarker position={selfPos} heading={selfHeading} />
+            {position && <SelfCarMarker position={position} heading={selfHeading} />}
             <LocationPin position={dropPos} variant="drop" />
-            <LocateMeButton position={selfPos} />
+            <LocateMeButton position={position ?? dropPos} />
           </DriverMapView>
         </Suspense>
       </div>

@@ -78,22 +78,26 @@ export default function NavigateToPickup() {
         }
       : undefined,
   })
-  const selfPos: [number, number] = position ?? pickupPos
+  // Fall back to pickup only for map centering — never for the car marker or route fetch.
+  // Without this guard, the car appears AT the pickup pin before GPS resolves, making
+  // it look like the driver has already arrived.
+  const mapCenter: [number, number] = position ?? pickupPos
 
   useEffect(() => {
+    if (!position) return
     const dest: [number, number] = [pickupLat, pickupLng]
     const prev     = lastRouteFetch.current
-    const deviated = prev ? haversineMetres(selfPos, prev.origin) > 200 : false
+    const deviated = prev ? haversineMetres(position, prev.origin) > 200 : false
     const stale    = prev ? (Date.now() - prev.at) > 60_000 : false
     if (prev && !deviated && !stale) return
 
     const seq = ++fetchSeq.current
-    lastRouteFetch.current = { origin: selfPos, at: Date.now() }
+    lastRouteFetch.current = { origin: position, at: Date.now() }
 
-    driverRideApi.getRoute(selfPos[0], selfPos[1], dest[0], dest[1])
+    driverRideApi.getRoute(position[0], position[1], dest[0], dest[1])
       .then(r => { if (fetchSeq.current === seq) setEncodedPolyline(r.polyline || undefined) })
       .catch(() => { if (fetchSeq.current === seq) setEncodedPolyline(undefined) })
-  }, [selfPos, pickupLat, pickupLng])
+  }, [position, pickupLat, pickupLng])
 
   const handleSOS = async () => {
     await driverSafetyApi.triggerSos({
@@ -140,10 +144,10 @@ export default function NavigateToPickup() {
       {/* Map */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
-          <DriverMapView initialCenter={selfPos} zoom={15}>
-            <RecenterMap center={selfPos} heading={selfHeading} topPadding={100} bottomPadding={220} />
+          <DriverMapView initialCenter={mapCenter} zoom={15}>
+            <RecenterMap center={mapCenter} heading={selfHeading} topPadding={100} bottomPadding={220} />
             <RoutePolyline encoded={encodedPolyline} variant="pickup-leg" />
-            <SelfCarMarker position={selfPos} heading={selfHeading} />
+            {position && <SelfCarMarker position={position} heading={selfHeading} />}
             <LocationPin position={pickupPos} variant="pickup" />
           </DriverMapView>
         </Suspense>
