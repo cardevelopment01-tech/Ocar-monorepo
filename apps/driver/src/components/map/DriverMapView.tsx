@@ -2,7 +2,7 @@ import { Map } from '@vis.gl/react-google-maps'
 
 const ODISHA_BOUNDS = { north: 23.0, south: 17.5, east: 88.5, west: 82.0 }
 
-const MAP_STYLE: google.maps.MapTypeStyle[] = [
+const MAP_STYLE = [
   { elementType: 'geometry',            stylers: [{ color: '#f5f4f0' }] },
   { elementType: 'labels.text.stroke',  stylers: [{ color: '#f5f4f0' }] },
   { elementType: 'labels.text.fill',    stylers: [{ color: '#555555' }] },

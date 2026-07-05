@@ -7,7 +7,7 @@ const ODISHA_BOUNDS = { north: 23.0, south: 17.5, east: 88.5, west: 82.0 }
 // Clean minimal map style — white roads, off-white canvas, hidden POIs.
 // Matches the look used by Uber/Rapido/Ola. Applied via raster style JSON
 // (no mapId) so the same AdvancedMarker HTML markers still render fine.
-const MAP_STYLE: google.maps.MapTypeStyle[] = [
+const MAP_STYLE = [
   { elementType: 'geometry',            stylers: [{ color: '#f5f4f0' }] },
   { elementType: 'labels.text.stroke',  stylers: [{ color: '#f5f4f0' }] },
   { elementType: 'labels.text.fill',    stylers: [{ color: '#555555' }] },
