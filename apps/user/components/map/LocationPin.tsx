@@ -23,15 +23,15 @@ function LocationPin({ position, variant }: LocationPinProps) {
   }
 
   const isPickup = variant === 'pickup'
-  const fill = isPickup ? '#2563EB' : '#0F172A'
+  const fill = isPickup ? '#16A34A' : '#DC2626'
 
   return (
     <AdvancedMarker position={{ lat: position[0], lng: position[1] }}>
       <div style={{ position: 'relative', width: 28, height: 38, marginBottom: -38 }}>
         {isPickup && (
           <div
-            className="animate-ping rounded-full bg-indigo-600/15 pointer-events-none w-10 h-10"
-            style={{ position: 'absolute', top: -6, left: -6 }}
+            className="animate-ping rounded-full pointer-events-none w-10 h-10"
+            style={{ position: 'absolute', top: -6, left: -6, background: 'rgba(22,163,74,0.15)' }}
           />
         )}
         <svg width="28" height="38" viewBox="0 0 28 38" fill="none" xmlns="http://www.w3.org/2000/svg">

@@ -194,7 +194,7 @@ function SelectRideContent() {
     <div className="h-full flex flex-col overflow-hidden bg-white">
 
       {/* ── Map ── */}
-      <div className="relative flex-shrink-0" style={{ height: '36%' }}>
+      <div className="relative flex-shrink-0" style={{ height: '42%' }}>
         <SelectRideMapScene
           center={center}
           pickupPos={[originLat, originLng]}

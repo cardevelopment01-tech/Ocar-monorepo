@@ -5,7 +5,7 @@ type PinVariant = 'pickup' | 'drop'
 
 function LocationPin({ position, variant }: { position: [number, number]; variant: PinVariant }) {
   const isPickup = variant === 'pickup'
-  const fill = isPickup ? '#2563EB' : '#0F172A'
+  const fill = isPickup ? '#16A34A' : '#DC2626'
 
   return (
     <AdvancedMarker position={{ lat: position[0], lng: position[1] }}>

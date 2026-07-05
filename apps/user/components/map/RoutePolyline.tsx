@@ -74,9 +74,9 @@ export default function RoutePolyline({ encoded, positions, variant = 'default' 
       />
       <Polyline
         path={path}
-        strokeColor="#2563EB"
+        strokeColor="#1a1a2e"
         strokeWeight={4.5}
-        strokeOpacity={0.92}
+        strokeOpacity={0.88}
         zIndex={2}
         icons={[{ icon: ARROW_ICON, repeat: '80px' }]}
       />
