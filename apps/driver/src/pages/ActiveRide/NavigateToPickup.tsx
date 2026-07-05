@@ -41,6 +41,10 @@ export default function NavigateToPickup() {
   const lastRouteFetch = useRef<{ origin: [number, number]; at: number } | null>(null)
   const fetchSeq       = useRef(0)
 
+  useEffect(() => {
+    if (!activeRide) navigate('/', { replace: true })
+  }, [activeRide, navigate])
+
   const pickupPos: [number, number] = [
     activeRide?.pickupLat ?? DEFAULT_LAT,
     activeRide?.pickupLng ?? DEFAULT_LNG,

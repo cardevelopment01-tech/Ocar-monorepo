@@ -55,7 +55,7 @@ export default function RateRidePage() {
         tagIds:      selectedTags,
       })
       setSubmitted(true)
-      setTimeout(() => router.push('/home'), 1200)
+      setTimeout(() => router.replace('/home'), 1200)
     } catch {
       setError('Could not submit rating. Please try again.')
       setSubmitting(false)
@@ -165,7 +165,7 @@ export default function RateRidePage() {
           {submitting ? 'Submitting…' : 'Submit Rating'}
         </button>
         <button
-          onClick={() => router.push('/home')}
+          onClick={() => router.replace('/home')}
           className="w-full text-center text-text-muted text-sm"
         >
           Skip
