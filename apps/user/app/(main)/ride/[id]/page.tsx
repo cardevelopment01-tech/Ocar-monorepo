@@ -86,14 +86,25 @@ export default function RidePage() {
   const [endOtpCopied,   setEndOtpCopied]   = useState(false)
   const [showCancelSheet, setShowCancelSheet] = useState(false)
   const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null)
-  const lastFetch      = useRef<{ mode: RouteMode; origin: [number, number]; at: number } | null>(null)
+  const lastFetch      = useRef<{ mode: RouteMode; origin: [number, number]; dest: [number, number]; at: number } | null>(null)
   const fetchSeq       = useRef(0)
   const breadcrumbRef  = useRef<[number, number][]>([])
   const [breadcrumb, setBreadcrumb] = useState<[number, number][]>([])
+  const [userPos,        setUserPos]        = useState<[number, number] | undefined>(undefined)
   const rideStatusRef  = useRef(rideStatus)
 
   // Keep ref in sync so the driver:location handler reads the live status without stale closure
   useEffect(() => { rideStatusRef.current = rideStatus }, [rideStatus])
+
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    const id = navigator.geolocation.watchPosition(
+      p => setUserPos([p.coords.latitude, p.coords.longitude]),
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 15_000 },
+    )
+    return () => navigator.geolocation.clearWatch(id)
+  }, [])
 
   const { pos: smoothPos, heading: smoothHeading } = useInterpolatedPosition(driverPos, 0)
 
@@ -228,7 +239,7 @@ export default function RidePage() {
     if (routeMode === 'driver-pickup') {
       if (!driverPos) return
       origin = driverPos
-      dest   = pickupPos
+      dest   = userPos ?? pickupPos
     } else if (routeMode === 'driver-dest') {
       if (!driverPos || !hd) return
       origin = driverPos
@@ -242,19 +253,20 @@ export default function RidePage() {
     const prev        = lastFetch.current
     const modeChanged = !prev || prev.mode !== routeMode
     const deviated    = prev && driverPos ? haversineMetres(driverPos, prev.origin) > 200 : false
+    const userDeviated = prev && userPos ? haversineMetres(userPos, prev.dest) > 100 : false
     const stale       = prev ? (Date.now() - prev.at) > 60_000 : false
 
-    if (!modeChanged && !deviated && !stale) return
+    if (!modeChanged && !deviated && !userDeviated && !stale) return
     if (routeMode === 'recap' && prev?.mode === 'recap') return
 
     const seq = ++fetchSeq.current
-    lastFetch.current = { mode: routeMode, origin, at: Date.now() }
+    lastFetch.current = { mode: routeMode, origin, dest, at: Date.now() }
     if (modeChanged) setEncodedPolyline(undefined)
 
     geoApi.getRoute(origin[0], origin[1], dest[0], dest[1])
       .then(r => { if (fetchSeq.current === seq) setEncodedPolyline(r.polyline || undefined) })
       .catch(() => { if (fetchSeq.current === seq) setEncodedPolyline(undefined) })
-  }, [routeMode, driverPos, pickupPos, dropPos, ride])
+  }, [routeMode, driverPos, userPos, pickupPos, dropPos, ride])
 
   const status    = (rideStatus as StatusKey) in STATUS_CONFIG ? (rideStatus as StatusKey) : 'requested'
   const cfg       = {
@@ -282,6 +294,7 @@ export default function RidePage() {
           routeMode={routeMode}
           showDrop={hasDest}
           breadcrumb={breadcrumb}
+          userPos={userPos}
         />
 
         {/* Dev socket indicator */}

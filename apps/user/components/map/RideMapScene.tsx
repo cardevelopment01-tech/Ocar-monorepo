@@ -18,6 +18,7 @@ interface RideMapSceneProps {
   routeMode: 'pickup-dest' | 'driver-pickup' | 'driver-dest' | 'recap'
   showDrop?: boolean
   breadcrumb?: [number, number][]
+  userPos?: [number, number]
 }
 
 export default function RideMapScene({
@@ -30,6 +31,7 @@ export default function RideMapScene({
   routeMode,
   showDrop = true,
   breadcrumb,
+  userPos,
 }: RideMapSceneProps) {
   const isRecap      = routeMode === 'recap'
   const isPickupLeg  = routeMode === 'driver-pickup'
@@ -44,6 +46,7 @@ export default function RideMapScene({
           : (showDrop && <FitBounds positions={[pickupPos, dropPos]} paddingBottom={40} />)
       }
       <LocationPin position={pickupPos} variant="pickup" />
+      {isPickupLeg && userPos && <LocationPin position={userPos} variant="user" />}
       {showDrop && <LocationPin position={dropPos} variant="drop" />}
       {isInProgress && breadcrumb && <BreadcrumbTrail positions={breadcrumb} />}
       <RoutePolyline encoded={encodedPolyline} variant={isPickupLeg ? 'pickup-leg' : 'default'} />

@@ -3,7 +3,7 @@
 import { memo } from 'react'
 import { Marker } from 'react-map-gl/maplibre'
 
-type PinVariant = 'pickup' | 'drop'
+type PinVariant = 'pickup' | 'drop' | 'user'
 
 interface LocationPinProps {
   position: [number, number]
@@ -11,6 +11,17 @@ interface LocationPinProps {
 }
 
 function LocationPin({ position, variant }: LocationPinProps) {
+  if (variant === 'user') {
+    return (
+      <Marker latitude={position[0]} longitude={position[1]} anchor="center">
+        <div style={{ position: 'relative', width: 20, height: 20 }}>
+          <div className="absolute inset-0 rounded-full animate-ping bg-blue-600/30" />
+          <div className="relative w-5 h-5 rounded-full bg-blue-600 border-2 border-white shadow" />
+        </div>
+      </Marker>
+    )
+  }
+
   const isPickup = variant === 'pickup'
   const fill = isPickup ? '#2563EB' : '#0F172A'
 
