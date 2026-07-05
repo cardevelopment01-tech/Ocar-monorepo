@@ -111,6 +111,7 @@ export default function Home() {
   // ── GPS tracking via watchPosition ───────────────────────────────────────────
   const { position: gpsPosition, heading: gpsHeading, error: gpsError } = useDriverLocation({
     highAccuracy: true,
+    maxAccuracyM: 300,
     onSync: isOnline && sessionId
       ? (lat, lng, heading) => {
           driverRideApi.updateLocation({
