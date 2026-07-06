@@ -33,14 +33,19 @@ export function useDriverLocation({
 
   const lastSyncAt  = useRef(0)
   const onSyncRef   = useRef(onSync)
+  const hasFirstFix = useRef(false)
   onSyncRef.current = onSync
 
   useEffect(() => {
     let watchId: number
 
     const handlePosition = (pos: GeolocationPosition) => {
-      // Discard fixes that are too imprecise to be useful (e.g. cell-tower only).
-      if (pos.coords.accuracy > maxAccuracyM) return
+      // Always accept the first fix so position never stays null permanently
+      // (browser/WiFi accuracy is often 100–2000 m, which would fail the 80 m
+      // gate and leave the driver with no visible car marker at all).
+      // After the first fix, discard noisy cell-tower-only updates.
+      if (hasFirstFix.current && pos.coords.accuracy > maxAccuracyM) return
+      hasFirstFix.current = true
       const lat = pos.coords.latitude
       const lng = pos.coords.longitude
       setPosition([lat, lng])
