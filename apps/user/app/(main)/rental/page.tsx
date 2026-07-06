@@ -56,6 +56,13 @@ function num(v: number): number {
   return parseFloat(String(v))
 }
 
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m === 0 ? `${h} hr${h > 1 ? 's' : ''}` : `${h}h ${m}m`
+}
+
 // ─── component ────────────────────────────────────────────────────────────────
 
 function RentalContent() {
@@ -177,7 +184,7 @@ function RentalContent() {
           <ArrowLeft size={17} strokeWidth={2} className="text-slate-800" />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-[15px] font-bold text-slate-900 leading-tight">Hourly Rental</p>
+          <p className="text-[15px] font-bold text-slate-900 leading-tight">City Rides</p>
           <div className="flex items-center gap-1 mt-0.5">
             <MapPin size={10} strokeWidth={2.5} className="text-violet-500 flex-shrink-0" />
             <p className="text-[11px] text-slate-400 truncate">{originAddress}</p>
@@ -279,7 +286,7 @@ function RentalContent() {
                           'text-[14px] font-bold leading-tight',
                           active ? 'text-violet-900' : 'text-slate-900'
                         )}>
-                          {pkg.duration_hours} hrs · {pkg.km_limit} km
+                          {formatDuration(pkg.duration_minutes)} · {pkg.km_limit} km
                         </p>
                         <p className="text-[11px] text-slate-400 mt-0.5">
                           Extra ₹{xKm}/km · ₹{xMin}/min beyond limit
@@ -407,7 +414,7 @@ function RentalContent() {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-[12px] font-semibold text-slate-700">
-                      {selectedCat.display_name} · {selectedPkg.duration_hours} hrs / {selectedPkg.km_limit} km
+                      {selectedCat.display_name} · {formatDuration(selectedPkg.duration_minutes)} / {selectedPkg.km_limit} km
                     </p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
                       Overage charged at end of trip

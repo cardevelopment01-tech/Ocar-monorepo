@@ -42,7 +42,7 @@ export async function getFareEstimate(
       packageFare  = parseFloat(pkg.package_fare)
       extraPerKm   = parseFloat(pkg.extra_per_km)
       extraPerMin  = parseFloat(pkg.extra_per_min)
-      rentalHours  = pkg.duration_hours
+      rentalHours  = Math.round(pkg.duration_minutes / 60)
     }
   }
 

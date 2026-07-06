@@ -16,11 +16,17 @@ const SURGE_STATUS_CLS: Record<string, string> = {
   expired:   'pill-muted', cancelled: 'pill-danger',
 }
 
-const VALID_DURATIONS = [1, 2, 4, 6, 8, 10]
 const CATEGORY_ORDER  = ['hatchback', 'sedan', 'suv', 'luxury', 'van']
 
 function fmt(v: string | null): string {
   return v ? `₹${parseFloat(v).toFixed(2)}` : '—'
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m === 0 ? `${h} hr${h > 1 ? 's' : ''}` : `${h}h ${m}m`
 }
 
 function numFmt(v: string): string {
@@ -290,6 +296,9 @@ function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
+    duration_minutes: String(pkg.duration_minutes),
+    km_limit:      String(pkg.km_limit),
+    display_order: String(pkg.display_order),
     package_fare:  pkg.package_fare,
     extra_per_km:  pkg.extra_per_km,
     extra_per_min: pkg.extra_per_min,
@@ -297,7 +306,12 @@ function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; 
 
   useEffect(() => {
     if (open) {
-      setForm({ package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min })
+      setForm({
+        duration_minutes: String(pkg.duration_minutes),
+        km_limit:      String(pkg.km_limit),
+        display_order: String(pkg.display_order),
+        package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min,
+      })
       setError('')
     }
   }, [open, pkg])
@@ -306,6 +320,9 @@ function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; 
     e.preventDefault(); setLoading(true); setError('')
     try {
       await rentalPackageApi.update(pkg.id, {
+        duration_minutes: parseInt(form.duration_minutes, 10),
+        km_limit:      parseInt(form.km_limit, 10),
+        display_order: parseInt(form.display_order, 10),
         package_fare:  parseFloat(form.package_fare),
         extra_per_km:  parseFloat(form.extra_per_km),
         extra_per_min: parseFloat(form.extra_per_min),
@@ -328,10 +345,30 @@ function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; 
         <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
         <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[420px] bg-surface rounded-2xl shadow-hover p-6 z-[60]">
           <Dialog.Title className="text-lg font-bold text-text-primary mb-1">
-            Edit {pkg.category_name} · {pkg.duration_hours} hr / {pkg.km_limit} km
+            Edit {pkg.category_name} · {formatDuration(pkg.duration_minutes)} / {pkg.km_limit} km
           </Dialog.Title>
           <p className="text-xs text-text-muted mb-5">Updates take effect on the next booking.</p>
           <form onSubmit={submit} className="space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={labelCls}>Duration (min) *</label>
+                <input type="number" step="1" min="1" required value={form.duration_minutes}
+                  onChange={e => setForm(f => ({ ...f, duration_minutes: e.target.value }))} className={inputCls} />
+                <p className="text-xs text-text-muted mt-1">was {formatDuration(pkg.duration_minutes)}</p>
+              </div>
+              <div>
+                <label className={labelCls}>KM Limit *</label>
+                <input type="number" step="1" min="1" required value={form.km_limit}
+                  onChange={e => setForm(f => ({ ...f, km_limit: e.target.value }))} className={inputCls} />
+                <p className="text-xs text-text-muted mt-1">was {pkg.km_limit} km</p>
+              </div>
+              <div>
+                <label className={labelCls}>Order</label>
+                <input type="number" step="1" value={form.display_order}
+                  onChange={e => setForm(f => ({ ...f, display_order: e.target.value }))} className={inputCls} />
+                <p className="text-xs text-text-muted mt-1">lower shows first</p>
+              </div>
+            </div>
             <div>
               <label className={labelCls}>Package Fare (₹) *</label>
               <input type="number" step="0.01" min="0.01" required value={form.package_fare}
@@ -371,46 +408,44 @@ function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; 
 
 function CreateRentalPackageDialog({
   categories,
-  existingKeys,
   onCreated,
 }: {
   categories: { id: number; display_name: string }[]
-  existingKeys: Set<string>
   onCreated: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
-    category_id: '', duration_hours: '', package_fare: '', extra_per_km: '', extra_per_min: '0',
+    category_id: '', duration_minutes: '', km_limit: '', display_order: '',
+    package_fare: '', extra_per_km: '', extra_per_min: '0',
   })
 
   useEffect(() => {
-    if (open) { setForm({ category_id: '', duration_hours: '', package_fare: '', extra_per_km: '', extra_per_min: '0' }); setError('') }
+    if (open) {
+      setForm({ category_id: '', duration_minutes: '', km_limit: '', display_order: '', package_fare: '', extra_per_km: '', extra_per_min: '0' })
+      setError('')
+    }
   }, [open])
-
-  const takenDurations = form.category_id
-    ? VALID_DURATIONS.filter(d => existingKeys.has(`${form.category_id}-${d}`))
-    : []
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setLoading(true); setError('')
     try {
       await rentalPackageApi.create({
-        category_id:    parseInt(form.category_id, 10),
-        duration_hours: parseInt(form.duration_hours, 10),
-        package_fare:   parseFloat(form.package_fare),
-        extra_per_km:   parseFloat(form.extra_per_km),
-        extra_per_min:  parseFloat(form.extra_per_min),
+        category_id:      parseInt(form.category_id, 10),
+        duration_minutes: parseInt(form.duration_minutes, 10),
+        km_limit:         parseInt(form.km_limit, 10),
+        package_fare:     parseFloat(form.package_fare),
+        extra_per_km:     parseFloat(form.extra_per_km),
+        extra_per_min:    parseFloat(form.extra_per_min),
+        ...(form.display_order ? { display_order: parseInt(form.display_order, 10) } : {}),
       })
       setOpen(false); onCreated()
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Failed to create package. A package for this duration may already exist.')
+      setError(msg ?? 'Failed to create package. A package with this duration and km limit may already exist for this category.')
     } finally { setLoading(false) }
   }
-
-  const kmPreview = form.duration_hours ? parseInt(form.duration_hours, 10) * 10 : null
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -424,47 +459,41 @@ function CreateRentalPackageDialog({
         <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[440px] bg-surface rounded-2xl shadow-hover p-6 z-[60]">
           <Dialog.Title className="text-lg font-bold text-text-primary mb-1">Create Rental Package</Dialog.Title>
           <p className="text-xs text-text-muted mb-5">
-            KM limit is fixed at <span className="font-semibold">duration × 10</span> by the pricing engine.
+            Set duration and km limit freely — they no longer have to follow a fixed ratio.
           </p>
           <form onSubmit={submit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Category *</label>
+              <select required value={form.category_id}
+                onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))}
+                className={inputCls}>
+                <option value="">Select…</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className={labelCls}>Category *</label>
-                <select required value={form.category_id}
-                  onChange={e => setForm(f => ({ ...f, category_id: e.target.value, duration_hours: '' }))}
-                  className={inputCls}>
-                  <option value="">Select…</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.display_name}</option>)}
-                </select>
+                <label className={labelCls}>Duration (min) *</label>
+                <input type="number" step="1" min="1" required value={form.duration_minutes}
+                  onChange={e => setForm(f => ({ ...f, duration_minutes: e.target.value }))}
+                  className={inputCls} placeholder="e.g. 30" />
               </div>
               <div>
-                <label className={labelCls}>Duration *</label>
-                <select required value={form.duration_hours}
-                  onChange={e => setForm(f => ({ ...f, duration_hours: e.target.value }))}
-                  className={inputCls}
-                  disabled={!form.category_id}>
-                  <option value="">Select…</option>
-                  {VALID_DURATIONS.map(d => {
-                    const taken = existingKeys.has(`${form.category_id}-${d}`)
-                    return (
-                      <option key={d} value={d} disabled={taken}>
-                        {d} hr{d > 1 ? 's' : ''} / {d * 10} km{taken ? ' (exists)' : ''}
-                      </option>
-                    )
-                  })}
-                </select>
-                {takenDurations.length > 0 && (
-                  <p className="text-[11px] text-text-muted mt-1">
-                    Taken: {takenDurations.map(d => `${d}h`).join(', ')}
-                  </p>
-                )}
+                <label className={labelCls}>KM Limit *</label>
+                <input type="number" step="1" min="1" required value={form.km_limit}
+                  onChange={e => setForm(f => ({ ...f, km_limit: e.target.value }))}
+                  className={inputCls} placeholder="e.g. 10" />
+              </div>
+              <div>
+                <label className={labelCls}>Order</label>
+                <input type="number" step="1" value={form.display_order}
+                  onChange={e => setForm(f => ({ ...f, display_order: e.target.value }))}
+                  className={inputCls} placeholder="optional" />
               </div>
             </div>
-            {kmPreview && (
-              <p className="text-xs text-text-muted -mt-2">
-                KM limit will be <span className="font-semibold">{kmPreview} km</span>
-              </p>
-            )}
+            <p className="text-[11px] text-text-muted -mt-2">
+              Lower order shows first · leave blank to append at the end
+            </p>
             <div>
               <label className={labelCls}>Package Fare (₹) *</label>
               <input type="number" step="0.01" min="0.01" required value={form.package_fare}
@@ -597,12 +626,12 @@ export default function RateCardsPage() {
 
   // Rental derived
   const rentalGrouped = CATEGORY_ORDER.reduce<Record<string, RentalPackageAdmin[]>>((acc, slug) => {
-    acc[slug] = rentalPkgs.filter(p => p.category_slug === slug).sort((a, b) => a.duration_hours - b.duration_hours)
+    acc[slug] = rentalPkgs.filter(p => p.category_slug === slug)
+      .sort((a, b) => a.display_order - b.display_order || a.duration_minutes - b.duration_minutes)
     return acc
   }, {})
   const rentalCategories = [...new Map(rentalPkgs.map(p => [p.category_id, { id: p.category_id, display_name: p.category_name }])).values()]
     .concat(categoryOptions.filter(c => !rentalPkgs.some(p => p.category_id === c.id)).map(c => ({ id: c.id, display_name: c.display_name })))
-  const existingKeys = new Set(rentalPkgs.map(p => `${p.category_id}-${p.duration_hours}`))
   const activeRentalCount  = rentalPkgs.filter(p => p.is_active).length
   const inactiveRentalCount = rentalPkgs.filter(p => !p.is_active).length
 
@@ -625,7 +654,6 @@ export default function RateCardsPage() {
         {activeTab === 'rental' && (
           <CreateRentalPackageDialog
             categories={rentalCategories}
-            existingKeys={existingKeys}
             onCreated={fetchRental}
           />
         )}
@@ -915,7 +943,7 @@ export default function RateCardsPage() {
                       {rows.map(pkg => (
                         <tr key={pkg.id} className={`cursor-default ${!pkg.is_active ? 'opacity-50' : ''}`}>
                           <td className="font-semibold text-text-primary">
-                            {pkg.duration_hours} hr{pkg.duration_hours > 1 ? 's' : ''}
+                            {formatDuration(pkg.duration_minutes)}
                           </td>
                           <td className="text-text-secondary">{pkg.km_limit} km</td>
                           <td className="!text-right font-mono font-bold text-text-primary">{numFmt(pkg.package_fare)}</td>

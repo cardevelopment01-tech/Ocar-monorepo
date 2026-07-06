@@ -46,7 +46,7 @@ export interface RentalPackage {
   id: number
   category_id: number
   category_name: string
-  duration_hours: number
+  duration_minutes: number
   km_limit: number
   package_fare: number
   extra_per_km: number

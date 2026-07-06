@@ -65,7 +65,7 @@ export async function getRentalPackagesByCategory(categoryId: number) {
   const res = await pool.query(
     `SELECT * FROM rental_packages
      WHERE category_id = $1 AND is_active = true
-     ORDER BY duration_hours`,
+     ORDER BY display_order, duration_minutes`,
     [categoryId]
   )
   return res.rows

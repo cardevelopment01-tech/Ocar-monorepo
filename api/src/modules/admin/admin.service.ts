@@ -243,7 +243,15 @@ export async function forceResolveAdminRide(
 
 // ─── Rental Packages ──────────────────────────────────────────────────────────
 
-const VALID_DURATIONS = new Set([1, 2, 4, 6, 8, 10])
+function rethrowIfDuplicatePackage(err: unknown): never {
+  if ((err as { code?: string }).code === '23505') {
+    throw Object.assign(
+      new Error('A package with this duration and km limit already exists for this category'),
+      { httpStatus: 409 },
+    )
+  }
+  throw err
+}
 
 export async function listAdminRentalPackages() {
   return repo.listAdminRentalPackages()
@@ -251,27 +259,44 @@ export async function listAdminRentalPackages() {
 
 export async function updateAdminRentalPackage(
   id: bigint,
-  body: { package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean },
+  body: {
+    package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
+    duration_minutes?: number; km_limit?: number; display_order?: number
+  },
   adminId: bigint,
 ) {
-  if (body.package_fare  !== undefined && (isNaN(body.package_fare)  || body.package_fare  <= 0))
+  if (body.package_fare     !== undefined && (isNaN(body.package_fare)     || body.package_fare     <= 0))
     throw Object.assign(new Error('package_fare must be > 0'), { httpStatus: 400 })
-  if (body.extra_per_km  !== undefined && (isNaN(body.extra_per_km)  || body.extra_per_km  <= 0))
+  if (body.extra_per_km     !== undefined && (isNaN(body.extra_per_km)     || body.extra_per_km     <= 0))
     throw Object.assign(new Error('extra_per_km must be > 0'), { httpStatus: 400 })
-  if (body.extra_per_min !== undefined && (isNaN(body.extra_per_min) || body.extra_per_min < 0))
+  if (body.extra_per_min    !== undefined && (isNaN(body.extra_per_min)    || body.extra_per_min    < 0))
     throw Object.assign(new Error('extra_per_min must be >= 0'), { httpStatus: 400 })
+  if (body.duration_minutes !== undefined && (isNaN(body.duration_minutes) || body.duration_minutes <= 0))
+    throw Object.assign(new Error('duration_minutes must be > 0'), { httpStatus: 400 })
+  if (body.km_limit         !== undefined && (isNaN(body.km_limit)         || body.km_limit         <= 0))
+    throw Object.assign(new Error('km_limit must be > 0'), { httpStatus: 400 })
 
-  const pkg = await repo.updateAdminRentalPackage(id, body, adminId)
-  if (!pkg) throw Object.assign(new Error('Rental package not found'), { httpStatus: 404 })
-  return pkg
+  try {
+    const pkg = await repo.updateAdminRentalPackage(id, body, adminId)
+    if (!pkg) throw Object.assign(new Error('Rental package not found'), { httpStatus: 404 })
+    return pkg
+  } catch (err) {
+    if ((err as { httpStatus?: number }).httpStatus) throw err
+    rethrowIfDuplicatePackage(err)
+  }
 }
 
 export async function createAdminRentalPackage(
-  body: { category_id: number; duration_hours: number; package_fare: number; extra_per_km: number; extra_per_min: number },
+  body: {
+    category_id: number; duration_minutes: number; km_limit: number
+    package_fare: number; extra_per_km: number; extra_per_min: number; display_order?: number
+  },
   adminId: bigint,
 ) {
-  if (!VALID_DURATIONS.has(body.duration_hours))
-    throw Object.assign(new Error('duration_hours must be one of 1, 2, 4, 6, 8, 10'), { httpStatus: 400 })
+  if (isNaN(body.duration_minutes) || body.duration_minutes <= 0)
+    throw Object.assign(new Error('duration_minutes must be > 0'), { httpStatus: 400 })
+  if (isNaN(body.km_limit)      || body.km_limit      <= 0)
+    throw Object.assign(new Error('km_limit must be > 0'), { httpStatus: 400 })
   if (isNaN(body.package_fare)  || body.package_fare  <= 0)
     throw Object.assign(new Error('package_fare must be > 0'), { httpStatus: 400 })
   if (isNaN(body.extra_per_km)  || body.extra_per_km  <= 0)
@@ -279,7 +304,11 @@ export async function createAdminRentalPackage(
   if (isNaN(body.extra_per_min) || body.extra_per_min < 0)
     throw Object.assign(new Error('extra_per_min must be >= 0'), { httpStatus: 400 })
 
-  return repo.createAdminRentalPackage(body, adminId)
+  try {
+    return await repo.createAdminRentalPackage(body, adminId)
+  } catch (err) {
+    rethrowIfDuplicatePackage(err)
+  }
 }
 
 export async function listAdminUsers(query: {

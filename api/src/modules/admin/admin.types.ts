@@ -217,8 +217,9 @@ export interface AdminRentalPackage {
   category_id: number
   category_name?: string
   category_slug?: string
-  duration_hours: number
+  duration_minutes: number
   km_limit: number
+  display_order: number
   package_fare: string
   extra_per_km: string
   extra_per_min: string

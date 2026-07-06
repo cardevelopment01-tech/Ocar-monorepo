@@ -70,7 +70,7 @@ const page = {
 const SERVICES = [
   { id: 'oneway',     Icon: Car,       label: 'One Way',    sub: 'One way · best fare'    },
   { id: 'roundtrip',  Icon: RotateCcw, label: 'Round Trip', sub: 'Driver stays with you'  },
-  { id: 'rental',     Icon: Clock,     label: 'Rental',     sub: 'Within city · hourly'   },
+  { id: 'rental',     Icon: Clock,     label: 'City Rides', sub: 'Within city · hourly'   },
 ]
 const SAVED = [
   { Icon: Home,      label: 'Home', sub: 'Sahid Nagar, Bhubaneswar',   lat: 20.2929, lng: 85.8363 },
