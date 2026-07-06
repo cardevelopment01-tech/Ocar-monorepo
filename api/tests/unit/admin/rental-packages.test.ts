@@ -25,42 +25,42 @@ describe('createAdminRentalPackage', () => {
     await expect(createAdminRentalPackage(
       { category_id: 1, duration_hours: 3, package_fare: 200, extra_per_km: 10, extra_per_min: 1 },
       ADMIN_ID,
-    )).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('duration_hours') })
+    )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('duration_hours') })
   })
 
   it('rejects duration_hours = 0', async () => {
     await expect(createAdminRentalPackage(
       { category_id: 1, duration_hours: 0, package_fare: 200, extra_per_km: 10, extra_per_min: 1 },
       ADMIN_ID,
-    )).rejects.toMatchObject({ statusCode: 400 })
+    )).rejects.toMatchObject({ httpStatus: 400 })
   })
 
   it('rejects package_fare = 0', async () => {
     await expect(createAdminRentalPackage(
       { category_id: 1, duration_hours: 4, package_fare: 0, extra_per_km: 10, extra_per_min: 1 },
       ADMIN_ID,
-    )).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('package_fare') })
+    )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('package_fare') })
   })
 
   it('rejects negative package_fare', async () => {
     await expect(createAdminRentalPackage(
       { category_id: 1, duration_hours: 4, package_fare: -50, extra_per_km: 10, extra_per_min: 1 },
       ADMIN_ID,
-    )).rejects.toMatchObject({ statusCode: 400 })
+    )).rejects.toMatchObject({ httpStatus: 400 })
   })
 
   it('rejects extra_per_km = 0', async () => {
     await expect(createAdminRentalPackage(
       { category_id: 1, duration_hours: 4, package_fare: 300, extra_per_km: 0, extra_per_min: 1 },
       ADMIN_ID,
-    )).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('extra_per_km') })
+    )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('extra_per_km') })
   })
 
   it('rejects negative extra_per_min', async () => {
     await expect(createAdminRentalPackage(
       { category_id: 1, duration_hours: 4, package_fare: 300, extra_per_km: 10, extra_per_min: -1 },
       ADMIN_ID,
-    )).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('extra_per_min') })
+    )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('extra_per_min') })
   })
 
   it('allows extra_per_min = 0 (valid — no per-minute overage charge)', async () => {
@@ -100,26 +100,26 @@ describe('updateAdminRentalPackage', () => {
   it('rejects package_fare = 0 on update', async () => {
     await expect(updateAdminRentalPackage(
       BigInt(1), { package_fare: 0 }, ADMIN_ID,
-    )).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('package_fare') })
+    )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('package_fare') })
   })
 
   it('rejects extra_per_km <= 0 on update', async () => {
     await expect(updateAdminRentalPackage(
       BigInt(1), { extra_per_km: -5 }, ADMIN_ID,
-    )).rejects.toMatchObject({ statusCode: 400 })
+    )).rejects.toMatchObject({ httpStatus: 400 })
   })
 
   it('rejects negative extra_per_min on update', async () => {
     await expect(updateAdminRentalPackage(
       BigInt(1), { extra_per_min: -0.5 }, ADMIN_ID,
-    )).rejects.toMatchObject({ statusCode: 400 })
+    )).rejects.toMatchObject({ httpStatus: 400 })
   })
 
   it('returns 404 when package does not exist', async () => {
     vi.mocked(repo.updateAdminRentalPackage).mockResolvedValue(undefined)
     await expect(updateAdminRentalPackage(
       BigInt(999), { is_active: false }, ADMIN_ID,
-    )).rejects.toMatchObject({ statusCode: 404 })
+    )).rejects.toMatchObject({ httpStatus: 404 })
   })
 
   it('toggle is_active = false succeeds without fare validation', async () => {
