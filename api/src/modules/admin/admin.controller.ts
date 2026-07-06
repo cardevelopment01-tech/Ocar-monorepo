@@ -371,6 +371,12 @@ export async function getAdminRides(req: Request, res: Response, next: NextFunct
   } catch (err) { next(err) }
 }
 
+export async function getAdminRideById(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json(await service.getAdminRideById(BigInt(req.params['id']!)))
+  } catch (err) { next(err) }
+}
+
 export async function forceResolveAdminRide(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { action, note } = req.body as { action: 'complete' | 'cancel'; note?: string }

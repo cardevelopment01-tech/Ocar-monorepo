@@ -155,6 +155,10 @@ export const adminRideApi = {
     const res = await api.get('/api/v1/admin/rides', { params })
     return res.data as AdminRidesResponse
   },
+  getById: async (rideId: string): Promise<AdminRideItem> => {
+    const res = await api.get(`/api/v1/admin/rides/${rideId}`)
+    return res.data as AdminRideItem
+  },
   forceResolve: async (rideId: string, action: 'complete' | 'cancel', note?: string): Promise<void> => {
     await api.post(`/api/v1/admin/rides/${rideId}/force-resolve`, { action, note })
   },

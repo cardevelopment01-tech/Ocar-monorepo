@@ -732,9 +732,10 @@ export async function listAdminRides(filters: {
     params.push(filters.ride_type)
   }
   if (filters.search) {
-    conditions.push(`(u.name ILIKE $${p} OR u.phone ILIKE $${p} OR r.id::text = $${p})`)
-    params.push(`%${filters.search}%`)
-    p++
+    const likeParam = p++
+    const idParam   = p++
+    conditions.push(`(u.name ILIKE $${likeParam} OR u.phone ILIKE $${likeParam} OR r.id::text = $${idParam})`)
+    params.push(`%${filters.search}%`, filters.search)
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -769,6 +770,30 @@ export async function listAdminRides(filters: {
   )
 
   return { rows: dataRes.rows, total }
+}
+
+export async function getAdminRideById(rideId: bigint) {
+  const res = await pool.query(
+    `SELECT
+       r.id::text, r.status, r.ride_type, r.is_return_cab,
+       r.origin_address, r.destination_address,
+       r.requested_at, r.accepted_at, r.driver_arrived_at, r.started_at, r.completed_at,
+       r.review_flagged_at, r.review_reason,
+       u.name AS user_name, u.phone AS user_phone,
+       d.full_name AS driver_name, d.phone AS driver_phone,
+       COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
+       pay.status AS payment_status, pay.channel AS payment_channel,
+       rc.reason_code AS cancellation_reason_code, rc.reason AS cancellation_reason, rc.actor AS cancellation_actor
+     FROM rides r
+     JOIN users u ON u.id = r.user_id
+     LEFT JOIN drivers d ON d.id = r.driver_id
+     LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+     LEFT JOIN payments pay ON pay.ride_id = r.id
+     LEFT JOIN ride_cancellations rc ON rc.ride_id = r.id
+     WHERE r.id = $1`,
+    [rideId]
+  )
+  return res.rows[0] ?? null
 }
 
 // ─── Rental Packages (admin CRUD) ────────────────────────────────────────────

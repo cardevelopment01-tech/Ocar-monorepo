@@ -1,6 +1,7 @@
 'use client'
 import React from 'react'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Car, ArrowRight, RefreshCw, Clock, MapPin } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
@@ -31,7 +32,8 @@ function SkeletonRows({ cols }: { cols: number }) {
 
 const LIMIT = 20
 
-export default function RidesPage() {
+function RidesPageContent() {
+  const searchParams = useSearchParams()
   const [rides, setRides] = useState<AdminRideItem[]>([])
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState(1)
@@ -58,6 +60,14 @@ export default function RidesPage() {
       setResolving(false)
     }
   }
+
+  // Deep link from other admin pages (e.g. SOS "View ride") — opens the ride
+  // detail directly regardless of the current list/filters/pagination.
+  useEffect(() => {
+    const rideId = searchParams.get('ride')
+    if (!rideId) return
+    adminRideApi.getById(rideId).then(setSelected).catch(() => {})
+  }, [searchParams])
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -245,12 +255,19 @@ export default function RidesPage() {
               <span className="text-text-muted text-sm">{fmt(selected.requested_at)}</span>
             </div>
 
-            {selected.review_flagged_at && selected.status === 'in_progress' && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
-                <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Flagged — possibly stuck</p>
-                <p className="text-xs text-amber-700">
-                  No driver GPS update since {fmt(selected.review_flagged_at)}
-                  {selected.review_reason ? ` (${selected.review_reason.replace(/_/g, ' ')})` : ''}
+            {selected.status === 'in_progress' && (
+              <div className={selected.review_flagged_at
+                ? 'bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2'
+                : 'bg-surface-2 border border-border-light rounded-xl p-3 space-y-2'}>
+                <p className={selected.review_flagged_at
+                  ? 'text-xs font-semibold text-amber-800 uppercase tracking-wide'
+                  : 'text-xs font-semibold text-text-secondary uppercase tracking-wide'}>
+                  {selected.review_flagged_at ? 'Flagged — possibly stuck' : 'Trip in progress'}
+                </p>
+                <p className={selected.review_flagged_at ? 'text-xs text-amber-700' : 'text-xs text-text-muted'}>
+                  {selected.review_flagged_at
+                    ? `No driver GPS update since ${fmt(selected.review_flagged_at)}${selected.review_reason ? ` (${selected.review_reason.replace(/_/g, ' ')})` : ''}`
+                    : 'Not auto-flagged yet — resolve manually if this ride needs intervention.'}
                 </p>
                 <div className="flex gap-2 pt-1">
                   <button
@@ -350,5 +367,13 @@ export default function RidesPage() {
         )}
       </SlideOver>
     </div>
+  )
+}
+
+export default function RidesPage() {
+  return (
+    <Suspense fallback={null}>
+      <RidesPageContent />
+    </Suspense>
   )
 }

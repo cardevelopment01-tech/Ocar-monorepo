@@ -225,6 +225,12 @@ export async function listAdminRides(query: {
   return { rides: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
 }
 
+export async function getAdminRideById(rideId: bigint) {
+  const ride = await repo.getAdminRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+  return ride
+}
+
 export async function forceResolveAdminRide(
   rideId: bigint,
   action: 'complete' | 'cancel',

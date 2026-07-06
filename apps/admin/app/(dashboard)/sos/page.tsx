@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Shield, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Shield, CheckCircle, Clock, AlertTriangle, ExternalLink } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { safetyApi, type SosAlert } from '@/lib/safety-api'
@@ -28,6 +29,7 @@ function elapsed(iso: string) {
 }
 
 export default function SOSPage() {
+  const router = useRouter()
   const [alerts,         setAlerts]         = useState<SosAlert[]>([])
   const [loading,        setLoading]        = useState(true)
   const [actingId,       setActingId]       = useState<string | null>(null)
@@ -161,6 +163,13 @@ export default function SOSPage() {
                     className="px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 transition-colors text-text-secondary disabled:opacity-50"
                   >
                     False Alarm
+                  </button>
+                  <button
+                    onClick={() => router.push(`/rides?ride=${sos.ride_id}`)}
+                    className="ml-auto flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 transition-colors text-text-secondary"
+                  >
+                    <ExternalLink size={14} />
+                    View ride
                   </button>
                 </div>
               </div>
