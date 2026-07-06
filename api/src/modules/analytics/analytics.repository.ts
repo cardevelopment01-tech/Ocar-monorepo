@@ -11,7 +11,7 @@ export async function getDailyRevenue(days: number): Promise<DailyRevenue[]> {
        COALESCE(SUM(p.amount), 0)                         AS revenue,
        COUNT(r.id)                                        AS ride_count
      FROM rides r
-     LEFT JOIN payments p ON p.ride_id = r.id AND p.status = 'captured'
+     LEFT JOIN payments p ON p.ride_id = r.id AND p.status = 'completed'
      WHERE r.requested_at >= NOW() - ($1 || ' days')::INTERVAL
        AND r.status = 'completed'
      GROUP BY day
@@ -85,7 +85,7 @@ export async function getCityBreakdown(days: number): Promise<CityBreakdown[]> {
      FROM cities c
      LEFT JOIN rides r ON r.origin_city_id = c.id AND r.status = 'completed'
        AND r.requested_at >= NOW() - ($1 || ' days')::INTERVAL
-     LEFT JOIN payments p ON p.ride_id = r.id AND p.status = 'captured'
+     LEFT JOIN payments p ON p.ride_id = r.id AND p.status = 'completed'
      GROUP BY c.id, c.name
      ORDER BY ride_count DESC`,
     [days]
@@ -106,7 +106,7 @@ export async function getCategoryBreakdown(days: number): Promise<CategoryBreakd
      FROM vehicle_categories vc
      LEFT JOIN rides r ON r.category_id = vc.id AND r.status = 'completed'
        AND r.requested_at >= NOW() - ($1 || ' days')::INTERVAL
-     LEFT JOIN payments p ON p.ride_id = r.id AND p.status = 'captured'
+     LEFT JOIN payments p ON p.ride_id = r.id AND p.status = 'completed'
      GROUP BY vc.id, vc.display_name
      ORDER BY ride_count DESC`,
     [days]
