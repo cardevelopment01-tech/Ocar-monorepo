@@ -19,6 +19,7 @@ interface RideMapSceneProps {
   showDrop?: boolean
   breadcrumb?: [number, number][]
   userPos?: [number, number]
+  nearbyDrivers?: Array<{ driver_id: string; lat: number; lng: number }>
 }
 
 export default function RideMapScene({
@@ -32,10 +33,12 @@ export default function RideMapScene({
   showDrop = true,
   breadcrumb,
   userPos,
+  nearbyDrivers,
 }: RideMapSceneProps) {
   const isRecap      = routeMode === 'recap'
   const isPickupLeg  = routeMode === 'driver-pickup'
   const isInProgress = routeMode === 'driver-dest'
+  const isSearching  = routeMode === 'pickup-dest'
 
   return (
     <MapViewInner center={center} zoom={13}>
@@ -51,6 +54,9 @@ export default function RideMapScene({
       {isInProgress && breadcrumb && <BreadcrumbTrail positions={breadcrumb} />}
       <RoutePolyline encoded={encodedPolyline} variant={isPickupLeg ? 'pickup-leg' : 'default'} />
       {driverPos && !isRecap && <CarMarker position={driverPos} heading={driverHeading} />}
+      {isSearching && !driverPos && nearbyDrivers?.map(d => (
+        <CarMarker key={d.driver_id} position={[d.lat, d.lng]} />
+      ))}
     </MapViewInner>
   )
 }

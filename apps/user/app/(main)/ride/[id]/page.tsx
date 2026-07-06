@@ -94,6 +94,7 @@ export default function RidePage() {
   const breadcrumbRef  = useRef<[number, number][]>([])
   const [breadcrumb, setBreadcrumb] = useState<[number, number][]>([])
   const [userPos,        setUserPos]        = useState<[number, number] | undefined>(undefined)
+  const [nearbyDrivers,  setNearbyDrivers]  = useState<Array<{ driver_id: string; lat: number; lng: number }>>([])
   const rideStatusRef  = useRef(rideStatus)
 
   // Keep ref in sync so the driver:location handler reads the live status without stale closure
@@ -108,6 +109,17 @@ export default function RidePage() {
     )
     return () => navigator.geolocation.clearWatch(id)
   }, [])
+
+  // Ambient "drivers near you" markers while searching — stops once a driver is assigned
+  useEffect(() => {
+    if (rideStatus !== 'requested' || !ride) { setNearbyDrivers([]); return }
+    const fetchNearby = async () => {
+      try { setNearbyDrivers(await rideApi.getNearbyDrivers(ride.origin_lat, ride.origin_lng)) } catch { /* ignore */ }
+    }
+    void fetchNearby()
+    const id = setInterval(fetchNearby, 8000)
+    return () => clearInterval(id)
+  }, [rideStatus, ride?.origin_lat, ride?.origin_lng])
 
   const { pos: smoothPos, heading: smoothHeading } = useInterpolatedPosition(driverPos, 0)
 
@@ -321,6 +333,7 @@ export default function RidePage() {
           showDrop={hasDest}
           breadcrumb={breadcrumb}
           userPos={userPos}
+          nearbyDrivers={nearbyDrivers}
         />
 
         {/* Dev socket indicator */}
