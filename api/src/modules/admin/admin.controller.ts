@@ -371,6 +371,18 @@ export async function getAdminRides(req: Request, res: Response, next: NextFunct
   } catch (err) { next(err) }
 }
 
+export async function forceResolveAdminRide(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { action, note } = req.body as { action: 'complete' | 'cancel'; note?: string }
+    if (action !== 'complete' && action !== 'cancel') {
+      res.status(400).json({ error: 'action must be complete or cancel', code: 'VALIDATION_ERROR' })
+      return
+    }
+    const result = await service.forceResolveAdminRide(BigInt(req.params['id']!), action, req.admin!.id, note)
+    res.json(result)
+  } catch (err) { next(err) }
+}
+
 // ─── Admin Rental Packages ────────────────────────────────────────────────────
 
 export async function getAdminRentalPackages(_req: Request, res: Response, next: NextFunction): Promise<void> {

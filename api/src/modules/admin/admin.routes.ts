@@ -78,6 +78,7 @@ router.patch('/safety/disputes/:id/resolve', controller.resolveAdminDispute)
 
 // ─── Rides ────────────────────────────────────────────────────────────────────
 router.get('/rides', controller.getAdminRides)
+router.post('/rides/:id/force-resolve', requireAdmin('super_admin', 'ops_admin'), controller.forceResolveAdminRide)
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 router.get('/users',                controller.getAdminUsers)

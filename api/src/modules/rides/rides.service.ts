@@ -588,67 +588,64 @@ export async function cancelRideAsDriver(
   return { success: true }
 }
 
-// ── Demo helpers (non-production only) ───────────────────────
+// ── Stuck ride resolution (sweeper timeout + admin override) ──
 
-export async function demoForceComplete(rideId: bigint, userId: bigint) {
+export async function forceResolveRide(
+  rideId: bigint,
+  outcome: 'completed' | 'cancelled',
+  actor: 'admin' | 'timeout',
+  note?: string,
+  actorId?: bigint,
+) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
-  if (BigInt(ride.user_id) !== userId) throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
-
-  const completedAt = new Date().toISOString()
-  await repo.updateRideStatus(rideId, 'completed', { completed_at: completedAt })
-  await repo.logStatusHistory({
-    rideId,
-    fromStatus: ride.status,
-    toStatus:   'completed',
-    actor:      'system',
-    note:       'demo force-complete',
-  })
-
-  if (ride.driver_id) {
-    await pool.query(
-      `UPDATE driver_sessions
-       SET status = 'online', trips_completed = trips_completed + 1
-       WHERE driver_id = $1 AND status IN ('online', 'on_trip')`,
-      [BigInt(ride.driver_id)]
-    )
-    await pool.query(
-      `UPDATE driver_location_snapshots SET is_available = true WHERE driver_id = $1`,
-      [BigInt(ride.driver_id)]
-    )
+  if (ride.status !== 'in_progress') {
+    throw Object.assign(new Error('Ride is not in progress'), { statusCode: 409 })
   }
 
-  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'completed', completedAt })
-  return { success: true }
-}
+  const timestampField = outcome === 'completed' ? 'completed_at' : 'cancelled_at'
 
-export async function demoForceCancel(rideId: bigint, userId: bigint) {
-  const ride = await repo.getRideById(rideId)
-  if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
-  if (BigInt(ride.user_id) !== userId) throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
 
-  await repo.updateRideStatus(rideId, 'cancelled')
-  await repo.logStatusHistory({
-    rideId,
-    fromStatus: ride.status,
-    toStatus:   'cancelled',
-    actor:      'user',
-    note:       'demo force-cancel',
-  })
-
-  if (ride.driver_id) {
-    await pool.query(
-      `UPDATE driver_sessions SET status = 'online'
-       WHERE driver_id = $1 AND status IN ('online', 'on_trip')`,
-      [BigInt(ride.driver_id)]
+    const upd = await client.query(
+      `UPDATE rides SET status = $2, ${timestampField} = now(), review_flagged_at = NULL, updated_at = now()
+       WHERE id = $1 AND status = 'in_progress'`,
+      [rideId, outcome]
     )
-    await pool.query(
-      `UPDATE driver_location_snapshots SET is_available = true WHERE driver_id = $1`,
-      [BigInt(ride.driver_id)]
+    if ((upd.rowCount ?? 0) === 0) {
+      throw Object.assign(new Error('Ride status changed — please refresh'), { statusCode: 409 })
+    }
+
+    await client.query(
+      `INSERT INTO ride_status_history (ride_id, from_status, to_status, actor, actor_id, note)
+       VALUES ($1, 'in_progress', $2, $3, $4, $5)`,
+      [rideId, outcome, actor, actorId ?? null, note ?? null]
     )
+
+    if (ride.driver_id) {
+      const tripsIncrement = outcome === 'completed' ? ', trips_completed = trips_completed + 1' : ''
+      await client.query(
+        `UPDATE driver_sessions SET status = 'online'${tripsIncrement}
+         WHERE driver_id = $1 AND status = 'on_trip'`,
+        [BigInt(ride.driver_id)]
+      )
+      await client.query(
+        `UPDATE driver_location_snapshots SET is_available = true WHERE driver_id = $1`,
+        [BigInt(ride.driver_id)]
+      )
+    }
+
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
   }
 
-  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'cancelled' })
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: outcome, resolvedBy: actor })
   return { success: true }
 }
 
@@ -686,6 +683,8 @@ export async function verifyEndOTP(
     completed_at:        completedAt,
     actual_distance_km:  actualDistanceKm  ?? null,
     actual_duration_min: actualDurationMin ?? null,
+    review_flagged_at:   null,
+    review_reason:       null,
   })
 
   await repo.logStatusHistory({

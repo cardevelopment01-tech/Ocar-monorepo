@@ -6,6 +6,7 @@ import { Phone, MessageSquare, MapPin, Navigation, X, RotateCcw, CheckCircle, Sh
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
+import { safetyApi } from '@/lib/safety-api'
 import { formatReturnAt } from '@/lib/utils'
 import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
@@ -85,6 +86,8 @@ export default function RidePage() {
   const [endOtp,         setEndOtp]         = useState<string | null>(null)
   const [endOtpCopied,   setEndOtpCopied]   = useState(false)
   const [showCancelSheet, setShowCancelSheet] = useState(false)
+  const [reportSending,  setReportSending]  = useState(false)
+  const [reportSent,     setReportSent]     = useState(false)
   const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastFetch      = useRef<{ mode: RouteMode; origin: [number, number]; dest: [number, number]; at: number } | null>(null)
   const fetchSeq       = useRef(0)
@@ -120,6 +123,20 @@ export default function RidePage() {
       }
     } catch { /* ignore */ }
   }, [rideId])
+
+  async function handleReportProblem() {
+    setReportSending(true)
+    try {
+      await safetyApi.triggerSos({
+        rideId,
+        severity: 'low',
+        notes: 'Rider reported this trip appears stuck (no driver updates).',
+      })
+      setReportSent(true)
+    } catch { /* keep button available to retry */ } finally {
+      setReportSending(false)
+    }
+  }
 
   useEffect(() => {
     if (!rideId) return
@@ -177,12 +194,20 @@ export default function RidePage() {
         setBreadcrumb(next)
       }
     }
+    const onStuckFlagged = (data: { reason?: string }) => {
+      setRide(prev => prev ? {
+        ...prev,
+        review_flagged_at: prev.review_flagged_at ?? new Date().toISOString(),
+        review_reason:      data.reason ?? prev.review_reason,
+      } : prev)
+    }
 
     socket.on('connect',            onConnect)
     socket.on('disconnect',         onDisconnect)
     socket.on('ride:status_update', onStatusUpdate)
     socket.on('ride:driver_assigned', onDriverAssigned)
     socket.on('driver:location',    onDriverLocation)
+    socket.on('ride:stuck_flagged', onStuckFlagged)
 
     // Reconcile ride state when the tab resumes from background —
     // the poll and socket may have stalled while the screen was off.
@@ -200,6 +225,7 @@ export default function RidePage() {
       socket.off('ride:status_update', onStatusUpdate)
       socket.off('ride:driver_assigned', onDriverAssigned)
       socket.off('driver:location',    onDriverLocation)
+      socket.off('ride:stuck_flagged', onStuckFlagged)
       document.removeEventListener('visibilitychange', onVisible)
       clearTimeout(fallbackTimer)
       if (pollRef.current) clearInterval(pollRef.current)
@@ -607,6 +633,15 @@ export default function RidePage() {
                   )}
                   {rideStatus === 'in_progress' && (
                     <div className="space-y-2">
+                      {ride?.review_flagged_at && (
+                        <div className="flex items-start gap-2 px-4 py-2.5 rounded-2xl"
+                          style={{ background: 'rgba(217,119,6,0.06)', border: '1px solid rgba(217,119,6,0.18)' }}>
+                          <Shield size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                          <span className="text-sm font-medium text-amber-700">
+                            We noticed this trip hasn&apos;t updated in a while. Our support team has been notified and is reviewing it.
+                          </span>
+                        </div>
+                      )}
                       {fare && (
                         <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl"
                           style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
@@ -749,6 +784,18 @@ export default function RidePage() {
                 >
                   <X size={14} strokeWidth={2} />
                   Cancel ride
+                </button>
+              )}
+
+              {rideStatus === 'in_progress' && (
+                <button
+                  onClick={() => void handleReportProblem()}
+                  disabled={reportSending || reportSent}
+                  className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm font-medium text-amber-600 active:opacity-70 transition-opacity disabled:opacity-50"
+                  style={{ background: 'rgba(217,119,6,0.05)', border: '1px solid rgba(217,119,6,0.12)' }}
+                >
+                  <Shield size={14} strokeWidth={2} />
+                  {reportSent ? 'Support notified' : reportSending ? 'Reporting…' : "Something's wrong"}
                 </button>
               )}
 

@@ -45,6 +45,19 @@ export default function RidesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
   const [selected, setSelected] = useState<AdminRideItem | null>(null)
+  const [resolving, setResolving] = useState(false)
+
+  async function handleForceResolve(action: 'complete' | 'cancel') {
+    if (!selected) return
+    setResolving(true)
+    try {
+      await adminRideApi.forceResolve(selected.id, action)
+      setSelected(null)
+      await fetchRides()
+    } finally {
+      setResolving(false)
+    }
+  }
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -231,6 +244,32 @@ export default function RidesPage() {
               )}
               <span className="text-text-muted text-sm">{fmt(selected.requested_at)}</span>
             </div>
+
+            {selected.review_flagged_at && selected.status === 'in_progress' && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Flagged — possibly stuck</p>
+                <p className="text-xs text-amber-700">
+                  No driver GPS update since {fmt(selected.review_flagged_at)}
+                  {selected.review_reason ? ` (${selected.review_reason.replace(/_/g, ' ')})` : ''}
+                </p>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    disabled={resolving}
+                    onClick={() => void handleForceResolve('cancel')}
+                    className="px-3 py-1.5 text-xs font-semibold bg-danger text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  >
+                    Force cancel
+                  </button>
+                  <button
+                    disabled={resolving}
+                    onClick={() => void handleForceResolve('complete')}
+                    className="px-3 py-1.5 text-xs font-semibold bg-success text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  >
+                    Force complete
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               {[

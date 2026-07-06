@@ -41,6 +41,7 @@ export default function App() {
   const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, clearRide, activeRide } = useRideStore()
   const [accepting, setAccepting] = useState(false)
   const [rideCancelled, setRideCancelled] = useState(false)
+  const [forceEndedMessage, setForceEndedMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -149,11 +150,21 @@ export default function App() {
   useEffect(() => {
     if (!activeRide) return
     const socket = getDriverSocket()
-    const onStatusUpdate = (data: { status: string }) => {
-      if (data.status !== 'cancelled') return
+    const onStatusUpdate = (data: { status: string; resolvedBy?: string }) => {
+      // resolvedBy is only set by the stuck-ride sweeper/admin force-resolve —
+      // normal driver-initiated completion (verifyEndOtp) never sets it, so
+      // this doesn't interfere with the driver's own end-of-trip navigation.
+      const isForceResolved = data.status === 'completed' && !!data.resolvedBy
+      if (data.status !== 'cancelled' && !isForceResolved) return
       socket.emit('leave:ride', activeRide.id)
       clearRide()
-      setRideCancelled(true)
+      if (data.resolvedBy === 'timeout') {
+        setForceEndedMessage('This trip was automatically ended due to inactivity')
+      } else if (data.resolvedBy === 'admin') {
+        setForceEndedMessage('This trip was ended by support')
+      } else {
+        setRideCancelled(true)
+      }
       navigate('/', { replace: true })
     }
     const onConnect = () => { socket.emit('join:ride', activeRide.id) }
@@ -173,6 +184,12 @@ export default function App() {
     const t = setTimeout(() => setRideCancelled(false), 3000)
     return () => clearTimeout(t)
   }, [rideCancelled])
+
+  useEffect(() => {
+    if (!forceEndedMessage) return
+    const t = setTimeout(() => setForceEndedMessage(null), 3000)
+    return () => clearTimeout(t)
+  }, [forceEndedMessage])
 
   const handleAcceptRide = async (rideId: string, rideType: string) => {
     if (accepting) return
@@ -306,6 +323,16 @@ export default function App() {
           style={{ background: '#DC2626', boxShadow: '0 4px 16px rgba(220,38,38,0.35)' }}
         >
           Ride cancelled by the passenger
+        </div>
+      )}
+
+      {/* Force-resolved banner — shown when the stuck-ride sweeper or an admin ends a trip */}
+      {forceEndedMessage && (
+        <div
+          className="fixed top-4 left-4 right-4 z-50 rounded-2xl px-4 py-3 text-sm font-semibold text-white text-center"
+          style={{ background: '#DC2626', boxShadow: '0 4px 16px rgba(220,38,38,0.35)' }}
+        >
+          {forceEndedMessage}
         </div>
       )}
 

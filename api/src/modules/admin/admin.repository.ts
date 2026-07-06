@@ -750,6 +750,7 @@ export async function listAdminRides(filters: {
        r.id::text, r.status, r.ride_type, r.is_return_cab,
        r.origin_address, r.destination_address,
        r.requested_at, r.accepted_at, r.driver_arrived_at, r.started_at, r.completed_at,
+       r.review_flagged_at, r.review_reason,
        u.name AS user_name, u.phone AS user_phone,
        d.full_name AS driver_name, d.phone AS driver_phone,
        COALESCE(fs.total_final, fs.total_estimated)::text AS fare,

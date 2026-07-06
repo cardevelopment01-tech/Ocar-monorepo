@@ -364,6 +364,34 @@ export async function logStatusHistory(data: {
   )
 }
 
+// ── Stuck ride review (stale driver heartbeat sweeper) ────────
+
+export interface StaleRideRow {
+  id: string
+  driver_id: string
+  review_flagged_at: string | null
+}
+
+export async function findStaleInProgressRides(staleSeconds: number): Promise<StaleRideRow[]> {
+  const res = await pool.query<StaleRideRow>(
+    `SELECT r.id, r.driver_id, r.review_flagged_at
+     FROM rides r
+     JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
+     WHERE r.status = 'in_progress'
+       AND now() - dls.recorded_at > ($1 || ' seconds')::interval`,
+    [staleSeconds]
+  )
+  return res.rows
+}
+
+export async function flagRideForReview(rideId: bigint, reason: string) {
+  await pool.query(
+    `UPDATE rides SET review_flagged_at = now(), review_reason = $2
+     WHERE id = $1 AND review_flagged_at IS NULL`,
+    [rideId, reason]
+  )
+}
+
 export async function createRideAssignment(data: {
   rideId: bigint
   driverId: bigint

@@ -6,6 +6,8 @@ import { testConnection as testRedis, client as redisClient } from './db/redis'
 import { initSocketServer } from './websocket/socket.server'
 import { notificationsWorker } from './jobs/workers/notifications.worker'
 import { gpsFlushWorker } from './jobs/workers/gps-flush.worker'
+import { cleanupWorker } from './jobs/workers/cleanup.worker'
+import { cleanupQueue } from './jobs/queues'
 
 async function start(): Promise<void> {
   const dbOk = await testConnection()
@@ -30,6 +32,13 @@ async function start(): Promise<void> {
   console.log('[Worker] Notifications worker started')
   void gpsFlushWorker
   console.log('[Worker] GPS flush worker started')
+  void cleanupWorker
+  console.log('[Worker] Cleanup worker started')
+  await cleanupQueue.add(
+    'sweep_stuck_rides',
+    {},
+    { repeat: { every: 60_000 }, removeOnComplete: true, removeOnFail: true }
+  )
 
   httpServer.listen(config.API_PORT, () => {
     console.log(

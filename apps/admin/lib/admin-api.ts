@@ -131,6 +131,8 @@ export interface AdminRideItem {
   driver_arrived_at: string | null
   started_at: string | null
   completed_at: string | null
+  review_flagged_at: string | null
+  review_reason: string | null
   user_name: string
   user_phone: string
   driver_name: string | null
@@ -152,6 +154,9 @@ export const adminRideApi = {
   list: async (params: { status?: string; ride_type?: string; search?: string; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
     const res = await api.get('/api/v1/admin/rides', { params })
     return res.data as AdminRidesResponse
+  },
+  forceResolve: async (rideId: string, action: 'complete' | 'cancel', note?: string): Promise<void> => {
+    await api.post(`/api/v1/admin/rides/${rideId}/force-resolve`, { action, note })
   },
 }
 

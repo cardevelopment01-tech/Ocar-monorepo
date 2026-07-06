@@ -51,6 +51,8 @@ export type RideDetail = {
   accepted_at: string | null
   started_at: string | null
   completed_at: string | null
+  review_flagged_at: string | null
+  review_reason: string | null
   startOtp: string | undefined
   endOtp: string | undefined
   driver_current_lat: number | null
@@ -204,9 +206,5 @@ export const rideApi = {
     if (reasonCode !== undefined) body['reasonCode'] = reasonCode
     if (reason     !== undefined) body['reason']     = reason
     await api.post(`/api/v1/rides/${rideId}/cancel`, body)
-  },
-
-  demoForce: async (rideId: string, action: 'complete' | 'cancel'): Promise<void> => {
-    await api.post(`/api/v1/rides/${rideId}/demo-force`, { action })
   },
 }

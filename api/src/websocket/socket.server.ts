@@ -204,4 +204,9 @@ export const socketEvents = {
   sendAdminDriverUpdate: (data: object) => {
     getIO().to('admin:ops').emit('driver:location_update', data)
   },
+
+  sendStuckRideFlagged: (rideId: string, data: object) => {
+    getIO().to(`ride:${rideId}`).emit('ride:stuck_flagged', data)
+    getIO().to('admin:ops').emit('ride:stuck_flagged', { rideId, ...data })
+  },
 }

@@ -3,6 +3,7 @@ import { AppErrors } from '@/constants/errors'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
 import type { DriverStatus, UpdateDriverStatusPayload } from './admin.types'
+import { forceResolveRide as resolveStuckRide } from '@/modules/rides/rides.service'
 
 const VALID_STATUSES = new Set<DriverStatus>(['pending_docs', 'pending_approval', 'active', 'suspended', 'banned', 'docs_rejected'])
 
@@ -222,6 +223,16 @@ export async function listAdminRides(query: {
   if (query.search    !== undefined) q.search    = query.search
   const { rows, total } = await repo.listAdminRides(q)
   return { rides: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
+}
+
+export async function forceResolveAdminRide(
+  rideId: bigint,
+  action: 'complete' | 'cancel',
+  adminId: bigint,
+  note?: string,
+) {
+  const outcome = action === 'complete' ? 'completed' as const : 'cancelled' as const
+  return resolveStuckRide(rideId, outcome, 'admin', note, adminId)
 }
 
 // ─── Rental Packages ──────────────────────────────────────────────────────────
