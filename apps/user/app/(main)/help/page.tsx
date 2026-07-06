@@ -15,7 +15,7 @@ const FAQS = [
   },
   {
     q: 'How do I start my ride?',
-    a: 'Once the driver arrives, share the 6-digit OTP shown on your ride tracking screen with the driver. The trip begins only after the driver enters the correct OTP.',
+    a: 'Once the driver arrives, share the 4-digit OTP shown on your ride tracking screen with the driver. The trip begins only after the driver enters the correct OTP.',
   },
   {
     q: 'Can I cancel a booked ride?',

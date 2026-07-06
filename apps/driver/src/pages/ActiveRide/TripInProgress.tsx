@@ -142,7 +142,7 @@ export default function TripInProgress() {
   }
 
   const handleCompleteTrip = async () => {
-    if (otp.length !== 6 || !activeRide) return
+    if (otp.length !== 4 || !activeRide) return
     setCompleting(true)
     setOtpError(false)
     try {
@@ -300,14 +300,14 @@ export default function TripInProgress() {
                 </button>
               </div>
 
-              <OtpInput value={otp} onChange={v => { setOtp(v); setOtpError(false) }} error={otpError} />
+              <OtpInput length={4} value={otp} onChange={v => { setOtp(v); setOtpError(false) }} error={otpError} />
               {otpError && (
                 <p className="text-accent-red text-xs text-center mt-3 font-semibold">Wrong OTP, try again</p>
               )}
 
               <button
                 onClick={handleCompleteTrip}
-                disabled={otp.length !== 6 || completing}
+                disabled={otp.length !== 4 || completing}
                 className="btn-go w-full mt-5 active:scale-95 transition-transform"
                 style={{ minHeight: 56 }}
               >

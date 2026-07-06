@@ -18,8 +18,8 @@ interface OtpState {
   expiresAt: string
 }
 
-export function generateOtp(): string {
-  return String(crypto.randomInt(0, 10 ** OTP_LENGTH)).padStart(OTP_LENGTH, '0')
+export function generateOtp(length: number = OTP_LENGTH): string {
+  return String(crypto.randomInt(0, 10 ** length)).padStart(length, '0')
 }
 
 export function hashOtp(otp: string): string {

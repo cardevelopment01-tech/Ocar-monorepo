@@ -16,7 +16,7 @@ export default function OTPVerify() {
   const [loading, setLoading] = useState(false)
 
   const handleVerify = async () => {
-    if (otp.length !== 6 || !activeRide) return
+    if (otp.length !== 4 || !activeRide) return
     setLoading(true)
     setError(false)
     try {
@@ -66,7 +66,7 @@ export default function OTPVerify() {
           Rider OTP
         </h1>
         <p className="text-text-secondary text-sm text-center mb-2">
-          Ask the rider for their 6-digit OTP
+          Ask the rider for their 4-digit OTP
         </p>
 
         {/* Route line */}
@@ -100,6 +100,7 @@ export default function OTPVerify() {
         >
           <div className="mb-4">
             <OtpInput
+              length={4}
               value={otp}
               onChange={v => { setOtp(v); setError(false) }}
               error={error}
@@ -113,7 +114,7 @@ export default function OTPVerify() {
 
           <button
             onClick={handleVerify}
-            disabled={otp.length !== 6 || loading}
+            disabled={otp.length !== 4 || loading}
             className="btn-go w-full flex items-center justify-center gap-2 active:scale-95 transition-transform"
             style={{ minHeight: 56 }}
           >

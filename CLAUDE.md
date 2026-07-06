@@ -30,7 +30,7 @@ cab-booking-platform/
 | Auth | JWT access + refresh; SHA-256 refresh hash stored in DB |
 | Payments | Razorpay + driver/user wallet ledger (M08 done) |
 | Storage | AWS S3 (`@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`) |
-| OTP | SHA-256 hash of 6-digit numeric OTP stored in DB/Redis |
+| OTP | SHA-256 hash of numeric OTP stored in DB/Redis (6-digit login OTP, 4-digit ride start/end OTP) |
 | User portal | Next.js 16.2.7, React 19, Tailwind v3, App Router |
 | Driver portal | Vite 5, React 19, React Router v6, Zustand persist, Tailwind v3 |
 | Admin portal | Next.js 16.2.7, React 19, Tailwind v3, App Router |
@@ -72,7 +72,8 @@ EXECUTE FUNCTION update_updated_at()
 ### OTP for ride start/end
 Ride OTPs (trip_start, trip_end) use **SHA-256** via `hashOtp()` from `@/lib/otp`.
 NOT bcrypt. NOT Redis. The hash is stored in `rides.start_otp_hash` / `rides.end_otp_hash`.
-Auth OTPs (login) use Redis + SHA-256 via `consumeOtp()` — different flow entirely.
+Ride OTPs are **4 digits** (`generateOtp(RIDE_OTP_LENGTH)`, `RIDE_OTP_LENGTH` from `@/constants/limits`) — shorter than login OTPs.
+Auth OTPs (login) use Redis + SHA-256 via `consumeOtp()` and are **6 digits** (`OTP_LENGTH`) — different flow entirely.
 
 ### PostGIS parameterized queries
 **Never** build geography from string concatenation. Always use:

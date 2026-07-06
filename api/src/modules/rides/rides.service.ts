@@ -8,6 +8,7 @@ import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES, gpsFlushQueue } from '@/jobs/queues'
 import { socketEvents } from '@/websocket/socket.server'
 import { generateOtp, hashOtp } from '@/lib/otp'
+import { RIDE_OTP_LENGTH } from '@/constants/limits'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import type { BookingRequest } from './rides.types'
 import {
@@ -349,7 +350,7 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
 }
 
 export async function markArrived(driverId: bigint, rideId: bigint) {
-  const otp  = generateOtp()
+  const otp  = generateOtp(RIDE_OTP_LENGTH)
   const hash = hashOtp(otp)
 
   await repo.updateRideStatus(rideId, 'driver_arrived', {
@@ -402,7 +403,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
 
   if (!valid) throw Object.assign(new Error('Invalid OTP'), { httpStatus: 422 })
 
-  const endOtp  = generateOtp()
+  const endOtp  = generateOtp(RIDE_OTP_LENGTH)
   const endHash = hashOtp(endOtp)
 
   await repo.updateRideStatus(rideId, 'in_progress', {
