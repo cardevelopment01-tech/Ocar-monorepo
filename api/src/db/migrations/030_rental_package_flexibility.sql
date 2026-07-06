@@ -3,10 +3,20 @@
 -- That made it impossible to add packages like 30min/10km or 1hr/20km, or to
 -- change an existing package's km_limit independent of its duration.
 
-ALTER TABLE rental_packages
-  DROP CONSTRAINT IF EXISTS rental_packages_duration_hours_check,
-  DROP CONSTRAINT IF EXISTS rental_packages_km_limit_check,
-  DROP CONSTRAINT IF EXISTS rental_packages_category_id_duration_hours_key;
+-- Drop every existing CHECK/UNIQUE constraint on the table by actual name rather than
+-- guessing — the km_limit = duration_hours * 10 check references two columns, so
+-- Postgres names it the generic "rental_packages_check", not "rental_packages_km_limit_check".
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT conname FROM pg_constraint
+    WHERE conrelid = 'rental_packages'::regclass AND contype IN ('c', 'u')
+  LOOP
+    EXECUTE format('ALTER TABLE rental_packages DROP CONSTRAINT %I', r.conname);
+  END LOOP;
+END $$;
 
 ALTER TABLE rental_packages
   RENAME COLUMN duration_hours TO duration_minutes;
