@@ -271,10 +271,10 @@ export async function updateAdminRentalPackage(
     throw Object.assign(new Error('extra_per_km must be > 0'), { httpStatus: 400 })
   if (body.extra_per_min    !== undefined && (isNaN(body.extra_per_min)    || body.extra_per_min    < 0))
     throw Object.assign(new Error('extra_per_min must be >= 0'), { httpStatus: 400 })
-  if (body.duration_minutes !== undefined && (isNaN(body.duration_minutes) || body.duration_minutes <= 0))
-    throw Object.assign(new Error('duration_minutes must be > 0'), { httpStatus: 400 })
-  if (body.km_limit         !== undefined && (isNaN(body.km_limit)         || body.km_limit         <= 0))
-    throw Object.assign(new Error('km_limit must be > 0'), { httpStatus: 400 })
+  if (body.duration_minutes !== undefined && (isNaN(body.duration_minutes) || body.duration_minutes <= 0 || body.duration_minutes > 1440))
+    throw Object.assign(new Error('duration_minutes must be between 1 and 1440'), { httpStatus: 400 })
+  if (body.km_limit         !== undefined && (isNaN(body.km_limit)         || body.km_limit         <= 0 || body.km_limit         > 1000))
+    throw Object.assign(new Error('km_limit must be between 1 and 1000'), { httpStatus: 400 })
 
   try {
     const pkg = await repo.updateAdminRentalPackage(id, body, adminId)
@@ -293,10 +293,12 @@ export async function createAdminRentalPackage(
   },
   adminId: bigint,
 ) {
-  if (isNaN(body.duration_minutes) || body.duration_minutes <= 0)
-    throw Object.assign(new Error('duration_minutes must be > 0'), { httpStatus: 400 })
-  if (isNaN(body.km_limit)      || body.km_limit      <= 0)
-    throw Object.assign(new Error('km_limit must be > 0'), { httpStatus: 400 })
+  if (isNaN(body.category_id) || body.category_id <= 0)
+    throw Object.assign(new Error('category_id is required'), { httpStatus: 400 })
+  if (isNaN(body.duration_minutes) || body.duration_minutes <= 0 || body.duration_minutes > 1440)
+    throw Object.assign(new Error('duration_minutes must be between 1 and 1440'), { httpStatus: 400 })
+  if (isNaN(body.km_limit)      || body.km_limit      <= 0 || body.km_limit      > 1000)
+    throw Object.assign(new Error('km_limit must be between 1 and 1000'), { httpStatus: 400 })
   if (isNaN(body.package_fare)  || body.package_fare  <= 0)
     throw Object.assign(new Error('package_fare must be > 0'), { httpStatus: 400 })
   if (isNaN(body.extra_per_km)  || body.extra_per_km  <= 0)

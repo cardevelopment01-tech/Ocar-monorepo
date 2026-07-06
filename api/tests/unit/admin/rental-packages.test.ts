@@ -42,6 +42,27 @@ describe('createAdminRentalPackage', () => {
     )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('km_limit') })
   })
 
+  it('rejects duration_minutes above the 1440 (24h) upper bound', async () => {
+    await expect(createAdminRentalPackage(
+      { category_id: 1, duration_minutes: 1441, km_limit: 10, package_fare: 200, extra_per_km: 10, extra_per_min: 1 },
+      ADMIN_ID,
+    )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('duration_minutes') })
+  })
+
+  it('rejects km_limit above the 1000 upper bound', async () => {
+    await expect(createAdminRentalPackage(
+      { category_id: 1, duration_minutes: 60, km_limit: 1001, package_fare: 200, extra_per_km: 10, extra_per_min: 1 },
+      ADMIN_ID,
+    )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('km_limit') })
+  })
+
+  it('rejects missing/invalid category_id', async () => {
+    await expect(createAdminRentalPackage(
+      { category_id: NaN, duration_minutes: 60, km_limit: 10, package_fare: 200, extra_per_km: 10, extra_per_min: 1 },
+      ADMIN_ID,
+    )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('category_id') })
+  })
+
   it('rejects package_fare = 0', async () => {
     await expect(createAdminRentalPackage(
       { category_id: 1, duration_minutes: 240, km_limit: 40, package_fare: 0, extra_per_km: 10, extra_per_min: 1 },
@@ -140,6 +161,18 @@ describe('updateAdminRentalPackage', () => {
     await expect(updateAdminRentalPackage(
       BigInt(1), { duration_minutes: -10 }, ADMIN_ID,
     )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('duration_minutes') })
+  })
+
+  it('rejects duration_minutes above the 1440 (24h) upper bound on update', async () => {
+    await expect(updateAdminRentalPackage(
+      BigInt(1), { duration_minutes: 1441 }, ADMIN_ID,
+    )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('duration_minutes') })
+  })
+
+  it('rejects km_limit above the 1000 upper bound on update', async () => {
+    await expect(updateAdminRentalPackage(
+      BigInt(1), { km_limit: 1001 }, ADMIN_ID,
+    )).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('km_limit') })
   })
 
   it('returns 404 when package does not exist', async () => {
