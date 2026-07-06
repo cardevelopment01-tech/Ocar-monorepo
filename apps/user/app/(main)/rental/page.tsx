@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import {
   ArrowLeft, MapPin, Clock, CalendarClock,
-  CreditCard, Zap, Users, ChevronLeft, ChevronRight,
+  CreditCard, Zap, Users, ChevronLeft, ChevronRight, Navigation,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
@@ -73,6 +73,19 @@ function RentalContent() {
   const originLng     = parseFloat(sp.get('originLng')  ?? '85.8245')
   const originAddress = sp.get('originAddress') ?? 'Pickup location'
   const originCityId  = parseInt(sp.get('originCityId') ?? '1', 10)
+
+  const destAddress = sp.get('destinationAddress') ?? null
+  const hasDestination = destAddress !== null
+
+  function addDestination() {
+    const params = new URLSearchParams({
+      originLat: String(originLat),
+      originLng: String(originLng),
+      originAddress,
+      backTo:    'rental',
+    })
+    router.push(`/search?${params.toString()}`)
+  }
 
   const [selectedCatId,   setSelectedCatId]  = useState<number>(CATEGORIES[1]!.id)
   const [packages,        setPackages]        = useState<RentalPackage[]>([])
@@ -198,6 +211,33 @@ function RentalContent() {
         style={{ scrollbarWidth: 'none' }}
       >
         <div className="px-4 pt-5 pb-6 space-y-6">
+
+          {/* Drop-off (optional) */}
+          <motion.section {...fadeUp(0)}>
+            {hasDestination ? (
+              <motion.button
+                key="dest-chip"
+                initial={{ opacity: 0, scale: 0.94 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={addDestination}
+                className="w-full flex items-center gap-2.5 rounded-2xl px-4 py-3 text-left"
+                style={{ background: '#F1F0FE', border: '1px solid #DDD9FB' }}
+              >
+                <Navigation size={13} strokeWidth={2.2} className="text-violet-600 flex-shrink-0" />
+                <span className="flex-1 min-w-0 text-[12px] font-semibold text-violet-700 truncate">{destAddress}</span>
+                <span className="text-[10px] font-bold text-violet-500 flex-shrink-0">Change</span>
+              </motion.button>
+            ) : (
+              <button
+                onClick={addDestination}
+                className="w-full flex items-center gap-2.5 rounded-2xl px-4 py-3 text-left transition-colors active:bg-slate-50"
+                style={{ border: '1.5px dashed #CBD5E1' }}
+              >
+                <Navigation size={13} strokeWidth={2.2} className="text-slate-400 flex-shrink-0" />
+                <span className="flex-1 text-[12px] font-medium text-slate-400">Add a drop-off (optional)</span>
+              </button>
+            )}
+          </motion.section>
 
           {/* Vehicle category */}
           <motion.section {...fadeUp(0)}>

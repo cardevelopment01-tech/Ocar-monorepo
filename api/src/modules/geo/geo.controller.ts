@@ -67,6 +67,20 @@ export async function getRoute(req: Request, res: Response, next: NextFunction):
   } catch (err) { next(err) }
 }
 
+export async function getTripClassification(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const originLat = parseFloat(req.query['originLat'] as string)
+    const originLng = parseFloat(req.query['originLng'] as string)
+    const destLat   = parseFloat(req.query['destLat'] as string)
+    const destLng   = parseFloat(req.query['destLng'] as string)
+    if ([originLat, originLng, destLat, destLng].some(isNaN)) {
+      res.status(422).json({ error: 'originLat, originLng, destLat, destLng query params required', code: 'VALIDATION_ERROR' })
+      return
+    }
+    res.json(await service.classifyTrip(originLat, originLng, destLat, destLng))
+  } catch (err) { next(err) }
+}
+
 export async function flushTracks(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { tracks } = req.body as {

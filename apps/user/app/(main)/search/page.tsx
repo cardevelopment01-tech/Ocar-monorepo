@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plane, Train, Building2, ShoppingBag,
   GraduationCap, X, Map,
-  Plus, ChevronDown, User, Clock, Heart,
+  Plus, ChevronDown, User, Clock, Heart, ArrowRightLeft,
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -62,8 +62,9 @@ function SearchContent() {
     return null
   })
 
-  const rideType = sp.get('rideType') ?? undefined
-  const backTo   = sp.get('backTo')   ?? undefined
+  const rideType  = sp.get('rideType')  ?? undefined
+  const backTo    = sp.get('backTo')    ?? undefined
+  const tripHours = sp.get('tripHours') ?? undefined
 
   const [mode, setMode] = useState<EditMode>(() => {
     const focus = sp.get('focus')
@@ -85,6 +86,7 @@ function SearchContent() {
   const [gpsReady,    setGpsReady]    = useState(() => !!sp.get('originLat'))
 
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const destInputRef   = useRef<HTMLInputElement>(null)
   const originInputRef = useRef<HTMLInputElement>(null)
   const originTouched  = useRef(false)
@@ -93,6 +95,7 @@ function SearchContent() {
 
   const [forMeOpen, setForMeOpen] = useState(false)
   const [stopToast, setStopToast] = useState(false)
+  const [redirectToast, setRedirectToast] = useState<string | null>(null)
 
   // On mount: try GPS once — fast network-position fix, cached ok up to 1 min
   useEffect(() => {
@@ -117,6 +120,11 @@ function SearchContent() {
       { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 },
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Cancel a pending redirect-toast navigation if the user leaves this screen another way
+  useEffect(() => {
+    return () => { if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current) }
   }, [])
 
   useEffect(() => { modeRef.current = mode }, [mode])
@@ -234,7 +242,12 @@ function SearchContent() {
     }
     setResolving(true)
     try {
-      const route = await geoApi.getRoute(oLat, oLng, dest.lat, dest.lng)
+      const [route, classification] = await Promise.all([
+        geoApi.getRoute(oLat, oLng, dest.lat, dest.lng),
+        // Classification failure must not block booking — fall back to the
+        // safe "outstation" default (same default used for out-of-bounds points)
+        geoApi.classifyTrip(oLat, oLng, dest.lat, dest.lng).catch(() => null),
+      ])
       const params = new URLSearchParams({
         originLat:          String(oLat),
         originLng:          String(oLng),
@@ -249,15 +262,55 @@ function SearchContent() {
       if (route.polyline) params.set('polyline', route.polyline)
       if (rideType)      params.set('rideType', rideType)
 
-      // Return Cab destination picker navigates back to /round-trip with route data
-      if (backTo === 'round_trip') {
-        if (useReplace) router.replace(`/round-trip?${params.toString()}`)
-        else            router.push(`/round-trip?${params.toString()}`)
+      const isInCity  = classification?.scope === 'in_city'
+      const cityLabel = classification?.cityName ?? 'the city'
+
+      function go(path: string) {
+        if (useReplace) router.replace(`${path}?${params.toString()}`)
+        else            router.push(`${path}?${params.toString()}`)
+      }
+
+      function redirectWithToast(path: string, message: string) {
+        setResolving(false)
+        setRedirectToast(message)
+        if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current)
+        redirectTimerRef.current = setTimeout(() => go(path), 1500)
+      }
+
+      // Editing pickup/destination mid-flow from /select-ride — always return there with
+      // the ride type already in progress; never reclassify or bounce to a different flow
+      if (backTo === 'select-ride') {
+        if (tripHours) params.set('tripHours', tripHours)
+        go('/select-ride')
         return
       }
 
-      if (useReplace) router.replace(`/select-ride?${params.toString()}`)
-      else             router.push(`/select-ride?${params.toString()}`)
+      // Return Cab destination picker navigates back to /round-trip — unless the
+      // destination turns out to be within the same city, which round trips can't serve
+      if (backTo === 'round_trip') {
+        if (isInCity) { redirectWithToast('/rental', `That's inside ${cityLabel} — switching to City Rides`); return }
+        go('/round-trip')
+        return
+      }
+
+      // Rental's own destination picker — outstation destinations can't be a rental
+      if (backTo === 'rental') {
+        if (isInCity) go('/rental')
+        else redirectWithToast('/trip-type', `That's outside ${cityLabel} — switching to outstation options`)
+        return
+      }
+
+      // "One Way" tile declared intent — still redirect if the destination is in-city
+      if (rideType === 'one_way') {
+        if (isInCity) { redirectWithToast('/rental', `That's inside ${cityLabel} — switching to City Rides`); return }
+        go('/select-ride')
+        return
+      }
+
+      // No declared intent (home search bar, saved places, "Go again", popular routes) —
+      // auto-detect city vs outstation and route accordingly
+      if (isInCity) go('/rental')
+      else          go('/trip-type')
     } catch {
       setResolving(false)
     }
@@ -693,6 +746,45 @@ function SearchContent() {
             >
               <span className="text-base">🛣️</span>
               Multi-stop trips coming soon
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
+
+      {/* Ride-type mismatch redirect toast */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {redirectToast && (
+            <motion.div
+              key="redirect-toast"
+              role="status"
+              aria-live="polite"
+              initial={{ opacity: 0, y: 16, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.95 }}
+              transition={{ duration: 0.24, ease: EASE }}
+              className="fixed left-1/2 z-[999] flex flex-col gap-2 px-5 py-3.5 rounded-2xl text-white overflow-hidden pointer-events-none"
+              style={{
+                bottom: 'max(84px, calc(env(safe-area-inset-bottom, 0px) + 76px))',
+                x: '-50%',
+                maxWidth: 'calc(100vw - 32px)',
+                background: 'linear-gradient(135deg, #4F46E5 0%, #1E1B4B 100%)',
+                boxShadow: '0 8px 32px rgba(79,70,229,0.35), 0 2px 8px rgba(0,0,0,0.2)',
+              }}
+            >
+              <div className="flex items-center gap-2.5">
+                <ArrowRightLeft size={15} strokeWidth={2.2} className="flex-shrink-0" />
+                <span className="text-[13px] font-semibold">{redirectToast}</span>
+              </div>
+              <div className="h-[3px] rounded-full bg-white/20 overflow-hidden">
+                <motion.div
+                  className="h-full bg-white/80 rounded-full"
+                  initial={{ width: '100%' }}
+                  animate={{ width: '0%' }}
+                  transition={{ duration: 1.5, ease: 'linear' }}
+                />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>,

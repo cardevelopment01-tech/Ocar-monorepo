@@ -183,7 +183,10 @@ function SelectRideContent() {
       originLat: String(originLat), originLng: String(originLng), originAddress,
       destinationLat: String(destinationLat), destinationLng: String(destinationLng), destinationAddress,
       focus,
+      backTo: 'select-ride',
+      rideType,
     })
+    if (rideType === 'round_trip' && tripHours) params.set('tripHours', String(tripHours))
     router.push(`/search?${params.toString()}`)
   }
 

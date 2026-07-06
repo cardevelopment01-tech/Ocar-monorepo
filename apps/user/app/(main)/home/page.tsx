@@ -132,6 +132,10 @@ export default function HomePage() {
     router.push(`/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}`)
   }
 
+  function toOneWay() {
+    router.push(`/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&rideType=one_way`)
+  }
+
   function toRoundTrip() {
     router.push(`/round-trip?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&originCityId=1`)
   }
@@ -143,7 +147,12 @@ export default function HomePage() {
   async function toRide(destLabel: string, dLat: number, dLng: number) {
     setResolving(true)
     try {
-      const route = await geoApi.getRoute(lat, lng, dLat, dLng)
+      const [route, classification] = await Promise.all([
+        geoApi.getRoute(lat, lng, dLat, dLng),
+        // Classification failure must not block booking — fall back to the
+        // safe "outstation" default (same default used for out-of-bounds points)
+        geoApi.classifyTrip(lat, lng, dLat, dLng).catch(() => null),
+      ])
       const params = new URLSearchParams({
         originLat:          String(lat),
         originLng:          String(lng),
@@ -156,7 +165,8 @@ export default function HomePage() {
         originCityId:       '1',
       })
       if (route.polyline) params.set('polyline', route.polyline)
-      router.push(`/select-ride?${params.toString()}`)
+      const path = classification?.scope === 'in_city' ? '/rental' : '/trip-type'
+      router.push(`${path}?${params.toString()}`)
     } catch {
       setResolving(false)
     }
@@ -378,7 +388,7 @@ export default function HomePage() {
                   onClick={
                     s.id === 'rental'    ? toRental :
                     s.id === 'roundtrip' ? toRoundTrip :
-                    toSearch
+                    toOneWay
                   }
                   className="flex flex-col items-center gap-2 py-4 bg-surface border border-border rounded-2xl"
                   style={{ boxShadow: SHADOW }}

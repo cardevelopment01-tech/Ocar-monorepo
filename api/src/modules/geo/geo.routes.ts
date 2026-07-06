@@ -13,6 +13,7 @@ router.get('/autocomplete', controller.getAutocomplete)
 router.get('/place/:placeId', controller.getPlaceDetails)
 router.get('/reverse', controller.getReverseGeocode)
 router.get('/route', controller.getRoute)
+router.get('/classify-trip', controller.getTripClassification)
 
 // ── Authenticated (driver JWT required) ───────────────────────
 // Flush GPS track batch — called every 30s during active trip

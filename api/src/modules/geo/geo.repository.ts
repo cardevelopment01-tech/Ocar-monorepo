@@ -59,6 +59,24 @@ export async function findNearestCity(lat: number, lng: number): Promise<City | 
   return res.rows[0] ?? null
 }
 
+export async function findContainingCity(
+  originLat: number,
+  originLng: number,
+  destLat: number,
+  destLng: number,
+): Promise<{ id: number; name: string } | null> {
+  const res = await pool.query(
+    `SELECT id, name
+     FROM cities
+     WHERE boundary IS NOT NULL
+       AND ST_Contains(boundary, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326))
+       AND ST_Contains(boundary, ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326))
+     LIMIT 1`,
+    [originLat, originLng, destLat, destLng]
+  )
+  return res.rows[0] ?? null
+}
+
 export async function insertGpsTracks(tracks: GpsTrackPayload[]): Promise<void> {
   if (!tracks.length) return
   const client = await pool.connect()

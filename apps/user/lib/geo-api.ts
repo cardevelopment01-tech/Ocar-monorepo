@@ -20,6 +20,12 @@ export type RouteResult = {
   polyline: string
 }
 
+export type TripClassification = {
+  scope: 'in_city' | 'outstation'
+  cityId: number | null
+  cityName: string | null
+}
+
 export const geoApi = {
   autocomplete: async (
     q: string,
@@ -53,5 +59,17 @@ export const geoApi = {
       params: { originLat, originLng, destLat, destLng },
     })
     return res.data as RouteResult
+  },
+
+  classifyTrip: async (
+    originLat: number,
+    originLng: number,
+    destLat: number,
+    destLng: number,
+  ): Promise<TripClassification> => {
+    const res = await api.get('/api/v1/geo/classify-trip', {
+      params: { originLat, originLng, destLat, destLng },
+    })
+    return res.data as TripClassification
   },
 }

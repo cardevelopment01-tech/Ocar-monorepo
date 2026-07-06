@@ -69,6 +69,18 @@ export async function getRoute(
   return google.getRoute(originLat, originLng, destLat, destLng)
 }
 
+export async function classifyTrip(
+  originLat: number,
+  originLng: number,
+  destLat: number,
+  destLng: number,
+) {
+  const city = await repo.findContainingCity(originLat, originLng, destLat, destLng)
+  return city
+    ? { scope: 'in_city' as const, cityId: city.id, cityName: city.name }
+    : { scope: 'outstation' as const, cityId: null, cityName: null }
+}
+
 export async function createCity(data: {
   name: string
   slug: string
