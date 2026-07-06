@@ -277,9 +277,13 @@ function SearchContent() {
         redirectTimerRef.current = setTimeout(() => go(path), 1500)
       }
 
-      // Editing pickup/destination mid-flow from /select-ride — always return there with
-      // the ride type already in progress; never reclassify or bounce to a different flow
+      // Editing pickup/destination mid-flow from /select-ride — return there with the
+      // ride type already in progress, unless the edit turned One Way/Round Trip in-city
       if (backTo === 'select-ride') {
+        if ((rideType === 'one_way' || rideType === 'round_trip') && isInCity) {
+          redirectWithToast('/rental', `That's inside ${cityLabel} — switching to City Rides`)
+          return
+        }
         if (tripHours) params.set('tripHours', tripHours)
         go('/select-ride')
         return

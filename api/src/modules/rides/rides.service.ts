@@ -17,6 +17,7 @@ import {
   creditCashback,
 } from '@/modules/payments/payments.service'
 import { calculateFare } from '@/lib/fare'
+import { classifyTrip } from '@/modules/geo/geo.service'
 
 // ── Driver session management ─────────────────────────────────
 
@@ -175,6 +176,22 @@ export async function updateLocation(driverId: bigint, data: {
 // ── Ride booking ──────────────────────────────────────────────
 
 export async function createBooking(userId: bigint, data: BookingRequest) {
+  if (
+    (data.rideType === 'one_way' || data.rideType === 'round_trip') &&
+    data.destinationLat !== undefined &&
+    data.destinationLng !== undefined
+  ) {
+    const classification = await classifyTrip(
+      data.originLat, data.originLng, data.destinationLat, data.destinationLng
+    )
+    if (classification.scope === 'in_city') {
+      throw Object.assign(
+        new Error(`This trip stays within ${classification.cityName} — book it as a City Ride instead`),
+        { httpStatus: 422 }
+      )
+    }
+  }
+
   // Enforce minimum 4h for round trips — must match pricing.service clamp so
   // fare_snapshots.trip_hours records the same value used to compute the fare.
   const effectiveTripHours = clampTripHours(data.rideType, data.tripHours)
