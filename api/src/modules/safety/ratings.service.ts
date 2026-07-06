@@ -9,26 +9,26 @@ export async function getRatingTags(direction: 'user_to_driver' | 'driver_to_use
 export async function submitRating(input: SubmitRatingInput) {
   const ride = await repo.getRideBasic(input.rideId)
   if (!ride) {
-    throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+    throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   }
   if (ride.status !== 'completed') {
-    throw Object.assign(new Error('Ride must be completed before rating'), { statusCode: 400, code: 'RIDE_NOT_COMPLETED' })
+    throw Object.assign(new Error('Ride must be completed before rating'), { httpStatus: 400, code: 'RIDE_NOT_COMPLETED' })
   }
 
   const duplicate = await repo.ratingExists(input.rideId, input.direction)
   if (duplicate) {
-    throw Object.assign(new Error('Rating already submitted for this ride'), { statusCode: 409, code: 'RATING_ALREADY_EXISTS' })
+    throw Object.assign(new Error('Rating already submitted for this ride'), { httpStatus: 409, code: 'RATING_ALREADY_EXISTS' })
   }
 
   if (input.direction === 'user_to_driver') {
-    if (!input.fromUserId) throw Object.assign(new Error('User auth required'), { statusCode: 401 })
+    if (!input.fromUserId) throw Object.assign(new Error('User auth required'), { httpStatus: 401 })
     if (BigInt(ride.user_id) !== input.fromUserId) {
-      throw Object.assign(new Error('Not the user for this ride'), { statusCode: 403 })
+      throw Object.assign(new Error('Not the user for this ride'), { httpStatus: 403 })
     }
   } else {
-    if (!input.fromDriverId) throw Object.assign(new Error('Driver auth required'), { statusCode: 401 })
+    if (!input.fromDriverId) throw Object.assign(new Error('Driver auth required'), { httpStatus: 401 })
     if (BigInt(ride.driver_id) !== input.fromDriverId) {
-      throw Object.assign(new Error('Not the driver for this ride'), { statusCode: 403 })
+      throw Object.assign(new Error('Not the driver for this ride'), { httpStatus: 403 })
     }
   }
 

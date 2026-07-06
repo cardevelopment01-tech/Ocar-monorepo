@@ -43,7 +43,7 @@ export async function createPaymentRecord(
   )
 
   const fare = fareRes.rows[0]
-  if (!fare) throw Object.assign(new Error('Fare snapshot not found'), { statusCode: 404 })
+  if (!fare) throw Object.assign(new Error('Fare snapshot not found'), { httpStatus: 404 })
 
   const amount = parseFloat(fare.total_final ?? fare.total_estimated)
   const commissionPct = await getCommissionPercent()

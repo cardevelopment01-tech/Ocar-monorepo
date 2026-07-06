@@ -19,7 +19,7 @@ export async function getFareEstimate(
   if (!rateCard) {
     throw Object.assign(
       new Error(`No rate card for category ${req.category_id} / ${req.ride_type}`),
-      { statusCode: 422 }
+      { httpStatus: 422 }
     )
   }
 
@@ -105,6 +105,6 @@ export async function createSurgeEvent(data: Parameters<typeof repo.createSurgeE
 
 export async function cancelSurgeEvent(id: number, adminId: number) {
   const result = await repo.cancelSurgeEvent(id, adminId)
-  if (!result) throw Object.assign(new Error('Surge event not found or already ended'), { statusCode: 404 })
+  if (!result) throw Object.assign(new Error('Surge event not found or already ended'), { httpStatus: 404 })
   return result
 }

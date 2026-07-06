@@ -7,11 +7,11 @@ import type { TriggerSosInput } from './safety.types'
 export async function triggerSos(input: TriggerSosInput) {
   const ride = await repo.getRideBasic(input.rideId)
   if (!ride) {
-    throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+    throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   }
   if (ride.status !== 'in_progress' && ride.status !== 'driver_arrived') {
     throw Object.assign(new Error('SOS can only be triggered during an active ride'), {
-      statusCode: 400, code: 'RIDE_NOT_ACTIVE',
+      httpStatus: 400, code: 'RIDE_NOT_ACTIVE',
     })
   }
 
@@ -77,7 +77,7 @@ export async function listSosAlerts(opts: {
 
 export async function acknowledgeSosAlert(id: bigint, adminId: bigint) {
   const alert = await repo.updateSosStatus(id, 'acknowledged', adminId)
-  if (!alert) throw Object.assign(new Error('SOS alert not found'), { statusCode: 404 })
+  if (!alert) throw Object.assign(new Error('SOS alert not found'), { httpStatus: 404 })
   return alert
 }
 
@@ -88,6 +88,6 @@ export async function resolveSosAlert(
   note?:   string
 ) {
   const alert = await repo.updateSosStatus(id, status, adminId, note)
-  if (!alert) throw Object.assign(new Error('SOS alert not found'), { statusCode: 404 })
+  if (!alert) throw Object.assign(new Error('SOS alert not found'), { httpStatus: 404 })
   return alert
 }

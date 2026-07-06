@@ -5,11 +5,11 @@ import type { CreateDisputeInput, ResolveDisputeInput } from './safety.types'
 export async function createDispute(input: CreateDisputeInput) {
   const ride = await repo.getRideBasic(input.rideId)
   if (!ride) {
-    throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+    throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   }
   if (ride.status !== 'completed') {
     throw Object.assign(new Error('Disputes can only be raised on completed rides'), {
-      statusCode: 400, code: 'RIDE_NOT_COMPLETED',
+      httpStatus: 400, code: 'RIDE_NOT_COMPLETED',
     })
   }
 
@@ -40,14 +40,14 @@ export async function listDisputes(opts: {
 
 export async function getDispute(id: bigint) {
   const dispute = await repo.getDisputeById(id)
-  if (!dispute) throw Object.assign(new Error('Dispute not found'), { statusCode: 404 })
+  if (!dispute) throw Object.assign(new Error('Dispute not found'), { httpStatus: 404 })
   const actions = await repo.getDisputeActions(id)
   return { ...dispute, actions }
 }
 
 export async function assignDispute(id: bigint, adminId: bigint) {
   const dispute = await repo.getDisputeById(id)
-  if (!dispute) throw Object.assign(new Error('Dispute not found'), { statusCode: 404 })
+  if (!dispute) throw Object.assign(new Error('Dispute not found'), { httpStatus: 404 })
 
   const updated = await repo.updateDisputeStatus(id, 'under_review', adminId)
 
@@ -63,7 +63,7 @@ export async function assignDispute(id: bigint, adminId: bigint) {
 
 export async function resolveDispute(id: bigint, input: ResolveDisputeInput) {
   const dispute = await repo.getDisputeById(id)
-  if (!dispute) throw Object.assign(new Error('Dispute not found'), { statusCode: 404 })
+  if (!dispute) throw Object.assign(new Error('Dispute not found'), { httpStatus: 404 })
 
   const client = await pool.connect()
   try {

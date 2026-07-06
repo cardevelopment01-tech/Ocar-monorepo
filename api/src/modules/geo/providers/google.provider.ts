@@ -27,7 +27,7 @@ async function gmapsGet(path: string, params: Record<string, string>): Promise<u
   url.searchParams.set('key', config.GOOGLE_MAPS_API_KEY)
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
   const res = await fetch(url.toString())
-  if (!res.ok) throw Object.assign(new Error('Google Maps request failed'), { statusCode: 502 })
+  if (!res.ok) throw Object.assign(new Error('Google Maps request failed'), { httpStatus: 502 })
   return res.json()
 }
 
@@ -62,7 +62,7 @@ export async function autocomplete(
 
   const body = await data
   if (body.status !== 'OK' && body.status !== 'ZERO_RESULTS') {
-    throw Object.assign(new Error(`Autocomplete: ${body.status}`), { statusCode: 502 })
+    throw Object.assign(new Error(`Autocomplete: ${body.status}`), { httpStatus: 502 })
   }
 
   return (body.predictions ?? []).map(p => ({
@@ -75,7 +75,7 @@ export async function autocomplete(
 
 export async function placeDetails(placeId: string): Promise<PlaceDetail> {
   if (!config.GOOGLE_MAPS_API_KEY) {
-    throw Object.assign(new Error('Maps not configured'), { statusCode: 503 })
+    throw Object.assign(new Error('Maps not configured'), { httpStatus: 503 })
   }
 
   const body = await gmapsGet('/place/details/json', {
@@ -92,7 +92,7 @@ export async function placeDetails(placeId: string): Promise<PlaceDetail> {
   }
 
   if (body.status !== 'OK') {
-    throw Object.assign(new Error(`Place details: ${body.status}`), { statusCode: 502 })
+    throw Object.assign(new Error(`Place details: ${body.status}`), { httpStatus: 502 })
   }
 
   return {

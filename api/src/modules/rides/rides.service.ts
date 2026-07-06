@@ -30,7 +30,7 @@ export async function goOnline(driverId: bigint, data: {
   const existing = await repo.getActiveSession(driverId)
   if (existing) {
     if (existing.status === 'on_trip') {
-      throw Object.assign(new Error('Driver has an active ride in progress'), { statusCode: 409 })
+      throw Object.assign(new Error('Driver has an active ride in progress'), { httpStatus: 409 })
     }
     await repo.endSession(BigInt(existing.id), 'reconnected')
   }
@@ -298,7 +298,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
 export async function acceptRide(driverId: bigint, rideId: bigint) {
   const cancelledDriverIds = await repo.acceptAssignment(rideId, driverId)
   if (cancelledDriverIds === false) {
-    throw Object.assign(new Error('Ride no longer available'), { statusCode: 409 })
+    throw Object.assign(new Error('Ride no longer available'), { httpStatus: 409 })
   }
 
   for (const id of cancelledDriverIds) {
@@ -386,9 +386,9 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
 
 export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: string) {
   const ride = await repo.getRideById(rideId)
-  if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (ride.status !== 'driver_arrived') {
-    throw Object.assign(new Error('Ride not in correct state'), { statusCode: 409 })
+    throw Object.assign(new Error('Ride not in correct state'), { httpStatus: 409 })
   }
 
   const valid = ride.start_otp_hash != null && hashOtp(otp) === ride.start_otp_hash
@@ -400,7 +400,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     [rideId, valid ? 'verified' : 'failed']
   )
 
-  if (!valid) throw Object.assign(new Error('Invalid OTP'), { statusCode: 422 })
+  if (!valid) throw Object.assign(new Error('Invalid OTP'), { httpStatus: 422 })
 
   const endOtp  = generateOtp()
   const endHash = hashOtp(endOtp)
@@ -456,10 +456,10 @@ export async function cancelRide(
   reason?: string,
 ) {
   const ride = await repo.getRideById(rideId)
-  if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
-  if (BigInt(ride.user_id) !== userId) throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (BigInt(ride.user_id) !== userId) throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
   if (!CANCELLABLE_BY_USER.has(ride.status)) {
-    throw Object.assign(new Error('Ride cannot be cancelled at this stage'), { statusCode: 409 })
+    throw Object.assign(new Error('Ride cannot be cancelled at this stage'), { httpStatus: 409 })
   }
 
   const stage = cancelStageFor(ride.status)
@@ -475,7 +475,7 @@ export async function cancelRide(
       [rideId, ride.status]
     )
     if ((upd.rowCount ?? 0) === 0) {
-      throw Object.assign(new Error('Ride status changed — please refresh'), { statusCode: 409 })
+      throw Object.assign(new Error('Ride status changed — please refresh'), { httpStatus: 409 })
     }
 
     await client.query(
@@ -526,12 +526,12 @@ export async function cancelRideAsDriver(
   reason?: string,
 ) {
   const ride = await repo.getRideById(rideId)
-  if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
-    throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
   }
   if (!CANCELLABLE_BY_DRIVER.has(ride.status)) {
-    throw Object.assign(new Error('Ride cannot be cancelled at this stage'), { statusCode: 409 })
+    throw Object.assign(new Error('Ride cannot be cancelled at this stage'), { httpStatus: 409 })
   }
 
   const stage = cancelStageFor(ride.status)
@@ -546,7 +546,7 @@ export async function cancelRideAsDriver(
       [rideId, ride.status]
     )
     if ((upd.rowCount ?? 0) === 0) {
-      throw Object.assign(new Error('Ride status changed — please refresh'), { statusCode: 409 })
+      throw Object.assign(new Error('Ride status changed — please refresh'), { httpStatus: 409 })
     }
 
     await client.query(
@@ -598,9 +598,9 @@ export async function forceResolveRide(
   actorId?: bigint,
 ) {
   const ride = await repo.getRideById(rideId)
-  if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (ride.status !== 'in_progress') {
-    throw Object.assign(new Error('Ride is not in progress'), { statusCode: 409 })
+    throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
   }
 
   const timestampField = outcome === 'completed' ? 'completed_at' : 'cancelled_at'
@@ -615,7 +615,7 @@ export async function forceResolveRide(
       [rideId, outcome]
     )
     if ((upd.rowCount ?? 0) === 0) {
-      throw Object.assign(new Error('Ride status changed — please refresh'), { statusCode: 409 })
+      throw Object.assign(new Error('Ride status changed — please refresh'), { httpStatus: 409 })
     }
 
     await client.query(
@@ -659,9 +659,9 @@ export async function verifyEndOTP(
   actualEndLng?: number
 ) {
   const ride = await repo.getRideById(rideId)
-  if (!ride) throw Object.assign(new Error('Ride not found'), { statusCode: 404 })
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (ride.status !== 'in_progress') {
-    throw Object.assign(new Error('Ride not in progress'), { statusCode: 409 })
+    throw Object.assign(new Error('Ride not in progress'), { httpStatus: 409 })
   }
 
   const valid = ride.end_otp_hash != null && hashOtp(otp) === ride.end_otp_hash
@@ -673,7 +673,7 @@ export async function verifyEndOTP(
     [rideId, valid ? 'verified' : 'failed']
   )
 
-  if (!valid) throw Object.assign(new Error('Invalid OTP'), { statusCode: 422 })
+  if (!valid) throw Object.assign(new Error('Invalid OTP'), { httpStatus: 422 })
 
   await redis.del(endOtpKey(rideId.toString()))
 

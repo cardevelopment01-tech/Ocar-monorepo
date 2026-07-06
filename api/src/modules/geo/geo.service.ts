@@ -13,7 +13,7 @@ export async function getAllCitiesForAdmin() {
 
 export async function getCityBySlug(slug: string) {
   const city = await repo.getCityBySlug(slug)
-  if (!city) throw Object.assign(new Error('City not found'), { statusCode: 404 })
+  if (!city) throw Object.assign(new Error('City not found'), { httpStatus: 404 })
   return city
 }
 
@@ -95,6 +95,6 @@ export async function updateCity(
   }
 ) {
   const updated = await repo.updateCity(id, data)
-  if (!updated) throw Object.assign(new Error('City not found'), { statusCode: 404 })
+  if (!updated) throw Object.assign(new Error('City not found'), { httpStatus: 404 })
   return updated
 }
