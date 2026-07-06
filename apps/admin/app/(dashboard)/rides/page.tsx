@@ -1,7 +1,7 @@
 'use client'
 import React from 'react'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Car } from 'lucide-react'
+import { Car, ArrowRight, RefreshCw, Clock, MapPin } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
@@ -95,12 +95,36 @@ export default function RidesPage() {
     {
       key: 'route', header: 'Route',
       render: (r: AdminRideItem) => (
-        <p className="text-text-secondary text-sm">
-          {r.origin_address ?? '—'}<span className="text-text-muted mx-1">→</span>{r.destination_address ?? '—'}
-        </p>
+        <div className="space-y-0.5 max-w-[260px]">
+          <div className="flex items-start gap-1.5">
+            <MapPin className="w-3 h-3 text-success mt-0.5 shrink-0" />
+            <p className="text-xs text-text-secondary leading-snug line-clamp-1">{r.origin_address ?? '—'}</p>
+          </div>
+          <div className="flex items-start gap-1.5">
+            <MapPin className="w-3 h-3 text-danger mt-0.5 shrink-0" />
+            <p className="text-xs text-text-muted leading-snug line-clamp-1">{r.destination_address ?? '—'}</p>
+          </div>
+        </div>
       ),
     },
-    { key: 'ride_type', header: 'Type',   render: (r: AdminRideItem) => <StatusPill status={r.ride_type} /> },
+    {
+      key: 'ride_type', header: 'Type',
+      render: (r: AdminRideItem) => {
+        const icons: Record<string, React.ReactNode> = {
+          one_way:    <ArrowRight className="w-3 h-3" />,
+          round_trip: <RefreshCw  className="w-3 h-3" />,
+          rental:     <Clock      className="w-3 h-3" />,
+        }
+        return (
+          <span className="inline-flex items-center gap-1">
+            <StatusPill status={r.ride_type} />
+            {icons[r.ride_type] && (
+              <span className="text-text-muted">{icons[r.ride_type]}</span>
+            )}
+          </span>
+        )
+      },
+    },
     {
       key: 'fare', header: 'Fare',
       render: (r: AdminRideItem) => r.fare
@@ -127,11 +151,15 @@ export default function RidesPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3 mb-1">
-        <Car className="w-5 h-5 text-primary" />
-        <div>
-          <h2 className="text-lg font-bold text-text-primary">Rides</h2>
-          <p className="text-xs text-text-muted">{total} total rides</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Car className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-text-primary">Rides</h2>
+            <p className="text-xs text-text-muted">{total.toLocaleString('en-IN')} total rides</p>
+          </div>
         </div>
       </div>
 
@@ -218,12 +246,20 @@ export default function RidesPage() {
             </div>
 
             <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
-              <p className="text-xs text-text-muted uppercase tracking-wide mb-1">Route</p>
-              <p className="text-sm font-medium text-text-primary">{selected.origin_address ?? '—'}</p>
-              <p className="text-xs text-text-muted my-1">→</p>
-              <p className="text-sm font-medium text-text-primary">{selected.destination_address ?? 'No fixed destination'}</p>
+              <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Route</p>
+              <div className="space-y-2">
+                <div className="flex items-start gap-2">
+                  <MapPin className="w-3.5 h-3.5 text-success mt-0.5 shrink-0" />
+                  <p className="text-sm font-medium text-text-primary leading-snug">{selected.origin_address ?? '—'}</p>
+                </div>
+                <div className="border-l border-dashed border-border-light ml-[6px] h-3" />
+                <div className="flex items-start gap-2">
+                  <MapPin className="w-3.5 h-3.5 text-danger mt-0.5 shrink-0" />
+                  <p className="text-sm font-medium text-text-primary leading-snug">{selected.destination_address ?? 'No fixed destination'}</p>
+                </div>
+              </div>
               {selected.fare && (
-                <p className="text-xl font-bold text-text-primary mt-2">₹{parseFloat(selected.fare).toLocaleString('en-IN')}</p>
+                <p className="text-2xl font-bold text-text-primary mt-3">₹{parseFloat(selected.fare).toLocaleString('en-IN')}</p>
               )}
             </div>
 
