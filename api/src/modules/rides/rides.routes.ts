@@ -53,6 +53,17 @@ router.get('/me/trips', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// ── User active ride ──────────────────────────────────────────
+
+router.get('/me/active-user', authenticate(), async (req, res, next) => {
+  try {
+    const userId = req.user!.id
+    const rideId = await repo.getActiveRideIdForUser(userId)
+    if (!rideId) { res.status(404).json({ error: 'No active ride' }); return }
+    res.json({ rideId })
+  } catch (err) { next(err) }
+})
+
 // ── Driver active ride ────────────────────────────────────────
 
 router.get('/me/active', authenticate(), async (req, res, next) => {

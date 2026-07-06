@@ -1,7 +1,9 @@
 'use client'
 
+import { useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import BottomNav from '@/components/ui/BottomNav'
+import { rideApi } from '@/lib/ride-api'
 
 type Tab = 'trip' | 'messages' | 'help' | 'profile'
 
@@ -11,6 +13,16 @@ const HIDE_NAV_PREFIXES = ['/search', '/select-ride', '/confirm-pickup', '/ride/
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+
+  // On mount, if the user has an active ride but isn't on the tracking page,
+  // redirect them there so a reload never loses mid-ride state.
+  useEffect(() => {
+    if (pathname.startsWith('/ride/')) return
+    rideApi.getActiveRide().then(res => {
+      if (res?.rideId) router.replace(`/ride/${res.rideId}`)
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const showNav = !HIDE_NAV_PREFIXES.some(p => pathname.startsWith(p))
 

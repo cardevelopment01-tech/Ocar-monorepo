@@ -153,6 +153,15 @@ export const rideApi = {
     return res.data as BookingResult
   },
 
+  getActiveRide: async (): Promise<{ rideId: string } | null> => {
+    try {
+      const res = await api.get('/api/v1/rides/me/active-user')
+      return res.data as { rideId: string }
+    } catch {
+      return null
+    }
+  },
+
   getRide: async (rideId: string): Promise<RideDetail> => {
     const res = await api.get(`/api/v1/rides/${rideId}`)
     return res.data as RideDetail

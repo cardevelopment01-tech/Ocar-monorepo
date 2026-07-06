@@ -247,6 +247,18 @@ export async function createRide(data: {
   return res.rows[0]
 }
 
+export async function getActiveRideIdForUser(userId: bigint): Promise<string | null> {
+  const res = await pool.query<{ id: string }>(
+    `SELECT id FROM rides
+     WHERE user_id = $1
+       AND status IN ('requested', 'accepted', 'driver_arrived', 'in_progress')
+     ORDER BY requested_at DESC
+     LIMIT 1`,
+    [userId]
+  )
+  return res.rows[0]?.id ?? null
+}
+
 export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | null> {
   const res = await pool.query<Ride>(
     `SELECT
