@@ -230,7 +230,7 @@ export async function createRide(data: {
        CASE WHEN $7::float8 IS NOT NULL AND $8::float8 IS NOT NULL
          THEN ST_SetSRID(ST_MakePoint($8::float8, $7::float8), 4326)::geography
          ELSE NULL END,
-       $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17, 'requested')
+       $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::ride_status, 'requested'::ride_status)
      )
      RETURNING *`,
     [
