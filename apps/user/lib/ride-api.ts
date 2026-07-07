@@ -19,6 +19,7 @@ export type FareEstimate = {
 export type BookingResult = {
   rideId: string
   status: string
+  scheduledFor?: string
   estimatedFare: number
   surgeMultiplier: number
 }
@@ -29,6 +30,7 @@ export type RideDetail = {
   ride_type: string
   trip_hours: number | null
   return_at: string | null
+  scheduled_for: string | null
   user_id: string
   driver_id: string | null
   origin_address: string | null
@@ -74,6 +76,15 @@ export type RideHistoryItem = {
 export type RideHistoryResponse = {
   rides: RideHistoryItem[]
   pagination: { total: number; page: number; limit: number; pages: number }
+}
+
+export type UpcomingRide = {
+  id: string
+  ride_type: string
+  origin_address: string | null
+  destination_address: string | null
+  scheduled_for: string
+  fare: string | null
 }
 
 export type RentalPackage = {
@@ -132,6 +143,7 @@ export const rideApi = {
     originCityId?: number
     destinationCityId?: number
     returnAt?: string
+    scheduledFor?: string
   }): Promise<BookingResult> => {
     const body: Record<string, unknown> = {
       categoryId:    params.categoryId,
@@ -151,6 +163,7 @@ export const rideApi = {
     if (params.originCityId        !== undefined) body['originCityId']        = params.originCityId
     if (params.destinationCityId   !== undefined) body['destinationCityId']   = params.destinationCityId
     if (params.returnAt            !== undefined) body['returnAt']            = params.returnAt
+    if (params.scheduledFor        !== undefined) body['scheduledFor']        = params.scheduledFor
     const res = await api.post('/api/v1/rides', body)
     return res.data as BookingResult
   },
@@ -172,6 +185,11 @@ export const rideApi = {
   getHistory: async (page = 1, limit = 20): Promise<RideHistoryResponse> => {
     const res = await api.get('/api/v1/rides/me/history', { params: { page, limit } })
     return res.data as RideHistoryResponse
+  },
+
+  getUpcoming: async (): Promise<UpcomingRide[]> => {
+    const res = await api.get('/api/v1/rides/me/upcoming')
+    return (res.data as { rides: UpcomingRide[] }).rides
   },
 
   getNearbyDrivers: async (lat: number, lng: number): Promise<Array<{ driver_id: string; lat: number; lng: number; category_id: number }>> => {

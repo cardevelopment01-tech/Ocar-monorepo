@@ -95,4 +95,5 @@ export interface BookingRequest {
   tripHours?: number
   rentalPackageId?: number
   returnAt?: string
+  scheduledFor?: string
 }

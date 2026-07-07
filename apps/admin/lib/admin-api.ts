@@ -150,10 +150,26 @@ export interface AdminRidesResponse {
   pagination: { total: number; page: number; limit: number; pages: number }
 }
 
+export interface AdminUpcomingRideItem {
+  id: string
+  ride_type: string
+  scheduled_for: string
+  origin_address: string | null
+  destination_address: string | null
+  user_name: string
+  user_phone: string
+  advance_status: string
+  is_stuck: boolean
+}
+
 export const adminRideApi = {
   list: async (params: { status?: string; ride_type?: string; search?: string; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
     const res = await api.get('/api/v1/admin/rides', { params })
     return res.data as AdminRidesResponse
+  },
+  upcoming: async (): Promise<AdminUpcomingRideItem[]> => {
+    const res = await api.get('/api/v1/admin/rides/upcoming')
+    return (res.data as { rides: AdminUpcomingRideItem[] }).rides
   },
   getById: async (rideId: string): Promise<AdminRideItem> => {
     const res = await api.get(`/api/v1/admin/rides/${rideId}`)

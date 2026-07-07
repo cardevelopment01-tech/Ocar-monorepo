@@ -215,6 +215,7 @@ export async function createRide(data: {
   tripHours?: number
   scheduledFor?: string
   returnAt?: string
+  status?: string
 }) {
   const res = await pool.query(
     `INSERT INTO rides (
@@ -222,14 +223,14 @@ export async function createRide(data: {
        origin, destination,
        origin_address, destination_address,
        origin_city_id, destination_city_id,
-       rental_package_id, trip_hours, scheduled_for, return_at
+       rental_package_id, trip_hours, scheduled_for, return_at, status
      ) VALUES (
        $1, $2, $3, $4,
        ST_SetSRID(ST_MakePoint($6::float8, $5::float8), 4326)::geography,
        CASE WHEN $7::float8 IS NOT NULL AND $8::float8 IS NOT NULL
          THEN ST_SetSRID(ST_MakePoint($8::float8, $7::float8), 4326)::geography
          ELSE NULL END,
-       $9, $10, $11, $12, $13, $14, $15, $16
+       $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17, 'requested')
      )
      RETURNING *`,
     [
@@ -242,6 +243,7 @@ export async function createRide(data: {
       data.tripHours ?? null,
       data.scheduledFor ?? null,
       data.returnAt ?? null,
+      data.status ?? null,
     ]
   )
   return res.rows[0]
@@ -362,6 +364,121 @@ export async function logStatusHistory(data: {
       data.note ?? null,
     ]
   )
+}
+
+// ── Advance booking ───────────────────────────────────────────
+
+// CAS transition — only succeeds if the row is still in `expectedStatus`.
+// Returns null (no rows touched) if another caller already moved it on —
+// callers must treat null as "lost the race, no-op" rather than an error.
+export async function updateRideStatusCAS(
+  rideId: bigint,
+  expectedStatus: string,
+  newStatus: string,
+  // Keys must be trusted internal column names — never from user input
+  additionalFields?: Record<string, unknown>
+): Promise<Ride | null> {
+  const fields = additionalFields ?? {}
+  const setClauses = ['status = $3', 'updated_at = now()']
+  const params: unknown[] = [rideId, expectedStatus, newStatus]
+  let p = 4
+  for (const [key, val] of Object.entries(fields)) {
+    setClauses.push(`${key} = $${p++}`)
+    params.push(val)
+  }
+  const res = await pool.query<Ride>(
+    `UPDATE rides SET ${setClauses.join(', ')}
+     WHERE id = $1 AND status = $2
+     RETURNING *`,
+    params
+  )
+  return res.rows[0] ?? null
+}
+
+export interface AdvanceMeta {
+  id: string
+  ride_id: string
+  status: 'pending_driver' | 'driver_confirmed' | 'dispatched' | 'completed' | 'cancelled'
+  dispatch_buffer_minutes: number
+  dispatch_job_id: string | null
+  claimed_by_driver_id: string | null
+  claimed_at: string | null
+  reminder_24h_sent_at: string | null
+  reminder_1h_sent_at: string | null
+  rate_card_id_at_booking: string | null
+  created_at: string
+  updated_at: string
+}
+
+export async function createAdvanceMeta(data: {
+  rideId: bigint
+  dispatchBufferMinutes: number
+  rateCardIdAtBooking?: bigint
+}) {
+  const res = await pool.query<AdvanceMeta>(
+    `INSERT INTO ride_advance_meta (ride_id, dispatch_buffer_minutes, rate_card_id_at_booking)
+     VALUES ($1, $2, $3)
+     RETURNING *`,
+    [data.rideId, data.dispatchBufferMinutes, data.rateCardIdAtBooking ?? null]
+  )
+  return res.rows[0]
+}
+
+export async function getAdvanceMeta(rideId: bigint): Promise<AdvanceMeta | null> {
+  const res = await pool.query<AdvanceMeta>(
+    `SELECT * FROM ride_advance_meta WHERE ride_id = $1`,
+    [rideId]
+  )
+  return res.rows[0] ?? null
+}
+
+export async function setAdvanceMetaJobId(rideId: bigint, jobId: string) {
+  await pool.query(
+    `UPDATE ride_advance_meta SET dispatch_job_id = $2 WHERE ride_id = $1`,
+    [rideId, jobId]
+  )
+}
+
+export async function updateAdvanceMetaStatus(
+  rideId: bigint,
+  status: AdvanceMeta['status']
+) {
+  await pool.query(
+    `UPDATE ride_advance_meta SET status = $2 WHERE ride_id = $1`,
+    [rideId, status]
+  )
+}
+
+export interface DueScheduledRide {
+  id: string
+  user_id: string
+  category_id: string
+  ride_type: string
+  is_return_cab: boolean
+  origin_lat: number
+  origin_lng: number
+  dest_lat: number | null
+  dest_lng: number | null
+}
+
+// Rows whose scheduled_for has entered their own dispatch buffer window.
+// Backs both the delayed BullMQ job (optimization) and the repeatable sweep
+// (source of truth) — see docs/ADVANCE_BOOKING_PLAN.md §4.3.
+export async function getDueScheduledRides(): Promise<DueScheduledRide[]> {
+  const res = await pool.query<DueScheduledRide>(
+    `SELECT
+       r.id, r.user_id, r.category_id, r.ride_type, r.is_return_cab,
+       ST_Y(r.origin::geometry)      AS origin_lat,
+       ST_X(r.origin::geometry)      AS origin_lng,
+       ST_Y(r.destination::geometry) AS dest_lat,
+       ST_X(r.destination::geometry) AS dest_lng
+     FROM rides r
+     JOIN ride_advance_meta ram ON ram.ride_id = r.id
+     WHERE r.status = 'scheduled'
+       AND r.scheduled_for IS NOT NULL
+       AND r.scheduled_for <= now() + (ram.dispatch_buffer_minutes || ' minutes')::interval`
+  )
+  return res.rows
 }
 
 // ── Stuck ride review (stale driver heartbeat sweeper) ────────
@@ -511,6 +628,96 @@ export async function getUserRideHistory(
     ),
   ])
   return { rows: dataRes.rows, total: parseInt(countRes.rows[0]!.count, 10) }
+}
+
+export interface FareRecomputeInput {
+  category_id:      number
+  ride_type:        string
+  is_return_cab:    boolean
+  estimated_km:     number
+  estimated_min:    number
+  stop_count:       number
+  trip_hours:       number
+  rental_package_id: number | null
+  origin_city_id:   number | null
+  total_estimated:  number
+}
+
+export async function getFareRecomputeInput(rideId: bigint): Promise<FareRecomputeInput | null> {
+  const res = await pool.query(
+    `SELECT r.category_id::int, r.origin_city_id::int,
+            fs.ride_type, fs.is_return_cab, fs.estimated_km::float8, fs.estimated_min::float8,
+            fs.stop_count::int, fs.trip_hours::float8, fs.rental_package_id::int,
+            fs.total_estimated::float8
+     FROM fare_snapshots fs
+     JOIN rides r ON r.id = fs.ride_id
+     WHERE fs.ride_id = $1`,
+    [rideId]
+  )
+  return (res.rows[0] as FareRecomputeInput | undefined) ?? null
+}
+
+export async function updateFareSnapshotEstimate(
+  rideId: bigint,
+  fareEstimate: {
+    rate_card_id: number
+    surge_event_id: number | null
+    surge_multiplier: number
+    breakdown: {
+      base_fare: number; distance_fare: number; time_fare: number
+      stop_fare: number; hour_surcharge: number; surge_fare: number; total: number
+    }
+  }
+): Promise<void> {
+  await pool.query(
+    `UPDATE fare_snapshots
+     SET rate_card_id     = $2,
+         surge_event_id   = $3,
+         surge_multiplier = $4,
+         base_fare        = $5,
+         distance_fare    = $6,
+         time_fare        = $7,
+         stop_fare        = $8,
+         hour_surcharge   = $9,
+         surge_fare       = $10,
+         total_estimated  = $11
+     WHERE ride_id = $1`,
+    [
+      rideId,
+      fareEstimate.rate_card_id,
+      fareEstimate.surge_event_id,
+      fareEstimate.surge_multiplier,
+      fareEstimate.breakdown.base_fare,
+      fareEstimate.breakdown.distance_fare,
+      fareEstimate.breakdown.time_fare,
+      fareEstimate.breakdown.stop_fare,
+      fareEstimate.breakdown.hour_surcharge,
+      fareEstimate.breakdown.surge_fare,
+      fareEstimate.breakdown.total,
+    ]
+  )
+}
+
+export async function getUpcomingRides(userId: bigint): Promise<unknown[]> {
+  const res = await pool.query(
+    `SELECT r.id::text, r.ride_type, r.origin_address, r.destination_address,
+            r.scheduled_for,
+            fs.total_estimated::text AS fare
+     FROM rides r
+     LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+     WHERE r.user_id = $1 AND r.status = 'scheduled'
+     ORDER BY r.scheduled_for ASC`,
+    [userId]
+  )
+  return res.rows
+}
+
+export async function countScheduledRidesForUser(userId: bigint): Promise<number> {
+  const res = await pool.query(
+    `SELECT COUNT(*)::int AS count FROM rides WHERE user_id = $1 AND status = 'scheduled'`,
+    [userId]
+  )
+  return (res.rows[0] as { count: number }).count
 }
 
 export async function getDriverTripHistory(

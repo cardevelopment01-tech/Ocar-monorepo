@@ -38,9 +38,10 @@ function haversineMetres(a: [number, number], b: [number, number]): number {
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
 }
 
-type StatusKey = 'requested' | 'accepted' | 'driver_arrived' | 'in_progress' | 'completed' | 'cancelled' | 'no_drivers'
+type StatusKey = 'scheduled' | 'requested' | 'accepted' | 'driver_arrived' | 'in_progress' | 'completed' | 'cancelled' | 'no_drivers'
 
 const STATUS_CONFIG: Record<StatusKey, { label: string; sub?: string; dot: string; dotPulse: boolean }> = {
+  scheduled:      { label: 'Ride scheduled',               sub: 'We’ll find a driver closer to the time', dot: '#4F46E5', dotPulse: false },
   requested:      { label: 'Finding your driver',         sub: 'Usually ready in 15–60 seconds', dot: '#F59E0B', dotPulse: true  },
   accepted:       { label: 'Driver is on the way',                                                 dot: '#2563EB', dotPulse: false },
   driver_arrived: { label: 'Driver has arrived!',          sub: 'Head to your pickup point',       dot: '#16A34A', dotPulse: true  },
@@ -86,6 +87,7 @@ export default function RidePage() {
   const [endOtp,         setEndOtp]         = useState<string | null>(null)
   const [endOtpCopied,   setEndOtpCopied]   = useState(false)
   const [showCancelSheet, setShowCancelSheet] = useState(false)
+  const [fareDrift, setFareDrift] = useState<{ previousFare: number; currentFare: number } | null>(null)
   const [reportSending,  setReportSending]  = useState(false)
   const [reportSent,     setReportSent]     = useState(false)
   const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -168,10 +170,17 @@ export default function RidePage() {
       setSocketOk(false)
       if (!pollRef.current) pollRef.current = setInterval(() => void loadRide(), 10_000)
     }
-    const onStatusUpdate = (data: { status: string; startOtp?: string; endOtp?: string }) => {
+    const onStatusUpdate = (data: {
+      status: string; startOtp?: string; endOtp?: string
+      fareDrift?: { previousFare: number; currentFare: number }
+    }) => {
       setRideStatus(data.status)
       if (data.startOtp) setStartOtp(data.startOtp)
       if (data.endOtp)   setEndOtp(data.endOtp)
+      if (data.fareDrift) {
+        setFareDrift(data.fareDrift)
+        setRide(prev => prev ? { ...prev, total_estimated: String(data.fareDrift!.currentFare) } : prev)
+      }
       if (data.status === 'in_progress') {
         breadcrumbRef.current = []
         setBreadcrumb([])
@@ -313,7 +322,7 @@ export default function RidePage() {
       ? { label: 'Rental in progress', sub: 'Flexible route active' }
       : {}),
   }
-  const hasDriver = rideStatus !== 'requested'
+  const hasDriver = rideStatus !== 'requested' && rideStatus !== 'scheduled'
 
   const fare = ride?.total_estimated != null ? `₹${Math.round(parseFloat(ride.total_estimated))}` : null
 
@@ -458,6 +467,40 @@ export default function RidePage() {
                   )}
                 </div>
               </div>
+
+              {fareDrift && (
+                <div
+                  className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl mb-3"
+                  style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}
+                >
+                  <div>
+                    <p className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide">Fare updated</p>
+                    <p className="text-[13px] font-bold text-amber-800">
+                      ₹{Math.round(fareDrift.previousFare)} → ₹{Math.round(fareDrift.currentFare)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFareDrift(null)}
+                    className="text-[11px] font-semibold text-amber-700"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
+              {rideStatus === 'scheduled' && ride?.scheduled_for && (
+                <div
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-3"
+                  style={{ background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.20)' }}
+                >
+                  <Clock size={13} className="text-indigo-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wide">Pickup time</p>
+                    <p className="text-[13px] font-bold text-indigo-800">{formatReturnAt(ride.scheduled_for)}</p>
+                  </div>
+                </div>
+              )}
 
               {ride?.ride_type === 'round_trip' && ride.return_at && (
                 <div

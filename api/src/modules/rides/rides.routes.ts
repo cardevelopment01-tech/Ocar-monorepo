@@ -22,6 +22,16 @@ router.get('/me/history', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// ── User upcoming (scheduled) rides ───────────────────────────
+
+router.get('/me/upcoming', authenticate(), async (req, res, next) => {
+  try {
+    const userId = req.user!.id
+    const rides = await repo.getUpcomingRides(userId)
+    res.json({ rides })
+  } catch (err) { next(err) }
+})
+
 // ── Driver earnings summary ───────────────────────────────────
 
 const VALID_PERIODS = new Set(['today', 'week', 'month'])

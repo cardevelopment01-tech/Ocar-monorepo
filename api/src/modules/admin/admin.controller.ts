@@ -371,6 +371,12 @@ export async function getAdminRides(req: Request, res: Response, next: NextFunct
   } catch (err) { next(err) }
 }
 
+export async function getUpcomingScheduledRides(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json({ rides: await service.listUpcomingScheduledRides() })
+  } catch (err) { next(err) }
+}
+
 export async function getAdminRideById(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     res.json(await service.getAdminRideById(BigInt(req.params['id']!)))

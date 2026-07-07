@@ -17,11 +17,20 @@ interface Props {
   open: boolean
   value: Date | null
   min?: Date
+  max?: Date
+  title?: string
+  subtitle?: string
+  timeLabel?: string
   onConfirm: (date: Date) => void
   onClose: () => void
 }
 
-export default function DateTimePickerSheet({ open, value, min, onConfirm, onClose }: Props) {
+export default function DateTimePickerSheet({
+  open, value, min, max, onConfirm, onClose,
+  title = 'Return date & time',
+  subtitle = 'Minimum 4 hours from now',
+  timeLabel = 'RETURN TIME',
+}: Props) {
   const minDate  = min ?? new Date()
   const initDate = value ?? minDate
 
@@ -45,7 +54,12 @@ export default function DateTimePickerSheet({ open, value, min, onConfirm, onClo
   function isDisabled(y: number, m: number, d: number) {
     const cell = new Date(y, m, d)
     const floor = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate())
-    return cell < floor
+    if (cell < floor) return true
+    if (max) {
+      const ceil = new Date(max.getFullYear(), max.getMonth(), max.getDate())
+      if (cell > ceil) return true
+    }
+    return false
   }
 
   function pickDay(d: number) {
@@ -105,8 +119,8 @@ export default function DateTimePickerSheet({ open, value, min, onConfirm, onClo
             {/* Header */}
             <div className="flex items-center justify-between px-5 pt-2 pb-3">
               <div>
-                <p className="text-[15px] font-bold" style={{ color: '#0F172A' }}>Return date &amp; time</p>
-                <p className="text-[11px] font-medium mt-0.5" style={{ color: '#94A3B8' }}>Minimum 4 hours from now</p>
+                <p className="text-[15px] font-bold" style={{ color: '#0F172A' }}>{title}</p>
+                <p className="text-[11px] font-medium mt-0.5" style={{ color: '#94A3B8' }}>{subtitle}</p>
               </div>
               <button
                 onClick={onClose}
@@ -177,7 +191,7 @@ export default function DateTimePickerSheet({ open, value, min, onConfirm, onClo
 
             {/* Time picker */}
             <div className="px-5 mb-4">
-              <p className="text-[10px] font-semibold mb-3 tracking-wide" style={{ color: '#94A3B8' }}>RETURN TIME</p>
+              <p className="text-[10px] font-semibold mb-3 tracking-wide" style={{ color: '#94A3B8' }}>{timeLabel}</p>
               <div className="flex items-center gap-3">
                 {/* Hour column */}
                 <div className="flex-1 flex flex-col items-center gap-1.5">

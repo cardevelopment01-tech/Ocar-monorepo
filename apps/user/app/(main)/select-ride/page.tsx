@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { rideApi, type FareEstimate } from '@/lib/ride-api'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
+import ScheduleRideSheet from '@/components/ui/ScheduleRideSheet'
 
 const SelectRideMapScene = dynamic(() => import('@/components/map/SelectRideMapScene'), { ssr: false })
 
@@ -67,6 +68,8 @@ function SelectRideContent() {
   const [nearbyDrivers,     setNearbyDrivers]     = useState<Array<{ driver_id: string; lat: number; lng: number; category_id: number }>>([])
   const [returnCabCategories, setReturnCabCategories] = useState<Set<number>>(new Set())
   const [returnCabEstimates,  setReturnCabEstimates]  = useState<Record<number, FareEstimate>>({})
+  const [scheduledFor,     setScheduledFor]     = useState<Date | null>(null)
+  const [schedulePickerOpen, setSchedulePickerOpen] = useState(false)
 
   // tripHours: from URL (round_trip from /round-trip page) or inline selection
   const tripHours = rideType === 'round_trip'
@@ -164,6 +167,7 @@ function SelectRideContent() {
       if (originCityId)            bookingParams.originCityId  = originCityId
       if (tripHours !== undefined) bookingParams.tripHours     = tripHours
       if (isReturnCab)             bookingParams.isReturnCab   = true
+      if (scheduledFor)            bookingParams.scheduledFor  = scheduledFor.toISOString()
       const result = await rideApi.createBooking(bookingParams)
       router.push(`/ride/${result.rideId}`)
     } catch {
@@ -176,7 +180,9 @@ function SelectRideContent() {
   const activeEst       = isReturnCab ? returnCabEstimates[selected] : estimates[selected]
   const selectedFare    = activeEst?.breakdown.total
   const selectedCat     = categories.find(c => c.id === selected)!
-  const allUnavailable  = etaReady && categories.every(c => (driverEta[c.id]?.count ?? 0) === 0)
+  // Driver-availability gating is meaningless for a scheduled ride — dispatch
+  // (and therefore driver search) doesn't happen until the buffer window later.
+  const allUnavailable  = !scheduledFor && etaReady && categories.every(c => (driverEta[c.id]?.count ?? 0) === 0)
 
   function goBackToSearch(focus: 'origin' | 'destination') {
     const params = new URLSearchParams({
@@ -311,6 +317,17 @@ function SelectRideContent() {
           )}
         </div>
 
+        {/* Ride now / schedule for later */}
+        <div className="mx-4 mb-3">
+          <ScheduleRideSheet
+            value={scheduledFor}
+            pickerOpen={schedulePickerOpen}
+            onOpenPicker={() => setSchedulePickerOpen(true)}
+            onClosePicker={() => setSchedulePickerOpen(false)}
+            onChange={(d) => { setScheduledFor(d); if (d) setIsReturnCab(false) }}
+          />
+        </div>
+
         {/* No drivers banner */}
         {allUnavailable && (
           <div className="mx-4 mb-1 flex items-center gap-2 rounded-xl px-3 py-2 bg-amber-50 border border-amber-200">
@@ -323,7 +340,8 @@ function SelectRideContent() {
         <div className="flex-1 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
 
           {/* ── Return Cab section (one_way only, when available) ── */}
-          {rideType === 'one_way' && returnCabCategories.size > 0 && (
+          {/* Return-cab matches a specific driver's live route right now — meaningless for a future scheduled pickup. */}
+          {rideType === 'one_way' && !scheduledFor && returnCabCategories.size > 0 && (
             <div>
               <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#059669' }}>
                 Return Cab Available
@@ -406,7 +424,7 @@ function SelectRideContent() {
             const fare   = est?.breakdown.total
             const isSel  = !isReturnCab && selected === cat.id
             const eta    = driverEta[cat.id]
-            const noCars = etaReady && eta != null && eta.count === 0
+            const noCars = !scheduledFor && etaReady && eta != null && eta.count === 0
             const active = isSel && !noCars
 
             return (
@@ -544,7 +562,7 @@ function SelectRideContent() {
             onClick={handleBook}
             disabled={
               isBooking || loading || selectedFare == null || allUnavailable ||
-              (!isReturnCab && (driverEta[selected]?.count === 0)) ||
+              (!scheduledFor && !isReturnCab && (driverEta[selected]?.count === 0)) ||
               roundTripMissingHours
             }
             className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
@@ -556,6 +574,8 @@ function SelectRideContent() {
               ? 'No drivers available'
               : roundTripMissingHours
               ? 'Select duration first'
+              : scheduledFor
+              ? `Schedule ${selectedCat?.display_name ?? ''} · ${selectedFare != null ? `₹${Math.round(selectedFare)}` : '—'}`
               : `Book ${selectedCat?.display_name ?? ''} · ${selectedFare != null ? `₹${Math.round(selectedFare)}` : '—'}`
             }
           </button>

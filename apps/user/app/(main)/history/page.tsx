@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Clock, MapPin, CheckCircle2, XCircle } from 'lucide-react'
-import { rideApi, type RideHistoryItem } from '@/lib/ride-api'
+import { rideApi, type RideHistoryItem, type UpcomingRide } from '@/lib/ride-api'
 import { cn } from '@/lib/utils'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
@@ -22,9 +23,10 @@ const cardVariant = {
   show:   { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE } },
 }
 
-type Tab = 'all' | 'completed' | 'cancelled'
+type Tab = 'upcoming' | 'all' | 'completed' | 'cancelled'
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'upcoming',  label: 'Upcoming'  },
   { id: 'all',       label: 'All'       },
   { id: 'completed', label: 'Completed' },
   { id: 'cancelled', label: 'Cancelled' },
@@ -94,6 +96,57 @@ function RideCard({ ride }: { ride: RideHistoryItem }) {
   )
 }
 
+function UpcomingCard({
+  ride, onOpen, onCancel, cancelling,
+}: {
+  ride: UpcomingRide
+  onOpen: () => void
+  onCancel: () => void
+  cancelling: boolean
+}) {
+  return (
+    <motion.div
+      variants={cardVariant}
+      className="bg-surface rounded-2xl border border-border p-4 shadow-card"
+    >
+      <div className="flex items-start justify-between mb-3">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700">
+          <Clock size={11} strokeWidth={2} /> Scheduled
+        </span>
+        <div className="text-right">
+          {ride.fare && (
+            <p className="text-sm font-bold text-text-primary">
+              ₹{parseFloat(ride.fare).toLocaleString('en-IN')}
+            </p>
+          )}
+          <p className="text-[11px] text-text-muted mt-0.5">{fmt(ride.scheduled_for)}</p>
+        </div>
+      </div>
+
+      <button type="button" onClick={onOpen} className="flex gap-3 mb-3 w-full text-left">
+        <div className="flex flex-col items-center gap-0.5 flex-shrink-0 pt-1.5">
+          <span className="w-2 h-2 rounded-full bg-primary" />
+          <span className="w-px flex-1 bg-border min-h-[20px]" />
+          <span className="w-2 h-2 rounded-full bg-text-primary" />
+        </div>
+        <div className="flex-1 min-w-0 flex flex-col justify-between gap-2">
+          <p className="text-sm font-medium text-text-primary line-clamp-1">{ride.origin_address ?? '—'}</p>
+          <p className="text-sm font-medium text-text-secondary line-clamp-1">{ride.destination_address ?? '—'}</p>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={cancelling}
+        className="w-full pt-3 border-t border-border text-xs font-semibold text-red-600 disabled:opacity-50"
+      >
+        {cancelling ? 'Cancelling…' : 'Cancel ride'}
+      </button>
+    </motion.div>
+  )
+}
+
 function SkeletonCard() {
   return (
     <div className="bg-surface rounded-2xl border border-border p-4 animate-pulse">
@@ -112,13 +165,19 @@ function SkeletonCard() {
 const LIMIT = 20
 
 export default function HistoryPage() {
-  const [tab,     setTab]     = useState<Tab>('all')
+  const router = useRouter()
+  const [tab,     setTab]     = useState<Tab>('upcoming')
   const [rides,   setRides]   = useState<RideHistoryItem[]>([])
   const [page,    setPage]    = useState(1)
   const [pages,   setPages]   = useState(1)
   const [total,   setTotal]   = useState(0)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(false)
+
+  const [upcoming,        setUpcoming]        = useState<UpcomingRide[]>([])
+  const [upcomingLoading, setUpcomingLoading] = useState(true)
+  const [upcomingError,   setUpcomingError]   = useState(false)
+  const [cancellingId,    setCancellingId]    = useState<string | null>(null)
 
   const fetchHistory = useCallback(async (p: number) => {
     setLoading(true); setError(false)
@@ -135,7 +194,31 @@ export default function HistoryPage() {
     }
   }, [])
 
+  const fetchUpcoming = useCallback(async () => {
+    setUpcomingLoading(true); setUpcomingError(false)
+    try {
+      setUpcoming(await rideApi.getUpcoming())
+    } catch {
+      setUpcomingError(true)
+    } finally {
+      setUpcomingLoading(false)
+    }
+  }, [])
+
   useEffect(() => { void fetchHistory(1) }, [fetchHistory])
+  useEffect(() => { void fetchUpcoming() }, [fetchUpcoming])
+
+  async function handleCancelUpcoming(rideId: string) {
+    setCancellingId(rideId)
+    try {
+      await rideApi.cancelRide(rideId)
+      setUpcoming(prev => prev.filter(r => r.id !== rideId))
+    } catch {
+      setUpcomingError(true)
+    } finally {
+      setCancellingId(null)
+    }
+  }
 
   const filtered = tab === 'all' ? rides : rides.filter(r => r.status === tab)
 
@@ -146,7 +229,7 @@ export default function HistoryPage() {
       <div className="flex-shrink-0 bg-surface border-b border-border pt-safe-top">
         <div className="flex items-center justify-between px-5 pt-4 pb-3">
           <h1 className="text-lg font-bold text-text-primary">My Rides</h1>
-          {!loading && total > 0 && (
+          {tab !== 'upcoming' && !loading && total > 0 && (
             <span className="text-[11px] font-semibold text-text-muted bg-surface-2 px-2.5 py-1 rounded-full">
               {total} total
             </span>
@@ -177,7 +260,60 @@ export default function HistoryPage() {
       {/* ── Content ── */}
       <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-4 pb-28">
         <AnimatePresence mode="wait">
-          {loading ? (
+          {tab === 'upcoming' ? (
+            upcomingLoading ? (
+              <motion.div
+                key="upcoming-skeleton"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex flex-col gap-3"
+              >
+                {Array.from({ length: 2 }).map((_, i) => <SkeletonCard key={i} />)}
+              </motion.div>
+            ) : upcomingError ? (
+              <motion.div
+                key="upcoming-error"
+                variants={fadeUp} initial="hidden" animate="show"
+                className="flex flex-col items-center justify-center py-20 gap-3"
+              >
+                <p className="text-sm text-text-muted">Failed to load upcoming rides</p>
+                <button
+                  onClick={() => void fetchUpcoming()}
+                  className="text-primary text-sm font-semibold"
+                >
+                  Retry
+                </button>
+              </motion.div>
+            ) : upcoming.length === 0 ? (
+              <motion.div
+                key="upcoming-empty"
+                variants={fadeUp} initial="hidden" animate="show"
+                className="flex flex-col items-center justify-center py-20 gap-3"
+              >
+                <Clock size={36} className="text-text-muted opacity-30" />
+                <p className="text-sm text-text-muted">No scheduled rides</p>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="upcoming-list"
+                className="flex flex-col gap-3"
+                variants={listStagger}
+                initial="hidden"
+                animate="show"
+              >
+                {upcoming.map(ride => (
+                  <UpcomingCard
+                    key={ride.id}
+                    ride={ride}
+                    onOpen={() => router.push(`/ride/${ride.id}`)}
+                    onCancel={() => void handleCancelUpcoming(ride.id)}
+                    cancelling={cancellingId === ride.id}
+                  />
+                ))}
+              </motion.div>
+            )
+          ) : loading ? (
             <motion.div
               key="skeleton"
               initial={{ opacity: 0 }}

@@ -7,7 +7,8 @@ import { initSocketServer } from './websocket/socket.server'
 import { notificationsWorker } from './jobs/workers/notifications.worker'
 import { gpsFlushWorker } from './jobs/workers/gps-flush.worker'
 import { cleanupWorker } from './jobs/workers/cleanup.worker'
-import { cleanupQueue } from './jobs/queues'
+import { schedulerWorker } from './jobs/workers/scheduler.worker'
+import { cleanupQueue, schedulerQueue } from './jobs/queues'
 
 async function start(): Promise<void> {
   const dbOk = await testConnection()
@@ -36,6 +37,14 @@ async function start(): Promise<void> {
   console.log('[Worker] Cleanup worker started')
   await cleanupQueue.add(
     'sweep_stuck_rides',
+    {},
+    { repeat: { every: 60_000 }, removeOnComplete: true, removeOnFail: true }
+  )
+
+  void schedulerWorker
+  console.log('[Worker] Scheduler worker started')
+  await schedulerQueue.add(
+    'sweep_scheduled_rides',
     {},
     { repeat: { every: 60_000 }, removeOnComplete: true, removeOnFail: true }
   )

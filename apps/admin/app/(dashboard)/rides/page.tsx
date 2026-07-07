@@ -7,7 +7,7 @@ import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
-import { adminRideApi, type AdminRideItem } from '@/lib/admin-api'
+import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem } from '@/lib/admin-api'
 
 function fmt(iso: string | null) {
   if (!iso) return '—'
@@ -48,6 +48,22 @@ function RidesPageContent() {
 
   const [selected, setSelected] = useState<AdminRideItem | null>(null)
   const [resolving, setResolving] = useState(false)
+
+  const [upcoming, setUpcoming] = useState<AdminUpcomingRideItem[]>([])
+  const [upcomingLoading, setUpcomingLoading] = useState(true)
+
+  const fetchUpcoming = useCallback(async () => {
+    setUpcomingLoading(true)
+    try {
+      setUpcoming(await adminRideApi.upcoming())
+    } catch {
+      setUpcoming([])
+    } finally {
+      setUpcomingLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void fetchUpcoming() }, [fetchUpcoming])
 
   async function handleForceResolve(action: 'complete' | 'cancel') {
     if (!selected) return
@@ -186,6 +202,43 @@ function RidesPageContent() {
         </div>
       </div>
 
+      {!upcomingLoading && upcoming.length > 0 && (
+        <div className="admin-card">
+          <h3 className="text-sm font-bold text-text-primary mb-3">
+            Upcoming scheduled rides ({upcoming.length})
+          </h3>
+          <div className="flex flex-col gap-2">
+            {upcoming.map(r => (
+              <div
+                key={r.id}
+                className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-sm ${
+                  r.is_stuck ? 'border-red-300 bg-red-50' : 'border-border'
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold text-text-primary truncate">
+                    {r.user_name} · {r.user_phone}
+                  </p>
+                  <p className="text-xs text-text-muted truncate">
+                    {r.origin_address ?? '—'} → {r.destination_address ?? '—'}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs font-semibold text-text-primary">
+                    {new Date(r.scheduled_for).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })}
+                  </p>
+                  {r.is_stuck ? (
+                    <p className="text-[11px] font-semibold text-red-600">Stuck — sweep may have failed</p>
+                  ) : (
+                    <p className="text-[11px] text-text-muted">{r.advance_status}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="admin-card">
         <div className="mb-4">
           <FilterBar
@@ -196,6 +249,7 @@ function RidesPageContent() {
               {
                 key: 'status', label: 'All Statuses',
                 options: [
+                  { value: 'scheduled',   label: 'Scheduled'   },
                   { value: 'requested',   label: 'Requested'   },
                   { value: 'accepted',    label: 'Accepted'    },
                   { value: 'driver_arrived', label: 'Arrived'  },

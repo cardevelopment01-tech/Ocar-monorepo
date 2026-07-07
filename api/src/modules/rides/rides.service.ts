@@ -8,7 +8,13 @@ import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES, gpsFlushQueue } from '@/jobs/queues'
 import { socketEvents } from '@/websocket/socket.server'
 import { generateOtp, hashOtp } from '@/lib/otp'
-import { RIDE_OTP_LENGTH } from '@/constants/limits'
+import {
+  RIDE_OTP_LENGTH,
+  ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES,
+  MIN_ADVANCE_BOOKING_MINUTES,
+  MAX_ADVANCE_BOOKING_DAYS,
+  MAX_CONCURRENT_SCHEDULED_BOOKINGS,
+} from '@/constants/limits'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import type { BookingRequest } from './rides.types'
 import {
@@ -192,6 +198,35 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     }
   }
 
+  let scheduledForDate: Date | null = null
+  if (data.scheduledFor !== undefined) {
+    scheduledForDate = new Date(data.scheduledFor)
+    if (isNaN(scheduledForDate.getTime())) {
+      throw Object.assign(new Error('Invalid scheduledFor date'), { httpStatus: 422 })
+    }
+    const minAllowed = Date.now() + MIN_ADVANCE_BOOKING_MINUTES * 60_000
+    const maxAllowed = Date.now() + MAX_ADVANCE_BOOKING_DAYS * 24 * 60 * 60_000
+    if (scheduledForDate.getTime() < minAllowed) {
+      throw Object.assign(
+        new Error(`Scheduled rides must be booked at least ${MIN_ADVANCE_BOOKING_MINUTES} minutes ahead`),
+        { httpStatus: 422 }
+      )
+    }
+    if (scheduledForDate.getTime() > maxAllowed) {
+      throw Object.assign(
+        new Error(`Scheduled rides can only be booked up to ${MAX_ADVANCE_BOOKING_DAYS} days ahead`),
+        { httpStatus: 422 }
+      )
+    }
+    const scheduledCount = await repo.countScheduledRidesForUser(userId)
+    if (scheduledCount >= MAX_CONCURRENT_SCHEDULED_BOOKINGS) {
+      throw Object.assign(
+        new Error(`You can only have ${MAX_CONCURRENT_SCHEDULED_BOOKINGS} scheduled rides at a time`),
+        { httpStatus: 422 }
+      )
+    }
+  }
+
   // Enforce minimum 4h for round trips — must match pricing.service clamp so
   // fare_snapshots.trip_hours records the same value used to compute the fare.
   const effectiveTripHours = clampTripHours(data.rideType, data.tripHours)
@@ -227,6 +262,10 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   const storedTripHours = fareEstimate.rental_hours ?? (effectiveTripHours > 0 ? effectiveTripHours : undefined)
   if (storedTripHours !== undefined) rideInput.tripHours = storedTripHours
   if (data.returnAt           !== undefined) rideInput.returnAt           = data.returnAt
+  if (scheduledForDate && data.scheduledFor !== undefined) {
+    rideInput.scheduledFor = data.scheduledFor
+    rideInput.status = 'scheduled'
+  }
   const ride = await repo.createRide(rideInput)
 
   await pool.query(
@@ -260,6 +299,39 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
       fareEstimate.breakdown.total,
     ]
   )
+
+  if (scheduledForDate) {
+    await repo.logStatusHistory({
+      rideId:     BigInt(ride.id),
+      fromStatus: null,
+      toStatus:   'scheduled',
+      actor:      'user',
+      actorId:    userId,
+    })
+
+    await repo.createAdvanceMeta({
+      rideId:                 BigInt(ride.id),
+      dispatchBufferMinutes:  ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES,
+      rateCardIdAtBooking:    BigInt(fareEstimate.rate_card_id),
+    })
+
+    const dispatchAt = scheduledForDate.getTime() - ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES * 60_000
+    const delay = Math.max(dispatchAt - Date.now(), 0)
+    const job = await queues[QUEUE_NAMES.SCHEDULER].add(
+      'dispatch_scheduled_ride',
+      { rideId: ride.id.toString() },
+      { delay, attempts: 3, removeOnComplete: true }
+    )
+    if (job.id) await repo.setAdvanceMetaJobId(BigInt(ride.id), job.id)
+
+    return {
+      rideId:          ride.id.toString(),
+      status:          'scheduled',
+      scheduledFor:    data.scheduledFor,
+      estimatedFare:   fareEstimate.breakdown.total,
+      surgeMultiplier: fareEstimate.surge_multiplier,
+    }
+  }
 
   await repo.logStatusHistory({
     rideId:     BigInt(ride.id),
@@ -458,10 +530,11 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
 
 // ── Ride cancellation ─────────────────────────────────────────
 
-const CANCELLABLE_BY_USER   = new Set(['requested', 'accepted', 'driver_arrived'])
+const CANCELLABLE_BY_USER   = new Set(['scheduled', 'requested', 'accepted', 'driver_arrived'])
 const CANCELLABLE_BY_DRIVER = new Set(['accepted', 'driver_arrived'])
 
 function cancelStageFor(status: string): string {
+  if (status === 'scheduled')       return 'before_dispatch'
   if (status === 'accepted')        return 'after_acceptance'
   if (status === 'driver_arrived')  return 'after_arrival'
   return 'before_acceptance'
@@ -481,7 +554,7 @@ export async function cancelRide(
   }
 
   const stage = cancelStageFor(ride.status)
-  const feeApplicable = stage !== 'before_acceptance'
+  const feeApplicable = stage !== 'before_acceptance' && stage !== 'before_dispatch'
 
   const client = await pool.connect()
   try {
@@ -508,6 +581,13 @@ export async function cancelRide(
        VALUES ($1, $2, 'cancelled', 'user', $3)`,
       [rideId, ride.status, userId]
     )
+
+    if (stage === 'before_dispatch') {
+      await client.query(
+        `UPDATE ride_advance_meta SET status = 'cancelled' WHERE ride_id = $1`,
+        [rideId]
+      )
+    }
 
     if (ride.driver_id) {
       await client.query(

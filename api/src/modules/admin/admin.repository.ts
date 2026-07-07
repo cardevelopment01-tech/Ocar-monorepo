@@ -772,6 +772,23 @@ export async function listAdminRides(filters: {
   return { rows: dataRes.rows, total }
 }
 
+export async function listUpcomingScheduledRides() {
+  const res = await pool.query(
+    `SELECT
+       r.id::text, r.ride_type, r.scheduled_for,
+       r.origin_address, r.destination_address,
+       u.name AS user_name, u.phone AS user_phone,
+       ram.status AS advance_status,
+       (ram.status = 'pending_driver' AND r.scheduled_for < now()) AS is_stuck
+     FROM rides r
+     JOIN users u ON u.id = r.user_id
+     JOIN ride_advance_meta ram ON ram.ride_id = r.id
+     WHERE r.status = 'scheduled'
+     ORDER BY r.scheduled_for ASC`
+  )
+  return res.rows
+}
+
 export async function getAdminRideById(rideId: bigint) {
   const res = await pool.query(
     `SELECT
