@@ -9,6 +9,7 @@ import {
   Plus, ChevronDown, User, Clock, Heart, ArrowRightLeft,
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import ScheduleRideSheet from '@/components/ui/ScheduleRideSheet'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
 
@@ -65,6 +66,12 @@ function SearchContent() {
   const rideType  = sp.get('rideType')  ?? undefined
   const backTo    = sp.get('backTo')    ?? undefined
   const tripHours = sp.get('tripHours') ?? undefined
+
+  const [scheduledFor, setScheduledFor] = useState<Date | null>(() => {
+    const raw = sp.get('scheduledFor')
+    return raw ? new Date(raw) : null
+  })
+  const [schedulePickerOpen, setSchedulePickerOpen] = useState(false)
 
   const [mode, setMode] = useState<EditMode>(() => {
     const focus = sp.get('focus')
@@ -261,6 +268,7 @@ function SearchContent() {
       })
       if (route.polyline) params.set('polyline', route.polyline)
       if (rideType)      params.set('rideType', rideType)
+      if (scheduledFor)  params.set('scheduledFor', scheduledFor.toISOString())
 
       const isInCity  = classification?.scope === 'in_city'
       const cityLabel = classification?.cityName ?? 'the city'
@@ -543,6 +551,17 @@ function SearchContent() {
             <Plus size={14} strokeWidth={2.2} className="text-white" />
             <span className="text-[13px] font-semibold text-white">Add stops</span>
           </motion.button>
+        </div>
+
+        {/* Pickup time — own row, decoupled from ride-type/car selection further down the funnel */}
+        <div className="px-4 pb-1.5">
+          <ScheduleRideSheet
+            value={scheduledFor}
+            pickerOpen={schedulePickerOpen}
+            onOpenPicker={() => setSchedulePickerOpen(true)}
+            onClosePicker={() => setSchedulePickerOpen(false)}
+            onChange={setScheduledFor}
+          />
         </div>
 
         {/* Sweep loader — clean violet bar bouncing edge to edge */}

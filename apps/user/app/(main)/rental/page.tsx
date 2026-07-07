@@ -62,6 +62,12 @@ function RentalContent() {
   const destAddress = sp.get('destinationAddress') ?? null
   const hasDestination = destAddress !== null
 
+  const [scheduledFor,        setScheduledFor]        = useState<Date | null>(() => {
+    const raw = sp.get('scheduledFor')
+    return raw ? new Date(raw) : null
+  })
+  const [schedulePickerOpen,  setSchedulePickerOpen]  = useState(false)
+
   function addDestination() {
     const params = new URLSearchParams({
       originLat: String(originLat),
@@ -69,6 +75,7 @@ function RentalContent() {
       originAddress,
       backTo:    'rental',
     })
+    if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
     router.push(`/search?${params.toString()}`)
   }
 
@@ -80,8 +87,6 @@ function RentalContent() {
   const [estLoading,      setEstLoading]      = useState(false)
   const [isBooking,       setIsBooking]       = useState(false)
   const [bookError,       setBookError]       = useState<string | null>(null)
-  const [scheduledFor,        setScheduledFor]        = useState<Date | null>(null)
-  const [schedulePickerOpen,  setSchedulePickerOpen]  = useState(false)
 
   // Fetch packages whenever category changes; auto-select first
   const loadPackages = useCallback(async (catId: number) => {
@@ -186,6 +191,17 @@ function RentalContent() {
         style={{ scrollbarWidth: 'none' }}
       >
         <div className="px-4 pt-5 pb-6 space-y-6">
+
+          {/* Pickup time — own section, above vehicle/package selection */}
+          <motion.section {...fadeUp(0)}>
+            <ScheduleRideSheet
+              value={scheduledFor}
+              pickerOpen={schedulePickerOpen}
+              onOpenPicker={() => setSchedulePickerOpen(true)}
+              onClosePicker={() => setSchedulePickerOpen(false)}
+              onChange={setScheduledFor}
+            />
+          </motion.section>
 
           {/* Drop-off (optional) */}
           <motion.section {...fadeUp(0)}>
@@ -396,17 +412,6 @@ function RentalContent() {
         className="flex-shrink-0 bg-white border-t border-slate-100 px-4 pt-3"
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}
       >
-        {/* Ride now / schedule for later */}
-        <div className="mb-3">
-          <ScheduleRideSheet
-            value={scheduledFor}
-            pickerOpen={schedulePickerOpen}
-            onOpenPicker={() => setSchedulePickerOpen(true)}
-            onClosePicker={() => setSchedulePickerOpen(false)}
-            onChange={setScheduledFor}
-          />
-        </div>
-
         {/* Payment method */}
         <div className="flex items-center justify-between mb-3 px-1">
           <div className="flex items-center gap-2">
@@ -436,8 +441,8 @@ function RentalContent() {
             : !selectedPkg
             ? 'Select a package'
             : estimate != null
-            ? `Book ${selectedCat.display_name} · ₹${Math.round(estimate.breakdown.total)}`
-            : `Book ${selectedCat.display_name}`
+            ? `${scheduledFor ? 'Schedule' : 'Book'} ${selectedCat.display_name} · ₹${Math.round(estimate.breakdown.total)}`
+            : `${scheduledFor ? 'Schedule' : 'Book'} ${selectedCat.display_name}`
           }
         </button>
       </div>

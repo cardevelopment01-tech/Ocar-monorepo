@@ -68,7 +68,10 @@ function SelectRideContent() {
   const [nearbyDrivers,     setNearbyDrivers]     = useState<Array<{ driver_id: string; lat: number; lng: number; category_id: number }>>([])
   const [returnCabCategories, setReturnCabCategories] = useState<Set<number>>(new Set())
   const [returnCabEstimates,  setReturnCabEstimates]  = useState<Record<number, FareEstimate>>({})
-  const [scheduledFor,     setScheduledFor]     = useState<Date | null>(null)
+  const [scheduledFor,     setScheduledFor]     = useState<Date | null>(() => {
+    const raw = sp.get('scheduledFor')
+    return raw ? new Date(raw) : null
+  })
   const [schedulePickerOpen, setSchedulePickerOpen] = useState(false)
 
   // tripHours: from URL (round_trip from /round-trip page) or inline selection
@@ -193,6 +196,7 @@ function SelectRideContent() {
       rideType,
     })
     if (rideType === 'round_trip' && tripHours) params.set('tripHours', String(tripHours))
+    if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
     router.push(`/search?${params.toString()}`)
   }
 
@@ -249,6 +253,17 @@ function SelectRideContent() {
             <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
               {distanceKm} km · {rideType === 'round_trip' ? 'round trip' : `${Math.round(durationMin)} min`}
             </span>
+          </div>
+
+          {/* Pickup time — own row, above ride-type/car selection */}
+          <div className="mb-2">
+            <ScheduleRideSheet
+              value={scheduledFor}
+              pickerOpen={schedulePickerOpen}
+              onOpenPicker={() => setSchedulePickerOpen(true)}
+              onClosePicker={() => setSchedulePickerOpen(false)}
+              onChange={(d) => { setScheduledFor(d); if (d) setIsReturnCab(false) }}
+            />
           </div>
 
           {/* Ride type tabs — hidden when user arrived from /round-trip (already committed) */}
@@ -315,17 +330,6 @@ function SelectRideContent() {
               </div>
             )
           )}
-        </div>
-
-        {/* Ride now / schedule for later */}
-        <div className="mx-4 mb-3">
-          <ScheduleRideSheet
-            value={scheduledFor}
-            pickerOpen={schedulePickerOpen}
-            onOpenPicker={() => setSchedulePickerOpen(true)}
-            onClosePicker={() => setSchedulePickerOpen(false)}
-            onChange={(d) => { setScheduledFor(d); if (d) setIsReturnCab(false) }}
-          />
         </div>
 
         {/* No drivers banner */}

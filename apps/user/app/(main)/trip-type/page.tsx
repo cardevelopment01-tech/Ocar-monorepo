@@ -44,6 +44,7 @@ function TripTypeContent() {
   const durationMin        = parseFloat(sp.get('durationMin') ?? '0')
   const originCityId       = parseInt(sp.get('originCityId') ?? '1', 10)
   const polyline           = sp.get('polyline') ?? undefined
+  const scheduledFor       = sp.get('scheduledFor') ?? undefined
 
   const [oneWayEst,   setOneWayEst]   = useState<FareEstimate | null>(null)
   const [roundTripEst, setRoundTripEst] = useState<FareEstimate | null>(null)
@@ -86,6 +87,7 @@ function TripTypeContent() {
       originCityId:       String(originCityId),
     })
     if (polyline) params.set('polyline', polyline)
+    if (scheduledFor) params.set('scheduledFor', scheduledFor)
     return params
   }
 

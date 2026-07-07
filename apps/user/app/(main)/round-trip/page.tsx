@@ -5,6 +5,7 @@ import { ArrowLeft, RotateCcw, ArrowRight, CreditCard, MapPin } from 'lucide-rea
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import ScheduleRideSheet from '@/components/ui/ScheduleRideSheet'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 const HOUR_OPTIONS = [4, 6, 8, 10, 12] as const
@@ -35,6 +36,11 @@ function RoundTripContent() {
   const hasDestination = destLat !== null && destLng !== null && destAddress !== null
 
   const [selectedHours, setSelectedHours] = useState<number | null>(null)
+  const [scheduledFor, setScheduledFor] = useState<Date | null>(() => {
+    const raw = sp.get('scheduledFor')
+    return raw ? new Date(raw) : null
+  })
+  const [schedulePickerOpen, setSchedulePickerOpen] = useState(false)
 
   const canProceed = hasDestination && selectedHours !== null
 
@@ -46,6 +52,7 @@ function RoundTripContent() {
       rideType:      'round_trip',
       backTo:        'round_trip',
     })
+    if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
     router.push(`/search?${params.toString()}`)
   }
 
@@ -65,6 +72,7 @@ function RoundTripContent() {
       tripHours:          String(selectedHours),
     })
     if (polyline) params.set('polyline', polyline)
+    if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
     router.push(`/select-ride?${params.toString()}`)
   }
 
@@ -72,6 +80,8 @@ function RoundTripContent() {
     ? 'Set a destination first'
     : selectedHours === null
     ? 'Choose how many hours'
+    : scheduledFor
+    ? `Schedule your cab · ${selectedHours}h round trip`
     : `Choose your cab · ${selectedHours}h round trip`
 
   return (
@@ -206,8 +216,21 @@ function RoundTripContent() {
             </motion.section>
           )}
 
+          {/* Pickup time — own section, decoupled from the hour selector above */}
+          {hasDestination && (
+            <motion.section {...fadeUp(0.09)}>
+              <ScheduleRideSheet
+                value={scheduledFor}
+                pickerOpen={schedulePickerOpen}
+                onOpenPicker={() => setSchedulePickerOpen(true)}
+                onClosePicker={() => setSchedulePickerOpen(false)}
+                onChange={setScheduledFor}
+              />
+            </motion.section>
+          )}
+
           {/* What's included */}
-          <motion.section {...fadeUp(hasDestination ? 0.12 : 0.06)}>
+          <motion.section {...fadeUp(hasDestination ? 0.15 : 0.06)}>
             <div
               className="rounded-2xl px-4 py-4 space-y-2.5"
               style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
