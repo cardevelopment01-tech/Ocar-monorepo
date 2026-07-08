@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import BottomNav from '@/components/ui/BottomNav'
 import { rideApi } from '@/lib/ride-api'
 
-type Tab = 'trip' | 'messages' | 'help' | 'profile'
+type Tab = 'home' | 'trip' | 'messages' | 'help' | 'profile'
 
 // Flow pages own their full bottom chrome — no shared nav bar
 const HIDE_NAV_PREFIXES = ['/search', '/select-ride', '/confirm-pickup', '/ride/', '/rental', '/round-trip', '/saved-places', '/payment-methods', '/notifications', '/safety', '/help']
@@ -27,12 +27,12 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const showNav = !HIDE_NAV_PREFIXES.some(p => pathname.startsWith(p))
 
   const activeTab: Tab =
-    pathname.startsWith('/history') ? 'trip'
-    : pathname.startsWith('/home')  ? 'trip'
+    pathname.startsWith('/history')   ? 'trip'
     : pathname.startsWith('/profile') ? 'profile'
-    : 'trip'
+    : 'home'
 
   const handleTabChange = (tab: Tab) => {
+    if (tab === 'home') router.push('/home')
     if (tab === 'trip') router.push('/history')
     if (tab === 'profile') router.push('/profile')
   }
