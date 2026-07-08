@@ -49,10 +49,24 @@ export type RideDetail = {
   vehicle_model: string | null
   vehicle_brand: string | null
   total_estimated: string | null
+  total_final: string | null
+  base_fare: string | null
+  distance_fare: string | null
+  time_fare: string | null
+  stop_fare: string | null
+  hour_surcharge: string | null
+  overage_fare: string | null
+  surge_fare: string | null
+  surge_multiplier: string | null
+  actual_km: string | null
+  actual_min: string | null
+  cancellation_reason: string | null
+  cancellation_reason_code: string | null
   requested_at: string
   accepted_at: string | null
   started_at: string | null
   completed_at: string | null
+  cancelled_at: string | null
   review_flagged_at: string | null
   review_reason: string | null
   startOtp: string | undefined

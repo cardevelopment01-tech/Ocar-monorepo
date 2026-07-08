@@ -440,7 +440,7 @@ export default function HistoryPage() {
                 key="upcoming-empty"
                 icon={CalendarClock}
                 title="No scheduled rides"
-                subtitle="Rides you book for later will show up here."
+                subtitle="Schedule now and we'll find your driver closer to pickup — no need to book last-minute."
                 cta={{ label: 'Book a ride', onClick: () => router.push('/home') }}
               />
             ) : (
@@ -490,9 +490,16 @@ export default function HistoryPage() {
               initial="hidden"
               animate="show"
             >
-              {filtered.map(ride => (
-                <RideCard key={ride.id} ride={ride} onOpen={() => router.push(`/ride/${ride.id}`)} />
-              ))}
+              {filtered.map(ride => {
+                const isTerminal = ride.status === 'completed' || ride.status === 'cancelled' || ride.status === 'no_drivers'
+                return (
+                  <RideCard
+                    key={ride.id}
+                    ride={ride}
+                    onOpen={() => router.push(isTerminal ? `/ride/${ride.id}/receipt` : `/ride/${ride.id}`)}
+                  />
+                )
+              })}
 
               {pages > 1 && (
                 <div className="flex items-center justify-between pt-2 pb-4">

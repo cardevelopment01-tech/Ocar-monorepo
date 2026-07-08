@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import BottomNav from '@/components/ui/BottomNav'
 import { rideApi } from '@/lib/ride-api'
 
-type Tab = 'home' | 'trip' | 'messages' | 'help' | 'profile'
+type Tab = 'home' | 'trip' | 'profile'
 
 // Flow pages own their full bottom chrome — no shared nav bar
 const HIDE_NAV_PREFIXES = ['/search', '/select-ride', '/confirm-pickup', '/ride/', '/rental', '/round-trip', '/saved-places', '/payment-methods', '/notifications', '/safety', '/help']

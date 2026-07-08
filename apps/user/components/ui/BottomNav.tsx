@@ -1,10 +1,10 @@
 'use client'
 
 import { motion, useReducedMotion } from 'framer-motion'
-import { Home, Car, MessageCircle, HelpCircle, User } from 'lucide-react'
+import { Home, Car, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Tab = 'home' | 'trip' | 'messages' | 'help' | 'profile'
+type Tab = 'home' | 'trip' | 'profile'
 
 interface NavItem {
   id: Tab
@@ -17,11 +17,9 @@ const PILL_SPRING = { type: 'spring', stiffness: 420, damping: 35 } as const
 const TAP_SPRING  = { type: 'spring', stiffness: 400, damping: 25 } as const
 
 const items: NavItem[] = [
-  { id: 'home',     icon: Home,          label: 'Home'     },
-  { id: 'trip',     icon: Car,           label: 'Rides'    },
-  { id: 'messages', icon: MessageCircle, label: 'Messages', soon: true },
-  { id: 'help',     icon: HelpCircle,    label: 'Help',     soon: true },
-  { id: 'profile',  icon: User,          label: 'Profile'  },
+  { id: 'home',    icon: Home, label: 'Home'    },
+  { id: 'trip',    icon: Car,  label: 'Rides'   },
+  { id: 'profile', icon: User, label: 'Profile' },
 ]
 
 interface BottomNavProps {
