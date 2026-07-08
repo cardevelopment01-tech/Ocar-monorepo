@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Tag, Pencil, Zap, AlertTriangle, ChevronDown, ChevronUp, History, Package, Plus } from 'lucide-react'
+import { Tag, Pencil, Zap, AlertTriangle, ChevronDown, ChevronUp, History, Package, Plus, Trash2 } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { pricingApi, rentalPackageApi, type RateCard, type SurgeEvent, type RentalPackageAdmin } from '@/lib/pricing-api'
 import { cityApi, type AdminCity } from '@/lib/city-api'
@@ -570,6 +570,8 @@ export default function RateCardsPage() {
   const [rentalError,   setRentalError]   = useState('')
   const [rentalRetry,   setRentalRetry]   = useState(0)
   const [toggling,      setToggling]      = useState<number | null>(null)
+  const [deleting,      setDeleting]      = useState<number | null>(null)
+  const [deleteError,   setDeleteError]   = useState('')
 
   const fetchAll = useCallback(async () => {
     setLoading(true); setError('')
@@ -604,6 +606,22 @@ export default function RateCardsPage() {
       await fetchRental()
     } catch { /* silent — optimistic toggle failed, list stays stale */ }
     finally { setToggling(null) }
+  }
+
+  async function deleteRentalPackage(pkg: RentalPackageAdmin) {
+    if (!window.confirm(`Delete the ${formatDuration(pkg.duration_minutes)} / ${pkg.km_limit}km package for ${pkg.category_name}? This cannot be undone.`)) return
+    setDeleting(pkg.id); setDeleteError('')
+    try {
+      await rentalPackageApi.remove(pkg.id)
+      await fetchRental()
+    } catch (err) {
+      const status = (err as { response?: { status?: number; data?: { error?: string } } }).response
+      setDeleteError(
+        status?.status === 409
+          ? (status.data?.error ?? 'This package has ride history and cannot be deleted. Deactivate it instead.')
+          : 'Failed to delete the package.',
+      )
+    } finally { setDeleting(null) }
   }
 
   async function cancelSurge(id: number) {
@@ -898,6 +916,13 @@ export default function RateCardsPage() {
             </div>
           </div>
 
+          {deleteError && (
+            <div className="admin-card !py-3 !px-4 flex items-center justify-between gap-3 border-warning/20 bg-warning-light">
+              <p className="text-sm text-warning">{deleteError}</p>
+              <button onClick={() => setDeleteError('')} className="text-xs text-warning underline flex-shrink-0">Dismiss</button>
+            </div>
+          )}
+
           {rentalError ? (
             <div className="admin-card text-center py-8">
               <p className="text-text-muted mb-3">{rentalError}</p>
@@ -905,7 +930,7 @@ export default function RateCardsPage() {
             </div>
           ) : rentalLoading ? (
             <div className="admin-card !p-0 overflow-hidden">
-              <table className="data-table"><tbody><SkeletonRows cols={7} n={8} /></tbody></table>
+              <table className="data-table"><tbody><SkeletonRows cols={8} n={8} /></tbody></table>
             </div>
           ) : rentalPkgs.length === 0 ? (
             <div className="admin-card text-center py-12">
@@ -937,6 +962,7 @@ export default function RateCardsPage() {
                         <th className="!text-right">Extra/min</th>
                         <th className="!text-center">Active</th>
                         <th className="!text-right">Edit</th>
+                        <th className="!text-right">Delete</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -958,6 +984,16 @@ export default function RateCardsPage() {
                           </td>
                           <td className="!text-right">
                             <EditRentalPackageDialog pkg={pkg} onUpdated={fetchRental} />
+                          </td>
+                          <td className="!text-right">
+                            <button
+                              onClick={() => void deleteRentalPackage(pkg)}
+                              disabled={deleting === pkg.id}
+                              className="p-1.5 rounded-lg text-danger hover:bg-danger-light disabled:opacity-50 transition-colors"
+                              title="Delete package"
+                            >
+                              <Trash2 size={15} />
+                            </button>
                           </td>
                         </tr>
                       ))}

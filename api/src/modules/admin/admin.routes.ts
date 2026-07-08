@@ -59,6 +59,7 @@ router.patch('/pricing/surge/:id/cancel',      requireAdmin('super_admin', 'ops_
 router.get('/pricing/rental-packages',         requireAdmin('super_admin', 'ops_admin'), controller.getAdminRentalPackages)
 router.post('/pricing/rental-packages',        requireAdmin('super_admin', 'ops_admin'), controller.postAdminRentalPackage)
 router.patch('/pricing/rental-packages/:id',   requireAdmin('super_admin', 'ops_admin'), controller.patchAdminRentalPackage)
+router.delete('/pricing/rental-packages/:id',  requireAdmin('super_admin', 'ops_admin'), controller.deleteAdminRentalPackage)
 
 // ─── Geo / Cities ─────────────────────────────────────────────────────────────
 router.get('/geo/cities',       requireAdmin('super_admin', 'ops_admin'), controller.getAdminCities)

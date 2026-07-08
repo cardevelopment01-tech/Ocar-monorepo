@@ -421,6 +421,13 @@ export async function patchAdminRentalPackage(req: Request, res: Response, next:
   } catch (err) { next(err) }
 }
 
+export async function deleteAdminRentalPackage(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await service.deleteAdminRentalPackage(BigInt(req.params['id']!))
+    res.status(204).end()
+  } catch (err) { next(err) }
+}
+
 export async function postAdminRentalPackage(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { category_id, duration_minutes, km_limit, package_fare, extra_per_km, extra_per_min, display_order } = req.body as Record<string, unknown>

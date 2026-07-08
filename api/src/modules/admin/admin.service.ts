@@ -290,6 +290,22 @@ export async function updateAdminRentalPackage(
   }
 }
 
+export async function deleteAdminRentalPackage(id: bigint) {
+  try {
+    const deleted = await repo.deleteAdminRentalPackage(id)
+    if (!deleted) throw Object.assign(new Error('Rental package not found'), { httpStatus: 404 })
+  } catch (err) {
+    if ((err as { httpStatus?: number }).httpStatus) throw err
+    if ((err as { code?: string }).code === '23503') {
+      throw Object.assign(
+        new Error('This package has been used in past rides and cannot be deleted. Deactivate it instead.'),
+        { httpStatus: 409 },
+      )
+    }
+    throw err
+  }
+}
+
 export async function createAdminRentalPackage(
   body: {
     category_id: number; duration_minutes: number; km_limit: number

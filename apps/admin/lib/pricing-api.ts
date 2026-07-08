@@ -105,4 +105,7 @@ export const rentalPackageApi = {
     package_fare: number; extra_per_km: number; extra_per_min: number; display_order?: number
   }): Promise<RentalPackageAdmin> =>
     api.post('/api/v1/admin/pricing/rental-packages', data).then(r => r.data as RentalPackageAdmin),
+
+  remove: (id: number): Promise<void> =>
+    api.delete(`/api/v1/admin/pricing/rental-packages/${id}`).then(() => undefined),
 }

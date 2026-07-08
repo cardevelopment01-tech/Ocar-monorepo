@@ -862,6 +862,11 @@ export async function updateAdminRentalPackage(
   return res.rows[0] as AdminRentalPackage | undefined
 }
 
+export async function deleteAdminRentalPackage(id: bigint) {
+  const res = await pool.query(`DELETE FROM rental_packages WHERE id = $1 RETURNING id`, [id])
+  return res.rows[0] as { id: bigint } | undefined
+}
+
 export async function createAdminRentalPackage(
   fields: {
     category_id: number
