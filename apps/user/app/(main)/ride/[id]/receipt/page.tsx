@@ -221,14 +221,21 @@ export default function RideReceiptPage() {
       {/* Actions */}
       <div className="flex-shrink-0 px-4 pb-8 space-y-2">
         {isCompleted && (
-          <button
-            type="button"
-            onClick={() => router.push(`/ride/${rideId}/rate`)}
-            className="w-full flex items-center justify-center gap-2 bg-primary text-white text-sm font-semibold py-3.5 rounded-full shadow-button active:scale-[0.98] transition-transform"
-          >
-            <Star size={15} />
-            Rate this trip
-          </button>
+          ride.user_rating_given != null ? (
+            <div className="w-full flex items-center justify-center gap-1.5 bg-surface-2 text-text-secondary text-sm font-semibold py-3.5 rounded-full">
+              <Star size={15} className="fill-status-warning text-status-warning" />
+              You rated this trip {ride.user_rating_given}/5
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => router.push(`/ride/${rideId}/rate`)}
+              className="w-full flex items-center justify-center gap-2 bg-primary text-white text-sm font-semibold py-3.5 rounded-full shadow-button active:scale-[0.98] transition-transform"
+            >
+              <Star size={15} />
+              Rate this trip
+            </button>
+          )
         )}
         <button
           type="button"

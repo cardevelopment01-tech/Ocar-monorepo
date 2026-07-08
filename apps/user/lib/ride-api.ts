@@ -62,6 +62,7 @@ export type RideDetail = {
   actual_min: string | null
   cancellation_reason: string | null
   cancellation_reason_code: string | null
+  user_rating_given: number | null
   requested_at: string
   accepted_at: string | null
   started_at: string | null

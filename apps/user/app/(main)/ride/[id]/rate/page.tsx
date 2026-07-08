@@ -22,6 +22,7 @@ export default function RateRidePage() {
   const [selectedTags,  setSelectedTags]  = useState<string[]>([])
   const [submitting,    setSubmitting]    = useState(false)
   const [submitted,     setSubmitted]     = useState(false)
+  const [alreadyRated,  setAlreadyRated]  = useState(false)
   const [error,         setError]         = useState<string | null>(null)
 
   useEffect(() => {
@@ -29,6 +30,7 @@ export default function RateRidePage() {
     void rideApi.getRide(rideId).then(ride => {
       setDriverName(ride.driver_name)
       setDriverId(ride.driver_id)
+      if (ride.user_rating_given != null) setAlreadyRated(true)
     }).catch(() => {})
 
     void safetyApi.getTags('user_to_driver').then(setTags).catch(() => {})
@@ -76,6 +78,24 @@ export default function RateRidePage() {
         <h2 className="text-xl font-bold text-text-primary mb-2">Thanks for rating!</h2>
         <p className="text-text-muted text-sm">Your feedback helps drivers improve</p>
         <div className="mt-6"><OcarSpinner size={24} variant="color" /></div>
+      </div>
+    )
+  }
+
+  if (alreadyRated) {
+    return (
+      <div className="h-full bg-background flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-primary-subtle flex items-center justify-center text-3xl mb-4">
+          ⭐
+        </div>
+        <h2 className="text-xl font-bold text-text-primary mb-2">You already rated this trip</h2>
+        <p className="text-text-muted text-sm mb-6">Thanks for your feedback on this ride.</p>
+        <button
+          onClick={() => router.replace(`/ride/${rideId}/receipt`)}
+          className="btn-primary"
+        >
+          Back to trip details
+        </button>
       </div>
     )
   }

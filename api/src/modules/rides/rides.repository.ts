@@ -334,6 +334,7 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
        fs.actual_km, fs.actual_min,
        rc.reason      AS cancellation_reason,
        rc.reason_code AS cancellation_reason_code,
+       ur.score AS user_rating_given,
        dv.number_plate  AS vehicle_number_plate,
        dv.color         AS vehicle_color,
        dv.vehicle_name  AS vehicle_name,
@@ -346,6 +347,7 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
      LEFT JOIN drivers d           ON d.id = r.driver_id
      LEFT JOIN fare_snapshots fs   ON fs.ride_id = r.id
      LEFT JOIN ride_cancellations rc ON rc.ride_id = r.id
+     LEFT JOIN ratings ur ON ur.ride_id = r.id AND ur.direction = 'user_to_driver'
      LEFT JOIN driver_vehicles dv  ON dv.driver_id = r.driver_id AND dv.is_primary = true AND dv.status != 'blacklisted'
      LEFT JOIN vehicle_models vm   ON vm.id = dv.model_id
      LEFT JOIN vehicle_brands vb   ON vb.id = dv.brand_id
