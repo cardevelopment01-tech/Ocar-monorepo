@@ -33,7 +33,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     : 'trip'
 
   const handleTabChange = (tab: Tab) => {
-    if (tab === 'trip') router.push('/home')
+    if (tab === 'trip') router.push('/history')
     if (tab === 'profile') router.push('/profile')
   }
 

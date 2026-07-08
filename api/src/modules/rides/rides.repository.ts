@@ -1,5 +1,11 @@
 import { pool } from '@/db/client'
 import type { DriverSession, NearbyDriver, Ride } from './rides.types'
+import {
+  STALE_REQUESTED_MINUTES,
+  STALE_ACCEPTED_HOURS,
+  STALE_DRIVER_ARRIVED_HOURS,
+  STALE_IN_PROGRESS_CEILING_HOURS,
+} from '@/constants/limits'
 
 // ── Driver session queries ────────────────────────────────────
 
@@ -249,14 +255,35 @@ export async function createRide(data: {
   return res.rows[0]
 }
 
+// Per-status staleness cutoffs so an orphaned ride (broadcast job never ran,
+// dev/test session interrupted, etc.) can't get treated as "active" forever
+// and trap the user's client on reload. Gated on updated_at, NOT requested_at
+// — advance-booking rides sit in 'scheduled' with an old requested_at until
+// the dispatch buffer flips them to 'requested' (updateRideStatusCAS bumps
+// updated_at at that moment), so requested_at would wrongly look stale for a
+// ride that just started broadcasting. Windows are generous vs. real timings:
+// requested resolves within ~2min (3 broadcast rounds), in_progress already
+// has its own dedicated GPS-heartbeat sweep (cleanup.worker.ts) that force-
+// cancels after 30min — this is just a last-resort ceiling for it.
 export async function getActiveRideIdForUser(userId: bigint): Promise<string | null> {
   const res = await pool.query<{ id: string }>(
     `SELECT id FROM rides
      WHERE user_id = $1
-       AND status IN ('requested', 'accepted', 'driver_arrived', 'in_progress')
+       AND (
+         (status = 'requested'      AND updated_at > now() - ($2 || ' minutes')::interval) OR
+         (status = 'accepted'       AND updated_at > now() - ($3 || ' hours')::interval)    OR
+         (status = 'driver_arrived' AND updated_at > now() - ($4 || ' hours')::interval)    OR
+         (status = 'in_progress'    AND updated_at > now() - ($5 || ' hours')::interval)
+       )
      ORDER BY requested_at DESC
      LIMIT 1`,
-    [userId]
+    [
+      userId,
+      STALE_REQUESTED_MINUTES,
+      STALE_ACCEPTED_HOURS,
+      STALE_DRIVER_ARRIVED_HOURS,
+      STALE_IN_PROGRESS_CEILING_HOURS,
+    ]
   )
   return res.rows[0]?.id ?? null
 }
@@ -497,6 +524,39 @@ export async function findStaleInProgressRides(staleSeconds: number): Promise<St
      WHERE r.status = 'in_progress'
        AND now() - dls.recorded_at > ($1 || ' seconds')::interval`,
     [staleSeconds]
+  )
+  return res.rows
+}
+
+// Orphaned rides: broadcast job died mid-flight (requested), or the driver
+// accepted/arrived and the flow was interrupted before in_progress (crash,
+// force-quit, network drop). Neither has a GPS heartbeat to key off, unlike
+// the in_progress sweeper above — just how long they've sat in that status.
+export async function findStaleRequestedRides(minutes: number): Promise<{ id: string }[]> {
+  const res = await pool.query<{ id: string }>(
+    `SELECT id FROM rides
+     WHERE status = 'requested'
+       AND updated_at < now() - ($1 || ' minutes')::interval`,
+    [minutes]
+  )
+  return res.rows
+}
+
+export interface StaleAcceptedOrArrivedRow {
+  id: string
+  status: 'accepted' | 'driver_arrived'
+  driver_id: string
+}
+
+export async function findStaleAcceptedOrArrivedRides(
+  acceptedHours: number,
+  arrivedHours: number
+): Promise<StaleAcceptedOrArrivedRow[]> {
+  const res = await pool.query<StaleAcceptedOrArrivedRow>(
+    `SELECT id, status, driver_id FROM rides
+     WHERE (status = 'accepted'       AND updated_at < now() - ($1 || ' hours')::interval)
+        OR (status = 'driver_arrived' AND updated_at < now() - ($2 || ' hours')::interval)`,
+    [acceptedHours, arrivedHours]
   )
   return res.rows
 }

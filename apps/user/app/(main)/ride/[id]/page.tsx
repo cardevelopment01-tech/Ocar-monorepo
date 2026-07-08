@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Phone, MessageSquare, MapPin, Navigation, X, RotateCcw, CheckCircle, Shield, Copy, Check, Clock } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
+import axios from 'axios'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
 import { safetyApi } from '@/lib/safety-api'
 import { formatReturnAt } from '@/lib/utils'
@@ -135,8 +136,16 @@ export default function RidePage() {
       if (data.driver_current_lat != null && data.driver_current_lng != null) {
         setDriverPos(prev => prev ?? [data.driver_current_lat!, data.driver_current_lng!])
       }
-    } catch { /* ignore */ }
-  }, [rideId])
+    } catch (err) {
+      // Stale ride id (back button / reopened tab pointing at a ride that's
+      // since completed, or isn't ours) — bail out instead of getting stuck
+      // on the "Finding your driver" skeleton forever. Transient errors
+      // (network/5xx) fall through and get retried by the poll/socket.
+      if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 403)) {
+        router.replace('/home')
+      }
+    }
+  }, [rideId, router])
 
   async function handleReportProblem() {
     setReportSending(true)

@@ -182,6 +182,18 @@ export async function updateLocation(driverId: bigint, data: {
 // ── Ride booking ──────────────────────────────────────────────
 
 export async function createBooking(userId: bigint, data: BookingRequest) {
+  // Only immediate bookings conflict with an existing active ride — a
+  // scheduled-for-later booking (data.scheduledFor set) is fine to stack on
+  // top of a ride happening right now. Reuses the same staleness-aware query
+  // the frontend's auto-redirect uses, so this can't false-positive on the
+  // class of orphaned ride the cleanup sweep exists to resolve.
+  if (data.scheduledFor === undefined) {
+    const activeRideId = await repo.getActiveRideIdForUser(userId)
+    if (activeRideId) {
+      throw Object.assign(new Error('You already have an active ride'), { httpStatus: 409 })
+    }
+  }
+
   if (
     (data.rideType === 'one_way' || data.rideType === 'round_trip') &&
     data.destinationLat !== undefined &&
@@ -745,6 +757,73 @@ export async function forceResolveRide(
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: outcome, resolvedBy: actor })
   return { success: true }
+}
+
+// ── Orphaned-ride sweep (cleanup worker) ────────────────────────
+
+export async function expireStaleRequestedRide(rideId: bigint) {
+  await repo.updateRideStatus(rideId, 'no_drivers')
+  await repo.logStatusHistory({
+    rideId,
+    fromStatus: 'requested',
+    toStatus:   'no_drivers',
+    actor:      'system',
+    note:       'auto-expired: no broadcast resolution',
+  })
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'no_drivers' })
+}
+
+export async function expireStaleAcceptedOrArrivedRide(
+  rideId: bigint,
+  status: 'accepted' | 'driver_arrived',
+  driverId: bigint,
+) {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const upd = await client.query(
+      `UPDATE rides SET status = 'cancelled', cancelled_at = now(), updated_at = now()
+       WHERE id = $1 AND status = $2`,
+      [rideId, status]
+    )
+    if ((upd.rowCount ?? 0) === 0) {
+      await client.query('ROLLBACK')
+      return // already resolved by someone else — no-op
+    }
+
+    await client.query(
+      `INSERT INTO ride_cancellations
+         (ride_id, actor, stage, reason_code, fee_applicable, fee_amount, fee_waived)
+       VALUES ($1, 'system', $2, 'auto_timeout', false, 0, false)`,
+      [rideId, cancelStageFor(status)]
+    )
+
+    await client.query(
+      `INSERT INTO ride_status_history (ride_id, from_status, to_status, actor, note)
+       VALUES ($1, $2, 'cancelled', 'timeout', 'auto-cancelled: abandoned before in_progress')`,
+      [rideId, status]
+    )
+
+    await client.query(
+      `UPDATE driver_sessions SET status = 'online'
+       WHERE driver_id = $1 AND status = 'on_trip'`,
+      [driverId]
+    )
+    await client.query(
+      `UPDATE driver_location_snapshots SET is_available = true WHERE driver_id = $1`,
+      [driverId]
+    )
+
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'cancelled', cancelledBy: 'system' })
 }
 
 export async function verifyEndOTP(

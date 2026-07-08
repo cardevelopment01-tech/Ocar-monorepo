@@ -38,3 +38,14 @@ export const RETURN_CAB_MATCH_RADIUS_METRES = 2000
 
 export const PAGINATION_DEFAULT_LIMIT = 20
 export const PAGINATION_MAX_LIMIT = 100
+
+// How long a ride can sit in a non-terminal status before it's treated as
+// orphaned (broadcast job died, driver app crashed mid-flow, etc.) — both
+// for excluding it from "is this user's active ride" lookups and for the
+// cleanup sweep that actually force-resolves it. Gated on updated_at, not
+// requested_at, so advance-booking dispatch (which bumps updated_at when it
+// flips 'scheduled' -> 'requested') is never mistaken for stale.
+export const STALE_REQUESTED_MINUTES = 20
+export const STALE_ACCEPTED_HOURS = 3
+export const STALE_DRIVER_ARRIVED_HOURS = 1
+export const STALE_IN_PROGRESS_CEILING_HOURS = 12

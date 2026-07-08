@@ -1,8 +1,17 @@
 import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import * as repo from '@/modules/rides/rides.repository'
-import { forceResolveRide } from '@/modules/rides/rides.service'
+import {
+  forceResolveRide,
+  expireStaleRequestedRide,
+  expireStaleAcceptedOrArrivedRide,
+} from '@/modules/rides/rides.service'
 import { socketEvents } from '@/websocket/socket.server'
+import {
+  STALE_REQUESTED_MINUTES,
+  STALE_ACCEPTED_HOURS,
+  STALE_DRIVER_ARRIVED_HOURS,
+} from '@/constants/limits'
 
 // Ride stuck in_progress with no driver heartbeat (driver_location_snapshots.recorded_at):
 //  - past FLAG_AFTER_SECONDS  -> flag for review, notify rider + admin ops
@@ -28,6 +37,16 @@ export const cleanupWorker = new Worker(
       if (flaggedForSeconds > CANCEL_AFTER_SECONDS - FLAG_AFTER_SECONDS) {
         await forceResolveRide(rideId, 'cancelled', 'timeout', 'auto-cancelled: no driver heartbeat')
       }
+    }
+
+    // Orphaned rides that never reached in_progress at all — broadcast job
+    // died mid-flight, or driver accepted/arrived and the flow was
+    // interrupted (crash, force-quit, network drop) before pickup.
+    for (const ride of await repo.findStaleRequestedRides(STALE_REQUESTED_MINUTES)) {
+      await expireStaleRequestedRide(BigInt(ride.id))
+    }
+    for (const ride of await repo.findStaleAcceptedOrArrivedRides(STALE_ACCEPTED_HOURS, STALE_DRIVER_ARRIVED_HOURS)) {
+      await expireStaleAcceptedOrArrivedRide(BigInt(ride.id), ride.status, BigInt(ride.driver_id))
     }
   },
   { connection: redisConnection }
