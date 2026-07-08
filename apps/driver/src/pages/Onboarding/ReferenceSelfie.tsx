@@ -11,6 +11,70 @@ type Stage = 'camera' | 'preview' | 'submitting'
 const STEPS = ['personal_info', 'vehicle_info', 'documents', 'selfie']
 const STEP_IDX = 3
 
+type BrowserPermissionGuide = { browserLabel: string; steps: string[] }
+
+const RELOAD_STEP = 'Reload this page'
+
+function getBrowserPermissionGuide(): BrowserPermissionGuide {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  const isIOS = /iPad|iPhone|iPod/.test(ua)
+
+  if (isIOS) {
+    return {
+      browserLabel: 'Safari',
+      steps: [
+        'Open the Settings app on your device',
+        'Scroll down and tap Safari',
+        'Tap Camera, then choose Allow',
+        RELOAD_STEP,
+      ],
+    }
+  }
+  if (/SamsungBrowser/.test(ua)) {
+    return {
+      browserLabel: 'Samsung Internet',
+      steps: [
+        'Tap the lock icon next to the address bar',
+        'Tap Permissions → Camera',
+        'Select Allow',
+        RELOAD_STEP,
+      ],
+    }
+  }
+  if (/Firefox/.test(ua)) {
+    return {
+      browserLabel: 'Firefox',
+      steps: [
+        'Tap the lock icon next to the address bar',
+        'Tap Permissions',
+        'Turn Camera access on',
+        RELOAD_STEP,
+      ],
+    }
+  }
+  if (/Edg\//.test(ua)) {
+    return {
+      browserLabel: 'Edge',
+      steps: [
+        'Tap the lock icon next to the address bar',
+        'Tap Permissions for this site',
+        'Set Camera to Allow',
+        RELOAD_STEP,
+      ],
+    }
+  }
+  // Chrome, Chrome on Android, and other Chromium-based browsers (default)
+  return {
+    browserLabel: 'Chrome',
+    steps: [
+      'Tap the lock icon next to the address bar',
+      'Tap Permissions',
+      'Set Camera to Allow',
+      RELOAD_STEP,
+    ],
+  }
+}
+
 export default function ReferenceSelfie() {
   const navigate = useNavigate()
   const updateDriver = useAuthStore(s => s.updateDriver)
@@ -121,28 +185,25 @@ export default function ReferenceSelfie() {
   // ── Permission denied ──────────────────────────────────────────────────────
 
   if (permissionDenied) {
+    const guide = getBrowserPermissionGuide()
     return (
       <div
         className="min-h-[100dvh] bg-black flex flex-col"
         style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-          <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mb-6">
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center overflow-y-auto">
+          <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mb-6 flex-shrink-0">
             <Lock size={32} className="text-white/80" />
           </div>
-          <h2 className="text-white text-xl font-bold mb-3">Camera access required</h2>
+          <h2 className="text-white text-xl font-bold mb-3">Camera access blocked</h2>
           <p className="text-white/60 text-sm leading-relaxed mb-6">
-            Ocar needs your camera to verify your identity. Follow these steps to enable it:
+            {guide.browserLabel} is blocking camera access for this site. Enable it, then reload:
           </p>
           <div
-            className="w-full rounded-2xl p-4 mb-2 text-left space-y-4"
+            className="w-full rounded-2xl p-4 mb-4 text-left space-y-4"
             style={{ background: 'rgba(255,255,255,0.07)' }}
           >
-            {[
-              'Open Settings on your phone',
-              'Tap Privacy & Security → Camera',
-              'Find Ocar and switch it on',
-            ].map((instruction, i) => (
+            {guide.steps.map((instruction, i) => (
               <div key={i} className="flex items-start gap-3">
                 <span className="w-6 h-6 rounded-full bg-white/15 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold mt-0.5">
                   {i + 1}
@@ -151,17 +212,23 @@ export default function ReferenceSelfie() {
               </div>
             ))}
           </div>
-          <p className="text-white/30 text-xs mt-3">
-            On Android: Apps → Ocar → Permissions → Camera → Allow
+          <p className="text-white/30 text-xs">
+            Look for a camera or lock icon in the address bar — that's where site permissions live in a browser.
           </p>
         </div>
-        <div className="px-6 pb-8">
+        <div className="px-6 pb-8 pt-2 flex flex-col gap-3">
           <button
-            onClick={() => { setPermissionDenied(false); void startCamera() }}
+            onClick={() => window.location.reload()}
             className="btn-go w-full flex items-center justify-center gap-2"
           >
             <RefreshCw size={16} />
-            I've enabled camera access
+            Reload page
+          </button>
+          <button
+            onClick={() => { setPermissionDenied(false); void startCamera() }}
+            className="text-white/60 text-sm font-medium py-2"
+          >
+            Try again without reloading
           </button>
         </div>
       </div>
