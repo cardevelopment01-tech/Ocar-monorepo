@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState, useEffect, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Clock, MapPin, CheckCircle2, XCircle, ChevronRight, ChevronLeft, CalendarClock, Inbox, Plus } from 'lucide-react'
+import { Clock, MapPin, CheckCircle2, XCircle, ChevronRight, ChevronLeft, CalendarClock, Inbox, Plus, X } from 'lucide-react'
 import { rideApi, type RideDetail, type RideHistoryItem, type UpcomingRide } from '@/lib/ride-api'
 import { cn } from '@/lib/utils'
 import { formatPickupTime } from '@/lib/format-pickup-time'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -306,8 +307,10 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 const LIMIT = 20
 
-export default function HistoryPage() {
+function HistoryContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const [showScheduledBanner, setShowScheduledBanner] = useState(() => searchParams.get('scheduled') === '1')
   const [tab,     setTab]     = useState<Tab>('upcoming')
   const [rides,   setRides]   = useState<RideHistoryItem[]>([])
   const [page,    setPage]    = useState(1)
@@ -413,6 +416,37 @@ export default function HistoryPage() {
 
       {/* ── Content ── */}
       <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-4 pb-28">
+        <AnimatePresence>
+          {showScheduledBanner && (
+            <motion.div
+              initial={{ opacity: 0, y: -8, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-3 overflow-hidden"
+            >
+              <div
+                className="flex items-start gap-3 px-4 py-3 rounded-2xl"
+                style={{ background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.20)' }}
+              >
+                <CheckCircle2 size={16} className="text-indigo-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-bold text-indigo-900">Ride scheduled</p>
+                  <p className="text-[12px] text-indigo-700 mt-0.5">
+                    We&apos;ll match you with a driver closer to pickup time and notify you here.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowScheduledBanner(false)}
+                  aria-label="Dismiss"
+                  className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full"
+                >
+                  <X size={13} className="text-indigo-400" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {tab === 'upcoming' && activeRide && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -528,5 +562,17 @@ export default function HistoryPage() {
         </AnimatePresence>
       </div>
     </div>
+  )
+}
+
+export default function HistoryPage() {
+  return (
+    <Suspense fallback={
+      <div className="h-full flex items-center justify-center bg-background">
+        <OcarSpinner size={32} variant="mono" />
+      </div>
+    }>
+      <HistoryContent />
+    </Suspense>
   )
 }

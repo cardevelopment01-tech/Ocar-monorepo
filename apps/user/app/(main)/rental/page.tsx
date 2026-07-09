@@ -154,7 +154,7 @@ function RentalContent() {
       if (originCityId) params.originCityId = originCityId
       if (scheduledFor) params.scheduledFor = scheduledFor.toISOString()
       const result = await rideApi.createBooking(params)
-      router.push(`/ride/${result.rideId}`)
+      router.push(scheduledFor ? '/history?scheduled=1' : `/ride/${result.rideId}`)
     } catch {
       setBookError('Booking failed. Please try again.')
       setIsBooking(false)

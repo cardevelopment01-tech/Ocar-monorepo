@@ -152,7 +152,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                     <button
                       onClick={onClose}
                       aria-label="Close"
-                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-opacity active:opacity-60"
+                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-opacity active:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                       style={{ background: '#EEF2FF' }}
                     >
                       <X size={14} style={{ color: '#4F46E5' }} />
@@ -169,7 +169,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                           ref={i === 0 ? firstOptionRef : undefined}
                           type="button"
                           onClick={() => pickQuick(pick)}
-                          className="w-full min-h-12 flex items-center justify-between px-4 rounded-xl text-[14px] font-semibold transition-colors"
+                          className="w-full min-h-12 flex items-center justify-between px-4 rounded-xl text-[14px] font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                           style={{
                             background: selected ? '#4F46E5' : '#F5F7FF',
                             color: selected ? '#fff' : '#0F172A',
@@ -192,7 +192,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                     <button
                       type="button"
                       onClick={() => setStage(2)}
-                      className="w-full min-h-11 text-[13px] font-semibold text-indigo-600 text-left"
+                      className="w-full min-h-11 text-[13px] font-semibold text-indigo-600 text-left outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 rounded-lg"
                     >
                       Choose another time ›
                     </button>
@@ -211,7 +211,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                     <button
                       onClick={() => setStage(1)}
                       aria-label="Back to quick options"
-                      className="w-11 h-11 -ml-2 rounded-xl flex items-center justify-center transition-opacity active:opacity-60"
+                      className="w-11 h-11 -ml-2 rounded-xl flex items-center justify-center transition-opacity active:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                       style={{ background: '#EEF2FF' }}
                     >
                       <ChevronLeft size={16} style={{ color: '#4F46E5' }} />
@@ -228,7 +228,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                           key={d.toISOString()}
                           type="button"
                           onClick={() => { setSelectedDay(d); setSelectedSlot(null) }}
-                          className="flex-shrink-0 h-10 px-4 rounded-xl text-[13px] font-semibold transition-colors"
+                          className="flex-shrink-0 h-10 px-4 rounded-xl text-[13px] font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                           style={{
                             background: selected ? '#4F46E5' : '#EEF2FF',
                             color: selected ? '#fff' : '#4F46E5',
@@ -251,7 +251,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                           key={s.toISOString()}
                           type="button"
                           onClick={() => setSelectedSlot(s)}
-                          className="h-10 rounded-lg text-[13px] font-semibold tabular-nums transition-colors"
+                          className="h-10 rounded-lg text-[13px] font-semibold tabular-nums transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                           style={{
                             background: selected ? '#4F46E5' : '#F5F7FF',
                             color: selected ? '#fff' : '#0F172A',
@@ -269,7 +269,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                     <button
                       onClick={confirmSlot}
                       disabled={!selectedSlot}
-                      className="w-full py-4 rounded-full text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
+                      className="w-full py-4 rounded-full text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                       style={{
                         background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
                         boxShadow: '0 4px 20px rgba(79,70,229,0.40)',

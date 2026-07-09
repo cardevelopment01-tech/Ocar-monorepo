@@ -27,7 +27,7 @@ export default function PickupTimeChip({ value, pickerOpen, onOpenPicker, onClos
         onClick={onOpenPicker}
         whileTap={{ scale: 0.97 }}
         transition={SPRING}
-        className={`h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full ${value ? '' : 'border border-slate-200 text-slate-700'}`}
+        className={`h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-1 ${value ? '' : 'border border-slate-200 text-slate-700'}`}
         style={value
           ? { background: '#EEF2FF', border: '1px solid #C7D2FE', color: '#4338CA' }
           : { background: '#fff' }

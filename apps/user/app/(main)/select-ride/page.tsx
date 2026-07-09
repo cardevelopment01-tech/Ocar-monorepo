@@ -172,7 +172,7 @@ function SelectRideContent() {
       if (isReturnCab)             bookingParams.isReturnCab   = true
       if (scheduledFor)            bookingParams.scheduledFor  = scheduledFor.toISOString()
       const result = await rideApi.createBooking(bookingParams)
-      router.push(`/ride/${result.rideId}`)
+      router.push(scheduledFor ? '/history?scheduled=1' : `/ride/${result.rideId}`)
     } catch {
       setBookError('Booking failed. Please try again.')
     } finally {
