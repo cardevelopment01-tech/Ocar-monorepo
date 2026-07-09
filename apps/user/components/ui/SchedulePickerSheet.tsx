@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { ChevronLeft, Check, X, Zap, Clock, Moon, Sunrise } from 'lucide-react'
 import { getQuickPicks, ceil15, type QuickPick } from '@/lib/schedule-quick-picks'
 import { formatPickupTime } from '@/lib/format-pickup-time'
 
 const ICON_BG = '#EEF2FF'
 const ICON_CLR = '#4F46E5'
+const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
 const QUICK_PICK_ICON: Record<string, typeof Zap> = {
   Now: Zap,
@@ -15,6 +16,12 @@ const QUICK_PICK_ICON: Record<string, typeof Zap> = {
   Tonight: Moon,
   Tomorrow: Sunrise,
 }
+
+// Wheel geometry — row height drives every scroll-position calculation below.
+const ROW_H = 48
+const WHEEL_ROWS = 5
+const WHEEL_H = ROW_H * WHEEL_ROWS
+const WHEEL_PAD = (WHEEL_H - ROW_H) / 2
 
 interface Props {
   open: boolean
@@ -66,18 +73,26 @@ function fmtSlot(d: Date): string {
   return d.toLocaleString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).replace('AM', 'am').replace('PM', 'pm')
 }
 
+const stageVariants = {
+  enter: (dir: number) => ({ opacity: 0, x: dir > 0 ? 28 : -28 }),
+  center: { opacity: 1, x: 0 },
+  exit: (dir: number) => ({ opacity: 0, x: dir > 0 ? -16 : 16 }),
+}
+
 export default function SchedulePickerSheet({ open, value, min, max, onChange, onClose }: Props) {
+  const reduce = useReducedMotion()
   const [stage, setStage] = useState<1 | 2>(1)
+  const [direction, setDirection] = useState(1)
   const [selectedDay, setSelectedDay] = useState<Date>(() => dayOnly(value ?? min))
-  const [selectedSlot, setSelectedSlot] = useState<Date | null>(value)
+  const [centerIndex, setCenterIndex] = useState(0)
   const firstOptionRef = useRef<HTMLButtonElement>(null)
+  const wheelRef = useRef<HTMLDivElement>(null)
 
   // Resync on the closed→open edge — state otherwise goes stale since the sheet stays mounted.
   useEffect(() => {
     if (open) {
       setStage(1)
       setSelectedDay(dayOnly(value ?? min))
-      setSelectedSlot(value)
       requestAnimationFrame(() => firstOptionRef.current?.focus())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,6 +110,35 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
   const quickPicks = getQuickPicks(min, max)
   const dayList = getDayList(min, max)
   const slots = getSlotsForDay(selectedDay, min, max)
+  const selectedSlot = slots[centerIndex] ?? null
+
+  // Wheel resets to the value's slot (if it falls on the day now showing) whenever
+  // stage 2 mounts or the day changes — instant, since it's establishing position, not a gesture.
+  useEffect(() => {
+    if (stage !== 2) return
+    let idx = 0
+    if (value && isSameDate(value, selectedDay)) {
+      const found = slots.findIndex(s => s.getTime() === value.getTime())
+      if (found >= 0) idx = found
+    }
+    setCenterIndex(idx)
+    requestAnimationFrame(() => wheelRef.current?.scrollTo({ top: idx * ROW_H, behavior: 'auto' }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, selectedDay])
+
+  function handleWheelScroll() {
+    const el = wheelRef.current
+    if (!el) return
+    const idx = Math.max(0, Math.min(slots.length - 1, Math.round(el.scrollTop / ROW_H)))
+    setCenterIndex(prev => (prev === idx ? prev : idx))
+  }
+
+  function jumpToSlot(i: number) {
+    wheelRef.current?.scrollTo({ top: i * ROW_H, behavior: reduce ? 'auto' : 'smooth' })
+  }
+
+  function goToStage2() { setDirection(1); setStage(2) }
+  function goToStage1() { setDirection(-1); setStage(1) }
 
   function pickQuick(pick: QuickPick) {
     onChange(pick.value)
@@ -142,14 +186,16 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
               <div className="w-9 h-[3px] rounded-full" style={{ background: 'rgba(79,70,229,0.15)' }} />
             </div>
 
-            <AnimatePresence mode="wait">
+            <AnimatePresence mode="popLayout" custom={direction}>
               {stage === 1 ? (
                 <motion.div
                   key="stage1"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.16 }}
+                  custom={direction}
+                  variants={stageVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={reduce ? { duration: 0 } : SPRING}
                 >
                   {/* Header */}
                   <div className="flex items-center justify-between px-5 pt-2 pb-3">
@@ -214,7 +260,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                   <div className="px-5 pt-1 pb-4">
                     <button
                       type="button"
-                      onClick={() => setStage(2)}
+                      onClick={goToStage2}
                       className="w-full min-h-11 text-[13px] font-semibold text-indigo-600 text-left outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 rounded-lg"
                     >
                       Choose another time ›
@@ -224,15 +270,17 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
               ) : (
                 <motion.div
                   key="stage2"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.16 }}
+                  custom={direction}
+                  variants={stageVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={reduce ? { duration: 0 } : SPRING}
                 >
                   {/* Header */}
                   <div className="flex items-center gap-2 px-5 pt-2 pb-3">
                     <button
-                      onClick={() => setStage(1)}
+                      onClick={goToStage1}
                       aria-label="Back to quick options"
                       className="w-11 h-11 -ml-2 rounded-xl flex items-center justify-center transition-opacity active:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                       style={{ background: '#EEF2FF' }}
@@ -243,49 +291,88 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                   </div>
 
                   {/* Day strip */}
-                  <div className="flex gap-2 px-5 pb-3 overflow-x-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+                  <div className="flex gap-2 px-5 pb-3 overflow-x-auto scrollbar-none" style={{ overscrollBehavior: 'contain' }}>
                     {dayList.map((d, i) => {
                       const selected = isSameDate(d, selectedDay)
                       return (
                         <button
                           key={d.toISOString()}
                           type="button"
-                          onClick={() => { setSelectedDay(d); setSelectedSlot(null) }}
-                          className="flex-shrink-0 h-10 px-4 rounded-xl text-[13px] font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+                          onClick={() => setSelectedDay(d)}
+                          className="relative flex-shrink-0 h-10 px-4 rounded-xl text-[13px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                           style={{
-                            background: selected ? '#4F46E5' : ICON_BG,
-                            color: selected ? '#fff' : ICON_CLR,
-                            border: selected ? '1.5px solid #4F46E5' : '1px solid #E8EEFF',
+                            background: selected ? undefined : ICON_BG,
+                            border: selected ? 'none' : '1px solid #E8EEFF',
                           }}
                         >
-                          {dayLabel(d, i)}
+                          {selected && (
+                            <motion.span
+                              layoutId="day-pill"
+                              className="absolute inset-0 rounded-xl"
+                              style={{ background: '#4F46E5' }}
+                              transition={reduce ? { duration: 0 } : SPRING}
+                            />
+                          )}
+                          <span className="relative" style={{ color: selected ? '#fff' : ICON_CLR }}>
+                            {dayLabel(d, i)}
+                          </span>
                         </button>
                       )
                     })}
                   </div>
 
-                  <div className="mx-5 mb-3 h-px" style={{ background: '#E8EEFF' }} />
+                  <div className="mx-5 mb-1 h-px" style={{ background: '#E8EEFF' }} />
 
-                  {/* Slot grid */}
-                  <div className="px-5 mb-4 grid grid-cols-4 gap-2 overflow-y-auto" style={{ maxHeight: 200 }}>
-                    {slots.map(s => {
-                      const selected = selectedSlot !== null && s.getTime() === selectedSlot.getTime()
-                      return (
-                        <button
-                          key={s.toISOString()}
-                          type="button"
-                          onClick={() => setSelectedSlot(s)}
-                          className="h-10 rounded-lg text-[13px] font-semibold tabular-nums transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-                          style={{
-                            background: selected ? '#4F46E5' : '#F5F7FF',
-                            color: selected ? '#fff' : '#0F172A',
-                            border: selected ? '1.5px solid #4F46E5' : '1px solid #E8EEFF',
-                          }}
-                        >
-                          {fmtSlot(s)}
-                        </button>
-                      )
-                    })}
+                  {/* Time wheel — native scroll-snap, not a button grid */}
+                  <div className="px-5 mb-2">
+                    <div className="relative" style={{ height: WHEEL_H }}>
+                      {/* Center selection band */}
+                      <div
+                        className="absolute left-0 right-0 pointer-events-none rounded-2xl"
+                        style={{
+                          top: '50%', transform: 'translateY(-50%)', height: ROW_H,
+                          background: ICON_BG, border: `1.5px solid ${ICON_CLR}40`,
+                        }}
+                      />
+                      <div
+                        ref={wheelRef}
+                        onScroll={handleWheelScroll}
+                        className="h-full overflow-y-auto scrollbar-none"
+                        style={{ scrollSnapType: 'y mandatory', overscrollBehavior: 'contain' }}
+                      >
+                        <div style={{ height: WHEEL_PAD }} />
+                        {slots.map((s, i) => {
+                          const dist = Math.abs(i - centerIndex)
+                          const scale   = dist === 0 ? 1 : dist === 1 ? 0.86 : 0.74
+                          const opacity = dist === 0 ? 1 : dist === 1 ? 0.55 : 0.28
+                          return (
+                            <button
+                              key={s.toISOString()}
+                              type="button"
+                              onClick={() => jumpToSlot(i)}
+                              aria-pressed={dist === 0}
+                              aria-label={`Select ${fmtSlot(s)}`}
+                              className="w-full flex items-center justify-center outline-none"
+                              style={{ height: ROW_H, scrollSnapAlign: 'center' }}
+                            >
+                              <span
+                                className={`tabular-nums ${reduce ? '' : 'transition-[opacity,transform] duration-150 ease-out'}`}
+                                style={{
+                                  opacity,
+                                  transform: `scale(${scale})`,
+                                  fontWeight: dist === 0 ? 700 : 500,
+                                  fontSize: dist === 0 ? 19 : 15,
+                                  color: dist === 0 ? ICON_CLR : '#94A3B8',
+                                }}
+                              >
+                                {fmtSlot(s)}
+                              </span>
+                            </button>
+                          )
+                        })}
+                        <div style={{ height: WHEEL_PAD }} />
+                      </div>
+                    </div>
                   </div>
 
                   {/* Confirm */}
