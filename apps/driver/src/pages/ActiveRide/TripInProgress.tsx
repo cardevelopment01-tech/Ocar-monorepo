@@ -73,7 +73,7 @@ export default function TripInProgress() {
   const [completing, setCompleting] = useState(false)
   const [stopActionPending, setStopActionPending] = useState<number | null>(null)
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
-  const lastRouteFetch = useRef<{ origin: [number, number]; at: number } | null>(null)
+  const lastRouteFetch = useRef<{ origin: [number, number]; dest: [number, number]; at: number } | null>(null)
   const fetchSeq       = useRef(0)
 
   // One leg at a time, matching how Uber drivers actually navigate — multi-waypoint
@@ -138,13 +138,16 @@ export default function TripInProgress() {
     if (!position) return
 
     const dest: [number, number] = [navLat, navLng]
-    const prev     = lastRouteFetch.current
+    const prev = lastRouteFetch.current
+    // A stop being marked reached/skipped changes the target even if the driver
+    // hasn't moved — that must force a refetch, not just GPS deviation/staleness.
+    const destChanged = !prev || prev.dest[0] !== dest[0] || prev.dest[1] !== dest[1]
     const deviated = prev ? haversineMetres(position, prev.origin) > 200 : false
     const stale    = prev ? (Date.now() - prev.at) > 60_000 : false
-    if (prev && !deviated && !stale) return
+    if (prev && !destChanged && !deviated && !stale) return
 
     const seq = ++fetchSeq.current
-    lastRouteFetch.current = { origin: position, at: Date.now() }
+    lastRouteFetch.current = { origin: position, dest, at: Date.now() }
 
     driverRideApi.getRoute(position[0], position[1], dest[0], dest[1])
       .then(r => { if (fetchSeq.current === seq) setEncodedPolyline(r.polyline || undefined) })
