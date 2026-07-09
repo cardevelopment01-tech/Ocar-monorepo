@@ -12,7 +12,7 @@ import { rideApi, type RentalPackage, type FareEstimate } from '@/lib/ride-api'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import OcarSpinner from '@/components/ui/OcarSpinner'
-import ScheduleRideSheet from '@/components/ui/ScheduleRideSheet'
+import PickupTimeChip from '@/components/ui/PickupTimeChip'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -194,7 +194,7 @@ function RentalContent() {
 
           {/* Pickup time — own section, above vehicle/package selection */}
           <motion.section {...fadeUp(0)}>
-            <ScheduleRideSheet
+            <PickupTimeChip
               value={scheduledFor}
               pickerOpen={schedulePickerOpen}
               onOpenPicker={() => setSchedulePickerOpen(true)}

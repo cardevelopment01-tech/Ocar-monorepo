@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { rideApi, type FareEstimate } from '@/lib/ride-api'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
-import ScheduleRideSheet from '@/components/ui/ScheduleRideSheet'
+import PickupTimeChip from '@/components/ui/PickupTimeChip'
 
 const SelectRideMapScene = dynamic(() => import('@/components/map/SelectRideMapScene'), { ssr: false })
 
@@ -257,7 +257,7 @@ function SelectRideContent() {
 
           {/* Pickup time — own row, above ride-type/car selection */}
           <div className="mb-2">
-            <ScheduleRideSheet
+            <PickupTimeChip
               value={scheduledFor}
               pickerOpen={schedulePickerOpen}
               onOpenPicker={() => setSchedulePickerOpen(true)}

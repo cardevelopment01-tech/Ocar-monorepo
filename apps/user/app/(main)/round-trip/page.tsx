@@ -5,7 +5,7 @@ import { ArrowLeft, RotateCcw, ArrowRight, CreditCard, MapPin } from 'lucide-rea
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import OcarSpinner from '@/components/ui/OcarSpinner'
-import ScheduleRideSheet from '@/components/ui/ScheduleRideSheet'
+import PickupTimeChip from '@/components/ui/PickupTimeChip'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 const HOUR_OPTIONS = [4, 6, 8, 10, 12] as const
@@ -219,7 +219,7 @@ function RoundTripContent() {
           {/* Pickup time — own section, decoupled from the hour selector above */}
           {hasDestination && (
             <motion.section {...fadeUp(0.09)}>
-              <ScheduleRideSheet
+              <PickupTimeChip
                 value={scheduledFor}
                 pickerOpen={schedulePickerOpen}
                 onOpenPicker={() => setSchedulePickerOpen(true)}

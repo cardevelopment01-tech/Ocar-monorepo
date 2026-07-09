@@ -9,7 +9,7 @@ import {
   Plus, ChevronDown, User, Clock, Heart, ArrowRightLeft,
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
-import ScheduleRideSheet from '@/components/ui/ScheduleRideSheet'
+import PickupTimeChip from '@/components/ui/PickupTimeChip'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
 
@@ -551,11 +551,7 @@ function SearchContent() {
             <Plus size={14} strokeWidth={2.2} className="text-white" />
             <span className="text-[13px] font-semibold text-white">Add stops</span>
           </motion.button>
-        </div>
-
-        {/* Pickup time — own row, decoupled from ride-type/car selection further down the funnel */}
-        <div className="px-4 pb-1.5">
-          <ScheduleRideSheet
+          <PickupTimeChip
             value={scheduledFor}
             pickerOpen={schedulePickerOpen}
             onOpenPicker={() => setSchedulePickerOpen(true)}

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Clock, MapPin, CheckCircle2, XCircle, ChevronRight, ChevronLeft, CalendarClock, Inbox, Plus } from 'lucide-react'
 import { rideApi, type RideDetail, type RideHistoryItem, type UpcomingRide } from '@/lib/ride-api'
 import { cn } from '@/lib/utils'
+import { formatPickupTime } from '@/lib/format-pickup-time'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -137,7 +138,7 @@ function UpcomingCard({
               ₹{parseFloat(ride.fare).toLocaleString('en-IN')}
             </p>
           )}
-          <p className="text-[11px] text-text-muted mt-0.5">{fmt(ride.scheduled_for)}</p>
+          <p className="text-[11px] text-text-muted mt-0.5">{formatPickupTime(new Date(ride.scheduled_for))}</p>
         </div>
       </div>
 

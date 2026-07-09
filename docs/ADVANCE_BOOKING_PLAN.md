@@ -1,6 +1,11 @@
 # Advance Booking — Implementation Plan
 ## One Way · Round Trip · Rental
 
+> **Status note (July 2026):** §1's claim that the backend is unwired is stale — it shipped and is
+> fully wired. §0 research and §5–§8 edge-case reasoning remain valid. The trigger/picker UI design
+> covered here was superseded by `docs/ADVANCE_BOOKING_UX_AUDIT.md`, which has since been
+> implemented (`PickupTimeChip` + `SchedulePickerSheet`).
+
 > Drafted July 2026. Scope: schedule any ride type ahead of time (30 min – 30 days out).
 > Ground truth verified against current schema/code — every claim below was checked against
 > `api/src/db/migrations/*.sql` and `api/src/modules/rides/*` before writing it down.

@@ -1,5 +1,11 @@
 # Schedule-for-Later: UX Audit & Redesign Plan
 
+> **Status note (July 2026):** §3–§4's relocation plan has shipped — the schedule control moved out
+> of the select-ride tab cluster into its own row/pill on `/search`, `/round-trip`, `/select-ride`,
+> and `/rental`. The remaining UI redesign (trigger + picker component design) is covered and now
+> implemented per `docs/ADVANCE_BOOKING_UX_AUDIT.md` (`PickupTimeChip` + `SchedulePickerSheet`).
+> Do not re-execute this doc's §4 plan.
+
 ## 1. Current state (as implemented)
 
 **Where it lives today:** `apps/user/components/ui/ScheduleRideSheet.tsx`, mounted only inside
