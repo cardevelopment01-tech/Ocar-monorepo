@@ -12,7 +12,7 @@ export function toDatetimeLocal(d: Date): string {
 /**
  * Computes round-trip duration in whole hours from a return datetime.
  * Returns undefined when returnAt is null (no date selected yet).
- * Minimum 4h, ceiling to whole hours — mirrors backend clampTripHours.
+ * Minimum 4h, ceiling to whole hours. Mirrors backend clampTripHours.
  */
 export function clampTripHours(returnAt: Date | null): number | undefined {
   if (returnAt === null) return undefined
@@ -22,7 +22,7 @@ export function clampTripHours(returnAt: Date | null): number | undefined {
 
 /**
  * Formats a stored return_at ISO string for display: "5 Jul · 18:00"
- * Uses local hours/minutes and a hardcoded month list — avoids toLocaleTimeString
+ * Uses local hours/minutes and a hardcoded month list, avoids toLocaleTimeString
  * which is unreliable across browsers with en-IN + hour12:false.
  */
 export function formatReturnAt(iso: string): string {

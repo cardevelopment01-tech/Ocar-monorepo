@@ -1,6 +1,6 @@
 import api from './api'
 
-// Matches actual DB schema — admins table has no full_name column
+// Matches actual DB schema: admins table has no full_name column
 export interface AdminProfile {
   id: string
   code: string
@@ -60,7 +60,7 @@ export const adminAuthApi = {
     return res.data as AdminAuthResponse
   },
 
-  // /api/v1/auth/me handles admin JWTs — returns { principal, role }
+  // /api/v1/auth/me handles admin JWTs, returns { principal, role }
   getMe: async (): Promise<AdminProfile> => {
     const res = await api.get('/api/v1/auth/me')
     return res.data.principal as AdminProfile

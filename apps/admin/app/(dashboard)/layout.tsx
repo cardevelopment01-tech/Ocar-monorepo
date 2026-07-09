@@ -42,7 +42,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       try {
         const data = await safetyApi.getSosAlerts({ limit: 50 })
         setSosCount(data.alerts.filter(a => ACTIVE_SOS.has(a.status)).length)
-      } catch { /* silent — badge shows 0 */ }
+      } catch { /* silent, badge shows 0 */ }
     }
     void load()
     const id = setInterval(() => void load(), 30_000)

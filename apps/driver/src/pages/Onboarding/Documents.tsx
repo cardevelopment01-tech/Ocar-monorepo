@@ -129,7 +129,7 @@ export default function Documents() {
   const [identityError, setIdentityError] = useState('')
 
   const [slotState, setSlotState] = useState<Record<string, SlotState>>(initSlotState)
-  // keyed by groupKey — one expiry per legal document, not per photo
+  // keyed by groupKey, one expiry per legal document, not per photo
   const [validUntil, setValidUntil] = useState<Record<string, string>>({})
   const [isFetching, setIsFetching] = useState(true)
   const [isSaving,   setIsSaving]   = useState(false)
@@ -152,7 +152,7 @@ export default function Documents() {
         }
         setSlotState(merged)
       } catch {
-        // first visit — start fresh
+        // first visit, start fresh
       } finally {
         setIsFetching(false)
       }
@@ -395,7 +395,7 @@ function DocGroupCard({ group, slotState, validUntil, fileRefs, onFileSelect, on
         </span>
       </div>
 
-      {/* Slots — 2-col for paired docs, full-width for single */}
+      {/* Slots: 2-col for paired docs, full-width for single */}
       <div className={`px-3 pb-3 ${group.slots.length === 2 ? 'grid grid-cols-2 gap-2.5' : ''}`}>
         {group.slots.map(slot => (
           <DocSlot
@@ -413,7 +413,7 @@ function DocGroupCard({ group, slotState, validUntil, fileRefs, onFileSelect, on
         ))}
       </div>
 
-      {/* Shared expiry date — belongs to the whole document, not one photo */}
+      {/* Shared expiry date: belongs to the whole document, not one photo */}
       {group.hasExpiry && (
         <div className="mx-3 mb-3 pt-3 border-t border-border/40">
           <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2 block">
@@ -480,7 +480,7 @@ function DocSlot({ slot, state, inputRef, onTrigger, onFileChange, onPreview }: 
           {isRejected && rejectionNote && (
             <p className="text-[9px] text-amber-600 text-center px-2 leading-snug">{rejectionNote}</p>
           )}
-          {/* Action row — in natural flow, no absolute crowding */}
+          {/* Action row: in natural flow, no absolute crowding */}
           <div className="flex gap-1 mt-1">
             {url && (
               <button type="button" onClick={onPreview}
@@ -556,7 +556,7 @@ function DocPreviewModal({ url, label, onClose }: { url: string; label: string; 
         <p className="flex-1 text-white text-[15px] font-semibold truncate">{label}</p>
       </div>
 
-      {/* Document — min-h-0 allows flex-1 to shrink below natural content height */}
+      {/* Document: min-h-0 allows flex-1 to shrink below natural content height */}
       <div className="flex-1 min-h-0 flex items-center justify-center p-4">
         {isPdf
           ? <iframe src={url} title={label} className="w-full h-full rounded-2xl bg-white" style={{ border: 'none' }} />

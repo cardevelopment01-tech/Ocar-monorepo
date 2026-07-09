@@ -23,7 +23,7 @@ const ICON_BG  = '#F1F0FE'
 const ICON_CLR = '#4F46E5'
 const SHADOW   = '0 2px 12px rgba(15,15,35,0.07)'
 
-// Fixed positions for particles — no Math.random() to avoid hydration mismatch
+// Fixed positions for particles, no Math.random() to avoid hydration mismatch
 const PARTICLES = [
   { top: '16%', left: '9%',  delay: 0,   dur: 2.6 },
   { top: '28%', left: '80%', delay: 0.9, dur: 3.2 },
@@ -149,7 +149,7 @@ export default function HomePage() {
     try {
       const [route, classification] = await Promise.all([
         geoApi.getRoute(lat, lng, dLat, dLng),
-        // Classification failure must not block booking — fall back to the
+        // Classification failure must not block booking, fall back to the
         // safe "outstation" default (same default used for out-of-bounds points)
         geoApi.classifyTrip(lat, lng, dLat, dLng).catch(() => null),
       ])
@@ -204,7 +204,7 @@ export default function HomePage() {
         {/* ── Decorative layer ── */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
 
-          {/* Orb 1 — large indigo blob, top-right */}
+          {/* Orb 1, large indigo blob, top-right */}
           <motion.div
             className="absolute rounded-full"
             style={{
@@ -217,7 +217,7 @@ export default function HomePage() {
             transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
           />
 
-          {/* Orb 2 — purple blob, bottom-left */}
+          {/* Orb 2, purple blob, bottom-left */}
           <motion.div
             className="absolute rounded-full"
             style={{
@@ -230,7 +230,7 @@ export default function HomePage() {
             transition={{ duration: 11, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
           />
 
-          {/* Orb 3 — faint teal accent, mid-right */}
+          {/* Orb 3, faint teal accent, mid-right */}
           <motion.div
             className="absolute rounded-full"
             style={{
@@ -264,7 +264,7 @@ export default function HomePage() {
           />
         </div>
 
-        {/* ── Real content — sits above decorative layer ── */}
+        {/* ── Real content, sits above decorative layer ── */}
         <div className="relative z-10">
 
         {/* Top bar */}
@@ -305,7 +305,7 @@ export default function HomePage() {
           </motion.div>
         </div>
 
-        {/* Greeting — disappears on collapse */}
+        {/* Greeting, disappears on collapse */}
         <AnimatePresence initial={false}>
           {!collapsed && (
             <motion.div
@@ -337,7 +337,7 @@ export default function HomePage() {
           )}
         </AnimatePresence>
 
-        {/* Search bar — always visible */}
+        {/* Search bar, always visible */}
         <motion.button
           onClick={() => toSearch()}
           className="w-full flex items-center gap-3 bg-white rounded-2xl px-4"
@@ -357,7 +357,7 @@ export default function HomePage() {
           </span>
         </motion.button>
 
-        {/* Bottom padding spacer — shrinks when collapsed */}
+        {/* Bottom padding spacer, shrinks when collapsed */}
         <motion.div
           animate={{ height: collapsed ? 14 : 6 }}
           transition={SPRING}

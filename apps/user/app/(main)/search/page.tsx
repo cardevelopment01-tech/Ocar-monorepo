@@ -89,7 +89,7 @@ function SearchContent() {
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([])
   const [searching,   setSearching]   = useState(false)
   const [resolving,   setResolving]   = useState(false)
-  // true once GPS has responded (success or failure) — prevents Bhubaneswar flash
+  // true once GPS has responded (success or failure), prevents Bhubaneswar flash
   const [gpsReady,    setGpsReady]    = useState(() => !!sp.get('originLat'))
 
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -104,7 +104,7 @@ function SearchContent() {
   const [stopToast, setStopToast] = useState(false)
   const [redirectToast, setRedirectToast] = useState<string | null>(null)
 
-  // On mount: try GPS once — fast network-position fix, cached ok up to 1 min
+  // On mount: try GPS once, fast network-position fix, cached ok up to 1 min
   useEffect(() => {
     if (sp.get('originLat')) return
     if (!navigator.geolocation) { setGpsReady(true); return }
@@ -148,7 +148,7 @@ function SearchContent() {
   // Auto-navigate when map picker returns with both origin + destination in URL
   useEffect(() => {
     if (autoNavRef.current) return
-    if (sp.get('focus')) return  // came back from select-ride — don't auto-navigate forward
+    if (sp.get('focus')) return  // came back from select-ride, don't auto-navigate forward
     const destLat  = parseFloat(sp.get('destinationLat') ?? '')
     const destLng  = parseFloat(sp.get('destinationLng') ?? '')
     const destAddr = sp.get('destinationAddress') ?? ''
@@ -251,7 +251,7 @@ function SearchContent() {
     try {
       const [route, classification] = await Promise.all([
         geoApi.getRoute(oLat, oLng, dest.lat, dest.lng),
-        // Classification failure must not block booking — fall back to the
+        // Classification failure must not block booking, fall back to the
         // safe "outstation" default (same default used for out-of-bounds points)
         geoApi.classifyTrip(oLat, oLng, dest.lat, dest.lng).catch(() => null),
       ])
@@ -285,11 +285,11 @@ function SearchContent() {
         redirectTimerRef.current = setTimeout(() => go(path), 1500)
       }
 
-      // Editing pickup/destination mid-flow from /select-ride — return there with the
+      // Editing pickup/destination mid-flow from /select-ride, return there with the
       // ride type already in progress, unless the edit turned One Way/Round Trip in-city
       if (backTo === 'select-ride') {
         if ((rideType === 'one_way' || rideType === 'round_trip') && isInCity) {
-          redirectWithToast('/rental', `That's inside ${cityLabel} — switching to City Rides`)
+          redirectWithToast('/rental', `That's inside ${cityLabel}, switching to City Rides`)
           return
         }
         if (tripHours) params.set('tripHours', tripHours)
@@ -297,29 +297,29 @@ function SearchContent() {
         return
       }
 
-      // Return Cab destination picker navigates back to /round-trip — unless the
+      // Return Cab destination picker navigates back to /round-trip, unless the
       // destination turns out to be within the same city, which round trips can't serve
       if (backTo === 'round_trip') {
-        if (isInCity) { redirectWithToast('/rental', `That's inside ${cityLabel} — switching to City Rides`); return }
+        if (isInCity) { redirectWithToast('/rental', `That's inside ${cityLabel}, switching to City Rides`); return }
         go('/round-trip')
         return
       }
 
-      // Rental's own destination picker — outstation destinations can't be a rental
+      // Rental's own destination picker, outstation destinations can't be a rental
       if (backTo === 'rental') {
         if (isInCity) go('/rental')
-        else redirectWithToast('/trip-type', `That's outside ${cityLabel} — switching to outstation options`)
+        else redirectWithToast('/trip-type', `That's outside ${cityLabel}, switching to outstation options`)
         return
       }
 
-      // "One Way" tile declared intent — still redirect if the destination is in-city
+      // "One Way" tile declared intent, still redirect if the destination is in-city
       if (rideType === 'one_way') {
-        if (isInCity) { redirectWithToast('/rental', `That's inside ${cityLabel} — switching to City Rides`); return }
+        if (isInCity) { redirectWithToast('/rental', `That's inside ${cityLabel}, switching to City Rides`); return }
         go('/select-ride')
         return
       }
 
-      // No declared intent (home search bar, saved places, "Go again", popular routes) —
+      // No declared intent (home search bar, saved places, "Go again", popular routes).
       // auto-detect city vs outstation and route accordingly
       if (isInCity) go('/rental')
       else          go('/trip-type')
@@ -328,7 +328,7 @@ function SearchContent() {
     }
   }
 
-  // Confirm a destination — auto-navigates if origin is set
+  // Confirm a destination, auto-navigates if origin is set
   function confirmDest(lat: number, lng: number, address: string) {
     setConfirmedDest({ lat, lng, address })
     setQuery('')
@@ -346,7 +346,7 @@ function SearchContent() {
     setResolving(true)
     try {
       const detail = await geoApi.placeDetails(s.placeId)
-      // keep resolving=true — confirmDest → navigateToRide holds it until navigation
+      // keep resolving=true, confirmDest → navigateToRide holds it until navigation
       confirmDest(detail.latitude, detail.longitude, detail.address)
     } catch {
       setResolving(false)
@@ -448,7 +448,7 @@ function SearchContent() {
 
             {/* Input column */}
             <div className="flex-1 min-w-0">
-              {/* FROM row — single line, no label */}
+              {/* FROM row, single line, no label */}
               <motion.button
                 onClick={() => { if (mode !== 'origin') switchMode('origin') }}
                 className="w-full text-left px-3 py-2.5 border-b border-border"
@@ -482,7 +482,7 @@ function SearchContent() {
                 )}
               </motion.button>
 
-              {/* TO row — single line, no label */}
+              {/* TO row, single line, no label */}
               <div
                 className="px-3 py-2.5 cursor-text"
                 onClick={() => {
@@ -533,7 +533,7 @@ function SearchContent() {
           </div>
         </div>
 
-        {/* Pinned action pills — always fixed, never scroll */}
+        {/* Pinned action pills, always fixed, never scroll */}
         <div className="flex gap-2 px-4 pb-1.5">
           <motion.button
             onClick={goToMapPicker}
@@ -553,7 +553,7 @@ function SearchContent() {
           </motion.button>
         </div>
 
-        {/* Pickup time — own row, decoupled from the map/stops actions above */}
+        {/* Pickup time, own row, decoupled from the map/stops actions above */}
         <div className="px-4 pb-1.5">
           <PickupTimeChip
             value={scheduledFor}
@@ -564,7 +564,7 @@ function SearchContent() {
           />
         </div>
 
-        {/* Sweep loader — clean violet bar bouncing edge to edge */}
+        {/* Sweep loader, clean violet bar bouncing edge to edge */}
         <AnimatePresence>
           {resolving && (
             <motion.div
@@ -588,14 +588,14 @@ function SearchContent() {
           )}
         </AnimatePresence>
 
-        {/* Hairline divider — separates fixed header from scrollable body */}
+        {/* Hairline divider, separates fixed header from scrollable body */}
         <div className="h-px bg-slate-100" />
       </div>
 
       {/* ── Body ── */}
       <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-2 pb-4 relative bg-white">
 
-        {/* Autocomplete suggestions — only when typing; animate since data is live */}
+        {/* Autocomplete suggestions, only when typing; animate since data is live */}
         {showSuggestions && (
           <motion.div variants={listStagger} initial="hidden" animate="show" key={`ac-${mode}`}>
             {suggestions.length === 0 && !searching ? (
@@ -633,7 +633,7 @@ function SearchContent() {
           </motion.div>
         )}
 
-        {/* Popular list — single mounted instance, NEVER re-animates on mode switch */}
+        {/* Popular list, single mounted instance, NEVER re-animates on mode switch */}
         {!showSuggestions && (
           <div>
             {POPULAR.map((d, i) => (
@@ -698,7 +698,7 @@ function SearchContent() {
                 Who&apos;s travelling?
               </p>
 
-              {/* Myself — selected state */}
+              {/* Myself, selected state */}
               <button
                 onClick={() => setForMeOpen(false)}
                 className="w-full flex items-center gap-3.5 px-6 py-3.5 text-left"
@@ -746,7 +746,7 @@ function SearchContent() {
         )}
       </AnimatePresence>
 
-      {/* Add stops coming-soon toast — portal escapes Framer Motion transform context */}
+      {/* Add stops coming-soon toast, portal escapes Framer Motion transform context */}
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {stopToast && (

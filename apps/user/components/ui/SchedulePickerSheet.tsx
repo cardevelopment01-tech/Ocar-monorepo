@@ -17,7 +17,7 @@ const QUICK_PICK_ICON: Record<string, typeof Zap> = {
   Tomorrow: Sunrise,
 }
 
-// Wheel geometry — row height drives every scroll-position calculation below.
+// Wheel geometry, row height drives every scroll-position calculation below.
 const ROW_H = 48
 const WHEEL_ROWS = 5
 const WHEEL_H = ROW_H * WHEEL_ROWS
@@ -88,7 +88,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
   const firstOptionRef = useRef<HTMLButtonElement>(null)
   const wheelRef = useRef<HTMLDivElement>(null)
 
-  // Resync on the closed→open edge — state otherwise goes stale since the sheet stays mounted.
+  // Resync on the closed→open edge, state otherwise goes stale since the sheet stays mounted.
   useEffect(() => {
     if (open) {
       setStage(1)
@@ -113,7 +113,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
   const selectedSlot = slots[centerIndex] ?? null
 
   // Wheel resets to the value's slot (if it falls on the day now showing) whenever
-  // stage 2 mounts or the day changes — instant, since it's establishing position, not a gesture.
+  // stage 2 mounts or the day changes. Instant, since it's establishing position, not a gesture.
   useEffect(() => {
     if (stage !== 2) return
     let idx = 0
@@ -323,7 +323,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
 
                   <div className="mx-5 mb-1 h-px" style={{ background: '#E8EEFF' }} />
 
-                  {/* Time wheel — native scroll-snap, not a button grid */}
+                  {/* Time wheel, native scroll-snap, not a button grid */}
                   <div className="px-5 mb-2">
                     <div className="relative" style={{ height: WHEEL_H }}>
                       {/* Center selection band */}
@@ -387,7 +387,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                         minHeight: 52,
                       }}
                     >
-                      {selectedSlot ? `Confirm — ${formatPickupTime(selectedSlot)}` : 'Pick a time'}
+                      {selectedSlot ? `Confirm: ${formatPickupTime(selectedSlot)}` : 'Pick a time'}
                     </button>
                   </div>
                 </motion.div>

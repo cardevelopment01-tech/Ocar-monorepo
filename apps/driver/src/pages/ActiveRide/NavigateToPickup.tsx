@@ -78,7 +78,7 @@ export default function NavigateToPickup() {
         }
       : undefined,
   })
-  // Fall back to pickup only for map centering — never for the car marker or route fetch.
+  // Fall back to pickup only for map centering, never for the car marker or route fetch.
   // Without this guard, the car appears AT the pickup pin before GPS resolves, making
   // it look like the driver has already arrived.
   const mapCenter: [number, number] = position ?? pickupPos

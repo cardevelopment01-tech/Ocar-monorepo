@@ -7,7 +7,7 @@ import { rideApi } from '@/lib/ride-api'
 
 type Tab = 'home' | 'trip' | 'profile'
 
-// Flow pages own their full bottom chrome — no shared nav bar
+// Flow pages own their full bottom chrome, no shared nav bar
 const HIDE_NAV_PREFIXES = ['/search', '/select-ride', '/confirm-pickup', '/ride/', '/rental', '/round-trip', '/saved-places', '/payment-methods', '/notifications', '/safety', '/help']
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {

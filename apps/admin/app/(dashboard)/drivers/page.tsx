@@ -797,7 +797,7 @@ export default function DriversPage() {
         onConfirm={() => { if (!actionLoading) executeAction() }}
       />
 
-      {/* Reject docs — recoverable, driver can fix and resubmit */}
+      {/* Reject docs: recoverable, driver can fix and resubmit */}
       <ReasonDialog
         open={pendingAction?.type === 'rejectDocs'}
         title="Reject Documents"
@@ -809,7 +809,7 @@ export default function DriversPage() {
         onConfirm={reason => executeAction(reason)}
       />
 
-      {/* Ban — permanent */}
+      {/* Ban: permanent */}
       <ReasonDialog
         open={pendingAction?.type === 'ban'}
         title="Ban Driver"
@@ -833,7 +833,7 @@ export default function DriversPage() {
         onConfirm={reason => executeAction(reason)}
       />
 
-      {/* Doc review modal — portal-rendered, z-[80], always above slide-over */}
+      {/* Doc review modal: portal-rendered, z-[80], always above slide-over */}
       {reviewOpen && detail && (
         <DocReviewModal
           detail={detail}

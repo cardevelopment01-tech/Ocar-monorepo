@@ -213,7 +213,7 @@ export default function ReferenceSelfie() {
             ))}
           </div>
           <p className="text-white/30 text-xs">
-            Look for a camera or lock icon in the address bar — that's where site permissions live in a browser.
+            Look for a camera or lock icon in the address bar, that's where site permissions live in a browser.
           </p>
         </div>
         <div className="px-6 pb-8 pt-2 flex flex-col gap-3">
@@ -268,7 +268,7 @@ export default function ReferenceSelfie() {
       {/* Hidden canvas used only for frame capture */}
       <canvas ref={canvasRef} className="hidden" aria-hidden />
 
-      {/* Step bar + back button — white on dark bg */}
+      {/* Step bar + back button: white on dark bg */}
       <div
         className="relative z-20 px-5 flex items-center gap-4 pb-3"
         style={{ paddingTop: 'max(env(safe-area-inset-top), 0.75rem)' }}
@@ -312,7 +312,7 @@ export default function ReferenceSelfie() {
                 style={{ transform: 'scaleX(-1)' }}
               />
 
-              {/* Loading veil — fades out once the stream produces its first frame */}
+              {/* Loading veil: fades out once the stream produces its first frame */}
               <AnimatePresence>
                 {!cameraReady && (
                   <motion.div
@@ -330,7 +330,7 @@ export default function ReferenceSelfie() {
               {/* Dark overlay with oval cutout */}
               <OvalOverlay />
 
-              {/* Instruction chip — above oval */}
+              {/* Instruction chip: above oval */}
               <div className="absolute top-6 left-0 right-0 flex justify-center z-10 pointer-events-none">
                 <motion.div
                   initial={{ opacity: 0, y: -8 }}
@@ -344,7 +344,7 @@ export default function ReferenceSelfie() {
                 </motion.div>
               </div>
 
-              {/* Tips chip — below oval */}
+              {/* Tips chip: below oval */}
               <div className="absolute bottom-8 left-0 right-0 flex justify-center z-10 pointer-events-none">
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
@@ -447,7 +447,7 @@ export default function ReferenceSelfie() {
 // ── Oval guide overlay ─────────────────────────────────────────────────────────
 // Uses the box-shadow trick: the oval element IS the transparent hole;
 // a 9999px spread box-shadow fills everything outside it.
-// L-shaped corner brackets follow the Aadhaar/KYC convention — they mark the
+// L-shaped corner brackets follow the Aadhaar/KYC convention, they mark the
 // four corners of the bounding box, not the ellipse border.
 
 const B = 18  // bracket arm length
@@ -474,7 +474,7 @@ const CORNER_BRACKETS = [
 function OvalOverlay({ dimmed = false }: { dimmed?: boolean }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-      {/* Positioning wrapper — oval is roughly portrait 3:4 */}
+      {/* Positioning wrapper: oval is roughly portrait 3:4 */}
       <div style={{ width: '62%', aspectRatio: '3/4', position: 'relative' }}>
         {/* The oval + shadow-fill */}
         <div

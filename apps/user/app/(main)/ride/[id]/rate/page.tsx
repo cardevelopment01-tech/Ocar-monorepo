@@ -137,7 +137,7 @@ export default function RateRidePage() {
         ))}
       </div>
 
-      {/* Tags — shown for all ratings, positive tags for ≥4, negative for ≤2 */}
+      {/* Tags, shown for all ratings, positive tags for ≥4, negative for ≤2 */}
       {rating > 0 && tags.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}

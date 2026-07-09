@@ -188,7 +188,7 @@ export default function ReturnCabSetup() {
               className="flex items-start gap-3 rounded-2xl px-4 py-3 mb-3 overflow-hidden bg-surface-2 border border-border"
             >
               <AlertCircle size={15} className="text-text-muted flex-shrink-0 mt-0.5" />
-              <p className="text-text-secondary text-sm">GPS unavailable — using your default location</p>
+              <p className="text-text-secondary text-sm">GPS unavailable, using your default location</p>
             </motion.div>
           )}
         </AnimatePresence>

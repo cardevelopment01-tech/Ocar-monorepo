@@ -93,7 +93,7 @@ export default function PersonalDetails() {
         if (saved.emergency_contact)      setEmergency(saved.emergency_contact.replace(/^\+91/, ''))
         if (saved.languages_known?.length) setLanguages(saved.languages_known)
       } catch {
-        // First-time user — no saved data
+        // First-time user, no saved data
       } finally {
         setIsFetching(false)
       }
@@ -290,7 +290,7 @@ export default function PersonalDetails() {
                 </div>
               </Field>
 
-              {/* City — bottom-sheet picker or free-text fallback for single-city UTs */}
+              {/* City: bottom-sheet picker or free-text fallback for single-city UTs */}
               <Field label="City" id="city">
                 {!state ? (
                   <button
@@ -452,7 +452,7 @@ export default function PersonalDetails() {
                 }
               </Field>
 
-              {/* Email — collapsed optional field */}
+              {/* Email: collapsed optional field */}
               {!showEmail ? (
                 <button
                   type="button"

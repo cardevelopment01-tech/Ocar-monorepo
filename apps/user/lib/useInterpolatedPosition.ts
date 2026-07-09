@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 
-// Matches the 3s driver sync interval — car glides continuously with no pause between fixes
+// Matches the 3s driver sync interval, car glides continuously with no pause between fixes
 const DURATION = 3_000
 
 function lerpAngle(from: number, to: number, t: number): number {
@@ -18,7 +18,7 @@ function bearingDeg(from: [number, number], to: [number, number]): number {
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
 }
 
-// Equirectangular distance in metres — fast, accurate enough at sub-km scales
+// Equirectangular distance in metres, fast, accurate enough at sub-km scales
 function distMetres(a: [number, number], b: [number, number]): number {
   const R = 6_371_000
   const dLat = (b[0] - a[0]) * Math.PI / 180
@@ -31,7 +31,7 @@ function distMetres(a: [number, number], b: [number, number]): number {
  * Smoothly interpolates driver position and heading between raw socket fixes.
  *
  * Position uses linear interpolation over the full sync interval so the car
- * moves at constant speed with no pause — same as Uber/Ola.
+ * moves at constant speed with no pause, same as Uber/Ola.
  *
  * Heading is derived from the bearing between consecutive GPS fixes rather
  * than from raw coords.heading, which is unreliable on many devices. The car
@@ -57,7 +57,7 @@ export function useInterpolatedPosition(
   useEffect(() => {
     if (!rawPos) return
 
-    // First fix — snap immediately, use rawHeading as initial orientation
+    // First fix, snap immediately, use rawHeading as initial orientation
     if (!livePos.current) {
       livePos.current = rawPos
       liveHdg.current = rawHeading
@@ -84,7 +84,7 @@ export function useInterpolatedPosition(
       const a = anim.current!
       const t = Math.min((now - a.start) / DURATION, 1)
 
-      // Linear — constant speed produces continuous Uber-like motion with no deceleration pause
+      // Linear, constant speed produces continuous Uber-like motion with no deceleration pause
       const lat = a.from[0] + (a.to[0] - a.from[0]) * t
       const lng = a.from[1] + (a.to[1] - a.from[1]) * t
       const hdg = lerpAngle(a.fromHdg, a.toHdg, t)
@@ -102,7 +102,7 @@ export function useInterpolatedPosition(
     }
 
     rafRef.current = requestAnimationFrame(tick)
-  // rawPos is a new array reference on each socket event — intentional dep
+  // rawPos is a new array reference on each socket event, intentional dep
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPos, rawHeading])
 

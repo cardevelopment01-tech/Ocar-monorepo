@@ -1,6 +1,6 @@
 ---
 name: Ocar
-description: Intercity cab booking for Odisha — reliable, efficient, local.
+description: Intercity cab booking for Odisha. Reliable, efficient, local.
 colors:
   primary: "#4F46E5"
   primary-dark: "#4338CA"
@@ -152,17 +152,17 @@ components:
 
 **Creative North Star: "The Reliable Route"**
 
-Ocar's visual system is built around a single principle: reliability made visible. Every radius, shadow, and color decision signals that this product was made for the people of Odisha — not adapted from a global template and dropped in. The aesthetic is confident without being loud. Indigo punctuates, it does not flood. Surfaces are clean and purposeful; there is no decoration that does not reduce cognitive load.
+Ocar's visual system is built around one principle: reliability made visible. Every radius, shadow, and color decision signals that this product was made for the people of Odisha, not adapted from a global template and dropped in. The aesthetic is confident without being loud. Indigo is used as an accent, not a wash. Surfaces are clean and purposeful; there is no decoration that does not reduce cognitive load.
 
-This system explicitly rejects two traps. First: the generic SaaS-indigo template — the gradient-text hero, the white card grid with eyebrow labels, the full-saturation primary plastered across 60% of every screen. Ocar's indigo is used sparingly enough that its appearance means something. Second: the legacy Indian cab app aesthetic — cluttered, low-contrast, banner-heavy, with a primary action buried three scrolls down. On Ocar, the primary action on any screen is unmissable.
+This system avoids two failure modes. First, the generic SaaS-indigo template: the gradient-text hero, the white card grid with eyebrow labels, the full-saturation primary color plastered across most of every screen. Ocar's indigo stays restrained enough that its use is meaningful. Second, the legacy Indian cab app aesthetic: cluttered, low-contrast, banner-heavy, with the primary action buried several scrolls down. On Ocar, the primary action on any screen is unmissable.
 
-The three apps share one visual grammar but serve three different contexts. The user app is mobile, in-transit, possibly one-handed. The driver app is mobile, outdoor, in-motion. The admin portal is desktop-primary, task-dense, information-rich. Motion is purposeful across all three: 150–250 ms for state changes, never choreography for its own sake.
+The three apps share one visual grammar but serve three different contexts. The user app is mobile, in-transit, possibly one-handed. The driver app is mobile, outdoor, in-motion. The admin portal is desktop-primary, task-dense, information-rich. Motion is purposeful across all three: 150-250 ms for state changes, never choreography for its own sake.
 
 **Key Characteristics:**
-- Indigo-tinted ambient shadows — brand color in the shadow, never neutral gray
+- Indigo-tinted ambient shadows: brand color in the shadow, never neutral gray
 - Full-pill buttons for user CTAs; 2xl-rounded for driver CTAs; never mixed on the same screen
-- Inter carries all type — one family, multiple weights, no display/body pairing
-- Orange (#F97316) is operational, never decorative — driver and admin only
+- Inter carries all type: one family, multiple weights, no display/body pairing
+- Orange (#F97316) is operational, never decorative. Driver and admin only.
 - `prefers-reduced-motion` respected everywhere, including the brand splash screen
 
 ## 2. Colors: The Confident Indigo Palette
@@ -180,19 +180,19 @@ A restrained palette anchored by one saturated indigo. The accent only appears w
 - **Arc Violet** (`#7C3AED`): The gradient partner to Confident Indigo. Used exclusively in the brand logomark arc (gradient endpoint) and the splash screen glow. Not used as a standalone UI color.
 - **Violet Light** (`#EDE9FE`): Pale violet tint for secondary info surfaces when a second accent color is needed (rare; prefer indigo-subtle first).
 
-### Tertiary — Operational Orange
-- **Go-Online Orange** (`#F97316`): Driver and admin apps only. Signals the driver's active/online state, go-online CTA, and operational alerts in the admin portal. Never appears in the user-facing booking or tracking flow — its absence there is intentional. Orange means "operational layer."
+### Tertiary: Operational Orange
+- **Go-Online Orange** (`#F97316`): Driver and admin apps only. Signals the driver's active/online state, go-online CTA, and operational alerts in the admin portal. It does not appear in the user-facing booking or tracking flow; the absence is intentional. Orange means "operational layer."
 - **Orange Light** (`#FFF7ED`): Pale fill for orange-adjacent badges and highlights in driver/admin contexts.
 
 ### Neutral
-- **Background** (`#F5F7FF`): The indigo-tinted near-white used as the page background in the user and driver apps. The tint (≈0.008 chroma toward indigo) prevents the surface from reading as a generic default white.
+- **Background** (`#F5F7FF`): The indigo-tinted near-white used as the page background in the user and driver apps. The tint (approximately 0.008 chroma toward indigo) prevents the surface from reading as a generic default white.
 - **Surface** (`#FFFFFF`): Cards, sheets, modals, and any elevated surface that sits above the background.
-- **Surface 2** (`#F5F7FF`): Input backgrounds, secondary cards, and list items at rest — same value as Background, which creates flush groupings without a visible card edge. **Divergence:** driver's `tailwind.config.ts` defines `surface-2: '#F0F4FD'` — close but not identical; unintentional drift. User app matches the documented value exactly.
+- **Surface 2** (`#F5F7FF`): Input backgrounds, secondary cards, and list items at rest. Same value as Background, which creates flush groupings without a visible card edge. **Divergence:** driver's `tailwind.config.ts` defines `surface-2: '#F0F4FD'`, close but not identical, an unintentional drift. User app matches the documented value exactly.
 - **Surface 3** (`#EEF0FF`): Stronger indigo-tinted fill for selected states, active tabs, and highlighted rows.
-- **Ink 900** (`#0F172A`): Primary text — headlines, body, labels. Near-black with a cool undertone.
-- **Ink 600** (`#475569`): Secondary text — supporting labels, metadata, form hints. Passes 4.5:1 on white.
-- **Ink 400** (`#94A3B8`): Muted text — placeholders, disabled labels, nav items at rest. Use on white/surface only — verify contrast against any tinted bg.
-- **Border** (`#E8EEFF`): Default border with an indigo tint — separates surfaces without adding visual weight. **Divergence:** admin and driver's `tailwind.config.ts` both define `border: '#E2E8F0'` (plain slate, no indigo tint) instead — unintentional drift, not a documented per-app choice. New work in those apps should move to `#E8EEFF`.
+- **Ink 900** (`#0F172A`): Primary text: headlines, body, labels. Near-black with a cool undertone.
+- **Ink 600** (`#475569`): Secondary text: supporting labels, metadata, form hints. Passes 4.5:1 on white.
+- **Ink 400** (`#94A3B8`): Muted text: placeholders, disabled labels, nav items at rest. Use on white/surface only; verify contrast against any tinted background.
+- **Border** (`#E8EEFF`): Default border with an indigo tint, separating surfaces without adding visual weight. **Divergence:** admin and driver's `tailwind.config.ts` both define `border: '#E2E8F0'` (plain slate, no indigo tint) instead, an unintentional drift, not a documented per-app choice. New work in those apps should move to `#E8EEFF`.
 - **Border Light** (`#F1F5FF`): The lightest divider, for internal row separators inside cards.
 - **Splash Background** (`#0F0D1A`): The near-black used only on the brand splash screen. A deep indigo-dark that lets the gradient logomark glow.
 
@@ -205,7 +205,7 @@ A restrained palette anchored by one saturated indigo. The accent only appears w
 ### Named Rules
 **The Indigo Shadow Rule.** Every shadow in the Ocar system is tinted with `rgba(79,70,229,X)`. Never neutral gray. The brand color in the shadow unifies the three apps even when the surface itself is neutral white. If you reach for `rgba(0,0,0,X)` on a shadow, replace it.
 
-**The Route Rule.** Primary (`#4F46E5`) appears on ≤25% of any screen. Its saturation is the punctuation, not the sentence. A screen where indigo is everywhere is a screen where nothing is primary.
+**The Route Rule.** Primary (`#4F46E5`) appears on 25% or less of any screen. Its saturation is the punctuation, not the sentence. A screen where indigo is everywhere is a screen where nothing is primary.
 
 **The Orange Boundary Rule.** Orange (`#F97316`) is operational. It means: driver going online, admin alert, active session. It does not mean "accent on the user booking flow." One misplaced orange on the user app breaks the system's trust language.
 
@@ -213,28 +213,28 @@ A restrained palette anchored by one saturated indigo. The accent only appears w
 
 **Display / Body / Label Font:** Inter (system fallback: `system-ui, -apple-system, sans-serif`)
 
-**Character:** A single family across all three apps. Inter's geometric skeleton reads technical precision; its humanist details keep it warm enough for a local service. One font, multiple weights — no decorative pairing, no display/body contrast axis. The hierarchy is carried entirely by weight and size.
+**Character:** A single family across all three apps. Inter's geometric skeleton reads technical precision; its humanist details keep it warm enough for a local service. One font, multiple weights, no decorative pairing, no display/body contrast axis. The hierarchy is carried entirely by weight and size.
 
-**Known Divergences (verified against `tailwind.config.ts` in each app):** The admin app's entire default sans-serif is DM Sans (`apps/admin/app/globals.css` L1, `apps/admin/tailwind.config.ts` L48) — not a partial/heading-only override, the whole app. The driver app does **not** load Poppins; it is 100% Inter (`apps/driver/tailwind.config.ts` L39-40) — this is a legacy claim, corrected. All new work uses Inter; admin's DM Sans divergence should be resolved at the next refactor pass per the user's direction.
+**Known Divergences (verified against `tailwind.config.ts` in each app):** The admin app's entire default sans-serif is DM Sans (`apps/admin/app/globals.css` L1, `apps/admin/tailwind.config.ts` L48), not a partial or heading-only override, the whole app. The driver app does **not** load Poppins; it is 100% Inter (`apps/driver/tailwind.config.ts` L39-40). The Poppins claim was stale and has been corrected. All new work uses Inter; admin's DM Sans divergence should be resolved at the next refactor pass per the user's direction.
 
 ### Hierarchy
 - **Display** (700, 28px, lh 1.2, ls -0.03em): Screen-level titles and the brand wordmark. Appears once per screen maximum. Used in the splash screen wordmark and auth page headlines.
 - **Headline** (700, 22px, lh 1.3, ls -0.02em): Section headers, modal titles, ride-card primary labels. Tight tracking distinguishes this from body weight without requiring a font change.
 - **Title** (600, 18px, lh 1.4): Card titles, list item primaries, navigation labels. The workhorse between Display and Body.
-- **Body** (400, 16px, lh 1.6): All prose text, descriptions, supporting content. Minimum size for any reading-length string. Cap line length at 65–75ch on prose; data-dense admin tables may run denser.
-- **Label** (500, 13px, lh 1.4): Form labels, status chips, metadata pairs, table column headers. Never tracked all-caps — Ocar does not use eyebrow text.
+- **Body** (400, 16px, lh 1.6): All prose text, descriptions, supporting content. Minimum size for any reading-length string. Cap line length at 65-75ch on prose; data-dense admin tables may run denser.
+- **Label** (500, 13px, lh 1.4): Form labels, status chips, metadata pairs, table column headers. Never tracked all-caps; Ocar does not use eyebrow text.
 - **Caption** (400, 12px, lh 1.5): Timestamps, fine-print, secondary metadata under a primary label. Use sparingly; do not use for anything the user needs to act on.
 
 ### Named Rules
-**The One Font Rule.** Inter carries all three apps. Introducing a second family — even a complementary one — fragments the visual system across three separate codebases that already diverge. If a screen needs hierarchy emphasis, use weight (400→600→700) and size, not a typeface swap.
+**The One Font Rule.** Inter carries all three apps. Introducing a second family, even a complementary one, fragments the visual system across three separate codebases that already diverge. If a screen needs hierarchy emphasis, use weight (400 to 700) and size, not a typeface swap.
 
 **The No Eyebrow Rule.** Ocar does not use small-caps tracked eyebrow labels above section headings. The primary action is the label. Supporting context uses Label weight (500, 13px) as plain text, not as a decorative typography treatment.
 
 ## 4. Elevation
 
-Ocar uses a **tonal ambient shadow system** — every shadow is an indigo-tinted ambient glow, never a sharp directional drop shadow. Elevation signals context and focus, not simulated 3D depth. At rest, most surfaces carry only the card shadow. Sheets and modals carry stronger shadows that mark them as temporarily elevated surfaces the user must interact with.
+Ocar uses a tonal ambient shadow system: every shadow is an indigo-tinted ambient glow, never a sharp directional drop shadow. Elevation signals context and focus, not simulated 3D depth. At rest, most surfaces carry only the card shadow. Sheets and modals carry stronger shadows that mark them as temporarily elevated surfaces the user must interact with.
 
-The splash screen is the single exception: it sits on the darkest possible surface (`#0F0D1A`) with an ambient radial indigo glow — a special-case elevation that exists outside the three-app system.
+The splash screen is the single exception: it sits on the darkest possible surface (`#0F0D1A`) with an ambient radial indigo glow, a special case that sits outside the three-app system.
 
 ### Shadow Vocabulary
 - **Card** (`box-shadow: 0 2px 16px rgba(79,70,229,0.07)`): Default card on the user app. Barely perceptible at rest; enough to separate the card from the background on the tinted near-white surface.
@@ -249,7 +249,7 @@ The splash screen is the single exception: it sits on the darkest possible surfa
 ### Named Rules
 **The Indigo Shadow Rule** (carries forward from Colors): every shadow uses `rgba(79,70,229,X)` as the color component. Neutral `rgba(0,0,0,X)` shadows are not part of this system.
 
-**The Flat-by-Default Rule.** Interactive elements are flat at rest. The shadow appears on the primary CTA to mark it as primary — not on every card or every button. Shadow is a priority signal, not a surface treatment.
+**The Flat-by-Default Rule.** Interactive elements are flat at rest. The shadow appears on the primary CTA to mark it as primary, not on every card or every button. Shadow is a priority signal, not a surface treatment.
 
 ## 5. Components
 
@@ -278,9 +278,9 @@ Ocar's component vocabulary is conservative. The same button shape appears consi
 ### Inputs
 
 - **Shape:** `border-radius: 20px` (xl). Background `#F5F7FF` (Surface 2). Border `1px solid #E8EEFF`.
-- **Focus:** `border-color: #4F46E5`, `box-shadow: 0 0 0 3px rgba(79,70,229,0.10)`. The focus ring uses the brand color at low opacity — no separate "focus blue."
+- **Focus:** `border-color: #4F46E5`, `box-shadow: 0 0 0 3px rgba(79,70,229,0.10)`. The focus ring uses the brand color at low opacity; there is no separate "focus blue."
 - **Placeholder:** Ink 400 (`#94A3B8`). Passes 3:1 against Surface 2; verify if background changes.
-- **Error state:** `border-color: #EF4444`, error message in Ink 600 below the input — never red text alone as the only indicator.
+- **Error state:** `border-color: #EF4444`, error message in Ink 600 below the input. Never red text alone as the only indicator.
 
 ### Status Pills / Chips
 
@@ -290,14 +290,14 @@ Ocar's component vocabulary is conservative. The same button shape appears consi
 - **Error/Danger:** `#FEE2E2` bg, `#EF4444` text.
 - **Info:** `#E0F2FE` bg, `#0EA5E9` text.
 - **Muted:** `#F5F7FF` bg, `#94A3B8` text. For inactive/unknown states.
-- **Selected Chip (filter/tab):** Primary bg, white text. Unselected: Surface 2 bg, Ink 600 text. Never use a border to mark selection — use background fill.
+- **Selected Chip (filter/tab):** Primary bg, white text. Unselected: Surface 2 bg, Ink 600 text. Never use a border to mark selection; use background fill.
 
 ### Bottom Sheets (User and Driver)
 
 - **Shape:** `border-radius: 32px 32px 0 0` (3xl, top corners only). White surface.
-- **Shadow:** Sheet shadow (`0 -6px 32px rgba(79,70,229,0.10)`) — directional upward.
-- **Handle:** 40×4px pill, `rgba(79,70,229,0.15)` color, `border-radius: 9999px`, centered at `margin: 12px auto 16px`.
-- **Drag behavior:** Handle is the visual affordance for dragging. The handle color tints with the brand indigo at very low opacity rather than being neutral gray.
+- **Shadow:** Sheet shadow (`0 -6px 32px rgba(79,70,229,0.10)`), directional upward.
+- **Handle:** 40x4px pill, `rgba(79,70,229,0.15)` color, `border-radius: 9999px`, centered at `margin: 12px auto 16px`.
+- **Drag behavior:** The handle is the visual affordance for dragging. Its color tints with the brand indigo at very low opacity rather than being neutral gray.
 
 ### Admin Navigation
 
@@ -305,7 +305,7 @@ Ocar's component vocabulary is conservative. The same button shape appears consi
 - **At rest:** Surface background (transparent), Ink 400 text, icon same color.
 - **Hover:** Surface 2 background (`#F5F7FF`), Ink 600 text.
 - **Active:** Primary background (`#4F46E5`), white text, white icon.
-- **Typography:** Label size (13px, 500 weight). No icon-only nav items — always paired with a text label.
+- **Typography:** Label size (13px, 500 weight). No icon-only nav items; always paired with a text label.
 
 ### Data Tables (Admin)
 
@@ -316,29 +316,29 @@ Ocar's component vocabulary is conservative. The same button shape appears consi
 
 ### Brand Logomark (OcarLogoMark)
 
-- **Ring:** 270° arc path `M 78.284 78.284 A 40 40 0 1 0 21.716 78.284`, `stroke-width: 7.5`, `stroke-linecap: round`. Gradient: `#4F46E5` → `#7C3AED`.
-- **Dot:** `cx=78.284 cy=78.284 r=8`. Same gradient. Sits at the open end of the arc — the "speed ring" visual.
+- **Ring:** 270-degree arc path `M 78.284 78.284 A 40 40 0 1 0 21.716 78.284`, `stroke-width: 7.5`, `stroke-linecap: round`. Gradient: `#4F46E5` to `#7C3AED`.
+- **Dot:** `cx=78.284 cy=78.284 r=8`. Same gradient. Sits at the open end of the arc, the "speed ring" visual.
 - **Wordmark:** "ocar" lowercase, Inter 700, `letter-spacing: -0.03em`, `font-size: 22px`. Color: Ink 900 on light surfaces, white on dark.
 - **Sizes:** sm (20px ring), md (28px), lg (40px), xl (64px).
 - **Variants:** `color` (gradient, default), `white` (solid white stroke/fill), `mono` (Ink 900 stroke/fill).
 
 ### Ocar Spinner (OcarSpinner)
 
-A comet-taper arc — 120° rotating arc with a gradient from opaque head to transparent tail. Not the logomark reused; a purpose-built loading indicator.
+A comet-taper arc: a 120-degree rotating arc with a gradient from opaque head to transparent tail. Not the logomark reused; a purpose-built loading indicator.
 
-- **Arc path:** `M 50 10 A 40 40 0 0 1 84.641 70` (120° arc, head at top)
-- **Gradient:** Head (brand primary, opacity 1) → Tail (same color, opacity 0)
+- **Arc path:** `M 50 10 A 40 40 0 0 1 84.641 70` (120-degree arc, head at top)
+- **Gradient:** Head (brand primary, opacity 1) to Tail (same color, opacity 0)
 - **Head dot:** `cx=50 cy=10 r=5`, solid brand primary
 - **Animation:** `rotate: 360`, `duration: 0.8s`, `ease: linear`, `repeat: Infinity`
 - **Reduced motion:** static state (no animation) when `prefers-reduced-motion: reduce`
 
 ### Splash Screen
 
-- **Background:** `#0F0D1A` (Splash Background). Not a card or sheet — full-viewport fixed overlay.
+- **Background:** `#0F0D1A` (Splash Background). Not a card or sheet; a full-viewport fixed overlay.
 - **Ambient glow:** `radial-gradient(ellipse 55% 45% at 50% 50%, rgba(79,70,229,0.22) 0%, transparent 100%)`.
-- **Animation sequence:** Container: `opacity:1` on mount (no fade-in prevents FOUC). Logo group: `scale(0.96, opacity:0)` → `scale(1, opacity:1)`, 0.5s `[0.16,1,0.3,1]` ease-out-expo. Arc: `pathLength` 0→1, 0.7s ease-in-out. Dot: `scale(0.4, opacity:0)` → `scale(1, opacity:1)`, 0.25s ease-out, 0.55s delay. Wordmark: `opacity:0` → `opacity:1`, 0.3s, 0.5s delay. Exit: `opacity:0`, 0.35s ease-in-out.
-- **Duration:** 1600ms total display (400ms when `prefers-reduced-motion`). Timer-only — no `onAnimationComplete` chaining.
-- **Gate:** `sessionStorage('ocar_splash_shown')` — once per browser session. Uses `useLayoutEffect` (fires before browser paint) to prevent FOUC.
+- **Animation sequence:** Container: `opacity:1` on mount (no fade-in prevents FOUC). Logo group: `scale(0.96, opacity:0)` to `scale(1, opacity:1)`, 0.5s `[0.16,1,0.3,1]` ease-out-expo. Arc: `pathLength` 0 to 1, 0.7s ease-in-out. Dot: `scale(0.4, opacity:0)` to `scale(1, opacity:1)`, 0.25s ease-out, 0.55s delay. Wordmark: `opacity:0` to `opacity:1`, 0.3s, 0.5s delay. Exit: `opacity:0`, 0.35s ease-in-out.
+- **Duration:** 1600ms total display (400ms when `prefers-reduced-motion`). Timer-only; no `onAnimationComplete` chaining.
+- **Gate:** `sessionStorage('ocar_splash_shown')`, once per browser session. Uses `useLayoutEffect` (fires before browser paint) to prevent FOUC.
 - **Placement (driver app):** The `SplashScreen` component must be a sibling rendered **before** the `translateZ(0)` container div. `position:fixed` is clipped to 430px if placed inside that container.
 
 ## 6. Do's and Don'ts
@@ -346,56 +346,56 @@ A comet-taper arc — 120° rotating arc with a gradient from opaque head to tra
 ### Do's
 
 **Color**
-- Use `rgba(79,70,229,X)` for all shadows — carry the brand color into the shadow layer
+- Use `rgba(79,70,229,X)` for all shadows: carry the brand color into the shadow layer
 - Reserve orange (`#F97316`) for the driver app and admin operational states only
-- Use Surface 2 (`#F5F7FF`) as the input background — it provides subtle depth without a visible border at rest
+- Use Surface 2 (`#F5F7FF`) as the input background: it provides subtle depth without a visible border at rest
 - Use Indigo Subtle (`#EEF2FF`) for selected/active states that shouldn't carry the full primary weight
 
 **Typography**
-- Use Inter for all new text — no new font imports from any app
-- Set `letter-spacing: -0.03em` on Display; `letter-spacing: -0.02em` on Headline — tight tracking is what makes Inter feel premium at display sizes
-- Use `font-weight: 700` for brand wordmark; `font-weight: 600` for UI headlines
+- Use Inter for all new text; no new font imports from any app
+- Set `letter-spacing: -0.03em` on Display; `letter-spacing: -0.02em` on Headline. Tight tracking is what makes Inter feel premium at display sizes.
+- Use `font-weight: 700` for the brand wordmark; `font-weight: 600` for UI headlines
 
 **Buttons**
 - Use pill shape (`border-radius: 9999px`) for user-app primary CTAs
 - Use rounded-2xl (`border-radius: 24px`) for driver-app primary CTAs
-- Include the Button Primary shadow (`0 4px 20px rgba(79,70,229,0.40)`) on every indigo primary button — it is the affordance signal
+- Include the Button Primary shadow (`0 4px 20px rgba(79,70,229,0.40)`) on every indigo primary button; it is the affordance signal
 
 **Layout**
-- Keep the primary action on any screen unmissable — if the user has to look for the button, the layout is wrong
+- Keep the primary action on any screen unmissable. If the user has to look for the button, the layout is wrong.
 - Use Bottom Sheet shadow for all sheet components: `0 -6px 32px rgba(79,70,229,0.10)`
 - Constrain user and driver apps to the 430px max-width centered layout; admin is full-width on desktop
 
 **Accessibility**
-- Provide `prefers-reduced-motion` alternates for every Framer Motion animation — timer-based splash fallback, no-animation spinner
-- Keep all touch targets ≥ 44×44px
-- Never use color as the sole state indicator — always pair with icon, label, or shape change
+- Provide `prefers-reduced-motion` alternates for every Framer Motion animation: timer-based splash fallback, no-animation spinner
+- Keep all touch targets 44x44px or larger
+- Never use color as the sole state indicator; always pair with icon, label, or shape change
 
 ### Don'ts
 
 **Absolute bans (match-and-refuse)**
-- **No gradient text.** `background-clip: text` + gradient is forbidden everywhere in the system. Use solid Ink 900, white, or a single solid brand color.
-- **No side-stripe borders.** `border-left` or `border-right` > 1px as a colored accent on cards, callouts, or list items. Rewrite with background tint or full border. _(A violation exists at `apps/driver/src/components/map/SelfCarMarker.tsx:81` — `borderLeft: '5px solid'` — to be resolved.)_
+- **No gradient text.** `background-clip: text` plus a gradient is forbidden everywhere in the system. Use solid Ink 900, white, or a single solid brand color.
+- **No side-stripe borders.** `border-left` or `border-right` greater than 1px as a colored accent on cards, callouts, or list items. Rewrite with background tint or full border. _(A violation exists at `apps/driver/src/components/map/SelfCarMarker.tsx:81`, `borderLeft: '5px solid'`, to be resolved.)_
 - **No glassmorphism on main surfaces.** Blur/glass effects are not part of this system; they fight the clean shadow vocabulary.
-- **No hero-metric template.** Big numbers in gradient rings with "stats below" is the SaaS cliché this system explicitly rejects (PRODUCT.md anti-reference).
+- **No hero-metric template.** Big numbers in gradient rings with "stats below" is the SaaS cliche this system explicitly rejects (PRODUCT.md anti-reference).
 
 **Color**
-- Do not use orange (`#F97316`) in the user booking flow — not on buttons, chips, status indicators, or highlights. It belongs to the operational layer.
-- Do not use neutral gray shadows (`rgba(0,0,0,X)`) — always use the indigo-tinted variant.
-- Do not use full-saturation primary on inactive states — use Indigo Subtle or Surface 2 instead.
-- Do not flood the screen with indigo — if more than 25% of the surface carries the primary color, redesign the hierarchy.
+- Do not use orange (`#F97316`) in the user booking flow: not on buttons, chips, status indicators, or highlights. It belongs to the operational layer.
+- Do not use neutral gray shadows (`rgba(0,0,0,X)`); always use the indigo-tinted variant.
+- Do not use full-saturation primary on inactive states; use Indigo Subtle or Surface 2 instead.
+- Do not flood the screen with indigo. If more than 25% of the surface carries the primary color, redesign the hierarchy.
 
 **Typography**
-- Do not import Poppins or DM Sans for new work — they are legacy divergences being phased out.
-- Do not use tracked all-caps eyebrow labels (e.g., `TEXT-TRANSFORM: UPPERCASE; LETTER-SPACING: 0.1em`) — Ocar's voice is direct, not magazine-formatted.
+- Do not import Poppins or DM Sans for new work; they are legacy divergences being phased out.
+- Do not use tracked all-caps eyebrow labels (for example `TEXT-TRANSFORM: UPPERCASE; LETTER-SPACING: 0.1em`). Ocar's voice is direct, not magazine-formatted.
 - Do not use font sizes below 12px for anything the user needs to read or act on.
 
 **Buttons**
 - Do not mix pill and rounded-rectangular buttons on the same screen.
-- Do not use gradient text on button labels — the gradient is on the button background, the label is white.
+- Do not use gradient text on button labels; the gradient is on the button background, the label is white.
 - Do not use the Go-Online orange CTA in any user-facing screen.
 
 **Layout**
 - Do not nest cards inside cards.
-- Do not use `border-left` > 1px as a design element (see Absolute bans).
-- Do not add decorative motion that does not convey state — transitions are for feedback, not theatre.
+- Do not use `border-left` greater than 1px as a design element (see Absolute bans).
+- Do not add decorative motion that does not convey state. Transitions are for feedback, not theatre.

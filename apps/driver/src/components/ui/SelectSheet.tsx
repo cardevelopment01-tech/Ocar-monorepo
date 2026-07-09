@@ -87,7 +87,7 @@ export default function SelectSheet({
         />
       </button>
 
-      {/* Sheet — rendered in a portal to escape any transform ancestor */}
+      {/* Sheet, rendered in a portal to escape any transform ancestor */}
       {open && createPortal(
         <div className="fixed inset-0" style={{ zIndex: 50 }}>
           {/* Scrim */}

@@ -56,7 +56,7 @@ describe('toDatetimeLocal', () => {
   })
 
   it('zero-pads single-digit month, day, hour, and minute', () => {
-    // Jan 5 at 03:07 local — use local constructor so padding is exercised
+    // Jan 5 at 03:07 local, use local constructor so padding is exercised
     const d = new Date(2026, 0, 5, 3, 7)
     const result = toDatetimeLocal(d)
     expect(result).toBe('2026-01-05T03:07')
@@ -71,7 +71,7 @@ describe('toDatetimeLocal', () => {
     const d = new Date(2026, 6, 1, 9, 30)
     const str = toDatetimeLocal(d)
     const back = new Date(str)
-    // datetime-local has no seconds — diff should be under 60s
+    // datetime-local has no seconds, diff should be under 60s
     expect(Math.abs(back.getTime() - d.getTime())).toBeLessThan(60_000)
   })
 })
@@ -80,7 +80,7 @@ describe('toDatetimeLocal', () => {
 
 describe('formatReturnAt', () => {
   it('formats a standard afternoon time correctly', () => {
-    // 5 Jul 2026 18:30 local — construct in local time
+    // 5 Jul 2026 18:30 local, construct in local time
     const d = new Date(2026, 6, 5, 18, 30)
     expect(formatReturnAt(d.toISOString())).toBe('5 Jul · 18:30')
   })
@@ -113,7 +113,7 @@ describe('formatReturnAt', () => {
     })
   })
 
-  it('uses local hours — does not show UTC hours', () => {
+  it('uses local hours, does not show UTC hours', () => {
     // Use a known local datetime and verify hours match local, not UTC
     const d = new Date(2026, 6, 5, 18, 30)
     const result = formatReturnAt(d.toISOString())

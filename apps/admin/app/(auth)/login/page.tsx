@@ -47,7 +47,7 @@ export default function AdminLoginPage() {
   return (
     <div className="min-h-screen flex" style={{ background: '#F8FAFF' }}>
 
-      {/* Left panel — branding */}
+      {/* Left panel: branding */}
       <div
         className="hidden lg:flex lg:w-[45%] flex-col justify-between p-12 relative overflow-hidden"
         style={{ background: 'linear-gradient(145deg, #4F46E5 0%, #7C3AED 50%, #A855F7 100%)' }}
@@ -104,7 +104,7 @@ export default function AdminLoginPage() {
         </p>
       </div>
 
-      {/* Right panel — form */}
+      {/* Right panel: form */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-sm">
 

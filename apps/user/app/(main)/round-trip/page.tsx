@@ -133,7 +133,7 @@ function RoundTripContent() {
               className="rounded-2xl overflow-hidden bg-white"
               style={{ border: '1px solid #E8EEFF', boxShadow: '0 2px 16px rgba(79,70,229,0.07)' }}
             >
-              {/* From — read-only */}
+              {/* From, read-only */}
               <div
                 className="flex items-center gap-3 px-4 py-3.5"
                 style={{ borderBottom: '1px solid #E8EEFF' }}
@@ -146,7 +146,7 @@ function RoundTripContent() {
                 <MapPin size={13} style={{ color: '#C7D2FE' }} className="flex-shrink-0" />
               </div>
 
-              {/* To — tappable */}
+              {/* To, tappable */}
               <button
                 onClick={goToSearch}
                 className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-opacity active:opacity-60"
@@ -179,7 +179,7 @@ function RoundTripContent() {
             )}
           </motion.div>
 
-          {/* Hour selector — shown when destination is set */}
+          {/* Hour selector, shown when destination is set */}
           {hasDestination && (
             <motion.section {...fadeUp(0.06)}>
               <div
@@ -216,7 +216,7 @@ function RoundTripContent() {
             </motion.section>
           )}
 
-          {/* Pickup time — own section, decoupled from the hour selector above */}
+          {/* Pickup time, own section, decoupled from the hour selector above */}
           {hasDestination && (
             <motion.section {...fadeUp(0.09)}>
               <PickupTimeChip
@@ -236,7 +236,7 @@ function RoundTripContent() {
               style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
             >
               {[
-                'Same driver for both legs — no second booking needed',
+                'Same driver for both legs, no second booking needed',
                 'Fare covers travel, waiting time, and the return',
                 'Minimum booking duration is 4 hours',
                 'If you end early at a different location, return distance to pickup is added to your fare',

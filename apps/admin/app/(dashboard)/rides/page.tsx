@@ -77,7 +77,7 @@ function RidesPageContent() {
     }
   }
 
-  // Deep link from other admin pages (e.g. SOS "View ride") — opens the ride
+  // Deep link from other admin pages (e.g. SOS "View ride"), opens the ride
   // detail directly regardless of the current list/filters/pagination.
   useEffect(() => {
     const rideId = searchParams.get('ride')
@@ -228,7 +228,7 @@ function RidesPageContent() {
                     {new Date(r.scheduled_for).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })}
                   </p>
                   {r.is_stuck ? (
-                    <p className="text-[11px] font-semibold text-red-600">Stuck — sweep may have failed</p>
+                    <p className="text-[11px] font-semibold text-red-600">Stuck, sweep may have failed</p>
                   ) : (
                     <p className="text-[11px] text-text-muted">{r.advance_status}</p>
                   )}
@@ -316,12 +316,12 @@ function RidesPageContent() {
                 <p className={selected.review_flagged_at
                   ? 'text-xs font-semibold text-amber-800 uppercase tracking-wide'
                   : 'text-xs font-semibold text-text-secondary uppercase tracking-wide'}>
-                  {selected.review_flagged_at ? 'Flagged — possibly stuck' : 'Trip in progress'}
+                  {selected.review_flagged_at ? 'Flagged, possibly stuck' : 'Trip in progress'}
                 </p>
                 <p className={selected.review_flagged_at ? 'text-xs text-amber-700' : 'text-xs text-text-muted'}>
                   {selected.review_flagged_at
                     ? `No driver GPS update since ${fmt(selected.review_flagged_at)}${selected.review_reason ? ` (${selected.review_reason.replace(/_/g, ' ')})` : ''}`
-                    : 'Not auto-flagged yet — resolve manually if this ride needs intervention.'}
+                    : 'Not auto-flagged yet. Resolve manually if this ride needs intervention.'}
                 </p>
                 <div className="flex gap-2 pt-1">
                   <button

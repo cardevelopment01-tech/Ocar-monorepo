@@ -163,7 +163,7 @@ export default function Profile() {
         </div>
       )}
 
-      {/* Sign out confirmation — outside scroll region, above BottomNav */}
+      {/* Sign out confirmation: outside scroll region, above BottomNav */}
       {showSignOutConfirm && (
         <div
           className="fixed inset-0 flex items-end justify-center px-5 pb-6"

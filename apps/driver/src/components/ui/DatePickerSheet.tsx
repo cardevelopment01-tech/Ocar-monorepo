@@ -16,7 +16,7 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const ITEM_H      = 48
 const VISIBLE     = 5
 const DRUM_H      = ITEM_H * VISIBLE   // 240px
-const SPACER      = ITEM_H * 2         // 96px — 2 items above/below center
+const SPACER      = ITEM_H * 2         // 96px, 2 items above/below center
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -248,7 +248,7 @@ export default function DatePickerSheet({
 
   return (
     <>
-      {/* Trigger — same height/style as other inputs */}
+      {/* Trigger, same height/style as other inputs */}
       <button
         ref={triggerRef}
         type="button"

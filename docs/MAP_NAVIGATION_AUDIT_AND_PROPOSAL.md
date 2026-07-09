@@ -1,7 +1,7 @@
-# In-Ride Map & Navigation — Audit and Proposal
+# In-Ride Map & Navigation: Audit and Proposal
 
 **Date:** 2026-07-09
-**Trigger:** Client feedback — "the map still stays the same small like it was and shows icon rather than helping driver follow the roads and traffic like Google Maps." Clients want Google-Maps-grade navigation with voice instructions.
+**Trigger:** Client feedback: "the map still stays the same small like it was and shows icon rather than helping driver follow the roads and traffic like Google Maps." Clients want Google-Maps-grade navigation with voice instructions.
 
 ---
 
@@ -15,32 +15,32 @@ The implementation is more capable than it looks visually:
 - **Driver app** (`apps/driver/src/components/map/RecenterMap.tsx`, consumed from `pages/ActiveRide/NavigateToPickup.tsx` and `TripInProgress.tsx`):
   - Full-screen map (not actually "small" — `absolute inset-0` behind the top bar/bottom sheet).
   - Follows live GPS: `map.panTo()` on every fix beyond a ~2m threshold.
-  - **Rotates the map to heading** (`map.setHeading()`) — genuine compass-following camera.
+  - **Rotates the map to heading** (`map.setHeading()`), a genuine compass-following camera.
   - Draws a route polyline fetched from the backend, re-fetched on >200m deviation or >60s staleness.
   - Manual "Locate me" recenter button on `TripInProgress.tsx`.
 - **User app** (`apps/user/components/map/RideMapScene.tsx`, `app/(main)/ride/[id]/page.tsx`):
   - Follows the driver's position via `RecenterMap` (pan only, no rotation).
   - Draws the same route polyline.
   - Shows a breadcrumb trail of past driver positions during `in_progress`.
-  - `CarMarker` icon rotates to heading via CSS, but **the camera itself stays north-up** — only the icon rotates, not the map.
+  - `CarMarker` icon rotates to heading via CSS, but **the camera itself stays north-up**; only the icon rotates, not the map.
 - **Location pipeline** is solid: driver `watchPosition` → throttled 3s HTTP sync → `api/src/modules/rides/rides.service.ts` persists + `socket.server.ts` emits `driver:location` to `ride:{rideId}` → user client smooths it with `useInterpolatedPosition.ts` (rAF lerp), so the marker glides rather than jumps. 10s poll fallback if the socket drops.
 
 ### What's actually missing (the real gap behind the complaint)
 1. **No turn-by-turn maneuver instructions.** The route polyline is drawn but never decomposed into steps/maneuvers. There's no "Turn left in 200m" banner anywhere.
 2. **No voice guidance at all.** Grep for `voice|tts|speech|SpeechSynthesis` across both apps returns nothing.
 3. **No live traffic.** No traffic layer, no traffic-aware ETA, no traffic-based re-routing.
-4. **Driver's "Navigate" button just deep-links to `maps.google.com`** (`NavigateToPickup.tsx`), i.e. today drivers already leave the app to get real turn-by-turn from Google Maps — the in-app map is cosmetic during actual navigation. This is almost certainly what "feels immature" to clients: the driver has to tab out to a *different app* to get real guidance, and the in-app view they're left looking at doesn't help them.
-5. **No re-routing on deviation** beyond silently re-fetching a new polyline — no distance-to-maneuver, no off-route detection driving a "rerouting…" state.
-6. **User app camera doesn't rotate** — feels static/toy-like compared to a heading-locked navigation view even though the underlying position data is already there.
+4. **Driver's "Navigate" button just deep-links to `maps.google.com`** (`NavigateToPickup.tsx`), i.e. today drivers already leave the app to get real turn-by-turn from Google Maps, and the in-app map is cosmetic during actual navigation. This is almost certainly what "feels immature" to clients: the driver has to tab out to a *different app* to get real guidance, and the in-app view they're left looking at doesn't help them.
+5. **No re-routing on deviation** beyond silently re-fetching a new polyline: no distance-to-maneuver, no off-route detection driving a "rerouting…" state.
+6. **User app camera doesn't rotate**, which feels static/toy-like compared to a heading-locked navigation view even though the underlying position data is already there.
 
-**Conclusion:** the complaint isn't really about map *rendering* (follow/pan/heading already exist on the driver side) — it's the absence of the navigation *layer* on top: maneuver instructions, voice, and traffic. That's the actual gap to close.
+**Conclusion:** the complaint isn't really about map *rendering* (follow/pan/heading already exist on the driver side); it's the absence of the navigation *layer* on top: maneuver instructions, voice, and traffic. That's the actual gap to close.
 
 ### 1.1 Car icon heading instability — root cause found
 
 Clients also flagged that the car icon's orientation "doesn't remain intact" — it visibly jumps/resets instead of smoothly pointing the direction of travel. Traced to two separate, concrete bugs:
 
 **Bug 1 — rider app (`apps/user`), first-fix snap-to-north.**
-`apps/user/lib/useInterpolatedPosition.ts` correctly gates heading updates on movement (`dist > 8` before recomputing bearing, line 71) — a stationary car does *not* spin randomly. But on the **very first GPS fix** (before a second point exists to compute a bearing from), it snaps immediately to the raw `rawHeading` value sent by the backend — which is frequently `null`/`NaN` from the device and defaults to `0` in `CarMarker`. Result: the car icon can render pointing due north on trip start or on reconnect, regardless of actual direction of travel, until the driver moves >8m and a real bearing is computed.
+`apps/user/lib/useInterpolatedPosition.ts` correctly gates heading updates on movement (`dist > 8` before recomputing bearing, line 71), so a stationary car does *not* spin randomly. But on the **very first GPS fix** (before a second point exists to compute a bearing from), it snaps immediately to the raw `rawHeading` value sent by the backend, which is frequently `null`/`NaN` from the device and defaults to `0` in `CarMarker`. Result: the car icon can render pointing due north on trip start or on reconnect, regardless of actual direction of travel, until the driver moves >8m and a real bearing is computed.
 
 **Bug 2 — driver app (`apps/driver`), double-rotation.**
 This is the more visible one:

@@ -215,7 +215,7 @@ export default function DocReviewModal({
     })
   }
 
-  // Non-passive wheel listener — required so we can preventDefault and prevent page scroll
+  // Non-passive wheel listener, required so we can preventDefault and prevent page scroll
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -246,7 +246,7 @@ export default function DocReviewModal({
     })
   }, [zoomLevel])
 
-  // Drag-to-pan via Pointer Events — active only when zoomed
+  // Drag-to-pan via Pointer Events, active only when zoomed
   useEffect(() => {
     const rawEl = scrollRef.current
     if (!rawEl || zoomLevel === 'fit') return
@@ -344,7 +344,7 @@ export default function DocReviewModal({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  // doDocApprove closes over doc/idx/allDocs — re-bind on idx change (already in deps)
+  // doDocApprove closes over doc/idx/allDocs, re-bind on idx change (already in deps)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, allDocs.length, onClose, rejectDoc, driverMode, canApprove, canReject])
 
@@ -433,7 +433,7 @@ export default function DocReviewModal({
           </div>
         </div>
 
-        {/* Progress bar — shows approved/total uploaded */}
+        {/* Progress bar: shows approved/total uploaded */}
         <div className="h-0.5 bg-surface-2 flex-shrink-0">
           <div
             className="h-full bg-success transition-all duration-500"
@@ -541,7 +541,7 @@ export default function DocReviewModal({
 
               ) : (
                 <>
-                  {/* Loading spinner — shows while image loading */}
+                  {/* Loading spinner: shows while image loading */}
                   <AnimatePresence>
                     {!imgLoaded && (
                       <motion.div
@@ -557,7 +557,7 @@ export default function DocReviewModal({
                     )}
                   </AnimatePresence>
 
-                  {/* Image — fit mode centres in container; zoom mode grows wrapper so overflow scrolls */}
+                  {/* Image: fit mode centres in container, zoom mode grows wrapper so overflow scrolls */}
                   <div
                     ref={scrollRef}
                     className={cn('w-full h-full overflow-auto', isZoomed && 'cursor-grab')}
@@ -673,7 +673,7 @@ export default function DocReviewModal({
                 {!driverMode && rejectDoc && (
                   <motion.div key="doc-reject-form" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.15 }}>
                     <ReasonForm
-                      title={`Reject — ${label(doc.docType)}`}
+                      title={`Reject: ${label(doc.docType)}`}
                       placeholder="Explain what needs to be fixed and resubmitted…"
                       confirmLabel="Reject Document"
                       danger

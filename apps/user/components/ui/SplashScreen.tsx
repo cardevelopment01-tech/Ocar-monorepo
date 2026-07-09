@@ -46,7 +46,7 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
             justifyContent: 'center',
           }}
         >
-          {/* Glow bloom — tracks arc completion, settles. Single premium technique. */}
+          {/* Glow bloom, tracks arc completion, settles. Single premium technique. */}
           <motion.div
             initial={reduce ? false : { opacity: 0.15, scale: 0.9 }}
             animate={
@@ -67,7 +67,7 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
             }}
           />
 
-          {/* Logo group — subtle scale entrance; pushes through on exit */}
+          {/* Logo group, subtle scale entrance; pushes through on exit */}
           <motion.div
             initial={reduce ? false : { scale: 0.96, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -114,7 +114,7 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
                 </linearGradient>
               </defs>
 
-              {/* Arc draws on — signature motion */}
+              {/* Arc draws on, signature motion */}
               <motion.path
                 d="M 78.284 78.284 A 40 40 0 1 0 21.716 78.284"
                 stroke={`url(#${gradientId})`}
@@ -147,7 +147,7 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
               />
             </svg>
 
-            {/* Wordmark resolves with the dot — upward settle, not an arbitrary fade */}
+            {/* Wordmark resolves with the dot, upward settle, not an arbitrary fade */}
             <motion.span
               initial={reduce ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}

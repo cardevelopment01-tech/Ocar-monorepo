@@ -6,9 +6,9 @@
 
 The platform needs a relational database that can handle three spatial operations that are on the critical path for every ride:
 
-1. **Driver matching** — find all active drivers within N metres of a user's pickup point.
-2. **Return-cab corridor matching** — find drivers whose current route passes within 2 km of the user's pickup-to-drop corridor (a LineString).
-3. **Rental boundary enforcement** — check whether a drop-off point falls within a city's operational polygon (ST_Covers on a polygon).
+1. **Driver matching**: find all active drivers within N metres of a user's pickup point.
+2. **Return-cab corridor matching**: find drivers whose current route passes within 2 km of the user's pickup-to-drop corridor (a LineString).
+3. **Rental boundary enforcement**: check whether a drop-off point falls within a city's operational polygon (ST_Covers on a polygon).
 
 ## Decision
 
@@ -16,7 +16,7 @@ Use PostgreSQL 16 with the PostGIS 3.4 extension. Run via the `postgis/postgis:1
 
 ## Why PostgreSQL over MySQL
 
-**Partial indexes.** MySQL has no partial indexes. PostgreSQL supports `CREATE INDEX ... WHERE condition`, which lets the driver-matching query use an index that only contains `online` and `on_trip` drivers — excluding `offline` drivers from the index entirely. At scale (100k+ driver rows) this is a significant read performance win with no write penalty for offline driver updates.
+**Partial indexes.** MySQL has no partial indexes. PostgreSQL supports `CREATE INDEX ... WHERE condition`, which lets the driver-matching query use an index that only contains `online` and `on_trip` drivers, excluding `offline` drivers from the index entirely. At scale (100k+ driver rows) this is a significant read performance win with no write penalty for offline driver updates.
 
 **JSONB.** Config values, webhook payloads, and feature flag metadata are variable-shape JSON. PostgreSQL's `jsonb` type supports GIN-indexed key lookups. MySQL's JSON column has limited index support.
 
@@ -38,9 +38,9 @@ PostGIS adds a `geography` type and spatial functions that PostgreSQL's core doe
 
 PostGIS has two spatial type systems: `geometry` (flat-plane Cartesian) and `geography` (WGS84 spherical).
 
-For driver matching, using `geometry` with a Mercator projection introduces distance errors that grow with latitude. India spans roughly 8°N to 37°N. At 28°N (Delhi), a flat-plane calculation is off by ~2%. At a 2 km matching radius that's a 40-metre error — larger than a car. The `geography` type calculates on the spherical earth model and is accurate to <1 metre anywhere on the globe.
+For driver matching, using `geometry` with a Mercator projection introduces distance errors that grow with latitude. India spans roughly 8°N to 37°N. At 28°N (Delhi), a flat-plane calculation is off by ~2%. At a 2 km matching radius, that's a 40-metre error, larger than a car. The `geography` type calculates on the spherical earth model and is accurate to <1 metre anywhere on the globe.
 
-Using `geography` incurs a ~20–30% CPU overhead vs `geometry` for spatial operations. This is acceptable given the accuracy requirement and the fact that GIST spatial indexes on `geography` columns keep these queries well under 10ms even at scale.
+Using `geography` incurs a ~20–30% CPU overhead vs `geometry` for spatial operations. This is acceptable given the accuracy requirement, and GIST spatial indexes on `geography` columns keep these queries well under 10ms even at scale.
 
 ## MySQL's partial index gap
 

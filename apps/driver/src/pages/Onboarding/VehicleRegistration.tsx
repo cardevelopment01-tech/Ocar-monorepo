@@ -281,7 +281,7 @@ export default function VehicleRegistration() {
           </div>
         </Field>
 
-        {/* Seating + Luggage — steppers */}
+        {/* Seating + Luggage: steppers */}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Seats">
             <Stepper value={seating} min={1} max={8} unit="seat" onChange={setSeating} />

@@ -5,7 +5,7 @@ import { Map } from '@vis.gl/react-google-maps'
 const ODISHA_BOUNDS = { north: 23.0, south: 17.5, east: 88.5, west: 82.0 }
 
 // Desaturate + slightly brighten the map so terrain colours don't dominate.
-// Roads and labels remain sharp — only the green/brown terrain washes out.
+// Roads and labels remain sharp, only the green/brown terrain washes out.
 // This avoids Cloud Console setup while giving a clean minimal look.
 const MAP_FILTER = 'saturate(0.6) brightness(1.04) contrast(0.96)'
 

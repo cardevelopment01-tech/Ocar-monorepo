@@ -246,7 +246,7 @@ function CreateSurgeDialog({
             </div>
             <div>
               <label className={labelCls}>
-                Multiplier —{' '}
+                Multiplier:{' '}
                 <span className="text-warning font-semibold">{mult.toFixed(2)}× · fares {pct}% higher</span>
               </label>
               <div className="flex items-center gap-3">
@@ -459,7 +459,7 @@ function CreateRentalPackageDialog({
         <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[440px] bg-surface rounded-2xl shadow-hover p-6 z-[60]">
           <Dialog.Title className="text-lg font-bold text-text-primary mb-1">Create Rental Package</Dialog.Title>
           <p className="text-xs text-text-muted mb-5">
-            Set duration and km limit freely — they no longer have to follow a fixed ratio.
+            Set duration and km limit freely; they no longer have to follow a fixed ratio.
           </p>
           <form onSubmit={submit} className="space-y-4">
             <div>
@@ -604,7 +604,7 @@ export default function RateCardsPage() {
     try {
       await rentalPackageApi.update(pkg.id, { is_active: !pkg.is_active })
       await fetchRental()
-    } catch { /* silent — optimistic toggle failed, list stays stale */ }
+    } catch { /* silent, optimistic toggle failed, list stays stale */ }
     finally { setToggling(null) }
   }
 
@@ -837,7 +837,7 @@ export default function RateCardsPage() {
             <div className="bg-warning-light border border-warning/20 rounded-2xl px-5 py-4 flex items-center gap-3">
               <AlertTriangle size={18} className="text-warning flex-shrink-0" />
               <p className="text-sm font-semibold text-warning">
-                {activeSurges.length} active surge event{activeSurges.length > 1 ? 's' : ''} — fares are currently elevated
+                {activeSurges.length} active surge event{activeSurges.length > 1 ? 's' : ''}, fares are currently elevated
               </p>
             </div>
           )}

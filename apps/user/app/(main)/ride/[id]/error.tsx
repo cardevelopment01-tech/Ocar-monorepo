@@ -12,7 +12,7 @@ export default function RideError({ reset }: { error: Error & { digest?: string 
       </div>
       <h2 className="text-[17px] font-bold text-gray-900 mb-2">Couldn't load your ride</h2>
       <p className="text-sm text-gray-500 mb-8 max-w-[260px]">
-        Something went wrong. Your ride is still active — tap retry to reconnect.
+        Something went wrong. Your ride is still active. Tap retry to reconnect.
       </p>
       <div className="w-full max-w-[300px] space-y-3">
         <button

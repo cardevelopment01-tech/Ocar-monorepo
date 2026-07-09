@@ -134,7 +134,7 @@ export default function OverviewPage() {
       {/* ── Main two-column ── */}
       <div className="grid grid-cols-5 gap-4">
 
-        {/* Recent Rides — 3 cols */}
+        {/* Recent Rides: 3 cols */}
         <div className="col-span-3 admin-card">
           <div className="flex items-center justify-between mb-5">
             <div>
@@ -196,7 +196,7 @@ export default function OverviewPage() {
           </table>
         </div>
 
-        {/* Right column — 2 cols */}
+        {/* Right column: 2 cols */}
         <div className="col-span-2 space-y-4">
 
           {/* Live Stats */}

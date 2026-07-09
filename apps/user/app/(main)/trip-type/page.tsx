@@ -17,7 +17,7 @@ const HERO_BG  = 'linear-gradient(160deg, #0F0F23 0%, #1E1B4B 100%)'
 const ICON_BG  = '#F1F0FE'
 const ICON_CLR = '#4F46E5'
 
-// Representative category for the headline estimate — actual vehicle is chosen on the next screen
+// Representative category for the headline estimate, actual vehicle is chosen on the next screen
 const ESTIMATE_CATEGORY_ID = 2
 const ROUND_TRIP_MIN_HOURS = 4
 

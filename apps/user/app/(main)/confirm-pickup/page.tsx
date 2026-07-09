@@ -33,7 +33,7 @@ function ConfirmPickupContent() {
   const pickerMode = sp.get('mode') ?? 'origin'   // 'origin' | 'destination'
   const isDest     = pickerMode === 'destination'
 
-  // origin passthrough — only used when mode=destination so we can return it to search
+  // origin passthrough, only used when mode=destination so we can return it to search
   const ptOriginLat  = sp.get('originLat')     ?? ''
   const ptOriginLng  = sp.get('originLng')     ?? ''
   const ptOriginAddr = sp.get('originAddress') ?? ''

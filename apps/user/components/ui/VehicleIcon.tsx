@@ -3,7 +3,7 @@
 import type React from 'react'
 
 /**
- * VehicleIcon — side-profile SVG illustrations for the ride selection sheet.
+ * VehicleIcon: side-profile SVG illustrations for the ride selection sheet.
  *
  * Each icon is a single monochrome silhouette using the `color` prop, rendered
  * inside a 80×44 landscape viewBox (side-profile view). Wheels use a darkened
@@ -84,7 +84,7 @@ function Suv({ color, wheel }: { color: string; wheel: string }) {
         d="M5 31 L5 14 Q5 11 9 11 L13 11 L16 11 Q17 9 20 9 L60 9 Q64 9 66 11 L71 12 Q76 13 76 17 L76 31 Q76 33 73 33 L8 33 Q5 33 5 31 Z"
         fill={color}
       />
-      {/* Glasshouse — large, upright */}
+      {/* Glasshouse, large, upright */}
       <path d="M20 21 L22 12 Q22 11 24 11 L58 11 Q60 11 61 12 L64 21 Z" fill={WINDOW_FILL} />
       {/* Pillar seams */}
       <line x1="34" y1="12" x2="34" y2="21" stroke={WINDOW_FILL} strokeWidth="1" />

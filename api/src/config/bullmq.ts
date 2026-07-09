@@ -1,1 +1,1 @@
-// TODO: implement in Module M01 — BullMQ connection configuration
+// TODO: implement in Module M01: BullMQ connection configuration

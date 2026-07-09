@@ -5,7 +5,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Sidebar (white/light — premium SaaS style)
+        // Sidebar (white/light, premium SaaS style)
         sidebar:               '#FFFFFF',
         'sidebar-hover':       '#F5F7FF',
         'sidebar-active':      '#4F46E5',
@@ -17,7 +17,7 @@ const config: Config = {
         surface:     '#FFFFFF',
         'surface-2': '#F5F7FF',
         'surface-3': '#EEF0FF',
-        // Brand (indigo — premium, modern, tech)
+        // Brand (indigo, premium, modern, tech)
         primary:         '#4F46E5',
         'primary-dark':  '#4338CA',
         'primary-light': '#EEF2FF',

@@ -36,7 +36,7 @@ const fadeUp = (delay = 0) => ({
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-/** pg returns NUMERIC as string — coerce safely for display */
+/** pg returns NUMERIC as string, coerce safely for display */
 function num(v: number): number {
   return parseFloat(String(v))
 }
@@ -192,7 +192,7 @@ function RentalContent() {
       >
         <div className="px-4 pt-5 pb-6 space-y-6">
 
-          {/* Pickup time — own section, above vehicle/package selection */}
+          {/* Pickup time, own section, above vehicle/package selection */}
           <motion.section {...fadeUp(0)}>
             <PickupTimeChip
               value={scheduledFor}
@@ -346,7 +346,7 @@ function RentalContent() {
             )}
           </motion.section>
 
-          {/* Fare summary — only once a package is selected */}
+          {/* Fare summary, only once a package is selected */}
           {selectedPkg && (
             <motion.section {...fadeUp(0.18)}>
               <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 space-y-3">

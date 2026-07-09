@@ -50,7 +50,7 @@ export default function VehicleDocuments() {
         }
         setDocState(merged)
       } catch {
-        // first time — start fresh
+        // first time, start fresh
       } finally {
         setIsFetching(false)
       }

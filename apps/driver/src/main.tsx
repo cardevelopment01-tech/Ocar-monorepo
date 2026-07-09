@@ -8,7 +8,7 @@ import SplashScreen from './components/ui/SplashScreen'
 import './index.css'
 
 function Root() {
-  // Compute synchronously on first render — avoids useLayoutEffect flash
+  // Compute synchronously on first render to avoid a useLayoutEffect flash
   const willSplash = !sessionStorage.getItem('ocar_splash_shown')
 
   const [showSplash, setShowSplash] = useState(willSplash)

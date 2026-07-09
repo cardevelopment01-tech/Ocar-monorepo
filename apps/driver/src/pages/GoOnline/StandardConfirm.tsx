@@ -87,7 +87,7 @@ export default function StandardConfirm() {
 
   return (
     <div className="h-[100dvh] bg-bg text-text-primary flex flex-col">
-      {/* Scrollable content — min-h-0 is required so flex child can shrink below its natural size */}
+      {/* Scrollable content: min-h-0 is required so flex child can shrink below its natural size */}
       <div
         className="flex-1 overflow-y-auto min-h-0 px-5 pt-14 pb-4"
         style={{ overscrollBehaviorY: 'contain' }}
@@ -113,7 +113,7 @@ export default function StandardConfirm() {
           </div>
         </motion.div>
 
-        {/* ── Hero vehicle card — dark slate ── */}
+        {/* ── Hero vehicle card: dark slate ── */}
         <motion.div
           className="rounded-[22px] overflow-hidden mb-3"
           initial={{ opacity: 0, y: 16 }}
@@ -232,7 +232,7 @@ export default function StandardConfirm() {
           </div>
         </motion.div>
 
-        {/* ── GPS warning — neutral ── */}
+        {/* ── GPS warning: neutral ── */}
         <AnimatePresence>
           {locationWarning && (
             <motion.div
@@ -243,12 +243,12 @@ export default function StandardConfirm() {
               className="flex items-start gap-3 rounded-2xl px-4 py-3 mb-3 overflow-hidden bg-surface-2 border border-border"
             >
               <AlertCircle size={15} className="text-text-muted flex-shrink-0 mt-0.5" />
-              <p className="text-text-secondary text-sm">GPS unavailable — using your default location</p>
+              <p className="text-text-secondary text-sm">GPS unavailable, using your default location</p>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ── Error — restrained ── */}
+        {/* ── Error: restrained ── */}
         <AnimatePresence>
           {error && (
             <motion.div
@@ -266,7 +266,7 @@ export default function StandardConfirm() {
 
       </div>
 
-      {/* ── CTA — always visible at bottom via flex layout ── */}
+      {/* ── CTA: always visible at bottom via flex layout ── */}
       <div
         className="relative px-5 bg-bg/95 border-t border-border"
         style={{

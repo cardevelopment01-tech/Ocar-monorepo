@@ -105,7 +105,7 @@ export default function App() {
       .catch(() => {})
   }, [isAuthenticated]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Ride request listener — mounted at App level so requests arrive on any tab.
+  // Ride request listener, mounted at App level so requests arrive on any tab.
   // Moved here from Home so Profile/Earnings/Wallet pages also receive requests.
   useEffect(() => {
     if (!isOnline) return
@@ -145,13 +145,13 @@ export default function App() {
 
   // Listen for user-initiated cancellation while a ride is active.
   // Scoped to activeRide.id so it attaches/detaches with the ride lifecycle.
-  // Also re-joins the ride room on socket reconnect — room membership is lost
+  // Also re-joins the ride room on socket reconnect, since room membership is lost
   // on every reconnect and must be reasserted so cancellation events still arrive.
   useEffect(() => {
     if (!activeRide) return
     const socket = getDriverSocket()
     const onStatusUpdate = (data: { status: string; resolvedBy?: string }) => {
-      // resolvedBy is only set by the stuck-ride sweeper/admin force-resolve —
+      // resolvedBy is only set by the stuck-ride sweeper/admin force-resolve,
       // normal driver-initiated completion (verifyEndOtp) never sets it, so
       // this doesn't interfere with the driver's own end-of-trip navigation.
       const isForceResolved = data.status === 'completed' && !!data.resolvedBy
@@ -229,7 +229,7 @@ export default function App() {
             {/* Auth */}
             <Route path="/login" element={<Login />} />
 
-            {/* Main tabs — approved drivers only */}
+            {/* Main tabs, approved drivers only */}
             <Route path="/" element={
               <ProtectedRoute requireApproved><Home /></ProtectedRoute>
             } />
@@ -295,7 +295,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Global ride request overlay — persists across all tabs, not just Home */}
+      {/* Global ride request overlay, persists across all tabs, not just Home */}
       <AnimatePresence>
         {incomingRequest && (
           <TripRequestCard
@@ -316,7 +316,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Cancellation banner — shown when user cancels an active ride */}
+      {/* Cancellation banner: shown when user cancels an active ride */}
       {rideCancelled && (
         <div
           className="fixed top-4 left-4 right-4 z-50 rounded-2xl px-4 py-3 text-sm font-semibold text-white text-center"
@@ -326,7 +326,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Force-resolved banner — shown when the stuck-ride sweeper or an admin ends a trip */}
+      {/* Force-resolved banner: shown when the stuck-ride sweeper or an admin ends a trip */}
       {forceEndedMessage && (
         <div
           className="fixed top-4 left-4 right-4 z-50 rounded-2xl px-4 py-3 text-sm font-semibold text-white text-center"
@@ -336,7 +336,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Persistent tab bar — renders null on non-main routes */}
+      {/* Persistent tab bar: renders null on non-main routes */}
       <BottomNav />
     </>
   )

@@ -183,7 +183,7 @@ function SelectRideContent() {
   const activeEst       = isReturnCab ? returnCabEstimates[selected] : estimates[selected]
   const selectedFare    = activeEst?.breakdown.total
   const selectedCat     = categories.find(c => c.id === selected)!
-  // Driver-availability gating is meaningless for a scheduled ride — dispatch
+  // Driver-availability gating is meaningless for a scheduled ride, dispatch
   // (and therefore driver search) doesn't happen until the buffer window later.
   const allUnavailable  = !scheduledFor && etaReady && categories.every(c => (driverEta[c.id]?.count ?? 0) === 0)
 
@@ -255,7 +255,7 @@ function SelectRideContent() {
             </span>
           </div>
 
-          {/* Pickup time — own row, above ride-type/car selection */}
+          {/* Pickup time, own row, above ride-type/car selection */}
           <div className="mb-2">
             <PickupTimeChip
               value={scheduledFor}
@@ -266,7 +266,7 @@ function SelectRideContent() {
             />
           </div>
 
-          {/* Ride type tabs — hidden when user arrived from /round-trip (already committed) */}
+          {/* Ride type tabs, hidden when user arrived from /round-trip (already committed) */}
           {!fromRoundTripPage && (
             <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-2">
               {(['one_way', 'round_trip'] as const).map(t => (
@@ -293,7 +293,7 @@ function SelectRideContent() {
           {/* Round trip hours row */}
           {rideType === 'round_trip' && (
             fromRoundTripPage && tripHoursFromUrl ? (
-              // Arrived from /round-trip with hours already selected — show compact info
+              // Arrived from /round-trip with hours already selected, show compact info
               <div
                 className="flex items-center gap-2 px-3 py-2 rounded-xl mb-1"
                 style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
@@ -340,11 +340,11 @@ function SelectRideContent() {
           </div>
         )}
 
-        {/* Ride list — scrollable */}
+        {/* Ride list, scrollable */}
         <div className="flex-1 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
 
           {/* ── Return Cab section (one_way only, when available) ── */}
-          {/* Return-cab matches a specific driver's live route right now — meaningless for a future scheduled pickup. */}
+          {/* Return-cab matches a specific driver's live route right now, meaningless for a future scheduled pickup. */}
           {rideType === 'one_way' && !scheduledFor && returnCabCategories.size > 0 && (
             <div>
               <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#059669' }}>

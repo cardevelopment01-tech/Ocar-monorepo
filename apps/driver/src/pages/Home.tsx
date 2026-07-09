@@ -40,7 +40,7 @@ export default function Home() {
   // contentRef wraps inner content (no height constraint) so ResizeObserver
   // sees the natural rendered height even when the outer sheet is clipped.
   const contentRef          = useRef<HTMLDivElement | null>(null)
-  // Sentinel placed after the stats row — defines the collapsed snap point.
+  // Sentinel placed after the stats row, defines the collapsed snap point.
   const collapseRef         = useRef<HTMLDivElement | null>(null)
   // Active drag: captures start position so we can compute delta on every move.
   const dragRef             = useRef<{ startY: number; startH: number } | null>(null)
@@ -61,7 +61,7 @@ export default function Home() {
   const [mapCenter,          setMapCenter]         = useState<[number, number]>([DEFAULT_LAT, DEFAULT_LNG])
   const [maxContentH,        setMaxContentH]       = useState(360)
   const [collapsedH,         setCollapsedH]        = useState(240)
-  // occlusion drives RecenterMap.bottomPadding — updated via RAF throttle.
+  // occlusion drives RecenterMap.bottomPadding, updated via RAF throttle.
   const [occlusion,          setOcclusion]         = useState(420)
   const [areaName,           setAreaName]          = useState<string | null>(null)
   const [geoLoading,         setGeoLoading]        = useState(false)
@@ -79,7 +79,7 @@ export default function Home() {
   }), [collapsedH, maxContentH])
 
   // ── Handle bar visual feedback ───────────────────────────────────────────────
-  // The bar widens and deepens to the brand primary on press — subtle but tactile.
+  // The bar widens and deepens to the brand primary on press, subtle but tactile.
   const handleScaleX = useTransform(handlePressed, [0, 1], [1, 1.65])
   const handleBg     = useTransform(
     handlePressed,
@@ -153,7 +153,7 @@ export default function Home() {
       const sheetEl  = sheetRef.current
       if (anchorEl && sheetEl) {
         // Distance from the sheet's top edge to the sentinel (top of Row 3).
-        // This is the collapsed height — shows handle + greeting + stats only.
+        // This is the collapsed height, shows handle + greeting + stats only.
         const sheetTop  = sheetEl.getBoundingClientRect().top
         const anchorTop = anchorEl.getBoundingClientRect().top
         const collapsed = Math.round(anchorTop - sheetTop) + 20 // +20 breathing room
@@ -168,7 +168,7 @@ export default function Home() {
     })
     ro.observe(el)
     return () => ro.disconnect()
-  // sheetH is a stable motion value object — safe to list as dep.
+  // sheetH is a stable motion value object, safe to list as dep.
   }, [sheetH])
 
   // ── Reverse-geocode ──────────────────────────────────────────────────────────
@@ -191,7 +191,7 @@ export default function Home() {
           lastGeoCoord.current = [lat, lng]
         }
       } catch {
-        // keep previous areaName — swallows abort + network errors
+        // keep previous areaName, swallows abort + network errors
       } finally {
         setGeoLoading(false)
       }
@@ -238,7 +238,7 @@ export default function Home() {
     } else if (velocity < -180) {
       target = snaps.collapsed  // fast flick down → collapse
     } else {
-      // Slow release — snap to whichever snap point is nearer.
+      // Slow release, snap to whichever snap point is nearer.
       const dCollapsed = Math.abs(current - snaps.collapsed)
       const dPeek      = Math.abs(current - snaps.peek)
       target = dCollapsed < dPeek ? snaps.collapsed : snaps.peek
@@ -259,7 +259,7 @@ export default function Home() {
   return (
     <div className="relative w-full h-[100dvh] overflow-hidden bg-surface-2">
 
-      {/* Map — full bleed behind everything */}
+      {/* Map, full bleed behind everything */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface-2 animate-pulse" />}>
           <DriverMapView initialCenter={mapCenter} zoom={15} dimmed={!isOnline}>
@@ -273,7 +273,7 @@ export default function Home() {
         </Suspense>
       </div>
 
-      {/* Floating header — sits above the map, never moves with the sheet */}
+      {/* Floating header, sits above the map, never moves with the sheet */}
       <div
         className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-12 pb-2"
         style={{ zIndex: 10 }}
@@ -306,7 +306,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Return Cab mode indicator — floats below the header */}
+      {/* Return Cab mode indicator, floats below the header */}
       {isOnline && mode === 'return_cab' && (
         <div
           className="absolute left-4 right-4"
@@ -318,13 +318,13 @@ export default function Home() {
           >
             <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse-soft" />
             <span className="text-emerald-800 text-[12px] font-semibold">
-              Return Cab Mode{destinationCityName ? ` — heading to ${destinationCityName}` : ''}
+              Return Cab Mode{destinationCityName ? `, heading to ${destinationCityName}` : ''}
             </span>
           </div>
         </div>
       )}
 
-      {/* GPS error — floats below the header, above the map */}
+      {/* GPS error, floats below the header, above the map */}
       {geoError && (
         <div
           className="absolute left-4 right-4"
@@ -337,16 +337,16 @@ export default function Home() {
             <LocateOff size={14} className="text-red-500 flex-shrink-0" />
             <span className="text-red-600 text-[12px] font-semibold">
               {gpsError?.code === 1
-                ? 'Location access denied — allow in browser settings'
+                ? 'Location access denied. Allow it in browser settings'
                 : gpsError?.code === 2
-                ? 'GPS signal unavailable — check device location settings'
-                : 'Location timed out — ensure GPS is enabled'}
+                ? 'GPS signal unavailable. Check device location settings'
+                : 'Location timed out. Ensure GPS is enabled'}
             </span>
           </div>
         </div>
       )}
 
-      {/* ── Bottom sheet — draggable snap sheet ──────────────────────────────── */}
+      {/* ── Bottom sheet: draggable snap sheet ──────────────────────────────── */}
       <motion.div
         ref={sheetRef}
         className="absolute left-0 right-0 rounded-t-[28px] overflow-hidden"
@@ -362,11 +362,11 @@ export default function Home() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
       >
-        {/* Inner content wrapper — no height constraint so ResizeObserver
+        {/* Inner content wrapper, no height constraint so ResizeObserver
             always sees the full natural height even when the sheet is clipped. */}
         <div ref={contentRef}>
 
-          {/* ── Drag handle zone — 44px touch target, full width ── */}
+          {/* ── Drag handle zone: 44px touch target, full width ── */}
           <div
             className="flex justify-center items-center pt-3 pb-2 cursor-grab active:cursor-grabbing select-none"
             style={{ minHeight: 44, touchAction: 'none' }}
@@ -397,7 +397,7 @@ export default function Home() {
                   Hi, {firstName} 👋
                 </p>
                 <p className="text-text-muted text-xs mt-0.5">
-                  {isOnline ? 'You\'re live — ride requests incoming' : 'Go online to start earning'}
+                  {isOnline ? 'You\'re live, ride requests incoming' : 'Go online to start earning'}
                 </p>
               </div>
               <OnlineToggle isOnline={isOnline} onToggle={handleToggle} />
@@ -405,7 +405,7 @@ export default function Home() {
 
             {/* ── Row 2: Today's stats ── */}
             <div className="grid grid-cols-3 gap-2 mb-3">
-              {/* Earnings — orange accent (operational income signal) */}
+              {/* Earnings: orange accent (operational income signal) */}
               <motion.div
                 initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -421,7 +421,7 @@ export default function Home() {
                   <p className="text-text-muted text-[10px] font-semibold">Earned</p>
                 </div>
               </motion.div>
-              {/* Trips — neutral */}
+              {/* Trips: neutral */}
               <motion.div
                 initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -435,7 +435,7 @@ export default function Home() {
                   <p className="text-text-muted text-[10px] font-semibold">Trips</p>
                 </div>
               </motion.div>
-              {/* Rating — neutral */}
+              {/* Rating: neutral */}
               <motion.div
                 initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -451,7 +451,7 @@ export default function Home() {
               </motion.div>
             </div>
 
-            {/* ── Collapse anchor — sheet snaps to this point when minimised.
+            {/* ── Collapse anchor: sheet snaps to this point when minimised.
                  Placed after stats, before quick-actions: dragging down hides
                  quick-actions + status banner and reveals more of the map. ── */}
             <div ref={collapseRef} />
@@ -501,7 +501,7 @@ export default function Home() {
         </div>
       </motion.div>
 
-      {/* Go offline confirmation — fixed so it covers BottomNav (z-110) */}
+      {/* Go offline confirmation, fixed so it covers BottomNav (z-110) */}
       {showOfflineConfirm && (
         <div
           className="fixed inset-0 flex items-end justify-center px-5"

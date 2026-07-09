@@ -50,7 +50,7 @@ export default function OnboardingShell({
           </div>
         </div>
 
-        {/* Step bars — bg-border inactive for clear contrast on #F5F8FF bg */}
+        {/* Step bars, bg-border inactive for clear contrast on #F5F8FF bg */}
         <div
           className="flex gap-1.5"
           role="progressbar"

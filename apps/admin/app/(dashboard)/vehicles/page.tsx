@@ -534,7 +534,7 @@ function BrandsTab() {
         loading={saving} onCancel={() => setEditBrand(null)} onConfirm={handleEditBrand}
       />
 
-      {/* Model dialogs — use native select for category */}
+      {/* Model dialogs: use native select for category */}
       <Dialog.Root open={addModelOpen} onOpenChange={v => { if (!v) setAddModelOpen(false) }}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-50 bg-text-primary/40 backdrop-blur-sm" />

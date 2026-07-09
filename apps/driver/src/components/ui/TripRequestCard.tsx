@@ -112,7 +112,7 @@ export default function TripRequestCard({
           transition: 'box-shadow 250ms ease-out',
         }}
       >
-        {/* [1] Timer bar — flat color, drains left */}
+        {/* [1] Timer bar, flat color, drains left */}
         <div className="absolute top-0 left-0 right-0 h-1 z-10" style={{ background: 'rgba(255,255,255,0.08)' }}>
           <motion.div
             className="h-full rounded-r-full"
@@ -129,7 +129,7 @@ export default function TripRequestCard({
 
         <motion.div variants={containerVar} initial="hidden" animate="show">
 
-          {/* [2] Header — title + badge + clock + quiet distance */}
+          {/* [2] Header: title, badge, clock, quiet distance */}
           <motion.div variants={childVar} className="flex items-center justify-between px-5 pt-3 pb-4">
             <div className="flex items-center gap-2 min-w-0">
               <p className="text-[15px] font-semibold flex-shrink-0" style={{ color: '#F8FAFC' }}>
@@ -183,23 +183,23 @@ export default function TripRequestCard({
             </div>
           </motion.div>
 
-          {/* [4] Route — raised panel, monochrome rail, no halo/gradient/icon tile */}
+          {/* [4] Route: raised panel, monochrome rail, no halo/gradient/icon tile */}
           <motion.div variants={childVar} className="px-5 pb-5">
             <div className="rounded-2xl px-4 py-4" style={{ background: '#1E293B' }}>
               <div className="flex gap-3.5">
                 {/* Connector rail */}
                 <div className="flex flex-col items-center w-2.5 flex-shrink-0 pt-1.5">
-                  {/* pickup — clean white dot with ring */}
+                  {/* pickup: clean white dot with ring */}
                   <div
                     className="w-[7px] h-[7px] rounded-full flex-shrink-0"
                     style={{ background: '#F8FAFC', boxShadow: '0 0 0 2px rgba(248,250,252,0.25)' }}
                   />
-                  {/* line — indigo desaturating to slate */}
+                  {/* line: indigo desaturating to slate */}
                   <div
                     className="flex-1 w-0.5 my-1.5 rounded-full"
                     style={{ minHeight: 28, background: 'linear-gradient(180deg,#4F46E5 0%,#475569 100%)' }}
                   />
-                  {/* drop — indigo filled circle */}
+                  {/* drop: indigo filled circle */}
                   <div className="w-[9px] h-[9px] rounded-full flex-shrink-0" style={{ background: '#4F46E5' }} />
                 </div>
 
@@ -222,7 +222,7 @@ export default function TripRequestCard({
             </div>
           </motion.div>
 
-          {/* [4.5] Ride type disclosure band — round_trip / rental only */}
+          {/* [4.5] Ride type disclosure band, round_trip / rental only */}
           {(rideType === 'round_trip' || rideType === 'rental') && (
             <motion.div variants={childVar} className="px-5 pb-4">
               {rideType === 'round_trip' && (
@@ -262,7 +262,7 @@ export default function TripRequestCard({
             </motion.div>
           )}
 
-          {/* [5] Actions — 30/70, accept-dominant bright-on-dark */}
+          {/* [5] Actions: 30/70, accept-dominant bright-on-dark */}
           <motion.div variants={childVar} className="flex gap-3 px-5 pt-1 pb-8">
             <button
               onClick={onDecline}

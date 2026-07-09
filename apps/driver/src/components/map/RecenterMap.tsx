@@ -12,7 +12,7 @@ interface RecenterMapProps {
 
 // Shift the pan center south so the target appears in the visible area between
 // topPadding and bottomPadding instead of at the raw geometric viewport center.
-// Uses Mercator approximation — only requires map.getZoom(), not getProjection().
+// Uses Mercator approximation, only requires map.getZoom(), not getProjection().
 // Returns null when zoom is not yet available (caller skips and retries later).
 function paddedCenter(
   zoom: number | undefined,
@@ -26,7 +26,7 @@ function paddedCenter(
   // Degrees of latitude per screen pixel at this zoom level and latitude.
   const mpp = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom)
   const degPerPx = mpp / 111320
-  // Positive pixelShift (bottomPadding > topPadding) → shift south → driver above center.
+  // Positive pixelShift (bottomPadding > topPadding) shifts south, driver stays above center.
   const pixelShift = (bottomPadding - topPadding) / 2
   return { lat: lat - degPerPx * pixelShift, lng }
 }

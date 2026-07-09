@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { Polyline } from '@vis.gl/react-google-maps'
 import { decodePolyline } from '@/lib/polyline'
 
-// SVG chevron path — no dependency on google.maps global at render time
+// SVG chevron path, no dependency on google.maps global at render time
 const ARROW_ICON = {
   path: 'M -2,-3 2,0 -2,3',
   strokeColor: '#ffffff',

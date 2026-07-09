@@ -113,7 +113,7 @@ export default function RidePage() {
     return () => navigator.geolocation.clearWatch(id)
   }, [])
 
-  // Ambient "drivers near you" markers while searching — stops once a driver is assigned
+  // Ambient "drivers near you" markers while searching, stops once a driver is assigned
   useEffect(() => {
     if (rideStatus !== 'requested' || !ride) { setNearbyDrivers([]); return }
     const fetchNearby = async () => {
@@ -138,7 +138,7 @@ export default function RidePage() {
       }
     } catch (err) {
       // Stale ride id (back button / reopened tab pointing at a ride that's
-      // since completed, or isn't ours) — bail out instead of getting stuck
+      // since completed, or isn't ours). Bail out instead of getting stuck
       // on the "Finding your driver" skeleton forever. Transient errors
       // (network/5xx) fall through and get retried by the poll/socket.
       if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 403)) {
@@ -239,8 +239,8 @@ export default function RidePage() {
     socket.on('driver:location',    onDriverLocation)
     socket.on('ride:stuck_flagged', onStuckFlagged)
 
-    // Reconcile ride state when the tab resumes from background —
-    // the poll and socket may have stalled while the screen was off.
+    // Reconcile ride state when the tab resumes from background.
+    // The poll and socket may have stalled while the screen was off.
     const onVisible = () => { if (document.visibilityState === 'visible') void loadRide() }
     document.addEventListener('visibilitychange', onVisible)
 
@@ -677,7 +677,7 @@ export default function RidePage() {
                 </div>
               </div>
 
-              {/* Context row — fare or arrived note */}
+              {/* Context row, fare or arrived note */}
               <AnimatePresence mode="wait">
                 <motion.div
                   key={status}

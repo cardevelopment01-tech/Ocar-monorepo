@@ -61,7 +61,7 @@ export default function TripEnd() {
         </div>
         <h1 className="text-text-primary font-black text-3xl">Trip Complete!</h1>
 
-        {/* Route — compact, truncated to single line */}
+        {/* Route: compact, truncated to single line */}
         <div className="flex items-center gap-1.5 mt-2 w-full max-w-xs px-1 min-w-0">
           <MapPin size={11} className="text-primary flex-shrink-0" />
           <span className="text-text-secondary text-xs truncate min-w-0">

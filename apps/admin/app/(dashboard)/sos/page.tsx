@@ -40,7 +40,7 @@ export default function SOSPage() {
       const data = await safetyApi.getSosAlerts({ limit: 50 })
       setAlerts(data.alerts)
     } catch {
-      // ignore — show empty state
+      // ignore, show empty state
     } finally {
       setLoading(false)
     }

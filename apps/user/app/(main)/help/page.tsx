@@ -11,7 +11,7 @@ const FAQS = [
   },
   {
     q: 'What cities does Ocar operate in?',
-    a: 'Ocar currently operates in Bhubaneswar, Cuttack, and Puri — including intercity routes between all three cities.',
+    a: 'Ocar currently operates in Bhubaneswar, Cuttack, and Puri, including intercity routes between all three cities.',
   },
   {
     q: 'How do I start my ride?',

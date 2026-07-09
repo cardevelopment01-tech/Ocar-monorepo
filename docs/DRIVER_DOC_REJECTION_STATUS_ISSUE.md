@@ -1,4 +1,4 @@
-# Driver Document Rejection & Status Transition — Client Feedback
+# Driver Document Rejection & Status Transition: Client Feedback
 
 ## Client feedback (verbatim intent)
 
@@ -11,7 +11,7 @@
 
 ## Current state (as of 2026-07-09 investigation)
 
-### Point 1 — rejection remark reaching the driver
+### Point 1: rejection remark reaching the driver
 
 Appears to already be implemented:
 
@@ -24,12 +24,12 @@ Appears to already be implemented:
 - Admin rejection resets `onboarding_step` to `'documents'` so the driver lands back on the
   upload screen (`api/src/modules/admin/admin.service.ts:66`).
 
-**TODO before dismissing this point:** verify end-to-end in the running app — confirm the
+**TODO before dismissing this point:** verify end-to-end in the running app. Confirm the
 rejection note is actually visible to the driver (not just present in the API response), and
 confirm there's an actual notification (push/in-app banner) rather than the driver only seeing
 it if they happen to reopen the onboarding screen.
 
-### Point 2 — rejected → active transition
+### Point 2: rejected → active transition
 
 Backend does **not** block this transition:
 
@@ -50,7 +50,7 @@ as a selectable option when the driver's current status is `docs_rejected`/`reje
 
 ## Next steps
 
-1. Check `apps/admin` driver detail slide-over (driver status change control) — confirm whether
+1. Check `apps/admin` driver detail slide-over (driver status change control): confirm whether
    it restricts which target statuses are selectable based on current status, and whether
    `docs_rejected -> active` / `docs_rejected -> pending_approval` is actually offered.
 2. If missing, add `docs_rejected` as a valid "from" state that can transition to
@@ -72,4 +72,4 @@ as a selectable option when the driver's current status is `docs_rejected`/`reje
 - `api/src/modules/drivers/drivers.service.ts` (document status / rejection_note shape)
 - `apps/driver/src/pages/Onboarding/Documents.tsx`
 - `apps/driver/src/pages/Onboarding/PendingReview.tsx`
-- `apps/admin` — driver detail slide-over / status change UI (not yet located, check here first)
+- `apps/admin`, driver detail slide-over / status change UI (not yet located, check here first)

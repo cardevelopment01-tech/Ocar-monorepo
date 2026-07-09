@@ -61,7 +61,7 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
                 whileTap={soon || reduce ? undefined : { scale: 0.88 }}
                 transition={TAP_SPRING}
               >
-                {/* Active pill — slides between tabs via layoutId */}
+                {/* Active pill, slides between tabs via layoutId */}
                 <div className="relative w-10 h-7 rounded-full flex items-center justify-center">
                   {active && (
                     <motion.div

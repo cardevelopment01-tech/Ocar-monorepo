@@ -18,7 +18,7 @@ interface OcarSpinnerProps {
 // The arc path: start at top (−90°=270°) and sweep 120° clockwise.
 // Top: (50, 10). 120° clockwise end: cos(30°)*40+50=84.64, sin(30°)*40+50=70.
 // Path: M 50 10 A 40 40 0 0 1 84.64 70
-// Small head dot at (50,10) — the arc's leading end.
+// Small head dot at (50,10), the arc's leading end.
 const ARC_PATH = 'M 50 10 A 40 40 0 0 1 84.641 70'
 const HEAD_CX = 50
 const HEAD_CY = 10

@@ -475,7 +475,7 @@ function HistoryContent() {
                 key="upcoming-empty"
                 icon={CalendarClock}
                 title="No scheduled rides"
-                subtitle="Schedule now and we'll find your driver closer to pickup — no need to book last-minute."
+                subtitle="Schedule now and we'll find your driver closer to pickup. No need to book last-minute."
                 cta={{ label: 'Book a ride', onClick: () => router.push('/home') }}
               />
             ) : (

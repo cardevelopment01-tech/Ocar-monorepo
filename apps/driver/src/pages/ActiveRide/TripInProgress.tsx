@@ -89,12 +89,12 @@ export default function TripInProgress() {
         }
       : undefined,
   })
-  // Fall back to drop only for map centering — never for the car marker or route fetch.
+  // Fall back to drop only for map centering, never for the car marker or route fetch.
   // Without this guard, the car appears AT the drop pin before GPS resolves, making
   // it look like the driver has already reached the destination.
   const mapCenter: [number, number] = position ?? dropPos
 
-  // Screen wake lock — re-acquire on page resume because the browser
+  // Screen wake lock: re-acquire on page resume because the browser
   // auto-releases WakeLock when the page is hidden.
   useEffect(() => {
     let lock: WakeLockSentinel | null = null

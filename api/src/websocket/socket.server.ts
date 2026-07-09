@@ -8,14 +8,14 @@ import { rideAckKey } from '@/constants/redis-keys'
 import { getPendingAssignmentsForDriver } from '@/modules/rides/rides.repository'
 
 // Room naming conventions:
-//   ride:{rideId}   — user + driver tracking a ride
-//   driver:{id}     — private channel for one driver
-//   admin:ops       — admin live map
+//   ride:{rideId}   user + driver tracking a ride
+//   driver:{id}     private channel for one driver
+//   admin:ops       admin live map
 
 let io: Server
 
 // Grace period before marking a driver offline after socket disconnect.
-// Cancels if the driver reconnects within the window — handles page refreshes
+// Cancels if the driver reconnects within the window, handles page refreshes
 // and brief mobile network blips without flipping the driver's DB status.
 const OFFLINE_GRACE_MS = 45_000
 const pendingOffline = new Map<string, ReturnType<typeof setTimeout>>()
@@ -53,7 +53,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
     console.log(`Socket connected: ${user?.sub} (${user?.role})`)
 
     if (user?.role === 'driver') {
-      // Cancel any pending offline timer — driver reconnected within grace period
+      // Cancel any pending offline timer, driver reconnected within grace period
       const pending = pendingOffline.get(user.sub)
       if (pending) {
         clearTimeout(pending)

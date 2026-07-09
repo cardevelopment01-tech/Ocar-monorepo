@@ -39,11 +39,11 @@ CREATE TABLE gps_tracks_2026_01
 
 ## Why monthly, not daily or hash
 
-**Not daily.** 365 partitions per year. PostgreSQL's partition pruning overhead scales with partition count. At 365 partitions, query planning cost for range scans that span multiple days becomes noticeable. Monthly gives 12 partitions/year — negligible planning overhead.
+**Not daily.** 365 partitions per year. PostgreSQL's partition pruning overhead scales with partition count. At 365 partitions, query planning cost for range scans that span multiple days becomes noticeable. Monthly gives 12 partitions/year, with negligible planning overhead.
 
-**Not hash.** Hash partitioning distributes rows evenly but does not support range pruning. A query like `WHERE created_at BETWEEN '2026-01-01' AND '2026-01-31'` cannot prune hash partitions — it scans all of them. Range partitioning prunes to exactly the relevant month partition(s).
+**Not hash.** Hash partitioning distributes rows evenly but does not support range pruning. A query like `WHERE created_at BETWEEN '2026-01-01' AND '2026-01-31'` cannot prune hash partitions; it scans all of them. Range partitioning prunes to exactly the relevant month partition(s).
 
-**Monthly is aligned with data retention.** The platform's data retention policy will archive/delete GPS data older than 12 months. Monthly partitions make this `DROP TABLE gps_tracks_2024_12` — a metadata-only operation that completes in milliseconds, reclaims space instantly, and requires no vacuum. A `DELETE` on an equivalent unpartitioned slice would take minutes and leave dead tuple bloat.
+**Monthly is aligned with data retention.** The platform's data retention policy will archive/delete GPS data older than 12 months. Monthly partitions make this `DROP TABLE gps_tracks_2024_12`, a metadata-only operation that completes in milliseconds, reclaims space instantly, and requires no vacuum. A `DELETE` on an equivalent unpartitioned slice would take minutes and leave dead tuple bloat.
 
 ## DROP TABLE vs DELETE performance
 
@@ -63,7 +63,7 @@ CREATE INDEX gps_tracks_2026_01_location_idx
     ON gps_tracks_2026_01 USING GIST (location);
 ```
 
-PostgreSQL applies partition pruning before index lookup. A live-tracking query for `ride_id = 12345` in January 2026 only touches `gps_tracks_2026_01` and its index — it never reads February's partition or its index. This keeps spatial index size bounded to one month of data (~13.5M rows) regardless of total historical volume.
+PostgreSQL applies partition pruning before index lookup. A live-tracking query for `ride_id = 12345` in January 2026 only touches `gps_tracks_2026_01` and its index; it never reads February's partition or its index. This keeps spatial index size bounded to one month of data (~13.5M rows) regardless of total historical volume.
 
 ## Partition pre-creation
 
