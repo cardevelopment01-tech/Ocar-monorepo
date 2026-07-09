@@ -6,6 +6,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   createRide:         vi.fn(),
   logStatusHistory:   vi.fn(),
   createRideAssignment: vi.fn(),
+  getActiveRideIdForUser: vi.fn(),
 }))
 
 vi.mock('@/modules/pricing/pricing.service', () => ({
@@ -108,6 +109,7 @@ describe('createBooking — returnAt passthrough', () => {
     vi.mocked(repo.createRide).mockResolvedValue(RIDE_STUB as never)
     vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 0 } as never)
     vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
+    vi.mocked(repo.getActiveRideIdForUser).mockResolvedValue(null)
   })
 
   it('passes returnAt to createRide when provided', async () => {
