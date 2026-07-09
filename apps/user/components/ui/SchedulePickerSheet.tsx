@@ -2,9 +2,19 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronLeft, Check, X } from 'lucide-react'
+import { ChevronLeft, Check, X, Zap, Clock, Moon, Sunrise } from 'lucide-react'
 import { getQuickPicks, ceil15, type QuickPick } from '@/lib/schedule-quick-picks'
 import { formatPickupTime } from '@/lib/format-pickup-time'
+
+const ICON_BG = '#EEF2FF'
+const ICON_CLR = '#4F46E5'
+
+const QUICK_PICK_ICON: Record<string, typeof Zap> = {
+  Now: Zap,
+  'In 1 hour': Clock,
+  Tonight: Moon,
+  Tomorrow: Sunrise,
+}
 
 interface Props {
   open: boolean
@@ -163,26 +173,39 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                   <div className="px-5 pb-2 space-y-2">
                     {quickPicks.map((pick, i) => {
                       const selected = isQuickSelected(pick)
+                      const Icon = QUICK_PICK_ICON[pick.label] ?? Clock
                       return (
                         <button
                           key={pick.label + i}
                           ref={i === 0 ? firstOptionRef : undefined}
                           type="button"
                           onClick={() => pickQuick(pick)}
-                          className="w-full min-h-12 flex items-center justify-between px-4 rounded-xl text-[14px] font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+                          className="w-full min-h-14 flex items-center gap-3 px-3.5 rounded-2xl transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                           style={{
-                            background: selected ? '#4F46E5' : '#F5F7FF',
-                            color: selected ? '#fff' : '#0F172A',
-                            border: selected ? '1.5px solid #4F46E5' : '1px solid #E8EEFF',
+                            background: selected ? ICON_CLR : '#F8FAFC',
+                            border: selected ? `1.5px solid ${ICON_CLR}` : '1px solid #E8EEFF',
                           }}
                         >
-                          <span>
-                            {pick.label}
+                          <span
+                            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                            style={{ background: selected ? 'rgba(255,255,255,0.18)' : ICON_BG }}
+                          >
+                            <Icon size={16} strokeWidth={2} color={selected ? '#fff' : ICON_CLR} />
+                          </span>
+                          <span className="flex-1 text-left min-w-0">
+                            <span className="block text-[14px] font-bold" style={{ color: selected ? '#fff' : '#0F172A' }}>
+                              {pick.label}
+                            </span>
                             {pick.sub && (
-                              <span className="ml-1.5 font-medium opacity-80">({pick.sub})</span>
+                              <span
+                                className="block text-[12px] font-medium mt-0.5"
+                                style={{ color: selected ? 'rgba(255,255,255,0.75)' : '#94A3B8' }}
+                              >
+                                {pick.sub}
+                              </span>
                             )}
                           </span>
-                          {selected && <Check size={16} strokeWidth={2.5} />}
+                          {selected && <Check size={18} strokeWidth={2.5} className="text-white flex-shrink-0" />}
                         </button>
                       )
                     })}

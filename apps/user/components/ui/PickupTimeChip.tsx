@@ -8,6 +8,10 @@ import { MIN_ADVANCE_MINUTES, MAX_ADVANCE_DAYS } from '@/lib/advance-booking-lim
 
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
+// DESIGN.md: colors.primary-subtle / colors.primary
+const ICON_BG = '#EEF2FF'
+const ICON_CLR = '#4F46E5'
+
 interface Props {
   value: Date | null
   pickerOpen: boolean
@@ -27,25 +31,32 @@ export default function PickupTimeChip({ value, pickerOpen, onOpenPicker, onClos
         onClick={onOpenPicker}
         whileTap={{ scale: 0.97 }}
         transition={SPRING}
-        className={`h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-1 ${value ? '' : 'border border-slate-200 text-slate-700'}`}
-        style={value
-          ? { background: '#EEF2FF', border: '1px solid #C7D2FE', color: '#4338CA' }
-          : { background: '#fff' }
-        }
+        className={`h-9 inline-flex items-center gap-2 pl-1.5 pr-3 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-1 ${value ? '' : 'border border-slate-200 bg-white shadow-sm'}`}
+        style={value ? { background: ICON_BG, border: `1px solid ${ICON_CLR}33` } : undefined}
       >
-        <Clock size={14} strokeWidth={1.8} />
-        <span className="text-[13px] font-semibold">{value ? formatPickupTime(value) : 'Now'}</span>
+        <span
+          className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+          style={{ background: value ? ICON_CLR : ICON_BG }}
+        >
+          <Clock size={12} strokeWidth={2.2} color={value ? '#fff' : ICON_CLR} />
+        </span>
+        <span
+          className={`text-[13px] font-semibold ${value ? '' : 'text-slate-700'}`}
+          style={value ? { color: ICON_CLR } : undefined}
+        >
+          {value ? formatPickupTime(value) : 'Now'}
+        </span>
         {value ? (
           <span
             role="button"
             aria-label="Reset to ride now"
             onClick={(e) => { e.stopPropagation(); onChange(null) }}
-            className="w-6 h-6 -mr-1.5 flex items-center justify-center"
+            className="w-5 h-5 -mr-1.5 flex items-center justify-center rounded-full flex-shrink-0"
           >
-            <X size={12} strokeWidth={2.2} />
+            <X size={12} strokeWidth={2.4} style={{ color: ICON_CLR }} />
           </span>
         ) : (
-          <ChevronDown size={12} strokeWidth={2.2} />
+          <ChevronDown size={12} strokeWidth={2.4} className="text-slate-400 flex-shrink-0" />
         )}
       </motion.button>
 
