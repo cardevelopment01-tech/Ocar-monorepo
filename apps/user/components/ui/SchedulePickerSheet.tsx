@@ -253,8 +253,9 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                           onClick={() => { setSelectedDay(d); setSelectedSlot(null) }}
                           className="flex-shrink-0 h-10 px-4 rounded-xl text-[13px] font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                           style={{
-                            background: selected ? '#4F46E5' : '#EEF2FF',
-                            color: selected ? '#fff' : '#4F46E5',
+                            background: selected ? '#4F46E5' : ICON_BG,
+                            color: selected ? '#fff' : ICON_CLR,
+                            border: selected ? '1.5px solid #4F46E5' : '1px solid #E8EEFF',
                           }}
                         >
                           {dayLabel(d, i)}
