@@ -187,12 +187,12 @@ A restrained palette anchored by one saturated indigo. The accent only appears w
 ### Neutral
 - **Background** (`#F5F7FF`): The indigo-tinted near-white used as the page background in the user and driver apps. The tint (≈0.008 chroma toward indigo) prevents the surface from reading as a generic default white.
 - **Surface** (`#FFFFFF`): Cards, sheets, modals, and any elevated surface that sits above the background.
-- **Surface 2** (`#F5F7FF`): Input backgrounds, secondary cards, and list items at rest — same value as Background, which creates flush groupings without a visible card edge.
+- **Surface 2** (`#F5F7FF`): Input backgrounds, secondary cards, and list items at rest — same value as Background, which creates flush groupings without a visible card edge. **Divergence:** driver's `tailwind.config.ts` defines `surface-2: '#F0F4FD'` — close but not identical; unintentional drift. User app matches the documented value exactly.
 - **Surface 3** (`#EEF0FF`): Stronger indigo-tinted fill for selected states, active tabs, and highlighted rows.
 - **Ink 900** (`#0F172A`): Primary text — headlines, body, labels. Near-black with a cool undertone.
 - **Ink 600** (`#475569`): Secondary text — supporting labels, metadata, form hints. Passes 4.5:1 on white.
 - **Ink 400** (`#94A3B8`): Muted text — placeholders, disabled labels, nav items at rest. Use on white/surface only — verify contrast against any tinted bg.
-- **Border** (`#E8EEFF`): Default border with an indigo tint — separates surfaces without adding visual weight.
+- **Border** (`#E8EEFF`): Default border with an indigo tint — separates surfaces without adding visual weight. **Divergence:** admin and driver's `tailwind.config.ts` both define `border: '#E2E8F0'` (plain slate, no indigo tint) instead — unintentional drift, not a documented per-app choice. New work in those apps should move to `#E8EEFF`.
 - **Border Light** (`#F1F5FF`): The lightest divider, for internal row separators inside cards.
 - **Splash Background** (`#0F0D1A`): The near-black used only on the brand splash screen. A deep indigo-dark that lets the gradient logomark glow.
 
@@ -215,7 +215,7 @@ A restrained palette anchored by one saturated indigo. The accent only appears w
 
 **Character:** A single family across all three apps. Inter's geometric skeleton reads technical precision; its humanist details keep it warm enough for a local service. One font, multiple weights — no decorative pairing, no display/body contrast axis. The hierarchy is carried entirely by weight and size.
 
-**Known Divergences:** The driver app currently loads Poppins for some headings; the admin app loads DM Sans. Both are legacy artifacts. All new work uses Inter. Existing divergences should be resolved at the next refactor pass per the user's direction.
+**Known Divergences (verified against `tailwind.config.ts` in each app):** The admin app's entire default sans-serif is DM Sans (`apps/admin/app/globals.css` L1, `apps/admin/tailwind.config.ts` L48) — not a partial/heading-only override, the whole app. The driver app does **not** load Poppins; it is 100% Inter (`apps/driver/tailwind.config.ts` L39-40) — this is a legacy claim, corrected. All new work uses Inter; admin's DM Sans divergence should be resolved at the next refactor pass per the user's direction.
 
 ### Hierarchy
 - **Display** (700, 28px, lh 1.2, ls -0.03em): Screen-level titles and the brand wordmark. Appears once per screen maximum. Used in the splash screen wordmark and auth page headlines.
