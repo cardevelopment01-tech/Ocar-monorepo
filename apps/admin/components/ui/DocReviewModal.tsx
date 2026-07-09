@@ -420,6 +420,23 @@ export default function DocReviewModal({
                 </button>
               </>
             )}
+            {detail.status === 'docs_rejected' && !driverMode && (
+              <>
+                <button
+                  onClick={() => void doDriverAction('approve')}
+                  disabled={driverLoading}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-success text-white text-xs font-bold rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                >
+                  <CheckCircle size={13} /> Approve
+                </button>
+                <button
+                  onClick={() => setDriverMode('ban')}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 border border-danger/60 text-danger text-xs font-bold rounded-xl hover:bg-danger/8 transition-colors"
+                >
+                  <XCircle size={13} /> Ban
+                </button>
+              </>
+            )}
             {detail.status === 'active' && !driverMode && (
               <button onClick={() => setDriverMode('suspend')} className="px-3.5 py-1.5 border border-warning/60 text-warning text-xs font-bold rounded-xl hover:bg-warning/8 transition-colors">
                 Suspend

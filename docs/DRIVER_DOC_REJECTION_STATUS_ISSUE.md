@@ -1,5 +1,25 @@
 # Driver Document Rejection & Status Transition: Client Feedback
 
+## Resolution (2026-07-09)
+
+Point 2 fixed: admin UI (drivers page decision panels + `DocReviewModal` header)
+now exposes an "Approve Driver" action when `status === 'docs_rejected'`, alongside
+the existing "Ban Driver" action. Backend already allowed `docs_rejected → active`
+(see analysis below); the gap was purely that no UI control offered it.
+
+Note: the driver-side resubmission flow already auto-transitions
+`docs_rejected → pending_approval` once the driver completes the onboarding wizard
+again and hits the final selfie/submit step (`ReferenceSelfie.tsx` →
+`onboardingApi.submitApplication()` → `admin.service.ts` has no status guard blocking
+this). The new "Approve Driver" button on `docs_rejected` covers the case where admin
+wants to approve directly without waiting for the driver to run through that full flow.
+
+Point 1 verified as working: `rejection_note` is returned per-document and surfaced on
+`Documents.tsx` (inline per-slot) and `PendingReview.tsx` (dedicated rejected-docs list).
+Delivery is poll-based (30s interval + on-mount), not a push notification — real push/SMS
+requires the M10 Notifications module (`013_messaging.sql`), which is still a backend stub
+per `CLAUDE.md`. Out of scope for this fix.
+
 ## Client feedback (verbatim intent)
 
 1. When a driver uploads documents and admin reviews them, if a document is found invalid,

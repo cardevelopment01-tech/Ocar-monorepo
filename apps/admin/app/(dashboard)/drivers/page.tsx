@@ -508,6 +508,7 @@ export default function DriversPage() {
             {d.status === 'docs_rejected' && (
               <>
                 <p className="text-xs text-warning bg-warning/8 border border-warning/20 rounded-lg px-3 py-2">Driver notified to fix documents and resubmit.</p>
+                <button onClick={() => openActionFromDetail('approve')} className="w-full py-2.5 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 transition-colors">Approve Driver</button>
                 <button onClick={() => openActionFromDetail('ban')} className="w-full py-2.5 border border-danger text-danger font-semibold rounded-xl text-sm hover:bg-danger/6 transition-colors">Ban Driver</button>
               </>
             )}
@@ -726,6 +727,7 @@ export default function DriversPage() {
                     </>}
                     {detail.status === 'docs_rejected' && <>
                       <p className="text-xs text-warning bg-warning/8 border border-warning/20 rounded-lg px-3 py-2">Driver has been notified to fix and resubmit their documents.</p>
+                      <button onClick={() => openActionFromDetail('approve')} className="w-full py-2.5 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 transition-colors">Approve Driver</button>
                       <button onClick={() => openActionFromDetail('ban')} className="w-full py-2.5 border border-danger text-danger font-semibold rounded-xl text-sm hover:bg-danger/6 transition-colors">Ban Driver</button>
                     </>}
                     {detail.status === 'active' && (
