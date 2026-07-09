@@ -12,6 +12,7 @@ interface TripRequestCardProps {
   rideType: string
   tripHours?: number
   returnAt?: string
+  stopCount?: number
   isAccepting?: boolean
   onAccept: () => void
   onDecline: () => void
@@ -42,7 +43,7 @@ function beep() {
 
 export default function TripRequestCard({
   pickup, drop, pickupDistance, tripDistance, fare,
-  timeRemaining: initialTime, rideType, tripHours, returnAt, isAccepting, onAccept, onDecline,
+  timeRemaining: initialTime, rideType, tripHours, returnAt, stopCount, isAccepting, onAccept, onDecline,
 }: TripRequestCardProps) {
   const [time, setTime] = useState(initialTime)
   const [expired, setExpired] = useState(false)
@@ -154,6 +155,14 @@ export default function TripRequestCard({
             </div>
 
             <div className="flex items-center gap-1.5 flex-shrink-0">
+              {!!stopCount && (
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                  style={{ background: 'rgba(124,58,237,0.18)', color: '#A78BFA' }}
+                >
+                  {stopCount} {stopCount === 1 ? 'stop' : 'stops'}
+                </span>
+              )}
               <Navigation2 size={12} style={{ color: '#94A3B8' }} />
               <span className="text-[13px] font-semibold tabular-nums" style={{ color: '#94A3B8' }}>
                 {pickupDistance.toFixed(1)} km away

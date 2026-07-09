@@ -81,7 +81,8 @@ router.get('/me/active', authenticate(), async (req, res, next) => {
     const driverId = req.driver!.id
     const ride = await repo.getActiveRideForDriver(driverId)
     if (!ride) { res.status(404).json({ error: 'No active ride' }); return }
-    res.json(ride)
+    const stops = await repo.getRideStops(BigInt(ride.id))
+    res.json({ ...ride, stops })
   } catch (err) { next(err) }
 })
 
@@ -170,9 +171,10 @@ router.get('/:id', authenticate(), async (req, res, next) => {
     }
 
     const rideIdStr = req.params['id']!
-    const [startOtp, endOtp] = await Promise.all([
+    const [startOtp, endOtp, stops] = await Promise.all([
       redis.get(startOtpKey(rideIdStr)),
       redis.get(endOtpKey(rideIdStr)),
+      repo.getRideStops(BigInt(rideIdStr)),
     ])
 
     let driverPhoto = ride.driver_photo ?? null
@@ -181,7 +183,7 @@ router.get('/:id', authenticate(), async (req, res, next) => {
       catch { driverPhoto = null }
     }
 
-    res.json({ ...ride, driver_photo: driverPhoto, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
+    res.json({ ...ride, stops, driver_photo: driverPhoto, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
   } catch (err) { next(err) }
 })
 
@@ -248,6 +250,19 @@ router.post('/:id/end-otp', authenticate(), async (req, res, next) => {
       body.actual_end_lat,
       body.actual_end_lng
     )
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
+router.patch('/:id/stops/:sequence', authenticate(), async (req, res, next) => {
+  try {
+    const driverId = req.driver!.id
+    const sequence = parseInt(req.params['sequence']!, 10)
+    const { status } = req.body as { status: 'reached' | 'skipped' }
+    if (isNaN(sequence) || (status !== 'reached' && status !== 'skipped')) {
+      res.status(400).json({ error: 'sequence and status (reached|skipped) required' }); return
+    }
+    const result = await service.markStopStatus(driverId, BigInt(req.params['id']!), sequence, status)
     res.json(result)
   } catch (err) { next(err) }
 })

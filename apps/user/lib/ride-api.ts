@@ -1,5 +1,18 @@
 import api from './api'
 
+export type StopInput = { address: string; lat: number; lng: number }
+
+export type RideStop = {
+  id: string
+  sequence: number
+  lat: number
+  lng: number
+  address: string | null
+  status: 'pending' | 'reached' | 'skipped'
+  reached_at: string | null
+  stop_charge_applied: string
+}
+
 export type FareEstimate = {
   rate_card_id: number
   surge_event_id: number | null
@@ -74,6 +87,7 @@ export type RideDetail = {
   endOtp: string | undefined
   driver_current_lat: number | null
   driver_current_lng: number | null
+  stops: RideStop[]
 }
 
 export type RideHistoryItem = {
@@ -126,6 +140,7 @@ export const rideApi = {
     rentalPackageId?: number
     originCityId?: number
   }): Promise<FareEstimate> => {
+    // stopCount is round-trip only — rental stops are a free itinerary, callers should pass 0/undefined
     const body: Record<string, unknown> = {
       category_id:   params.categoryId,
       ride_type:     params.rideType,
@@ -159,6 +174,7 @@ export const rideApi = {
     destinationCityId?: number
     returnAt?: string
     scheduledFor?: string
+    stops?: StopInput[]
   }): Promise<BookingResult> => {
     const body: Record<string, unknown> = {
       categoryId:    params.categoryId,
@@ -174,6 +190,7 @@ export const rideApi = {
     if (params.destinationLng      !== undefined) body['destinationLng']      = params.destinationLng
     if (params.destinationAddress  !== undefined) body['destinationAddress']  = params.destinationAddress
     if (params.tripHours           !== undefined) body['tripHours']           = params.tripHours
+    if (params.stops               !== undefined) body['stops']               = params.stops
     if (params.rentalPackageId     !== undefined) body['rentalPackageId']     = params.rentalPackageId
     if (params.originCityId        !== undefined) body['originCityId']        = params.originCityId
     if (params.destinationCityId   !== undefined) body['destinationCityId']   = params.destinationCityId

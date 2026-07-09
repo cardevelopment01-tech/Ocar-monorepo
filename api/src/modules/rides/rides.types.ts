@@ -77,6 +77,24 @@ export interface Ride {
   driver_current_lng: number | null
 }
 
+export interface StopInput {
+  address?: string
+  lat: number
+  lng: number
+}
+
+export interface RideStop {
+  id: bigint
+  ride_id: bigint
+  sequence: number
+  lat: number
+  lng: number
+  address: string | null
+  status: 'pending' | 'reached' | 'skipped'
+  reached_at: string | null
+  stop_charge_applied: string
+}
+
 export interface BookingRequest {
   categoryId: number
   rideType: 'one_way' | 'round_trip' | 'rental'
@@ -91,7 +109,9 @@ export interface BookingRequest {
   destinationCityId?: number
   distanceKm: number
   durationMin: number
+  /** @deprecated derive from `stops.length` — accepted-but-ignored for one release */
   stopCount?: number
+  stops?: StopInput[]
   tripHours?: number
   rentalPackageId?: number
   returnAt?: string

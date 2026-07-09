@@ -24,6 +24,45 @@ import {
 } from '@/modules/payments/payments.service'
 import { calculateFare } from '@/lib/fare'
 import { classifyTrip } from '@/modules/geo/geo.service'
+import { getStopCharge } from '@/modules/pricing/pricing.repository'
+import { MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES } from '@/constants/limits'
+
+// Straight-line distance in metres — used only for the ~100m duplicate-stop
+// guard, not for fare or routing (those use the client-supplied distanceKm).
+function distanceMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.asin(Math.sqrt(a))
+}
+
+function validateStops(data: BookingRequest): void {
+  if (!data.stops || data.stops.length === 0) return
+  if (data.rideType !== 'round_trip' && data.rideType !== 'rental') {
+    throw Object.assign(new Error('Stops are only supported for Round Trip and Rental rides'), { httpStatus: 422 })
+  }
+  if (data.stops.length > MAX_STOPS_PER_RIDE) {
+    throw Object.assign(new Error(`A ride can have at most ${MAX_STOPS_PER_RIDE} stops`), { httpStatus: 422 })
+  }
+  const anchors: Array<{ lat: number; lng: number }> = [{ lat: data.originLat, lng: data.originLng }]
+  if (data.destinationLat !== undefined && data.destinationLng !== undefined) {
+    anchors.push({ lat: data.destinationLat, lng: data.destinationLng })
+  }
+  for (let i = 0; i < data.stops.length; i++) {
+    const stop = data.stops[i]!
+    const others = [...anchors, ...data.stops.slice(0, i)]
+    for (const other of others) {
+      if (distanceMetres(stop.lat, stop.lng, other.lat, other.lng) < STOP_DUPLICATE_RADIUS_METRES) {
+        throw Object.assign(
+          new Error(`Stop ${i + 1} is too close to another point in this trip`),
+          { httpStatus: 422 }
+        )
+      }
+    }
+  }
+}
 
 // ── Driver session management ─────────────────────────────────
 
@@ -239,6 +278,13 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     }
   }
 
+  validateStops(data)
+  // Derived server-side so the persisted count and ride_stops rows can never
+  // diverge — client-supplied stopCount is accepted-but-ignored (see BookingRequest).
+  const stopCount = data.stops?.length ?? 0
+  // Rental stops are a free itinerary (§2.2 of the plan) — they never touch fare.
+  const fareStopCount = data.rideType === 'rental' ? 0 : stopCount
+
   // Enforce minimum 4h for round trips — must match pricing.service clamp so
   // fare_snapshots.trip_hours records the same value used to compute the fare.
   const effectiveTripHours = clampTripHours(data.rideType, data.tripHours)
@@ -249,7 +295,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     is_return_cab: data.isReturnCab ?? false,
     distance_km:  data.distanceKm,
     duration_min: data.durationMin,
-    stop_count:   data.stopCount ?? 0,
+    stop_count:   fareStopCount,
     trip_hours:   effectiveTripHours,
   }
   if (data.rentalPackageId !== undefined) fareReq.rental_package_id = data.rentalPackageId
@@ -280,6 +326,14 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   }
   const ride = await repo.createRide(rideInput)
 
+  if (data.stops && data.stops.length > 0) {
+    const chargePerStop = data.rideType === 'round_trip' ? await getStopCharge(data.categoryId) : 0
+    await repo.insertRideStops(
+      BigInt(ride.id),
+      data.stops.map(stop => ({ ...stop, chargeApplied: chargePerStop }))
+    )
+  }
+
   await pool.query(
     `INSERT INTO fare_snapshots (
        ride_id, rate_card_id, rental_package_id,
@@ -300,7 +354,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
       fareEstimate.surge_multiplier,
       data.distanceKm,
       data.durationMin,
-      data.stopCount ?? 0,
+      fareStopCount,
       effectiveTripHours,
       fareEstimate.breakdown.base_fare,
       fareEstimate.breakdown.distance_fare,
@@ -538,6 +592,38 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
   }
 
   return { success: true, endOtp }
+}
+
+// ── Ride stops ───────────────────────────────────────────────
+
+export async function markStopStatus(
+  driverId: bigint,
+  rideId: bigint,
+  sequence: number,
+  status: 'reached' | 'skipped'
+) {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  }
+  if (ride.status !== 'in_progress') {
+    throw Object.assign(new Error('Ride not in progress'), { httpStatus: 409 })
+  }
+
+  const stop = await repo.markStopStatus(rideId, sequence, status)
+  if (!stop) {
+    throw Object.assign(new Error('Stop not found or already resolved'), { httpStatus: 409 })
+  }
+
+  socketEvents.sendStopUpdated(rideId.toString(), {
+    rideId: rideId.toString(),
+    sequence: stop.sequence,
+    status: stop.status,
+    reachedAt: stop.reached_at,
+  })
+
+  return { success: true, stop }
 }
 
 // ── Ride cancellation ─────────────────────────────────────────

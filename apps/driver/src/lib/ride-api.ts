@@ -10,6 +10,17 @@ export type DriverSession = {
   went_online_at: string
 }
 
+export type RideStop = {
+  id: string
+  sequence: number
+  lat: number
+  lng: number
+  address: string | null
+  status: 'pending' | 'reached' | 'skipped'
+  reached_at: string | null
+  stop_charge_applied: string
+}
+
 export type RideDetail = {
   id: string
   status: string
@@ -26,6 +37,7 @@ export type RideDetail = {
   return_at: string | null
   trip_hours: number | null
   started_at: string | null
+  stops: RideStop[]
 }
 
 export type TripHistoryItem = {
@@ -121,6 +133,15 @@ export const driverRideApi = {
     if (actualEndLng      !== undefined) body['actual_end_lng']      = actualEndLng
     const res = await api.post(`/api/v1/rides/${rideId}/end-otp`, body)
     return res.data as { success: boolean; rideId: string }
+  },
+
+  markStopStatus: async (
+    rideId: string,
+    sequence: number,
+    status: 'reached' | 'skipped'
+  ): Promise<{ success: boolean; stop: RideStop }> => {
+    const res = await api.patch(`/api/v1/rides/${rideId}/stops/${sequence}`, { status })
+    return res.data as { success: boolean; stop: RideStop }
   },
 
   getRide: async (rideId: string): Promise<RideDetail> => {

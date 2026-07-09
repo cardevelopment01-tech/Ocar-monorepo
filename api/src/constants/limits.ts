@@ -29,7 +29,10 @@ export const REFERRAL_REFEREE_BONUS = 50
 export const REFERRAL_UNLOCK_AFTER_RIDES = 1
 
 export const GEOCODE_CACHE_TTL_DAYS = 90
-export const MAX_STOPS_PER_RIDE = 5
+// Ceiling stays readable on a 360px route card and matches the majors' cap
+// (Uber tops out at 2 extra stops) — see docs/MULTI_STOP_PLAN.md §2.1.
+export const MAX_STOPS_PER_RIDE = 3
+export const STOP_DUPLICATE_RADIUS_METRES = 100
 export const ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES = 15
 export const MIN_ADVANCE_BOOKING_MINUTES = 60
 export const MAX_ADVANCE_BOOKING_DAYS = 7

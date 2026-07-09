@@ -1,6 +1,16 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+export interface RideStop {
+  id: string
+  sequence: number
+  lat: number
+  lng: number
+  address: string | null
+  status: 'pending' | 'reached' | 'skipped'
+  reached_at: string | null
+}
+
 export interface ActiveRide {
   id: string
   status: string
@@ -19,6 +29,7 @@ export interface ActiveRide {
   returnAt?: string
   tripHours?: number
   rideStartedAt?: string
+  stops?: RideStop[]
 }
 
 interface RideState {
@@ -36,6 +47,7 @@ interface RideState {
     rideType: string
     tripHours?: number
     returnAt?: string
+    stopCount?: number
   } | null
 
   setActiveRide:     (ride: ActiveRide) => void
@@ -43,6 +55,7 @@ interface RideState {
   setStartOtp:       (otp: string) => void
   setEndOtp:         (otp: string) => void
   setRideStartedAt:  (ts: string) => void
+  updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null) => void
   clearRide:         () => void
   setIncomingRequest: (req: RideState['incomingRequest']) => void
   clearIncomingRequest: () => void
@@ -68,6 +81,16 @@ export const useRideStore = create<RideState>()(
 
       setRideStartedAt: (ts) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, rideStartedAt: ts } : null })),
+
+      updateStop: (sequence, status, reachedAt) =>
+        set((s) => ({
+          activeRide: s.activeRide ? {
+            ...s.activeRide,
+            stops: (s.activeRide.stops ?? []).map(stop =>
+              stop.sequence === sequence ? { ...stop, status, reached_at: reachedAt } : stop
+            ),
+          } : null,
+        })),
 
       clearRide: () =>
         set({ activeRide: null, incomingRequest: null }),

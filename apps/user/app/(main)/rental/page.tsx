@@ -3,12 +3,12 @@
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import {
   ArrowLeft, MapPin, Clock,
-  CreditCard, Zap, Users, Navigation,
+  CreditCard, Zap, Users, Navigation, Plus, X,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
-import { rideApi, type RentalPackage, type FareEstimate } from '@/lib/ride-api'
+import { rideApi, type RentalPackage, type FareEstimate, type StopInput } from '@/lib/ride-api'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import OcarSpinner from '@/components/ui/OcarSpinner'
@@ -33,6 +33,19 @@ const fadeUp = (delay = 0) => ({
   animate:    { opacity: 1, y: 0 },
   transition: { duration: 0.3, ease: EASE, delay },
 })
+
+const MAX_STOPS = 3
+
+function parseStops(sp: URLSearchParams): StopInput[] {
+  const out: StopInput[] = []
+  for (let i = 0; i < MAX_STOPS; i++) {
+    const lat     = sp.get(`stops[${i}][lat]`)
+    const lng     = sp.get(`stops[${i}][lng]`)
+    const address = sp.get(`stops[${i}][address]`)
+    if (lat && lng && address !== null) out.push({ lat: parseFloat(lat), lng: parseFloat(lng), address })
+  }
+  return out
+}
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -61,6 +74,9 @@ function RentalContent() {
 
   const destAddress = sp.get('destinationAddress') ?? null
   const hasDestination = destAddress !== null
+  const destLat = sp.get('destinationLat')
+  const destLng = sp.get('destinationLng')
+  const stops = parseStops(sp)
 
   const [scheduledFor,        setScheduledFor]        = useState<Date | null>(() => {
     const raw = sp.get('scheduledFor')
@@ -68,15 +84,41 @@ function RentalContent() {
   })
   const [schedulePickerOpen,  setSchedulePickerOpen]  = useState(false)
 
-  function addDestination() {
+  // Carries origin/destination/schedule/stops forward through the /search bounce
+  function buildCarriedParams(stopsOverride?: StopInput[]) {
     const params = new URLSearchParams({
       originLat: String(originLat),
       originLng: String(originLng),
       originAddress,
       backTo:    'rental',
     })
+    if (hasDestination && destLat && destLng) {
+      params.set('destinationLat', destLat)
+      params.set('destinationLng', destLng)
+      params.set('destinationAddress', destAddress!)
+    }
     if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+    ;(stopsOverride ?? stops).forEach((s, i) => {
+      params.set(`stops[${i}][address]`, s.address)
+      params.set(`stops[${i}][lat]`, String(s.lat))
+      params.set(`stops[${i}][lng]`, String(s.lng))
+    })
+    return params
+  }
+
+  function addDestination() {
+    router.push(`/search?${buildCarriedParams().toString()}`)
+  }
+
+  function goToAddStop() {
+    const params = buildCarriedParams()
+    params.set('stopIndex', String(stops.length))
     router.push(`/search?${params.toString()}`)
+  }
+
+  function removeStop(index: number) {
+    const nextStops = stops.filter((_, i) => i !== index)
+    router.replace(`/rental?${buildCarriedParams(nextStops).toString()}`)
   }
 
   const [selectedCatId,   setSelectedCatId]  = useState<number>(CATEGORIES[1]!.id)
@@ -153,6 +195,7 @@ function RentalContent() {
       }
       if (originCityId) params.originCityId = originCityId
       if (scheduledFor) params.scheduledFor = scheduledFor.toISOString()
+      if (stops.length > 0) params.stops = stops
       const result = await rideApi.createBooking(params)
       router.push(scheduledFor ? '/history?scheduled=1' : `/ride/${result.rideId}`)
     } catch {
@@ -228,6 +271,67 @@ function RentalContent() {
                 <span className="flex-1 text-[12px] font-medium text-slate-400">Add a drop-off (optional)</span>
               </button>
             )}
+          </motion.section>
+
+          {/* Plan your stops — free itinerary, never touches fare (§2.2 of the plan) */}
+          <motion.section {...fadeUp(0)}>
+            <div className="rounded-2xl overflow-hidden bg-white" style={{ border: '1px solid #E8EEFF' }}>
+              <div className="px-4 pt-3.5 pb-1">
+                <p className="text-[12px] font-bold" style={{ color: '#0F172A' }}>Plan your stops · optional</p>
+                <p className="text-[11px] mt-0.5" style={{ color: '#94A3B8' }}>
+                  Tell your driver where you plan to go — you can always change your mind during the ride
+                </p>
+              </div>
+
+              <AnimatePresence initial={false}>
+                {stops.map((stop, i) => (
+                  <motion.div
+                    key={`${stop.lat}-${stop.lng}-${i}`}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2, ease: EASE }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <div className="flex items-center gap-3 px-4 py-3" style={{ borderTop: '1px solid #E8EEFF' }}>
+                      <div className="w-2.5 h-2.5 flex-shrink-0" style={{ background: '#7C3AED', borderRadius: 3 }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>
+                          Stop {i + 1}
+                        </p>
+                        <p className="text-[13px] font-semibold truncate mt-0.5" style={{ color: '#0F172A' }}>
+                          {stop.address}
+                        </p>
+                      </div>
+                      <motion.button
+                        onClick={() => removeStop(i)}
+                        aria-label={`Remove stop ${i + 1}`}
+                        whileTap={{ scale: 0.9 }}
+                        className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-opacity active:opacity-60"
+                      >
+                        <X size={14} strokeWidth={2} style={{ color: '#94A3B8' }} />
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
+              {stops.length < MAX_STOPS && (
+                <motion.button
+                  onClick={goToAddStop}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition-opacity active:opacity-60"
+                  style={{ borderTop: '1px solid #E8EEFF' }}
+                >
+                  <div
+                    className="w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ border: '1.5px dashed #C7D2FE' }}
+                  >
+                    <Plus size={12} strokeWidth={2.4} style={{ color: '#4F46E5' }} />
+                  </div>
+                  <span className="text-[13px] font-semibold" style={{ color: '#4F46E5' }}>Add a stop</span>
+                </motion.button>
+              )}
+            </div>
           </motion.section>
 
           {/* Vehicle category */}

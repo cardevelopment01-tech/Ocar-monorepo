@@ -1,5 +1,5 @@
 import { pool } from '@/db/client'
-import type { DriverSession, NearbyDriver, Ride } from './rides.types'
+import type { DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
 import {
   STALE_REQUESTED_MINUTES,
   STALE_ACCEPTED_HOURS,
@@ -253,6 +253,78 @@ export async function createRide(data: {
     ]
   )
   return res.rows[0]
+}
+
+// ── Ride stops (waypoints) ────────────────────────────────────
+
+// One INSERT per stop inside a transaction, not a single multi-row VALUES —
+// this repo has no existing bulk-values helper and the stop count is capped
+// at MAX_STOPS_PER_RIDE, so the extra round-trips are negligible.
+export async function insertRideStops(
+  rideId: bigint,
+  stops: Array<StopInput & { chargeApplied: number }>
+): Promise<RideStop[]> {
+  if (stops.length === 0) return []
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const rows: RideStop[] = []
+    for (let i = 0; i < stops.length; i++) {
+      const stop = stops[i]!
+      const res = await client.query<RideStop>(
+        `INSERT INTO ride_stops (ride_id, sequence, location, address, stop_charge_applied)
+         VALUES (
+           $1, $2,
+           ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography,
+           $5, $6
+         )
+         RETURNING id, ride_id, sequence,
+           ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
+           address, status, reached_at, stop_charge_applied`,
+        [rideId, i + 1, stop.lat, stop.lng, stop.address ?? null, stop.chargeApplied]
+      )
+      rows.push(res.rows[0]!)
+    }
+    await client.query('COMMIT')
+    return rows
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+export async function getRideStops(rideId: bigint): Promise<RideStop[]> {
+  const res = await pool.query<RideStop>(
+    `SELECT id, ride_id, sequence,
+       ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
+       address, status, reached_at, stop_charge_applied
+     FROM ride_stops
+     WHERE ride_id = $1
+     ORDER BY sequence ASC`,
+    [rideId]
+  )
+  return res.rows
+}
+
+export async function markStopStatus(
+  rideId: bigint,
+  sequence: number,
+  status: 'reached' | 'skipped'
+): Promise<RideStop | null> {
+  const res = await pool.query<RideStop>(
+    `UPDATE ride_stops
+     SET status = $3,
+         reached_at = CASE WHEN $3 = 'reached' THEN now() ELSE reached_at END,
+         updated_at = now()
+     WHERE ride_id = $1 AND sequence = $2 AND status = 'pending'
+     RETURNING id, ride_id, sequence,
+       ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
+       address, status, reached_at, stop_charge_applied`,
+    [rideId, sequence, status]
+  )
+  return res.rows[0] ?? null
 }
 
 // Per-status staleness cutoffs so an orphaned ride (broadcast job never ran,
@@ -832,6 +904,7 @@ export interface PendingAssignment {
   distance_to_pickup_metres: number
   return_at: string | null
   trip_hours: number | null
+  stop_count: number
 }
 
 export async function getPendingAssignmentsForDriver(
@@ -851,6 +924,7 @@ export async function getPendingAssignmentsForDriver(
        r.is_return_cab,
        r.return_at,
        r.trip_hours,
+       (SELECT COUNT(*)::int FROM ride_stops rs WHERE rs.ride_id = r.id) AS stop_count,
        fs.total_estimated,
        COALESCE(
          CASE

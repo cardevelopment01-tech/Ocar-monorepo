@@ -6,7 +6,7 @@ import OcarSpinner from '@/components/ui/OcarSpinner'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { rideApi, type FareEstimate } from '@/lib/ride-api'
+import { rideApi, type FareEstimate, type StopInput } from '@/lib/ride-api'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
@@ -51,6 +51,19 @@ function SelectRideContent() {
   // When arriving from /round-trip, tripHours is in the URL and rideType is round_trip
   const tripHoursFromUrl   = sp.get('tripHours') ? parseInt(sp.get('tripHours')!) : undefined
   const fromRoundTripPage  = tripHoursFromUrl !== undefined && sp.get('rideType') === 'round_trip'
+
+  // Stops only apply to round trip here — rental books directly from /rental, one-way is out of scope (v1)
+  const stops: StopInput[] = useMemo(() => {
+    const out: StopInput[] = []
+    for (let i = 0; i < 3; i++) {
+      const lat     = sp.get(`stops[${i}][lat]`)
+      const lng     = sp.get(`stops[${i}][lng]`)
+      const address = sp.get(`stops[${i}][address]`)
+      if (lat && lng && address !== null) out.push({ lat: parseFloat(lat), lng: parseFloat(lng), address })
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp])
 
   const [categories]        = useState<Category[]>(FALLBACK_CATEGORIES)
   const [rideType,          setRideType]          = useState<'one_way' | 'round_trip'>(
@@ -121,11 +134,13 @@ function SelectRideContent() {
     await Promise.allSettled(
       categories.map(async cat => {
         try {
-          results[cat.id] = await rideApi.getEstimate({
+          const estParams: Parameters<typeof rideApi.getEstimate>[0] = {
             categoryId: cat.id, rideType,
             distanceKm, durationMin, originCityId,
             tripHours,
-          })
+          }
+          if (rideType === 'round_trip') estParams.stopCount = stops.length
+          results[cat.id] = await rideApi.getEstimate(estParams)
         } catch {}
 
         // Parallel: check return cab availability for one_way rides
@@ -153,7 +168,7 @@ function SelectRideContent() {
     setReturnCabCategories(rcAvailable)
     setReturnCabEstimates(rcResults)
     setLoading(false)
-  }, [categories, rideType, distanceKm, durationMin, originCityId, tripHours, originLat, originLng, destinationLat, destinationLng])
+  }, [categories, rideType, distanceKm, durationMin, originCityId, tripHours, originLat, originLng, destinationLat, destinationLng, stops.length])
 
   useEffect(() => { void loadEstimates() }, [loadEstimates])
 
@@ -171,6 +186,7 @@ function SelectRideContent() {
       if (tripHours !== undefined) bookingParams.tripHours     = tripHours
       if (isReturnCab)             bookingParams.isReturnCab   = true
       if (scheduledFor)            bookingParams.scheduledFor  = scheduledFor.toISOString()
+      if (rideType === 'round_trip' && stops.length > 0) bookingParams.stops = stops
       const result = await rideApi.createBooking(bookingParams)
       router.push(scheduledFor ? '/history?scheduled=1' : `/ride/${result.rideId}`)
     } catch {
@@ -197,6 +213,11 @@ function SelectRideContent() {
     })
     if (rideType === 'round_trip' && tripHours) params.set('tripHours', String(tripHours))
     if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+    stops.forEach((s, i) => {
+      params.set(`stops[${i}][address]`, s.address)
+      params.set(`stops[${i}][lat]`, String(s.lat))
+      params.set(`stops[${i}][lng]`, String(s.lng))
+    })
     router.push(`/search?${params.toString()}`)
   }
 
@@ -526,6 +547,12 @@ function SelectRideContent() {
                 <span style={{ color: '#6366F1' }}>Travel time</span>
                 <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.time_fare))}</span>
               </div>
+              {stops.length > 0 && Number(estimates[selected]!.breakdown.stop_fare) > 0 && (
+                <div className="flex justify-between text-[11px]">
+                  <span style={{ color: '#6366F1' }}>Stops ({stops.length} × ₹{Math.round(Number(estimates[selected]!.breakdown.stop_fare) / stops.length)})</span>
+                  <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.stop_fare))}</span>
+                </div>
+              )}
               {Number(estimates[selected]!.breakdown.hour_surcharge) > 0 && (
                 <div className="flex justify-between text-[11px]">
                   <span style={{ color: '#6366F1' }}>Waiting ({tripHours}h)</span>

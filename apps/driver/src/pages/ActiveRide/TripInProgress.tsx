@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, Crosshair, X, RotateCcw } from 'lucide-react'
+import { Clock, Crosshair, X, RotateCcw, Flag, CheckCircle2 } from 'lucide-react'
 import { useMap } from '@vis.gl/react-google-maps'
 import { motion, AnimatePresence } from 'framer-motion'
 import SOSButton from '@/components/ui/SOSButton'
@@ -63,7 +63,7 @@ function useElapsed(startedAt?: string) {
 
 export default function TripInProgress() {
   const navigate = useNavigate()
-  const { activeRide, updateRideStatus } = useRideStore()
+  const { activeRide, updateRideStatus, updateStop } = useRideStore()
   const elapsed = useElapsed(activeRide?.rideStartedAt)
   const { sessionId } = useSessionStore()
 
@@ -71,14 +71,30 @@ export default function TripInProgress() {
   const [otp, setOtp]               = useState('')
   const [otpError, setOtpError]     = useState(false)
   const [completing, setCompleting] = useState(false)
+  const [stopActionPending, setStopActionPending] = useState<number | null>(null)
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
   const lastRouteFetch = useRef<{ origin: [number, number]; at: number } | null>(null)
   const fetchSeq       = useRef(0)
 
-  const dropPos: [number, number] = [
-    activeRide?.dropLat ?? DEFAULT_LAT,
-    activeRide?.dropLng ?? DEFAULT_LNG,
-  ]
+  // One leg at a time, matching how Uber drivers actually navigate — multi-waypoint
+  // deep links are flaky on Android. currentStop advances after each reached/skipped.
+  const stops = activeRide?.stops ?? []
+  const currentStop = stops.find(s => s.status === 'pending') ?? null
+
+  const dropPos: [number, number] = currentStop
+    ? [currentStop.lat, currentStop.lng]
+    : [activeRide?.dropLat ?? DEFAULT_LAT, activeRide?.dropLng ?? DEFAULT_LNG]
+
+  async function handleStopAction(sequence: number, status: 'reached' | 'skipped') {
+    if (!activeRide || stopActionPending !== null) return
+    setStopActionPending(sequence)
+    try {
+      const res = await driverRideApi.markStopStatus(activeRide.id, sequence, status)
+      updateStop(sequence, status, res.stop.reached_at)
+    } catch { /* stays pending, driver can retry */ } finally {
+      setStopActionPending(null)
+    }
+  }
 
   const { position, heading: selfHeading } = useDriverLocation({
     highAccuracy: true,
@@ -111,14 +127,17 @@ export default function TripInProgress() {
     }
   }, [])
 
-  const dropLat = activeRide?.dropLat
-  const dropLng = activeRide?.dropLng
+  // Nav target is the current pending stop when one exists, else the final drop —
+  // route re-fetches automatically when the driver marks a stop reached/skipped.
+  const navLat = dropPos[0]
+  const navLng = dropPos[1]
+  const hasNavTarget = currentStop != null || (activeRide?.dropLat != null && activeRide?.dropLng != null)
 
   useEffect(() => {
-    if (dropLat == null || dropLng == null) return
+    if (!hasNavTarget) return
     if (!position) return
 
-    const dest: [number, number] = [dropLat, dropLng]
+    const dest: [number, number] = [navLat, navLng]
     const prev     = lastRouteFetch.current
     const deviated = prev ? haversineMetres(position, prev.origin) > 200 : false
     const stale    = prev ? (Date.now() - prev.at) > 60_000 : false
@@ -130,7 +149,7 @@ export default function TripInProgress() {
     driverRideApi.getRoute(position[0], position[1], dest[0], dest[1])
       .then(r => { if (fetchSeq.current === seq) setEncodedPolyline(r.polyline || undefined) })
       .catch(() => { if (fetchSeq.current === seq) setEncodedPolyline(undefined) })
-  }, [position, dropLat, dropLng])
+  }, [position, navLat, navLng, hasNavTarget])
 
   const handleSOS = async () => {
     await driverSafetyApi.triggerSos({
@@ -178,7 +197,7 @@ export default function TripInProgress() {
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
           <DriverMapView initialCenter={mapCenter} zoom={15}>
             <RecenterMap center={mapCenter} heading={selfHeading} topPadding={100} bottomPadding={220} />
-            {dropLat != null && dropLng != null && (
+            {hasNavTarget && (
               <RoutePolyline encoded={encodedPolyline} />
             )}
             {position && <SelfCarMarker position={position} heading={selfHeading} />}
@@ -206,7 +225,9 @@ export default function TripInProgress() {
               )}
             </div>
             <p className="text-text-primary font-bold text-sm truncate">
-              {activeRide?.rideType === 'rental' ? 'Flexible route' : (activeRide?.drop ?? '—')}
+              {currentStop
+                ? `Stop ${currentStop.sequence}: ${currentStop.address ?? 'Next stop'}`
+                : activeRide?.rideType === 'rental' ? 'Flexible route' : (activeRide?.drop ?? '—')}
             </p>
           </div>
           <div className="flex items-center gap-1 text-text-secondary flex-shrink-0">
@@ -241,6 +262,63 @@ export default function TripInProgress() {
             <p className="text-xs font-semibold" style={{ color: '#6D28D9' }}>
               Rental · {activeRide.tripHours}h booked
             </p>
+          </div>
+        )}
+
+        {/* Stop itinerary checklist */}
+        {stops.length > 0 && (
+          <div className="rounded-2xl mb-3 overflow-hidden border border-border">
+            {stops.map((stop, i) => {
+              const isCurrent = stop.status === 'pending' && currentStop?.sequence === stop.sequence
+              const isPending = stopActionPending === stop.sequence
+              return (
+                <div
+                  key={stop.id}
+                  className="flex items-center gap-3 px-3.5 py-2.5"
+                  style={{
+                    borderTop: i > 0 ? '1px solid var(--border)' : undefined,
+                    borderLeft: isCurrent ? '3px solid #4F46E5' : '3px solid transparent',
+                    background: isCurrent ? 'rgba(79,70,229,0.05)' : undefined,
+                  }}
+                >
+                  {stop.status === 'reached' ? (
+                    <CheckCircle2 size={16} className="text-emerald-500 flex-shrink-0" />
+                  ) : stop.status === 'skipped' ? (
+                    <X size={16} className="text-text-muted flex-shrink-0" />
+                  ) : (
+                    <Flag size={16} style={{ color: isCurrent ? '#4F46E5' : 'var(--text-muted)' }} className="flex-shrink-0" />
+                  )}
+                  <span
+                    className="flex-1 min-w-0 text-sm font-semibold truncate"
+                    style={{
+                      color: stop.status === 'skipped' ? 'var(--text-muted)' : 'var(--text-primary)',
+                      textDecoration: stop.status === 'skipped' ? 'line-through' : undefined,
+                    }}
+                  >
+                    {stop.address ?? `Stop ${stop.sequence}`}
+                  </span>
+                  {stop.status === 'pending' && (
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={() => handleStopAction(stop.sequence, 'skipped')}
+                        disabled={isPending}
+                        className="text-[11px] font-semibold text-text-muted px-2 py-1.5 active:opacity-60 disabled:opacity-40"
+                      >
+                        Skip
+                      </button>
+                      <button
+                        onClick={() => handleStopAction(stop.sequence, 'reached')}
+                        disabled={isPending}
+                        className="text-[11px] font-bold text-white rounded-full px-3 py-1.5 active:scale-95 transition-transform disabled:opacity-60"
+                        style={{ background: '#4F46E5' }}
+                      >
+                        {isPending ? '…' : 'Reached'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 

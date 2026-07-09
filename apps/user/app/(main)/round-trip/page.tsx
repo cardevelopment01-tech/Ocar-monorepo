@@ -1,20 +1,34 @@
 'use client'
 
 import { Suspense, useState } from 'react'
-import { ArrowLeft, RotateCcw, ArrowRight, CreditCard, MapPin } from 'lucide-react'
+import { ArrowLeft, RotateCcw, ArrowRight, CreditCard, MapPin, Plus, X } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 const HOUR_OPTIONS = [4, 6, 8, 10, 12] as const
+const MAX_STOPS = 3
 
 const fadeUp = (delay = 0) => ({
   initial:    { opacity: 0, y: 10 },
   animate:    { opacity: 1, y: 0 },
   transition: { duration: 0.3, ease: EASE, delay },
 })
+
+type Stop = { address: string; lat: number; lng: number }
+
+function parseStops(sp: URLSearchParams): Stop[] {
+  const out: Stop[] = []
+  for (let i = 0; i < MAX_STOPS; i++) {
+    const lat     = sp.get(`stops[${i}][lat]`)
+    const lng     = sp.get(`stops[${i}][lng]`)
+    const address = sp.get(`stops[${i}][address]`)
+    if (lat && lng && address !== null) out.push({ lat: parseFloat(lat), lng: parseFloat(lng), address })
+  }
+  return out
+}
 
 function RoundTripContent() {
   const router = useRouter()
@@ -34,6 +48,7 @@ function RoundTripContent() {
   const polyline    = sp.get('polyline') ?? undefined
 
   const hasDestination = destLat !== null && destLng !== null && destAddress !== null
+  const stops = parseStops(sp)
 
   const [selectedHours, setSelectedHours] = useState<number | null>(null)
   const [scheduledFor, setScheduledFor] = useState<Date | null>(() => {
@@ -44,16 +59,49 @@ function RoundTripContent() {
 
   const canProceed = hasDestination && selectedHours !== null
 
-  function goToSearch() {
+  // Carries origin/destination/schedule/stops forward through the /search bounce —
+  // same preservation discipline as the pre-existing goToSearch().
+  function buildCarriedParams(stopsOverride?: Stop[]) {
     const params = new URLSearchParams({
       originLat:     String(originLat),
       originLng:     String(originLng),
       originAddress,
       rideType:      'round_trip',
-      backTo:        'round_trip',
     })
+    if (hasDestination) {
+      params.set('destinationLat', String(destLat))
+      params.set('destinationLng', String(destLng))
+      params.set('destinationAddress', destAddress!)
+    }
+    if (distanceKm !== null)  params.set('distanceKm', String(distanceKm))
+    if (durationMin !== null) params.set('durationMin', String(durationMin))
+    if (polyline) params.set('polyline', polyline)
     if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+    ;(stopsOverride ?? stops).forEach((s, i) => {
+      params.set(`stops[${i}][address]`, s.address)
+      params.set(`stops[${i}][lat]`, String(s.lat))
+      params.set(`stops[${i}][lng]`, String(s.lng))
+    })
+    return params
+  }
+
+  function goToSearch() {
+    const params = buildCarriedParams()
+    params.set('backTo', 'round_trip')
     router.push(`/search?${params.toString()}`)
+  }
+
+  function goToAddStop() {
+    const params = buildCarriedParams()
+    params.set('backTo', 'round_trip')
+    params.set('stopIndex', String(stops.length))
+    router.push(`/search?${params.toString()}`)
+  }
+
+  function removeStop(index: number) {
+    const nextStops = stops.filter((_, i) => i !== index)
+    const params = buildCarriedParams(nextStops)
+    router.replace(`/round-trip?${params.toString()}`)
   }
 
   function handleProceed() {
@@ -73,6 +121,11 @@ function RoundTripContent() {
     })
     if (polyline) params.set('polyline', polyline)
     if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+    stops.forEach((s, i) => {
+      params.set(`stops[${i}][address]`, s.address)
+      params.set(`stops[${i}][lat]`, String(s.lat))
+      params.set(`stops[${i}][lng]`, String(s.lng))
+    })
     router.push(`/select-ride?${params.toString()}`)
   }
 
@@ -146,6 +199,66 @@ function RoundTripContent() {
                 <MapPin size={13} style={{ color: '#C7D2FE' }} className="flex-shrink-0" />
               </div>
 
+              {/* Stops, waypoints on the outbound leg only */}
+              {hasDestination && (
+                <AnimatePresence initial={false}>
+                  {stops.map((stop, i) => (
+                    <motion.div
+                      key={`${stop.lat}-${stop.lng}-${i}`}
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2, ease: EASE }}
+                      style={{ overflow: 'hidden' }}
+                    >
+                      <div
+                        className="flex items-center gap-3 px-4 py-3.5"
+                        style={{ borderBottom: '1px solid #E8EEFF' }}
+                      >
+                        <div
+                          className="w-2.5 h-2.5 flex-shrink-0"
+                          style={{ background: '#7C3AED', borderRadius: 3 }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>
+                            Stop {i + 1}
+                          </p>
+                          <p className="text-[13px] font-semibold truncate mt-0.5" style={{ color: '#0F172A' }}>
+                            {stop.address}
+                          </p>
+                        </div>
+                        <motion.button
+                          onClick={() => removeStop(i)}
+                          aria-label={`Remove stop ${i + 1}`}
+                          whileTap={{ scale: 0.9 }}
+                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-opacity active:opacity-60"
+                        >
+                          <X size={14} strokeWidth={2} style={{ color: '#94A3B8' }} />
+                        </motion.button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              )}
+
+              {/* "+ Add a stop" ghost row */}
+              {hasDestination && stops.length < MAX_STOPS && (
+                <motion.button
+                  {...fadeUp(0)}
+                  onClick={goToAddStop}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition-opacity active:opacity-60"
+                  style={{ borderBottom: '1px solid #E8EEFF' }}
+                >
+                  <div
+                    className="w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ border: '1.5px dashed #C7D2FE' }}
+                  >
+                    <Plus size={12} strokeWidth={2.4} style={{ color: '#4F46E5' }} />
+                  </div>
+                  <span className="text-[13px] font-semibold" style={{ color: '#4F46E5' }}>Add a stop</span>
+                </motion.button>
+              )}
+
               {/* To, tappable */}
               <button
                 onClick={goToSearch}
@@ -169,13 +282,26 @@ function RoundTripContent() {
 
             {/* Route meta */}
             {hasDestination && distanceKm !== null && durationMin !== null && (
-              <motion.div {...fadeUp(0.05)} className="flex items-center gap-1.5 px-1 mt-2">
+              <motion.div {...fadeUp(0.05)} className="flex items-center gap-1.5 px-1 mt-2 flex-wrap">
                 <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>2 × {distanceKm} km = {distanceKm * 2} km total</span>
                 <span style={{ color: '#C7D2FE' }}>·</span>
                 <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>{Math.round(durationMin)} min</span>
                 <span style={{ color: '#C7D2FE' }}>·</span>
                 <span className="text-[11px] font-bold" style={{ color: '#4F46E5' }}>both legs covered</span>
+                {stops.length > 0 && (
+                  <>
+                    <span style={{ color: '#C7D2FE' }}>·</span>
+                    <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>
+                      {stops.length} {stops.length === 1 ? 'stop' : 'stops'}
+                    </span>
+                  </>
+                )}
               </motion.div>
+            )}
+            {stops.length > 0 && (
+              <motion.p {...fadeUp(0.06)} className="text-[11px] font-medium px-1 mt-1.5" style={{ color: '#94A3B8' }}>
+                Stops are visited in this order
+              </motion.p>
             )}
           </motion.div>
 

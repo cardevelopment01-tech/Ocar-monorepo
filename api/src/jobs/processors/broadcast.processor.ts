@@ -36,6 +36,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     return
   }
 
+  const stops = await repo.getRideStops(rideId)
+
   let drivers: Array<{
     driver_id: bigint
     session_id: bigint
@@ -161,6 +163,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       isReturnCab:       data.isReturnCab,
       expiresAt:         expiresAt.toISOString(),
       timeoutSeconds:    BROADCAST_WINDOW_SECONDS,
+      stopCount:         stops.length,
     }
     if (ride.return_at)   requestPayload['returnAt']  = ride.return_at
     if (ride.trip_hours)  requestPayload['tripHours'] = Number(ride.trip_hours)

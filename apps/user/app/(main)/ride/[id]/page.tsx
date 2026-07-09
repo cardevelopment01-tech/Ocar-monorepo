@@ -231,6 +231,14 @@ export default function RidePage() {
         review_reason:      data.reason ?? prev.review_reason,
       } : prev)
     }
+    const onStopUpdated = (data: { sequence: number; status: 'reached' | 'skipped'; reachedAt: string | null }) => {
+      setRide(prev => prev ? {
+        ...prev,
+        stops: prev.stops.map(s => s.sequence === data.sequence
+          ? { ...s, status: data.status, reached_at: data.reachedAt }
+          : s),
+      } : prev)
+    }
 
     socket.on('connect',            onConnect)
     socket.on('disconnect',         onDisconnect)
@@ -238,6 +246,7 @@ export default function RidePage() {
     socket.on('ride:driver_assigned', onDriverAssigned)
     socket.on('driver:location',    onDriverLocation)
     socket.on('ride:stuck_flagged', onStuckFlagged)
+    socket.on('stop:updated',       onStopUpdated)
 
     // Reconcile ride state when the tab resumes from background.
     // The poll and socket may have stalled while the screen was off.
@@ -256,6 +265,7 @@ export default function RidePage() {
       socket.off('ride:driver_assigned', onDriverAssigned)
       socket.off('driver:location',    onDriverLocation)
       socket.off('ride:stuck_flagged', onStuckFlagged)
+      socket.off('stop:updated',       onStopUpdated)
       document.removeEventListener('visibilitychange', onVisible)
       clearTimeout(fallbackTimer)
       if (pollRef.current) clearInterval(pollRef.current)
@@ -676,6 +686,39 @@ export default function RidePage() {
                   )}
                 </div>
               </div>
+
+              {/* Stop itinerary — mirrors driver state via the stop:updated socket event */}
+              {ride && ride.stops.length > 0 && (
+                <div
+                  className="rounded-2xl mb-3 overflow-hidden"
+                  style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}
+                >
+                  {ride.stops.map((stop, i) => (
+                    <div
+                      key={stop.id}
+                      className="flex items-center gap-3 px-4 py-2.5"
+                      style={{ borderTop: i > 0 ? '1px solid #E2E8F0' : undefined }}
+                    >
+                      {stop.status === 'reached' ? (
+                        <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
+                      ) : stop.status === 'skipped' ? (
+                        <X size={14} className="text-gray-300 flex-shrink-0" />
+                      ) : (
+                        <div className="w-2.5 h-2.5 flex-shrink-0" style={{ background: '#7C3AED', borderRadius: 3 }} />
+                      )}
+                      <span
+                        className="text-sm font-medium truncate"
+                        style={{
+                          color: stop.status === 'skipped' ? '#94A3B8' : '#334155',
+                          textDecoration: stop.status === 'skipped' ? 'line-through' : undefined,
+                        }}
+                      >
+                        {stop.address ?? `Stop ${i + 1}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Context row, fare or arrived note */}
               <AnimatePresence mode="wait">

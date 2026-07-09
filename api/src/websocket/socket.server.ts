@@ -106,6 +106,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
             if (a.dest_lng != null)   payload['destinationLng'] = a.dest_lng
             if (a.return_at != null)  payload['returnAt']  = a.return_at
             if (a.trip_hours != null) payload['tripHours'] = Number(a.trip_hours)
+            payload['stopCount'] = a.stop_count
             // Emit directly to this socket so the driver sees remaining time, not original
             socket.emit('ride:request', payload)
           }
@@ -199,6 +200,10 @@ export const socketEvents = {
 
   sendDriverAssigned: (rideId: string, data: object) => {
     getIO().to(`ride:${rideId}`).emit('ride:driver_assigned', data)
+  },
+
+  sendStopUpdated: (rideId: string, data: object) => {
+    getIO().to(`ride:${rideId}`).emit('stop:updated', data)
   },
 
   sendAdminDriverUpdate: (data: object) => {

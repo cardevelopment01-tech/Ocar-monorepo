@@ -38,7 +38,7 @@ export default function App() {
   const navigate = useNavigate()
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
   const { isOnline, setOnline, setOffline } = useSessionStore()
-  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, clearRide, activeRide } = useRideStore()
+  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, clearRide, activeRide, updateStop } = useRideStore()
   const [accepting, setAccepting] = useState(false)
   const [rideCancelled, setRideCancelled] = useState(false)
   const [forceEndedMessage, setForceEndedMessage] = useState<string | null>(null)
@@ -90,6 +90,10 @@ export default function App() {
             if (ride.return_at   != null) activeRideInput.returnAt      = ride.return_at
             if (ride.trip_hours  != null) activeRideInput.tripHours     = ride.trip_hours
             if (ride.started_at  != null) activeRideInput.rideStartedAt = ride.started_at
+            if (ride.stops.length > 0) activeRideInput.stops = ride.stops.map(s => ({
+              id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
+              address: s.address, status: s.status, reached_at: s.reached_at,
+            }))
             setActiveRide(activeRideInput)
             getDriverSocket().emit('join:ride', ride.id)
             if (ride.status === 'accepted')        navigate('/ride/navigate', { replace: true })
@@ -115,6 +119,7 @@ export default function App() {
       estimatedFare: number; rideType: string; isReturnCab: boolean; expiresAt: string;
       timeoutSeconds: number; pickupLat?: number; pickupLng?: number;
       destinationLat?: number; destinationLng?: number; returnAt?: string; tripHours?: number;
+      stopCount?: number;
     }) => {
       const pLat = data.pickupLat ?? DEFAULT_LAT
       const pLng = data.pickupLng ?? DEFAULT_LNG
@@ -128,14 +133,16 @@ export default function App() {
           Math.sin(dLng / 2) ** 2
         tripDistance = Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 1.3 * 10) / 10
       }
-      setIncomingRequest({
+      const incomingReq: Parameters<typeof setIncomingRequest>[0] = {
         rideId: data.rideId, pickup: data.pickup, drop: data.drop,
         pickupDistance: data.distanceToPickup / 1000, tripDistance, fare: data.estimatedFare,
         timeoutSeconds: data.timeoutSeconds, pickupLat: pLat, pickupLng: pLng,
         rideType: data.rideType,
         returnAt: data.returnAt,
         tripHours: data.tripHours,
-      })
+      }
+      if (data.stopCount !== undefined) incomingReq.stopCount = data.stopCount
+      setIncomingRequest(incomingReq)
       // Confirm receipt so the server stops the retry loop for this driver
       socket.emit('ride:request:ack', { rideId: data.rideId })
     }
@@ -168,14 +175,19 @@ export default function App() {
       navigate('/', { replace: true })
     }
     const onConnect = () => { socket.emit('join:ride', activeRide.id) }
+    const onStopUpdated = (data: { sequence: number; status: 'reached' | 'skipped'; reachedAt: string | null }) => {
+      updateStop(data.sequence, data.status, data.reachedAt)
+    }
     socket.on('ride:status_update', onStatusUpdate)
     socket.on('connect', onConnect)
+    socket.on('stop:updated', onStopUpdated)
     // Session-restore path: socket may already be connected before this effect
     // mounts, so the 'connect' event never fires. Emit join:ride immediately.
     if (socket.connected) socket.emit('join:ride', activeRide.id)
     return () => {
       socket.off('ride:status_update', onStatusUpdate)
       socket.off('connect', onConnect)
+      socket.off('stop:updated', onStopUpdated)
     }
   }, [activeRide?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -212,6 +224,10 @@ export default function App() {
       if (ride.user_name  != null) activeRideInput.userName  = ride.user_name
       if (ride.return_at  != null) activeRideInput.returnAt  = ride.return_at
       if (ride.trip_hours != null) activeRideInput.tripHours = ride.trip_hours
+      if (ride.stops.length > 0) activeRideInput.stops = ride.stops.map(s => ({
+        id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
+        address: s.address, status: s.status, reached_at: s.reached_at,
+      }))
       setActiveRide(activeRideInput)
       getDriverSocket().emit('join:ride', rideId)
       clearIncomingRequest()
@@ -309,6 +325,7 @@ export default function App() {
             rideType={incomingRequest.rideType}
             tripHours={incomingRequest.tripHours}
             returnAt={incomingRequest.returnAt}
+            stopCount={incomingRequest.stopCount}
             isAccepting={accepting}
             onAccept={() => void handleAcceptRide(incomingRequest.rideId, incomingRequest.rideType)}
             onDecline={clearIncomingRequest}
