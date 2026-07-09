@@ -177,7 +177,7 @@ export default function Documents() {
   }
 
   const handleIdentityBlur = async () => {
-    if (!/^[A-Z]{2}\d{13}$/.test(licenseNumber) || aadhaarNumber.length !== 12) return
+    if (!/^[A-Z]{2}[A-Z0-9]{13,14}$/.test(licenseNumber) || aadhaarNumber.length !== 12) return
     setIdentityError('')
     try {
       await onboardingApi.saveIdentityNumbers({
@@ -194,7 +194,7 @@ export default function Documents() {
   const allDocsUploaded       = requiredKeys.every(k => slotState[k]?.state === 'done')
   const requiredExpiryGroups  = ALL_GROUPS.filter(g => g.required && g.hasExpiry && g.expiryRequired)
   const allExpiriesFilled     = requiredExpiryGroups.every(g => !!validUntil[g.groupKey])
-  const identityFilled        = /^[A-Z]{2}\d{13}$/.test(licenseNumber) && aadhaarNumber.length === 12
+  const identityFilled        = /^[A-Z]{2}[A-Z0-9]{13,14}$/.test(licenseNumber) && aadhaarNumber.length === 12
   const canContinue           = allDocsUploaded && allExpiriesFilled && (identitySaved || identityFilled)
 
   const handleContinue = async () => {
@@ -276,9 +276,9 @@ export default function Documents() {
                 <input
                   className="input-dark w-full font-mono uppercase"
                   placeholder="OD0519910012345"
-                  maxLength={15}
+                  maxLength={16}
                   value={licenseNumber}
-                  onChange={e => { setLicenseNumber(e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 15)); setIdentitySaved(false) }}
+                  onChange={e => { setLicenseNumber(e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 16)); setIdentitySaved(false) }}
                   onBlur={() => void handleIdentityBlur()}
                 />
               </div>

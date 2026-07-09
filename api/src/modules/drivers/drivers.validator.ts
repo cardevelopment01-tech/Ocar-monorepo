@@ -59,9 +59,13 @@ export const vehicleInfoSchema = z.object({
 export const identityDocumentSchema = z.object({
   license_number: z
     .string()
-    .min(5)
-    .max(60)
-    .transform((s) => s.toUpperCase().trim()),
+    .transform((s) => s.replace(/[^A-Za-z0-9]/g, '').toUpperCase().trim())
+    .pipe(
+      z.string().regex(
+        /^[A-Z]{2}[A-Z0-9]{13,14}$/,
+        'Invalid driving licence number format'
+      )
+    ),
   aadhaar_number: z
     .string()
     .regex(/^\d{12}$/, 'Aadhaar number must be exactly 12 digits'),
