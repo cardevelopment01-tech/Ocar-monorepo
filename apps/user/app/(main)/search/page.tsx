@@ -551,6 +551,10 @@ function SearchContent() {
             <Plus size={14} strokeWidth={2.2} className="text-white" />
             <span className="text-[13px] font-semibold text-white">Add stops</span>
           </motion.button>
+        </div>
+
+        {/* Pickup time — own row, decoupled from the map/stops actions above */}
+        <div className="px-4 pb-1.5">
           <PickupTimeChip
             value={scheduledFor}
             pickerOpen={schedulePickerOpen}
