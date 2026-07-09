@@ -315,8 +315,8 @@ export async function markStopStatus(
 ): Promise<RideStop | null> {
   const res = await pool.query<RideStop>(
     `UPDATE ride_stops
-     SET status = $3,
-         reached_at = CASE WHEN $3 = 'reached' THEN now() ELSE reached_at END,
+     SET status = $3::stop_status,
+         reached_at = CASE WHEN $3::stop_status = 'reached' THEN now() ELSE reached_at END,
          updated_at = now()
      WHERE ride_id = $1 AND sequence = $2 AND status = 'pending'
      RETURNING id, ride_id, sequence,
