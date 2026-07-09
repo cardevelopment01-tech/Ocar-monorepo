@@ -2,6 +2,7 @@
 
 **Prepared by:** Product Analysis
 **Date:** 2026-07-04
+**Last verified against code:** 2026-07-08
 **Scope:** User (Next.js) · Driver (Vite/React) · Admin (Next.js) · API (Express/PostgreSQL/PostGIS/Socket.io)
 **Basis:** Live code review of `api/src/modules/rides`, `api/src/websocket/socket.server.ts`, `api/src/jobs/workers/notifications.worker.ts`, user/driver app flows, plus existing `docs/RIDE_FLOWS_AUDIT.md` and `docs/RIDE_TYPES_PLAN.md`.
 
@@ -13,14 +14,14 @@
 |---|---|---|---|---|
 | 1 | Online cabs disappear when phone screen is off | High | Real-time | ✅ Fixed (76c2fd5) |
 | 2 | Cancellation not propagating between user ↔ driver | Critical | Real-time | ✅ Fixed (413faac) |
-| 3 | OTP never reaches user → ride cannot start | Critical | Booking Flow | ⚠️ Partially fixed (c918865 — Redis OTP persistence + GET /rides/:id/otp; private user room + SMS still pending) |
-| 4 | No drop / multi-drop on Rental & Round Trip | High | Booking Flow | 🔲 Pending |
-| 5 | No date/day picker for advance & multi-day bookings | High | Booking Flow | 🔲 Pending |
-| 6 | Booking confirmation missing cab & driver details | High | UX | 🔲 Pending |
-| 7 | Real phone numbers exposed between user & driver | Critical | Safety | 🔲 Pending |
-| 8 | Local (intra-city) rides allowed on one-way/round-trip | High | Backend Logic | 🔲 Pending |
+| 3 | OTP never reaches user → ride cannot start | Critical | Booking Flow | ⚠️ Partial — SMS is now a real provider (Fast2SMS); the `user:{userId}` privacy-room fix and a user-scoped `GET /rides/:id/otp` are **still not done** — driver still receives the passenger's OTP via the shared ride room |
+| 4 | No drop / multi-drop on Rental & Round Trip | High | Booking Flow | 🔲 Pending — `ride_stops` table still unused; "Add stops" UI still shows a "coming soon" toast |
+| 5 | No date/day picker for advance & multi-day bookings | High | Booking Flow | ⚠️ Partial — single-date scheduling **done** end-to-end (7431f3f, 4e2d742); multi-day duration/pricing still not implemented |
+| 6 | Booking confirmation missing cab & driver details | High | UX | ✅ Fixed (a149d32) — real driver photo, rating, vehicle model/colour/plate now render; no hardcoded placeholders remain |
+| 7 | Real phone numbers exposed between user & driver | Critical | Safety | 🔲 Pending — no masking provider integrated; raw `driverPhone` still emitted via socket and SMS |
+| 8 | Local (intra-city) rides allowed on one-way/round-trip | High | Backend Logic | ✅ Fixed (40964cb) — server-side PostGIS same-city guard + client-side warning both in place |
 
-Three issues (2, 3, 7) are **launch-blocking**. Issues 2 and 3 share a common root cause: the real-time socket-room contract between the two apps is not reliably established.
+**Two issues remain launch-blocking: 7 (phone masking) and the OTP-leak half of 3.** Issue 2 is fully resolved. See "Additional Fixes Found in Later Commits" below for two more bugs closed that weren't in the original list.
 
 ---
 
@@ -102,6 +103,7 @@ Reported after client tested with live videos. Five new bugs surfaced:
 
 ## Issue 3 — OTP never reaches the user; ride cannot start
 
+- **Status (verified 2026-07-08):** ⚠️ **Partial.** SMS is fixed — `api/src/providers/sms.provider.ts` now calls a real Fast2SMS HTTP API (dev falls back to console log only when no key configured), and `notifications.worker.ts` correctly guards `if (ride.user_phone)`. **Not fixed:** the `user:{userId}` socket room is joined on connect (`socket.server.ts:119`) but nothing ever emits into it — there is no `sendToUser` helper. OTPs still broadcast into the shared `ride:{rideId}` room (`rides.service.ts:460-463, 514-518`), so the driver still receives the passenger's plaintext OTP. There is also still **no `GET /rides/:id/otp`** endpoint — `GET /rides/:id` does return the OTP but is only gated by `isOwner` (user OR driver OR admin), not user-scoped, so it doesn't fix the leak either.
 - **Severity:** Critical
 - **Category:** Booking Flow
 - **Current behavior:** On `markArrived`, the start OTP is delivered two ways: (a) a `ride:status_update` socket event to the `ride:{rideId}` room, and (b) an `otp_sms` BullMQ job — **but only if `ride.user_phone` is set**, and only if the SMS provider (`sendSms`) is actually live. In practice the user does not receive the OTP because:
@@ -122,6 +124,7 @@ Reported after client tested with live videos. Five new bugs surfaced:
 
 ## Issue 4 — No drop / multiple-drop location on Rental & Round Trip
 
+- **Status (verified 2026-07-08):** 🔲 **Still pending.** `apps/user/app/(main)/search/page.tsx` "Add stops" button still just opens a toast saying "Multi-stop trips coming soon." API only carries `stopCount?: number` for fare calc — no `stops[]` array, no reads/writes to `ride_stops` anywhere in `rides.repository.ts`. The `ride_stops` table exists in the schema (007_m5_booking.sql) but is completely unused.
 - **Severity:** High
 - **Category:** Booking Flow
 - **Current behavior:**
@@ -140,6 +143,7 @@ Reported after client tested with live videos. Five new bugs surfaced:
 
 ## Issue 5 — No day/date picker for advance & multi-day bookings
 
+- **Status (verified 2026-07-08):** ⚠️ **Partial.** Single-date scheduling is fully wired end-to-end (commits 7431f3f, 4e2d742): `createBooking` validates `scheduledFor`, inserts the ride as `status='scheduled'`, and enqueues a delayed BullMQ job via `scheduler.worker.ts` (with a repeatable `sweep_scheduled_rides` safety net). The user app has a real date/time picker (`ScheduleRideSheet.tsx` + `DateTimePickerSheet.tsx`) wired into search, round-trip, rental, and select-ride pages. **Multi-day duration/pricing is not implemented** — no day-range or per-day pricing fields exist anywhere in the codebase; round-trip/rental remain single hour-block/package selectors.
 - **Severity:** High
 - **Category:** Booking Flow
 - **Current behavior:** There is **no advance-scheduling UI**. The `rides.return_at` column exists and is reserved for advance booking, but no date picker populates it. The rental page had a `startAt` picker that is **not wired into the booking payload** — a "book for tomorrow 9am" request dispatches immediately. Round Trip is duration-based (hours), with no calendar for multi-day trips.
@@ -154,6 +158,7 @@ Reported after client tested with live videos. Five new bugs surfaced:
 
 ## Issue 6 — Booking confirmation missing cab & driver details
 
+- **Status (verified 2026-07-08):** ✅ **Fixed** (a149d32). `apps/user/app/(main)/ride/[id]/page.tsx` renders live `driverRating`, `driverPhoto`, `vehicleModel`, `vehicleColor`, and plate number sourced from the assignment payload — no hardcoded "4.8★"/"Sedan" strings remain. `GET /rides/:id` (`rides.repository.ts:302-317`) joins `drivers`, `driver_vehicles`, and `vehicle_models` to return the full detail set, and `acceptRide` emits the same via `sendDriverAssigned` including a presigned driver photo URL.
 - **Severity:** High
 - **Category:** UX
 - **Current behavior:** On assignment, `sendDriverAssigned` emits `driverName` + `driverId` (and currently `driverPhone` — see Issue 7) to the ride room, but the tracking screen shows **hardcoded placeholders**: driver rating `4.8★` and vehicle `Sedan` are static strings. The required set — registration number, model, colour, driver photo, real rating, name, start OTP — is not surfaced together.
@@ -177,6 +182,7 @@ Reported after client tested with live videos. Five new bugs surfaced:
 
 ## Issue 7 — Real phone numbers exposed between user and driver
 
+- **Status (verified 2026-07-08):** 🔲 **Still pending — remains the top launch-blocking gap.** No masking/virtual-number provider integrated anywhere (zero hits for Exotel/Twilio/Knowlarity). `rides.service.ts:419` still emits `driverPhone: ride?.driver_phone` via `sendDriverAssigned` into the shared ride room, and the `ride_accepted` SMS body still embeds the driver's raw phone number (`notifications.worker.ts:87-89`).
 - **Severity:** Critical
 - **Category:** Safety
 - **Current behavior:** Raw phone numbers are shared in **both** directions:
@@ -196,6 +202,7 @@ Reported after client tested with live videos. Five new bugs surfaced:
 
 ## Issue 8 — Local (intra-city) rides allowed on one-way / round-trip
 
+- **Status (verified 2026-07-08):** ✅ **Fixed** (40964cb). Server-side guard in `createBooking` (`rides.service.ts:184-199`) calls the PostGIS-backed `classifyTrip` (`geo.service.ts:72`) and throws a 422 ("This trip stays within {cityName} — book it as a City Ride instead") when scope is `in_city` for one-way/round-trip. Client-side warning also wired into home/search pages via `geo-api.ts`.
 - **Severity:** High
 - **Category:** Backend Logic
 - **Current behavior:** `createBooking` accepts any `rideType` for any origin/destination pair. There is **no same-city guard** — an intra-city trip (origin city == destination city) booked as `one_way` or `round_trip` is accepted and dispatched normally. Per product spec, intra-city travel should be served **only through Rental**; Round Trip is defined as "outstation — crosses city boundary by definition."
@@ -219,22 +226,29 @@ Reported after client tested with live videos. Five new bugs surfaced:
 
 ## Prioritized Action List
 
+**Status key:** ✅ Done · ⚠️ Partial · 🔲 Pending — verified against code 2026-07-08.
+
 ### P0 — Launch-blocking (Critical)
 
-1. **Issue 7 — Phone masking:** integrate number-masking provider; strip all raw numbers from payloads/SMS/logs. *(Safety, non-negotiable.)*
-2. **Issue 3 — OTP delivery:** add `user:{userId}` room + `GET /rides/:id/otp`; sessionStorage fallback; working SMS. Unblocks the stuck-ride showstopper.
-3. **Issue 2 — Cancellation propagation:** guarantee `join:ride` on both apps + reconnect reconciliation + SMS backstop; ensure driver-cancel re-dispatches or cleanly ends.
+1. **Issue 7 — Phone masking:** 🔲 integrate number-masking provider; strip all raw numbers from payloads/SMS/logs. *(Safety, non-negotiable — still fully open.)*
+2. **Issue 3 — OTP delivery:** ⚠️ SMS provider done; still need `user:{userId}` emit path (room is joined but nothing sends to it) + a user-scoped `GET /rides/:id/otp` to stop the OTP leaking to the driver.
+3. **Issue 2 — Cancellation propagation:** ✅ Done — `join:ride` + reconnect reconciliation + SMS backstop shipped (413faac).
 
 ### P1 — High (pre-GA)
 
-4. **Issue 8 — Block local rides on one-way/round-trip:** server-side same-city/boundary guard + client redirect to Rental.
-5. **Issue 6 — Full cab/driver details on confirmation:** join vehicle + driver data (incl. colour — verify/migrate), presigned photo, real rating; remove hardcoded values.
-6. **Issue 1 — Keep cabs visible with screen off:** background/heartbeat on driver app; resume-refresh on user app; `stale` vs `offline` distinction server-side.
+4. **Issue 8 — Block local rides on one-way/round-trip:** ✅ Done (40964cb) — server-side same-city guard + client redirect.
+5. **Issue 6 — Full cab/driver details on confirmation:** ✅ Done (a149d32) — real vehicle/driver data, presigned photo, real rating.
+6. **Issue 1 — Keep cabs visible with screen off:** ✅ Done (76c2fd5) — wake-lock re-acquisition + resume-refresh.
 
 ### P2 — High (fast-follow)
 
-7. **Issue 4 — Intermediate/multi-stop on Round Trip:** build the planned stops flow; wire `ride_stops` + stop pricing; clarify Rental intent.
-8. **Issue 5 — Advance & multi-day booking:** wire `scheduledFor` + delayed dispatch; new multi-day duration & pricing model; scheduled-ride reminders.
+7. **Issue 4 — Intermediate/multi-stop on Round Trip:** 🔲 Still pending — `ride_stops` table unused, UI still shows "coming soon."
+8. **Issue 5 — Advance & multi-day booking:** ⚠️ Single-date scheduling done (7431f3f, 4e2d742); multi-day duration & pricing model still not built.
+
+### Found and fixed along the way (not in original list)
+
+9. **Rider stuck on `in_progress` ride with no exit path** (a2ac7b6) — staleness sweeper (flags at 10min GPS silence, auto-cancels at 30min), admin force-resolve, rider "report a problem" escape hatch via SOS pipeline.
+10. **Round-trip fare only charged one leg instead of both** (083161a) — billing bug; return leg was not being doubled into the fare, plus no recalculation on early termination.
 
 ---
 
