@@ -220,18 +220,12 @@ importers:
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.7)
-      maplibre-gl:
-        specifier: ^5.24.0
-        version: 5.24.0
       react:
         specifier: ^19.2.7
         version: 19.2.7
       react-dom:
         specifier: ^19.2.7
         version: 19.2.7(react@19.2.7)
-      react-map-gl:
-        specifier: ^8.1.1
-        version: 8.1.1(maplibre-gl@5.24.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react-router-dom:
         specifier: ^7.17.0
         version: 7.17.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -296,9 +290,6 @@ importers:
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.7)
-      maplibre-gl:
-        specifier: ^5.24.0
-        version: 5.24.0
       next:
         specifier: ^16.2.7
         version: 16.2.7(@babel/core@7.29.7)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -308,9 +299,6 @@ importers:
       react-dom:
         specifier: ^19.2.7
         version: 19.2.7(react@19.2.7)
-      react-map-gl:
-        specifier: ^8.1.1
-        version: 8.1.1(maplibre-gl@5.24.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       socket.io-client:
         specifier: ^4.6.0
         version: 4.8.3
