@@ -6,9 +6,11 @@ import { AdvancedMarker } from '@vis.gl/react-google-maps'
 interface CarMarkerProps {
   position: [number, number]
   heading?: number
+  /** False until a real bearing has been derived from two GPS fixes (see useInterpolatedPosition). */
+  headingKnown?: boolean
 }
 
-function CarMarker({ position, heading = 0 }: CarMarkerProps) {
+function CarMarker({ position, heading = 0, headingKnown = true }: CarMarkerProps) {
   const rotation = heading % 360
   return (
     <AdvancedMarker position={{ lat: position[0], lng: position[1] }}>
@@ -17,6 +19,9 @@ function CarMarker({ position, heading = 0 }: CarMarkerProps) {
           width: 32,
           height: 52,
           transform: `rotate(${rotation}deg)`,
+          transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1), opacity 0.4s ease-out',
+          // Neutral/undirected until a real bearing exists, instead of a fake 0°/north snap.
+          opacity: headingKnown ? 1 : 0.55,
           filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.35))',
         }}
       >
@@ -43,5 +48,6 @@ function CarMarker({ position, heading = 0 }: CarMarkerProps) {
 export default memo(CarMarker, (a, b) =>
   a.position[0] === b.position[0] &&
   a.position[1] === b.position[1] &&
-  (a.heading ?? 0) === (b.heading ?? 0)
+  (a.heading ?? 0) === (b.heading ?? 0) &&
+  (a.headingKnown ?? true) === (b.headingKnown ?? true)
 )

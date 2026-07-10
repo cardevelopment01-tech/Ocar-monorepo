@@ -1,16 +1,22 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, Crosshair, X, RotateCcw, Flag, CheckCircle2 } from 'lucide-react'
+import { Clock, Crosshair, X, RotateCcw, Flag, CheckCircle2, Navigation } from 'lucide-react'
 import { useMap } from '@vis.gl/react-google-maps'
 import { motion, AnimatePresence } from 'framer-motion'
 import SOSButton from '@/components/ui/SOSButton'
 import OtpInput from '@/components/ui/OtpInput'
+import VoiceToggleButton from '@/components/ui/VoiceToggleButton'
+import HindiVoiceHint from '@/components/ui/HindiVoiceHint'
+import ManeuverBanner from '@/components/map/ManeuverBanner'
 import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
+import { useNavPrefsStore } from '@/store/useNavPrefsStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { driverSafetyApi } from '@/lib/safety-api'
 import { EASE, GLASS, fmtReturn } from '@/lib/constants'
 import { useDriverLocation } from '@/lib/useDriverLocation'
+import { useTurnByTurn } from '@/lib/useTurnByTurn'
+import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
@@ -40,15 +46,6 @@ function LocateMeButton({ position }: { position: [number, number] }) {
   )
 }
 
-function haversineMetres(a: [number, number], b: [number, number]): number {
-  const R = 6_371_000
-  const dLat = (b[0] - a[0]) * Math.PI / 180
-  const dLng = (b[1] - a[1]) * Math.PI / 180
-  const s = Math.sin(dLat / 2) ** 2
-    + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
-}
-
 function useElapsed(startedAt?: string) {
   const initial = startedAt ? Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000)) : 0
   const [seconds, setSeconds] = useState(initial)
@@ -72,9 +69,6 @@ export default function TripInProgress() {
   const [otpError, setOtpError]     = useState(false)
   const [completing, setCompleting] = useState(false)
   const [stopActionPending, setStopActionPending] = useState<number | null>(null)
-  const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
-  const lastRouteFetch = useRef<{ origin: [number, number]; dest: [number, number]; at: number } | null>(null)
-  const fetchSeq       = useRef(0)
 
   // One leg at a time, matching how Uber drivers actually navigate — multi-waypoint
   // deep links are flaky on Android. currentStop advances after each reached/skipped.
@@ -128,31 +122,15 @@ export default function TripInProgress() {
   }, [])
 
   // Nav target is the current pending stop when one exists, else the final drop —
-  // route re-fetches automatically when the driver marks a stop reached/skipped.
-  const navLat = dropPos[0]
-  const navLng = dropPos[1]
+  // the hook refetches automatically whenever this destination identity changes,
+  // e.g. when the driver marks a stop reached/skipped.
   const hasNavTarget = currentStop != null || (activeRide?.dropLat != null && activeRide?.dropLng != null)
+  const voiceEnabled = useNavPrefsStore(s => s.voiceEnabled)
+  const navLanguage  = useNavPrefsStore(s => s.language)
 
-  useEffect(() => {
-    if (!hasNavTarget) return
-    if (!position) return
-
-    const dest: [number, number] = [navLat, navLng]
-    const prev = lastRouteFetch.current
-    // A stop being marked reached/skipped changes the target even if the driver
-    // hasn't moved — that must force a refetch, not just GPS deviation/staleness.
-    const destChanged = !prev || prev.dest[0] !== dest[0] || prev.dest[1] !== dest[1]
-    const deviated = prev ? haversineMetres(position, prev.origin) > 200 : false
-    const stale    = prev ? (Date.now() - prev.at) > 60_000 : false
-    if (prev && !destChanged && !deviated && !stale) return
-
-    const seq = ++fetchSeq.current
-    lastRouteFetch.current = { origin: position, dest, at: Date.now() }
-
-    driverRideApi.getRoute(position[0], position[1], dest[0], dest[1])
-      .then(r => { if (fetchSeq.current === seq) setEncodedPolyline(r.polyline || undefined) })
-      .catch(() => { if (fetchSeq.current === seq) setEncodedPolyline(undefined) })
-  }, [position, navLat, navLng, hasNavTarget])
+  const { encodedPolyline, currentStep, distanceToManeuver, isReconnecting } =
+    useTurnByTurn(position, hasNavTarget ? dropPos : null, navLanguage)
+  useVoiceGuidance(currentStep, distanceToManeuver, voiceEnabled, navLanguage)
 
   const handleSOS = async () => {
     await driverSafetyApi.triggerSos({
@@ -203,9 +181,19 @@ export default function TripInProgress() {
             {hasNavTarget && (
               <RoutePolyline encoded={encodedPolyline} />
             )}
-            {position && <SelfCarMarker position={position} heading={selfHeading} />}
+            {position && <SelfCarMarker position={position} />}
             <LocationPin position={dropPos} variant="drop" />
             <LocateMeButton position={position ?? dropPos} />
+            {hasNavTarget && (
+              <button
+                aria-label="Open in Google Maps"
+                style={{ position: 'absolute', left: 16, bottom: 'calc(env(safe-area-inset-bottom) + 284px)', zIndex: 5 }}
+                className="w-12 h-12 rounded-2xl bg-surface border border-border shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+                onClick={() => window.open(`https://maps.google.com?q=${dropPos[0]},${dropPos[1]}`)}
+              >
+                <Navigation size={20} className="text-primary" />
+              </button>
+            )}
           </DriverMapView>
         </Suspense>
       </div>
@@ -215,6 +203,20 @@ export default function TripInProgress() {
         className="absolute top-0 left-0 right-0 px-4"
         style={{ zIndex: 10, paddingTop: 'max(env(safe-area-inset-top), 2.5rem)' }}
       >
+        <AnimatePresence>
+          {currentStep && (
+            <motion.div
+              key="maneuver"
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.3, ease: EASE }}
+              className="mb-2"
+            >
+              <ManeuverBanner step={currentStep} distanceMetres={distanceToManeuver} isReconnecting={isReconnecting} />
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={GLASS}>
           <div className="w-2.5 h-2.5 rounded-full bg-accent-red flex-shrink-0 animate-pulse" />
           <div className="flex-1 min-w-0">
@@ -404,6 +406,8 @@ export default function TripInProgress() {
         onSOS={handleSOS}
         style={{ bottom: 'calc(env(safe-area-inset-bottom) + 224px)', right: '16px', zIndex: 50 }}
       />
+      <VoiceToggleButton style={{ bottom: 'calc(env(safe-area-inset-bottom) + 344px)', left: '16px' }} />
+      <HindiVoiceHint active={!!currentStep} />
     </div>
   )
 }

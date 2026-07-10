@@ -16,10 +16,40 @@ export type PlaceDetail = {
   lng: number
 }
 
+export type RouteStep = {
+  /** Plain text (HTML stripped), used both as banner text and TTS input. */
+  instruction: string
+  distanceMetres: number
+  /** Google's own maneuver vocabulary (turn-left, roundabout-right, ...), or 'straight'/'arrive'. */
+  maneuverType: string
+  startLat: number
+  startLng: number
+  endLat: number
+  endLng: number
+  /** Encoded polyline for just this step's road geometry — decode with the same
+   *  algorithm as the overview polyline. Needed to tell which step a driver is on
+   *  when the road curves between start/end, not just a straight-line guess. */
+  polyline: string
+}
+
 export type RouteResult = {
   distanceKm: number
   durationMin: number
   polyline: string
+  /** Present only when the request set trafficAware and Google returned live-traffic data. */
+  trafficDurationMin?: number
+  /** Present only when the request set withSteps. */
+  steps?: RouteStep[]
+}
+
+export type RouteOptions = {
+  language?: string
+  withSteps?: boolean
+  trafficAware?: boolean
+}
+
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]+>/g, '')
 }
 
 async function gmapsGet(path: string, params: Record<string, string>): Promise<unknown> {
@@ -120,30 +150,63 @@ export async function getRoute(
   originLng: number,
   destLat: number,
   destLng: number,
+  opts?: RouteOptions,
 ): Promise<RouteResult> {
   // 1. Try Google Directions (best quality, needs key + Directions API enabled)
   if (config.GOOGLE_MAPS_API_KEY) {
     try {
-      const body = await gmapsGet('/directions/json', {
+      const params: Record<string, string> = {
         origin:      `${originLat},${originLng}`,
         destination: `${destLat},${destLng}`,
         mode:        'driving',
-        language:    'en',
-      }) as {
+        language:    opts?.language ?? 'en',
+      }
+      if (opts?.trafficAware) params['departure_time'] = 'now'
+
+      const body = await gmapsGet('/directions/json', params) as {
         status: string
         routes: Array<{
           overview_polyline: { points: string }
-          legs: Array<{ distance: { value: number }; duration: { value: number } }>
+          legs: Array<{
+            distance: { value: number }
+            duration: { value: number }
+            duration_in_traffic?: { value: number }
+            steps: Array<{
+              html_instructions: string
+              distance: { value: number }
+              maneuver?: string
+              start_location: { lat: number; lng: number }
+              end_location: { lat: number; lng: number }
+              polyline: { points: string }
+            }>
+          }>
         }>
       }
 
       if (body.status === 'OK' && body.routes[0]) {
         const leg = body.routes[0].legs[0]!
-        return {
+        const result: RouteResult = {
           distanceKm: Math.round((leg.distance.value / 1000) * 10) / 10,
           durationMin: Math.round(leg.duration.value / 60),
           polyline: body.routes[0].overview_polyline.points,
         }
+        if (leg.duration_in_traffic) {
+          result.trafficDurationMin = Math.round(leg.duration_in_traffic.value / 60)
+        }
+        if (opts?.withSteps) {
+          const lastIdx = leg.steps.length - 1
+          result.steps = leg.steps.map((s, i) => ({
+            instruction: stripHtml(s.html_instructions),
+            distanceMetres: s.distance.value,
+            maneuverType: s.maneuver ?? (i === lastIdx ? 'arrive' : 'straight'),
+            startLat: s.start_location.lat,
+            startLng: s.start_location.lng,
+            endLat: s.end_location.lat,
+            endLng: s.end_location.lng,
+            polyline: s.polyline.points,
+          }))
+        }
+        return result
       }
     } catch { /* fall through to OSRM */ }
   }

@@ -33,21 +33,25 @@ function distMetres(a: [number, number], b: [number, number]): number {
  * Position uses linear interpolation over the full sync interval so the car
  * moves at constant speed with no pause, same as Uber/Ola.
  *
- * Heading is derived from the bearing between consecutive GPS fixes rather
- * than from raw coords.heading, which is unreliable on many devices. The car
- * only rotates when the driver has actually moved (>8 m threshold), preventing
- * spin at low speed or when stationary.
+ * Heading is derived entirely from the bearing between consecutive GPS fixes
+ * (never from raw device coords.heading, which is unreliable on many devices).
+ * That means no real heading exists until a second fix arrives >8m from the
+ * first — `headingKnown` stays false until then, so callers can render a
+ * neutral/undirected marker instead of guessing (previously this defaulted to
+ * a fake 0°/north on the very first fix — see
+ * docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md §1.1).
  */
 export function useInterpolatedPosition(
   rawPos: [number, number] | undefined,
-  rawHeading: number,
-): { pos: [number, number] | undefined; heading: number } {
-  const [pos,     setPos]     = useState<[number, number] | undefined>(rawPos)
-  const [heading, setHeading] = useState(rawHeading)
+): { pos: [number, number] | undefined; heading: number; headingKnown: boolean } {
+  const [pos,          setPos]          = useState<[number, number] | undefined>(rawPos)
+  const [heading,       setHeading]      = useState(0)
+  const [headingKnown, setHeadingKnown] = useState(false)
 
   const rafRef  = useRef<number | null>(null)
   const livePos = useRef<[number, number] | null>(null)
   const liveHdg = useRef(0)
+  const hdgKnown = useRef(false)
   const anim    = useRef<{
     from: [number, number]; fromHdg: number
     to:   [number, number]; toHdg:   number
@@ -57,18 +61,18 @@ export function useInterpolatedPosition(
   useEffect(() => {
     if (!rawPos) return
 
-    // First fix, snap immediately, use rawHeading as initial orientation
+    // First fix: snap position immediately, but there's no direction of travel yet
+    // to derive a bearing from — leave heading unknown rather than faking one.
     if (!livePos.current) {
       livePos.current = rawPos
-      liveHdg.current = rawHeading
       setPos(rawPos)
-      setHeading(rawHeading)
       return
     }
 
     // Derive heading from direction of travel; keep current heading if nearly stationary
-    const dist  = distMetres(livePos.current, rawPos)
+    const dist = distMetres(livePos.current, rawPos)
     const toHdg = dist > 8 ? bearingDeg(livePos.current, rawPos) : liveHdg.current
+    if (dist > 8) hdgKnown.current = true
 
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
 
@@ -93,6 +97,7 @@ export function useInterpolatedPosition(
       liveHdg.current = hdg
       setPos([lat, lng])
       setHeading(hdg)
+      if (hdgKnown.current) setHeadingKnown(true)
 
       if (t < 1) {
         rafRef.current = requestAnimationFrame(tick)
@@ -104,9 +109,9 @@ export function useInterpolatedPosition(
     rafRef.current = requestAnimationFrame(tick)
   // rawPos is a new array reference on each socket event, intentional dep
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawPos, rawHeading])
+  }, [rawPos])
 
   useEffect(() => () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current) }, [])
 
-  return { pos, heading }
+  return { pos, heading, headingKnown }
 }

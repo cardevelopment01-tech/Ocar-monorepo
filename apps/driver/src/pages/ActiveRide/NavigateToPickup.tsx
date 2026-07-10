@@ -1,14 +1,20 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Navigation, Phone, RotateCcw, Clock, X } from 'lucide-react'
 import SOSButton from '@/components/ui/SOSButton'
+import VoiceToggleButton from '@/components/ui/VoiceToggleButton'
+import HindiVoiceHint from '@/components/ui/HindiVoiceHint'
+import ManeuverBanner from '@/components/map/ManeuverBanner'
 import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
+import { useNavPrefsStore } from '@/store/useNavPrefsStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { driverSafetyApi } from '@/lib/safety-api'
 import { EASE, GLASS, fmtReturn } from '@/lib/constants'
 import { useDriverLocation } from '@/lib/useDriverLocation'
+import { useTurnByTurn } from '@/lib/useTurnByTurn'
+import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
@@ -19,27 +25,15 @@ const RoutePolyline  = lazy(() => import('@/components/map/RoutePolyline'))
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
 
-function haversineMetres(a: [number, number], b: [number, number]): number {
-  const R = 6_371_000
-  const dLat = (b[0] - a[0]) * Math.PI / 180
-  const dLng = (b[1] - a[1]) * Math.PI / 180
-  const s = Math.sin(dLat / 2) ** 2
-    + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
-}
-
 export default function NavigateToPickup() {
   const navigate = useNavigate()
   const { activeRide, setStartOtp, updateRideStatus, clearRide } = useRideStore()
   const { sessionId } = useSessionStore()
   const [arriving, setArriving] = useState(false)
   const [error, setError]       = useState<string | null>(null)
-  const [encodedPolyline,  setEncodedPolyline]  = useState<string | undefined>(undefined)
   const [showCancelSheet,  setShowCancelSheet]  = useState(false)
   const [cancelReason,     setCancelReason]     = useState<string | null>(null)
   const [cancellingRide,   setCancellingRide]   = useState(false)
-  const lastRouteFetch = useRef<{ origin: [number, number]; at: number } | null>(null)
-  const fetchSeq       = useRef(0)
 
   useEffect(() => {
     if (!activeRide) navigate('/', { replace: true })
@@ -49,8 +43,6 @@ export default function NavigateToPickup() {
     activeRide?.pickupLat ?? DEFAULT_LAT,
     activeRide?.pickupLng ?? DEFAULT_LNG,
   ]
-  const pickupLat = activeRide?.pickupLat ?? DEFAULT_LAT
-  const pickupLng = activeRide?.pickupLng ?? DEFAULT_LNG
 
   // Keep screen awake while navigating to pickup. Re-acquire on page resume
   // because the browser auto-releases WakeLock when the page is hidden.
@@ -83,21 +75,12 @@ export default function NavigateToPickup() {
   // it look like the driver has already arrived.
   const mapCenter: [number, number] = position ?? pickupPos
 
-  useEffect(() => {
-    if (!position) return
-    const dest: [number, number] = [pickupLat, pickupLng]
-    const prev     = lastRouteFetch.current
-    const deviated = prev ? haversineMetres(position, prev.origin) > 200 : false
-    const stale    = prev ? (Date.now() - prev.at) > 60_000 : false
-    if (prev && !deviated && !stale) return
+  const voiceEnabled = useNavPrefsStore(s => s.voiceEnabled)
+  const navLanguage  = useNavPrefsStore(s => s.language)
 
-    const seq = ++fetchSeq.current
-    lastRouteFetch.current = { origin: position, at: Date.now() }
-
-    driverRideApi.getRoute(position[0], position[1], dest[0], dest[1])
-      .then(r => { if (fetchSeq.current === seq) setEncodedPolyline(r.polyline || undefined) })
-      .catch(() => { if (fetchSeq.current === seq) setEncodedPolyline(undefined) })
-  }, [position, pickupLat, pickupLng])
+  const { encodedPolyline, currentStep, distanceToManeuver, isReconnecting } =
+    useTurnByTurn(position, pickupPos, navLanguage)
+  useVoiceGuidance(currentStep, distanceToManeuver, voiceEnabled, navLanguage)
 
   const handleSOS = async () => {
     await driverSafetyApi.triggerSos({
@@ -147,7 +130,7 @@ export default function NavigateToPickup() {
           <DriverMapView initialCenter={mapCenter} zoom={15}>
             <RecenterMap center={mapCenter} heading={selfHeading} topPadding={100} bottomPadding={220} />
             <RoutePolyline encoded={encodedPolyline} variant="pickup-leg" />
-            {position && <SelfCarMarker position={position} heading={selfHeading} />}
+            {position && <SelfCarMarker position={position} />}
             <LocationPin position={pickupPos} variant="pickup" />
           </DriverMapView>
         </Suspense>
@@ -158,6 +141,20 @@ export default function NavigateToPickup() {
         className="absolute top-0 left-0 right-0 px-4"
         style={{ zIndex: 10, paddingTop: 'max(env(safe-area-inset-top), 2.5rem)' }}
       >
+        <AnimatePresence>
+          {currentStep && (
+            <motion.div
+              key="maneuver"
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.3, ease: EASE }}
+              className="mb-2"
+            >
+              <ManeuverBanner step={currentStep} distanceMetres={distanceToManeuver} isReconnecting={isReconnecting} />
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={GLASS}>
           <div className="w-3 h-3 rounded-full bg-primary flex-shrink-0 animate-pulse" />
           <div className="flex-1 min-w-0">
@@ -256,6 +253,8 @@ export default function NavigateToPickup() {
       </motion.div>
 
       <SOSButton rideId={activeRide?.id ?? ''} onSOS={handleSOS} />
+      <VoiceToggleButton style={{ bottom: '100px', left: '16px' }} />
+      <HindiVoiceHint active={!!currentStep} />
 
       <AnimatePresence>
         {showCancelSheet && (

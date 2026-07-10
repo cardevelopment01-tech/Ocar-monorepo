@@ -10,6 +10,17 @@ interface RecenterMapProps {
   heading?: number
 }
 
+// Shortest signed delta (degrees) from `from` to `to`, e.g. 350 -> 10 gives +20, not -340.
+function shortestAngleDelta(from: number, to: number): number {
+  let delta = (to - from) % 360
+  if (delta > 180) delta -= 360
+  if (delta < -180) delta += 360
+  return delta
+}
+
+const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
+const HEADING_ANIM_MS = 350
+
 // Shift the pan center south so the target appears in the visible area between
 // topPadding and bottomPadding instead of at the raw geometric viewport center.
 // Uses Mercator approximation, only requires map.getZoom(), not getProjection().
@@ -39,12 +50,52 @@ export default function RecenterMap({
   heading,
 }: RecenterMapProps) {
   const map = useMap()
-  const last    = useRef<[number, number] | null>(null)
-  const lastPad = useRef<number>(-1)
-  const lastHdg = useRef<number>(-1)
+  const last       = useRef<[number, number] | null>(null)
+  const lastPad    = useRef<number>(-1)
+  const lastHdg    = useRef<number>(-1)     // last heading value the ≥2° gate was checked against
+  const appliedHdg = useRef<number | null>(null)  // heading actually applied to the map (post-animation)
+  const headingRaf = useRef<number | null>(null)
   // Bumped by the tilesloaded listener to force a re-centre after the map
   // has fully loaded (guarantees getZoom() is set, even with Cloud mapId).
   const [retryCount, setRetryCount] = useState(0)
+
+  // Smoothly rotate the map from its current heading to `target`, so the camera eases
+  // through turns instead of hard-snapping (matches SelfCarMarker's own transition cadence
+  // — see docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md §1.1 for why a hard setHeading() was
+  // the visible "jump" half of the double-rotation bug).
+  function animateHeadingTo(target: number) {
+    if (!map) return
+    if (headingRaf.current !== null) cancelAnimationFrame(headingRaf.current)
+
+    if (appliedHdg.current === null) {
+      // First heading ever applied on this map instance: snap, nothing to ease from.
+      map.setHeading(target)
+      appliedHdg.current = target
+      return
+    }
+
+    const start = appliedHdg.current
+    const delta = shortestAngleDelta(start, target)
+    const startTime = performance.now()
+
+    const step = (now: number) => {
+      const t = Math.min(1, (now - startTime) / HEADING_ANIM_MS)
+      const eased = easeOutCubic(t)
+      const value = (start + delta * eased + 360) % 360
+      map.setHeading(value)
+      appliedHdg.current = value
+      if (t < 1) {
+        headingRaf.current = requestAnimationFrame(step)
+      } else {
+        headingRaf.current = null
+      }
+    }
+    headingRaf.current = requestAnimationFrame(step)
+  }
+
+  useEffect(() => () => {
+    if (headingRaf.current !== null) cancelAnimationFrame(headingRaf.current)
+  }, [])
 
   useEffect(() => {
     if (!map) return
@@ -70,7 +121,7 @@ export default function RecenterMap({
     if (!moved && !padChgd && !hdgChgd) return
 
     if (typeof heading === 'number' && hdgChgd) {
-      map.setHeading(heading)
+      animateHeadingTo(heading)
       lastHdg.current = heading
     }
 

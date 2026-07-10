@@ -1,7 +1,11 @@
 import * as repo from './geo.repository'
 import * as google from './providers/google.provider'
+import type { RouteOptions } from './providers/google.provider'
 import type { GpsTrackPayload } from './geo.types'
-export type { PlaceSuggestion, PlaceDetail, RouteResult } from './providers/google.provider'
+import { getJSON, setWithTTL } from '@/db/redis'
+import { routeKey } from '@/constants/redis-keys'
+import { ROUTE_CACHE_TTL_SECONDS } from '@/constants/limits'
+export type { PlaceSuggestion, PlaceDetail, RouteResult, RouteStep } from './providers/google.provider'
 
 export async function getCities() {
   return repo.getActiveCities()
@@ -65,8 +69,15 @@ export async function getRoute(
   originLng: number,
   destLat: number,
   destLng: number,
+  opts?: RouteOptions,
 ) {
-  return google.getRoute(originLat, originLng, destLat, destLng)
+  const cacheKey = routeKey(originLat, originLng, destLat, destLng, opts)
+  const cached = await getJSON<google.RouteResult>(cacheKey)
+  if (cached) return cached
+
+  const result = await google.getRoute(originLat, originLng, destLat, destLng, opts)
+  await setWithTTL(cacheKey, JSON.stringify(result), ROUTE_CACHE_TTL_SECONDS)
+  return result
 }
 
 export async function classifyTrip(

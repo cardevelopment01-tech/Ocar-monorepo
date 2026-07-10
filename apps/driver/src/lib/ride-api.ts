@@ -54,6 +54,17 @@ export type TripHistoryItem = {
   driver_earning: string | null
 }
 
+export type RouteStep = {
+  instruction: string
+  distanceMetres: number
+  maneuverType: string
+  startLat: number
+  startLng: number
+  endLat: number
+  endLng: number
+  polyline: string
+}
+
 export const driverRideApi = {
   goOnline: async (params: {
     mode: 'standard' | 'return_cab'
@@ -191,11 +202,13 @@ export const driverRideApi = {
     originLng: number,
     destLat: number,
     destLng: number,
-  ): Promise<{ polyline: string; distanceKm: number; durationMin: number }> => {
-    const res = await api.get('/api/v1/geo/route', {
-      params: { originLat, originLng, destLat, destLng },
-    })
-    return res.data as { polyline: string; distanceKm: number; durationMin: number }
+    opts?: { language?: string; withSteps?: boolean },
+  ): Promise<{ polyline: string; distanceKm: number; durationMin: number; steps?: RouteStep[] }> => {
+    const params: Record<string, unknown> = { originLat, originLng, destLat, destLng }
+    if (opts?.language) params['language'] = opts.language
+    if (opts?.withSteps) params['withSteps'] = 'true'
+    const res = await api.get('/api/v1/geo/route', { params })
+    return res.data as { polyline: string; distanceKm: number; durationMin: number; steps?: RouteStep[] }
   },
 }
 

@@ -29,6 +29,18 @@ export const REFERRAL_REFEREE_BONUS = 50
 export const REFERRAL_UNLOCK_AFTER_RIDES = 1
 
 export const GEOCODE_CACHE_TTL_DAYS = 90
+// Backstop under whatever cadence callers refetch at (e.g. driver nav polling) —
+// see docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md Phase 1 item 3 cost math.
+export const ROUTE_CACHE_TTL_SECONDS = 90
+// Driver turn-by-turn reroute tuning (apps/driver/src/lib/useTurnByTurn.ts mirrors
+// these locally — the driver app can't import server constants — keep both in sync).
+export const OFF_ROUTE_THRESHOLD_METRES = 40
+export const OFF_ROUTE_CONSECUTIVE_FIXES = 3
+export const REROUTE_COOLDOWN_SECONDS = 12
+// Voice-announce distance-before-maneuver policy (Google doesn't supply this timing
+// metadata — see docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md §4 provider decision).
+export const MANEUVER_ANNOUNCE_FAR_METRES = 300
+export const MANEUVER_ANNOUNCE_NEAR_METRES = 100
 // Ceiling stays readable on a 360px route card and matches the majors' cap
 // (Uber tops out at 2 extra stops) — see docs/MULTI_STOP_PLAN.md §2.1.
 export const MAX_STOPS_PER_RIDE = 3

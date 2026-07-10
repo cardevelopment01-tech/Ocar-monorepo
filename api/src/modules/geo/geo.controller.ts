@@ -63,7 +63,13 @@ export async function getRoute(req: Request, res: Response, next: NextFunction):
       res.status(422).json({ error: 'originLat, originLng, destLat, destLng required', code: 'VALIDATION_ERROR' })
       return
     }
-    res.json(await service.getRoute(oLat, oLng, dLat, dLng))
+    const language = req.query['language'] as string | undefined
+    const opts: Parameters<typeof service.getRoute>[4] = {
+      withSteps: req.query['withSteps'] === 'true',
+      trafficAware: req.query['trafficAware'] === 'true',
+    }
+    if (language) opts.language = language
+    res.json(await service.getRoute(oLat, oLng, dLat, dLng, opts))
   } catch (err) { next(err) }
 }
 

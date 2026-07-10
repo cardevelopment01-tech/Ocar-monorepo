@@ -13,12 +13,19 @@ interface SelfCarMarkerProps {
   position: [number, number]
   areaName?: string | null
   loading?:  boolean
-  heading?:  number
+  /**
+   * Icon rotation, only meaningful on a north-up map (e.g. Home.tsx's idle view).
+   * On heading-up screens (NavigateToPickup, TripInProgress) RecenterMap already
+   * rotates the whole map to match travel direction — omit this prop there, or the
+   * icon rotates a second time on top of the map (see
+   * docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md §1.1, the double-rotation bug).
+   */
+  heading?: number
 }
 
-function SelfCarMarker({ position, areaName = null, loading = false, heading = 0 }: SelfCarMarkerProps) {
+function SelfCarMarker({ position, areaName = null, loading = false, heading }: SelfCarMarkerProps) {
   const showLabel = areaName !== null || loading
-  const rotation  = heading % 360
+  const rotation  = typeof heading === 'number' ? heading % 360 : undefined
 
   return (
     <AdvancedMarker position={{ lat: position[0], lng: position[1] }}>
@@ -83,8 +90,8 @@ function SelfCarMarker({ position, areaName = null, loading = false, heading = 0
         <div style={{
           width: 32,
           height: 52,
-          transform: `rotate(${rotation}deg)`,
-          transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1)',
+          transform: rotation !== undefined ? `rotate(${rotation}deg)` : undefined,
+          transition: rotation !== undefined ? 'transform 0.4s cubic-bezier(0.22,1,0.36,1)' : undefined,
           filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.35))',
         }}>
           <svg viewBox="0 0 32 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
@@ -111,5 +118,5 @@ export default memo(SelfCarMarker, (a, b) =>
   a.position[1] === b.position[1] &&
   a.areaName    === b.areaName    &&
   a.loading     === b.loading     &&
-  (a.heading ?? 0) === (b.heading ?? 0)
+  a.heading     === b.heading
 )

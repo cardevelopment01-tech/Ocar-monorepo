@@ -124,7 +124,7 @@ export default function RidePage() {
     return () => clearInterval(id)
   }, [rideStatus, ride?.origin_lat, ride?.origin_lng])
 
-  const { pos: smoothPos, heading: smoothHeading } = useInterpolatedPosition(driverPos, 0)
+  const { pos: smoothPos, heading: smoothHeading, headingKnown: smoothHeadingKnown } = useInterpolatedPosition(driverPos)
 
   const loadRide = useCallback(async () => {
     try {
@@ -357,6 +357,7 @@ export default function RidePage() {
           encodedPolyline={encodedPolyline}
           driverPos={smoothPos}
           driverHeading={smoothHeading}
+          driverHeadingKnown={smoothHeadingKnown}
           routeMode={routeMode}
           showDrop={hasDest}
           breadcrumb={breadcrumb}
