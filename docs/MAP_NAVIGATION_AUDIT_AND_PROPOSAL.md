@@ -3,6 +3,71 @@
 **Date:** 2026-07-09
 **Trigger:** Client feedback: "the map still stays the same small like it was and shows icon rather than helping driver follow the roads and traffic like Google Maps." Clients want Google-Maps-grade navigation with voice instructions.
 
+> **Status note (2026-07-10): Phases 1-3 are implemented and deployed to production.**
+> Decided (§4 open decisions): TBT provider is **Google Routes/Directions only** (no
+> Mapbox, no HERE) — extends the existing `google.provider.ts`, no new vendor/env var.
+> Voice language is Hindi-default + English-toggle, voice defaults **on** with a mute
+> control. Phase 2's traffic-tinted polyline (§2 "nice-to-have") was **not** built.
+>
+> **Phase 1 (driver)** — shipped across 5 commits (`4a262b3`, `866dd05`, plus the
+> heading/first-fix bug fix folded into `4a262b3`):
+> - §1.1 heading double-rotation fix: `RecenterMap.tsx` now eases `setHeading()` over
+>   ~350ms instead of hard-snapping; `SelfCarMarker.tsx` only rotates the icon when the
+>   map itself isn't already heading-up (kept optional `heading` prop for the north-up
+>   idle screen, `Home.tsx`, which still needs icon rotation).
+> - Backend: `google.provider.ts` `getRoute()` takes an optional `opts` (`language`,
+>   `withSteps`, `trafficAware`) and parses `legs[].steps[]` (incl. each step's own
+>   `polyline`, needed for accurate step-boundary snapping — not in the original plan,
+>   added because §4's plan only specified start/end points per step, which isn't enough
+>   to know which step you're on mid-curve). Redis-cached via existing `setWithTTL`/
+>   `getJSON` helpers, 90s TTL. **Deviation from §B.1**: did not build the full
+>   `RouteProvider` interface/registry abstraction — extended the existing functions
+>   directly instead, since there's only one active provider; the interface was
+>   speculative for a "maybe later" second provider that was explicitly declined.
+> - `apps/driver/src/lib/useTurnByTurn.ts` (new): route fetch + GPS-to-route snapping
+>   (`apps/driver/src/lib/geo.ts`'s new `nearestPointOnPolyline`) + off-route detection
+>   (40m / 3 consecutive fixes) + resilient reroute (never drops the stale route on a
+>   failed fetch, capped backoff 2s→16s, 12s cooldown). Replaces the old >200m-deviation
+>   />60s-staleness timer refetch in both `NavigateToPickup.tsx`/`TripInProgress.tsx`.
+> - `ManeuverBanner.tsx` (new) wired into both nav screens; permanent "Open in Google
+>   Maps" fallback button added to `TripInProgress.tsx` (previously only existed on
+>   `NavigateToPickup.tsx`).
+> - Voice: `useVoiceGuidance.ts` + `useNavPrefsStore.ts` (zustand-persist, mirrors
+>   `useSessionStore`'s pattern) + `VoiceToggleButton.tsx` + `HindiVoiceHint.tsx`.
+>   **Deviation from §3 item 5**: does not hand-build an "In 300m, turn left…"
+>   announcement sentence — speaks the backend's already-localized instruction text
+>   directly at two distance bands (300m, 100m) instead, to avoid fabricating unreviewed
+>   Hindi grammar. Flagged as worth a native-speaker review if richer phrasing is wanted.
+> - `RecenterMap.tsx` pitch (50°) + distance-based zoom (18/17/16), and `useWakeLock.ts`
+>   extracted from the two screens' duplicated inline logic.
+> - **Not built**: the dark map style during nav (§3 item 9) — needs a Cloud-based Map
+>   Style configured in the Google Cloud Console, not achievable from code alone.
+>
+> **Phase 2 (rider)** — shipped in `1fd8bb4`: `RecenterMap.tsx` ported the same smoothed
+> heading-rotation (built correctly from the start, not copying the driver app's
+> original hard-set bug), gated on `headingKnown` from `useInterpolatedPosition.ts`
+> (which itself was fixed to stop defaulting to a fake `heading=0` on the first GPS fix
+> — see §1.1). Live ETA (traffic-aware duration + distance) added to the ride status row
+> during the driver-pickup/driver-dest legs, refreshed on reroute rather than a timer.
+>
+> **Phase 3** — shipped in `390d9f9`: `maplibre-gl`/`react-map-gl` removed from both
+> apps' `package.json`, plus two leftover CSS `@import`s that were silently shipping
+> maplibre's stylesheet (driver app's CSS bundle dropped ~109kB → ~39kB).
+>
+> **Genuinely unverified** — none of the above has been confirmed on a real device or
+> real drive. Heading smoothness, off-route threshold tuning (40m/3 fixes), the
+> Android Chrome voice-queue-wedge-after-40-minutes failure mode, and Wake Lock across
+> screen-lock are all things §4/testing-section flagged as needing real-device
+> verification, not something achievable from this environment. Do that before
+> considering this client-ready.
+>
+> Also fixed along the way (not in this doc's original scope, found via user reports
+> while testing): `select-ride/page.tsx` never classified in-city vs outstation, so it
+> showed One Way/Round Trip tabs for in-city trips that would always 422 at booking
+> time (`0a4ccad`); Bhubaneswar's stored city boundary was a rough placeholder rectangle
+> that excluded real outskirts like AIIMS Sijua (`c8ea3fe`, still just a wider rectangle,
+> not a real polygon — flagged as needing an actual admin-drawn boundary eventually).
+
 ---
 
 ## 1. Current State (Audit)
