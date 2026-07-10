@@ -96,6 +96,19 @@ export default function ReferenceSelfie() {
     return stopCamera
   }, [])
 
+  // Re-attach an already-acquired stream once the <video> element mounts.
+  // It unmounts while the permission-denied/camera-error screens are shown,
+  // so a stream that resolves before the main UI re-renders would otherwise
+  // be silently dropped, leaving the user stuck on the loading spinner.
+  useEffect(() => {
+    if (!permissionDenied && !camError && stage === 'camera' && videoRef.current && streamRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current
+        videoRef.current.onloadedmetadata = () => setCameraReady(true)
+      }
+    }
+  }, [permissionDenied, camError, stage])
+
   async function startCamera() {
     setCamError('')
     setCameraReady(false)
