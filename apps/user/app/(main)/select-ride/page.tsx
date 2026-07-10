@@ -1,17 +1,22 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard, RotateCcw } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ArrowLeft, ArrowRightLeft, ChevronRight, Users, Zap, Clock, CreditCard, RotateCcw } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { rideApi, type FareEstimate, type StopInput } from '@/lib/ride-api'
+import { geoApi } from '@/lib/geo-api'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
 
 const SelectRideMapScene = dynamic(() => import('@/components/map/SelectRideMapScene'), { ssr: false })
+
+const EASE = [0.22, 1, 0.36, 1] as const
 
 type Category = { id: number; slug: string; display_name: string; max_passengers: number }
 
@@ -86,6 +91,33 @@ function SelectRideContent() {
     return raw ? new Date(raw) : null
   })
   const [schedulePickerOpen, setSchedulePickerOpen] = useState(false)
+
+  // One Way and Round Trip can never serve an in-city trip (docs/RIDE_TYPES_PLAN.md —
+  // Round Trip is outstation-only, Rental is in-city-only; the backend 422s this at
+  // booking time). This screen has no other guard against reaching it for an in-city
+  // destination, so classify on mount and bounce to /rental if it happens.
+  const [redirectToast, setRedirectToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    geoApi.classifyTrip(originLat, originLng, destinationLat, destinationLng)
+      .then(c => {
+        if (cancelled || c.scope !== 'in_city') return
+        const cityLabel = c.cityName ?? 'the city'
+        setRedirectToast(`That's inside ${cityLabel}, switching to City Rides`)
+        const params = new URLSearchParams({
+          originLat: String(originLat), originLng: String(originLng), originAddress,
+          destinationAddress, destinationLat: String(destinationLat), destinationLng: String(destinationLng),
+          originCityId: String(originCityId),
+        })
+        if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+        setTimeout(() => { if (!cancelled) router.replace(`/rental?${params.toString()}`) }, 1500)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  // Only the trip identity should trigger a reclassification, not every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originLat, originLng, destinationLat, destinationLng])
 
   // tripHours: from URL (round_trip from /round-trip page) or inline selection
   const tripHours = rideType === 'round_trip'
@@ -612,6 +644,45 @@ function SelectRideContent() {
           </button>
         </div>
       </div>
+
+      {/* In-city redirect toast */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {redirectToast && (
+            <motion.div
+              key="redirect-toast"
+              role="status"
+              aria-live="polite"
+              initial={{ opacity: 0, y: 16, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.95 }}
+              transition={{ duration: 0.24, ease: EASE }}
+              className="fixed left-1/2 z-[999] flex flex-col gap-2 px-5 py-3.5 rounded-2xl text-white overflow-hidden pointer-events-none"
+              style={{
+                bottom: 'max(84px, calc(env(safe-area-inset-bottom, 0px) + 76px))',
+                x: '-50%',
+                maxWidth: 'calc(100vw - 32px)',
+                background: 'linear-gradient(135deg, #4F46E5 0%, #1E1B4B 100%)',
+                boxShadow: '0 8px 32px rgba(79,70,229,0.35), 0 2px 8px rgba(0,0,0,0.2)',
+              }}
+            >
+              <div className="flex items-center gap-2.5">
+                <ArrowRightLeft size={15} strokeWidth={2.2} className="flex-shrink-0" />
+                <span className="text-[13px] font-semibold">{redirectToast}</span>
+              </div>
+              <div className="h-[3px] rounded-full bg-white/20 overflow-hidden">
+                <motion.div
+                  className="h-full bg-white/80 rounded-full"
+                  initial={{ width: '100%' }}
+                  animate={{ width: '0%' }}
+                  transition={{ duration: 1.5, ease: 'linear' }}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   )
 }
