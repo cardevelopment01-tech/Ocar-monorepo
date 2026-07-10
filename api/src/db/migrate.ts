@@ -12,8 +12,16 @@ if (!databaseUrl) {
 
 const pool = new Pool({ connectionString: databaseUrl })
 
+// Arbitrary fixed key — any two migrate.ts processes contend for the same
+// session-level lock, so only one can run migrations at a time. Prevents the
+// "CREATE TABLE IF NOT EXISTS" race that happens when two API containers
+// briefly overlap during a deploy (both start, both see a migration as
+// not-yet-applied, both try to create the same table at once).
+const MIGRATION_LOCK_KEY = 8927341
+
 async function migrate(): Promise<void> {
   const client = await pool.connect()
+  await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY])
 
   try {
     if (isFresh) {
@@ -103,6 +111,7 @@ async function migrate(): Promise<void> {
 
     console.log('Migration complete.')
   } finally {
+    await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY])
     client.release()
     await pool.end()
   }
