@@ -107,7 +107,15 @@ function RentalContent() {
   }
 
   function addDestination() {
-    router.push(`/search?${buildCarriedParams().toString()}`)
+    const params = buildCarriedParams()
+    // Don't carry the stale destination forward — search's auto-navigate effect
+    // fires as soon as both origin+destination are present and would bounce
+    // straight back to /rental before the user can type a new one.
+    params.delete('destinationLat')
+    params.delete('destinationLng')
+    params.delete('destinationAddress')
+    params.set('focus', 'destination')
+    router.push(`/search?${params.toString()}`)
   }
 
   function goToAddStop() {
