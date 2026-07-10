@@ -1,41 +1,20 @@
-import { pool } from '@/db/client'
+import * as repo from './notifications.repository'
+import { sendPush, type PushMessage } from './providers/push.provider'
 
-export async function logNotification(params: {
-  jobName: string
-  recipientPhone?: string
-  channel?: string
-  templateKey?: string
-  payload: Record<string, unknown>
-}): Promise<bigint> {
-  const res = await pool.query<{ id: string }>(
-    `INSERT INTO notification_logs (job_name, recipient_phone, channel, template_key, payload)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id`,
-    [
-      params.jobName,
-      params.recipientPhone ?? null,
-      params.channel ?? 'sms',
-      params.templateKey ?? null,
-      JSON.stringify(params.payload),
-    ]
-  )
-  return BigInt(res.rows[0]!.id)
-}
+// Re-exported unchanged so existing callers (e.g. the notifications worker,
+// which uses `Parameters<typeof notifService.logNotification>[0]`) keep working.
+export const logNotification = repo.logNotification
+export const markSent = repo.markSent
+export const markFailed = repo.markFailed
 
-export async function markSent(id: bigint, providerResponse?: unknown): Promise<void> {
-  await pool.query(
-    `UPDATE notification_logs
-     SET status = 'sent', sent_at = NOW(), provider_response = $2
-     WHERE id = $1`,
-    [id, providerResponse !== undefined ? JSON.stringify(providerResponse) : null]
-  )
-}
-
-export async function markFailed(id: bigint, errorMessage: string): Promise<void> {
-  await pool.query(
-    `UPDATE notification_logs
-     SET status = 'failed', error_message = $2
-     WHERE id = $1`,
-    [id, errorMessage]
-  )
+export async function pushToTokens(tokens: string[], msg: PushMessage): Promise<void> {
+  if (tokens.length === 0) return
+  try {
+    const { invalidTokens } = await sendPush(tokens, msg)
+    if (invalidTokens.length > 0) {
+      await repo.deleteDeviceTokens(invalidTokens)
+    }
+  } catch (err) {
+    console.error('[PUSH] pushToTokens failed:', err instanceof Error ? err.message : 'unknown error')
+  }
 }

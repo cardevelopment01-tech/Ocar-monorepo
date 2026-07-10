@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { type AdminProfile, getStoredAdmin, getAdminToken, getAdminRefreshToken, clearAdminAuth, adminAuthApi } from './auth'
 import api from './api'
+import { unregisterPush } from './push'
 
 interface AdminAuthContextType {
   admin: AdminProfile | null
@@ -53,6 +54,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     if (refreshToken) {
       void api.post('/api/v1/auth/logout', { refreshToken }).catch(() => undefined)
     }
+    void unregisterPush()
     clearAdminAuth()
     setAdmin(null)
     window.location.href = '/login'

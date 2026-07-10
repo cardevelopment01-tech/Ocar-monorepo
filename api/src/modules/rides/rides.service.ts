@@ -495,6 +495,7 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
   if (ride?.user_phone) {
     void queues[QUEUE_NAMES.NOTIFICATIONS].add('ride_accepted', {
       rideId:      rideId.toString(),
+      userId:      ride.user_id.toString(),
       userPhone:   ride.user_phone,
       driverName:  ride.driver_name ?? null,
       driverPhone: ride.driver_phone ?? null,
@@ -1075,6 +1076,7 @@ export async function verifyEndOTP(
   if (ride.user_phone) {
     void queues[QUEUE_NAMES.NOTIFICATIONS].add('ride_completed', {
       rideId:     rideId.toString(),
+      userId:     ride.user_id.toString(),
       userPhone:  ride.user_phone,
       driverName: ride.driver_name ?? null,
     }, { attempts: 2, removeOnComplete: 50, removeOnFail: 20 }).catch(() => {})

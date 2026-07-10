@@ -5,6 +5,7 @@ import OcarSpinner from '@/components/ui/OcarSpinner'
 import { motion, AnimatePresence } from 'framer-motion'
 import OtpInput from '@/components/ui/OtpInput'
 import api from '@/lib/api'
+import { registerPush } from '@/lib/push'
 import { useAuthStore, type DriverProfile } from '@/store/useAuthStore'
 
 type Step = 'phone' | 'otp'
@@ -105,6 +106,7 @@ export default function Login() {
       })
       const { tokens, principal } = res.data
       setAuth(tokens.accessToken, tokens.refreshToken, principal)
+      void registerPush()
       navigate(getOnboardingRoute(principal), { replace: true })
     } catch (err: unknown) {
       setOtp('')

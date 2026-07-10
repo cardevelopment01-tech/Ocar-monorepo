@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi } from '@/lib/ride-api'
 import api from '@/lib/api'
+import { unregisterPush } from '@/lib/push'
 
 const MENU_ITEMS: { label: string; sub: string; action: 'vehicle' | 'documents' | 'soon' | 'email' | 'terms' }[] = [
   { label: 'Vehicle Details',    sub: 'Registered vehicle',  action: 'vehicle'   },
@@ -63,6 +64,7 @@ export default function Profile() {
     if (refreshToken) {
       void api.post('/api/v1/auth/logout', { refreshToken }).catch(() => undefined)
     }
+    void unregisterPush()
     clearAuth()
     navigate('/login', { replace: true })
   }

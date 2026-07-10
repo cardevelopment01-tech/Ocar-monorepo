@@ -3,6 +3,7 @@ import { QUEUE_NAMES, redisConnection } from '@/jobs/queues'
 import { config } from '@/config'
 import { sendSms } from '@/providers/sms.provider'
 import * as notifService from '@/modules/notifications/notifications.service'
+import * as notifRepo from '@/modules/notifications/notifications.repository'
 import { processBroadcast, type BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import { processAckCheck, type AckCheckJobData } from '@/jobs/processors/ack-check.processor'
 import { pool } from '@/db/client'
@@ -29,6 +30,17 @@ export const notificationsWorker = new Worker(
       } catch (err) {
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
         throw err
+      }
+
+      try {
+        const adminTokens = await notifRepo.getAdminTokens()
+        await notifService.pushToTokens(adminTokens, {
+          title: 'New Driver Application',
+          body: `${data.driverName} submitted an application for review.`,
+          data: { type: 'driver_submitted_for_review', driverId: data.driverId },
+        })
+      } catch (err) {
+        console.error('[Worker] push failed for driver_submitted_for_review:', err)
       }
 
     } else if (job.name === 'otp_sms') {
@@ -74,9 +86,21 @@ export const notificationsWorker = new Worker(
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
         throw err
       }
+
+      try {
+        const adminTokens = await notifRepo.getAdminTokens()
+        await notifService.pushToTokens(adminTokens, {
+          title: 'SOS ALERT',
+          body: `Passenger triggered SOS during ride #${data.rideId}`,
+          data: { type: 'sos', rideId: data.rideId, lat: String(data.lat), lng: String(data.lng) },
+        })
+      } catch (err) {
+        console.error('[Worker] push failed for sos_alert:', err)
+      }
     } else if (job.name === 'ride_accepted') {
       const data = job.data as {
         rideId:      string
+        userId:      string
         userPhone:   string
         driverName:  string | null
         driverPhone: string | null
@@ -94,9 +118,21 @@ export const notificationsWorker = new Worker(
         throw err
       }
 
+      try {
+        const userTokens = await notifRepo.getTokensForOwner('user', BigInt(data.userId))
+        await notifService.pushToTokens(userTokens, {
+          title: 'Driver on the way',
+          body: `${data.driverName ?? 'Your driver'} has accepted your ride and is on the way.`,
+          data: { type: 'ride_accepted', rideId: data.rideId },
+        })
+      } catch (err) {
+        console.error('[Worker] push failed for ride_accepted:', err)
+      }
+
     } else if (job.name === 'ride_completed') {
       const data = job.data as {
         rideId:     string
+        userId:     string
         userPhone:  string
         driverName: string | null
       }
@@ -116,6 +152,17 @@ export const notificationsWorker = new Worker(
       } catch (err) {
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
         throw err
+      }
+
+      try {
+        const userTokens = await notifRepo.getTokensForOwner('user', BigInt(data.userId))
+        await notifService.pushToTokens(userTokens, {
+          title: 'Ride Complete',
+          body: 'Your ride is complete. Thank you for riding with Ocar!',
+          data: { type: 'ride_completed', rideId: data.rideId },
+        })
+      } catch (err) {
+        console.error('[Worker] push failed for ride_completed:', err)
       }
 
     } else if (job.name === 'broadcast_ride') {

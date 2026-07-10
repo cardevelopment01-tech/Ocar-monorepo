@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff, ArrowRight } from 'lucide-react'
 import { adminAuthApi, storeAdminAuth } from '@/lib/auth'
+import { registerPush } from '@/lib/push'
 
 export default function AdminLoginPage() {
   const router = useRouter()
@@ -26,6 +27,7 @@ export default function AdminLoginPage() {
     try {
       const { tokens, admin } = await adminAuthApi.login(email.trim().toLowerCase(), password)
       storeAdminAuth(tokens.accessToken, admin, tokens.refreshToken)
+      void registerPush()
       router.push('/overview')
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number; data?: { error?: string } } })?.response?.status

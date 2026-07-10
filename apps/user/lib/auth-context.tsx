@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { type UserProfile, getStoredUser, getToken, getRefreshToken, clearAuth } from './auth'
 import api from './api'
+import { registerPush, unregisterPush } from './push'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 
 interface AuthContextType {
@@ -48,6 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const fresh = res.data.principal
         setUser(fresh)
         localStorage.setItem('ocar_user_data', JSON.stringify(fresh))
+        void registerPush()
       } catch (err: unknown) {
         const status = (err as { response?: { status?: number } })?.response?.status
         if (status === 401) {
@@ -67,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (refreshToken) {
       void api.post('/api/v1/auth/logout', { refreshToken }).catch(() => undefined)
     }
+    void unregisterPush()
     clearAuth()
     setUser(null)
     window.location.href = '/login'

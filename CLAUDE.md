@@ -187,14 +187,15 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 | M07-B — Rides frontend | — | — | driver GoOnline/ActiveRide flow, user ride booking + tracking |
 | M08 — Payments | 008_m6_payments.sql + 011_wallet.sql | payments module (Razorpay webhook, wallet, ledger, commission) | admin payments page, user/driver wallet pages |
 | M09 — Safety | 009_m7_safety.sql | ratings/SOS/disputes services | admin disputes + SOS pages; user rating flow |
+| M10 — Notifications | 013_messaging.sql + 034_device_tokens.sql | notifications module (SMS via Fast2SMS fully live; push via FCM: provider/routes/worker wiring done) | user-app push token registration wired; driver/admin-app push registration not yet built |
+| M11 — Live Map | 010_m8_config.sql (config/flags portion still a stub) | admin socket-fed driver location endpoints | admin live-map page (`LiveMap.tsx`, real-time via Socket.io) |
+| M12 — Analytics | — | analytics module (repository/service/routes) | admin analytics page (revenue/rides/driver charts) |
 
 ### 🔲 TODO
 
-| Module | Migration stub | Status |
-|---|---|---|
-| M10 — Notifications | 013_messaging.sql | backend stub only (BullMQ queue wired, no SMS/push processor) |
-| M11 — Config/Flags + Live Map | 010_m8_config.sql | admin live-map page is a TODO stub |
-| M12 — Analytics | — | admin analytics page is a TODO stub |
+| Module | Status |
+|---|---|
+| Config/Flags | `010_m8_config.sql` (`system_config`, `feature_flags`) is still a stub — no admin UI or backend reads it |
 
 ---
 
@@ -255,7 +256,7 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 
 | Page | Status |
 |---|---|
-| overview | ⚠️ mock data (mockStats + mockRides hardcoded; layout SOS badge also reads mockSOS) |
+| overview | ✅ live (real aggregate stats; layout SOS badge wired to real data) |
 | drivers | ✅ live (list, detail slide-over, approve/reject/suspend) |
 | vehicles | ✅ live (categories, brands, models, fleet — 4 tabs) |
 | cities | ✅ live |
@@ -265,15 +266,15 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 | payments | ✅ live (wired to payments backend; hidden in DEMO_MODE) |
 | users | ✅ live (user list) |
 | rides | ✅ live (wired to admin rides backend; search, status filter, pagination) |
-| live-map | 🔲 TODO stub |
-| analytics | 🔲 TODO stub |
+| live-map | ✅ live (real-time driver tracking via Socket.io) |
+| analytics | ✅ live (revenue, rides, driver charts) |
 
 ---
 
 ## Known UI Caveats (not bugs — intentional placeholders)
 
 ### User app
-- Home saved places, recent ("Go again"), popular routes, and promo banner are **hardcoded constants**, not user-specific data from the backend
+- Home "recent trips" now comes from a real API; saved places, popular routes, and promo banner are still **hardcoded constants**
 - Profile "Account" menu items (Saved places, Payment methods, Notifications, Safety, Help & Support) are non-functional — no navigation wired yet
 - Payment method is display-only "Cash" — no payment selection flow yet
 - "Add new rider" (For me sheet) is `disabled`; "Add stops" shows a "coming soon" toast
@@ -282,13 +283,10 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 - Message driver button on ride tracking screen has no handler
 
 ### Driver app
-- Earnings page uses `mockEarnings` — not wired to real backend yet
-- Earnings/Wallet pages swap to `DemoBlock` when `DEMO_MODE=true`
-- Active-ride screens (NavigateToPickup, TripInProgress, etc.) swap to `DemoBlock` in DEMO_MODE
+- Earnings page now fetches real data; no remaining `DemoBlock`/mock swaps in Earnings, Wallet, or active-ride screens
 
 ### Admin portal
-- Overview dashboard is entirely mock data — needs wiring to real aggregate endpoints
-- SOS/notification badge in admin layout reads `mockSOS` count
+- No remaining known caveats — overview, live-map, and analytics are all wired to real endpoints
 
 ---
 

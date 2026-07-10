@@ -29,6 +29,10 @@ const envSchema = z.object({
   FAST2SMS_API_KEY: z.string().default(''),
   ADMIN_PHONE: z.string().default(''),
 
+  // Push (FCM)
+  FCM_SERVICE_ACCOUNT_KEY: z.string().default(''),  // full service-account JSON, single-line
+  FCM_PROJECT_ID: z.string().default(''),
+
   // Storage
   S3_BUCKET_NAME: z.string().min(1),
   S3_REGION: z.string().default('ap-south-1'),

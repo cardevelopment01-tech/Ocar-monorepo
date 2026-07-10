@@ -17,6 +17,7 @@ import paymentsRouter from '@/modules/payments/payments.routes'
 import safetyRouter     from '@/modules/safety/safety.routes'
 import usersRouter      from '@/modules/users/users.routes'
 import analyticsRouter  from '@/modules/analytics/analytics.routes'
+import notificationsRouter from '@/modules/notifications/notifications.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -68,6 +69,7 @@ export function createApp(): Application {
   apiRouter.use('/safety',    safetyRouter)
   apiRouter.use('/users',     usersRouter)
   apiRouter.use('/admin/analytics', analyticsRouter)
+  apiRouter.use('/notifications', notificationsRouter)
   app.use('/api/v1', apiRouter)
 
   // 7. 404 handler
