@@ -18,6 +18,8 @@ export type RouteResult = {
   distanceKm: number
   durationMin: number
   polyline: string
+  /** Present only when trafficAware was requested and the provider supports it. */
+  trafficDurationMin?: number
 }
 
 export type TripClassification = {
@@ -54,10 +56,11 @@ export const geoApi = {
     originLng: number,
     destLat: number,
     destLng: number,
+    opts?: { trafficAware?: boolean },
   ): Promise<RouteResult> => {
-    const res = await api.get('/api/v1/geo/route', {
-      params: { originLat, originLng, destLat, destLng },
-    })
+    const params: Record<string, unknown> = { originLat, originLng, destLat, destLng }
+    if (opts?.trafficAware) params['trafficAware'] = 'true'
+    const res = await api.get('/api/v1/geo/route', { params })
     return res.data as RouteResult
   },
 

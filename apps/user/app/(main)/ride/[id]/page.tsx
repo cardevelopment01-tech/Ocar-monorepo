@@ -81,6 +81,7 @@ export default function RidePage() {
   const [rideStatus,     setRideStatus]     = useState<string>('requested')
   const [driverPos,      setDriverPos]      = useState<[number, number] | undefined>(undefined)
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
+  const [liveEta, setLiveEta] = useState<{ etaMin: number; distanceKm: number } | null>(null)
   const [socketOk,       setSocketOk]       = useState(false)
   const [cancelling,     setCancelling]     = useState(false)
   const [startOtp,       setStartOtp]       = useState<string | null>(null)
@@ -327,11 +328,20 @@ export default function RidePage() {
 
     const seq = ++fetchSeq.current
     lastFetch.current = { mode: routeMode, origin, dest, at: Date.now() }
-    if (modeChanged) setEncodedPolyline(undefined)
+    if (modeChanged) { setEncodedPolyline(undefined); setLiveEta(null) }
 
-    geoApi.getRoute(origin[0], origin[1], dest[0], dest[1])
-      .then(r => { if (fetchSeq.current === seq) setEncodedPolyline(r.polyline || undefined) })
-      .catch(() => { if (fetchSeq.current === seq) setEncodedPolyline(undefined) })
+    // Live ETA only makes sense once a driver is actually en route (pickup or dest leg) —
+    // meaningless during the pre-assignment search phase or the post-trip recap.
+    const wantsEta = routeMode === 'driver-pickup' || routeMode === 'driver-dest'
+
+    geoApi.getRoute(origin[0], origin[1], dest[0], dest[1], { trafficAware: wantsEta })
+      .then(r => {
+        if (fetchSeq.current !== seq) return
+        setEncodedPolyline(r.polyline || undefined)
+        if (wantsEta) setLiveEta({ etaMin: Math.round(r.trafficDurationMin ?? r.durationMin), distanceKm: r.distanceKm })
+        else setLiveEta(null)
+      })
+      .catch(() => { if (fetchSeq.current === seq) { setEncodedPolyline(undefined); setLiveEta(null) } })
   }, [routeMode, driverPos, userPos, pickupPos, dropPos, ride])
 
   const status    = (rideStatus as StatusKey) in STATUS_CONFIG ? (rideStatus as StatusKey) : 'requested'
@@ -425,6 +435,12 @@ export default function RidePage() {
             </div>
 
             {status === 'requested' && <SearchingDots />}
+            {liveEta && (
+              <div className="flex-shrink-0 text-right">
+                <p className="text-sm font-bold text-gray-900 leading-tight tabular-nums">{liveEta.etaMin} min</p>
+                <p className="text-[11px] text-gray-500 tabular-nums">{liveEta.distanceKm.toFixed(1)} km</p>
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
 

@@ -47,7 +47,7 @@ export default function RideMapScene({
       {isRecap
         ? (showDrop && <FitBounds positions={[pickupPos, dropPos]} paddingBottom={40} />)
         : driverPos
-          ? <RecenterMap center={driverPos} />
+          ? <RecenterMap center={driverPos} heading={driverHeading} headingKnown={driverHeadingKnown} />
           : (showDrop && <FitBounds positions={[pickupPos, dropPos]} paddingBottom={40} />)
       }
       <LocationPin position={pickupPos} variant="pickup" />
