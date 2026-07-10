@@ -15,6 +15,7 @@ import { EASE, GLASS, fmtReturn } from '@/lib/constants'
 import { useDriverLocation } from '@/lib/useDriverLocation'
 import { useTurnByTurn } from '@/lib/useTurnByTurn'
 import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
+import { useWakeLock } from '@/lib/useWakeLock'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
@@ -44,22 +45,7 @@ export default function NavigateToPickup() {
     activeRide?.pickupLng ?? DEFAULT_LNG,
   ]
 
-  // Keep screen awake while navigating to pickup. Re-acquire on page resume
-  // because the browser auto-releases WakeLock when the page is hidden.
-  useEffect(() => {
-    let lock: WakeLockSentinel | null = null
-    const acquire = () => {
-      if ('wakeLock' in navigator && document.visibilityState === 'visible') {
-        navigator.wakeLock.request('screen').then(l => { lock = l }).catch(() => {})
-      }
-    }
-    acquire()
-    document.addEventListener('visibilitychange', acquire)
-    return () => {
-      document.removeEventListener('visibilitychange', acquire)
-      lock?.release()
-    }
-  }, [])
+  useWakeLock()
 
   const { position, heading: selfHeading } = useDriverLocation({
     highAccuracy: true,
@@ -128,7 +114,14 @@ export default function NavigateToPickup() {
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
           <DriverMapView initialCenter={mapCenter} zoom={15}>
-            <RecenterMap center={mapCenter} heading={selfHeading} topPadding={100} bottomPadding={220} />
+            <RecenterMap
+              center={mapCenter}
+              heading={selfHeading}
+              topPadding={100}
+              bottomPadding={220}
+              pitch={50}
+              distanceToManeuver={distanceToManeuver}
+            />
             <RoutePolyline encoded={encodedPolyline} variant="pickup-leg" />
             {position && <SelfCarMarker position={position} />}
             <LocationPin position={pickupPos} variant="pickup" />

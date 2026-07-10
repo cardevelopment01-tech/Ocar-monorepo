@@ -8,6 +8,21 @@ interface RecenterMapProps {
   animate?: boolean
   /** When set, rotates the map to match driver heading. */
   heading?: number
+  /** Camera tilt in degrees (e.g. 45-60 for a heading-up navigation view). */
+  pitch?: number
+  /**
+   * Distance (metres) to the next maneuver — when provided, zooms in as the driver
+   * approaches a turn and back out on straightaways. Omit on non-navigation screens
+   * (e.g. the idle/online map) to leave zoom under manual/default control.
+   */
+  distanceToManeuver?: number | null
+}
+
+// Tighter near an upcoming turn, wider with more room to see ahead on a straightaway.
+function zoomForDistance(distanceMetres: number): number {
+  if (distanceMetres < 100) return 18
+  if (distanceMetres < 300) return 17
+  return 16
 }
 
 // Shortest signed delta (degrees) from `from` to `to`, e.g. 350 -> 10 gives +20, not -340.
@@ -48,6 +63,8 @@ export default function RecenterMap({
   topPadding = 0,
   animate = true,
   heading,
+  pitch,
+  distanceToManeuver,
 }: RecenterMapProps) {
   const map = useMap()
   const last       = useRef<[number, number] | null>(null)
@@ -55,6 +72,8 @@ export default function RecenterMap({
   const lastHdg    = useRef<number>(-1)     // last heading value the ≥2° gate was checked against
   const appliedHdg = useRef<number | null>(null)  // heading actually applied to the map (post-animation)
   const headingRaf = useRef<number | null>(null)
+  const lastPitch  = useRef<number | null>(null)
+  const lastZoom   = useRef<number | null>(null)
   // Bumped by the tilesloaded listener to force a re-centre after the map
   // has fully loaded (guarantees getZoom() is set, even with Cloud mapId).
   const [retryCount, setRetryCount] = useState(0)
@@ -96,6 +115,21 @@ export default function RecenterMap({
   useEffect(() => () => {
     if (headingRaf.current !== null) cancelAnimationFrame(headingRaf.current)
   }, [])
+
+  useEffect(() => {
+    if (!map || typeof pitch !== 'number') return
+    if (lastPitch.current === pitch) return
+    lastPitch.current = pitch
+    map.setTilt(pitch)
+  }, [map, pitch])
+
+  useEffect(() => {
+    if (!map || distanceToManeuver == null) return
+    const target = zoomForDistance(distanceToManeuver)
+    if (lastZoom.current === target) return
+    lastZoom.current = target
+    map.setZoom(target)
+  }, [map, distanceToManeuver])
 
   useEffect(() => {
     if (!map) return

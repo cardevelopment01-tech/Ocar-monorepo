@@ -17,6 +17,7 @@ import { EASE, GLASS, fmtReturn } from '@/lib/constants'
 import { useDriverLocation } from '@/lib/useDriverLocation'
 import { useTurnByTurn } from '@/lib/useTurnByTurn'
 import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
+import { useWakeLock } from '@/lib/useWakeLock'
 
 const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
@@ -104,22 +105,7 @@ export default function TripInProgress() {
   // it look like the driver has already reached the destination.
   const mapCenter: [number, number] = position ?? dropPos
 
-  // Screen wake lock: re-acquire on page resume because the browser
-  // auto-releases WakeLock when the page is hidden.
-  useEffect(() => {
-    let lock: WakeLockSentinel | null = null
-    const acquire = () => {
-      if ('wakeLock' in navigator && document.visibilityState === 'visible') {
-        navigator.wakeLock.request('screen').then(l => { lock = l }).catch(() => {})
-      }
-    }
-    acquire()
-    document.addEventListener('visibilitychange', acquire)
-    return () => {
-      document.removeEventListener('visibilitychange', acquire)
-      lock?.release()
-    }
-  }, [])
+  useWakeLock()
 
   // Nav target is the current pending stop when one exists, else the final drop —
   // the hook refetches automatically whenever this destination identity changes,
@@ -177,7 +163,14 @@ export default function TripInProgress() {
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
           <DriverMapView initialCenter={mapCenter} zoom={15}>
-            <RecenterMap center={mapCenter} heading={selfHeading} topPadding={100} bottomPadding={220} />
+            <RecenterMap
+              center={mapCenter}
+              heading={selfHeading}
+              topPadding={100}
+              bottomPadding={220}
+              pitch={50}
+              distanceToManeuver={distanceToManeuver}
+            />
             {hasNavTarget && (
               <RoutePolyline encoded={encodedPolyline} />
             )}
