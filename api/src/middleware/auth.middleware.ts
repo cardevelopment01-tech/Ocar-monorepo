@@ -60,7 +60,8 @@ export function authenticate(): RequestHandler {
         // anything else — exempt only the routes needed to actually enroll
         // (and logout, so a stuck admin always has a way out).
         // TODO(SHIP-BLOCKER): hardcoded bypass, see TOTP_DEV_NOTE.md — remove before shipping
-        const mustEnrollTotp = false && MANDATORY_TOTP_ROLES.has(admin.role) && !admin.totp_enabled
+        const { role: adminRole, totp_enabled: totpEnabled } = admin
+        const mustEnrollTotp = false && MANDATORY_TOTP_ROLES.has(adminRole) && !totpEnabled
         const totpEnrollmentExempt =
           req.originalUrl.startsWith('/api/v1/admin/totp') || req.originalUrl.startsWith('/api/v1/auth/logout')
         if (mustEnrollTotp && !totpEnrollmentExempt) {
