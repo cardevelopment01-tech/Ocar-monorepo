@@ -1,5 +1,6 @@
 import { Server } from 'socket.io'
 import type { Server as HttpServer } from 'http'
+import { createAdapter } from '@socket.io/redis-adapter'
 import { verifyAccessToken } from '@/lib/jwt'
 import { config } from '@/config'
 import { pool } from '@/db/client'
@@ -29,6 +30,13 @@ export function initSocketServer(httpServer: HttpServer): Server {
     pingTimeout: 60000,
     pingInterval: 25000,
   })
+
+  // Without this, io.to(room).emit(...) only reaches sockets connected to THIS
+  // process — a client connected to a different API instance would silently
+  // never receive the event the moment this runs as more than one instance.
+  const pubClient = redis.duplicate()
+  const subClient = redis.duplicate()
+  io.adapter(createAdapter(pubClient, subClient))
 
   io.use((socket, next) => {
     const token =
@@ -127,18 +135,22 @@ export function initSocketServer(httpServer: HttpServer): Server {
     socket.on('join:ride', (rideId: string) => {
       const callerSub = user?.sub
       if (!callerSub || !rideId) return
+      // Join immediately so an event fired the instant this arrives isn't missed
+      // while the authorization check below is still in flight (Socket.io doesn't
+      // buffer per-room events for late joiners); revoke membership if the check fails.
+      void socket.join(`ride:${rideId}`)
       void pool.query<{ user_id: string; driver_id: string | null }>(
         `SELECT user_id::text, driver_id::text FROM rides WHERE id = $1`,
         [BigInt(rideId)]
       ).then((result) => {
         const ride = result.rows[0]
-        if (!ride) return
-        const isParticipant =
+        const isParticipant = !!ride && (
           ride.user_id === callerSub ||
           ride.driver_id === callerSub ||
           user?.role === 'admin'
-        if (isParticipant) void socket.join(`ride:${rideId}`)
-      }).catch(() => {})
+        )
+        if (!isParticipant) void socket.leave(`ride:${rideId}`)
+      }).catch(() => { void socket.leave(`ride:${rideId}`) })
     })
 
     socket.on('leave:ride', (rideId: string) => {
