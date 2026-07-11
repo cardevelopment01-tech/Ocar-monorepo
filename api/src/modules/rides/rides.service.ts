@@ -758,6 +758,18 @@ export async function cancelRide(
     cancelledBy: 'user',
     reasonCode: reasonCode ?? null,
   })
+
+  // Ride was still broadcasting (no driver had accepted yet) — those drivers
+  // never joined the ride:{id} room, so the status update above never reached
+  // them. Without this, their incoming-request card sits until the broadcast
+  // window times out on its own.
+  if (stage === 'before_dispatch' || stage === 'before_acceptance') {
+    const notifiedDriverIds = await repo.cancelAllAssignments(rideId)
+    for (const driverId of notifiedDriverIds) {
+      socketEvents.sendRequestExpired(driverId, rideId.toString())
+    }
+  }
+
   return { success: true }
 }
 

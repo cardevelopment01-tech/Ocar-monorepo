@@ -42,7 +42,7 @@ export default function App() {
   const navigate = useNavigate()
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
   const { isOnline, setOnline, setOffline } = useSessionStore()
-  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, clearRide, activeRide, updateStop } = useRideStore()
+  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, setRestoreChecked, clearRide, activeRide, updateStop } = useRideStore()
   const { fetchUnreadCount, addLive } = useNotificationsStore()
   const [accepting, setAccepting] = useState(false)
   const [rideCancelled, setRideCancelled] = useState(false)
@@ -67,51 +67,74 @@ export default function App() {
   // Moved here from Home so it runs regardless of which page the driver lands on.
   useEffect(() => {
     if (!isAuthenticated) return
-    driverRideApi.getCurrentSession()
-      .then(async session => {
-        if (session && (session.status === 'online' || session.status === 'on_trip')) {
-          setOnline(Number(session.id), Number(session.vehicle_id), Number(session.category_id))
-          connectDriverSocket()
-          if (session.status === 'on_trip') {
-            const ride = await driverRideApi.getActiveRide()
-            if (!ride) { clearRide(); return }
-            const prev = useRideStore.getState().activeRide
-            const activeRideInput: Parameters<typeof setActiveRide>[0] = {
-              id: ride.id,
-              status: ride.status,
-              pickup: ride.origin_address ?? prev?.pickup ?? 'Pickup',
-              drop: ride.destination_address ?? prev?.drop ?? (ride.ride_type === 'rental' ? 'Hourly rental' : 'Destination'),
-              pickupLat: ride.origin_lat,
-              pickupLng: ride.origin_lng,
-              fare: ride.total_estimated != null
-                ? parseFloat(ride.total_estimated)
-                : (prev?.fare ?? 0),
-              rideType: ride.ride_type,
-            }
-            if (ride.dest_lat    != null) activeRideInput.dropLat       = ride.dest_lat
-            if (ride.dest_lng    != null) activeRideInput.dropLng       = ride.dest_lng
-            if (ride.user_phone  != null) activeRideInput.userPhone     = ride.user_phone
-            if (ride.user_name   != null) activeRideInput.userName      = ride.user_name
-            if (ride.return_at   != null) activeRideInput.returnAt      = ride.return_at
-            if (ride.trip_hours  != null) activeRideInput.tripHours     = ride.trip_hours
-            if (ride.started_at  != null) activeRideInput.rideStartedAt = ride.started_at
-            if (ride.stops.length > 0) activeRideInput.stops = ride.stops.map(s => ({
-              id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
-              address: s.address, status: s.status, reached_at: s.reached_at,
-            }))
-            setActiveRide(activeRideInput)
-            getDriverSocket().emit('join:ride', ride.id)
-            if (ride.status === 'accepted')        navigate('/ride/navigate', { replace: true })
-            else if (ride.status === 'driver_arrived') navigate('/ride/otp', { replace: true })
-            else if (ride.status === 'in_progress')    navigate('/ride/in-progress', { replace: true })
+    let cancelled = false
+
+    const restoreSessionOnce = async () => {
+      const session = await driverRideApi.getCurrentSession()
+      if (cancelled) return
+      if (session && (session.status === 'online' || session.status === 'on_trip')) {
+        setOnline(Number(session.id), Number(session.vehicle_id), Number(session.category_id))
+        connectDriverSocket()
+        if (session.status === 'on_trip') {
+          const ride = await driverRideApi.getActiveRide()
+          if (cancelled) return
+          if (!ride) { clearRide(); setRestoreChecked(); return }
+          const prev = useRideStore.getState().activeRide
+          const activeRideInput: Parameters<typeof setActiveRide>[0] = {
+            id: ride.id,
+            status: ride.status,
+            pickup: ride.origin_address ?? prev?.pickup ?? 'Pickup',
+            drop: ride.destination_address ?? prev?.drop ?? (ride.ride_type === 'rental' ? 'Hourly rental' : 'Destination'),
+            pickupLat: ride.origin_lat,
+            pickupLng: ride.origin_lng,
+            fare: ride.total_estimated != null
+              ? parseFloat(ride.total_estimated)
+              : (prev?.fare ?? 0),
+            rideType: ride.ride_type,
           }
-        } else {
-          setOffline()
-          disconnectDriverSocket()
-          clearRide()
+          if (ride.dest_lat    != null) activeRideInput.dropLat       = ride.dest_lat
+          if (ride.dest_lng    != null) activeRideInput.dropLng       = ride.dest_lng
+          if (ride.user_phone  != null) activeRideInput.userPhone     = ride.user_phone
+          if (ride.user_name   != null) activeRideInput.userName      = ride.user_name
+          if (ride.return_at   != null) activeRideInput.returnAt      = ride.return_at
+          if (ride.trip_hours  != null) activeRideInput.tripHours     = ride.trip_hours
+          if (ride.started_at  != null) activeRideInput.rideStartedAt = ride.started_at
+          if (ride.stops.length > 0) activeRideInput.stops = ride.stops.map(s => ({
+            id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
+            address: s.address, status: s.status, reached_at: s.reached_at,
+          }))
+          setActiveRide(activeRideInput)
+          getDriverSocket().emit('join:ride', ride.id)
+          if (ride.status === 'accepted')        navigate('/ride/navigate', { replace: true })
+          else if (ride.status === 'driver_arrived') navigate('/ride/otp', { replace: true })
+          else if (ride.status === 'in_progress')    navigate('/ride/in-progress', { replace: true })
         }
-      })
-      .catch(() => {})
+      } else {
+        setOffline()
+        disconnectDriverSocket()
+        clearRide()
+      }
+      setRestoreChecked()
+    }
+
+    // Transient failures (network blip, rate limit) get one retry before we give
+    // up. On final failure we deliberately do NOT clear the ride or mark
+    // restoreChecked — we couldn't confirm there's no active ride, so we'd
+    // rather leave whatever persisted state is on screen than evict the driver
+    // from a trip we simply failed to verify.
+    const restoreSession = async (isRetry = false): Promise<void> => {
+      try {
+        await restoreSessionOnce()
+      } catch {
+        if (!isRetry && !cancelled) {
+          await new Promise(r => setTimeout(r, 2000))
+          if (!cancelled) await restoreSession(true)
+        }
+      }
+    }
+
+    void restoreSession()
+    return () => { cancelled = true }
   }, [isAuthenticated]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Notifications: fetch unread badge count on session start, live socket
@@ -170,6 +193,22 @@ export default function App() {
     socket.on('ride:request', onRideRequest)
     return () => { socket.off('ride:request', onRideRequest) }
   }, [isOnline, setIncomingRequest])
+
+  // Dismiss the incoming-request card the moment the ride it's for is no
+  // longer available — either another driver accepted it, or (for a ride
+  // that's still broadcasting) the rider cancelled before anyone accepted.
+  // Without this the card just sits until its own countdown expires.
+  useEffect(() => {
+    if (!isOnline) return
+    const socket = getDriverSocket()
+    const onRequestExpired = (data: { rideId: string }) => {
+      if (useRideStore.getState().incomingRequest?.rideId === data.rideId) {
+        clearIncomingRequest()
+      }
+    }
+    socket.on('ride:request_expired', onRequestExpired)
+    return () => { socket.off('ride:request_expired', onRequestExpired) }
+  }, [isOnline, clearIncomingRequest])
 
   // Listen for user-initiated cancellation while a ride is active.
   // Scoped to activeRide.id so it attaches/detaches with the ride lifecycle.

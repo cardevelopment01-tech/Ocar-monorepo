@@ -200,7 +200,7 @@ export default function TripInProgress() {
       {/* Top bar */}
       <div
         className="absolute top-0 left-0 right-0 px-4"
-        style={{ zIndex: 10, paddingTop: 'max(env(safe-area-inset-top), 2.5rem)' }}
+        style={{ zIndex: 10, paddingTop: 'calc(max(env(safe-area-inset-top), 2.5rem) + 56px)' }}
       >
         <AnimatePresence>
           {currentStep && (
@@ -403,7 +403,7 @@ export default function TripInProgress() {
       <SOSButton
         rideId={activeRide?.id ?? ''}
         onSOS={handleSOS}
-        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 224px)', right: '16px', zIndex: 50 }}
+        style={{ top: 'max(env(safe-area-inset-top), 1rem)', right: '16px', bottom: 'auto', zIndex: 50 }}
       />
       <VoiceToggleButton style={{ bottom: 'calc(env(safe-area-inset-bottom) + 344px)', left: '16px' }} />
       <HindiVoiceHint active={!!currentStep} />

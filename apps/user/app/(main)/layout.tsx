@@ -15,12 +15,28 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const router = useRouter()
 
   // On mount, if the user has an active ride but isn't on the tracking page,
-  // redirect them there so a reload never loses mid-ride state.
+  // redirect them there so a reload never loses mid-ride state. Retries once
+  // on failure (network blip, rate limit) before giving up — previously a
+  // failed check silently no-op'd and stranded the user on Home with no way
+  // back into the ride.
   useEffect(() => {
     if (pathname.startsWith('/ride/')) return
-    rideApi.getActiveRide().then(res => {
-      if (res?.rideId) router.replace(`/ride/${res.rideId}`)
-    })
+    let cancelled = false
+
+    const check = async (isRetry = false): Promise<void> => {
+      try {
+        const res = await rideApi.getActiveRide()
+        if (!cancelled && res?.rideId) router.replace(`/ride/${res.rideId}`)
+      } catch {
+        if (!isRetry && !cancelled) {
+          await new Promise(r => setTimeout(r, 2000))
+          if (!cancelled) await check(true)
+        }
+      }
+    }
+
+    void check()
+    return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

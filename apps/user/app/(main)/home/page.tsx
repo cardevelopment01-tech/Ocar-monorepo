@@ -106,12 +106,20 @@ export default function HomePage() {
   const [collapsed,   setCollapsed]   = useState(false)
   const [resolving,   setResolving]   = useState(false)
   const [recentTrips, setRecentTrips] = useState<RideHistoryItem[]>([])
+  const [resumeRideId, setResumeRideId] = useState<string | null>(null)
   const fetched = useRef(false)
 
   useEffect(() => {
     void rideApi.getHistory(1, 3)
       .then(r => setRecentTrips(r.rides.filter(t => t.status === 'completed').slice(0, 2)))
       .catch(() => {})
+  }, [])
+
+  // Fallback for a failed/slow active-ride check in the layout (network blip,
+  // rate limit): if one still exists, offer a manual way back in instead of
+  // leaving the user stranded on Home with no active-ride UI.
+  useEffect(() => {
+    void rideApi.getActiveRide().then(res => setResumeRideId(res?.rideId ?? null))
   }, [])
 
   useEffect(() => {
@@ -394,6 +402,25 @@ export default function HomePage() {
         }}
       >
         <div className="px-4 pt-4 pb-28 flex flex-col gap-5">
+
+          {/* Resume-trip banner: shown when an active ride exists but the
+              layout's redirect-on-mount check failed or hasn't landed yet. */}
+          {resumeRideId && (
+            <motion.button
+              onClick={() => router.push(`/ride/${resumeRideId}`)}
+              className="w-full flex items-center gap-3 bg-primary rounded-2xl px-4 py-3.5"
+              style={{ boxShadow: SHADOW }}
+              variants={section}
+              whileTap={{ scale: 0.98 }}
+              transition={SPRING}
+            >
+              <span className="w-2 h-2 rounded-full bg-white flex-shrink-0 animate-pulse" />
+              <span className="flex-1 min-w-0 text-left text-sm font-bold text-white">
+                Trip in progress — tap to resume
+              </span>
+              <ArrowRight size={16} className="text-white flex-shrink-0" />
+            </motion.button>
+          )}
 
           {/* Services */}
           <motion.div variants={section}>

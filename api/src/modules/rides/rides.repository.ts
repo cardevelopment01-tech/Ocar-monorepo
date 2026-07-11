@@ -743,6 +743,21 @@ export async function acceptAssignment(
   }
 }
 
+// Called when a still-broadcasting ('requested') ride is cancelled — mirrors
+// the cleanup acceptAssignment() does for the drivers who lost the accept
+// race, so drivers holding an unanswered incoming-request card get told to
+// dismiss it instead of waiting out the full broadcast window.
+export async function cancelAllAssignments(rideId: bigint): Promise<string[]> {
+  const res = await pool.query<{ driver_id: string }>(
+    `UPDATE ride_assignments
+     SET status = 'cancelled', cancelled_at = now()
+     WHERE ride_id = $1 AND status = 'offered'
+     RETURNING driver_id::text`,
+    [rideId]
+  )
+  return res.rows.map(r => r.driver_id)
+}
+
 export async function getUserRideHistory(
   userId: bigint,
   limit: number,

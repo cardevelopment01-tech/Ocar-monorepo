@@ -260,4 +260,49 @@ Reported after client tested with live videos. Five new bugs surfaced:
 
 ---
 
+## Round 3 — Client Message (2026-07-11)
+
+Raw feedback from client after a fresh testing pass on driver + user panels. Split below into **actual bugs** (regressions in shipped features) and **net-new feature requests** the client is describing as "issues" but were never built.
+
+### Bugs (real regressions — prioritize first)
+
+| # | Issue | Severity | Category | Status |
+|---|---|---|---|---|
+| B1 | Ongoing trip disappears on refresh/back-nav (driver **and** user panel) — no way to resume/complete the trip | Critical | State / UX | 🔲 Pending — appears to be a recurrence/variant of V1 (fixed for user app reload) not covering driver app or in-app back-navigation |
+| B2 | Repeated cancellations (2-3+) degrade both panels — rider panel stuck on "finding drivers"/"no cab," driver panel goes stale-online (online but not receiving broadcasts) | Critical | Real-time / Matching | 🔲 Pending — likely broadcast queue (`broadcast.processor.ts`) or driver session state not resetting cleanly after repeated cancel cycles |
+| B3 | SOS button on driver panel is positioned awkwardly (fixed at an odd spot) | Low | UI | 🔲 Pending — reposition to a top corner |
+
+### B1 — Trip state lost on refresh/back-nav
+- **Current:** Driver or user refreshes, or navigates back, mid-ride → active ride view is lost, app returns to the main/home page with no way back into the ride.
+- **Expected:** Both apps always resume the active ride on load/remount (same pattern as V1's fix, but V1 only closed this for the user app on page *reload* — this report covers driver app too, and in-app back-navigation, not just browser reload).
+- **Scope:** Driver app (persist active ride id + resume-on-mount check, mirroring what shipped for user app), user app (extend V1 fix to also catch in-app back-nav, not just full reload).
+
+### B2 — System slows down after repeated cancellations
+- **Current:** Cancelling a booking 2-3+ times in a row (from either side) causes both panels to lag/slow to refresh; rider sees no drivers / stuck "finding driver," driver stays marked online but stops receiving new ride broadcasts.
+- **Expected:** Cancel-and-rebook cycles should be clean — no queue backlog, no stale driver-online state.
+- **Scope:** API — audit `broadcast.processor.ts` fan-out and driver session/availability reset logic after a `ride_cancellations` write; check for orphaned BullMQ jobs or `driver_location_snapshots.is_available` not being restored after a ride is cancelled mid-broadcast.
+
+### B3 — SOS button placement (driver panel)
+- **Current:** SOS button sits at an awkward fixed position on the driver active-ride screen.
+- **Expected:** Move to a corner, top of screen — out of the way of primary controls, still reachable.
+- **Scope:** Driver app UI only, no backend change.
+
+---
+
+### Feature requests (not built yet — scope for roadmap, not "fixes")
+
+| # | Request | Notes |
+|---|---|---|
+| F1 | Live navigation map on driver panel for the full trip, auto-opened to the 1st drop; multi-stop sequencing UI ("reached stop N" → close stop → proceed to next) for both point-to-point multi-stop and rental-package rides; user can edit/add destinations mid-trip | Overlaps `MULTI_STOP_PLAN.md` and `MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md` — driver-side nav map does not exist yet; `ride_stops` table is unused (same gap as Issue 4 above) |
+| F2 | Driver rates user after trip completion (with reasons) | Only user→driver rating exists (M09). New rating direction + UI. |
+| F3 | SOS button on user panel + live trip-sharing with a third party | User-side SOS never built (M09 only covers driver SOS). Trip-sharing is fully new. |
+| F4 | Context-aware cancellation reasons: different reason sets pre-pickup vs. post-arrival, for both user and driver; driver-side cancel option after arriving at pickup; pickup wait-timer (2-3 min) with driver-initiated cancel after timeout; wait-time overage billed to the customer as a waiting charge (from timer end until OTP entry) | Whole cancellation-policy subsystem — none of this exists today. Needs a design pass (state machine + fare engine hook) before building. |
+| F5 | Mask/hide user's real phone number from driver (incl. during calls) | This is **Issue 7** from Round 1 (phone masking) — still open, client is re-flagging the same launch-blocking gap. No new scope, just a priority signal. |
+| F6 | Show user's rating to the driver (pre-trip) | New — driver panel doesn't currently surface the passenger's rating. |
+| F7 | Merge Khurda + Cuttack into Bhubaneswar's city-ride business radius instead of treating them as outstation-only | Geo/business-rule change: extend or redraw the Bhubaneswar `cities.boundary` PostGIS polygon (or introduce a metro-zone grouping) so Rental/city-ride is offered across all three, matching how Ola/Uber/Rapido zone the area. Needs a product decision on pricing within the merged zone, not just a boundary edit. |
+
+**Client also requested a physical meeting** to walk through remaining issues and testing together — flagged as still open, not yet scheduled.
+
+---
+
 *Grounding references: `api/src/modules/rides/rides.service.ts`, `api/src/websocket/socket.server.ts`, `api/src/jobs/workers/notifications.worker.ts`, `docs/RIDE_FLOWS_AUDIT.md`, `docs/RIDE_TYPES_PLAN.md`.*

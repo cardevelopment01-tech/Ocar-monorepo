@@ -30,7 +30,7 @@ const DEFAULT_LNG = 85.8245
 
 export default function NavigateToPickup() {
   const navigate = useNavigate()
-  const { activeRide, updateRideStatus, clearRide } = useRideStore()
+  const { activeRide, restoreChecked, updateRideStatus, clearRide } = useRideStore()
   const { sessionId } = useSessionStore()
   const [arriving, setArriving] = useState(false)
   const [error, setError]       = useState<string | null>(null)
@@ -38,9 +38,13 @@ export default function NavigateToPickup() {
   const [cancelReason,     setCancelReason]     = useState<string | null>(null)
   const [cancellingRide,   setCancellingRide]   = useState(false)
 
+  // Only evict once session-restore has definitively confirmed there's no
+  // active ride — activeRide is briefly null on a hard refresh before the
+  // persisted store rehydrates / the restore fetch resolves, and redirecting
+  // on that transient null is what used to strand drivers on Home mid-trip.
   useEffect(() => {
-    if (!activeRide) navigate('/', { replace: true })
-  }, [activeRide, navigate])
+    if (!activeRide && restoreChecked) navigate('/', { replace: true })
+  }, [activeRide, restoreChecked, navigate])
 
   const pickupPos: [number, number] = [
     activeRide?.pickupLat ?? DEFAULT_LAT,
@@ -135,7 +139,7 @@ export default function NavigateToPickup() {
       {/* Top bar */}
       <div
         className="absolute top-0 left-0 right-0 px-4"
-        style={{ zIndex: 10, paddingTop: 'max(env(safe-area-inset-top), 2.5rem)' }}
+        style={{ zIndex: 10, paddingTop: 'calc(max(env(safe-area-inset-top), 2.5rem) + 56px)' }}
       >
         <AnimatePresence>
           {currentStep && (
@@ -248,7 +252,11 @@ export default function NavigateToPickup() {
         </button>
       </motion.div>
 
-      <SOSButton rideId={activeRide?.id ?? ''} onSOS={handleSOS} />
+      <SOSButton
+        rideId={activeRide?.id ?? ''}
+        onSOS={handleSOS}
+        style={{ top: 'max(env(safe-area-inset-top), 1rem)', right: '16px', bottom: 'auto', zIndex: 50 }}
+      />
       <VoiceToggleButton style={{ bottom: '100px', left: '16px' }} />
       <HindiVoiceHint active={!!currentStep} />
 

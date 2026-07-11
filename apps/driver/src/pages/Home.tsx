@@ -8,6 +8,7 @@ import { IndianRupee, Clock, Star, TrendingUp, Bell, Wallet, ChevronRight, Locat
 import OnlineToggle from '@/components/ui/OnlineToggle'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
+import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi, type EarningsSummary } from '@/lib/ride-api'
 import api from '@/lib/api'
 import { disconnectDriverSocket } from '@/lib/socket'
@@ -34,6 +35,7 @@ export default function Home() {
   const navigate = useNavigate()
   const driver   = useAuthStore(s => s.driver)
   const { isOnline, sessionId, mode, destinationCityName, setOffline } = useSessionStore()
+  const activeRide = useRideStore(s => s.activeRide)
   const { unreadCount, openSheet } = useNotificationsStore()
   const prefersReducedMotion = useReducedMotion()
 
@@ -258,6 +260,15 @@ export default function Home() {
 
   const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 
+  // Fallback for a failed/slow session-restore fetch (App.tsx): if the store
+  // still has an active ride but we somehow landed on Home, offer a manual
+  // way back in instead of leaving the driver stranded with no active-ride UI.
+  const resumeRoute =
+    activeRide?.status === 'accepted'        ? '/ride/navigate'
+    : activeRide?.status === 'driver_arrived' ? '/ride/otp'
+    : activeRide?.status === 'in_progress'    ? '/ride/in-progress'
+    : null
+
   return (
     <div className="relative w-full h-[100dvh] overflow-hidden bg-surface-2">
 
@@ -315,8 +326,31 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Resume-trip banner: shown when the store has an active ride but we
+          landed on Home anyway (restore-fetch failure fallback). Takes
+          priority over the return-cab/GPS banners below since getting back
+          into the trip is the more urgent action. */}
+      {resumeRoute && (
+        <div
+          className="absolute left-4 right-4"
+          style={{ top: 'max(calc(env(safe-area-inset-top) + 80px), 96px)', zIndex: 10 }}
+        >
+          <button
+            onClick={() => navigate(resumeRoute, { replace: true })}
+            className="w-full flex items-center gap-3 rounded-2xl px-4 py-3 bg-primary active:scale-[0.98] transition-transform"
+            style={{ boxShadow: '0 4px 16px rgba(79,70,229,0.28)' }}
+          >
+            <span className="w-2 h-2 rounded-full bg-white flex-shrink-0 animate-pulse-soft" />
+            <span className="flex-1 min-w-0 text-left text-white text-[13px] font-bold">
+              Trip in progress — tap to resume
+            </span>
+            <ChevronRight size={16} className="text-white flex-shrink-0" />
+          </button>
+        </div>
+      )}
+
       {/* Return Cab mode indicator, floats below the header */}
-      {isOnline && mode === 'return_cab' && (
+      {!resumeRoute && isOnline && mode === 'return_cab' && (
         <div
           className="absolute left-4 right-4"
           style={{ top: 'max(calc(env(safe-area-inset-top) + 80px), 96px)', zIndex: 10 }}
@@ -334,7 +368,7 @@ export default function Home() {
       )}
 
       {/* GPS error, floats below the header, above the map */}
-      {geoError && (
+      {!resumeRoute && geoError && (
         <div
           className="absolute left-4 right-4"
           style={{ top: 'max(calc(env(safe-area-inset-top) + 80px), 96px)', zIndex: 10 }}

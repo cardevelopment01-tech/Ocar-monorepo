@@ -32,6 +32,10 @@ export interface ActiveRide {
 
 interface RideState {
   activeRide: ActiveRide | null
+  // True once the session-restore fetch in App.tsx has definitively determined
+  // there is (or isn't) an active ride. Pages gate hard "no ride, go home"
+  // redirects on this so a refresh can't evict a driver before restore finishes.
+  restoreChecked: boolean
   incomingRequest: {
     rideId: string
     pickup: string
@@ -49,6 +53,7 @@ interface RideState {
   } | null
 
   setActiveRide:     (ride: ActiveRide) => void
+  setRestoreChecked: () => void
   updateRideStatus:  (status: string) => void
   setRideStartedAt:  (ts: string) => void
   updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null) => void
@@ -61,10 +66,14 @@ export const useRideStore = create<RideState>()(
   persist(
     (set) => ({
       activeRide:       null,
+      restoreChecked:   false,
       incomingRequest:  null,
 
       setActiveRide: (ride) =>
         set({ activeRide: ride }),
+
+      setRestoreChecked: () =>
+        set({ restoreChecked: true }),
 
       updateRideStatus: (status) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, status } : null })),
