@@ -204,6 +204,11 @@ function RentalContent() {
       if (originCityId) params.originCityId = originCityId
       if (scheduledFor) params.scheduledFor = scheduledFor.toISOString()
       if (stops.length > 0) params.stops = stops
+      if (hasDestination && destLat && destLng) {
+        params.destinationLat = parseFloat(destLat)
+        params.destinationLng = parseFloat(destLng)
+        params.destinationAddress = destAddress!
+      }
       const result = await rideApi.createBooking(params)
       router.push(scheduledFor ? '/history?scheduled=1' : `/ride/${result.rideId}`)
     } catch {
