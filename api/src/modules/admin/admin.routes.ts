@@ -20,7 +20,7 @@ router.get('/sessions/active', controller.getAdminActiveSessions)
 // ─── Drivers ──────────────────────────────────────────────────────────────────
 router.get('/drivers',               controller.getDrivers)
 router.get('/drivers/:id',           controller.getDriver)
-router.patch('/drivers/:id/status',  controller.updateDriverStatus)
+router.patch('/drivers/:id/status',  requireAdmin('super_admin', 'ops_admin'), controller.updateDriverStatus)
 
 // ─── Vehicle categories ───────────────────────────────────────────────────────
 router.get('/vehicles/categories',       requireAdmin('super_admin', 'ops_admin'), controller.getCategories)
@@ -71,14 +71,14 @@ router.patch('/geo/cities/:id', requireAdmin('super_admin', 'ops_admin'), contro
 
 // ─── Safety — SOS ─────────────────────────────────────────────────────────────
 router.get('/safety/sos',                    controller.getAdminSosAlerts)
-router.patch('/safety/sos/:id/acknowledge',  controller.acknowledgeAdminSos)
-router.patch('/safety/sos/:id/resolve',      controller.resolveAdminSos)
+router.patch('/safety/sos/:id/acknowledge',  requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.acknowledgeAdminSos)
+router.patch('/safety/sos/:id/resolve',      requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.resolveAdminSos)
 
 // ─── Safety — Disputes ────────────────────────────────────────────────────────
 router.get('/safety/disputes',           controller.getAdminDisputes)
 router.get('/safety/disputes/:id',       controller.getAdminDispute)
-router.patch('/safety/disputes/:id/assign',  controller.assignAdminDispute)
-router.patch('/safety/disputes/:id/resolve', controller.resolveAdminDispute)
+router.patch('/safety/disputes/:id/assign',  requireAdmin('super_admin', 'support_admin'), controller.assignAdminDispute)
+router.patch('/safety/disputes/:id/resolve', requireAdmin('super_admin', 'support_admin'), controller.resolveAdminDispute)
 
 // ─── Rides ────────────────────────────────────────────────────────────────────
 router.get('/rides', controller.getAdminRides)
@@ -88,9 +88,9 @@ router.post('/rides/:id/force-resolve', requireAdmin('super_admin', 'ops_admin')
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 router.get('/users',                controller.getAdminUsers)
-router.patch('/users/:id/status',   controller.patchAdminUserStatus)
+router.patch('/users/:id/status',   requireAdmin('super_admin', 'ops_admin'), controller.patchAdminUserStatus)
 
 // ─── Payments ─────────────────────────────────────────────────────────────────
-router.get('/payments', controller.getAdminPayments)
+router.get('/payments', requireAdmin('super_admin', 'finance_admin'), controller.getAdminPayments)
 
 export default router

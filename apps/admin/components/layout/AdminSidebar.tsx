@@ -6,7 +6,7 @@ import { DEMO_MODE } from '@/lib/demo'
 import {
   LayoutDashboard, Map, Car, Truck, Users, User, AlertTriangle, Shield,
   CreditCard, Wallet, RotateCcw, Tag, Settings, ToggleLeft,
-  BarChart2, Camera, LogOut, MapPin, MessageSquare, UserCog,
+  BarChart2, Camera, LogOut, MapPin, MessageSquare, UserCog, ScrollText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdminRole } from '@/lib/mock-data'
@@ -62,6 +62,7 @@ const NAV: NavGroup[] = [
       { href: '/config/feature-flags', label: 'Feature Flags', icon: ToggleLeft, roles: ['super_admin'], demo: true },
       { href: '/config/notification-templates', label: 'Notification Templates', icon: MessageSquare, roles: ['super_admin'] },
       { href: '/admins', label: 'Admins', icon: UserCog, roles: ['super_admin'] },
+      { href: '/audit-log', label: 'Audit Log', icon: ScrollText, roles: ['super_admin'] },
     ],
   },
   {

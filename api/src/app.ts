@@ -20,6 +20,7 @@ import analyticsRouter  from '@/modules/analytics/analytics.routes'
 import notificationsRouter from '@/modules/notifications/notifications.routes'
 import templatesRouter from '@/modules/notifications/templates.routes'
 import adminInvitesRouter from '@/modules/admin-invites/admin-invites.routes'
+import adminAuditRouter from '@/modules/admin-audit/admin-audit.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -76,6 +77,7 @@ export function createApp(): Application {
   apiRouter.use('/users',     usersRouter)
   apiRouter.use('/admin/analytics', analyticsRouter)
   apiRouter.use('/admin/notification-templates', templatesRouter)
+  apiRouter.use('/admin/audit-log', adminAuditRouter)
   apiRouter.use('/notifications', notificationsRouter)
   app.use('/api/v1', apiRouter)
 
