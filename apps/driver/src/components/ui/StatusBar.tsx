@@ -1,5 +1,6 @@
 import { Bell } from 'lucide-react'
 import OcarLogoMark from '@/components/ui/OcarLogoMark'
+import { useNotificationsStore } from '@/store/useNotificationsStore'
 
 interface StatusBarProps {
   isOnline: boolean
@@ -7,6 +8,8 @@ interface StatusBarProps {
 }
 
 export default function StatusBar({ isOnline, earningsToday }: StatusBarProps) {
+  const { unreadCount, openSheet } = useNotificationsStore()
+
   return (
     <div
       className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-5"
@@ -56,10 +59,17 @@ export default function StatusBar({ isOnline, earningsToday }: StatusBarProps) {
 
         <button
           aria-label="Notifications"
-          className="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer transition-transform active:scale-90"
+          onClick={openSheet}
+          className="relative w-9 h-9 rounded-full flex items-center justify-center cursor-pointer transition-transform active:scale-90"
           style={{ background: 'rgba(79,70,229,0.05)', border: '1px solid rgba(79,70,229,0.08)' }}
         >
           <Bell size={15} className="text-text-secondary" strokeWidth={1.8} />
+          {unreadCount > 0 && (
+            <span
+              className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500"
+              style={{ boxShadow: '0 0 0 1.5px #FFFFFF' }}
+            />
+          )}
         </button>
       </div>
     </div>

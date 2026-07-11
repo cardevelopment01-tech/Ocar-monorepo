@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
+import { useNotifications } from '@/lib/notifications-context'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import {
   Search, Bell, User,
@@ -95,6 +96,7 @@ function greeting() {
 export default function HomePage() {
   const router   = useRouter()
   const { user } = useAuth()
+  const { unreadCount } = useNotifications()
   const name     = user?.name?.split(' ')[0] ?? 'there'
   const reduce   = useReducedMotion()
 
@@ -284,13 +286,20 @@ export default function HomePage() {
             transition={{ delay: 0.18, duration: 0.4 }}
           >
             <motion.button
+              onClick={() => router.push('/notifications')}
               aria-label="Notifications"
-              className="w-9 h-9 rounded-full flex items-center justify-center"
+              className="relative w-9 h-9 rounded-full flex items-center justify-center"
               style={{ background: 'rgba(255,255,255,0.10)' }}
               whileTap={{ scale: 0.86 }}
               transition={SPRING}
             >
               <Bell size={16} strokeWidth={1.6} color="rgba(255,255,255,0.85)" />
+              {unreadCount > 0 && (
+                <span
+                  className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500"
+                  style={{ boxShadow: '0 0 0 1.5px #0F0D1A' }}
+                />
+              )}
             </motion.button>
             <motion.button
               onClick={() => router.push('/profile')}

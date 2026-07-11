@@ -12,6 +12,7 @@ import { driverRideApi, type EarningsSummary } from '@/lib/ride-api'
 import api from '@/lib/api'
 import { disconnectDriverSocket } from '@/lib/socket'
 import { useDriverLocation } from '@/lib/useDriverLocation'
+import { useNotificationsStore } from '@/store/useNotificationsStore'
 
 const DriverMapView = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap   = lazy(() => import('@/components/map/RecenterMap'))
@@ -33,6 +34,7 @@ export default function Home() {
   const navigate = useNavigate()
   const driver   = useAuthStore(s => s.driver)
   const { isOnline, sessionId, mode, destinationCityName, setOffline } = useSessionStore()
+  const { unreadCount, openSheet } = useNotificationsStore()
   const prefersReducedMotion = useReducedMotion()
 
   // ── Refs ────────────────────────────────────────────────────────────────────
@@ -298,10 +300,17 @@ export default function Home() {
           </div>
           <button
             aria-label="Notifications"
-            className="w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+            onClick={openSheet}
+            className="relative w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
             style={GLASS}
           >
             <Bell size={17} className="text-text-secondary" strokeWidth={1.8} />
+            {unreadCount > 0 && (
+              <span
+                className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500"
+                style={{ boxShadow: '0 0 0 1.5px #FFFFFF' }}
+              />
+            )}
           </button>
         </div>
       </div>

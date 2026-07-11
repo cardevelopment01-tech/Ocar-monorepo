@@ -18,6 +18,7 @@ import safetyRouter     from '@/modules/safety/safety.routes'
 import usersRouter      from '@/modules/users/users.routes'
 import analyticsRouter  from '@/modules/analytics/analytics.routes'
 import notificationsRouter from '@/modules/notifications/notifications.routes'
+import templatesRouter from '@/modules/notifications/templates.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -69,6 +70,7 @@ export function createApp(): Application {
   apiRouter.use('/safety',    safetyRouter)
   apiRouter.use('/users',     usersRouter)
   apiRouter.use('/admin/analytics', analyticsRouter)
+  apiRouter.use('/admin/notification-templates', templatesRouter)
   apiRouter.use('/notifications', notificationsRouter)
   app.use('/api/v1', apiRouter)
 

@@ -162,12 +162,13 @@ Vehicle state enum: `pending | active | inactive | blacklisted`
 
 Rooms:
 - `driver:{driverId}` — private channel per driver (joined on connect if role=driver)
+- `user:{userId}` — private channel per user (joined on connect if role=user)
 - `ride:{rideId}` — user + driver tracking a ride (joined via `join:ride` event)
-- `admin:ops` — live map for admin (joined on connect if role=admin)
+- `admin:ops` — live map + shared ops channel for admins (joined on connect if role=admin)
 
 Server initialised in `api/src/websocket/socket.server.ts`.
 `getIO()` — get the io instance from anywhere in the API.
-`socketEvents.*` — typed emit helpers.
+`socketEvents.*` — typed emit helpers, including `sendNotification(ownerType, ownerId, data)` which emits `notification:new` to the owner's room (or `admin:ops` for admins).
 
 ---
 
@@ -187,7 +188,7 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 | M07-B — Rides frontend | — | — | driver GoOnline/ActiveRide flow, user ride booking + tracking |
 | M08 — Payments | 008_m6_payments.sql + 011_wallet.sql | payments module (Razorpay webhook, wallet, ledger, commission) | admin payments page, user/driver wallet pages |
 | M09 — Safety | 009_m7_safety.sql | ratings/SOS/disputes services | admin disputes + SOS pages; user rating flow |
-| M10 — Notifications | 013_messaging.sql + 034_device_tokens.sql | notifications module (SMS via Fast2SMS fully live; push via FCM: provider/routes/worker wiring done) | user-app push token registration wired; driver/admin-app push registration not yet built |
+| M10 — Notifications | 013_messaging.sql + 034_device_tokens.sql + 035_notifications_feed.sql + 036_notification_templates.sql | notifications module (SMS via Fast2SMS + push via FCM fully live; `notification_logs` doubles as a per-owner in-app feed with read/unread state; `notifyOwner()`/`notifyAllAdmins()` persist + push + socket-emit in one call; `notification_templates` render engine — worker fully rewired off hardcoded strings) | push registration (FCM) in all three apps; in-app notification bell/feed live in all three (driver bottom sheet, user `/notifications` page, admin dropdown) with live socket updates + foreground toast; admin "Notification Templates" config page for editing SMS/push copy |
 | M11 — Live Map | 010_m8_config.sql (config/flags portion still a stub) | admin socket-fed driver location endpoints | admin live-map page (`LiveMap.tsx`, real-time via Socket.io) |
 | M12 — Analytics | — | analytics module (repository/service/routes) | admin analytics page (revenue/rides/driver charts) |
 
@@ -195,7 +196,7 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 
 | Module | Status |
 |---|---|
-| Config/Flags | `010_m8_config.sql` (`system_config`, `feature_flags`) is still a stub — no admin UI or backend reads it |
+| Config/Flags | `010_m8_config.sql` (`system_config`, `feature_flags`) is still a stub — no admin UI or backend reads it. Note: `notification_templates` (also part of the M8 diagram) is done — see M10 above; it shipped ahead of the rest of M8 because the notification feature needed it. |
 
 ---
 
@@ -231,6 +232,17 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 016_seed.sql           — cities (Bhubaneswar/Cuttack/Puri), vehicle lookup data,
                          rate cards (5 categories × 3 ride types), stop charges,
                          rental packages (sedan + SUV)
+...
+034_device_tokens.sql        — device_tokens (FCM push token registry per owner)
+035_notifications_feed.sql   — replaces 013's notification_logs with a per-owner outbox:
+                                owner_type/owner_id, channel, status, type, title, body,
+                                payload, read_at (in-app read state). channel='in_app' rows
+                                are the feed; other channels are delivery-tracking only.
+                                Plain table, not partitioned (see file header for why).
+036_notification_templates.sql — notification_templates: slug/channel/locale-keyed
+                                templates with {{variable}} body/subject + variables_schema,
+                                seeded with the exact copy notifications.worker.ts used to
+                                hardcode. version bumps on edit.
 ```
 
 ---
@@ -248,6 +260,11 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 /api/v1/payments/*     — driver/user wallet, Razorpay webhook
 /api/v1/safety/*       — ratings (GET tags, POST rating), SOS, disputes
 /api/v1/users/*        — user profile (GET/PATCH /me)
+/api/v1/notifications/*                — device token register/unregister; in-app feed:
+                                          GET / (list, cursor-paginated), GET /unread-count,
+                                          PATCH /:id/read, POST /read-all
+/api/v1/admin/notification-templates/* — super_admin only: GET / (list), PATCH /:id (edit,
+                                          bumps version), PATCH /:id/active (toggle)
 ```
 
 ---
@@ -268,6 +285,7 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 | rides | ✅ live (wired to admin rides backend; search, status filter, pagination) |
 | live-map | ✅ live (real-time driver tracking via Socket.io) |
 | analytics | ✅ live (revenue, rides, driver charts) |
+| config/notification-templates | ✅ live (edit SMS/push copy per template, version bump on save, active/inactive toggle) |
 
 ---
 
@@ -275,7 +293,7 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 
 ### User app
 - Home "recent trips" now comes from a real API; saved places, popular routes, and promo banner are still **hardcoded constants**
-- Profile "Account" menu items (Saved places, Payment methods, Notifications, Safety, Help & Support) are non-functional — no navigation wired yet
+- Profile "Account" menu items (Saved places, Payment methods, Safety, Help & Support) are non-functional — no navigation wired yet. **Notifications is now live** (real in-app feed, wired)
 - Payment method is display-only "Cash" — no payment selection flow yet
 - "Add new rider" (For me sheet) is `disabled`; "Add stops" shows a "coming soon" toast
 - Bottom nav: only **My Trip** and **Profile** are active — Messages and Help show "SOON"
@@ -305,7 +323,11 @@ api/src/lib/storage.ts             — S3 uploadFile(), getPresignedUrl(), delet
 api/src/middleware/auth.middleware.ts — authenticate() — sets req.user/driver/admin
 api/src/jobs/queues/index.ts       — BullMQ queue instances (NOTIFICATIONS, GPS_FLUSH, etc.)
 api/src/jobs/processors/broadcast.processor.ts — ride broadcast fan-out
-api/src/websocket/socket.server.ts — Socket.io init + socketEvents helpers
+api/src/jobs/workers/notifications.worker.ts — sends SMS/push for 6 events via renderTemplate()
+api/src/websocket/socket.server.ts — Socket.io init + socketEvents helpers (incl. sendNotification)
+api/src/modules/notifications/notifications.service.ts — notifyOwner()/notifyAllAdmins(): persist
+                                                           feed row + push + socket emit in one call
+api/src/modules/notifications/templates.service.ts      — renderTemplate(slug, channel, context, locale)
 
 apps/admin/lib/api.ts              — axios instance (admin)
 apps/admin/lib/auth.ts             — admin login helpers
@@ -314,13 +336,17 @@ apps/admin/lib/city-api.ts         — cityApi
 apps/admin/lib/pricing-api.ts      — pricingApi
 apps/admin/lib/vehicle-api.ts      — vehicleCategoryApi, fleetApi, vehicleDocApi
 apps/admin/lib/safety-api.ts       — safetyApi (SOS alerts, disputes)
+apps/admin/lib/notifications-context.tsx — NotificationsProvider/useNotifications (bell dropdown)
+apps/admin/lib/templates-api.ts    — templatesApi (notification templates admin page)
 
 apps/user/lib/auth.ts              — user auth helpers
 apps/user/lib/auth-context.tsx     — AuthContext provider
 apps/user/lib/ride-api.ts          — ride booking + tracking API
 apps/user/lib/safety-api.ts        — ratings + disputes API
+apps/user/lib/notifications-context.tsx — NotificationsProvider/useNotifications (feed + toast)
 
 apps/driver/src/lib/onboarding-api.ts — document upload, identity save, submit
+apps/driver/src/store/useNotificationsStore.ts — notifications feed/bottom-sheet/toast state
 ```
 
 ---

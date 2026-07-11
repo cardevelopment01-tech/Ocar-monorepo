@@ -26,10 +26,14 @@ import PendingReview from '@/pages/Onboarding/PendingReview'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useRideStore } from '@/store/useRideStore'
+import { useNotificationsStore } from '@/store/useNotificationsStore'
 import api from '@/lib/api'
 import type { DriverProfile } from '@/store/useAuthStore'
+import type { NotificationItem } from '@/lib/notifications-api'
 import { driverRideApi } from '@/lib/ride-api'
 import { connectDriverSocket, disconnectDriverSocket, getDriverSocket } from '@/lib/socket'
+import NotificationsSheet from '@/components/ui/NotificationsSheet'
+import NotificationToast from '@/components/ui/NotificationToast'
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
@@ -39,6 +43,7 @@ export default function App() {
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
   const { isOnline, setOnline, setOffline } = useSessionStore()
   const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, clearRide, activeRide, updateStop } = useRideStore()
+  const { fetchUnreadCount, addLive } = useNotificationsStore()
   const [accepting, setAccepting] = useState(false)
   const [rideCancelled, setRideCancelled] = useState(false)
   const [forceEndedMessage, setForceEndedMessage] = useState<string | null>(null)
@@ -107,6 +112,22 @@ export default function App() {
         }
       })
       .catch(() => {})
+  }, [isAuthenticated]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Notifications: fetch unread badge count on session start, live socket
+  // updates while the app is open (any tab, driver's private room joined
+  // server-side on connect).
+  useEffect(() => {
+    if (!isAuthenticated) return
+    void fetchUnreadCount()
+  }, [isAuthenticated]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const socket = getDriverSocket()
+    const onNotification = (item: NotificationItem) => addLive(item)
+    socket.on('notification:new', onNotification)
+    return () => { socket.off('notification:new', onNotification) }
   }, [isAuthenticated]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ride request listener, mounted at App level so requests arrive on any tab.
@@ -355,6 +376,9 @@ export default function App() {
 
       {/* Persistent tab bar: renders null on non-main routes */}
       <BottomNav />
+
+      <NotificationsSheet />
+      <NotificationToast />
     </>
   )
 }

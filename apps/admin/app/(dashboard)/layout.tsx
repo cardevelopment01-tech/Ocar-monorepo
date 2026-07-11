@@ -3,6 +3,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import AdminSidebar from '@/components/layout/AdminSidebar'
 import AdminTopBar from '@/components/layout/AdminTopBar'
+import NotificationToast from '@/components/layout/NotificationToast'
 import { useAdminAuth } from '@/lib/auth-context'
 import type { AdminRole } from '@/lib/mock-data'
 import { safetyApi } from '@/lib/safety-api'
@@ -23,6 +24,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   '/config/rate-cards':     { title: 'Rate Cards',     subtitle: 'Fare configuration' },
   '/config/system-config':  { title: 'System Config',  subtitle: 'Platform configuration keys' },
   '/config/feature-flags':  { title: 'Feature Flags',  subtitle: 'Toggle platform features' },
+  '/config/notification-templates': { title: 'Notification Templates', subtitle: 'SMS & push message copy' },
   '/analytics':             { title: 'Reports',        subtitle: 'Analytics and exports' },
 }
 
@@ -68,12 +70,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           subtitle={meta.subtitle}
           adminName={adminName}
           adminInitials={adminInitials}
-          notificationCount={sosCount}
         />
         <main className="flex-1 overflow-y-auto bg-canvas">
           <div className="p-6 animate-fade-in">{children}</div>
         </main>
       </div>
+      <NotificationToast />
     </div>
   )
 }

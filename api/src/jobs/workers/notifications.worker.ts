@@ -3,7 +3,7 @@ import { QUEUE_NAMES, redisConnection } from '@/jobs/queues'
 import { config } from '@/config'
 import { sendSms } from '@/providers/sms.provider'
 import * as notifService from '@/modules/notifications/notifications.service'
-import * as notifRepo from '@/modules/notifications/notifications.repository'
+import { renderTemplate } from '@/modules/notifications/templates.service'
 import { processBroadcast, type BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import { processAckCheck, type AckCheckJobData } from '@/jobs/processors/ack-check.processor'
 import { pool } from '@/db/client'
@@ -20,11 +20,13 @@ export const notificationsWorker = new Worker(
         driverPhone: string
         submittedAt: string
       }
-      const lp: LogParams = { jobName: job.name, templateKey: 'driver_review', payload: data as Record<string, unknown> }
+      const lp: LogParams = { jobName: job.name, payload: data as Record<string, unknown> }
       if (config.ADMIN_PHONE) lp.recipientPhone = config.ADMIN_PHONE
       const logId = await notifService.logNotification(lp)
       try {
-        const message = `Ocar: New driver application received. Driver: ${data.driverName} (${data.driverPhone}). Submitted at ${data.submittedAt}. Log in to admin panel to review.`
+        const { body: message } = await renderTemplate('driver_submitted_for_review', 'sms', {
+          driverName: data.driverName, driverPhone: data.driverPhone, submittedAt: data.submittedAt,
+        })
         if (config.ADMIN_PHONE) await sendSms(config.ADMIN_PHONE, message)
         await notifService.markSent(logId)
       } catch (err) {
@@ -33,14 +35,17 @@ export const notificationsWorker = new Worker(
       }
 
       try {
-        const adminTokens = await notifRepo.getAdminTokens()
-        await notifService.pushToTokens(adminTokens, {
-          title: 'New Driver Application',
-          body: `${data.driverName} submitted an application for review.`,
-          data: { type: 'driver_submitted_for_review', driverId: data.driverId },
+        const { subject, body } = await renderTemplate('driver_submitted_for_review', 'push', {
+          driverName: data.driverName,
+        })
+        await notifService.notifyAllAdmins({
+          type: 'driver_submitted_for_review',
+          title: subject ?? 'New Driver Application',
+          body,
+          payload: { driverId: data.driverId },
         })
       } catch (err) {
-        console.error('[Worker] push failed for driver_submitted_for_review:', err)
+        console.error('[Worker] notify failed for driver_submitted_for_review:', err)
       }
 
     } else if (job.name === 'otp_sms') {
@@ -49,16 +54,12 @@ export const notificationsWorker = new Worker(
         otp: string
         type: 'auth' | 'trip_start' | 'trip_end'
       }
-      const lp: LogParams = { jobName: job.name, templateKey: 'otp_sms', payload: data as Record<string, unknown> }
+      const lp: LogParams = { jobName: job.name, payload: data as Record<string, unknown> }
       if (data.phone) lp.recipientPhone = data.phone
       const logId = await notifService.logNotification(lp)
       try {
-        const messages: Record<string, string> = {
-          auth:       `Your Ocar login OTP is ${data.otp}. Valid for 10 minutes. Do not share with anyone.`,
-          trip_start: `Your Ocar trip OTP is ${data.otp}. Share this with your driver to start the ride.`,
-          trip_end:   `Your Ocar trip OTP is ${data.otp}. Share this with your driver to complete the ride.`,
-        }
-        const message = messages[data.type] ?? messages['auth']!
+        const slug = data.type === 'trip_start' ? 'otp_trip_start' : data.type === 'trip_end' ? 'otp_trip_end' : 'otp_auth'
+        const { body: message } = await renderTemplate(slug, 'sms', { otp: data.otp })
         await sendSms(data.phone, message)
         await notifService.markSent(logId)
       } catch (err) {
@@ -75,11 +76,14 @@ export const notificationsWorker = new Worker(
         lng:         number
         triggeredAt: string
       }
-      const lp: LogParams = { jobName: job.name, templateKey: 'sos_alert', payload: data as Record<string, unknown> }
+      const lp: LogParams = { jobName: job.name, payload: data as Record<string, unknown> }
       if (config.ADMIN_PHONE) lp.recipientPhone = config.ADMIN_PHONE
       const logId = await notifService.logNotification(lp)
       try {
-        const message = `OCAR SOS ALERT: Passenger ${data.userPhone} triggered an SOS during ride #${data.rideId}. Location: ${data.lat},${data.lng}. Time: ${data.triggeredAt}. Take immediate action.`
+        const { body: message } = await renderTemplate('sos_alert', 'sms', {
+          userPhone: data.userPhone, rideId: data.rideId,
+          lat: String(data.lat), lng: String(data.lng), triggeredAt: data.triggeredAt,
+        })
         if (config.ADMIN_PHONE) await sendSms(config.ADMIN_PHONE, message)
         await notifService.markSent(logId)
       } catch (err) {
@@ -88,14 +92,16 @@ export const notificationsWorker = new Worker(
       }
 
       try {
-        const adminTokens = await notifRepo.getAdminTokens()
-        await notifService.pushToTokens(adminTokens, {
-          title: 'SOS ALERT',
-          body: `Passenger triggered SOS during ride #${data.rideId}`,
-          data: { type: 'sos', rideId: data.rideId, lat: String(data.lat), lng: String(data.lng) },
+        const { subject, body } = await renderTemplate('sos_alert', 'push', { rideId: data.rideId })
+        await notifService.notifyAllAdmins({
+          type: 'sos',
+          title: subject ?? 'SOS ALERT',
+          body,
+          payload: { lat: data.lat, lng: data.lng },
+          rideId: BigInt(data.rideId),
         })
       } catch (err) {
-        console.error('[Worker] push failed for sos_alert:', err)
+        console.error('[Worker] notify failed for sos_alert:', err)
       }
     } else if (job.name === 'ride_accepted') {
       const data = job.data as {
@@ -105,12 +111,14 @@ export const notificationsWorker = new Worker(
         driverName:  string | null
         driverPhone: string | null
       }
-      const lp: LogParams = { jobName: job.name, templateKey: 'ride_accepted', recipientPhone: data.userPhone, payload: data as Record<string, unknown> }
+      const lp: LogParams = { jobName: job.name, recipientPhone: data.userPhone, payload: data as Record<string, unknown> }
       const logId = await notifService.logNotification(lp)
+      const driverName = data.driverName ?? 'Your driver'
       try {
-        const name  = data.driverName  ?? 'Your driver'
-        const phone = data.driverPhone ? ` (${data.driverPhone})` : ''
-        const message = `Ocar: ${name}${phone} has accepted your ride and is on the way to pick you up.`
+        const { body: message } = await renderTemplate('ride_accepted', 'sms', {
+          driverName,
+          driverPhoneSuffix: data.driverPhone ? ` (${data.driverPhone})` : '',
+        })
         await sendSms(data.userPhone, message)
         await notifService.markSent(logId)
       } catch (err) {
@@ -119,14 +127,17 @@ export const notificationsWorker = new Worker(
       }
 
       try {
-        const userTokens = await notifRepo.getTokensForOwner('user', BigInt(data.userId))
-        await notifService.pushToTokens(userTokens, {
-          title: 'Driver on the way',
-          body: `${data.driverName ?? 'Your driver'} has accepted your ride and is on the way.`,
-          data: { type: 'ride_accepted', rideId: data.rideId },
+        const { subject, body } = await renderTemplate('ride_accepted', 'push', { driverName })
+        await notifService.notifyOwner({
+          ownerType: 'user',
+          ownerId: BigInt(data.userId),
+          type: 'ride_accepted',
+          title: subject ?? 'Driver on the way',
+          body,
+          rideId: BigInt(data.rideId),
         })
       } catch (err) {
-        console.error('[Worker] push failed for ride_accepted:', err)
+        console.error('[Worker] notify failed for ride_accepted:', err)
       }
 
     } else if (job.name === 'ride_completed') {
@@ -136,7 +147,7 @@ export const notificationsWorker = new Worker(
         userPhone:  string
         driverName: string | null
       }
-      const lp: LogParams = { jobName: job.name, templateKey: 'ride_completed', recipientPhone: data.userPhone, payload: data as Record<string, unknown> }
+      const lp: LogParams = { jobName: job.name, recipientPhone: data.userPhone, payload: data as Record<string, unknown> }
       const logId = await notifService.logNotification(lp)
       try {
         const fareRes = await pool.query<{ amount: string }>(
@@ -146,7 +157,7 @@ export const notificationsWorker = new Worker(
         )
         const fare    = fareRes.rows[0] ? Math.round(parseFloat(fareRes.rows[0].amount)) : null
         const fareStr = fare != null && fare > 0 ? ` Total fare: ₹${fare}.` : ''
-        const message = `Ocar: Your ride is complete!${fareStr} Thank you for riding with Ocar.`
+        const { body: message } = await renderTemplate('ride_completed', 'sms', { fareStr })
         await sendSms(data.userPhone, message)
         await notifService.markSent(logId)
       } catch (err) {
@@ -155,14 +166,17 @@ export const notificationsWorker = new Worker(
       }
 
       try {
-        const userTokens = await notifRepo.getTokensForOwner('user', BigInt(data.userId))
-        await notifService.pushToTokens(userTokens, {
-          title: 'Ride Complete',
-          body: 'Your ride is complete. Thank you for riding with Ocar!',
-          data: { type: 'ride_completed', rideId: data.rideId },
+        const { subject, body } = await renderTemplate('ride_completed', 'push', {})
+        await notifService.notifyOwner({
+          ownerType: 'user',
+          ownerId: BigInt(data.userId),
+          type: 'ride_completed',
+          title: subject ?? 'Ride Complete',
+          body,
+          rideId: BigInt(data.rideId),
         })
       } catch (err) {
-        console.error('[Worker] push failed for ride_completed:', err)
+        console.error('[Worker] notify failed for ride_completed:', err)
       }
 
     } else if (job.name === 'broadcast_ride') {

@@ -194,6 +194,12 @@ export const socketEvents = {
     getIO().to(`ride:${rideId}`).emit('ride:status_update', data)
   },
 
+  // Rider-only channel — for payloads (e.g. ride OTPs) that must never reach
+  // the driver's socket, even though driver and rider share the ride:{id} room.
+  sendUserUpdate: (userId: string, data: object) => {
+    getIO().to(`user:${userId}`).emit('ride:status_update', data)
+  },
+
   sendDriverLocation: (rideId: string, data: { lat: number; lng: number; heading: number; speed_kmph: number }) => {
     getIO().to(`ride:${rideId}`).emit('driver:location', data)
   },
@@ -213,5 +219,12 @@ export const socketEvents = {
   sendStuckRideFlagged: (rideId: string, data: object) => {
     getIO().to(`ride:${rideId}`).emit('ride:stuck_flagged', data)
     getIO().to('admin:ops').emit('ride:stuck_flagged', { rideId, ...data })
+  },
+
+  // In-app notification feed — delivers a fresh item straight into an open
+  // app so the bell/feed updates live, without waiting for a manual refetch.
+  sendNotification: (ownerType: 'user' | 'driver' | 'admin', ownerId: string, data: object) => {
+    const room = ownerType === 'admin' ? 'admin:ops' : `${ownerType}:${ownerId}`
+    getIO().to(room).emit('notification:new', data)
   },
 }
