@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Navigation, Phone, RotateCcw, Clock, X, Star } from 'lucide-react'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { Navigation, Phone, RotateCcw, Clock, X, Star, Check } from 'lucide-react'
 import SOSButton from '@/components/ui/SOSButton'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import VoiceToggleButton from '@/components/ui/VoiceToggleButton'
 import HindiVoiceHint from '@/components/ui/HindiVoiceHint'
 import ManeuverBanner from '@/components/map/ManeuverBanner'
@@ -32,8 +33,10 @@ export default function NavigateToPickup() {
   const navigate = useNavigate()
   const { activeRide, restoreChecked, updateRideStatus, clearRide } = useRideStore()
   const { sessionId } = useSessionStore()
-  const [arriving, setArriving] = useState(false)
-  const [error, setError]       = useState<string | null>(null)
+  const [arriving, setArriving]   = useState(false)
+  const [arrived, setArrived]     = useState(false)
+  const [error, setError]         = useState<string | null>(null)
+  const reduceMotion = useReducedMotion()
   const [showCancelSheet,  setShowCancelSheet]  = useState(false)
   const [cancelReason,     setCancelReason]     = useState<string | null>(null)
   const [cancellingRide,   setCancellingRide]   = useState(false)
@@ -90,10 +93,10 @@ export default function NavigateToPickup() {
     try {
       await driverRideApi.markArrived(activeRide.id)
       updateRideStatus('driver_arrived')
-      navigate('/ride/otp', { replace: true })
+      setArrived(true)
+      setTimeout(() => navigate('/ride/otp', { replace: true }), reduceMotion ? 0 : 500)
     } catch {
       setError('Failed to mark arrival. Please try again.')
-    } finally {
       setArriving(false)
     }
   }
@@ -243,12 +246,43 @@ export default function NavigateToPickup() {
         {error && <p className="text-accent-red text-sm mb-3 text-center">{error}</p>}
 
         <button
-          onClick={handleArrived}
+          onClick={() => void handleArrived()}
           disabled={arriving}
-          className="btn-go w-full active:scale-95 transition-transform"
+          className="btn-go w-full flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:active:scale-100"
           style={{ minHeight: 56 }}
         >
-          {arriving ? 'Marking arrival…' : 'Arrived at Pickup'}
+          <AnimatePresence mode="wait" initial={false}>
+            {arrived ? (
+              <motion.span
+                key="arrived"
+                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85, filter: 'blur(3px)' }}
+                animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                transition={{ duration: reduceMotion ? 0.01 : 0.25, ease: [0.22, 1, 0.36, 1] }}
+                className="flex items-center gap-2"
+              >
+                <Check size={18} strokeWidth={2.5} aria-hidden="true" /> Arrived
+              </motion.span>
+            ) : arriving ? (
+              <motion.span
+                key="marking"
+                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85, filter: 'blur(3px)' }}
+                animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                transition={{ duration: reduceMotion ? 0.01 : 0.25, ease: [0.22, 1, 0.36, 1] }}
+                className="flex items-center gap-2"
+              >
+                <OcarSpinner size={16} variant="white" /> Marking arrival…
+              </motion.span>
+            ) : (
+              <motion.span
+                key="idle"
+                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85, filter: 'blur(3px)' }}
+                animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                transition={{ duration: reduceMotion ? 0.01 : 0.25, ease: [0.22, 1, 0.36, 1] }}
+              >
+                Arrived at Pickup
+              </motion.span>
+            )}
+          </AnimatePresence>
         </button>
 
         <button
@@ -285,21 +319,21 @@ export default function NavigateToPickup() {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 350 }}
-              className="relative w-full rounded-t-3xl px-5 pt-5 bg-white"
+              className="relative w-full rounded-t-3xl px-5 pt-5 bg-surface"
               style={{ paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}
             >
-              <div className="w-10 h-1 rounded-full bg-gray-200 mx-auto mb-4" />
+              <div className="w-10 h-1 rounded-full bg-surface-3 mx-auto mb-4" />
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-black text-gray-900">Cancel this ride?</h3>
+                <h3 className="text-base font-black text-text-primary">Cancel this ride?</h3>
                 <button
                   onClick={() => setShowCancelSheet(false)}
                   disabled={cancellingRide}
-                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center active:scale-95 transition-transform"
+                  className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center active:scale-95 transition-transform"
                 >
-                  <X size={15} className="text-gray-500" />
+                  <X size={15} className="text-text-secondary" />
                 </button>
               </div>
-              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2.5">Why are you cancelling?</p>
+              <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2.5">Why are you cancelling?</p>
               <div className="space-y-2 mb-5">
                 {[
                   { code: 'passenger_not_found', label: 'Passenger not at pickup' },
@@ -311,38 +345,39 @@ export default function NavigateToPickup() {
                   <button
                     key={r.code}
                     onClick={() => setCancelReason(r.code)}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left active:scale-[0.98] transition-transform"
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left active:scale-[0.98] transition-transform ${
+                      cancelReason === r.code ? '' : 'bg-surface-2'
+                    }`}
                     style={cancelReason === r.code
-                      ? { background: 'rgba(220,38,38,0.07)', border: '1.5px solid rgba(220,38,38,0.40)' }
-                      : { background: '#F8FAFC', border: '1.5px solid #E2E8F0' }
+                      ? { background: 'rgba(239,68,68,0.07)', border: '1.5px solid rgba(239,68,68,0.40)' }
+                      : { border: '1.5px solid #E2E8F0' }
                     }
                   >
                     <div
                       className="w-4 h-4 rounded-full flex-shrink-0"
                       style={cancelReason === r.code
-                        ? { border: '5px solid #DC2626' }
+                        ? { border: '5px solid #EF4444' }
                         : { border: '2px solid #CBD5E1' }
                       }
                     />
-                    <span className={`text-sm font-medium ${cancelReason === r.code ? 'text-red-700' : 'text-gray-700'}`}>
+                    <span className={`text-sm font-medium ${cancelReason === r.code ? 'text-accent-red' : 'text-text-secondary'}`}>
                       {r.label}
                     </span>
                   </button>
                 ))}
               </div>
               <button
-                onClick={handleCancelRide}
+                onClick={() => void handleCancelRide()}
                 disabled={!cancelReason || cancellingRide}
-                className="w-full py-3.5 rounded-2xl text-sm font-bold text-white mb-2.5 disabled:opacity-40 active:scale-[0.98] transition-transform"
-                style={{ background: '#DC2626' }}
+                className="w-full py-3.5 rounded-2xl text-sm font-bold text-text-inverse mb-2.5 disabled:opacity-40 active:scale-[0.98] transition-transform"
+                style={{ background: '#EF4444' }}
               >
                 {cancellingRide ? 'Cancelling…' : 'Confirm cancellation'}
               </button>
               <button
                 onClick={() => setShowCancelSheet(false)}
                 disabled={cancellingRide}
-                className="w-full py-3 rounded-2xl text-sm font-semibold text-gray-700 disabled:opacity-50 active:scale-[0.98] transition-transform"
-                style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}
+                className="w-full py-3 rounded-2xl text-sm font-semibold text-text-secondary disabled:opacity-50 active:scale-[0.98] transition-transform bg-surface-2 border border-border"
               >
                 Keep my ride
               </button>

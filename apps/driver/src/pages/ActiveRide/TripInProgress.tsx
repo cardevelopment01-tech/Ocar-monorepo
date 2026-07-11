@@ -4,7 +4,7 @@ import { Clock, Crosshair, X, RotateCcw, Flag, CheckCircle2, Navigation } from '
 import { useMap } from '@vis.gl/react-google-maps'
 import { motion, AnimatePresence } from 'framer-motion'
 import SOSButton from '@/components/ui/SOSButton'
-import OtpInput from '@/components/ui/OtpInput'
+import OtpVerifyPanel from '@/components/ui/OtpVerifyPanel'
 import VoiceToggleButton from '@/components/ui/VoiceToggleButton'
 import HindiVoiceHint from '@/components/ui/HindiVoiceHint'
 import ManeuverBanner from '@/components/map/ManeuverBanner'
@@ -70,7 +70,6 @@ export default function TripInProgress() {
   const [showEndOtp, setShowEndOtp] = useState(false)
   const [otp, setOtp]               = useState('')
   const [otpError, setOtpError]     = useState(false)
-  const [completing, setCompleting] = useState(false)
   const [stopActionPending, setStopActionPending] = useState<number | null>(null)
 
   // One leg at a time, matching how Uber drivers actually navigate — multi-waypoint
@@ -130,9 +129,7 @@ export default function TripInProgress() {
   }
 
   const handleCompleteTrip = async () => {
-    if (otp.length !== 4 || !activeRide) return
-    setCompleting(true)
-    setOtpError(false)
+    if (!activeRide) return
     try {
       let actualDistanceKm: number | undefined
       if (activeRide.dropLat != null && activeRide.dropLng != null) {
@@ -149,12 +146,10 @@ export default function TripInProgress() {
       const actualDurationMin = mm + Math.round((ss ?? 0) / 60)
       await driverRideApi.verifyEndOtp(activeRide.id, otp, actualDistanceKm, actualDurationMin || undefined, position?.[0], position?.[1])
       updateRideStatus('completed')
-      navigate('/ride/end', { replace: true })
     } catch {
       setOtpError(true)
       setOtp('')
-    } finally {
-      setCompleting(false)
+      throw new Error('otp-verify-failed')
     }
   }
 
@@ -377,24 +372,22 @@ export default function TripInProgress() {
                 <button
                   onClick={() => { setShowEndOtp(false); setOtp(''); setOtpError(false) }}
                   className="w-9 h-9 rounded-full bg-surface-3 flex items-center justify-center active:scale-95 transition-transform"
+                  aria-label="Close"
                 >
                   <X size={16} className="text-text-secondary" />
                 </button>
               </div>
 
-              <OtpInput length={4} value={otp} onChange={v => { setOtp(v); setOtpError(false) }} error={otpError} />
-              {otpError && (
-                <p className="text-accent-red text-xs text-center mt-3 font-semibold">Wrong OTP, try again</p>
-              )}
-
-              <button
-                onClick={handleCompleteTrip}
-                disabled={otp.length !== 4 || completing}
-                className="btn-go w-full mt-5 active:scale-95 transition-transform"
-                style={{ minHeight: 56 }}
-              >
-                {completing ? 'Completing…' : 'Complete Trip'}
-              </button>
+              <OtpVerifyPanel
+                otp={otp}
+                onChange={v => { setOtp(v); setOtpError(false) }}
+                error={otpError}
+                errorMessage="Wrong OTP, try again"
+                submitLabel="Complete Trip"
+                verifiedLabel="Trip completed"
+                onSubmit={handleCompleteTrip}
+                onVerified={() => navigate('/ride/end', { replace: true })}
+              />
             </motion.div>
           </>
         )}

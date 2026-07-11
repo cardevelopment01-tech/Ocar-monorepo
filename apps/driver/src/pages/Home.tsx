@@ -14,6 +14,7 @@ import api from '@/lib/api'
 import { disconnectDriverSocket } from '@/lib/socket'
 import { useDriverLocation } from '@/lib/useDriverLocation'
 import { useNotificationsStore } from '@/store/useNotificationsStore'
+import { GLASS } from '@/lib/constants'
 
 const DriverMapView = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap   = lazy(() => import('@/components/map/RecenterMap'))
@@ -22,14 +23,6 @@ const SelfCarMarker = lazy(() => import('@/components/map/SelfCarMarker'))
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
 const NAV_HEIGHT  = 60
-
-const GLASS = {
-  background:           'rgba(255,255,255,0.92)',
-  backdropFilter:       'blur(16px)',
-  WebkitBackdropFilter: 'blur(16px)',
-  border:               '1px solid rgba(79,70,229,0.10)',
-  boxShadow:            '0 2px 16px rgba(79,70,229,0.10)',
-}
 
 export default function Home() {
   const navigate = useNavigate()

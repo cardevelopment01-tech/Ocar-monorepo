@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Star, ArrowRight, RotateCcw, Clock, MapPin } from 'lucide-react'
+import { motion, useReducedMotion } from 'framer-motion'
+import { Star, ArrowRight, RotateCcw, Clock, MapPin, Check } from 'lucide-react'
 import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -38,6 +38,8 @@ export default function TripEnd() {
     navigate('/', { replace: true })
   }
 
+  const reduce = useReducedMotion()
+
   return (
     <div
       className="min-h-[100dvh] bg-bg text-text-primary px-5 flex flex-col"
@@ -57,7 +59,13 @@ export default function TripEnd() {
           className="w-20 h-20 rounded-full bg-accent-green flex items-center justify-center mb-4"
           style={{ boxShadow: '0 0 40px rgba(34,197,94,0.28)' }}
         >
-          <span className="text-4xl">✓</span>
+          <motion.div
+            initial={reduce ? { opacity: 0 } : { scale: 0.4, rotate: -25, opacity: 0 }}
+            animate={{ scale: 1, rotate: 0, opacity: 1 }}
+            transition={reduce ? { duration: 0.01 } : { type: 'spring', damping: 12, stiffness: 260, delay: 0.15 }}
+          >
+            <Check size={40} strokeWidth={3} className="text-white" aria-hidden="true" />
+          </motion.div>
         </div>
         <h1 className="text-text-primary font-black text-3xl">Trip Complete!</h1>
 
@@ -104,7 +112,7 @@ export default function TripEnd() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2 }}
         className="bg-surface rounded-3xl border border-border p-5 mb-4"
-        style={{ borderTopColor: '#22C55E', borderTopWidth: 3 }}
+        style={{ boxShadow: '0 4px 24px rgba(34,197,94,0.14)' }}
       >
         <p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">You Earned</p>
         <p className="text-[44px] font-black text-primary leading-none mb-4">₹{fmt(net)}</p>
