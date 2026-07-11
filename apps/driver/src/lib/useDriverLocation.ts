@@ -44,7 +44,8 @@ export function useDriverLocation({
       // (browser/WiFi accuracy is often 100–2000 m, which would fail the 80 m
       // gate and leave the driver with no visible car marker at all).
       // After the first fix, discard noisy cell-tower-only updates.
-      if (hasFirstFix.current && pos.coords.accuracy > maxAccuracyM) return
+      const passesAccuracyGate = pos.coords.accuracy <= maxAccuracyM
+      if (hasFirstFix.current && !passesAccuracyGate) return
       hasFirstFix.current = true
       const lat = pos.coords.latitude
       const lng = pos.coords.longitude
@@ -52,8 +53,11 @@ export function useDriverLocation({
       if (pos.coords.heading != null) setHeading(pos.coords.heading)
       setError(null)
 
+      // A bad first fix still updates the local display above (better than a
+      // stuck blank marker), but must never be uploaded to the backend — it
+      // drives dispatch matching and the admin/user-facing live map.
       const now = Date.now()
-      if (onSyncRef.current && now - lastSyncAt.current >= syncIntervalMs) {
+      if (onSyncRef.current && passesAccuracyGate && now - lastSyncAt.current >= syncIntervalMs) {
         lastSyncAt.current = now
         const hdg = pos.coords.heading
         onSyncRef.current(lat, lng, (hdg == null || isNaN(hdg)) ? 0 : hdg)
