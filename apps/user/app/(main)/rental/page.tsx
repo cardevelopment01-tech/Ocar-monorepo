@@ -67,9 +67,10 @@ function RentalContent() {
   const router = useRouter()
   const sp     = useSearchParams()
 
-  const originLat     = parseFloat(sp.get('originLat')  ?? '20.2961')
-  const originLng     = parseFloat(sp.get('originLng')  ?? '85.8245')
+  const originLat     = parseFloat(sp.get('originLat')  ?? '')
+  const originLng     = parseFloat(sp.get('originLng')  ?? '')
   const originAddress = sp.get('originAddress') ?? 'Pickup location'
+  const hasOrigin     = !isNaN(originLat) && !isNaN(originLng)
   const originCityId  = parseInt(sp.get('originCityId') ?? '1', 10)
 
   const destAddress = sp.get('destinationAddress') ?? null
@@ -157,6 +158,10 @@ function RentalContent() {
 
   useEffect(() => { void loadPackages(selectedCatId) }, [selectedCatId, loadPackages])
 
+  useEffect(() => {
+    if (!hasOrigin) router.replace('/home')
+  }, [hasOrigin, router])
+
   // Fetch estimate whenever the selected package changes
   const loadEstimate = useCallback(async (pkgId: number, catId: number) => {
     setEstLoading(true)
@@ -215,6 +220,14 @@ function RentalContent() {
       setBookError('Booking failed. Please try again.')
       setIsBooking(false)
     }
+  }
+
+  if (!hasOrigin) {
+    return (
+      <div className="h-full flex items-center justify-center bg-white">
+        <OcarSpinner size={32} variant="mono" />
+      </div>
+    )
   }
 
   return (

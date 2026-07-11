@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { ArrowLeft, RotateCcw, ArrowRight, CreditCard, MapPin, Plus, X } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -34,9 +34,10 @@ function RoundTripContent() {
   const router = useRouter()
   const sp     = useSearchParams()
 
-  const originLat     = parseFloat(sp.get('originLat')  ?? '20.2961')
-  const originLng     = parseFloat(sp.get('originLng')  ?? '85.8245')
+  const originLat     = parseFloat(sp.get('originLat')  ?? '')
+  const originLng     = parseFloat(sp.get('originLng')  ?? '')
   const originAddress = sp.get('originAddress') ?? 'Pickup location'
+  const hasOrigin     = !isNaN(originLat) && !isNaN(originLng)
   const originCityId  = parseInt(sp.get('originCityId') ?? '1', 10)
 
   // Set only after destination is picked via the search page
@@ -58,6 +59,10 @@ function RoundTripContent() {
   const [schedulePickerOpen, setSchedulePickerOpen] = useState(false)
 
   const canProceed = hasDestination && selectedHours !== null
+
+  useEffect(() => {
+    if (!hasOrigin) router.replace('/home')
+  }, [hasOrigin, router])
 
   // Carries origin/destination/schedule/stops forward through the /search bounce —
   // same preservation discipline as the pre-existing goToSearch().
@@ -136,6 +141,14 @@ function RoundTripContent() {
     : scheduledFor
     ? `Schedule your cab · ${selectedHours}h round trip`
     : `Choose your cab · ${selectedHours}h round trip`
+
+  if (!hasOrigin) {
+    return (
+      <div className="h-full flex items-center justify-center bg-white">
+        <OcarSpinner size={32} variant="mono" />
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: '#F5F7FF' }}>

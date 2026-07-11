@@ -42,12 +42,13 @@ function SelectRideContent() {
   const router = useRouter()
   const sp     = useSearchParams()
 
-  const originLat          = parseFloat(sp.get('originLat') ?? '20.2961')
-  const originLng          = parseFloat(sp.get('originLng') ?? '85.8245')
+  const originLat          = parseFloat(sp.get('originLat') ?? '')
+  const originLng          = parseFloat(sp.get('originLng') ?? '')
   const originAddress      = sp.get('originAddress') ?? 'Pickup'
-  const destinationLat     = parseFloat(sp.get('destinationLat') ?? '20.2726')
-  const destinationLng     = parseFloat(sp.get('destinationLng') ?? '85.8385')
+  const destinationLat     = parseFloat(sp.get('destinationLat') ?? '')
+  const destinationLng     = parseFloat(sp.get('destinationLng') ?? '')
   const destinationAddress = sp.get('destinationAddress') ?? 'Destination'
+  const hasOriginDest      = !isNaN(originLat) && !isNaN(originLng) && !isNaN(destinationLat) && !isNaN(destinationLng)
   const distanceKm         = parseFloat(sp.get('distanceKm') ?? '10')
   const durationMin        = parseFloat(sp.get('durationMin') ?? '20')
   const originCityId       = parseInt(sp.get('originCityId') ?? '1', 10)
@@ -99,6 +100,11 @@ function SelectRideContent() {
   const [redirectToast, setRedirectToast] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!hasOriginDest) router.replace('/home')
+  }, [hasOriginDest, router])
+
+  useEffect(() => {
+    if (!hasOriginDest) return
     let cancelled = false
     geoApi.classifyTrip(originLat, originLng, destinationLat, destinationLng)
       .then(c => {
@@ -255,6 +261,14 @@ function SelectRideContent() {
 
   // Round trip disabled when no hours selected
   const roundTripMissingHours = rideType === 'round_trip' && tripHours === undefined
+
+  if (!hasOriginDest) {
+    return (
+      <div className="h-full flex items-center justify-center bg-white">
+        <OcarSpinner size={32} variant="mono" />
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-white">

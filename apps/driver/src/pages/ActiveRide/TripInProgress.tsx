@@ -175,7 +175,7 @@ export default function TripInProgress() {
               <RoutePolyline encoded={encodedPolyline} />
             )}
             {position && <SelfCarMarker position={position} />}
-            <LocationPin position={dropPos} variant="drop" />
+            {hasNavTarget && <LocationPin position={dropPos} variant="drop" />}
             <LocateMeButton position={position ?? dropPos} />
             {hasNavTarget && (
               <button

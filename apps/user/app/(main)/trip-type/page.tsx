@@ -34,8 +34,8 @@ function TripTypeContent() {
   const router = useRouter()
   const sp     = useSearchParams()
 
-  const originLat          = parseFloat(sp.get('originLat') ?? '20.2961')
-  const originLng          = parseFloat(sp.get('originLng') ?? '85.8245')
+  const originLat          = parseFloat(sp.get('originLat') ?? '')
+  const originLng          = parseFloat(sp.get('originLng') ?? '')
   const originAddress      = sp.get('originAddress') ?? 'Pickup location'
   const destinationLat     = parseFloat(sp.get('destinationLat') ?? '')
   const destinationLng     = parseFloat(sp.get('destinationLng') ?? '')
@@ -50,7 +50,14 @@ function TripTypeContent() {
   const [roundTripEst, setRoundTripEst] = useState<FareEstimate | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const hasOrigin = !isNaN(originLat) && !isNaN(originLng)
+
   useEffect(() => {
+    if (!hasOrigin) router.replace('/home')
+  }, [hasOrigin, router])
+
+  useEffect(() => {
+    if (!hasOrigin) return
     let cancelled = false
     setLoading(true)
     Promise.all([
@@ -100,6 +107,14 @@ function TripTypeContent() {
   function chooseRoundTrip() {
     const params = baseParams()
     router.push(`/round-trip?${params.toString()}`)
+  }
+
+  if (!hasOrigin) {
+    return (
+      <div className="h-full flex items-center justify-center bg-white">
+        <OcarSpinner size={32} variant="mono" />
+      </div>
+    )
   }
 
   return (
