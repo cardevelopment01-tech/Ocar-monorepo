@@ -18,6 +18,9 @@ export interface TurnByTurnState {
    *  `trafficPolyline`, not `encodedPolyline` (see google.provider.ts's RouteResult). */
   trafficIntervals: TrafficInterval[] | undefined
   trafficPolyline: string | undefined
+  /** Which tier the current route came from — 'osrm'/'fallback' means no real
+   *  turn-by-turn/voice/traffic (Google Directions was unreachable). */
+  source: 'google' | 'osrm' | 'fallback'
   currentStep: RouteStep | null
   /** Straight-line distance to the current step's endpoint — an approximation that
    *  holds well in practice since Google splits steps at bends, not mid-curve. */
@@ -44,6 +47,7 @@ export function useTurnByTurn(
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
   const [trafficIntervals, setTrafficIntervals] = useState<TrafficInterval[] | undefined>(undefined)
   const [trafficPolyline, setTrafficPolyline] = useState<string | undefined>(undefined)
+  const [source, setSource] = useState<'google' | 'osrm' | 'fallback'>('google')
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
   const [isOffRoute, setIsOffRoute] = useState(false)
   const [isReconnecting, setIsReconnecting] = useState(false)
@@ -77,6 +81,7 @@ export function useTurnByTurn(
         setEncodedPolyline(r.polyline || undefined)
         setTrafficIntervals(r.trafficIntervals)
         setTrafficPolyline(r.trafficPolyline)
+        setSource(r.source)
         setCurrentStepIndex(0)
         routePoints.current = newSteps.flatMap(s => decodePolyline(s.polyline))
         setIsOffRoute(false)
@@ -153,7 +158,7 @@ export function useTurnByTurn(
     : null
 
   return {
-    steps, encodedPolyline, trafficIntervals, trafficPolyline,
+    steps, encodedPolyline, trafficIntervals, trafficPolyline, source,
     currentStep, distanceToManeuver, isOffRoute, isReconnecting, loading,
   }
 }

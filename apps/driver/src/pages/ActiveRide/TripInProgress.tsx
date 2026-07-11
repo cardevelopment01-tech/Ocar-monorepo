@@ -116,7 +116,7 @@ export default function TripInProgress() {
   const voiceEnabled = useNavPrefsStore(s => s.voiceEnabled)
   const navLanguage  = useNavPrefsStore(s => s.language)
 
-  const { encodedPolyline, trafficIntervals, trafficPolyline, currentStep, distanceToManeuver, isReconnecting } =
+  const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting } =
     useTurnByTurn(position, hasNavTarget ? dropPos : null, navLanguage)
   useVoiceGuidance(currentStep, distanceToManeuver, voiceEnabled, navLanguage)
 
@@ -203,7 +203,7 @@ export default function TripInProgress() {
         style={{ zIndex: 10, paddingTop: 'calc(max(env(safe-area-inset-top), 2.5rem) + 56px)' }}
       >
         <AnimatePresence>
-          {currentStep && (
+          {(currentStep || isReconnecting || source !== 'google') && (
             <motion.div
               key="maneuver"
               initial={{ opacity: 0, y: -12 }}
@@ -212,7 +212,7 @@ export default function TripInProgress() {
               transition={{ duration: 0.3, ease: EASE }}
               className="mb-2"
             >
-              <ManeuverBanner step={currentStep} distanceMetres={distanceToManeuver} isReconnecting={isReconnecting} />
+              <ManeuverBanner step={currentStep} distanceMetres={distanceToManeuver} isReconnecting={isReconnecting} source={source} />
             </motion.div>
           )}
         </AnimatePresence>

@@ -47,6 +47,11 @@ export type RouteResult = {
   distanceKm: number
   durationMin: number
   polyline: string
+  /** Which tier produced this result — 'google' has real steps/traffic; 'osrm' is a
+   *  road-snapped line with no turn-by-turn/voice/traffic; 'fallback' is a straight
+   *  line, no real road geometry. Lets the frontend flag a degraded state instead of
+   *  silently looking like "no route needed" when Google Directions is unreachable. */
+  source: 'google' | 'osrm' | 'fallback'
   /** Present only when the request set trafficAware and Google returned live-traffic data. */
   trafficDurationMin?: number
   /** Present only when the request set withSteps. */
@@ -278,6 +283,7 @@ export async function getRoute(
           distanceKm: Math.round((leg.distance.value / 1000) * 10) / 10,
           durationMin: Math.round(leg.duration.value / 60),
           polyline: body.routes[0].overview_polyline.points,
+          source: 'google',
         }
         if (leg.duration_in_traffic) {
           result.trafficDurationMin = Math.round(leg.duration_in_traffic.value / 60)
@@ -341,6 +347,7 @@ async function osrmRoute(
     distanceKm: Math.round((route.distance / 1000) * 10) / 10,
     durationMin: Math.round(route.duration / 60),
     polyline: route.geometry,
+    source: 'osrm',
   }
 }
 
@@ -355,5 +362,5 @@ function haversineFallback(
     + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
   const straightKm = R * 2 * Math.asin(Math.sqrt(a))
   const distanceKm = Math.round(straightKm * 1.3 * 10) / 10
-  return { distanceKm, durationMin: Math.round(distanceKm / 0.5), polyline: '' }
+  return { distanceKm, durationMin: Math.round(distanceKm / 0.5), polyline: '', source: 'fallback' }
 }

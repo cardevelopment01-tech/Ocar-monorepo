@@ -216,6 +216,7 @@ export const driverRideApi = {
     steps?: RouteStep[]
     trafficIntervals?: TrafficInterval[]
     trafficPolyline?: string
+    source: 'google' | 'osrm' | 'fallback'
   }> => {
     const params: Record<string, unknown> = { originLat, originLng, destLat, destLng }
     if (opts?.language) params['language'] = opts.language
@@ -230,6 +231,7 @@ export const driverRideApi = {
       steps?: RouteStep[]
       trafficIntervals?: TrafficInterval[]
       trafficPolyline?: string
+      source: 'google' | 'osrm' | 'fallback'
     }
   },
 }
