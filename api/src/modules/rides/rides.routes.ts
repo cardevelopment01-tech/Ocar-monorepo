@@ -171,9 +171,12 @@ router.get('/:id', authenticate(), async (req, res, next) => {
     }
 
     const rideIdStr = req.params['id']!
+    // Ride OTPs are for the rider to read aloud to the driver — never expose
+    // them to the driver's or admin's own view of the ride.
+    const isRider = !!req.user
     const [startOtp, endOtp, stops] = await Promise.all([
-      redis.get(startOtpKey(rideIdStr)),
-      redis.get(endOtpKey(rideIdStr)),
+      isRider ? redis.get(startOtpKey(rideIdStr)) : Promise.resolve(null),
+      isRider ? redis.get(endOtpKey(rideIdStr)) : Promise.resolve(null),
       repo.getRideStops(BigInt(rideIdStr)),
     ])
 

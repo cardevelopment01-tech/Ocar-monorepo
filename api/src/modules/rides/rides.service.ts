@@ -525,11 +525,17 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
   await redis.set(startOtpKey(rideId.toString()), otp, 'EX', 7200)
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
-    status:   'driver_arrived',
-    startOtp: otp,
+    status: 'driver_arrived',
   })
 
   const ride = await repo.getRideById(rideId)
+  if (ride) {
+    // Rider-only channel: the OTP must never reach the driver's socket.
+    socketEvents.sendUserUpdate(ride.user_id.toString(), {
+      status:   'driver_arrived',
+      startOtp: otp,
+    })
+  }
   if (ride?.user_phone) {
     await queues[QUEUE_NAMES.NOTIFICATIONS].add('otp_sms', {
       phone: ride.user_phone,
@@ -538,7 +544,7 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
     })
   }
 
-  return { success: true, startOtp: otp }
+  return { success: true }
 }
 
 export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: string) {
@@ -581,6 +587,11 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status:    'in_progress',
     startedAt: new Date().toISOString(),
+  })
+
+  // Rider-only channel: the OTP must never reach the driver's socket.
+  socketEvents.sendUserUpdate(ride.user_id.toString(), {
+    status: 'in_progress',
     endOtp,
   })
 
@@ -592,7 +603,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     })
   }
 
-  return { success: true, endOtp }
+  return { success: true }
 }
 
 // ── Ride stops ───────────────────────────────────────────────

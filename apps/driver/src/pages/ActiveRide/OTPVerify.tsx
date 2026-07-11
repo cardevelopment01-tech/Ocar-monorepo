@@ -10,7 +10,7 @@ import { fmtReturn } from '@/lib/constants'
 
 export default function OTPVerify() {
   const navigate = useNavigate()
-  const { activeRide, setEndOtp, setRideStartedAt, updateRideStatus } = useRideStore()
+  const { activeRide, setRideStartedAt, updateRideStatus } = useRideStore()
   const [otp, setOtp]       = useState('')
   const [error, setError]   = useState(false)
   const [loading, setLoading] = useState(false)
@@ -20,8 +20,7 @@ export default function OTPVerify() {
     setLoading(true)
     setError(false)
     try {
-      const { endOtp } = await driverRideApi.verifyStartOtp(activeRide.id, otp)
-      setEndOtp(endOtp)
+      await driverRideApi.verifyStartOtp(activeRide.id, otp)
       setRideStartedAt(new Date().toISOString())
       updateRideStatus('in_progress')
       navigate('/ride/in-progress', { replace: true })

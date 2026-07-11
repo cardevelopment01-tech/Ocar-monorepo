@@ -22,8 +22,6 @@ export interface ActiveRide {
   dropLng?: number
   fare: number
   rideType: string
-  startOtp?: string
-  endOtp?: string
   userPhone?: string
   userName?: string
   returnAt?: string
@@ -52,8 +50,6 @@ interface RideState {
 
   setActiveRide:     (ride: ActiveRide) => void
   updateRideStatus:  (status: string) => void
-  setStartOtp:       (otp: string) => void
-  setEndOtp:         (otp: string) => void
   setRideStartedAt:  (ts: string) => void
   updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null) => void
   clearRide:         () => void
@@ -72,12 +68,6 @@ export const useRideStore = create<RideState>()(
 
       updateRideStatus: (status) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, status } : null })),
-
-      setStartOtp: (otp) =>
-        set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, startOtp: otp } : null })),
-
-      setEndOtp: (otp) =>
-        set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, endOtp: otp } : null })),
 
       setRideStartedAt: (ts) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, rideStartedAt: ts } : null })),

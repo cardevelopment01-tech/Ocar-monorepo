@@ -271,6 +271,17 @@ export async function topUpDriverWallet(
     )
 
     const wallet = walletRes.rows[0]
+
+    // Idempotency: a replayed orderId/paymentId/signature must not credit twice.
+    const dupe = await client.query(
+      `SELECT id FROM driver_wallet_ledger WHERE wallet_id = $1 AND reference_id = $2 LIMIT 1`,
+      [wallet.id, referenceId]
+    )
+    if ((dupe.rowCount ?? 0) > 0) {
+      await client.query('ROLLBACK')
+      return
+    }
+
     const newBalance = Math.round((parseFloat(wallet.balance) + amount) * 100) / 100
 
     await client.query(

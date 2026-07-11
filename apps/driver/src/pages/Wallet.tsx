@@ -106,7 +106,6 @@ export default function Wallet() {
             orderId: res.data.orderId,
             paymentId: response.razorpay_payment_id,
             signature: response.razorpay_signature,
-            amount: selectedAmount,
           })
           setTopupMsg(`₹${selectedAmount.toLocaleString('en-IN')} added successfully!`)
           void load()

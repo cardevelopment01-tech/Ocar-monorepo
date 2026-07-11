@@ -28,7 +28,7 @@ const DEFAULT_LNG = 85.8245
 
 export default function NavigateToPickup() {
   const navigate = useNavigate()
-  const { activeRide, setStartOtp, updateRideStatus, clearRide } = useRideStore()
+  const { activeRide, updateRideStatus, clearRide } = useRideStore()
   const { sessionId } = useSessionStore()
   const [arriving, setArriving] = useState(false)
   const [error, setError]       = useState<string | null>(null)
@@ -82,8 +82,7 @@ export default function NavigateToPickup() {
     setArriving(true)
     setError(null)
     try {
-      const { startOtp } = await driverRideApi.markArrived(activeRide.id)
-      setStartOtp(startOtp)
+      await driverRideApi.markArrived(activeRide.id)
       updateRideStatus('driver_arrived')
       navigate('/ride/otp', { replace: true })
     } catch {
