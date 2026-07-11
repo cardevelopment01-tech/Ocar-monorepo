@@ -1,6 +1,7 @@
 import { config } from '@/config'
 
 const BASE = 'https://maps.googleapis.com/maps/api'
+const ROUTES_API_BASE = 'https://routes.googleapis.com/directions/v2:computeRoutes'
 
 export type PlaceSuggestion = {
   placeId: string
@@ -32,6 +33,16 @@ export type RouteStep = {
   polyline: string
 }
 
+export type TrafficSpeed = 'NORMAL' | 'SLOW' | 'TRAFFIC_JAM'
+
+export type TrafficInterval = {
+  /** Point indices into `trafficPolyline` (not `polyline` — a separately-fetched
+   *  route from the Routes API, whose geometry may not exactly match Directions'). */
+  startIndex: number
+  endIndex: number
+  speed: TrafficSpeed
+}
+
 export type RouteResult = {
   distanceKm: number
   durationMin: number
@@ -40,12 +51,23 @@ export type RouteResult = {
   trafficDurationMin?: number
   /** Present only when the request set withSteps. */
   steps?: RouteStep[]
+  /** Congestion segments for rendering a traffic-tinted route line. Present only when
+   *  trafficAware was requested and the Routes API returned traffic data. Indices refer
+   *  to `trafficPolyline`, decoded separately — NOT to `polyline` above. */
+  trafficIntervals?: TrafficInterval[]
+  trafficPolyline?: string
 }
 
 export type RouteOptions = {
   language?: string
   withSteps?: boolean
   trafficAware?: boolean
+  /** Also fetch congestion segments for a traffic-tinted route line (a second,
+   *  separate Routes API call — see getTrafficIntervals). Keep this off for
+   *  server-side-only ETA reads (e.g. rides.service.ts's logEtaSnapshot) that
+   *  only need trafficDurationMin/durationMin, so they don't pay for a second
+   *  API call whose result they never use. */
+  withTrafficIntervals?: boolean
 }
 
 function stripHtml(s: string): string {
@@ -145,6 +167,73 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
   return body.results?.[0]?.formatted_address ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
 }
 
+// Separate call to the newer Routes API purely for per-segment congestion data —
+// the legacy Directions API used above for turn-by-turn steps has no equivalent
+// field. Best-effort only: on any failure, callers just get no traffic tinting,
+// never an error, since this is a cosmetic overlay on top of the real route.
+async function getTrafficIntervals(
+  originLat: number,
+  originLng: number,
+  destLat: number,
+  destLng: number,
+  language: string,
+): Promise<{ polyline: string; intervals: TrafficInterval[] } | null> {
+  if (!config.GOOGLE_MAPS_API_KEY) return null
+  try {
+    const res = await fetch(ROUTES_API_BASE, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': config.GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'routes.polyline.encodedPolyline,routes.travelAdvisory.speedReadingIntervals',
+      },
+      body: JSON.stringify({
+        origin:            { location: { latLng: { latitude: originLat, longitude: originLng } } },
+        destination:        { location: { latLng: { latitude: destLat, longitude: destLng } } },
+        travelMode:         'DRIVE',
+        routingPreference:  'TRAFFIC_AWARE',
+        extraComputations:  ['TRAFFIC_ON_POLYLINE'],
+        languageCode:       language,
+        units:              'METRIC',
+      }),
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return null
+
+    const body = await res.json() as {
+      routes?: Array<{
+        polyline?: { encodedPolyline?: string }
+        travelAdvisory?: {
+          speedReadingIntervals?: Array<{
+            startPolylinePointIndex?: number
+            endPolylinePointIndex?: number
+            speed?: string
+          }>
+        }
+      }>
+    }
+
+    const route = body.routes?.[0]
+    const encoded = route?.polyline?.encodedPolyline
+    const rawIntervals = route?.travelAdvisory?.speedReadingIntervals
+    if (!encoded || !rawIntervals?.length) return null
+
+    const intervals: TrafficInterval[] = rawIntervals
+      .filter((i): i is typeof i & { speed: TrafficSpeed } =>
+        i.speed === 'NORMAL' || i.speed === 'SLOW' || i.speed === 'TRAFFIC_JAM')
+      .map(i => ({
+        startIndex: i.startPolylinePointIndex ?? 0,
+        endIndex:   i.endPolylinePointIndex ?? 0,
+        speed:      i.speed,
+      }))
+    if (!intervals.length) return null
+
+    return { polyline: encoded, intervals }
+  } catch {
+    return null
+  }
+}
+
 export async function getRoute(
   originLat: number,
   originLng: number,
@@ -205,6 +294,13 @@ export async function getRoute(
             endLng: s.end_location.lng,
             polyline: s.polyline.points,
           }))
+        }
+        if (opts?.withTrafficIntervals) {
+          const traffic = await getTrafficIntervals(originLat, originLng, destLat, destLng, opts?.language ?? 'en')
+          if (traffic) {
+            result.trafficPolyline = traffic.polyline
+            result.trafficIntervals = traffic.intervals
+          }
         }
         return result
       }

@@ -1,4 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
+import { bearingDeg, haversineMetres } from './geo'
+
+// Below this movement, raw device heading is too noisy to trust (device sensor
+// jitter dominates at near-zero speed) — reject the fix and keep the last known
+// heading instead, same threshold the rider app's useInterpolatedPosition.ts uses.
+const HEADING_MOVEMENT_THRESHOLD_METRES = 8
 
 export interface DriverLocationState {
   position: [number, number] | null
@@ -34,6 +40,8 @@ export function useDriverLocation({
   const lastSyncAt  = useRef(0)
   const onSyncRef   = useRef(onSync)
   const hasFirstFix = useRef(false)
+  const lastHeadingPos = useRef<[number, number] | null>(null)
+  const lastHeadingVal = useRef(0)
   onSyncRef.current = onSync
 
   useEffect(() => {
@@ -50,7 +58,27 @@ export function useDriverLocation({
       const lat = pos.coords.latitude
       const lng = pos.coords.longitude
       setPosition([lat, lng])
-      if (pos.coords.heading != null) setHeading(pos.coords.heading)
+
+      // Raw device coords.heading is noisy at near-zero speed (compass jitter),
+      // which is what caused the map/marker heading twitch — derive heading from
+      // movement between fixes instead, same fix already applied on the rider
+      // side (see apps/user/lib/useInterpolatedPosition.ts). Below the movement
+      // threshold, keep the last known heading rather than recomputing from noise.
+      const prevHeadingPos = lastHeadingPos.current
+      if (prevHeadingPos) {
+        const dist = haversineMetres(prevHeadingPos, [lat, lng])
+        if (dist > HEADING_MOVEMENT_THRESHOLD_METRES) {
+          lastHeadingVal.current = bearingDeg(prevHeadingPos, [lat, lng])
+          lastHeadingPos.current = [lat, lng]
+          setHeading(lastHeadingVal.current)
+        }
+      } else {
+        lastHeadingPos.current = [lat, lng]
+        if (pos.coords.heading != null) {
+          lastHeadingVal.current = pos.coords.heading
+          setHeading(lastHeadingVal.current)
+        }
+      }
       setError(null)
 
       // A bad first fix still updates the local display above (better than a
@@ -59,8 +87,7 @@ export function useDriverLocation({
       const now = Date.now()
       if (onSyncRef.current && passesAccuracyGate && now - lastSyncAt.current >= syncIntervalMs) {
         lastSyncAt.current = now
-        const hdg = pos.coords.heading
-        onSyncRef.current(lat, lng, (hdg == null || isNaN(hdg)) ? 0 : hdg)
+        onSyncRef.current(lat, lng, lastHeadingVal.current)
       }
     }
 

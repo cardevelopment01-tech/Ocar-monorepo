@@ -23,9 +23,27 @@ import {
   creditCashback,
 } from '@/modules/payments/payments.service'
 import { calculateFare } from '@/lib/fare'
-import { classifyTrip } from '@/modules/geo/geo.service'
+import { classifyTrip, getRoute } from '@/modules/geo/geo.service'
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
 import { MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES } from '@/constants/limits'
+
+// Logs the routing engine's predicted ETA at the start of a leg (see
+// docs/PRODUCTION_NAVIGATION_SYSTEM_PLAN.md Phase 4) — instrumentation only,
+// never allowed to affect the ride status transition it's attached to.
+async function logEtaSnapshot(
+  rideId: bigint,
+  leg: 'to_pickup' | 'to_destination',
+  originLat: number,
+  originLng: number,
+  destLat: number,
+  destLng: number,
+): Promise<void> {
+  try {
+    const route = await getRoute(originLat, originLng, destLat, destLng, { trafficAware: true })
+    const predicted = route.trafficDurationMin ?? route.durationMin
+    await repo.insertEtaSnapshot(rideId, leg, predicted)
+  } catch { /* best-effort instrumentation only */ }
+}
 
 // Straight-line distance in metres — used only for the ~100m duplicate-stop
 // guard, not for fare or routing (those use the client-supplied distanceKm).
@@ -463,6 +481,14 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
 
   const ride = await repo.getRideById(rideId)
 
+  if (ride?.driver_current_lat != null && ride?.driver_current_lng != null) {
+    void logEtaSnapshot(
+      rideId, 'to_pickup',
+      ride.driver_current_lat, ride.driver_current_lng,
+      ride.origin_lat, ride.origin_lng,
+    )
+  }
+
   await repo.logStatusHistory({
     rideId,
     fromStatus: 'requested',
@@ -572,6 +598,14 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     started_at:   new Date().toISOString(),
     end_otp_hash: endHash,
   })
+
+  if (ride.dest_lat != null && ride.dest_lng != null) {
+    void logEtaSnapshot(
+      rideId, 'to_destination',
+      ride.origin_lat, ride.origin_lng,
+      ride.dest_lat, ride.dest_lng,
+    )
+  }
 
   await repo.logStatusHistory({
     rideId,

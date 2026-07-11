@@ -65,6 +65,12 @@ export type RouteStep = {
   polyline: string
 }
 
+export type TrafficInterval = {
+  startIndex: number
+  endIndex: number
+  speed: 'NORMAL' | 'SLOW' | 'TRAFFIC_JAM'
+}
+
 export const driverRideApi = {
   goOnline: async (params: {
     mode: 'standard' | 'return_cab'
@@ -202,13 +208,29 @@ export const driverRideApi = {
     originLng: number,
     destLat: number,
     destLng: number,
-    opts?: { language?: string; withSteps?: boolean },
-  ): Promise<{ polyline: string; distanceKm: number; durationMin: number; steps?: RouteStep[] }> => {
+    opts?: { language?: string; withSteps?: boolean; trafficAware?: boolean; withTrafficIntervals?: boolean },
+  ): Promise<{
+    polyline: string
+    distanceKm: number
+    durationMin: number
+    steps?: RouteStep[]
+    trafficIntervals?: TrafficInterval[]
+    trafficPolyline?: string
+  }> => {
     const params: Record<string, unknown> = { originLat, originLng, destLat, destLng }
     if (opts?.language) params['language'] = opts.language
     if (opts?.withSteps) params['withSteps'] = 'true'
+    if (opts?.trafficAware) params['trafficAware'] = 'true'
+    if (opts?.withTrafficIntervals) params['withTrafficIntervals'] = 'true'
     const res = await api.get('/api/v1/geo/route', { params })
-    return res.data as { polyline: string; distanceKm: number; durationMin: number; steps?: RouteStep[] }
+    return res.data as {
+      polyline: string
+      distanceKm: number
+      durationMin: number
+      steps?: RouteStep[]
+      trafficIntervals?: TrafficInterval[]
+      trafficPolyline?: string
+    }
   },
 }
 

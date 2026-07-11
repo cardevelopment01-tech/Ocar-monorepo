@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { driverRideApi, type RouteStep } from './ride-api'
+import { driverRideApi, type RouteStep, type TrafficInterval } from './ride-api'
 import { decodePolyline } from './polyline'
 import { haversineMetres, nearestPointOnPolyline } from './geo'
 
@@ -14,6 +14,10 @@ const BACKOFF_STEPS_MS = [2_000, 4_000, 8_000, 16_000]
 export interface TurnByTurnState {
   steps: RouteStep[]
   encodedPolyline: string | undefined
+  /** Congestion segments for the traffic-tinted route overlay — indices refer to
+   *  `trafficPolyline`, not `encodedPolyline` (see google.provider.ts's RouteResult). */
+  trafficIntervals: TrafficInterval[] | undefined
+  trafficPolyline: string | undefined
   currentStep: RouteStep | null
   /** Straight-line distance to the current step's endpoint — an approximation that
    *  holds well in practice since Google splits steps at bends, not mid-curve. */
@@ -38,6 +42,8 @@ export function useTurnByTurn(
 ): TurnByTurnState {
   const [steps, setSteps] = useState<RouteStep[]>([])
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
+  const [trafficIntervals, setTrafficIntervals] = useState<TrafficInterval[] | undefined>(undefined)
+  const [trafficPolyline, setTrafficPolyline] = useState<string | undefined>(undefined)
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
   const [isOffRoute, setIsOffRoute] = useState(false)
   const [isReconnecting, setIsReconnecting] = useState(false)
@@ -55,7 +61,9 @@ export function useTurnByTurn(
     const seq = ++fetchSeq.current
     lastFetchAt.current = Date.now()
     setLoading(true)
-    driverRideApi.getRoute(origin[0], origin[1], dest[0], dest[1], { language, withSteps: true })
+    driverRideApi.getRoute(origin[0], origin[1], dest[0], dest[1], {
+      language, withSteps: true, trafficAware: true, withTrafficIntervals: true,
+    })
       .then(r => {
         if (fetchSeq.current !== seq) return
         // Haversine fallback returns an empty polyline/no steps instead of throwing —
@@ -67,6 +75,8 @@ export function useTurnByTurn(
         const newSteps = r.steps ?? []
         setSteps(newSteps)
         setEncodedPolyline(r.polyline || undefined)
+        setTrafficIntervals(r.trafficIntervals)
+        setTrafficPolyline(r.trafficPolyline)
         setCurrentStepIndex(0)
         routePoints.current = newSteps.flatMap(s => decodePolyline(s.polyline))
         setIsOffRoute(false)
@@ -142,5 +152,8 @@ export function useTurnByTurn(
     ? haversineMetres(position, [currentStep.endLat, currentStep.endLng])
     : null
 
-  return { steps, encodedPolyline, currentStep, distanceToManeuver, isOffRoute, isReconnecting, loading }
+  return {
+    steps, encodedPolyline, trafficIntervals, trafficPolyline,
+    currentStep, distanceToManeuver, isOffRoute, isReconnecting, loading,
+  }
 }

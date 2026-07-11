@@ -1080,3 +1080,22 @@ export async function getDriverEarningsSummary(
     },
   }
 }
+
+// ── ETA accuracy instrumentation ────────────────────────────────
+// Logs the routing engine's predicted ETA at the start of a leg, for later
+// comparison against the actual elapsed time (already available from
+// rides.accepted_at/driver_arrived_at/started_at/completed_at — nothing new
+// needed there). Best-effort, never blocks the ride flow — see call sites in
+// rides.service.ts's acceptRide/verifyStartOTP.
+export async function insertEtaSnapshot(
+  rideId: bigint,
+  leg: 'to_pickup' | 'to_destination',
+  predictedDurationMin: number,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO ride_eta_snapshots (ride_id, leg, predicted_duration_min)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (ride_id, leg) DO NOTHING`,
+    [rideId, leg, predictedDurationMin]
+  )
+}

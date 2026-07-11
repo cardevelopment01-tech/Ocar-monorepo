@@ -7,6 +7,7 @@ import RecenterMap from './RecenterMap'
 import LocationPin from './LocationPin'
 import CarMarker from './CarMarker'
 import RoutePolyline from './RoutePolyline'
+import TrafficLayer from './TrafficLayer'
 
 interface RideMapSceneProps {
   center: [number, number]
@@ -44,6 +45,7 @@ export default function RideMapScene({
 
   return (
     <MapViewInner center={center} zoom={13}>
+      {!isRecap && <TrafficLayer />}
       {isRecap
         ? (showDrop && <FitBounds positions={[pickupPos, dropPos]} paddingBottom={40} />)
         : driverPos

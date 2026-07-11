@@ -22,6 +22,8 @@ const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
 const LocationPin    = lazy(() => import('@/components/map/LocationPin'))
 const SelfCarMarker  = lazy(() => import('@/components/map/SelfCarMarker'))
 const RoutePolyline  = lazy(() => import('@/components/map/RoutePolyline'))
+const TrafficLayer   = lazy(() => import('@/components/map/TrafficLayer'))
+const TrafficColoredRoute = lazy(() => import('@/components/map/TrafficColoredRoute'))
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
@@ -64,7 +66,7 @@ export default function NavigateToPickup() {
   const voiceEnabled = useNavPrefsStore(s => s.voiceEnabled)
   const navLanguage  = useNavPrefsStore(s => s.language)
 
-  const { encodedPolyline, currentStep, distanceToManeuver, isReconnecting } =
+  const { encodedPolyline, trafficIntervals, trafficPolyline, currentStep, distanceToManeuver, isReconnecting } =
     useTurnByTurn(position, pickupPos, navLanguage)
   useVoiceGuidance(currentStep, distanceToManeuver, voiceEnabled, navLanguage)
 
@@ -112,7 +114,8 @@ export default function NavigateToPickup() {
       {/* Map */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
-          <DriverMapView initialCenter={mapCenter} zoom={15}>
+          <DriverMapView initialCenter={mapCenter} zoom={15} mapId={import.meta.env.VITE_GOOGLE_MAPS_DARK_MAP_ID}>
+            <TrafficLayer />
             <RecenterMap
               center={mapCenter}
               heading={selfHeading}
@@ -122,6 +125,7 @@ export default function NavigateToPickup() {
               distanceToManeuver={distanceToManeuver}
             />
             <RoutePolyline encoded={encodedPolyline} variant="pickup-leg" />
+            <TrafficColoredRoute encoded={trafficPolyline} intervals={trafficIntervals} />
             {position && <SelfCarMarker position={position} />}
             <LocationPin position={pickupPos} variant="pickup" />
           </DriverMapView>

@@ -32,6 +32,15 @@ export interface CategoryBreakdown {
   revenue: number
 }
 
+export interface EtaAccuracy {
+  origin_city: string | null
+  destination_city: string | null
+  leg: 'to_pickup' | 'to_destination'
+  sample_count: number
+  mae_min: number
+  mape_pct: number | null
+}
+
 export interface AnalyticsSummary {
   period_days: number
   daily_revenue: DailyRevenue[]

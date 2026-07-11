@@ -1,7 +1,7 @@
 import { pool } from '@/db/client'
 import type {
   DailyRevenue, RideFunnel, TopDriver,
-  CityBreakdown, CategoryBreakdown,
+  CityBreakdown, CategoryBreakdown, EtaAccuracy,
 } from './analytics.types'
 
 export async function getDailyRevenue(days: number): Promise<DailyRevenue[]> {
@@ -115,5 +115,43 @@ export async function getCategoryBreakdown(days: number): Promise<CategoryBreakd
     category_name: r.category_name as string,
     ride_count:    parseInt(r.ride_count as string, 10),
     revenue:       parseFloat(r.revenue as string),
+  }))
+}
+
+// Routing-engine ETA accuracy vs actual elapsed time, per corridor/leg — see
+// docs/PRODUCTION_NAVIGATION_SYSTEM_PLAN.md Phase 4. Actuals are derived from
+// rides' existing transition timestamps, not stored redundantly.
+export async function getEtaAccuracy(days: number): Promise<EtaAccuracy[]> {
+  const res = await pool.query(
+    `SELECT
+       oc.name AS origin_city,
+       dc.name AS destination_city,
+       s.leg,
+       COUNT(*) AS sample_count,
+       AVG(ABS(s.predicted_duration_min - actual.actual_min)) AS mae_min,
+       AVG(ABS(s.predicted_duration_min - actual.actual_min) / NULLIF(actual.actual_min, 0)) * 100 AS mape_pct
+     FROM ride_eta_snapshots s
+     JOIN rides r ON r.id = s.ride_id
+     LEFT JOIN cities oc ON oc.id = r.origin_city_id
+     LEFT JOIN cities dc ON dc.id = r.destination_city_id
+     CROSS JOIN LATERAL (
+       SELECT CASE s.leg
+         WHEN 'to_pickup'      THEN EXTRACT(EPOCH FROM (r.driver_arrived_at - r.accepted_at)) / 60
+         WHEN 'to_destination' THEN EXTRACT(EPOCH FROM (r.completed_at - r.started_at)) / 60
+       END AS actual_min
+     ) actual
+     WHERE r.requested_at >= NOW() - ($1 || ' days')::INTERVAL
+       AND actual.actual_min IS NOT NULL
+     GROUP BY oc.name, dc.name, s.leg
+     ORDER BY oc.name, dc.name, s.leg`,
+    [days]
+  )
+  return res.rows.map(r => ({
+    origin_city:      r.origin_city as string | null,
+    destination_city: r.destination_city as string | null,
+    leg:              r.leg as 'to_pickup' | 'to_destination',
+    sample_count:     parseInt(r.sample_count as string, 10),
+    mae_min:          parseFloat(r.mae_min as string),
+    mape_pct:         r.mape_pct == null ? null : parseFloat(r.mape_pct as string),
   }))
 }

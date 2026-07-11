@@ -67,6 +67,7 @@ export async function getRoute(req: Request, res: Response, next: NextFunction):
     const opts: Parameters<typeof service.getRoute>[4] = {
       withSteps: req.query['withSteps'] === 'true',
       trafficAware: req.query['trafficAware'] === 'true',
+      withTrafficIntervals: req.query['withTrafficIntervals'] === 'true',
     }
     if (language) opts.language = language
     res.json(await service.getRoute(oLat, oLng, dLat, dLng, opts))

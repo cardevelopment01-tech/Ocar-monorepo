@@ -11,9 +11,9 @@ export const walletTopupOrderKey = (orderId: string): string => `wallet:topup_or
 // change the response shape (e.g. withSteps adds a steps array).
 export const routeKey = (
   originLat: number, originLng: number, destLat: number, destLng: number,
-  opts?: { language?: string; withSteps?: boolean; trafficAware?: boolean },
+  opts?: { language?: string; withSteps?: boolean; trafficAware?: boolean; withTrafficIntervals?: boolean },
 ): string => {
   const r = (n: number) => n.toFixed(4)
-  const o = `${opts?.language ?? 'en'}:${opts?.withSteps ? 1 : 0}:${opts?.trafficAware ? 1 : 0}`
+  const o = `${opts?.language ?? 'en'}:${opts?.withSteps ? 1 : 0}:${opts?.trafficAware ? 1 : 0}:${opts?.withTrafficIntervals ? 1 : 0}`
   return `geo:route:${r(originLat)},${r(originLng)}:${r(destLat)},${r(destLng)}:${o}`
 }

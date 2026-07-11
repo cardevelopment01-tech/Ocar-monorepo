@@ -8,17 +8,20 @@ interface DriverMapViewProps {
   initialCenter: [number, number]
   zoom?: number
   dimmed?: boolean
+  /** Overrides the default Map ID — used to opt a screen into a dark Cloud-styled
+   *  map (e.g. during navigation). Falls back to the default map style if unset. */
+  mapId?: string
   children?: React.ReactNode
 }
 
-export default function DriverMapView({ initialCenter, zoom = 15, dimmed = false, children }: DriverMapViewProps) {
+export default function DriverMapView({ initialCenter, zoom = 15, dimmed = false, mapId, children }: DriverMapViewProps) {
   return (
     <div className="relative w-full h-full">
       <div style={{ width: '100%', height: '100%', filter: MAP_FILTER }}>
         <Map
           defaultCenter={{ lat: initialCenter[0], lng: initialCenter[1] }}
           defaultZoom={zoom}
-          mapId={import.meta.env.VITE_GOOGLE_MAPS_ID}
+          mapId={mapId || import.meta.env.VITE_GOOGLE_MAPS_ID}
           gestureHandling="greedy"
           disableDefaultUI
           restriction={{ latLngBounds: ODISHA_BOUNDS, strictBounds: false }}

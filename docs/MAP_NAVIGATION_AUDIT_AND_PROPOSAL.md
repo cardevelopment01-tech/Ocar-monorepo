@@ -68,6 +68,42 @@
 > that excluded real outskirts like AIIMS Sijua (`c8ea3fe`, still just a wider rectangle,
 > not a real polygon — flagged as needing an actual admin-drawn boundary eventually).
 
+> **Status note (2026-07-11): live traffic layer added — the one gap Phase 1-3 left open.**
+> Client feedback after seeing Phase 1-3 live: still not "like Google Maps," specifically
+> no colored traffic on the roads. This was the single item explicitly deferred in §2/§4
+> ("traffic-tinted polylines... nice-to-have, not required for the core complaint") —
+> closed now rather than left as a follow-up.
+> - `apps/driver/src/components/map/TrafficLayer.tsx` (new) — mounts the free
+>   `google.maps.TrafficLayer` tile overlay (same live congestion data as the Google Maps
+>   app, no extra billed API calls) onto the existing map instance via `useMap()` from
+>   `@vis.gl/react-google-maps`. Reads `window.google` dynamically at runtime rather than
+>   referencing an ambient `google.maps` type, since this repo has no `@types/google.maps`
+>   declared.
+> - Mounted `<TrafficLayer />` inside both `NavigateToPickup.tsx` and `TripInProgress.tsx`
+>   (lazy-imported, matching the existing pattern for `RecenterMap`/`ManeuverBanner`), so
+>   both the pickup leg and the drop-off leg now show colored road congestion.
+> - `apps/driver/src/lib/ride-api.ts`: `driverRideApi.getRoute()` gained an optional
+>   `trafficAware` param, forwarded as a query string to `GET /api/v1/geo/route`.
+> - `apps/driver/src/lib/useTurnByTurn.ts`: the route-fetch hook now always passes
+>   `trafficAware: true`. The backend already supported this — `google.provider.ts`'s
+>   `opts.trafficAware` (see Phase 1 note above) was built but never invoked from the
+>   frontend until now — so routing/ETA responses actually factor in live congestion,
+>   not just static travel time.
+> - `apps/user/components/map/TrafficLayer.tsx` (new, same pattern) + `RideMapScene.tsx`
+>   mounts it too, gated on `!isRecap` (no traffic overlay on the post-ride recap map) —
+>   parity with the driver app's live-tracking view.
+> - **Not verified**: `tsc --noEmit` was not run to a clean completion in the session that
+>   made this change (environment issue, not a code issue) and nothing was exercised in a
+>   running browser. Confirm before showing the client:
+>   ```
+>   cd apps/driver && npx tsc --noEmit
+>   cd apps/user && npx tsc --noEmit
+>   pnpm dev   # both apps — confirm colored traffic actually renders on a real route
+>   ```
+> - Still not done: traffic-tinted route polyline (color the line itself by segment
+>   congestion, vs. the tile overlay added here) remains unbuilt — this was always the
+>   "optional/nice-to-have" item in Phase 2 item 3, separate from the traffic layer itself.
+
 ---
 
 ## 1. Current State (Audit)
