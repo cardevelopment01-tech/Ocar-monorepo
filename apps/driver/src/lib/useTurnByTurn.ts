@@ -58,6 +58,12 @@ export function useTurnByTurn(
     driverRideApi.getRoute(origin[0], origin[1], dest[0], dest[1], { language, withSteps: true })
       .then(r => {
         if (fetchSeq.current !== seq) return
+        // Haversine fallback returns an empty polyline/no steps instead of throwing —
+        // treat that the same as a network failure so we keep retrying with backoff
+        // instead of silently settling on "no route drawn."
+        if (!r.polyline && (!r.steps || r.steps.length === 0)) {
+          throw new Error('empty route')
+        }
         const newSteps = r.steps ?? []
         setSteps(newSteps)
         setEncodedPolyline(r.polyline || undefined)
