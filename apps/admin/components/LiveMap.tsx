@@ -44,15 +44,46 @@ interface LocationUpdate {
   speed: number
 }
 
+// ─── Smoothed position (glides between socket fixes instead of snapping) ──────
+
+const GLIDE_MS = 2_500
+
+function useSmoothedLatLng(lat: number, lng: number): { lat: number; lng: number } {
+  const [display, setDisplay] = useState({ lat, lng })
+  const liveRef = useRef({ lat, lng })
+  const rafRef  = useRef<number | null>(null)
+
+  useEffect(() => {
+    const from = liveRef.current
+    if (from.lat === lat && from.lng === lng) return
+
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    const start = performance.now()
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / GLIDE_MS, 1)
+      const next = { lat: from.lat + (lat - from.lat) * t, lng: from.lng + (lng - from.lng) * t }
+      liveRef.current = next
+      setDisplay(next)
+      rafRef.current = t < 1 ? requestAnimationFrame(tick) : null
+    }
+    rafRef.current = requestAnimationFrame(tick)
+  }, [lat, lng])
+
+  useEffect(() => () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current) }, [])
+
+  return display
+}
+
 // ─── Driver dot marker ────────────────────────────────────────────────────────
 
 function DriverDot({ session, onClick }: { session: ActiveDriverSession; onClick: () => void }) {
   const isOnTrip = session.session_status === 'on_trip'
   const color = isOnTrip ? '#4F46E5' : '#10B981'
+  const pos = useSmoothedLatLng(session.lat!, session.lng!)
 
   return (
     <AdvancedMarker
-      position={{ lat: session.lat!, lng: session.lng! }}
+      position={pos}
       onClick={onClick}
     >
       <div style={{ position: 'relative', width: 28, height: 28, cursor: 'pointer' }}>
@@ -98,6 +129,7 @@ export default function LiveMap() {
   const [tripCount,   setTripCount]   = useState(0)
   const [tripRoute,   setTripRoute]   = useState<[number, number][] | null>(null)
   const [flyTarget,   setFlyTarget]   = useState<{ lat: number; lng: number; zoom: number } | null>(null)
+  const [socketLive,  setSocketLive]  = useState(true)
 
   // Fetch trip route when selected on_trip driver changes
   useEffect(() => {
@@ -149,10 +181,17 @@ export default function LiveMap() {
       next.set(update.driverId, { ...existing, lat: update.lat, lng: update.lng, heading: update.heading })
       syncDrivers(next)
     })
+    const onDisconnect = () => setSocketLive(false)
+    const onConnect    = () => { setSocketLive(true); void reconcile() }
+    socket.on('disconnect', onDisconnect)
+    socket.on('connect', onConnect)
+    if (!socket.connected) setSocketLive(false)
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
       socket.off('driver:location_update')
+      socket.off('disconnect', onDisconnect)
+      socket.off('connect', onConnect)
     }
   }, [reconcile, syncDrivers])
 
@@ -174,6 +213,12 @@ export default function LiveMap() {
           <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
           <span className="text-xs font-semibold text-text-secondary">{tripCount} on trip</span>
         </div>
+        {!socketLive && (
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-danger" />
+            <span className="text-xs font-semibold text-danger">Reconnecting… positions may be stale</span>
+          </div>
+        )}
         <div className="flex-1" />
         {CITIES.map(c => (
           <button

@@ -8,9 +8,10 @@ export function getAdminSocket(): Socket {
   if (!adminSocket || !adminSocket.connected) {
     const token = typeof window !== 'undefined' ? (localStorage.getItem('ocar_admin_token') ?? '') : ''
     adminSocket = io(API_URL, {
-      auth:               { token },
-      transports:         ['websocket'],
-      reconnectionAttempts: 5,
+      auth:       { token },
+      transports: ['websocket'],
+      // No reconnectionAttempts cap — an admin session left open for hours
+      // shouldn't silently stop retrying and leave the live-map stale forever.
     })
   }
   return adminSocket
