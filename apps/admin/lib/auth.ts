@@ -7,6 +7,7 @@ export interface AdminProfile {
   email: string
   role: 'super_admin' | 'ops_admin' | 'support_admin' | 'finance_admin'
   is_active: boolean
+  totp_enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -14,6 +15,13 @@ export interface AdminProfile {
 export interface AdminAuthResponse {
   tokens: { accessToken: string; refreshToken: string; expiresIn: number; refreshExpiresIn: number }
   admin: AdminProfile
+}
+
+// Returned instead of AdminAuthResponse when the admin has 2FA enabled —
+// password was correct, but no session exists yet until the code is verified.
+export interface AdminLoginPending {
+  pending: true
+  pendingToken: string
 }
 
 export function storeAdminAuth(token: string, admin: AdminProfile, refreshToken?: string) {
@@ -55,8 +63,13 @@ export function getStoredAdmin(): AdminProfile | null {
 }
 
 export const adminAuthApi = {
-  login: async (email: string, password: string): Promise<AdminAuthResponse> => {
+  login: async (email: string, password: string): Promise<AdminAuthResponse | AdminLoginPending> => {
     const res = await api.post('/api/v1/auth/admin/login', { email, password })
+    return res.data as AdminAuthResponse | AdminLoginPending
+  },
+
+  verifyTotp: async (pendingToken: string, code: string): Promise<AdminAuthResponse> => {
+    const res = await api.post('/api/v1/auth/admin/totp-verify', { pendingToken, code })
     return res.data as AdminAuthResponse
   },
 

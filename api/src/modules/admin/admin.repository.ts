@@ -17,6 +17,41 @@ export async function listAdminAccounts(): Promise<AdminAccountListItem[]> {
   ).then(res => res.rows)
 }
 
+// admin_status and is_active are kept in lockstep — is_active is what
+// login/authenticate() actually check, admin_status is the richer lifecycle
+// label surfaced in the UI. Suspending/reactivating always updates both.
+export async function setAdminStatus(params: {
+  targetId: bigint
+  status: 'active' | 'suspended'
+  actingAdminId: bigint
+  ipAddress: string | null
+}): Promise<AdminAccountListItem | null> {
+  const beforeRes = await pool.query('SELECT * FROM admins WHERE id = $1 AND deleted_at IS NULL', [params.targetId])
+  const before = beforeRes.rows[0]
+  if (!before) return null
+
+  const afterRes = await pool.query<AdminAccountListItem>(
+    `UPDATE admins
+     SET admin_status = $1, is_active = $2, updated_at = now()
+     WHERE id = $3
+     RETURNING id, code, email, role, admin_status, created_at`,
+    [params.status, params.status === 'active', params.targetId]
+  )
+  const after = afterRes.rows[0]!
+
+  await recordAuditLog({
+    adminId: params.actingAdminId,
+    action: 'admins.status_change',
+    targetTable: 'admins',
+    targetId: params.targetId,
+    beforeState: before,
+    afterState: after as unknown as Record<string, unknown>,
+    ipAddress: params.ipAddress,
+  })
+
+  return after
+}
+
 export async function listDrivers(filters: {
   status?: string
   search?: string

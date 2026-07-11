@@ -22,6 +22,12 @@ export const adminLoginSchema = z.object({
   password: z.string().min(8),
 })
 
+export const adminTotpVerifySchema = z.object({
+  pendingToken: z.string().min(1),
+  // Either a 6-digit TOTP code or an XXXX-XXXX recovery code.
+  code: z.string().min(6).max(9),
+})
+
 export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1),
 })

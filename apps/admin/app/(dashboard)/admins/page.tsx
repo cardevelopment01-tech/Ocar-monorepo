@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { UserPlus, X, Send, Ban } from 'lucide-react'
+import { UserPlus, X, Send, Ban, ShieldOff, ShieldCheck } from 'lucide-react'
 import DataTable from '@/components/ui/DataTable'
 import StatusPill from '@/components/ui/StatusPill'
 import SlideOver from '@/components/ui/SlideOver'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { adminInvitesApi, adminAccountsApi, type AdminInvite, type AdminAccount } from '@/lib/admin-invites-api'
+import { useAdminAuth } from '@/lib/auth-context'
 import type { AdminRole } from '@/lib/mock-data'
 
 const ROLE_LABEL: Record<AdminRole, string> = {
@@ -32,6 +33,7 @@ function formatDate(iso: string): string {
 }
 
 export default function AdminsPage() {
+  const { admin: currentAdmin } = useAdminAuth()
   const [admins, setAdmins] = useState<AdminAccount[]>([])
   const [invites, setInvites] = useState<AdminInvite[]>([])
   const [loadingAdmins, setLoadingAdmins] = useState(true)
@@ -45,6 +47,7 @@ export default function AdminsPage() {
   const [sending, setSending] = useState(false)
 
   const [revokeTarget, setRevokeTarget] = useState<AdminInvite | null>(null)
+  const [statusTarget, setStatusTarget] = useState<AdminAccount | null>(null)
 
   const loadAdmins = async () => {
     setLoadingAdmins(true)
@@ -115,11 +118,30 @@ export default function AdminsPage() {
     setInvites(prev => prev.map(i => (i.id === revoked.id ? revoked : i)))
   }
 
+  const confirmStatusChange = async () => {
+    if (!statusTarget) return
+    const nextStatus = statusTarget.admin_status === 'active' ? 'suspended' : 'active'
+    const updated = await adminAccountsApi.setStatus(statusTarget.id, nextStatus)
+    setAdmins(prev => prev.map(a => (a.id === updated.id ? updated : a)))
+  }
+
   const adminColumns = [
     { key: 'email', header: 'Email', render: (a: AdminAccount) => <span className="text-sm font-medium text-text-primary">{a.email}</span> },
     { key: 'role', header: 'Role', width: '160px', render: (a: AdminAccount) => <RolePill role={a.role} /> },
     { key: 'admin_status', header: 'Status', width: '120px', render: (a: AdminAccount) => <StatusPill status={a.admin_status} /> },
     { key: 'created_at', header: 'Joined', width: '140px', render: (a: AdminAccount) => <span className="text-xs text-text-muted">{formatDate(a.created_at)}</span> },
+    {
+      key: 'actions', header: '', width: '90px',
+      render: (a: AdminAccount) => a.id === currentAdmin?.id ? null : (
+        <button
+          onClick={() => setStatusTarget(a)}
+          className="text-text-muted hover:text-danger transition-colors p-1 rounded hover:bg-danger-light cursor-pointer"
+          title={a.admin_status === 'active' ? 'Suspend admin' : 'Reactivate admin'}
+        >
+          {a.admin_status === 'active' ? <ShieldOff size={14} /> : <ShieldCheck size={14} />}
+        </button>
+      ),
+    },
   ]
 
   const inviteColumns = [
@@ -252,6 +274,20 @@ export default function AdminsPage() {
         confirmLabel="Revoke"
         variant="danger"
         onConfirm={() => void confirmRevoke()}
+      />
+
+      <ConfirmDialog
+        open={!!statusTarget}
+        onOpenChange={open => { if (!open) setStatusTarget(null) }}
+        title={statusTarget?.admin_status === 'active' ? 'Suspend this admin?' : 'Reactivate this admin?'}
+        description={
+          statusTarget?.admin_status === 'active'
+            ? `${statusTarget?.email ?? ''} will be signed out and unable to log in until reactivated.`
+            : `${statusTarget?.email ?? ''} will be able to log in again.`
+        }
+        confirmLabel={statusTarget?.admin_status === 'active' ? 'Suspend' : 'Reactivate'}
+        variant={statusTarget?.admin_status === 'active' ? 'danger' : 'success'}
+        onConfirm={() => void confirmStatusChange()}
       />
     </div>
   )

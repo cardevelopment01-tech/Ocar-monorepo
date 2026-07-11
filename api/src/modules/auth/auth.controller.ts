@@ -44,6 +44,16 @@ export async function adminLogin(req: Request, res: Response, next: NextFunction
   }
 }
 
+export async function adminTotpVerify(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { pendingToken, code } = req.body as { pendingToken: string; code: string }
+    const result = await authService.verifyAdminTotp(pendingToken, code, req.ip ?? null)
+    res.status(200).json(result)
+  } catch (err) {
+    next(err)
+  }
+}
+
 export async function refreshToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { refreshToken: token } = req.body as { refreshToken: string }

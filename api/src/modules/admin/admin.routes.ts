@@ -13,6 +13,7 @@ router.get('/stats', controller.getAdminStats)
 
 // ─── Admin accounts ───────────────────────────────────────────────────────────
 router.get('/admins', requireAdmin('super_admin'), controller.getAdminAccounts)
+router.patch('/admins/:id/status', requireAdmin('super_admin'), controller.patchAdminStatus)
 
 // ─── Live map ─────────────────────────────────────────────────────────────────
 router.get('/sessions/active', controller.getAdminActiveSessions)

@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Eye, EyeOff, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { Eye, EyeOff, ArrowRight, CheckCircle2, ShieldCheck } from 'lucide-react'
 import { adminAuthApi, storeAdminAuth } from '@/lib/auth'
 import { registerPush } from '@/lib/push'
 
@@ -16,6 +16,17 @@ function AdminLoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [pendingToken, setPendingToken] = useState<string | null>(null)
+  const [totpCode, setTotpCode] = useState('')
+  const [totpError, setTotpError] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState(false)
+
+  const finishLogin = (tokens: { accessToken: string; refreshToken: string }, admin: Parameters<typeof storeAdminAuth>[1]) => {
+    storeAdminAuth(tokens.accessToken, admin, tokens.refreshToken)
+    void registerPush()
+    router.push('/overview')
+  }
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -27,10 +38,12 @@ function AdminLoginForm() {
 
     setIsLoading(true)
     try {
-      const { tokens, admin } = await adminAuthApi.login(email.trim().toLowerCase(), password)
-      storeAdminAuth(tokens.accessToken, admin, tokens.refreshToken)
-      void registerPush()
-      router.push('/overview')
+      const result = await adminAuthApi.login(email.trim().toLowerCase(), password)
+      if ('pending' in result) {
+        setPendingToken(result.pendingToken)
+      } else {
+        finishLogin(result.tokens, result.admin)
+      }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number; data?: { error?: string } } })?.response?.status
       const body   = (err as { response?: { data?: { error?: string } } })?.response?.data
@@ -45,6 +58,27 @@ function AdminLoginForm() {
       }
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleVerifyTotp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setTotpError(null)
+    if (!pendingToken) return
+
+    setVerifying(true)
+    try {
+      const { tokens, admin } = await adminAuthApi.verifyTotp(pendingToken, totpCode.trim())
+      finishLogin(tokens, admin)
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 401) {
+        setTotpError('Invalid or expired code. Check your authenticator app, or use a recovery code.')
+      } else {
+        setTotpError('Could not verify code. Please try again.')
+      }
+    } finally {
+      setVerifying(false)
     }
   }
 
@@ -124,17 +158,77 @@ function AdminLoginForm() {
           </div>
 
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-text-primary">Welcome back</h1>
-            <p className="text-text-muted text-sm mt-1.5">Sign in to your admin account to continue</p>
+            <h1 className="text-2xl font-bold text-text-primary">
+              {pendingToken ? 'Two-factor authentication' : 'Welcome back'}
+            </h1>
+            <p className="text-text-muted text-sm mt-1.5">
+              {pendingToken
+                ? 'Enter the code from your authenticator app'
+                : 'Sign in to your admin account to continue'}
+            </p>
           </div>
 
-          {justInvited && (
+          {justInvited && !pendingToken && (
             <div className="bg-success-light text-success text-sm font-medium px-4 py-3 rounded-xl flex items-center gap-2 mb-5">
               <CheckCircle2 size={16} className="flex-shrink-0" />
               Account activated — sign in to continue.
             </div>
           )}
 
+          {pendingToken ? (
+            <form onSubmit={e => void handleVerifyTotp(e)} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-text-muted uppercase tracking-widest mb-2">
+                  Verification Code
+                </label>
+                <input
+                  value={totpCode}
+                  onChange={e => setTotpCode(e.target.value)}
+                  placeholder="123456 or a recovery code"
+                  className="w-full px-4 py-3 rounded-xl border border-border bg-white text-text-primary placeholder:text-text-muted/60 text-sm font-mono tracking-widest focus:outline-none transition-all"
+                  style={{ boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}
+                  onFocus={e => { e.currentTarget.style.borderColor = '#4F46E5'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(79,70,229,0.12)' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(15,23,42,0.04)' }}
+                  autoComplete="one-time-code"
+                  autoFocus
+                />
+              </div>
+
+              {totpError && (
+                <div className="bg-danger-light text-danger text-sm font-medium px-4 py-3 rounded-xl flex items-center gap-2">
+                  <ShieldCheck size={14} className="flex-shrink-0" />
+                  {totpError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={verifying || !totpCode.trim()}
+                className="w-full py-3 px-6 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{
+                  background: verifying ? '#6366F1' : 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+                  boxShadow: verifying ? 'none' : '0 4px 16px rgba(79,70,229,0.35)',
+                }}
+              >
+                {verifying ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  <>Verify <ArrowRight size={16} /></>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setPendingToken(null); setTotpCode(''); setTotpError(null) }}
+                className="w-full text-center text-xs text-text-muted hover:text-text-secondary transition-colors cursor-pointer"
+              >
+                Back to sign in
+              </button>
+            </form>
+          ) : (
           <form onSubmit={handleLogin} className="space-y-4">
             {/* Email */}
             <div>
@@ -210,6 +304,7 @@ function AdminLoginForm() {
               )}
             </button>
           </form>
+          )}
 
           <p className="text-center text-text-muted mt-8" style={{ fontSize: '11px' }}>
             Ocar · Internal Tool &nbsp;·&nbsp; Authorised Personnel Only

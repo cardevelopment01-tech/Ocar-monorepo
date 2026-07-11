@@ -18,6 +18,9 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRY_USER: z.string().regex(/^\d+[smhd]$/).default('30d'),
   JWT_REFRESH_EXPIRY_ADMIN: z.string().regex(/^\d+[smhd]$/).default('24h'),
 
+  // TOTP (admin 2FA) — 32-byte key, hex-encoded (64 hex chars), for AES-256-GCM
+  TOTP_ENCRYPTION_KEY: z.string().length(64).regex(/^[0-9a-f]+$/i),
+
   // Razorpay
   RAZORPAY_KEY_ID: z.string().default(''),
   RAZORPAY_KEY_SECRET: z.string().default(''),

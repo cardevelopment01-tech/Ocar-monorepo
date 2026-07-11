@@ -15,6 +15,11 @@ export const adminAccountsApi = {
     const { data } = await api.get<{ admins: AdminAccount[] }>('/api/v1/admin/admins')
     return data.admins
   },
+
+  setStatus: async (id: string, status: 'active' | 'suspended'): Promise<AdminAccount> => {
+    const { data } = await api.patch<{ admin: AdminAccount }>(`/api/v1/admin/admins/${id}/status`, { status })
+    return data.admin
+  },
 }
 
 export type InviteStatus = 'pending' | 'accepted' | 'expired' | 'revoked'

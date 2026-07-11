@@ -27,6 +27,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   '/config/notification-templates': { title: 'Notification Templates', subtitle: 'SMS & push message copy' },
   '/admins':                { title: 'Admins',         subtitle: 'Admin accounts & invitations' },
   '/audit-log':             { title: 'Audit Log',      subtitle: 'Every admin action, who did it, and when' },
+  '/security':              { title: 'Security',       subtitle: 'Two-factor authentication' },
   '/analytics':             { title: 'Reports',        subtitle: 'Analytics and exports' },
 }
 

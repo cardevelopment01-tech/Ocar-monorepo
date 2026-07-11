@@ -86,7 +86,7 @@ export async function touchAdminLogin(id: bigint, ip: string | null): Promise<vo
 
 export async function findAdminById(id: bigint): Promise<AdminRecord | null> {
   const rows = await query<AdminRecord>(
-    `SELECT id, code, email, role, is_active, created_at, updated_at
+    `SELECT id, code, email, role, is_active, totp_enabled, created_at, updated_at
      FROM admins WHERE id = $1 LIMIT 1`,
     [id.toString()]
   )

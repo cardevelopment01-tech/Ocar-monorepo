@@ -51,6 +51,20 @@ export async function getAdminAccounts(_req: Request, res: Response, next: NextF
   }
 }
 
+export async function patchAdminStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const admin = await service.setAdminStatus({
+      targetId: BigInt(req.params['id']!),
+      status: req.body.status as 'active' | 'suspended',
+      actingAdminId: req.admin!.id,
+      ipAddress: req.ip ?? null,
+    })
+    res.json({ admin })
+  } catch (err) {
+    next(err)
+  }
+}
+
 // ─── Vehicle controllers ──────────────────────────────────────────────────────
 
 export async function getCategories(req: Request, res: Response, next: NextFunction): Promise<void> {

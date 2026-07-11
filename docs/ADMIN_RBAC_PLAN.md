@@ -182,10 +182,110 @@ don't chain them.
       tool is available in this environment, so visual QA (spacing, alignment, responsive
       behavior) has not been done. This is a real gap, not a "looks fine" claim.
 
+- [x] **Phase 12 — Fix: verify invite token before rendering the accept-invite form.**
+      Found via user testing: an expired/invalid link opened the password form and only failed
+      on submit. Added `GET /api/v1/admin/invites/verify` (read-only, never mutates status) and
+      an on-load check in the accept-invite page. Verified live: valid token → 200, garbage
+      token → 400, and a token force-expired directly in the DB → 400 with status still
+      `pending` (confirming the read-only check never mutates, unlike `redeemInvite`).
+
+- [x] **Phase 13 — Fix: 5 admin mutation routes had no role restriction at all.**
+      Found via user testing (after creating real non-super_admin accounts for the first time):
+      `PATCH /drivers/:id/status`, `PATCH /users/:id/status`, `GET /payments`,
+      `PATCH /safety/sos/:id/{acknowledge,resolve}`, `PATCH /safety/disputes/:id/{assign,resolve}`
+      had `authenticate()` only — any authenticated admin, any role, could call them. Added
+      `requireAdmin(...)` matching the seeded `role_permissions` matrix. Verified live:
+      cross-role tests (finance_admin blocked from driver-approve, ops_admin blocked from
+      payments, and the correct role succeeding in each case).
+
+      Research (Uber/AWS/DRF/SOC2 patterns) confirmed "reads open, mutations gated" is only
+      acceptable as an *explicit, enforced* rule — the actual prevention mechanism industry uses
+      is structural (a lint rule or CI contract test asserting every route declares an auth
+      requirement), not manual vigilance. Not built here — see non-goals.
+
+- [x] **Phase 14 — Audit log tamper-evidence + admin suspend/reactivate flow.**
+      Research (AWS root-account model, SOC2/SIEM practice) confirmed an audit log is only
+      trustworthy if even the highest-privilege account can't alter it. A plain
+      `REVOKE UPDATE, DELETE` would have been a no-op — **the app connects as the `postgres`
+      superuser**, which bypasses all grant checks. Fixed with a `BEFORE UPDATE OR DELETE`
+      trigger on `admin_audit_log` that unconditionally raises an exception — triggers fire
+      regardless of role, unlike GRANT/REVOKE. Verified live: both UPDATE and DELETE rejected
+      even from the superuser connection itself.
+
+      Separately found: `admin_status` (Phase 1) was dead data — no endpoint ever changed it,
+      and neither login nor `authenticate()` checked it (only the pre-existing `is_active` did).
+      Added `PATCH /api/v1/admin/admins/:id/status` (`super_admin` only, self-suspend blocked,
+      audited) which updates `admin_status` and `is_active` together rather than rewiring the
+      existing auth checks. Verified live: suspending an admin blocks their next login, **and**
+      revokes an already-issued access token on its very next request (confirmed
+      `authenticate()` re-checks `is_active` from the DB every request, not just at login) —
+      reactivating restores access immediately. Also added a super_admin-only Audit Log page
+      (`apps/admin/app/(dashboard)/audit-log/`) — actor, action, target, before/after diff, IP,
+      timestamp, paginated.
+
+- [x] **Phase 15 — TOTP/2FA enrollment + enforcement.**
+      Research (GitHub/Supabase enrollment UX, AWS root-MFA tiering-by-privilege, RFC 6238)
+      → plan → build, all in one pass. New `admin-totp` module: `otplib` (generate/verify) +
+      `qrcode` (QR rendering), secret encrypted at rest (AES-256-GCM, new `lib/totp-crypto.ts`,
+      new `TOTP_ENCRYPTION_KEY` env var — not marked enabled until one real code is confirmed,
+      catching setup mistakes at enrollment rather than first login). 8 recovery codes generated
+      on confirm, hashed with bcrypt like passwords, single-use (`admin_recovery_codes` table).
+
+      **Two-step login**, matching the GitHub/Supabase/AWS pattern: password succeeds → if
+      `totp_enabled`, a short-lived pending-verify token is issued instead of real tokens (new
+      `signPendingTotpToken`/`verifyPendingTotpToken` in `lib/jwt.ts`, deliberately shaped
+      nothing like a real access token — no `role` claim, so it can never pass
+      `authenticate()`'s role check even if misused) → `POST /api/v1/auth/admin/totp-verify`
+      accepts a TOTP code or a recovery code → only then issues real tokens.
+
+      **Enforcement, tiered by privilege** (AWS root/privileged-user precedent, not applied
+      uniformly): mandatory for `super_admin`/`finance_admin`, optional-but-available for
+      `ops_admin`/`support_admin`. `authenticate()` blocks a mandatory-role admin without
+      `totp_enabled` from every route except `/admin/totp/*` and `/auth/logout` — no grace
+      period, since this platform is pre-launch with no real user base yet to protect against
+      a surprise lockout (AWS's 35-day grace window exists for exactly that problem, which
+      doesn't apply here).
+
+      **Two bugs caught by live testing, not just reading the code:**
+      1. otplib's `verify()` *throws* for a non-6-digit token (e.g. a recovery code like
+         `MYF8-XNW8`) instead of returning `{ valid: false }` — crashed before ever reaching
+         the recovery-code fallback. Fixed by guarding the TOTP path to only run on input
+         shaped like `/^\d{6}$/`.
+      2. Self-review caught RFC 6238's replay-window recommendation was missing entirely — a
+         captured valid code could be replayed within its own ~30-90s validity window. Added
+         `totp_last_timestep` (new column) + otplib's native `afterTimeStep` option; verified
+         live that the identical code succeeds once and is rejected on a second attempt via a
+         fresh pending token.
+
+      Also added, found missing during self-review: `admin_totp.enabled`/`admin_totp.disabled`
+      audit log entries (this module's own audit-log pattern wasn't being applied to itself).
+
+      Verified live end-to-end: mandatory-role gate (super_admin blocked from every route
+      except `/admin/totp/*` until enrolled, confirmed via the real seed account), voluntary
+      enrollment for a non-mandatory role (never blocked either way), full enroll → real
+      login-verify → recovery-code login → replay rejection → disable cycle, and disabling a
+      mandatory role's 2FA correctly re-triggers the enrollment gate. 74/74 unit tests pass
+      (10 new: crypto round-trip/tamper/malformed, recovery-code format/entropy, otplib
+      generate/verify/epoch-tolerance/replay-guard). Frontend: `/security` page (all roles,
+      QR enrollment, recovery codes shown once, disable-with-password) + login page's two-step
+      verify UI + axios interceptor redirect on `TOTP_SETUP_REQUIRED`.
+
+      **Left the real seed `admin@ocar.com` account with TOTP disabled** after testing — the
+      secret generated during testing was never shown to a real authenticator app, so leaving
+      it enabled would have locked the actual user out on next login.
+
 ## 4. Non-goals (explicitly out of scope for this plan)
 
 - City-scoped admin access (§1 decision 4)
 - Per-admin permission overrides beyond role-level grants
 - Audit log retention/partitioning/archival
-- IP allowlisting for admin login
+- IP allowlisting for admin login — flagged again by Phase 13/14/15 research, still deferred
 - Admin session timeout changes (separate from this plan — a product decision, not schema)
+- CI contract-test asserting every route has an explicit auth check (Phase 13 finding — the
+  actual structural fix to prevent this bug class recurring; real, not built, could be a
+  follow-up)
+- Dual-control/four-eyes approval for destructive super_admin actions (Phase 14 research —
+  banking/PAM-grade pattern, no current need at this platform's scale)
+- Real-time alerting on sensitive admin actions beyond the audit log itself (Phase 14 research)
+- SMS as a TOTP recovery fallback — Phase 15 research is unanimous SMS is the weaker, phishable
+  factor; recovery codes are the only backup path, deliberately

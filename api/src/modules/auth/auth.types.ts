@@ -47,12 +47,14 @@ export interface AdminRecord {
   email: string
   role: AdminRole
   is_active: boolean
+  totp_enabled: boolean
   created_at: Date
   updated_at: Date
 }
 
 export interface AdminDbRow extends AdminRecord {
   password_hash: string
+  totp_enabled: boolean
 }
 
 export interface OtpRequestRecord {
@@ -103,6 +105,18 @@ export interface VerifyOtpResult {
 }
 
 export interface AdminLoginResult {
+  tokens: AuthTokens
+  admin: AdminRecord
+}
+
+// Returned instead of AdminLoginResult when the admin has TOTP enabled —
+// password was correct, but no session exists yet until the code is verified.
+export interface AdminLoginPendingTotpResult {
+  pending: true
+  pendingToken: string
+}
+
+export interface AdminTotpVerifyResult {
   tokens: AuthTokens
   admin: AdminRecord
 }

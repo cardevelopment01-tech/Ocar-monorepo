@@ -94,6 +94,19 @@ api.interceptors.response.use(
     const isTokenError = code === 'AUTH_UNAUTHORIZED' || code === 'AUTH_TOKEN_INVALID' || code === 'AUTH_TOKEN_EXPIRED'
     const original = error.config as RetriableRequest | undefined
 
+    // A super_admin/finance_admin without TOTP enrolled gets 403'd on every
+    // route except /admin/totp/* — force them to the setup page rather than
+    // leaving them stuck on whatever page they were on.
+    if (
+      error.response?.status === 403 &&
+      code === 'TOTP_SETUP_REQUIRED' &&
+      typeof window !== 'undefined' &&
+      window.location.pathname !== '/security'
+    ) {
+      window.location.href = '/security'
+      return Promise.reject(error)
+    }
+
     if (
       error.response?.status === 401 &&
       isTokenError &&

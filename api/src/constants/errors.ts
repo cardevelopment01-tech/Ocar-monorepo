@@ -45,6 +45,26 @@ export const AppErrors = {
     message: 'You do not have permission to perform this action',
     httpStatus: 403,
   },
+  TOTP_SETUP_REQUIRED: {
+    code: 'TOTP_SETUP_REQUIRED',
+    message: 'Two-factor authentication setup is required for this role',
+    httpStatus: 403,
+  },
+  TOTP_NO_PENDING_SETUP: {
+    code: 'TOTP_NO_PENDING_SETUP',
+    message: 'No pending two-factor setup found — start setup again',
+    httpStatus: 422,
+  },
+  TOTP_INVALID_CODE: {
+    code: 'TOTP_INVALID_CODE',
+    message: 'Invalid or expired code',
+    httpStatus: 401,
+  },
+  TOTP_INVALID_PENDING_TOKEN: {
+    code: 'TOTP_INVALID_PENDING_TOKEN',
+    message: 'This verification session has expired — please log in again',
+    httpStatus: 401,
+  },
   DRIVER_NOT_APPROVED: {
     code: 'DRIVER_NOT_APPROVED',
     message: 'Driver account is pending approval',

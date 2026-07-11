@@ -21,6 +21,7 @@ import notificationsRouter from '@/modules/notifications/notifications.routes'
 import templatesRouter from '@/modules/notifications/templates.routes'
 import adminInvitesRouter from '@/modules/admin-invites/admin-invites.routes'
 import adminAuditRouter from '@/modules/admin-audit/admin-audit.routes'
+import adminTotpRouter from '@/modules/admin-totp/admin-totp.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -68,6 +69,7 @@ export function createApp(): Application {
   // every request under '/admin' via router.use(), which would otherwise
   // 401 the public POST /admin/invites/redeem route before it's ever reached.
   apiRouter.use('/admin/invites', adminInvitesRouter)
+  apiRouter.use('/admin/totp', adminTotpRouter)
   apiRouter.use('/admin', adminRouter)
   apiRouter.use('/geo', geoRouter)
   apiRouter.use('/pricing', pricingRouter)

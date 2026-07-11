@@ -5,11 +5,12 @@ import { PrincipalRole, OtpPurpose } from '@/constants/enums'
 import { config } from '@/config'
 import { OTP_TTL_SECONDS } from '@/constants/limits'
 import * as otpLib from '@/lib/otp'
-import { signAccessToken, generateRefreshToken, hashRefreshToken } from '@/lib/jwt'
+import { signAccessToken, generateRefreshToken, hashRefreshToken, signPendingTotpToken, verifyPendingTotpToken } from '@/lib/jwt'
 import { comparePassword } from '@/lib/hash'
 import type { AccessTokenPayload } from '@/lib/jwt'
 import * as repo from './auth.repository'
 import { notificationsQueue } from '@/jobs/queues'
+import { verifyLoginCode } from '@/modules/admin-totp/admin-totp.service'
 import type {
   AuthTokens,
   UserRecord,
@@ -18,6 +19,8 @@ import type {
   OtpRequestResult,
   VerifyOtpResult,
   AdminLoginResult,
+  AdminLoginPendingTotpResult,
+  AdminTotpVerifyResult,
 } from './auth.types'
 
 export { createHttpError }
@@ -138,16 +141,50 @@ export async function verifyOtp(
   return { tokens, principal, isNew }
 }
 
-export async function adminLogin(email: string, password: string, ip: string | null): Promise<AdminLoginResult> {
+export async function adminLogin(
+  email: string,
+  password: string,
+  ip: string | null
+): Promise<AdminLoginResult | AdminLoginPendingTotpResult> {
   const adminRow = await repo.findAdminByEmail(email)
   if (!adminRow) throw createHttpError(AppErrors.AUTH_OTP_INVALID)
 
   const valid = await comparePassword(password, adminRow.password_hash)
   if (!valid) throw createHttpError(AppErrors.AUTH_OTP_INVALID)
 
+  // Password alone is not a session when 2FA is on — no tokens issued yet,
+  // and last_login_at is only touched once the code is actually verified.
+  if (adminRow.totp_enabled) {
+    return { pending: true, pendingToken: signPendingTotpToken(adminRow.id) }
+  }
+
   await repo.touchAdminLogin(BigInt(adminRow.id), ip)
 
   const { password_hash: _ph, ...admin } = adminRow
+  const tokens = await issueTokenPair(PrincipalRole.ADMIN, admin, config.JWT_REFRESH_EXPIRY_ADMIN, admin.role)
+  return { tokens, admin }
+}
+
+export async function verifyAdminTotp(
+  pendingToken: string,
+  code: string,
+  ip: string | null
+): Promise<AdminTotpVerifyResult> {
+  let adminId: string
+  try {
+    adminId = verifyPendingTotpToken(pendingToken).adminId
+  } catch {
+    throw createHttpError(AppErrors.TOTP_INVALID_PENDING_TOKEN)
+  }
+
+  const admin = await repo.findAdminById(BigInt(adminId))
+  if (!admin) throw createHttpError(AppErrors.TOTP_INVALID_PENDING_TOKEN)
+
+  const codeValid = await verifyLoginCode(BigInt(adminId), code)
+  if (!codeValid) throw createHttpError(AppErrors.TOTP_INVALID_CODE)
+
+  await repo.touchAdminLogin(BigInt(adminId), ip)
+
   const tokens = await issueTokenPair(PrincipalRole.ADMIN, admin, config.JWT_REFRESH_EXPIRY_ADMIN, admin.role)
   return { tokens, admin }
 }

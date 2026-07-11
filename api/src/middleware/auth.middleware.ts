@@ -8,6 +8,8 @@ import {
   findAdminById,
 } from '@/modules/auth/auth.repository'
 
+const MANDATORY_TOTP_ROLES = new Set(['super_admin', 'finance_admin'])
+
 export function authenticate(): RequestHandler {
   return async (req, res, next) => {
     const authHeader = req.headers['authorization']
@@ -53,6 +55,21 @@ export function authenticate(): RequestHandler {
           })
           return
         }
+
+        // super_admin/finance_admin must enroll in TOTP before touching
+        // anything else — exempt only the routes needed to actually enroll
+        // (and logout, so a stuck admin always has a way out).
+        const mustEnrollTotp = MANDATORY_TOTP_ROLES.has(admin.role) && !admin.totp_enabled
+        const totpEnrollmentExempt =
+          req.originalUrl.startsWith('/api/v1/admin/totp') || req.originalUrl.startsWith('/api/v1/auth/logout')
+        if (mustEnrollTotp && !totpEnrollmentExempt) {
+          res.status(403).json({
+            error: AppErrors.TOTP_SETUP_REQUIRED.message,
+            code: AppErrors.TOTP_SETUP_REQUIRED.code,
+          })
+          return
+        }
+
         req.admin = { id: BigInt(admin.id), code: admin.code, role: admin.role }
       } else {
         res.status(403).json({

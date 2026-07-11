@@ -1,4 +1,4 @@
-import { createHttpError } from '@/lib/errors'
+import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
@@ -71,6 +71,24 @@ export async function updateDriverStatus(
 // ─── Admin accounts ───────────────────────────────────────────────────────────
 
 export async function listAdminAccounts() { return repo.listAdminAccounts() }
+
+export async function setAdminStatus(params: {
+  targetId: bigint
+  status: 'active' | 'suspended'
+  actingAdminId: bigint
+  ipAddress: string | null
+}) {
+  if (params.status !== 'active' && params.status !== 'suspended') {
+    throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
+  if (params.targetId === params.actingAdminId) {
+    throw httpError(422, 'You cannot change your own admin status', AppErrors.VALIDATION_ERROR.code)
+  }
+
+  const updated = await repo.setAdminStatus(params)
+  if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
+  return updated
+}
 
 // ─── Vehicle management ───────────────────────────────────────────────────────
 
