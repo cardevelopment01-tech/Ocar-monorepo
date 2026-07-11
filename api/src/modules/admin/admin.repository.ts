@@ -1,10 +1,21 @@
 import { pool } from '@/db/client'
+import { recordAuditLog } from '@/lib/audit-log'
 import type {
   AdminDriverListRow, AdminDriverDetail, DriverStatus,
   AdminVehicleCategory, AdminVehicleBrand, AdminVehicleModel,
   FleetVehicle, PendingVehicleDoc, ExpiringVehicleDoc,
   AdminCity, AdminDashboardStats, ActiveDriverSession, AdminRentalPackage,
+  AdminAccountListItem,
 } from './admin.types'
+
+export async function listAdminAccounts(): Promise<AdminAccountListItem[]> {
+  return pool.query<AdminAccountListItem>(
+    `SELECT id, code, email, role, admin_status, created_at
+     FROM admins
+     WHERE deleted_at IS NULL
+     ORDER BY created_at DESC`
+  ).then(res => res.rows)
+}
 
 export async function listDrivers(filters: {
   status?: string
@@ -158,11 +169,18 @@ export async function updateDriverStatus(
   fromStatus: DriverStatus,
   toStatus: DriverStatus,
   reason?: string,
-  onboardingStep?: string
+  onboardingStep?: string,
+  ipAddress?: string | null
 ): Promise<void> {
   const client = await pool.connect()
+  let beforeState: Record<string, unknown> | null = null
+  let afterState: Record<string, unknown> | null = null
   try {
     await client.query('BEGIN')
+
+    const beforeRes = await client.query('SELECT * FROM drivers WHERE id = $1 FOR UPDATE', [driverId])
+    beforeState = beforeRes.rows[0] ?? null
+
     if (toStatus === 'active') {
       await client.query(
         `UPDATE drivers
@@ -189,6 +207,10 @@ export async function updateDriverStatus(
        VALUES ($1, $2, $3, $4, $5)`,
       [driverId, fromStatus, toStatus, reason ?? null, adminId]
     )
+
+    const afterRes = await client.query('SELECT * FROM drivers WHERE id = $1', [driverId])
+    afterState = afterRes.rows[0] ?? null
+
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK')
@@ -196,6 +218,18 @@ export async function updateDriverStatus(
   } finally {
     client.release()
   }
+
+  // Enqueued only after COMMIT succeeds — a rolled-back status change never
+  // gets an audit entry.
+  await recordAuditLog({
+    adminId,
+    action: 'drivers.status_change',
+    targetTable: 'drivers',
+    targetId: driverId,
+    beforeState,
+    afterState,
+    ipAddress: ipAddress ?? null,
+  })
 }
 
 // ─── Vehicle categories ───────────────────────────────────────────────────────

@@ -39,9 +39,15 @@ const envSchema = z.object({
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
 
+  // Email (AWS SES) — reuses the S3 AWS credentials/account, just a different service.
+  // SES_FROM_EMAIL empty = dev bypass (logs instead of sending), same pattern as FAST2SMS_API_KEY.
+  SES_REGION: z.string().default('ap-south-1'),
+  SES_FROM_EMAIL: z.string().default(''),
+
   // App
   API_PORT: z.coerce.number().default(4000),
   API_BASE_URL: z.string().default('http://localhost:4000'),
+  ADMIN_APP_URL: z.string().default('http://localhost:3002'),
   ALLOWED_ORIGINS: z.string().default('http://localhost:3000'),
 
   // BullMQ

@@ -25,6 +25,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   '/config/system-config':  { title: 'System Config',  subtitle: 'Platform configuration keys' },
   '/config/feature-flags':  { title: 'Feature Flags',  subtitle: 'Toggle platform features' },
   '/config/notification-templates': { title: 'Notification Templates', subtitle: 'SMS & push message copy' },
+  '/admins':                { title: 'Admins',         subtitle: 'Admin accounts & invitations' },
   '/analytics':             { title: 'Reports',        subtitle: 'Analytics and exports' },
 }
 

@@ -8,6 +8,7 @@ import { notificationsWorker } from './jobs/workers/notifications.worker'
 import { gpsFlushWorker } from './jobs/workers/gps-flush.worker'
 import { cleanupWorker } from './jobs/workers/cleanup.worker'
 import { schedulerWorker } from './jobs/workers/scheduler.worker'
+import { auditWorker } from './jobs/workers/audit.worker'
 import { cleanupQueue, schedulerQueue } from './jobs/queues'
 
 async function start(): Promise<void> {
@@ -35,6 +36,8 @@ async function start(): Promise<void> {
   console.log('[Worker] GPS flush worker started')
   void cleanupWorker
   console.log('[Worker] Cleanup worker started')
+  void auditWorker
+  console.log('[Worker] Audit worker started')
   await cleanupQueue.add(
     'sweep_stuck_rides',
     {},

@@ -35,8 +35,17 @@ export async function updateDriverStatus(req: Request, res: Response, next: Next
     const driver = await service.getDriver(driverId)
     const payload: { status: DriverStatus; reason?: string } = { status: req.body.status as DriverStatus }
     if (req.body.reason !== undefined) payload.reason = String(req.body.reason)
-    await service.updateDriverStatus(driverId, adminId, driver.status as DriverStatus, payload)
+    await service.updateDriverStatus(driverId, adminId, driver.status as DriverStatus, payload, req.ip ?? null)
     res.json({ success: true, status: req.body.status })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function getAdminAccounts(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const admins = await service.listAdminAccounts()
+    res.json({ admins })
   } catch (err) {
     next(err)
   }

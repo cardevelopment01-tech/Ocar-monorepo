@@ -125,6 +125,16 @@ export const AppErrors = {
     message: 'Resource already exists',
     httpStatus: 409,
   },
+  ADMIN_INVITE_DUPLICATE: {
+    code: 'ADMIN_INVITE_DUPLICATE',
+    message: 'A pending invite already exists for this email',
+    httpStatus: 409,
+  },
+  ADMIN_INVITE_INVALID: {
+    code: 'ADMIN_INVITE_INVALID',
+    message: 'This invite link is invalid, expired, or already used',
+    httpStatus: 400,
+  },
   INTERNAL_ERROR: {
     code: 'INTERNAL_ERROR',
     message: 'Internal server error',

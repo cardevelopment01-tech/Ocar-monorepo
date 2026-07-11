@@ -229,6 +229,17 @@ export interface AdminRentalPackage {
   updated_at: string
 }
 
+// ─── Admin accounts ───────────────────────────────────────────────────────────
+
+export interface AdminAccountListItem {
+  id: string
+  code: string
+  email: string
+  role: 'super_admin' | 'ops_admin' | 'support_admin' | 'finance_admin'
+  admin_status: 'active' | 'suspended'
+  created_at: string
+}
+
 // ─── Dashboard stats ──────────────────────────────────────────────────────────
 
 export interface AdminDashboardStats {

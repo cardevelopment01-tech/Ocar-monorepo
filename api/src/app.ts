@@ -19,6 +19,7 @@ import usersRouter      from '@/modules/users/users.routes'
 import analyticsRouter  from '@/modules/analytics/analytics.routes'
 import notificationsRouter from '@/modules/notifications/notifications.routes'
 import templatesRouter from '@/modules/notifications/templates.routes'
+import adminInvitesRouter from '@/modules/admin-invites/admin-invites.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -62,6 +63,10 @@ export function createApp(): Application {
   apiRouter.use('/auth', authLimiter, authRouter)
   apiRouter.use('/drivers', driversRouter)
   apiRouter.use('/vehicles', vehiclesRouter)
+  // Registered before '/admin' — admin.routes.ts applies authenticate() to
+  // every request under '/admin' via router.use(), which would otherwise
+  // 401 the public POST /admin/invites/redeem route before it's ever reached.
+  apiRouter.use('/admin/invites', adminInvitesRouter)
   apiRouter.use('/admin', adminRouter)
   apiRouter.use('/geo', geoRouter)
   apiRouter.use('/pricing', pricingRouter)

@@ -1,13 +1,15 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, ArrowRight } from 'lucide-react'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Eye, EyeOff, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { adminAuthApi, storeAdminAuth } from '@/lib/auth'
 import { registerPush } from '@/lib/push'
 
-export default function AdminLoginPage() {
+function AdminLoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const justInvited = searchParams.get('invited') === '1'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -126,6 +128,13 @@ export default function AdminLoginPage() {
             <p className="text-text-muted text-sm mt-1.5">Sign in to your admin account to continue</p>
           </div>
 
+          {justInvited && (
+            <div className="bg-success-light text-success text-sm font-medium px-4 py-3 rounded-xl flex items-center gap-2 mb-5">
+              <CheckCircle2 size={16} className="flex-shrink-0" />
+              Account activated — sign in to continue.
+            </div>
+          )}
+
           <form onSubmit={handleLogin} className="space-y-4">
             {/* Email */}
             <div>
@@ -208,5 +217,13 @@ export default function AdminLoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminLoginForm />
+    </Suspense>
   )
 }

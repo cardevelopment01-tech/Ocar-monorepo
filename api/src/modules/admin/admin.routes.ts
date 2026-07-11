@@ -11,6 +11,9 @@ router.use(authenticate())
 // ─── Dashboard stats ─────────────────────────────────────────────────────────
 router.get('/stats', controller.getAdminStats)
 
+// ─── Admin accounts ───────────────────────────────────────────────────────────
+router.get('/admins', requireAdmin('super_admin'), controller.getAdminAccounts)
+
 // ─── Live map ─────────────────────────────────────────────────────────────────
 router.get('/sessions/active', controller.getAdminActiveSessions)
 

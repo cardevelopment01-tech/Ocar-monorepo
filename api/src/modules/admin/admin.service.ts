@@ -50,7 +50,8 @@ export async function updateDriverStatus(
   driverId: bigint,
   adminId: bigint,
   currentStatus: DriverStatus,
-  payload: UpdateDriverStatusPayload
+  payload: UpdateDriverStatusPayload,
+  ipAddress?: string | null
 ) {
   if (!VALID_STATUSES.has(payload.status)) {
     throw createHttpError(AppErrors.VALIDATION_ERROR)
@@ -64,8 +65,12 @@ export async function updateDriverStatus(
 
   // When rejecting docs, reset onboarding_step so driver lands on the documents page
   const onboardingStep = payload.status === 'docs_rejected' ? 'documents' : undefined
-  await repo.updateDriverStatus(driverId, adminId, currentStatus, payload.status, payload.reason, onboardingStep)
+  await repo.updateDriverStatus(driverId, adminId, currentStatus, payload.status, payload.reason, onboardingStep, ipAddress)
 }
+
+// ─── Admin accounts ───────────────────────────────────────────────────────────
+
+export async function listAdminAccounts() { return repo.listAdminAccounts() }
 
 // ─── Vehicle management ───────────────────────────────────────────────────────
 
