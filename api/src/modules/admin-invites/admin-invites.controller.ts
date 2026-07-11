@@ -30,6 +30,22 @@ export async function revokeInvite(req: Request, res: Response, next: NextFuncti
   }
 }
 
+// Public — pre-flight check so the accept-invite page can show an
+// invalid/expired state before rendering the password form.
+export async function verifyInvite(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const token = req.query['token']
+    if (typeof token !== 'string' || !token) {
+      res.status(400).json({ error: 'Missing token', code: 'VALIDATION_ERROR' })
+      return
+    }
+    const result = await service.verifyInviteToken(token)
+    res.status(200).json(result)
+  } catch (err) {
+    next(err)
+  }
+}
+
 // Public — the invitee has no admin session yet. Gated entirely by the
 // invite token itself, not by authenticate()/requireAdmin.
 export async function redeemInvite(req: Request, res: Response, next: NextFunction): Promise<void> {

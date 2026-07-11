@@ -8,6 +8,7 @@ import { createInviteSchema, redeemInviteSchema } from './admin-invites.validato
 const router: IRouter = Router()
 
 // Public — invitee has no admin session at redemption time.
+router.get('/verify', controller.verifyInvite)
 router.post('/redeem', validate(redeemInviteSchema), controller.redeemInvite)
 
 // super_admin only, matching admins.invite/admins.manage in the seeded

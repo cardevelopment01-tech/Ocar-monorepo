@@ -32,6 +32,16 @@ export async function findPendingInviteByEmail(email: string): Promise<AdminInvi
   return rows[0] ?? null
 }
 
+// Read-only lookup for pre-flight validation (accept-invite page load) —
+// unlike redeemInvite, this never mutates status, even for an expired row.
+export async function findByTokenHash(tokenHash: string): Promise<AdminInviteListItem | null> {
+  const rows = await query<AdminInviteListItem>(
+    `SELECT ${LIST_COLUMNS} FROM admin_invites WHERE token_hash = $1 LIMIT 1`,
+    [tokenHash]
+  )
+  return rows[0] ?? null
+}
+
 export async function listInvites(): Promise<AdminInviteListItem[]> {
   return query<AdminInviteListItem>(
     `SELECT ${LIST_COLUMNS} FROM admin_invites ORDER BY created_at DESC LIMIT 200`

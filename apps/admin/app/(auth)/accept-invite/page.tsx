@@ -1,14 +1,20 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react'
 import { adminInvitesApi } from '@/lib/admin-invites-api'
+
+const INVALID_INVITE_MESSAGE = 'This invite link is invalid, expired, or already used. Ask a super admin to send a new one.'
 
 function AcceptInviteForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = searchParams.get('token') ?? ''
+
+  // 'checking' (verifying token on load) -> 'valid' (show form) | 'invalid' (show error, no form)
+  const [status, setStatus] = useState<'checking' | 'valid' | 'invalid'>('checking')
+  const [inviteEmail, setInviteEmail] = useState<string | null>(null)
 
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -16,14 +22,28 @@ function AcceptInviteForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (!token) {
+      setStatus('invalid')
+      return
+    }
+    let cancelled = false
+    void adminInvitesApi.verify(token)
+      .then(result => {
+        if (cancelled) return
+        setInviteEmail(result.email)
+        setStatus('valid')
+      })
+      .catch(() => {
+        if (!cancelled) setStatus('invalid')
+      })
+    return () => { cancelled = true }
+  }, [token])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    if (!token) {
-      setError('This invite link is missing its token. Please use the link from your email.')
-      return
-    }
     if (password.length < 8) {
       setError('Password must be at least 8 characters.')
       return
@@ -38,10 +58,10 @@ function AcceptInviteForm() {
       await adminInvitesApi.redeem(token, password)
       router.push('/login?invited=1')
     } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status
+      const httpStatus = (err as { response?: { status?: number } })?.response?.status
       const body = (err as { response?: { data?: { error?: string } } })?.response?.data
-      if (status === 400) {
-        setError('This invite link is invalid, expired, or already used. Ask a super admin to send a new one.')
+      if (httpStatus === 400) {
+        setError(INVALID_INVITE_MESSAGE)
       } else if (body?.error) {
         setError(body.error)
       } else {
@@ -99,14 +119,27 @@ function AcceptInviteForm() {
           </div>
 
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-text-primary">Activate your account</h1>
-            <p className="text-text-muted text-sm mt-1.5">Set a password to finish joining the Ocar admin panel</p>
+            <h1 className="text-2xl font-bold text-text-primary">
+              {status === 'invalid' ? 'Invite unavailable' : 'Activate your account'}
+            </h1>
+            <p className="text-text-muted text-sm mt-1.5">
+              {status === 'valid' && inviteEmail
+                ? `Set a password for ${inviteEmail} to finish joining Ocar admin`
+                : status === 'invalid'
+                  ? 'This invite link can no longer be used'
+                  : 'Set a password to finish joining the Ocar admin panel'}
+            </p>
           </div>
 
-          {!token ? (
+          {status === 'checking' ? (
+            <div className="flex items-center gap-2.5 text-text-muted text-sm py-2">
+              <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              Checking your invite…
+            </div>
+          ) : status === 'invalid' ? (
             <div className="bg-danger-light text-danger text-sm font-medium px-4 py-3 rounded-xl flex items-start gap-2">
               <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
-              This invite link is missing its token. Please use the link from your email.
+              {INVALID_INVITE_MESSAGE}
             </div>
           ) : (
             <form onSubmit={e => void handleSubmit(e)} className="space-y-4">

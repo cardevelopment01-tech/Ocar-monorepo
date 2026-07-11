@@ -33,9 +33,6 @@ export async function createInvite(params: {
     expiresAt,
   })
 
-  // The email transport (SES) isn't wired yet — the notifications worker
-  // no-ops on unrecognized job names until that lands, so this is safe to
-  // enqueue now and pick up once the worker handler exists.
   await notificationsQueue.add('admin_invite_email', {
     email: params.email,
     rawToken,
@@ -53,6 +50,21 @@ export async function revokeInvite(id: bigint): Promise<AdminInviteListItem> {
   const revoked = await repo.revokePendingInvite(id)
   if (!revoked) throw createHttpError(AppErrors.NOT_FOUND)
   return revoked
+}
+
+// Read-only pre-flight check for the accept-invite page load — lets the
+// frontend show an invalid/expired state before the user fills in a password,
+// instead of only discovering it on submit. Never mutates invite status.
+export async function verifyInviteToken(token: string): Promise<{ email: string; role: AdminRole }> {
+  const tokenHash = sha256(token)
+  const invite = await repo.findByTokenHash(tokenHash)
+  const expired = invite ? new Date(invite.expires_at) <= new Date() : false
+
+  if (!invite || invite.status !== 'pending' || expired) {
+    throw createHttpError(AppErrors.ADMIN_INVITE_INVALID)
+  }
+
+  return { email: invite.email, role: invite.role }
 }
 
 export async function redeemInvite(token: string, password: string): Promise<CreatedAdminFromInvite> {

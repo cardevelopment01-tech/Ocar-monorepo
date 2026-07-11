@@ -48,6 +48,13 @@ export const adminInvitesApi = {
     return data.invite
   },
 
+  // Public — pre-flight check so accept-invite can show invalid/expired
+  // before rendering the password form, instead of only failing on submit.
+  verify: async (token: string): Promise<{ email: string; role: AdminRole }> => {
+    const { data } = await api.get<{ email: string; role: AdminRole }>('/api/v1/admin/invites/verify', { params: { token } })
+    return data
+  },
+
   // Public — no admin session exists yet at redemption time.
   redeem: async (token: string, password: string): Promise<{ id: string; code: string; email: string; role: AdminRole }> => {
     const { data } = await api.post<{ admin: { id: string; code: string; email: string; role: AdminRole } }>(
