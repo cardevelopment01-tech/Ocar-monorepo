@@ -13,6 +13,7 @@ import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
 import { useInterpolatedPosition } from '@/lib/useInterpolatedPosition'
 import CancelSheet from './CancelSheet'
+import SOSButton from '@/components/ui/SOSButton'
 
 const RideMapScene = dynamic(() => import('@/components/map/RideMapScene'), { ssr: false })
 
@@ -160,6 +161,15 @@ export default function RidePage() {
     } catch { /* keep button available to retry */ } finally {
       setReportSending(false)
     }
+  }
+
+  async function handleSOS() {
+    await safetyApi.triggerSos({
+      rideId,
+      severity: 'high',
+      lat: userPos?.[0],
+      lng: userPos?.[1],
+    })
   }
 
   useEffect(() => {
@@ -378,6 +388,13 @@ export default function RidePage() {
         {/* Dev socket indicator */}
         {process.env.NODE_ENV === 'development' && (
           <div className={`absolute top-4 right-4 z-10 w-2 h-2 rounded-full shadow ${socketOk ? 'bg-green-500' : 'bg-amber-400'}`} />
+        )}
+
+        {/* SOS: available throughout the trip, not just after something's gone wrong */}
+        {status !== 'completed' && status !== 'cancelled' && status !== 'no_drivers' && (
+          <div className="absolute top-4 right-4 z-20" style={{ marginTop: 'env(safe-area-inset-top)' }}>
+            <SOSButton onSOS={handleSOS} />
+          </div>
         )}
       </div>
 

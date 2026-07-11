@@ -370,6 +370,7 @@ export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | n
        ST_X(r.destination::geometry) AS dest_lng,
        u.phone      AS user_phone,
        u.name       AS user_name,
+       u.rating_avg AS user_rating,
        d.full_name  AS driver_name,
        d.phone      AS driver_phone,
        fs.total_estimated
@@ -396,6 +397,7 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
        ST_X(r.destination::geometry) AS dest_lng,
        u.phone      AS user_phone,
        u.name       AS user_name,
+       u.rating_avg AS user_rating,
        d.full_name  AS driver_name,
        d.phone      AS driver_phone,
        d.rating_avg           AS driver_rating,

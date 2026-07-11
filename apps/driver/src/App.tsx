@@ -96,6 +96,7 @@ export default function App() {
           if (ride.dest_lng    != null) activeRideInput.dropLng       = ride.dest_lng
           if (ride.user_phone  != null) activeRideInput.userPhone     = ride.user_phone
           if (ride.user_name   != null) activeRideInput.userName      = ride.user_name
+          if (ride.user_rating != null) activeRideInput.userRating    = parseFloat(ride.user_rating)
           if (ride.return_at   != null) activeRideInput.returnAt      = ride.return_at
           if (ride.trip_hours  != null) activeRideInput.tripHours     = ride.trip_hours
           if (ride.started_at  != null) activeRideInput.rideStartedAt = ride.started_at
@@ -282,6 +283,7 @@ export default function App() {
       if (ride.dest_lng   != null) activeRideInput.dropLng   = ride.dest_lng
       if (ride.user_phone != null) activeRideInput.userPhone = ride.user_phone
       if (ride.user_name  != null) activeRideInput.userName  = ride.user_name
+      if (ride.user_rating != null) activeRideInput.userRating = parseFloat(ride.user_rating)
       if (ride.return_at  != null) activeRideInput.returnAt  = ride.return_at
       if (ride.trip_hours != null) activeRideInput.tripHours = ride.trip_hours
       if (ride.stops.length > 0) activeRideInput.stops = ride.stops.map(s => ({

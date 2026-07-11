@@ -63,6 +63,7 @@ export interface Ride {
   sos_triggered: boolean
   user_phone: string | null
   user_name: string | null
+  user_rating: string | null
   driver_name: string | null
   driver_phone: string | null
   driver_rating: string | null

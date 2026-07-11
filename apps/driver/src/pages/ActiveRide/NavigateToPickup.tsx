@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Navigation, Phone, RotateCcw, Clock, X } from 'lucide-react'
+import { Navigation, Phone, RotateCcw, Clock, X, Star } from 'lucide-react'
 import SOSButton from '@/components/ui/SOSButton'
 import VoiceToggleButton from '@/components/ui/VoiceToggleButton'
 import HindiVoiceHint from '@/components/ui/HindiVoiceHint'
@@ -208,7 +208,15 @@ export default function NavigateToPickup() {
             </div>
             <div>
               <p className="text-text-muted text-xs">Rider</p>
-              <p className="text-text-primary font-bold">{activeRide?.userName ?? 'Rider'}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-text-primary font-bold">{activeRide?.userName ?? 'Rider'}</p>
+                {activeRide?.userRating != null && activeRide.userRating > 0 && (
+                  <span className="flex items-center gap-0.5">
+                    <Star size={11} className="text-accent-amber fill-accent-amber" aria-hidden="true" />
+                    <span className="text-text-secondary text-xs font-semibold">{activeRide.userRating.toFixed(1)}</span>
+                  </span>
+                )}
+              </div>
               {activeRide?.userPhone && (
                 <p className="text-text-muted text-xs">{activeRide.userPhone}</p>
               )}

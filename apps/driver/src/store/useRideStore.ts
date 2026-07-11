@@ -24,6 +24,7 @@ export interface ActiveRide {
   rideType: string
   userPhone?: string
   userName?: string
+  userRating?: number
   returnAt?: string
   tripHours?: number
   rideStartedAt?: string
