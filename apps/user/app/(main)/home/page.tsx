@@ -294,12 +294,19 @@ export default function HomePage() {
               transition={SPRING}
             >
               <Bell size={16} strokeWidth={1.6} color="rgba(255,255,255,0.85)" />
-              {unreadCount > 0 && (
-                <span
-                  className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500"
-                  style={{ boxShadow: '0 0 0 1.5px #0F0D1A' }}
-                />
-              )}
+              <AnimatePresence>
+                {unreadCount > 0 && (
+                  <motion.span
+                    key="dot"
+                    initial={{ opacity: 0, scale: 0.4 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.4 }}
+                    transition={SPRING}
+                    className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500"
+                    style={{ boxShadow: '0 0 0 1.5px #0F0D1A' }}
+                  />
+                )}
+              </AnimatePresence>
             </motion.button>
             <motion.button
               onClick={() => router.push('/profile')}
