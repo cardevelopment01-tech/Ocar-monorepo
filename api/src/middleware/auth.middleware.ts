@@ -48,7 +48,14 @@ export function authenticate(): RequestHandler {
         req.driver = { id: BigInt(driver.id), code: driver.code, role: 'driver', status: driver.status }
       } else if (payload.role === PrincipalRole.ADMIN) {
         const admin = await findAdminById(id)
-        if (!admin || !admin.is_active) {
+        if (!admin) {
+          res.status(401).json({
+            error: AppErrors.AUTH_TOKEN_INVALID.message,
+            code: AppErrors.AUTH_TOKEN_INVALID.code,
+          })
+          return
+        }
+        if (!admin.is_active) {
           res.status(401).json({
             error: AppErrors.AUTH_TOKEN_INVALID.message,
             code: AppErrors.AUTH_TOKEN_INVALID.code,
