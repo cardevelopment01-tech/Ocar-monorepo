@@ -168,9 +168,18 @@ export function initSocketServer(httpServer: HttpServer): Server {
         const timer = setTimeout(() => {
           pendingOffline.delete(driverSub)
           const driverId = BigInt(driverSub)
+          // Only auto-offline an idle ('online') session on disconnect. A
+          // driver mid-trip ('on_trip') who loses connectivity for a bit
+          // (tunnel, dead zone, phone reboot) must not be silently flipped
+          // offline — that's what stranded a still-active ride's session
+          // state and made the driver app "go offline" on reconnect even
+          // though the ride was still live (see
+          // docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 3b). Whether an
+          // on-trip driver has truly gone dark is judged by GPS-heartbeat
+          // continuity instead — see cleanup.worker.ts's stuck-ride sweep.
           pool.query(
             `UPDATE driver_sessions SET status = 'offline', went_offline_at = now(), offline_reason = 'socket_disconnect'
-             WHERE driver_id = $1 AND status IN ('online', 'on_trip')`,
+             WHERE driver_id = $1 AND status = 'online'`,
             [driverId]
           ).then(() =>
             pool.query(

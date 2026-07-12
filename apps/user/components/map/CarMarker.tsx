@@ -16,8 +16,8 @@ function CarMarker({ position, heading = 0, headingKnown = true }: CarMarkerProp
     <AdvancedMarker position={{ lat: position[0], lng: position[1] }}>
       <div
         style={{
-          width: 32,
-          height: 52,
+          width: 22,
+          height: 36,
           transform: `rotate(${rotation}deg)`,
           transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1), opacity 0.4s ease-out',
           // Neutral/undirected until a real bearing exists, instead of a fake 0°/north snap.

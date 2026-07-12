@@ -30,7 +30,9 @@ export default function OnlineToggle({ isOnline, onToggle, disabled = false }: O
           aria-label={isOnline ? 'Go offline' : 'Go online'}
           aria-pressed={isOnline}
           className={cn(
-            'relative w-[104px] h-[104px] rounded-full flex flex-col items-center justify-center gap-1.5 cursor-pointer',
+            // Shrunk from 104px (Driver#2) — 72px still clears the 44px minimum
+            // touch-target floor with room to spare.
+            'relative w-[72px] h-[72px] rounded-full flex flex-col items-center justify-center gap-1 cursor-pointer',
             'active:scale-95 transition-[transform,box-shadow] duration-200',
             'disabled:opacity-50 disabled:cursor-not-allowed',
             isOnline ? 'animate-pulse-orange' : ''
@@ -45,12 +47,12 @@ export default function OnlineToggle({ isOnline, onToggle, disabled = false }: O
           }}
         >
           <Power
-            size={22}
+            size={16}
             strokeWidth={2.5}
             className={cn(isOnline ? 'text-white' : 'text-text-muted')}
           />
           <span className={cn(
-            'text-[10px] font-black tracking-[0.14em]',
+            'text-[8px] font-black tracking-[0.12em]',
             isOnline ? 'text-white' : 'text-text-muted'
           )}>
             {isOnline ? 'ONLINE' : 'OFFLINE'}

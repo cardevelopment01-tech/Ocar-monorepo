@@ -1,5 +1,12 @@
 export const EASE = [0.22, 1, 0.36, 1] as const
 
+// Shared stacking scale so fixed/portaled overlays have a deterministic order
+// instead of ad-hoc z-[N] values colliding (e.g. SOSButton vs BottomNav both
+// at z-[100]). SOS sits above everything else in the app on purpose — a
+// safety escalation must never lose a stacking fight with a checkout-style
+// sheet (see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 1).
+export const Z_SOS_MODAL = 150
+
 export const GLASS = {
   background:           'rgba(255,255,255,0.92)',
   backdropFilter:       'blur(16px)',

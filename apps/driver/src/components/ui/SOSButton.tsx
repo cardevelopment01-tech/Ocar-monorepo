@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { ShieldAlert } from 'lucide-react'
+import { Z_SOS_MODAL } from '@/lib/constants'
 
 interface SOSButtonProps {
   rideId: string
@@ -48,8 +50,8 @@ export default function SOSButton({
         <ShieldAlert size={18} className="text-accent-red" strokeWidth={2.25} />
       </button>
 
-      {confirming && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70">
+      {confirming && createPortal(
+        <div className="fixed inset-0 flex items-end justify-center bg-black/70" style={{ zIndex: Z_SOS_MODAL }}>
           <div className="bg-surface rounded-t-3xl w-full max-w-[430px] p-6 pb-10">
             <div className="w-12 h-1.5 rounded-full bg-surface-3 mx-auto mb-6" />
             {sent ? (
@@ -90,7 +92,8 @@ export default function SOSButton({
               </>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )

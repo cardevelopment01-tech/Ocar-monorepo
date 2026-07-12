@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { driverRideApi, type RouteStep, type TrafficInterval } from './ride-api'
 import { decodePolyline } from './polyline'
-import { haversineMetres, nearestPointOnPolyline } from './geo'
+import { bearingDeg, haversineMetres, nearestPointOnPolyline } from './geo'
 
 // Mirrors api/src/constants/limits.ts (driver app can't import server code — keep in sync).
 const OFF_ROUTE_THRESHOLD_METRES = 40
@@ -29,6 +29,17 @@ export interface TurnByTurnState {
   /** True while a reroute fetch has failed and is retrying — UI can show "reconnecting…". */
   isReconnecting: boolean
   loading: boolean
+  /**
+   * Current GPS fix projected onto the route geometry, plus the bearing of the
+   * matched road segment — null when there's no route yet or the driver is
+   * off-route (beyond OFF_ROUTE_THRESHOLD_METRES). Prefer this over the raw
+   * `position`/device heading for the car marker and nav camera: raw GPS drifts
+   * 5-30m in cities, which is what makes the marker float into the wrong lane
+   * or face the wrong way relative to the road (see
+   * docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 2).
+   */
+  snappedPosition: [number, number] | null
+  snappedHeading: number | null
 }
 
 /**
@@ -52,6 +63,8 @@ export function useTurnByTurn(
   const [isOffRoute, setIsOffRoute] = useState(false)
   const [isReconnecting, setIsReconnecting] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [snappedPosition, setSnappedPosition] = useState<[number, number] | null>(null)
+  const [snappedHeading, setSnappedHeading] = useState<number | null>(null)
 
   const routePoints   = useRef<[number, number][]>([])  // concatenated decoded step polylines
   const destRef        = useRef<[number, number] | null>(null)
@@ -128,9 +141,15 @@ export function useTurnByTurn(
 
     if (snapped.distMetres > OFF_ROUTE_THRESHOLD_METRES) {
       offRouteStreak.current += 1
+      setSnappedPosition(null)
+      setSnappedHeading(null)
     } else {
       offRouteStreak.current = 0
       setIsOffRoute(false)
+      setSnappedPosition(snapped.point)
+      const next = routePoints.current[snapped.segmentIndex + 1]
+      const segStart = routePoints.current[snapped.segmentIndex]
+      setSnappedHeading(next && segStart ? bearingDeg(segStart, next) : null)
     }
 
     if (offRouteStreak.current >= OFF_ROUTE_CONSECUTIVE_FIXES) {
@@ -160,5 +179,6 @@ export function useTurnByTurn(
   return {
     steps, encodedPolyline, trafficIntervals, trafficPolyline, source,
     currentStep, distanceToManeuver, isOffRoute, isReconnecting, loading,
+    snappedPosition, snappedHeading,
   }
 }

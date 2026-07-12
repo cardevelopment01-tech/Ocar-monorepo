@@ -63,20 +63,23 @@ export default function RoutePolyline({ encoded, positions, variant = 'default' 
     )
   }
 
+  // Matches apps/driver/src/components/map/RoutePolyline.tsx's default variant —
+  // same route on both apps should look like the same route (Customer#1, see
+  // docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 4).
   return (
     <>
       <Polyline
         path={path}
         strokeColor="#ffffff"
-        strokeWeight={8}
-        strokeOpacity={0.75}
+        strokeWeight={11}
+        strokeOpacity={0.9}
         zIndex={1}
       />
       <Polyline
         path={path}
-        strokeColor="#1a1a2e"
-        strokeWeight={4.5}
-        strokeOpacity={0.88}
+        strokeColor="#1A73E8"
+        strokeWeight={7}
+        strokeOpacity={1}
         zIndex={2}
         icons={[{ icon: ARROW_ICON, repeat: '80px' }]}
       />

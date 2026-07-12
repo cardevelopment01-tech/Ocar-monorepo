@@ -1,30 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
+import { bearingDeg, haversineMetres, nearestPointOnPolyline } from './geo'
 
 // Matches the 3s driver sync interval, car glides continuously with no pause between fixes
 const DURATION = 3_000
 
+// Matches the driver app's OFF_ROUTE_THRESHOLD_METRES (apps/driver/src/lib/useTurnByTurn.ts)
+// — inside this corridor of the route line, trust the snapped point over raw GPS.
+const ROUTE_SNAP_CORRIDOR_METRES = 40
+
 function lerpAngle(from: number, to: number, t: number): number {
   const delta = ((to - from + 540) % 360) - 180
   return (from + delta * t + 360) % 360
-}
-
-// Compass bearing (0–360°) from point A to point B
-function bearingDeg(from: [number, number], to: [number, number]): number {
-  const lat1 = from[0] * Math.PI / 180
-  const lat2 = to[0]   * Math.PI / 180
-  const dLng = (to[1] - from[1]) * Math.PI / 180
-  const y = Math.sin(dLng) * Math.cos(lat2)
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
-  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
-}
-
-// Equirectangular distance in metres, fast, accurate enough at sub-km scales
-function distMetres(a: [number, number], b: [number, number]): number {
-  const R = 6_371_000
-  const dLat = (b[0] - a[0]) * Math.PI / 180
-  const dLng = (b[1] - a[1]) * Math.PI / 180
-  const avgLat = ((a[0] + b[0]) / 2) * Math.PI / 180
-  return Math.sqrt((dLat * R) ** 2 + (dLng * R * Math.cos(avgLat)) ** 2)
 }
 
 /**
@@ -33,16 +19,27 @@ function distMetres(a: [number, number], b: [number, number]): number {
  * Position uses linear interpolation over the full sync interval so the car
  * moves at constant speed with no pause, same as Uber/Ola.
  *
- * Heading is derived entirely from the bearing between consecutive GPS fixes
- * (never from raw device coords.heading, which is unreliable on many devices).
- * That means no real heading exists until a second fix arrives >8m from the
- * first — `headingKnown` stays false until then, so callers can render a
- * neutral/undirected marker instead of guessing (previously this defaulted to
- * a fake 0°/north on the very first fix — see
- * docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md §1.1).
+ * When `routePoints` (the decoded route polyline) is passed and the raw fix
+ * falls within ROUTE_SNAP_CORRIDOR_METRES of it, both the animation target
+ * and the heading are taken from the route geometry (the nearest point on
+ * the line, and that segment's bearing) instead of the raw fix. Raw GPS
+ * drifts 5-30m in cities, which is what previously put the marker in the
+ * wrong lane and made heading flip unpredictably as jittery fixes crossed
+ * the 8m movement threshold — snapping to a segment bearing that can only
+ * point along the road fixes both (see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md
+ * Phase 2). Falls back to raw-fix bearing when there's no route yet or the
+ * driver is off-route.
+ *
+ * Heading is never taken from raw device coords.heading, which is unreliable
+ * on many devices. That means no real heading exists until a second fix
+ * arrives >8m from the first (or a route snap succeeds) — `headingKnown`
+ * stays false until then, so callers can render a neutral/undirected marker
+ * instead of guessing (previously this defaulted to a fake 0°/north on the
+ * very first fix — see docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md §1.1).
  */
 export function useInterpolatedPosition(
   rawPos: [number, number] | undefined,
+  routePoints?: [number, number][],
 ): { pos: [number, number] | undefined; heading: number; headingKnown: boolean } {
   const [pos,          setPos]          = useState<[number, number] | undefined>(rawPos)
   const [heading,       setHeading]      = useState(0)
@@ -69,17 +66,34 @@ export function useInterpolatedPosition(
       return
     }
 
-    // Derive heading from direction of travel; keep current heading if nearly stationary
-    const dist = distMetres(livePos.current, rawPos)
-    const toHdg = dist > 8 ? bearingDeg(livePos.current, rawPos) : liveHdg.current
-    if (dist > 8) hdgKnown.current = true
+    // Snap to the route line when close enough to it — see the hook doc comment.
+    const snapped = routePoints && routePoints.length > 1
+      ? nearestPointOnPolyline(rawPos, routePoints)
+      : null
+    const onRoute = snapped !== null && snapped.distMetres <= ROUTE_SNAP_CORRIDOR_METRES
+
+    let target: [number, number]
+    let toHdg: number
+    if (onRoute) {
+      target = snapped!.point
+      const segStart = routePoints![snapped!.segmentIndex]
+      const segEnd   = routePoints![snapped!.segmentIndex + 1]
+      toHdg = segEnd && segStart ? bearingDeg(segStart, segEnd) : liveHdg.current
+      hdgKnown.current = true
+    } else {
+      // Derive heading from direction of travel; keep current heading if nearly stationary
+      target = rawPos
+      const dist = haversineMetres(livePos.current, rawPos)
+      toHdg = dist > 8 ? bearingDeg(livePos.current, rawPos) : liveHdg.current
+      if (dist > 8) hdgKnown.current = true
+    }
 
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
 
     anim.current = {
       from:    livePos.current,
       fromHdg: liveHdg.current,
-      to:      rawPos,
+      to:      target,
       toHdg,
       start:   performance.now(),
     }

@@ -12,6 +12,7 @@ import { formatReturnAt } from '@/lib/utils'
 import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
 import { useInterpolatedPosition } from '@/lib/useInterpolatedPosition'
+import { decodePolyline } from '@/lib/polyline'
 import CancelSheet from './CancelSheet'
 import SOSButton from '@/components/ui/SOSButton'
 
@@ -205,6 +206,11 @@ export default function RidePage() {
   const [driverPos,      setDriverPos]      = useState<[number, number] | undefined>(undefined)
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
   const [liveEta, setLiveEta] = useState<{ etaMin: number; distanceKm: number } | null>(null)
+  // Timestamp of the last server ETA fetch — drives the 1s client-side countdown
+  // between fetches (see displayEta below) so the number visibly ticks instead
+  // of sitting frozen for up to 60s (docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 3a).
+  const [liveEtaAt, setLiveEtaAt] = useState<number | null>(null)
+  const [nowTick, setNowTick] = useState(0)
   const [socketOk,       setSocketOk]       = useState(false)
   const [cancelling,     setCancelling]     = useState(false)
   const [startOtp,       setStartOtp]       = useState<string | null>(null)
@@ -247,7 +253,13 @@ export default function RidePage() {
     return () => clearInterval(id)
   }, [rideStatus, ride?.origin_lat, ride?.origin_lng])
 
-  const { pos: smoothPos, heading: smoothHeading, headingKnown: smoothHeadingKnown } = useInterpolatedPosition(driverPos)
+  // Snap target for useInterpolatedPosition — see its doc comment. Recomputed only
+  // when the route string itself changes, not on every driver GPS tick.
+  const routePoints = useMemo(
+    () => (encodedPolyline ? decodePolyline(encodedPolyline) : undefined),
+    [encodedPolyline],
+  )
+  const { pos: smoothPos, heading: smoothHeading, headingKnown: smoothHeadingKnown } = useInterpolatedPosition(driverPos, routePoints)
 
   const loadRide = useCallback(async () => {
     try {
@@ -459,7 +471,7 @@ export default function RidePage() {
 
     const seq = ++fetchSeq.current
     lastFetch.current = { mode: routeMode, origin, dest, at: Date.now() }
-    if (modeChanged) { setEncodedPolyline(undefined); setLiveEta(null) }
+    if (modeChanged) { setEncodedPolyline(undefined); setLiveEta(null); setLiveEtaAt(null) }
 
     // Live ETA only makes sense once a driver is actually en route (pickup or dest leg) —
     // meaningless during the pre-assignment search phase or the post-trip recap.
@@ -469,11 +481,36 @@ export default function RidePage() {
       .then(r => {
         if (fetchSeq.current !== seq) return
         setEncodedPolyline(r.polyline || undefined)
-        if (wantsEta) setLiveEta({ etaMin: Math.round(r.trafficDurationMin ?? r.durationMin), distanceKm: r.distanceKm })
-        else setLiveEta(null)
+        if (wantsEta) {
+          setLiveEta({ etaMin: Math.round(r.trafficDurationMin ?? r.durationMin), distanceKm: r.distanceKm })
+          setLiveEtaAt(Date.now())
+        } else {
+          setLiveEta(null)
+          setLiveEtaAt(null)
+        }
       })
-      .catch(() => { if (fetchSeq.current === seq) { setEncodedPolyline(undefined); setLiveEta(null) } })
+      .catch(() => { if (fetchSeq.current === seq) { setEncodedPolyline(undefined); setLiveEta(null); setLiveEtaAt(null) } })
   }, [routeMode, driverPos, userPos, pickupPos, dropPos, ride])
+
+  // Tick the displayed ETA down every second between server refreshes instead of
+  // leaving it frozen — derives remaining time/distance from the rate implied by
+  // the last server fetch, easing toward whatever the next real fetch says.
+  useEffect(() => {
+    if (!liveEta || liveEtaAt == null) return
+    setNowTick(Date.now())
+    const id = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [liveEta, liveEtaAt])
+
+  const displayEta = useMemo(() => {
+    if (!liveEta || liveEtaAt == null || nowTick === 0) return liveEta
+    const rateKmPerMin = liveEta.etaMin > 0 ? liveEta.distanceKm / liveEta.etaMin : 0
+    const elapsedMin = (nowTick - liveEtaAt) / 60_000
+    return {
+      etaMin:     Math.max(0, Math.round(liveEta.etaMin - elapsedMin)),
+      distanceKm: Math.max(0, liveEta.distanceKm - rateKmPerMin * elapsedMin),
+    }
+  }, [liveEta, liveEtaAt, nowTick])
 
   const status    = (rideStatus as StatusKey) in STATUS_CONFIG ? (rideStatus as StatusKey) : 'requested'
   const cfg       = {
@@ -579,10 +616,10 @@ export default function RidePage() {
             </div>
 
             {status === 'requested' && <SearchingDots />}
-            {liveEta && (
+            {displayEta && (
               <div className="flex-shrink-0 text-right">
-                <p className="text-sm font-bold text-gray-900 leading-tight tabular-nums">{liveEta.etaMin} min</p>
-                <p className="text-[11px] text-gray-500 tabular-nums">{liveEta.distanceKm.toFixed(1)} km</p>
+                <p className="text-sm font-bold text-gray-900 leading-tight tabular-nums">{displayEta.etaMin} min</p>
+                <p className="text-[11px] text-gray-500 tabular-nums">{displayEta.distanceKm.toFixed(1)} km</p>
               </div>
             )}
           </motion.div>

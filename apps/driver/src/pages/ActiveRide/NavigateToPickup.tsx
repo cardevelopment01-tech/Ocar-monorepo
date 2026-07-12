@@ -91,16 +91,24 @@ export default function NavigateToPickup() {
         }
       : undefined,
   })
-  // Fall back to pickup only for map centering, never for the car marker or route fetch.
-  // Without this guard, the car appears AT the pickup pin before GPS resolves, making
-  // it look like the driver has already arrived.
-  const mapCenter: [number, number] = position ?? pickupPos
-
   const voiceEnabled = useNavPrefsStore(s => s.voiceEnabled)
   const navLanguage  = useNavPrefsStore(s => s.language)
 
-  const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting, loading } =
+  const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting, loading, snappedPosition, snappedHeading } =
     useTurnByTurn(position, pickupPos, navLanguage)
+
+  // Prefer the route-snapped fix over raw GPS for anything rendered on the map —
+  // raw GPS drifts 5-30m in cities, which is what puts the marker in the wrong
+  // lane or the camera facing the wrong way. Falls back to raw position when
+  // off-route or before a route exists. Arrival/distance checks below
+  // deliberately keep using raw `position` — snapping is a display concern, not
+  // a distance-measurement one.
+  const displayPosition = snappedPosition ?? position
+  const displayHeading  = snappedHeading ?? selfHeading
+  // Fall back to pickup only for map centering, never for the car marker or route fetch.
+  // Without this guard, the car appears AT the pickup pin before GPS resolves, making
+  // it look like the driver has already arrived.
+  const mapCenter: [number, number] = displayPosition ?? pickupPos
   useVoiceGuidance(currentStep, distanceToManeuver, voiceEnabled, navLanguage)
 
   // Arrival micro-state: proximity relaxes the camera and elevates the CTA,
@@ -177,7 +185,7 @@ export default function NavigateToPickup() {
                 switches — see suspended's doc comment in RecenterMap.tsx. */}
             <RecenterMap
               center={mapCenter}
-              heading={selfHeading}
+              heading={displayHeading}
               topPadding={100}
               bottomPadding={220}
               pitch={nearPickup ? 0 : 42}
@@ -191,7 +199,7 @@ export default function NavigateToPickup() {
             />
             <RoutePolyline encoded={encodedPolyline} />
             <TrafficColoredRoute encoded={trafficPolyline} intervals={trafficIntervals} />
-            {position && <SelfCarMarker position={position} />}
+            {displayPosition && <SelfCarMarker position={displayPosition} />}
             <LocationPin position={pickupPos} variant="pickup" />
           </DriverMapView>
         </Suspense>

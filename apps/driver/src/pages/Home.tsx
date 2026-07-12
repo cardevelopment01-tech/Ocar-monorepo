@@ -153,6 +153,9 @@ export default function Home() {
         // This is the collapsed height, shows handle + greeting + stats only.
         const sheetTop  = sheetEl.getBoundingClientRect().top
         const anchorTop = anchorEl.getBoundingClientRect().top
+        // Anchor sits right after the greeting+toggle row (see its placement
+        // below) — collapsed shows handle + name + toggle only, everything
+        // else (stats/quick-actions/status) shrinks away on drag-down.
         const collapsed = Math.round(anchorTop - sheetTop) + 20 // +20 breathing room
         setCollapsedH(Math.max(collapsed, 160))
       }
@@ -279,10 +282,15 @@ export default function Home() {
         </Suspense>
       </div>
 
-      {/* Floating header, sits above the map, never moves with the sheet */}
+      {/* Floating header, sits above the map, never moves with the sheet.
+          Safe-area-aware (Driver#1) — was a hardcoded pt-12 that didn't
+          account for a device notch/status bar the way every other floating
+          overlay on this screen already does (see the resumeRoute/GPS-error
+          banners below), so it could sit flush against or under the notch on
+          taller-inset devices. */}
       <div
-        className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-12 pb-2"
-        style={{ zIndex: 10 }}
+        className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pb-2"
+        style={{ zIndex: 10, paddingTop: 'max(calc(env(safe-area-inset-top) + 12px), 48px)' }}
       >
         <div className="px-3.5 py-2 rounded-2xl" style={GLASS}>
           <span className="font-display font-black text-[17px] tracking-tight leading-none select-none">
@@ -439,6 +447,13 @@ export default function Home() {
               <OnlineToggle isOnline={isOnline} onToggle={handleToggle} />
             </div>
 
+            {/* ── Collapse anchor: sheet snaps to this point when minimised.
+                 Placed right after the greeting+toggle row so the collapsed
+                 state shows only driver name + toggle — stats, quick actions,
+                 and the status banner all shrink away, revealing more map
+                 (see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 5). ── */}
+            <div ref={collapseRef} />
+
             {/* ── Row 2: Today's stats ── */}
             <div className="grid grid-cols-3 gap-2 mb-3">
               {/* Earnings: orange accent (operational income signal) */}
@@ -486,11 +501,6 @@ export default function Home() {
                 </div>
               </motion.div>
             </div>
-
-            {/* ── Collapse anchor: sheet snaps to this point when minimised.
-                 Placed after stats, before quick-actions: dragging down hides
-                 quick-actions + status banner and reveals more of the map. ── */}
-            <div ref={collapseRef} />
 
             {/* ── Row 3: Quick actions ── */}
             <div className="grid grid-cols-2 gap-2 mb-3">

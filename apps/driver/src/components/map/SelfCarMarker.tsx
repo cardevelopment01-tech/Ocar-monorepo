@@ -88,8 +88,8 @@ function SelfCarMarker({ position, areaName = null, loading = false, heading }: 
         )}
 
         <div style={{
-          width: 32,
-          height: 52,
+          width: 22,
+          height: 36,
           transform: rotation !== undefined ? `rotate(${rotation}deg)` : undefined,
           transition: rotation !== undefined ? 'transform 0.4s cubic-bezier(0.22,1,0.36,1)' : undefined,
           filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.35))',

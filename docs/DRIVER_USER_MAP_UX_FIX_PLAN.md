@@ -1,0 +1,243 @@
+# Driver & User App — Map/Nav Correctness + UX Fix Plan
+
+**Date:** 2026-07-12
+**Status:** Draft, phase 0 not started
+**Scope:** the 13 bugs reported against user-app tracking, driver-app nav, and driver homepage
+**Related docs:** [`NAVIGATION_PHASE5_FINAL_HARDENING_PLAN.md`](./NAVIGATION_PHASE5_FINAL_HARDENING_PLAN.md) (broader nav feature roadmap — trip share, canned messages, geofence; this doc does not duplicate it), [`MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md`](./MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md) (earlier audit)
+
+---
+
+## 0. A finding before the plan: docs and code disagree
+
+`NAVIGATION_PHASE5_FINAL_HARDENING_PLAN.md` §3 states *"the bearing-gated heading fix shipped; escalate only if Phase 5 drives show it's insufficient."* Reading the actual code (`apps/user/lib/useInterpolatedPosition.ts:72-75`, `apps/driver/src/lib/useDriverLocation.ts`) found **no speed gate and no deadband** — heading is recomputed from raw-fix bearing whenever two fixes are >8m apart, which GPS jitter alone defeats. Three real-device screenshots (analyzed below) confirm the marker still spins/misaligns in production.
+
+Lesson adopted from that same doc's Phase 5 (real-device verification as a blocking gate, not a checkbox): **this plan closes with the same kind of drive/device verification, not a desk review**, because that's evidently the only thing that has previously separated "code complete" from "actually fixed" in this codebase.
+
+---
+
+## 1. Visual evidence
+
+Three screenshots from a real test ride (driver app, Bhubaneswar), analyzed directly:
+
+| # | Screen | What it shows |
+|---|---|---|
+| 1 | Heading-to-pickup | Car marker ~6% of screen height (Uber-class apps run roughly half that); map is only **~28-30%** of vertical screen space — top instruction stack (~19%) + bottom rider/action stack (~40%) + browser/system chrome (~20%) crowd it out |
+| 2 | Trip-in-progress, mid-transition | A grey-scrimmed sheet with a red "!" icon is visible **peeking out from behind** the bright, undimmed "Complete Trip" sheet — confirming the SOS confirm sheet is losing a z-index/stacking fight against a later-mounted sheet. It's not just "hard to see" — it is non-interactive, sitting under another sheet. Worst possible failure mode for a safety control. |
+| 3 | Trip-in-progress, settled | Car marker sits well left of the blue route line, over a building footprint, and points **straight up while the actual road runs ~45°** — the marker isn't just noisy, it sometimes doesn't rotate to the road at all. Map is ~38-40% of screen. A stray unlabeled arrow button (icon-identical to the "open external nav" button from the pickup screen) floats orphaned bottom-left, colliding with a map label. Hindi instruction text is clipped mid-word, bleeding past its card edge. |
+
+This upgrades two items from the prior investigation:
+- **Heading is not just jittery — it can fail to track the road bearing at all** (image 3). The fix in Phase 2 must cover both.
+- **The SOS bug is a stacking-order defect with evidence of exact failure**, not a vague visibility complaint — Phase 1 targets the precise cause.
+
+---
+
+## 2. Principles governing every phase
+
+*(per project convention — [`andrej-karpathy-skills:karpathy-guidelines`](../CLAUDE.md), applied here explicitly since this plan spans two apps + API)*
+
+- **Root cause, not symptom.** Every phase below traces to one of 5 shared root causes (§3), not 13 independent patches. Fix the shared function/hook, not each call site.
+- **Surgical diffs.** Touch only the files listed per phase. No opportunistic refactors of adjacent code.
+- **No speculative infra.** No new shared `packages/` module, no self-hosted map-matching service, no native app rewrite — matches this repo's own "still NOT building" list in the Phase 5 doc. Reuse `apps/driver/src/lib/geo.ts`'s existing `nearestPointOnPolyline()` rather than inventing a new algorithm.
+- **Verifiable success criteria per phase**, stated as pass/fail checks a reviewer can actually run — not "looks better."
+- **Production-grade decisions, cited.** Where a fix follows an established industry pattern (heading gating, presence TTL, z-index scale, camera framing), the pattern is named so the "why" survives past this doc.
+
+---
+
+## 3. Root causes → phases
+
+| Root cause | Bugs it explains | Phase |
+|---|---|---|
+| SOS sheet loses the stacking order to a later-mounted sheet | Driver#8 | **Phase 1** |
+| No road/route snapping; raw GPS drawn directly | User#1 (partial), User#2, Driver#5, Customer#2, Customer#3 | **Phase 2** |
+| No speed gate/deadband on heading; heading sometimes not applied at all | User#1 | **Phase 2** |
+| ETA/distance only refresh on reroute triggers, frozen between | User#3, Customer#5 | **Phase 3** |
+| Client-authoritative driver presence, no heartbeat/TTL | Driver#4, Customer#4 | **Phase 3** |
+| Nav chrome not built for glanceability (camera, viewport, marker size, icon collisions, text overflow) | Driver#5,6,7, Customer#1,3 | **Phase 4** |
+| Driver homepage layout not mobile-ergonomic | Driver#1,2,3 | **Phase 5** |
+
+Phases 1-3 are backend/logic-heavy and independent of each other — can run in parallel. Phase 4 depends on Phase 2 (camera framing needs a stable, snapped heading to follow). Phase 5 is fully independent. Phase 6 is the closing gate for all of them.
+
+---
+
+## Phase 1 — P0: SOS stacking fix (safety-critical) — ✅ done 2026-07-12
+
+**Root cause found (more precise than the original hypothesis):** SOSButton's confirm sheet was a plain `fixed` div nested inside `TripInProgress.tsx`/`NavigateToPickup.tsx`'s `overflow-hidden`, `height: 100dvh` screen shell. That container/positioning combination is a known source of unreliable `position: fixed` stacking on mobile browsers — and this codebase had already worked around the identical problem twice before (`DatePickerSheet.tsx`, `SelectSheet.tsx` both portal to `document.body` for this exact reason). SOSButton just hadn't gotten the same treatment.
+
+**Fix shipped:** `SOSButton.tsx` now renders its confirm sheet via `createPortal(..., document.body)`, matching the existing codebase pattern, and uses a new shared `Z_SOS_MODAL = 150` constant (`apps/driver/src/lib/constants.ts`) — deliberately above every other z-index in the app (previous max was `NotificationToast` at 130) so a safety escalation can never lose a stacking fight. Checked for real collisions: `TripRequestCard` is the only element above the old value at `z-[200]`, but it only mounts while the driver is idle/awaiting a ride, never during an active trip alongside SOS — no actual conflict, left untouched (surgical scope, no repo-wide z-index rewrite).
+
+`tsc --noEmit` clean. Still needs the real-device pass in Phase 6 — the portal fix is spec-solid, but this exact bug class (mobile-browser stacking quirks) is precisely why device verification is a blocking gate in this plan, not a desk sign-off.
+
+**Why P0 despite being small:** a safety control that silently fails to open is the single highest-severity item in this list, regardless of engineering effort. Production teams triage by blast-radius-if-wrong, not by size.
+
+**Decision:** define one semantic z-index scale for the driver app (`dropdown < sticky < modal-backdrop < modal < toast`) instead of bumping `SOSButton.tsx` to `z-[999]` in isolation — a point fix would just move the collision to the next sheet that gets added later. Root-cause fix per the karpathy guideline above.
+
+**Build:**
+- Audit every fixed-position sheet on `NavigateToPickup.tsx`, `TripInProgress.tsx`, `Home.tsx`, `OTPVerify.tsx` for their current z-index values.
+- Introduce a shared scale (constants, not a new component library) and reassign every fixed/sheet element to it. SOS confirm sheet gets the `modal` tier; the trip-completion sheet, which currently outranks it, moves to whatever tier it actually belongs at (likely also `modal`, in which case mount order / a shared "active sheet" stack becomes the tiebreaker rather than two sheets being simultaneously open).
+- Confirm only one modal-tier sheet can be visually active at a time (if the trip-complete sheet and SOS sheet can legitimately both be triggered, the SOS sheet must win — a safety escalation should never be blocked by a checkout-style action sheet).
+
+**Files:** `apps/driver/src/components/ui/SOSButton.tsx`, `NavigateToPickup.tsx`, `TripInProgress.tsx`, `Home.tsx`, `OTPVerify.tsx`.
+
+**Review checklist:**
+- [ ] Trigger SOS from all 4 screens; sheet is fully visible, undimmed, and interactive every time
+- [ ] Trigger SOS while the trip-complete sheet is open; SOS wins
+- [ ] No other sheet/toast in the app now silently renders behind another (spot-check the notification toast and the offline-confirm sheet on `Home.tsx`)
+
+**Effort:** Small (1 day).
+
+---
+
+## Phase 2 — P0: Route-accurate marker + stable heading — ✅ done 2026-07-12
+
+**Found the codebase already had more of this than the original investigation credited:** `useTurnByTurn.ts` was already calling `nearestPointOnPolyline()` every GPS tick for off-route detection — the snapped point already existed in memory, it just was never used for rendering. And `SelfCarMarker` deliberately doesn't self-rotate on the driver nav screens (a comment already documents this — the map rotates via `RecenterMap`'s heading-up camera instead, to avoid double-rotation). So image 3's "car pointing straight up on a diagonal road" wasn't a missing-rotation bug, it was the *camera's* heading input (`selfHeading`, derived from raw jittery fixes) being wrong — fixing position snapping and camera heading together closes it.
+
+**Fix shipped:**
+- `useTurnByTurn.ts` now exposes `snappedPosition`/`snappedHeading` — the existing `nearestPointOnPolyline()` result's point, plus the bearing of its matched segment (`bearingDeg` between the segment's two endpoints), whenever within the existing `OFF_ROUTE_THRESHOLD_METRES` (40m) corridor; both null outside it. No new thresholds — reused the off-route-detection constant that already meant "close enough to trust this route line."
+- `NavigateToPickup.tsx` and `TripInProgress.tsx` now feed the marker, map center, and `RecenterMap`'s heading from `snappedPosition ?? position` / `snappedHeading ?? selfHeading`, falling back to raw GPS exactly when off-route (which is also exactly when trusting the route line would be wrong). Raw `position` is still used unchanged for arrival/distance math — snapping is a display concern only.
+- User app (`apps/user`) had no route-matching utility at all — ported `nearestPointOnPolyline`/`bearingDeg`/`haversineMetres` into a new `apps/user/lib/geo.ts` (matches this repo's existing per-app-duplication convention, no new shared package). `useInterpolatedPosition.ts` now accepts an optional decoded `routePoints` array and snaps its RAF animation target + heading the same way as the driver side, using the same 40m corridor for cross-app consistency. `ride/[id]/page.tsx` decodes `encodedPolyline` via `useMemo` and passes it through.
+
+`tsc --noEmit` clean on both `apps/driver` and `apps/user`.
+
+**Decision — snapping tier:** production apps use HMM map-matching against a road graph (Newson & Krumm's 2009 algorithm, what OSRM/Valhalla/Google Roads API implement) for road-accurate positioning. This stack has no road-graph service and adding one is exactly the kind of infra the existing docs correctly decline elsewhere ("self-hosted routing engine... ops burden is not [worth it] for 3 corridors"). The pragmatic, already-available substitute: **snap to the already-fetched Directions polyline** using `nearestPointOnPolyline()` (`apps/driver/src/lib/geo.ts:32-72`), which already does the correct flat-plane-with-latitude-correction projection. This directly explains image 3 (car floating off the route, near a building) — the marker currently renders the raw fix, never the polyline-projected one.
+
+**Decision — heading:** industry pattern is a heading source priority (device/GPS course when moving, computed bearing as fallback, frozen when stationary) plus a deadband and shortest-arc slew limit, and — once snapping exists — preferring the matched road segment's bearing over raw-fix bearing. This is *why* image 3 shows the marker facing the wrong way entirely: raw bearing between two jittery fixes can point anywhere; a snapped segment can only point along the road.
+
+**Build:**
+1. Port `nearestPointOnPolyline`/`bearingDeg`/`haversineMetres` into `apps/user/lib/geo.ts` (new file, matches the existing per-app duplication pattern in this repo — no shared package).
+2. In `useInterpolatedPosition.ts` (user) and `useDriverLocation.ts` (driver): when a route polyline exists and the raw fix is within a ~35m corridor of it, animate toward the **snapped point** and use the **matched segment's bearing** for heading. Outside the corridor, fall back to raw GPS (doubles as the existing deviation/reroute signal).
+3. Add a heading deadband (~8°) and ignore fixes with `coords.accuracy` worse than ~25-30m where available.
+4. Animate *along* the polyline (interpolate by distance/segment, not a straight lerp between two raw points) so the marker travels the road shape through corners instead of cutting a diagonal.
+5. `lerpAngle` itself is correct — verified by reading it, shortest-arc normalization is already right. Do not touch it.
+
+**Files:** `apps/user/lib/useInterpolatedPosition.ts`, `apps/user/lib/geo.ts` (new), `apps/driver/src/lib/useDriverLocation.ts`, `apps/driver/src/lib/geo.ts` (wire the existing util in, currently only used for progress/deviation math).
+
+**Review checklist:**
+- [ ] Replay/drive a route with at least 2 turns; marker stays on the road line through both
+- [ ] Marker heading always points along the direction of travel, never perpendicular or reversed (the image-3 failure)
+- [ ] No visible flip-flopping in heading while stationary or moving <2 m/s
+- [ ] Deviation/reroute triggers still fire correctly when actually off-route (this logic is reused, not replaced)
+
+**Effort:** Medium (2-3 days + the drive verification in Phase 6).
+
+---
+
+## Phase 3 — P1: Live ETA + server-authoritative presence
+
+Two independent backend-leaning fixes, bundled because both replace a client-side heuristic with a small piece of server truth.
+
+### 3a. Ticking ETA (User#3, Customer#5)
+
+**Decision:** two-tier ETA — server refresh stays the accurate tier (unchanged), a 1s client-side countdown fills the gap between refreshes, derived from Phase 2's along-route remaining distance ÷ smoothed recent speed, eased (not jumped) against each server refresh. This is the standard pattern behind why Uber/Ola ETAs visibly count down instead of sitting frozen for a minute.
+
+**Files:** `apps/user/app/(main)/ride/[id]/page.tsx` (L207, L440-476, L582-585). Don't touch the existing fetch/trigger logic.
+
+**3a status: ✅ done 2026-07-12.** `ride/[id]/page.tsx` now tracks `liveEtaAt` alongside `liveEta` and ticks a derived `displayEta` down every second (rate implied by the server's own `distanceKm/etaMin`, clamped at 0), reset on each real server refresh. `tsc --noEmit` clean.
+
+### 3b. Presence/reload reliability (Driver#4, Customer#4) — ✅ done 2026-07-12, revised from the original plan
+
+**What actually turned out to be true (this plan section was written before reading the real code — corrected here per the karpathy-guidelines rule to surface confusion/re-derive rather than blindly implement a stale plan):**
+
+- `socket.server.ts` already had a 45s disconnect-grace timer before marking a session offline — not the "client-Zustand-flag-is-the-only-truth" situation originally assumed. That's a reasonable, already-industrial pattern (Socket.io's own ping/pong is the heartbeat; the grace window absorbs reconnects).
+- `App.tsx`'s reload restore already re-fetches session + active-ride state from the server on every mount — also more mature than assumed.
+- `cleanup.worker.ts`'s 30-min auto-cancel is **not silent** — it already flags at 10 min and emits `sendStuckRideFlagged` to both the ride room and `admin:ops` before ever cancelling at 30 min. A reasonable staged escalation already exists; no changes needed there.
+
+**The actual bug**, found by tracing the real reload path end to end: the disconnect-grace timer's SQL flipped **`on_trip`** sessions offline on the same 45s timer as idle `online` ones (`WHERE status IN ('online', 'on_trip')`). A driver mid-trip who loses connectivity for a bit (tunnel, dead zone, phone reboot — or just closing the browser "and reopening again," exactly as reported) had their session status flipped to `offline` after 45s even though the ride was still genuinely in progress. On reload, `App.tsx`'s restore logic only ever called `getActiveRide()` inside the `session.status === 'on_trip'` branch — so a session that had drifted to `offline` skipped that check entirely and unconditionally called `clearRide()`, silently dropping a still-live ride from the driver's screen while the rider's app kept waiting on it. This is the precise mechanism behind the report ("driver app goes offline even after accepting a ride and then the ride won't show and user app still shows the ride unless cancelled").
+
+**Fix shipped (two small, surgical changes — no new Redis/TTL infra needed, the existing mechanisms were already adequate once this interaction bug was closed):**
+- `socket.server.ts`: the disconnect-grace SQL now only auto-offlines `status = 'online'` sessions, never `on_trip`. Whether an on-trip driver has truly gone dark is judged by GPS-heartbeat continuity via `cleanup.worker.ts`'s existing stuck-ride sweep, not by a bare socket blip.
+- `App.tsx`: `restoreSessionOnce` now calls `getActiveRide()` unconditionally (whenever a session exists) instead of only when `session.status === 'on_trip'`, and restores the ride whenever the server confirms one exists — regardless of what the session status drifted to. The ride row is server truth here; the session flag isn't.
+
+**Files touched:** `api/src/websocket/socket.server.ts`, `apps/driver/src/App.tsx`. (`useSessionStore.ts` and `cleanup.worker.ts` needed no changes — struck from the original file list.)
+
+`tsc --noEmit` clean on `apps/driver` and `api`.
+
+**Review checklist:**
+- [ ] ETA visibly ticks every second on the tracking screen, doesn't freeze between refreshes, doesn't jump discontinuously when a server refresh lands
+- [ ] Kill the driver browser mid-ride: presence flips offline within ~15-30s (not 30 min), and the ride is **not** silently cancelled — an ops alert fires instead
+- [ ] Normal network blip (airplane mode 5s) does not flip the driver offline or drop the ride
+
+**Effort:** Medium (2-3 days).
+
+---
+
+## Phase 4 — P1: Nav camera, viewport chrome, and the small polish items image 3 surfaced — partially done 2026-07-12
+
+**Reality check before implementing (per karpathy-guidelines — read before coding, don't blindly execute a stale plan):** the driver app's `RecenterMap.tsx` turned out to already be a fully-built, production-quality eased heading-up follow camera — smoothed heading/pitch/zoom animation, distance-based dynamic zoom (`zoomForDistance`), drag-to-pause/re-center, padded-center offset so the marker sits toward the bottom of the viewport for look-ahead. None of that needed building. Two of the five screenshot findings also didn't survive a code check: `ManeuverBanner.tsx` already truncates correctly (`truncate` + `min-w-0`) — the "पर…" was a working ellipsis, not clipped text, and the "text bleeding past the edge" / label collisions were Google's own map tile labels, not app UI, and not something CSS here controls. Recording this so the same phantom fix doesn't get attempted again.
+
+**What was real, and fixed:**
+- **Marker size** (Driver#6, screenshot-confirmed oversized): `SelfCarMarker.tsx` and `CarMarker.tsx` both shrunk from 32×52 to 22×36 (~30%, per the plan).
+- **Route/marker color parity** (Customer#1): `apps/user/components/map/RoutePolyline.tsx`'s default variant recolored from navy (`#1a1a2e`, 8/4.5px) to match the driver app's blue (`#1A73E8`, 11/7px casing) exactly. The user app's `pickup-leg` variant (a dashed-grey style with no driver-app equivalent) was left alone.
+- **A more consequential bug than the plan anticipated, found while wiring the zoom fix below:** the user app's `RecenterMap.tsx` was rotating the *entire map* via `heading`/`map.setHeading()` on the ride-tracking screen, at the same time `CarMarker.tsx` was *also* self-rotating its own icon by the same heading. That's a double-rotation — the exact bug class the driver app's `SelfCarMarker.tsx` has an explicit code comment warning about, just never applied on the user side. Two things spinning by the same jittery heading value simultaneously is a very plausible primary cause of "heading rotating indefinitely" (User#1), on top of the raw-GPS-jitter cause already addressed in Phase 2. Fix: `RideMapScene.tsx` no longer passes `heading`/`headingKnown` to `RecenterMap` — the map stays north-up (correct pattern for a passenger view; only the driver's own nav screens should be heading-up) and `CarMarker`'s own rotation is the sole indicator, matching how the map already behaved on `HomeMapScene.tsx` (which never passed heading to begin with).
+- **Initial/ongoing zoom too wide** (Customer#3, and possibly a contributor to Customer#2's "polyline not rendering" — a route can look invisible at city-level zoom): `RideMapScene.tsx` was switching straight from a fitBounds view to a pure pan-only `RecenterMap` the moment a driver position arrived, at whatever zoom (initial static 13) happened to be active, and never touching zoom again for the rest of the trip. Ported the driver app's own validated "overview beat, then follow" pattern (`OVERVIEW_BEAT_MS = 1200`, matching `NavigateToPickup.tsx`'s `mapMode`): a brief `FitBounds([driverPos, legTarget])` re-fit whenever the leg changes or a driver position first appears for that leg, then settles into plain follow.
+
+**Deliberately not done in this pass — needs a running dev server, not blind edits:** the top-instruction-card / bottom-sheet chrome density itself (screenshots measured map at only ~28-40% of viewport). The driver app's camera system computes `topPadding`/`bottomPadding` (100/220 on both nav screens) to frame the marker correctly *around* the current card sizes — shrinking the cards without re-tuning those padding constants in lockstep risks visually breaking the camera framing the existing system carefully tuned. This needs iterative visual verification, which belongs in Phase 6, not a speculative edit here.
+
+**Decision — camera:** heading-up follow (map rotates to travel direction), tilt ~50°, zoom ~17-18 scaled to speed, marker anchored ~25-30% from the viewport bottom for road-ahead look-ahead, animated (not teleported) camera transitions synced to the same tick driving marker interpolation from Phase 2. This is the standard Google Maps-nav-mode / Uber Driver pattern, and it only became implementable cleanly once Phase 2 gives a stable snapped position+bearing to follow — hence the dependency ordering.
+
+**Decision — chrome:** full-bleed map during active nav; top instruction and bottom trip cards become floating overlays instead of boxed sheets eating ~60-70% of vertical space (measured directly from the screenshots in §1). Per `ui-ux-pro-max`'s z-index and touch-target guidance, floating controls (Re-center, speaker, shield) keep a defined z-index tier and ≥44×44px targets.
+
+**Build:**
+- Driver nav screens (`NavigateToPickup.tsx`, `TripInProgress.tsx`): heading-up camera; strip boxed-card chrome to floating overlays; full-bleed map.
+- Shrink `SelfCarMarker.tsx` / `CarMarker.tsx` icon ~30% (screenshot-confirmed oversized relative to road scale).
+- Fix the orphaned bottom-left arrow button from image 3: either remove it if it's dead/leftover from a prior screen's layout, or give it a distinct icon + label if it's intentionally "open in external nav" — audit its source before deciding (don't guess-delete; the karpathy guideline against unrequested removal applies, but an icon-duplicate of Re-center with no label is a real bug, so this gets a decision, not a silent drop).
+- Fix the clipped Hindi instruction text (image 2-3, text bleeding past card edge): this is a plain CSS overflow bug (`text-overflow: ellipsis` + `max-width` missing on the instruction label), one-line fix, no design system change needed.
+- User app: align `apps/user/components/map/RoutePolyline.tsx` colors/stroke to `apps/driver/src/components/map/RoutePolyline.tsx`'s styling (Customer#1 — "same map design as driver"); fix initial map bounds to fit source+destination+driver (`fitBounds`-style) instead of a fixed wide zoom (Customer#3); re-verify Customer#2's "polyline not rendering" against Phase 2's snap fix before treating it as a separate rendering bug — the screenshot evidence suggests it may be the same root cause (raw-GPS/polyline divergence at turns), not a distinct data issue.
+
+**Files:** `apps/driver/src/pages/NavigateToPickup.tsx`, `TripInProgress.tsx`, `apps/driver/src/components/map/SelfCarMarker.tsx`, `apps/user/components/map/CarMarker.tsx`, `apps/user/components/map/RoutePolyline.tsx`, `apps/driver/src/components/map/RoutePolyline.tsx`, user ride-tracking map viewport init.
+
+**Not doing (explicitly, matching this repo's existing "declined" pattern):** wrapping the driver app as a fullscreen PWA/native shell to reclaim the browser URL-bar's ~12% of screen (image 1-3 all show it eating the top of the viewport). Real fix, but it's an infra/manifest decision (`display: standalone` + install prompt), not a code-diff-sized item — flag it for a separate one-off ticket, don't fold it into this plan's scope.
+
+**Review checklist:**
+- [ ] Map is the dominant visible surface (>60% of viewport) on both nav screens
+- [ ] Camera stays heading-up and close-follow through a multi-turn drive, transitions are eased not jumpy
+- [ ] Car marker visibly smaller, doesn't dwarf the road
+- [ ] No icon-ambiguous or unlabeled floating buttons remain
+- [ ] No instruction text clips past its card at any locale (test with a long Odia/Hindi string)
+- [ ] User and driver route polylines are visually the same design language
+- [ ] User tracking screen's initial zoom fits pickup+destination+driver without manual re-centering
+
+**Effort:** Medium-Large (3-4 days incl. the motion/animation work — camera easing should get a pass from `design-motion-principles`: use `prefers-reduced-motion`-aware easing, exponential ease-out for camera moves, no bounce/elastic on a nav camera).
+
+---
+
+## Phase 5 — P2: Driver homepage layout — ✅ done 2026-07-12
+
+**Found this was already a fully-built draggable snap-sheet** (ResizeObserver-measured `collapsed`/`peek` snap points, RAF-throttled map-occlusion sync) — the "collapsed" snap point was simply anchored at the wrong spot in the JSX (right after the stats row, per its own code comment), not missing functionality.
+
+- **Driver#3:** moved the `collapseRef` sentinel from after the stats grid to right after the greeting+toggle row. The collapsed height is computed purely from that ref's DOM position (`anchorTop - sheetTop`), so this one-line relocation is the entire fix — collapsed now shows exactly handle + name + toggle, stats/quick-actions/status banner all shrink away on drag-down, revealing more map underneath.
+- **Driver#2:** `OnlineToggle.tsx` shrunk 104px → 72px (icon 22→16, label 10px→8px) — well clear of the 44px touch-target floor.
+- **Driver#1:** the floating header used a hardcoded `pt-12` (48px) instead of the safe-area-aware pattern every other floating overlay on this same screen already uses (`env(safe-area-inset-top)`), so it could sit flush against a device notch/status bar. Now `paddingTop: max(calc(env(safe-area-inset-top) + 12px), 48px)` — identical on non-notch devices (48px floor preserved), correctly padded on notched ones.
+
+**Files touched:** `apps/driver/src/pages/Home.tsx`, `apps/driver/src/components/ui/OnlineToggle.tsx`. `tsc --noEmit` clean.
+
+**Review checklist:**
+- [x] Header never overlaps the map or the sheet handle at any sheet position (code-verified: safe-area padding, unchanged z-index layering)
+- [x] Toggle is visibly smaller (72px), still ≥44px touch target
+- [x] Collapsed sheet shows exactly name + toggle; drag up reveals the rest — needs a real-drag confirmation in Phase 6, the math is right but a drag gesture is best confirmed by hand
+
+---
+
+## Phase 6 — Final touches & sign-off (blocking, matches this repo's own Phase-5-doc precedent)
+
+This repo's own history is the reason this phase exists: two prior "done" rounds on this exact nav surface were never verified on a real device, and the client stayed dissatisfied both times, and this investigation independently found a claimed "shipped" fix (bearing-gated heading) that isn't actually in the code. Nothing in Phases 1-5 gets called done at a desk.
+
+1. **Cross-app consistency pass** — user and driver map/marker/route styling reviewed side by side; run an `impeccable critique` pass on both nav surfaces for stray inconsistencies (icon sets, shadow depth, color accents — the screenshots already flagged the red-outline safety shield clashing with the app's indigo accent, and near-flat/absent sheet shadows).
+2. **Motion/accessibility audit** — `design-motion-principles` audit pass specifically on the camera easing and marker interpolation added in Phase 2/4: confirm `prefers-reduced-motion` is respected (fall back to instant/near-instant camera snaps), confirm no animation runs on a "frequent/every-tick" trigger without a frequency-gate justification.
+3. **Real-device drive verification** — reuse the debug-overlay + drive-matrix pattern already defined in `NAVIGATION_PHASE5_FINAL_HARDENING_PLAN.md` Phase 5 rather than inventing a new process: two phones (mid-range Android + iPhone), at least one drive with turns, confirm heading settles <1s after a turn, marker never leaves the road line, SOS opens correctly from a real device, camera doesn't jitter at speed.
+4. **Regression checklist** — golden path click-through (request ride → accept → pickup nav → trip → complete) on both apps; `cd api && npx tsc --noEmit`.
+5. **Update this doc's Status line** to `Shipped` only after all of the above pass, with the same discipline the Phase 5 doc uses: filed fixes for any failed row must themselves be re-verified before sign-off, not assumed fixed.
+
+**Effort:** Medium (2-3 days, can overlap with Phase 5).
+
+---
+
+## Sequencing summary
+
+```
+Phase 1 (SOS)         ─┐
+Phase 2 (snap+heading) ─┼─ parallel, independent ──→ Phase 4 (camera/chrome, depends on Phase 2)
+Phase 3 (ETA+presence) ─┘                                        │
+Phase 5 (homepage)     ─────────── independent, any time ────────┤
+                                                                    ▼
+                                                            Phase 6 (verification + sign-off, blocking)
+```

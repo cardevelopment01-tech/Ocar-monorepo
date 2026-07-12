@@ -102,11 +102,6 @@ export default function TripInProgress() {
         }
       : undefined,
   })
-  // Fall back to drop only for map centering, never for the car marker or route fetch.
-  // Without this guard, the car appears AT the drop pin before GPS resolves, making
-  // it look like the driver has already reached the destination.
-  const mapCenter: [number, number] = position ?? dropPos
-
   useWakeLock()
 
   // Nav target is the current pending stop when one exists, else the final drop —
@@ -116,8 +111,18 @@ export default function TripInProgress() {
   const voiceEnabled = useNavPrefsStore(s => s.voiceEnabled)
   const navLanguage  = useNavPrefsStore(s => s.language)
 
-  const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting } =
+  const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting, snappedPosition, snappedHeading } =
     useTurnByTurn(position, hasNavTarget ? dropPos : null, navLanguage)
+
+  // Prefer the route-snapped fix over raw GPS for anything rendered on the map —
+  // see the matching comment in NavigateToPickup.tsx. Arrival/distance checks
+  // below deliberately keep using raw `position`.
+  const displayPosition = snappedPosition ?? position
+  const displayHeading  = snappedHeading ?? selfHeading
+  // Fall back to drop only for map centering, never for the car marker or route fetch.
+  // Without this guard, the car appears AT the drop pin before GPS resolves, making
+  // it look like the driver has already reached the destination.
+  const mapCenter: [number, number] = displayPosition ?? dropPos
   useVoiceGuidance(currentStep, distanceToManeuver, voiceEnabled, navLanguage)
 
   // "Here's the journey" beat on mount (trip just started), "here's the next
@@ -206,7 +211,7 @@ export default function TripInProgress() {
             {/* Always mounted — see the matching comment in NavigateToPickup.tsx. */}
             <RecenterMap
               center={mapCenter}
-              heading={selfHeading}
+              heading={displayHeading}
               topPadding={100}
               bottomPadding={220}
               pitch={nearTarget ? 0 : 42}
@@ -221,7 +226,7 @@ export default function TripInProgress() {
                 <TrafficColoredRoute encoded={trafficPolyline} intervals={trafficIntervals} />
               </>
             )}
-            {position && <SelfCarMarker position={position} />}
+            {displayPosition && <SelfCarMarker position={displayPosition} />}
             {hasNavTarget && <LocationPin position={dropPos} variant="drop" />}
             {hasNavTarget && (
               <button
