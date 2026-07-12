@@ -229,6 +229,18 @@ This repo's own history is the reason this phase exists: two prior "done" rounds
 
 **Effort:** Medium (2-3 days, can overlap with Phase 5).
 
+### Round 1 field-test findings — 2026-07-12
+
+First real-device/staging pass, three screenshots (driver Home, driver TripInProgress, rider tracking) against `er.clienttesting.in`, analyzed image-by-image. Findings, sorted by what they actually are:
+
+**Not bugs — same root cause, already-working mechanism:** the car marker sitting off the route line (TripInProgress) and the rider-side marker staying dimmed/translucent both trace to one shared cause, confirmed by the rider screen's own banner: *"We noticed this trip hasn't updated in a while. Our support team has been notified and is reviewing it."* GPS had gone stale for this test session (matches the cleanup worker's 10-min stuck-ride flag firing correctly). Off-route fallback to raw position, and a marker that never reaches full opacity because `headingKnown` never resolves without fresh fixes, are both the *intended* behavior when GPS genuinely stops — snapping the marker onto a route it isn't really near, or faking a resolved heading, would be the actual bug. **Re-test needs a session with real/simulated continuous movement, not a stationary desk session, to confirm the Phase 2 fixes properly** — this round didn't actually exercise them.
+
+**Real, fixed:** SOS trigger button on both nav screens sat only 8px (`mt-2`) below the instruction card, reading as crowded against its corner in the screenshot. Widened to `mt-3` on `NavigateToPickup.tsx` and `TripInProgress.tsx`.
+
+**Real, flagged, not code — needs an infra check, not a diff:** the rider tracking screen rendered as a fully default/unstyled Google Map (visible "Keyboard shortcuts · Map Data ©2026 · Terms · Report a map error" footer, stock Google colors and POI icons) instead of the app's desaturated custom style. Checked the source: `apps/user/components/ui/MapViewInner.tsx` uses the exact same `mapId` + CSS-filter pattern as the driver app's `DriverMapView.tsx` (which rendered correctly styled in the same test round — see the Home screenshot), and both `.env.local` files have the identical Cloud Map ID configured. Next.js bakes `NEXT_PUBLIC_*` vars into the build at build time — if `er.clienttesting.in` is a staging deployment that was built before this env var was set (or its hosting env doesn't have it configured at all, separately from this repo's `.env.local`), the deployed bundle simply never got the ID. **Action: confirm `NEXT_PUBLIC_GOOGLE_MAPS_ID` is set in the staging host's environment and trigger a rebuild** — no code change indicated unless a rebuild doesn't fix it, in which case re-open this with a fresh screenshot.
+
+**Not yet re-verified:** a stray observation that a stat-pill row looked slightly clipped above the bottom nav on the driver Home screenshot, in the sheet's default (non-collapsed) resting state — separate from the Phase 5 collapse-anchor fix, which only changes the *collapsed* state's content, not the default one. Plausible cause is a `100dvh`-vs-actual-visible-viewport mismatch (a well-known mobile-browser quirk when the address bar is showing) rather than anything Phase 5 touched — not acted on without confirming on-device whether it reproduces with the browser chrome hidden/shown, since a blind `dvh`→`svh` swap would touch every screen in the app (`Home.tsx`, `NavigateToPickup.tsx`, `TripInProgress.tsx` all use `h-[100dvh]`) on a one-screenshot hunch.
+
 ---
 
 ## Sequencing summary

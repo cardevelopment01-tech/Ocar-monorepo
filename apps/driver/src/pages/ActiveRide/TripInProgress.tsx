@@ -303,8 +303,10 @@ export default function TripInProgress() {
           </div>
         </div>
 
-        {/* SOS — anchored right below the instruction card, in normal flow. */}
-        <div className="flex justify-end mt-2">
+        {/* SOS — anchored right below the instruction card, in normal flow. mt-3
+            (not mt-2) so it reads as a clearly separate control, not crowded
+            against the card's corner (screenshot review, Phase 6). */}
+        <div className="flex justify-end mt-3">
           <SOSButton
             rideId={activeRide?.id ?? ''}
             onSOS={handleSOS}

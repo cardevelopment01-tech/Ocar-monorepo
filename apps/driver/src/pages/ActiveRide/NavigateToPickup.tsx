@@ -275,7 +275,7 @@ export default function NavigateToPickup() {
             it always tracks the card's height correctly (never overlaps it,
             whichever row is showing above). Best-reachable top-of-screen spot
             without competing with the nav info itself. */}
-        <div className="flex justify-end mt-2">
+        <div className="flex justify-end mt-3">
           <SOSButton
             rideId={activeRide?.id ?? ''}
             onSOS={handleSOS}
