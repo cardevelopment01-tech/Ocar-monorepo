@@ -438,7 +438,7 @@ export default function Home() {
               <div>
                 <p className="text-text-muted text-xs mb-0.5">{todayLabel}</p>
                 <p className="text-text-primary font-display font-bold text-[22px] leading-tight">
-                  Hi, {firstName} 👋
+                  Hi, {firstName}
                 </p>
                 <p className="text-text-muted text-xs mt-0.5">
                   {isOnline ? 'You\'re live, ride requests incoming' : 'Go online to start earning'}
