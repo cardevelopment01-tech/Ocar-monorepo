@@ -1,7 +1,15 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, lazy, Suspense } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Navigation2, RotateCcw, Clock, Check } from 'lucide-react'
 import OcarSpinner from './OcarSpinner'
+import { useDriverLocation } from '@/lib/useDriverLocation'
+import { driverRideApi } from '@/lib/ride-api'
+
+const DriverMapView     = lazy(() => import('@/components/map/DriverMapView'))
+const LocationPin       = lazy(() => import('@/components/map/LocationPin'))
+const SelfCarMarker     = lazy(() => import('@/components/map/SelfCarMarker'))
+const RoutePolyline     = lazy(() => import('@/components/map/RoutePolyline'))
+const FitBoundsToPoints = lazy(() => import('@/components/map/FitBoundsToPoints'))
 
 // Named palette for this screen's deliberately dark, high-contrast surface
 // (an "incoming call" moment — outdoor/bright-sunlight legibility, distinct
@@ -37,7 +45,13 @@ interface TripRequestCardProps {
   tripHours?: number
   returnAt?: string
   stopCount?: number
+  pickupLat: number
+  pickupLng: number
   isAccepting?: boolean
+  /** Accept succeeded — show the confirmation beat before the screen navigates away. */
+  accepted?: boolean
+  /** Accept failed (ride taken by another driver) — shake + toast, then dismiss. */
+  failed?: boolean
   onAccept: () => void
   onDecline: () => void
 }
@@ -67,11 +81,13 @@ function beep() {
 
 export default function TripRequestCard({
   pickup, drop, pickupDistance, tripDistance, fare,
-  timeRemaining: initialTime, rideType, tripHours, returnAt, stopCount, isAccepting, onAccept, onDecline,
+  timeRemaining: initialTime, rideType, tripHours, returnAt, stopCount,
+  pickupLat, pickupLng, isAccepting, accepted, failed, onAccept, onDecline,
 }: TripRequestCardProps) {
   const [time, setTime] = useState(initialTime)
   const [expired, setExpired] = useState(false)
   const expireTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tickedAt5s = useRef(false)
 
   const handleExpire = useCallback(() => {
     setExpired(true)
@@ -83,6 +99,7 @@ export default function TripRequestCard({
     try { navigator.vibrate([180, 80, 180]) } catch (_) {}
     const id = setInterval(() => {
       setTime(t => {
+        if (t === 6 && !tickedAt5s.current) { tickedAt5s.current = true; try { navigator.vibrate(50) } catch (_) {} }
         if (t <= 1) { clearInterval(id); handleExpire(); return 0 }
         return t - 1
       })
@@ -93,18 +110,54 @@ export default function TripRequestCard({
     }
   }, [handleExpire])
 
-  const isUrgent = time <= 5
+  // Vibrate once on accept success — the confirmation beat before the screen
+  // navigates away (App.tsx holds the sheet mounted briefly for this).
+  useEffect(() => {
+    if (accepted) { try { navigator.vibrate(80) } catch (_) {} }
+  }, [accepted])
 
+  const isUrgent = time <= 5
   const reduce = useReducedMotion()
-  const clock = `${Math.floor(time / 60)}:${String(time % 60).padStart(2, '0')}`
+
+  // Driver's own live position, purely for the pickup-preview map — this
+  // component only mounts while a request is showing, so a short-lived
+  // low-frequency watch here is fine (no onSync, nothing uploaded).
+  const { position } = useDriverLocation()
+
+  const pickupPos: [number, number] = [pickupLat, pickupLng]
+  const [previewPolyline, setPreviewPolyline] = useState<string | undefined>(undefined)
+  const fetchedFor = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!position) return
+    const key = `${pickupLat},${pickupLng}`
+    if (fetchedFor.current === key) return
+    fetchedFor.current = key
+    driverRideApi.getRoute(position[0], position[1], pickupLat, pickupLng)
+      .then(r => { if (r.polyline) setPreviewPolyline(r.polyline) })
+      .catch(() => {})
+  }, [position, pickupLat, pickupLng])
+
+  // Cheap fallback so the request never waits on a network fetch: a straight
+  // line to the pickup until the real route resolves (or if it never does).
+  // ponytail: no fade-in on the polyline swap (native Maps overlay, not a DOM
+  // node) — it just pops in; add a crossfade if this reads as jarring in practice.
+  const fallbackPositions: [number, number][] | undefined = position
+    ? [position, [(position[0] + pickupLat) / 2, (position[1] + pickupLng) / 2], pickupPos]
+    : undefined
+
   const etaMin = tripDistance > 0 ? Math.max(1, Math.round(tripDistance / 0.6)) : 0
+  const etaToPickupMin = pickupDistance > 0 ? Math.max(1, Math.round(pickupDistance / 0.6)) : 0
   const returnAtFormatted = returnAt
     ? new Date(returnAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
     : null
-  const barFill = isUrgent ? C.danger
+  const ringColor = failed ? C.danger
+    : isUrgent ? C.danger
     : rideType === 'round_trip' ? C.warning
     : rideType === 'rental' ? C.info
     : C.primary
+  const ringPct = failed ? 100 : Math.max(0, Math.min(100, (time / initialTime) * 100))
+
   const childVar = reduce
     ? { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.15 } } }
     : { hidden: { opacity: 0, y: 8 },
@@ -120,16 +173,36 @@ export default function TripRequestCard({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-[200] flex items-end"
-      style={{ background: 'rgba(8,11,22,0.62)', backdropFilter: 'blur(8px)' }}
+      className="fixed inset-0 z-[200]"
     >
+      {/* Map layer — spatial context behind the sheet instead of a flat dim */}
+      <div className="absolute inset-0" style={{ zIndex: 0 }}>
+        <Suspense fallback={<div className="w-full h-full" style={{ background: C.surface }} />}>
+          <DriverMapView initialCenter={position ?? pickupPos} zoom={14}>
+            <FitBoundsToPoints points={[position, pickupPos]} padding={{ top: 70, bottom: 380, left: 36, right: 36 }} />
+            {previewPolyline
+              ? <RoutePolyline encoded={previewPolyline} variant="pickup-leg" />
+              : fallbackPositions && <RoutePolyline positions={fallbackPositions} variant="pickup-leg" />}
+            {position && <SelfCarMarker position={position} />}
+            <LocationPin position={pickupPos} variant="pickup" />
+          </DriverMapView>
+        </Suspense>
+      </div>
+
+      {/* Scrim: gives the top of the map legibility without hiding it */}
+      <div
+        className="absolute inset-x-0 top-0 pointer-events-none"
+        style={{ height: '42%', background: 'linear-gradient(180deg, rgba(8,11,22,0.72) 0%, rgba(8,11,22,0) 100%)', zIndex: 1 }}
+      />
+
       <motion.div
         initial={reduce ? { opacity: 0 } : { y: '100%' }}
         animate={reduce ? { opacity: 1 } : { y: 0 }}
         exit={reduce ? { opacity: 0 } : { y: '100%' }}
         transition={reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 280, damping: 32, mass: 0.9 }}
-        className="relative w-full max-w-[430px] mx-auto rounded-t-3xl overflow-hidden"
+        className="absolute bottom-0 left-0 right-0 w-full max-w-[430px] mx-auto rounded-t-3xl overflow-hidden"
         style={{
+          zIndex: 2,
           background: C.surface,
           boxShadow: isUrgent
             ? '0 -10px 60px rgba(239,68,68,0.28), 0 -2px 0 rgba(248,250,252,0.04)'
@@ -137,16 +210,6 @@ export default function TripRequestCard({
           transition: 'box-shadow 250ms ease-out',
         }}
       >
-        {/* [1] Timer bar, flat color, drains left */}
-        <div className="absolute top-0 left-0 right-0 h-1 z-10" style={{ background: 'rgba(255,255,255,0.08)' }}>
-          <motion.div
-            className="h-full rounded-r-full"
-            style={{ background: barFill, transition: 'background 250ms ease-out' }}
-            animate={{ width: `${Math.max(0, (time / initialTime) * 100)}%` }}
-            transition={{ duration: reduce ? 0 : 1, ease: 'linear' }}
-          />
-        </div>
-
         {/* Drag handle */}
         <div className="flex justify-center pt-3.5 pb-1">
           <div className="w-9 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.14)' }} />
@@ -154,8 +217,8 @@ export default function TripRequestCard({
 
         <motion.div variants={containerVar} initial="hidden" animate="show">
 
-          {/* [2] Header: title, badge, clock, quiet distance */}
-          <motion.div variants={childVar} className="flex items-center justify-between px-5 pt-3 pb-4">
+          {/* [1] Header: title, badges only — the clock lives in the accept ring now */}
+          <motion.div variants={childVar} className="flex items-center justify-between px-5 pt-3 pb-2">
             <div className="flex items-center gap-2 min-w-0">
               <p className="text-[15px] font-semibold flex-shrink-0" style={{ color: C.text }}>
                 {rideType === 'round_trip' ? 'Round trip' : rideType === 'rental' ? 'Rental request' : 'Trip request'}
@@ -168,30 +231,26 @@ export default function TripRequestCard({
                   {RIDE_TYPE_BADGE[rideType]!.label}
                 </span>
               )}
-              <motion.span
-                animate={!reduce && isUrgent ? { scale: [1, 1.1, 1] } : { scale: 1 }}
-                transition={{ duration: 1, repeat: isUrgent && !reduce ? Infinity : 0, ease: 'easeInOut' }}
-                className="text-[15px] font-bold tabular-nums origin-left"
-                style={{ color: isUrgent ? C.danger : C.textMuted }}
+            </div>
+            {!!stopCount && (
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                style={{ background: 'rgba(124,58,237,0.18)', color: C.violet }}
               >
-                {expired ? 'expired' : clock}
-              </motion.span>
-            </div>
-
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              {!!stopCount && (
-                <span
-                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                  style={{ background: 'rgba(124,58,237,0.18)', color: C.violet }}
-                >
-                  {stopCount} {stopCount === 1 ? 'stop' : 'stops'}
-                </span>
-              )}
-              <Navigation2 size={12} style={{ color: C.textMuted }} />
-              <span className="text-[13px] font-semibold tabular-nums" style={{ color: C.textMuted }}>
-                {pickupDistance.toFixed(1)} km away
+                {stopCount} {stopCount === 1 ? 'stop' : 'stops'}
               </span>
-            </div>
+            )}
+          </motion.div>
+
+          {/* [2] ETA-to-pickup hero — the #1 accept factor, now above the fare */}
+          <motion.div variants={childVar} className="px-5 pb-2 flex items-center gap-1.5">
+            <Navigation2 size={13} style={{ color: C.textMuted }} />
+            <span className="text-[15px] font-bold tabular-nums" style={{ color: C.text }}>
+              {etaToPickupMin} min
+            </span>
+            <span className="text-[13px] font-medium" style={{ color: C.textMuted }}>
+              · {pickupDistance.toFixed(1)} km away
+            </span>
           </motion.div>
 
           {/* [3] Fare hero + trip meta */}
@@ -295,51 +354,95 @@ export default function TripRequestCard({
             </motion.div>
           )}
 
-          {/* [5] Actions: 30/70, accept-dominant bright-on-dark */}
-          <motion.div variants={childVar} className="flex gap-3 px-5 pt-1 pb-8">
+          {/* Failure toast — ride taken by another driver */}
+          <AnimatePresence>
+            {failed && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="mx-5 mb-3 rounded-xl px-3.5 py-2.5 text-center text-[13px] font-semibold"
+                style={{ background: 'rgba(239,68,68,0.14)', color: '#FCA5A5', border: '1px solid rgba(239,68,68,0.28)' }}
+              >
+                Ride no longer available
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* [5] Actions: 30/70, accept-dominant, countdown ring wraps the Accept button */}
+          <motion.div
+            variants={childVar}
+            animate={failed && !reduce ? { x: [0, -8, 8, -8, 8, 0] } : { x: 0 }}
+            transition={failed ? { duration: 0.3 } : undefined}
+            className="flex gap-3 px-5 pt-1 pb-8"
+          >
             <button
               onClick={onDecline}
-              className="w-[112px] h-14 rounded-2xl font-semibold text-[15px] flex-shrink-0 active:scale-[0.97] transition-transform duration-150"
+              disabled={!!accepted || !!failed}
+              className="w-[112px] h-14 rounded-2xl font-semibold text-[15px] flex-shrink-0 active:scale-[0.97] transition-transform duration-150 disabled:opacity-40"
               style={{ background: C.panel, color: C.textMuted, border: '1px solid rgba(255,255,255,0.08)' }}
             >
               Decline
             </button>
-            <motion.button
-              onClick={onAccept}
-              disabled={expired || isAccepting}
-              whileTap={reduce ? undefined : { scale: 0.97 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-              className="flex-1 h-14 rounded-2xl font-extrabold text-[15px] disabled:opacity-60 flex items-center justify-center gap-2 overflow-hidden"
+
+            {/* Ring: conic-gradient border that drains with `time`, turns red + pulses under 5s.
+                Timer and accept target are now one visual object, matching how Uber/Ola
+                pair the countdown with the action itself. */}
+            <div
+              className="flex-1 h-14 rounded-2xl p-[3px]"
               style={{
-                background: C.primary,
-                color: C.text,
-                boxShadow: '0 8px 24px rgba(79,70,229,0.40)',
+                background: `conic-gradient(${ringColor} ${ringPct}%, rgba(255,255,255,0.12) ${ringPct}%)`,
+                transition: 'background 250ms ease-out',
               }}
             >
-              <AnimatePresence mode="wait" initial={false}>
-                {isAccepting ? (
-                  <motion.span
-                    key="accepting"
-                    initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.85, filter: 'blur(3px)' }}
-                    animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                    transition={{ duration: reduce ? 0.01 : 0.22, ease: [0.22, 1, 0.36, 1] }}
-                    className="flex items-center gap-2"
-                  >
-                    <OcarSpinner size={16} variant="white" /> Accepting…
-                  </motion.span>
-                ) : (
-                  <motion.span
-                    key="accept"
-                    initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.85, filter: 'blur(3px)' }}
-                    animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                    transition={{ duration: reduce ? 0.01 : 0.22, ease: [0.22, 1, 0.36, 1] }}
-                    className="flex items-center gap-2"
-                  >
-                    <Check size={16} strokeWidth={2.5} aria-hidden="true" /> Accept · ₹{fare}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </motion.button>
+              <motion.button
+                onClick={onAccept}
+                disabled={expired || isAccepting || accepted || failed}
+                animate={!reduce && isUrgent && !isAccepting && !accepted && !failed ? { scale: [1, 1.02, 1] } : { scale: 1 }}
+                transition={{ duration: 0.6, repeat: isUrgent && !reduce ? Infinity : 0, ease: 'easeInOut' }}
+                whileTap={reduce ? undefined : { scale: 0.97 }}
+                className="w-full h-full rounded-[13px] font-extrabold text-[15px] disabled:opacity-90 flex items-center justify-center gap-2 overflow-hidden"
+                style={{
+                  background: accepted ? '#16A34A' : C.primary,
+                  color: C.text,
+                  transition: 'background 200ms ease-out',
+                }}
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  {accepted ? (
+                    <motion.span
+                      key="accepted"
+                      initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.85, filter: 'blur(3px)' }}
+                      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                      transition={{ duration: reduce ? 0.01 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      className="flex items-center gap-2"
+                    >
+                      <Check size={16} strokeWidth={2.5} aria-hidden="true" /> Accepted
+                    </motion.span>
+                  ) : isAccepting ? (
+                    <motion.span
+                      key="accepting"
+                      initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.85, filter: 'blur(3px)' }}
+                      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                      transition={{ duration: reduce ? 0.01 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      className="flex items-center gap-2"
+                    >
+                      <OcarSpinner size={16} variant="white" /> Accepting…
+                    </motion.span>
+                  ) : (
+                    <motion.span
+                      key="accept"
+                      initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.85, filter: 'blur(3px)' }}
+                      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                      transition={{ duration: reduce ? 0.01 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      className="flex items-center gap-2"
+                    >
+                      <Check size={16} strokeWidth={2.5} aria-hidden="true" /> Accept · ₹{fare}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </motion.button>
+            </div>
           </motion.div>
 
         </motion.div>

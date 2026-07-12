@@ -45,6 +45,8 @@ export default function App() {
   const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, setRestoreChecked, clearRide, activeRide, updateStop } = useRideStore()
   const { fetchUnreadCount, addLive } = useNotificationsStore()
   const [accepting, setAccepting] = useState(false)
+  const [acceptedBeat, setAcceptedBeat] = useState(false)
+  const [acceptFailed, setAcceptFailed] = useState(false)
   const [rideCancelled, setRideCancelled] = useState(false)
   const [forceEndedMessage, setForceEndedMessage] = useState<string | null>(null)
 
@@ -267,6 +269,7 @@ export default function App() {
   const handleAcceptRide = async (rideId: string, rideType: string) => {
     if (accepting) return
     setAccepting(true)
+    setAcceptFailed(false)
     try {
       await driverRideApi.acceptRide(rideId)
       const ride = await driverRideApi.getRide(rideId)
@@ -292,12 +295,23 @@ export default function App() {
       }))
       setActiveRide(activeRideInput)
       getDriverSocket().emit('join:ride', rideId)
-      clearIncomingRequest()
       setAccepting(false)
-      navigate('/ride/navigate')
+      // Confirmation beat before navigating away — see TripRequestCard's
+      // `accepted` prop. Short and fixed: never block on it if slow, this is
+      // purely the post-success flourish, not a wait for anything.
+      setAcceptedBeat(true)
+      setTimeout(() => {
+        setAcceptedBeat(false)
+        clearIncomingRequest()
+        navigate('/ride/navigate')
+      }, 260)
     } catch {
       setAccepting(false)
-      clearIncomingRequest()
+      setAcceptFailed(true)
+      setTimeout(() => {
+        setAcceptFailed(false)
+        clearIncomingRequest()
+      }, 1400)
     }
   }
 
@@ -388,7 +402,11 @@ export default function App() {
             tripHours={incomingRequest.tripHours}
             returnAt={incomingRequest.returnAt}
             stopCount={incomingRequest.stopCount}
+            pickupLat={incomingRequest.pickupLat}
+            pickupLng={incomingRequest.pickupLng}
             isAccepting={accepting}
+            accepted={acceptedBeat}
+            failed={acceptFailed}
             onAccept={() => void handleAcceptRide(incomingRequest.rideId, incomingRequest.rideType)}
             onDecline={clearIncomingRequest}
           />

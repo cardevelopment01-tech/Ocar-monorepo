@@ -1,7 +1,7 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
-import { Navigation, Phone, RotateCcw, Clock, X, Star, Check } from 'lucide-react'
+import { Navigation, Phone, RotateCcw, Clock, X, Star, Check, Locate, Layers } from 'lucide-react'
 import SOSButton from '@/components/ui/SOSButton'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import VoiceToggleButton from '@/components/ui/VoiceToggleButton'
@@ -17,17 +17,26 @@ import { useDriverLocation } from '@/lib/useDriverLocation'
 import { useTurnByTurn } from '@/lib/useTurnByTurn'
 import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
 import { useWakeLock } from '@/lib/useWakeLock'
+import { haversineMetres } from '@/lib/geo'
 
-const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
-const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
-const LocationPin    = lazy(() => import('@/components/map/LocationPin'))
-const SelfCarMarker  = lazy(() => import('@/components/map/SelfCarMarker'))
-const RoutePolyline  = lazy(() => import('@/components/map/RoutePolyline'))
-const TrafficLayer   = lazy(() => import('@/components/map/TrafficLayer'))
+const DriverMapView     = lazy(() => import('@/components/map/DriverMapView'))
+const RecenterMap       = lazy(() => import('@/components/map/RecenterMap'))
+const LocationPin       = lazy(() => import('@/components/map/LocationPin'))
+const SelfCarMarker     = lazy(() => import('@/components/map/SelfCarMarker'))
+const RoutePolyline     = lazy(() => import('@/components/map/RoutePolyline'))
+const TrafficLayer      = lazy(() => import('@/components/map/TrafficLayer'))
 const TrafficColoredRoute = lazy(() => import('@/components/map/TrafficColoredRoute'))
+const FitBoundsToPoints = lazy(() => import('@/components/map/FitBoundsToPoints'))
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
+// Route-overview beat before diving into first-person navigation — see
+// docs/DRIVER_TRIP_UX_REDESIGN_PLAN.md §3.
+const OVERVIEW_BEAT_MS = 1200
+// Manual "I'm here" tap still required (GPS drift near buildings) — this only
+// relaxes the camera and elevates the CTA, matching Uber/Lyft's own choice
+// to keep arrival a driver-confirmed action.
+const ARRIVAL_RADIUS_METRES = 75
 
 export default function NavigateToPickup() {
   const navigate = useNavigate()
@@ -40,6 +49,24 @@ export default function NavigateToPickup() {
   const [showCancelSheet,  setShowCancelSheet]  = useState(false)
   const [cancelReason,     setCancelReason]     = useState<string | null>(null)
   const [cancellingRide,   setCancellingRide]   = useState(false)
+
+  // Map mode system (see docs/DRIVER_TRIP_UX_REDESIGN_PLAN.md §1/§3): starts in
+  // OVERVIEW for the "here's your job" beat, dives into NAVIGATION shortly after.
+  const [mapMode, setMapMode]   = useState<'overview' | 'nav'>('overview')
+  const [following, setFollowing] = useState(true)
+  const [resumeKey, setResumeKey] = useState(0)
+  const [nearPickup, setNearPickup] = useState(false)
+  const announcedArrival = useRef(false)
+
+  useEffect(() => {
+    const t = setTimeout(() => setMapMode('nav'), OVERVIEW_BEAT_MS)
+    return () => clearTimeout(t)
+  }, [])
+
+  function handleRecenter() { setResumeKey(k => k + 1) }
+  // Resync on resume is handled by RecenterMap's `suspended` prop itself —
+  // no need to also bump resumeKey here.
+  function toggleOverview() { setMapMode(m => (m === 'nav' ? 'overview' : 'nav')) }
 
   // Only evict once session-restore has definitively confirmed there's no
   // active ride — activeRide is briefly null on a hard refresh before the
@@ -76,6 +103,23 @@ export default function NavigateToPickup() {
   const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting } =
     useTurnByTurn(position, pickupPos, navLanguage)
   useVoiceGuidance(currentStep, distanceToManeuver, voiceEnabled, navLanguage)
+
+  // Arrival micro-state: proximity relaxes the camera and elevates the CTA,
+  // but never auto-completes the arrival — see ARRIVAL_RADIUS_METRES above.
+  useEffect(() => {
+    if (!position) return
+    setNearPickup(haversineMetres(position, pickupPos) <= ARRIVAL_RADIUS_METRES)
+  }, [position, pickupPos])
+
+  useEffect(() => {
+    if (!nearPickup || announcedArrival.current || !voiceEnabled) return
+    announcedArrival.current = true
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+    const utterance = new SpeechSynthesisUtterance('You have arrived at the pickup point.')
+    utterance.lang = navLanguage === 'hi' ? 'hi-IN' : 'en-IN'
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(utterance)
+  }, [nearPickup, voiceEnabled, navLanguage])
 
   const handleSOS = async () => {
     await driverSafetyApi.triggerSos({
@@ -121,15 +165,30 @@ export default function NavigateToPickup() {
       {/* Map */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
-          <DriverMapView initialCenter={mapCenter} zoom={15} mapId={import.meta.env.VITE_GOOGLE_MAPS_DARK_MAP_ID}>
+          <DriverMapView initialCenter={mapCenter} zoom={15}>
             <TrafficLayer />
+            {mapMode === 'overview' && (
+              <FitBoundsToPoints
+                points={[position, pickupPos]}
+                padding={{ top: 140, bottom: 260, left: 40, right: 40 }}
+              />
+            )}
+            {/* Always mounted (never swapped out for FitBoundsToPoints) so its
+                eased pitch/heading/zoom animation state survives mode
+                switches — see suspended's doc comment in RecenterMap.tsx. */}
             <RecenterMap
               center={mapCenter}
               heading={selfHeading}
               topPadding={100}
               bottomPadding={220}
-              pitch={50}
-              distanceToManeuver={distanceToManeuver}
+              pitch={nearPickup ? 0 : 45}
+              // Fixes zoom around ~17 during arrival relaxation (falls in
+              // zoomForDistance's 100-300m bucket) instead of continuing to
+              // chase the last real maneuver distance.
+              distanceToManeuver={nearPickup ? 250 : distanceToManeuver}
+              onFollowChange={setFollowing}
+              resumeKey={resumeKey}
+              suspended={mapMode === 'overview'}
             />
             <RoutePolyline encoded={encodedPolyline} variant="pickup-leg" />
             <TrafficColoredRoute encoded={trafficPolyline} intervals={trafficIntervals} />
@@ -144,8 +203,25 @@ export default function NavigateToPickup() {
         className="absolute top-0 left-0 right-0 px-4"
         style={{ zIndex: 10, paddingTop: 'calc(max(env(safe-area-inset-top), 2.5rem) + 56px)' }}
       >
-        <AnimatePresence>
-          {(currentStep || isReconnecting || source !== 'google') && (
+        <AnimatePresence mode="wait">
+          {nearPickup ? (
+            <motion.div
+              key="arrived-banner"
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.3, ease: EASE }}
+              className="mb-2 rounded-2xl px-4 py-3 flex items-center gap-3"
+              style={GLASS}
+            >
+              <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center flex-shrink-0" aria-hidden>
+                <Check size={24} className="text-text-inverse" strokeWidth={2.5} />
+              </div>
+              <p className="text-text-primary font-bold text-sm truncate">
+                Pick up {activeRide?.userName ?? 'the rider'}
+              </p>
+            </motion.div>
+          ) : (currentStep || isReconnecting || source !== 'google') && (
             <motion.div
               key="maneuver"
               initial={{ opacity: 0, y: -12 }}
@@ -245,11 +321,13 @@ export default function NavigateToPickup() {
 
         {error && <p className="text-accent-red text-sm mb-3 text-center">{error}</p>}
 
-        <button
+        <motion.button
           onClick={() => void handleArrived()}
           disabled={arriving}
+          animate={nearPickup && !arriving && !arrived ? { scale: [1, 1.03, 1] } : { scale: 1 }}
+          transition={{ duration: 0.7, repeat: nearPickup && !arriving && !arrived ? Infinity : 0, ease: 'easeInOut' }}
           className="btn-go w-full flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:active:scale-100"
-          style={{ minHeight: 56 }}
+          style={{ minHeight: 56, boxShadow: nearPickup ? '0 0 0 3px rgba(79,70,229,0.35)' : undefined }}
         >
           <AnimatePresence mode="wait" initial={false}>
             {arrived ? (
@@ -283,7 +361,7 @@ export default function NavigateToPickup() {
               </motion.span>
             )}
           </AnimatePresence>
-        </button>
+        </motion.button>
 
         <button
           onClick={() => setShowCancelSheet(true)}
@@ -301,6 +379,34 @@ export default function NavigateToPickup() {
       />
       <VoiceToggleButton style={{ bottom: '100px', left: '16px' }} />
       <HindiVoiceHint active={!!currentStep} />
+
+      {/* Overview <-> navigation toggle — Uber's single-tap camera-mode switch */}
+      <button
+        aria-label={mapMode === 'nav' ? 'Show route overview' : 'Resume navigation'}
+        onClick={toggleOverview}
+        className="absolute w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-transform"
+        style={{ top: 'calc(max(env(safe-area-inset-top), 1rem) + 60px)', right: '16px', zIndex: 40, ...GLASS }}
+      >
+        <Layers size={18} className="text-text-secondary" />
+      </button>
+
+      {/* Re-center chip — appears once a manual drag drops auto-follow */}
+      <AnimatePresence>
+        {mapMode === 'nav' && !following && (
+          <motion.button
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.2, ease: EASE }}
+            onClick={handleRecenter}
+            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-4 py-2 active:scale-95 transition-transform"
+            style={{ bottom: 'calc(env(safe-area-inset-bottom) + 250px)', zIndex: 40, ...GLASS }}
+          >
+            <Locate size={14} className="text-primary" />
+            <span className="text-text-primary text-[13px] font-semibold">Re-center</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showCancelSheet && (

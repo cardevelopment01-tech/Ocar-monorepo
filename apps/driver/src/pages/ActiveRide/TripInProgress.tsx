@@ -1,7 +1,6 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, Crosshair, X, RotateCcw, Flag, CheckCircle2, Navigation } from 'lucide-react'
-import { useMap } from '@vis.gl/react-google-maps'
+import { Clock, X, RotateCcw, Flag, CheckCircle2, Navigation, Locate, Layers, Check } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import SOSButton from '@/components/ui/SOSButton'
 import OtpVerifyPanel from '@/components/ui/OtpVerifyPanel'
@@ -18,36 +17,26 @@ import { useDriverLocation } from '@/lib/useDriverLocation'
 import { useTurnByTurn } from '@/lib/useTurnByTurn'
 import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
 import { useWakeLock } from '@/lib/useWakeLock'
+import { haversineMetres } from '@/lib/geo'
 
-const DriverMapView  = lazy(() => import('@/components/map/DriverMapView'))
-const RecenterMap    = lazy(() => import('@/components/map/RecenterMap'))
-const LocationPin    = lazy(() => import('@/components/map/LocationPin'))
-const SelfCarMarker  = lazy(() => import('@/components/map/SelfCarMarker'))
-const RoutePolyline  = lazy(() => import('@/components/map/RoutePolyline'))
-const TrafficLayer   = lazy(() => import('@/components/map/TrafficLayer'))
+const DriverMapView     = lazy(() => import('@/components/map/DriverMapView'))
+const RecenterMap       = lazy(() => import('@/components/map/RecenterMap'))
+const LocationPin       = lazy(() => import('@/components/map/LocationPin'))
+const SelfCarMarker     = lazy(() => import('@/components/map/SelfCarMarker'))
+const RoutePolyline     = lazy(() => import('@/components/map/RoutePolyline'))
+const TrafficLayer      = lazy(() => import('@/components/map/TrafficLayer'))
 const TrafficColoredRoute = lazy(() => import('@/components/map/TrafficColoredRoute'))
+const FitBoundsToPoints = lazy(() => import('@/components/map/FitBoundsToPoints'))
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
-
-// Must render inside DriverMapView children so useMap() has map context
-function LocateMeButton({ position }: { position: [number, number] }) {
-  const map = useMap()
-  return (
-    <button
-      aria-label="Center on my location"
-      style={{ position: 'absolute', left: 16, bottom: 'calc(env(safe-area-inset-bottom) + 224px)', zIndex: 5 }}
-      className="w-12 h-12 rounded-2xl bg-surface border border-border shadow-lg flex items-center justify-center active:scale-95 transition-transform"
-      onClick={() => {
-        if (!map) return
-        map.panTo({ lat: position[0], lng: position[1] })
-        map.setZoom(16)
-      }}
-    >
-      <Crosshair size={20} className="text-primary" />
-    </button>
-  )
-}
+// "Here's the journey" beat on trip start, shorter "here's the next leg" beat
+// on each stop advance — see docs/DRIVER_TRIP_UX_REDESIGN_PLAN.md §4.
+const OVERVIEW_BEAT_MS = 1200
+const MINI_BEAT_MS = 800
+// Larger than the pickup radius (75m) — highways near drop points make a
+// tight radius unreliable.
+const ARRIVAL_RADIUS_METRES = 150
 
 function useElapsed(startedAt?: string) {
   const initial = startedAt ? Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000)) : 0
@@ -71,6 +60,19 @@ export default function TripInProgress() {
   const [otp, setOtp]               = useState('')
   const [otpError, setOtpError]     = useState(false)
   const [stopActionPending, setStopActionPending] = useState<number | null>(null)
+
+  // Map mode system (see docs/DRIVER_TRIP_UX_REDESIGN_PLAN.md §1/§4).
+  const [mapMode, setMapMode]     = useState<'overview' | 'nav'>('overview')
+  const [following, setFollowing] = useState(true)
+  const [resumeKey, setResumeKey] = useState(0)
+  const [nearTarget, setNearTarget] = useState(false)
+  const announcedFor = useRef<string | null>(null)
+  const isFirstBeat  = useRef(true)
+
+  function handleRecenter() { setResumeKey(k => k + 1) }
+  // Resync on resume is handled by RecenterMap's `suspended` prop itself —
+  // no need to also bump resumeKey here.
+  function toggleOverview() { setMapMode(m => (m === 'nav' ? 'overview' : 'nav')) }
 
   // One leg at a time, matching how Uber drivers actually navigate — multi-waypoint
   // deep links are flaky on Android. currentStop advances after each reached/skipped.
@@ -119,6 +121,41 @@ export default function TripInProgress() {
     useTurnByTurn(position, hasNavTarget ? dropPos : null, navLanguage)
   useVoiceGuidance(currentStep, distanceToManeuver, voiceEnabled, navLanguage)
 
+  // "Here's the journey" beat on mount (trip just started), "here's the next
+  // leg" mini-beat whenever the nav target changes (a stop is reached/skipped
+  // and useTurnByTurn's destination — and therefore this key — changes).
+  const destKey = hasNavTarget ? `${dropPos[0].toFixed(5)},${dropPos[1].toFixed(5)}` : null
+  const prevDestKey = useRef<string | null>(null)
+  useEffect(() => {
+    if (destKey === null || prevDestKey.current === destKey) return
+    prevDestKey.current = destKey
+    const holdMs = isFirstBeat.current ? OVERVIEW_BEAT_MS : MINI_BEAT_MS
+    isFirstBeat.current = false
+    setMapMode('overview')
+    const t = setTimeout(() => setMapMode('nav'), holdMs)
+    return () => clearTimeout(t)
+  }, [destKey])
+
+  // Arrival micro-state, shared rule for "next stop" and "final drop" — both
+  // are just `dropPos` at any given moment. Manual confirmation still
+  // required (Reached / Complete Trip), this only relaxes the camera.
+  useEffect(() => {
+    if (!position || !hasNavTarget) { setNearTarget(false); return }
+    setNearTarget(haversineMetres(position, dropPos) <= ARRIVAL_RADIUS_METRES)
+  }, [position, dropPos, hasNavTarget])
+
+  useEffect(() => {
+    if (!nearTarget || !voiceEnabled || !destKey || announcedFor.current === destKey) return
+    announcedFor.current = destKey
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+    const label = currentStop ? `You have arrived at stop ${currentStop.sequence}.` : 'You have arrived at the destination.'
+    const utterance = new SpeechSynthesisUtterance(label)
+    utterance.lang = navLanguage === 'hi' ? 'hi-IN' : 'en-IN'
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(utterance)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nearTarget, voiceEnabled, navLanguage, destKey])
+
   const handleSOS = async () => {
     await driverSafetyApi.triggerSos({
       rideId:   activeRide?.id ?? '',
@@ -159,15 +196,25 @@ export default function TripInProgress() {
       {/* Map */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <Suspense fallback={<div className="w-full h-full bg-surface animate-pulse" />}>
-          <DriverMapView initialCenter={mapCenter} zoom={15} mapId={import.meta.env.VITE_GOOGLE_MAPS_DARK_MAP_ID}>
+          <DriverMapView initialCenter={mapCenter} zoom={15}>
             <TrafficLayer />
+            {mapMode === 'overview' && (
+              <FitBoundsToPoints
+                points={[position, hasNavTarget ? dropPos : null]}
+                padding={{ top: 140, bottom: 260, left: 40, right: 40 }}
+              />
+            )}
+            {/* Always mounted — see the matching comment in NavigateToPickup.tsx. */}
             <RecenterMap
               center={mapCenter}
               heading={selfHeading}
               topPadding={100}
               bottomPadding={220}
-              pitch={50}
-              distanceToManeuver={distanceToManeuver}
+              pitch={nearTarget ? 0 : 45}
+              distanceToManeuver={nearTarget ? 250 : distanceToManeuver}
+              onFollowChange={setFollowing}
+              resumeKey={resumeKey}
+              suspended={mapMode === 'overview'}
             />
             {hasNavTarget && (
               <>
@@ -177,7 +224,6 @@ export default function TripInProgress() {
             )}
             {position && <SelfCarMarker position={position} />}
             {hasNavTarget && <LocationPin position={dropPos} variant="drop" />}
-            <LocateMeButton position={position ?? dropPos} />
             {hasNavTarget && (
               <button
                 aria-label="Open in Google Maps"
@@ -197,8 +243,25 @@ export default function TripInProgress() {
         className="absolute top-0 left-0 right-0 px-4"
         style={{ zIndex: 10, paddingTop: 'calc(max(env(safe-area-inset-top), 2.5rem) + 56px)' }}
       >
-        <AnimatePresence>
-          {(currentStep || isReconnecting || source !== 'google') && (
+        <AnimatePresence mode="wait">
+          {nearTarget ? (
+            <motion.div
+              key="arrived-banner"
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.3, ease: EASE }}
+              className="mb-2 rounded-2xl px-4 py-3 flex items-center gap-3"
+              style={GLASS}
+            >
+              <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center flex-shrink-0" aria-hidden>
+                <Check size={24} className="text-text-inverse" strokeWidth={2.5} />
+              </div>
+              <p className="text-text-primary font-bold text-sm truncate">
+                {currentStop ? `Arrived — Stop ${currentStop.sequence}` : 'Arrived at the destination'}
+              </p>
+            </motion.div>
+          ) : (currentStep || isReconnecting || source !== 'google') && (
             <motion.div
               key="maneuver"
               initial={{ opacity: 0, y: -12 }}
@@ -305,14 +368,19 @@ export default function TripInProgress() {
                       >
                         Skip
                       </button>
-                      <button
+                      <motion.button
                         onClick={() => handleStopAction(stop.sequence, 'reached')}
                         disabled={isPending}
+                        animate={isCurrent && nearTarget && !isPending ? { scale: [1, 1.06, 1] } : { scale: 1 }}
+                        transition={{ duration: 0.7, repeat: isCurrent && nearTarget && !isPending ? Infinity : 0, ease: 'easeInOut' }}
                         className="text-[11px] font-bold text-white rounded-full px-3 py-1.5 active:scale-95 transition-transform disabled:opacity-60"
-                        style={{ background: '#4F46E5' }}
+                        style={{
+                          background: '#4F46E5',
+                          boxShadow: isCurrent && nearTarget ? '0 0 0 3px rgba(79,70,229,0.30)' : undefined,
+                        }}
                       >
                         {isPending ? '…' : 'Reached'}
-                      </button>
+                      </motion.button>
                     </div>
                   )}
                 </div>
@@ -334,13 +402,15 @@ export default function TripInProgress() {
           <p className="text-primary font-black text-2xl flex-shrink-0">₹{activeRide?.fare ?? 0}</p>
         </div>
 
-        <button
+        <motion.button
           onClick={() => setShowEndOtp(true)}
+          animate={!currentStop && nearTarget ? { scale: [1, 1.03, 1] } : { scale: 1 }}
+          transition={{ duration: 0.7, repeat: !currentStop && nearTarget ? Infinity : 0, ease: 'easeInOut' }}
           className="btn-go w-full active:scale-95 transition-transform"
-          style={{ minHeight: 52 }}
+          style={{ minHeight: 52, boxShadow: !currentStop && nearTarget ? '0 0 0 3px rgba(79,70,229,0.35)' : undefined }}
         >
           Complete Trip
-        </button>
+        </motion.button>
       </motion.div>
 
       {/* Dim backdrop behind end-OTP sheet */}
@@ -400,6 +470,34 @@ export default function TripInProgress() {
       />
       <VoiceToggleButton style={{ bottom: 'calc(env(safe-area-inset-bottom) + 344px)', left: '16px' }} />
       <HindiVoiceHint active={!!currentStep} />
+
+      {/* Overview <-> navigation toggle */}
+      <button
+        aria-label={mapMode === 'nav' ? 'Show route overview' : 'Resume navigation'}
+        onClick={toggleOverview}
+        className="absolute w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-transform"
+        style={{ top: 'calc(max(env(safe-area-inset-top), 1rem) + 60px)', right: '16px', zIndex: 40, ...GLASS }}
+      >
+        <Layers size={18} className="text-text-secondary" />
+      </button>
+
+      {/* Re-center chip */}
+      <AnimatePresence>
+        {mapMode === 'nav' && !following && (
+          <motion.button
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.2, ease: EASE }}
+            onClick={handleRecenter}
+            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-4 py-2 active:scale-95 transition-transform"
+            style={{ bottom: 'calc(env(safe-area-inset-bottom) + 300px)', zIndex: 40, ...GLASS }}
+          >
+            <Locate size={14} className="text-primary" />
+            <span className="text-text-primary text-[13px] font-semibold">Re-center</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
