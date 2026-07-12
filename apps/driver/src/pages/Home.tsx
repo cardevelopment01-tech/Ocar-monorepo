@@ -83,6 +83,12 @@ export default function Home() {
     [0, 1],
     ['rgba(79,70,229,0.15)', 'rgba(79,70,229,0.48)'],
   )
+  // Content below the greeting+toggle row fades out over the first 56px of
+  // drag-down, well before the sheet's physical height reaches collapsedH —
+  // a soft fade instead of a hard clip means a slightly-off measurement or a
+  // mid-drag screenshot never shows a stray card edge peeking through
+  // (previously a hard overflow-hidden clip with zero margin for error).
+  const belowFoldOpacity = useTransform(sheetH, [collapsedH, collapsedH + 56], [0, 1])
 
   // ── Sync sheetH → map occlusion (RAF-throttled) ──────────────────────────────
   // Throttles to one setOcclusion per animation frame, preventing RecenterMap
@@ -459,95 +465,72 @@ export default function Home() {
                  (see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 5). ── */}
             <div ref={collapseRef} />
 
-            {/* ── Row 2: Today's stats ── */}
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {/* Earnings: orange accent (operational income signal) */}
-              <motion.div
-                initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.28, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
-              >
-                <div className="rounded-2xl px-3 py-3 text-center" style={{ background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.14)' }}>
-                  <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                    <IndianRupee size={12} className="text-accent-orange" />
-                    <span className="font-black text-[15px] tabular-nums text-accent-orange">
-                      {e.total_earnings.toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                  <p className="text-text-muted text-[10px] font-semibold">Earned</p>
-                </div>
-              </motion.div>
-              {/* Trips: neutral */}
-              <motion.div
-                initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.28, delay: 0.10, ease: [0.16, 1, 0.3, 1] }}
-              >
-                <div className="rounded-2xl px-3 py-3 text-center bg-surface-2 border border-border">
-                  <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                    <Clock size={11} className="text-text-secondary" />
-                    <span className="font-black text-[15px] tabular-nums text-text-primary">{e.trip_count}</span>
-                  </div>
-                  <p className="text-text-muted text-[10px] font-semibold">Trips</p>
-                </div>
-              </motion.div>
-              {/* Rating: neutral */}
-              <motion.div
-                initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.28, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-              >
-                <div className="rounded-2xl px-3 py-3 text-center bg-surface-2 border border-border">
-                  <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                    <Star size={11} className="text-text-secondary" />
-                    <span className="font-black text-[15px] tabular-nums text-text-primary">{e.rating ?? driver?.rating ?? '—'}</span>
-                  </div>
-                  <p className="text-text-muted text-[10px] font-semibold">Rating</p>
-                </div>
-              </motion.div>
-            </div>
+            <motion.div style={{ opacity: belowFoldOpacity }}>
 
-            {/* ── Row 3: Quick actions ── */}
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <button
-                onClick={() => navigate('/earnings')}
-                className="flex items-center justify-between px-4 py-3 rounded-2xl active:opacity-70 transition-opacity"
-                style={{ background: '#F8FAFF', border: '1px solid #E2E8F0' }}
-              >
-                <div className="flex items-center gap-2">
-                  <TrendingUp size={15} className="text-primary" />
-                  <span className="text-text-primary text-[13px] font-semibold">Earnings</span>
+              {/* ── One unified card: stats + quick actions, no nested chip
+                   cards — a plain 3-column stat row (dividers, not separate
+                   backgrounds) sitting on top of two full-width action rows.
+                   Replaces three separately-floating pill blocks that had
+                   uneven widths and gaps between them. ── */}
+              <div className="rounded-2xl border border-border overflow-hidden mb-3">
+                <div className="grid grid-cols-3 divide-x divide-border">
+                  <div className="flex flex-col items-center justify-center gap-0.5 py-3.5">
+                    <div className="flex items-center gap-1">
+                      <IndianRupee size={12} className="text-accent-orange" />
+                      <span className="font-black text-[15px] tabular-nums text-accent-orange">
+                        {e.total_earnings.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <p className="text-text-muted text-[10px] font-semibold">Earned</p>
+                  </div>
+                  <div className="flex flex-col items-center justify-center gap-0.5 py-3.5">
+                    <div className="flex items-center gap-1">
+                      <Clock size={11} className="text-text-secondary" />
+                      <span className="font-black text-[15px] tabular-nums text-text-primary">{e.trip_count}</span>
+                    </div>
+                    <p className="text-text-muted text-[10px] font-semibold">Trips</p>
+                  </div>
+                  <div className="flex flex-col items-center justify-center gap-0.5 py-3.5">
+                    <div className="flex items-center gap-1">
+                      <Star size={11} className="text-text-secondary" />
+                      <span className="font-black text-[15px] tabular-nums text-text-primary">{e.rating ?? driver?.rating ?? '—'}</span>
+                    </div>
+                    <p className="text-text-muted text-[10px] font-semibold">Rating</p>
+                  </div>
                 </div>
-                <ChevronRight size={14} className="text-text-muted" />
-              </button>
-              <button
-                onClick={() => navigate('/wallet')}
-                className="flex items-center justify-between px-4 py-3 rounded-2xl active:opacity-70 transition-opacity"
-                style={{ background: '#F8FAFF', border: '1px solid #E2E8F0' }}
-              >
-                <div className="flex items-center gap-2">
-                  <Wallet size={15} className="text-primary" />
-                  <span className="text-text-primary text-[13px] font-semibold">Wallet</span>
-                </div>
-                <ChevronRight size={14} className="text-text-muted" />
-              </button>
-            </div>
 
-            {/* ── Row 4: Live status banner ── */}
-            {isOnline ? (
-              <div className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.16)' }}>
-                <span className="w-2 h-2 rounded-full bg-accent-orange animate-pulse-soft flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-amber-700 text-[13px] font-bold leading-tight">Searching for nearby rides…</p>
-                  <p className="text-amber-600/70 text-[11px] mt-0.5">Stay in the area for faster matching</p>
-                </div>
+                <button
+                  onClick={() => navigate('/earnings')}
+                  className="w-full flex items-center justify-between px-4 py-3 border-t border-border active:bg-surface-2 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <TrendingUp size={15} className="text-primary" />
+                    <span className="text-text-primary text-[13px] font-semibold">Earnings</span>
+                  </div>
+                  <ChevronRight size={14} className="text-text-muted" />
+                </button>
+                <button
+                  onClick={() => navigate('/wallet')}
+                  className="w-full flex items-center justify-between px-4 py-3 border-t border-border active:bg-surface-2 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Wallet size={15} className="text-primary" />
+                    <span className="text-text-primary text-[13px] font-semibold">Wallet</span>
+                  </div>
+                  <ChevronRight size={14} className="text-text-muted" />
+                </button>
               </div>
-            ) : (
-              <div className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: '#F8FAFF', border: '1px solid #E2E8F0' }}>
-                <span className="w-2 h-2 rounded-full bg-text-muted flex-shrink-0" />
-                <p className="text-text-muted text-[13px]">Tap the toggle above to go online</p>
+
+              {/* ── Live status line: plain text row, no card of its own —
+                   supplementary info, not another action. ── */}
+              <div className="flex items-center gap-2 px-1">
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isOnline ? 'bg-accent-orange animate-pulse-soft' : 'bg-text-muted'}`} />
+                <p className="text-text-muted text-[12px]">
+                  {isOnline ? 'Searching for nearby rides — stay in the area for faster matching' : 'Tap the toggle above to go online'}
+                </p>
               </div>
-            )}
+
+            </motion.div>
           </div>
         </div>
       </motion.div>
