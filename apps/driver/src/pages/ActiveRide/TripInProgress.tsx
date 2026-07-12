@@ -214,7 +214,10 @@ export default function TripInProgress() {
               heading={displayHeading}
               topPadding={100}
               bottomPadding={220}
-              pitch={nearTarget ? 0 : 42}
+              // Flat (no tilt) to match the user app's map and avoid Google's
+              // automatic 3D building extrusion — see the matching comment in
+              // NavigateToPickup.tsx.
+              pitch={0}
               distanceToManeuver={nearTarget ? 250 : distanceToManeuver}
               onFollowChange={setFollowing}
               resumeKey={resumeKey}

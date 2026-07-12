@@ -9,8 +9,10 @@ const MAP_FILTER = 'saturate(0.6) brightness(1.04) contrast(0.96)'
 //   OVERVIEW    pitch 0, heading north-up, zoom under manual/fit-bounds control.
 //               Idle/GoOnline map, trip-request pickup preview, route-overview
 //               beats, end-of-trip summary.
-//   NAVIGATION  pitch 45, heading = driver bearing, zoom driven by
-//               distanceToManeuver. Only NavigateToPickup / TripInProgress,
+//   NAVIGATION  pitch 0 (flat — tilting a vector map auto-extrudes 3D
+//               buildings, which we don't want; matches the user app's
+//               always-flat camera), heading = driver bearing, zoom driven
+//               by distanceToManeuver. Only NavigateToPickup / TripInProgress,
 //               only once the "dive" transition has completed.
 //
 // A "mode" is just a documented preset of RecenterMap props — do not invent a
