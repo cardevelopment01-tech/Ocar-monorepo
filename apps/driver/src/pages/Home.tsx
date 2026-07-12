@@ -157,7 +157,12 @@ export default function Home() {
         // below) — collapsed shows handle + name + toggle only, everything
         // else (stats/quick-actions/status) shrinks away on drag-down.
         const collapsed = Math.round(anchorTop - sheetTop) + 20 // +20 breathing room
-        setCollapsedH(Math.max(collapsed, 160))
+        // Floor is a degenerate-measurement safety net only (handle zone is
+        // ~44px) — must stay well under any real row height, or it silently
+        // forces the sheet taller than the anchor and exposes the next
+        // section's top edge underneath (exactly what a too-high 160 floor
+        // did once the greeting row got more compact).
+        setCollapsedH(Math.max(collapsed, 96))
       }
       setMaxContentH(naturalH)
       // First measurement: sheetH starts at 600; snap it to actual content height.
