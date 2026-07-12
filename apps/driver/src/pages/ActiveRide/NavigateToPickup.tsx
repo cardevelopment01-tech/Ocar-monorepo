@@ -99,7 +99,7 @@ export default function NavigateToPickup() {
   const voiceEnabled = useNavPrefsStore(s => s.voiceEnabled)
   const navLanguage  = useNavPrefsStore(s => s.language)
 
-  const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting } =
+  const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting, loading } =
     useTurnByTurn(position, pickupPos, navLanguage)
   useVoiceGuidance(currentStep, distanceToManeuver, voiceEnabled, navLanguage)
 
@@ -221,6 +221,18 @@ export default function NavigateToPickup() {
                 <p className="text-text-primary font-bold text-sm truncate">
                   Pick up {activeRide?.userName ?? 'the rider'}
                 </p>
+              </motion.div>
+            ) : loading && !encodedPolyline ? (
+              <motion.div
+                key="finding-route"
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.3, ease: EASE }}
+                className="flex items-center gap-3 px-4 py-3"
+              >
+                <OcarSpinner size={20} />
+                <p className="text-text-secondary text-sm font-semibold">Finding route…</p>
               </motion.div>
             ) : (currentStep || isReconnecting || source !== 'google') && (
               <motion.div
