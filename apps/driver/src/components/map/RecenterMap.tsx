@@ -34,10 +34,12 @@ interface RecenterMapProps {
 }
 
 // Tighter near an upcoming turn, wider with more room to see ahead on a straightaway.
+// Matches native turn-by-turn nav (Google/Waze): close, street-level follow, not a
+// wide area overview — z16 read as "surveying the neighbourhood," not "driving."
 function zoomForDistance(distanceMetres: number): number {
-  if (distanceMetres < 100) return 18
-  if (distanceMetres < 300) return 17
-  return 16
+  if (distanceMetres < 100) return 19
+  if (distanceMetres < 300) return 18
+  return 17
 }
 
 // Shortest signed delta (degrees) from `from` to `to`, e.g. 350 -> 10 gives +20, not -340.

@@ -180,7 +180,7 @@ export default function NavigateToPickup() {
               heading={selfHeading}
               topPadding={100}
               bottomPadding={220}
-              pitch={nearPickup ? 0 : 45}
+              pitch={nearPickup ? 0 : 58}
               // Fixes zoom around ~17 during arrival relaxation (falls in
               // zoomForDistance's 100-300m bucket) instead of continuing to
               // chase the last real maneuver distance.

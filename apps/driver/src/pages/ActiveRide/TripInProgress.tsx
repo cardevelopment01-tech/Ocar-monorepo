@@ -209,7 +209,7 @@ export default function TripInProgress() {
               heading={selfHeading}
               topPadding={100}
               bottomPadding={220}
-              pitch={nearTarget ? 0 : 45}
+              pitch={nearTarget ? 0 : 58}
               distanceToManeuver={nearTarget ? 250 : distanceToManeuver}
               onFollowChange={setFollowing}
               resumeKey={resumeKey}
