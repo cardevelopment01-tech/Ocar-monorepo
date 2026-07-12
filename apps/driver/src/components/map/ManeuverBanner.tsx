@@ -3,7 +3,6 @@ import {
   ArrowUp, ArrowLeft, ArrowRight, CornerUpLeft, CornerUpRight,
   RotateCw, Milestone, Flag, TriangleAlert,
 } from 'lucide-react'
-import { GLASS } from '@/lib/constants'
 import type { RouteStep } from '@/lib/ride-api'
 
 function maneuverIcon(type: string) {
@@ -55,11 +54,14 @@ interface ManeuverBannerProps {
 // Glanceability requirements (dashboard-mounted phone, driver glancing while moving):
 // large high-contrast icon + distance, no interactive controls here — see
 // docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md Phase 1 item 4.
+//
+// Renders flat (no own background/rounding) — it's the top row of the shared
+// navbar panel in NavigateToPickup/TripInProgress, which owns the glass background.
 function ManeuverBanner({ step, distanceMetres, isReconnecting, source }: ManeuverBannerProps) {
   if (!step) {
     if (!isReconnecting && source !== 'osrm' && source !== 'fallback') return null
     return (
-      <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={GLASS}>
+      <div className="flex items-center gap-3 px-4 py-3">
         <div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center flex-shrink-0" aria-hidden>
           <TriangleAlert size={22} className="text-text-secondary" strokeWidth={2.5} />
         </div>
@@ -77,7 +79,7 @@ function ManeuverBanner({ step, distanceMetres, isReconnecting, source }: Maneuv
   const Icon = maneuverIcon(step.maneuverType)
 
   return (
-    <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={GLASS}>
+    <div className="flex items-center gap-3 px-4 py-3">
       <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center flex-shrink-0" aria-hidden>
         <Icon size={26} className="text-text-inverse" strokeWidth={2.5} />
       </div>

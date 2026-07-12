@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
-import { Navigation, Phone, RotateCcw, Clock, X, Star, Check, Locate, Layers } from 'lucide-react'
+import { Navigation, Phone, RotateCcw, Clock, X, Star, Check, Locate } from 'lucide-react'
 import SOSButton from '@/components/ui/SOSButton'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import VoiceToggleButton from '@/components/ui/VoiceToggleButton'
@@ -66,7 +66,6 @@ export default function NavigateToPickup() {
   function handleRecenter() { setResumeKey(k => k + 1) }
   // Resync on resume is handled by RecenterMap's `suspended` prop itself —
   // no need to also bump resumeKey here.
-  function toggleOverview() { setMapMode(m => (m === 'nav' ? 'overview' : 'nav')) }
 
   // Only evict once session-restore has definitively confirmed there's no
   // active ride — activeRide is briefly null on a hard refresh before the
@@ -190,7 +189,7 @@ export default function NavigateToPickup() {
               resumeKey={resumeKey}
               suspended={mapMode === 'overview'}
             />
-            <RoutePolyline encoded={encodedPolyline} variant="pickup-leg" />
+            <RoutePolyline encoded={encodedPolyline} />
             <TrafficColoredRoute encoded={trafficPolyline} intervals={trafficIntervals} />
             {position && <SelfCarMarker position={position} />}
             <LocationPin position={pickupPos} variant="pickup" />
@@ -198,56 +197,71 @@ export default function NavigateToPickup() {
         </Suspense>
       </div>
 
-      {/* Top bar */}
+      {/* Top instruction card — floats with margin on all sides, fully rounded,
+          Google Maps style. Nothing else shares this zone (SOS floats bottom-right
+          instead) so it's the only thing up here. */}
       <div
         className="absolute top-0 left-0 right-0 px-4"
-        style={{ zIndex: 10, paddingTop: 'calc(max(env(safe-area-inset-top), 2.5rem) + 56px)' }}
+        style={{ zIndex: 10, paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}
       >
-        <AnimatePresence mode="wait">
-          {nearPickup ? (
-            <motion.div
-              key="arrived-banner"
-              initial={{ opacity: 0, y: -12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.3, ease: EASE }}
-              className="mb-2 rounded-2xl px-4 py-3 flex items-center gap-3"
-              style={GLASS}
-            >
-              <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center flex-shrink-0" aria-hidden>
-                <Check size={24} className="text-text-inverse" strokeWidth={2.5} />
+        <div className="rounded-3xl overflow-hidden" style={GLASS}>
+          <AnimatePresence mode="wait">
+            {nearPickup ? (
+              <motion.div
+                key="arrived-banner"
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.3, ease: EASE }}
+                className="flex items-center gap-3 px-4 py-3"
+              >
+                <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center flex-shrink-0" aria-hidden>
+                  <Check size={24} className="text-text-inverse" strokeWidth={2.5} />
+                </div>
+                <p className="text-text-primary font-bold text-sm truncate">
+                  Pick up {activeRide?.userName ?? 'the rider'}
+                </p>
+              </motion.div>
+            ) : (currentStep || isReconnecting || source !== 'google') && (
+              <motion.div
+                key="maneuver"
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.3, ease: EASE }}
+              >
+                <ManeuverBanner step={currentStep} distanceMetres={distanceToManeuver} isReconnecting={isReconnecting} source={source} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <div className="flex items-center gap-3 px-4 py-3 border-t border-border">
+            <div className="w-3 h-3 rounded-full bg-primary flex-shrink-0 animate-pulse" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-text-muted text-xs">Heading to pickup</p>
+                {activeRide?.rideType === 'rental' && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(109,40,217,0.12)', color: '#6D28D9' }}>RENTAL</span>
+                )}
+                {activeRide?.rideType === 'round_trip' && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: '#D97706' }}>RETURN</span>
+                )}
               </div>
-              <p className="text-text-primary font-bold text-sm truncate">
-                Pick up {activeRide?.userName ?? 'the rider'}
-              </p>
-            </motion.div>
-          ) : (currentStep || isReconnecting || source !== 'google') && (
-            <motion.div
-              key="maneuver"
-              initial={{ opacity: 0, y: -12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.3, ease: EASE }}
-              className="mb-2"
-            >
-              <ManeuverBanner step={currentStep} distanceMetres={distanceToManeuver} isReconnecting={isReconnecting} source={source} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-        <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={GLASS}>
-          <div className="w-3 h-3 rounded-full bg-primary flex-shrink-0 animate-pulse" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-text-muted text-xs">Heading to pickup</p>
-              {activeRide?.rideType === 'rental' && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(109,40,217,0.12)', color: '#6D28D9' }}>RENTAL</span>
-              )}
-              {activeRide?.rideType === 'round_trip' && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: '#D97706' }}>RETURN</span>
-              )}
+              <p className="text-text-primary font-bold text-base truncate">{activeRide?.pickup ?? '—'}</p>
             </div>
-            <p className="text-text-primary font-bold text-base truncate">{activeRide?.pickup ?? '—'}</p>
           </div>
+        </div>
+
+        {/* SOS — anchored right below the instruction card, in normal flow so
+            it always tracks the card's height correctly (never overlaps it,
+            whichever row is showing above). Best-reachable top-of-screen spot
+            without competing with the nav info itself. */}
+        <div className="flex justify-end mt-2">
+          <SOSButton
+            rideId={activeRide?.id ?? ''}
+            onSOS={handleSOS}
+            className="w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+            style={GLASS}
+          />
         </div>
       </div>
 
@@ -280,9 +294,9 @@ export default function NavigateToPickup() {
         )}
 
         {/* Rider row */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 -mx-2 px-3 py-2.5 rounded-2xl bg-surface-2">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center flex-shrink-0">
+            <div className="w-11 h-11 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0 shadow-sm">
               <span className="text-primary font-bold text-base">{avatarLetter}</span>
             </div>
             <div>
@@ -372,23 +386,10 @@ export default function NavigateToPickup() {
         </button>
       </motion.div>
 
-      <SOSButton
-        rideId={activeRide?.id ?? ''}
-        onSOS={handleSOS}
-        style={{ top: 'max(env(safe-area-inset-top), 1rem)', right: '16px', bottom: 'auto', zIndex: 50 }}
-      />
-      <VoiceToggleButton style={{ bottom: '100px', left: '16px' }} />
       <HindiVoiceHint active={!!currentStep} />
 
-      {/* Overview <-> navigation toggle — Uber's single-tap camera-mode switch */}
-      <button
-        aria-label={mapMode === 'nav' ? 'Show route overview' : 'Resume navigation'}
-        onClick={toggleOverview}
-        className="absolute w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-transform"
-        style={{ top: 'calc(max(env(safe-area-inset-top), 1rem) + 60px)', right: '16px', zIndex: 40, ...GLASS }}
-      >
-        <Layers size={18} className="text-text-secondary" />
-      </button>
+      {/* Voice-mute — the one remaining bottom-right utility button, above the sheet. */}
+      <VoiceToggleButton style={{ bottom: 'calc(env(safe-area-inset-bottom) + 250px)', left: 'auto', right: '16px' }} />
 
       {/* Re-center chip — appears once a manual drag drops auto-follow */}
       <AnimatePresence>

@@ -1,13 +1,22 @@
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
+import { ShieldAlert } from 'lucide-react'
 
 interface SOSButtonProps {
   rideId: string
   onSOS: () => void | Promise<void>
+  /** Trigger button's own classes — callers own placement (inline in a sheet
+   *  header, fixed over the map, etc). Defaults to a fixed bottom-right dot
+   *  for screens that don't pass their own. */
+  className?: string
   style?: CSSProperties
 }
 
-export default function SOSButton({ rideId: _rideId, onSOS, style }: SOSButtonProps) {
+export default function SOSButton({
+  rideId: _rideId, onSOS,
+  className = 'fixed w-12 h-12 rounded-full bg-surface border border-border flex items-center justify-center active:scale-95 transition-transform',
+  style,
+}: SOSButtonProps) {
   const [confirming, setConfirming] = useState(false)
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
@@ -32,11 +41,11 @@ export default function SOSButton({ rideId: _rideId, onSOS, style }: SOSButtonPr
     <>
       <button
         onClick={() => setConfirming(true)}
-        className="fixed w-14 h-14 rounded-full bg-accent-red flex items-center justify-center shadow-red"
-        style={{ bottom: '100px', right: '16px', zIndex: 50, minHeight: 56, minWidth: 56, ...style }}
-        aria-label="SOS"
+        className={className}
+        style={{ minHeight: 44, minWidth: 44, ...style }}
+        aria-label="SOS — safety toolkit"
       >
-        <span className="text-white font-bold text-sm tracking-widest">SOS</span>
+        <ShieldAlert size={18} className="text-accent-red" strokeWidth={2.25} />
       </button>
 
       {confirming && (

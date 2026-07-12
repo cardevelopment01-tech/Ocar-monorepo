@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, X, RotateCcw, Flag, CheckCircle2, Navigation, Locate, Layers, Check } from 'lucide-react'
+import { Clock, X, RotateCcw, Flag, CheckCircle2, Navigation, Locate, Check } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import SOSButton from '@/components/ui/SOSButton'
 import OtpVerifyPanel from '@/components/ui/OtpVerifyPanel'
@@ -72,7 +72,6 @@ export default function TripInProgress() {
   function handleRecenter() { setResumeKey(k => k + 1) }
   // Resync on resume is handled by RecenterMap's `suspended` prop itself —
   // no need to also bump resumeKey here.
-  function toggleOverview() { setMapMode(m => (m === 'nav' ? 'overview' : 'nav')) }
 
   // One leg at a time, matching how Uber drivers actually navigate — multi-waypoint
   // deep links are flaky on Android. currentStop advances after each reached/skipped.
@@ -238,64 +237,75 @@ export default function TripInProgress() {
         </Suspense>
       </div>
 
-      {/* Top bar */}
+      {/* Top instruction card — floats with margin on all sides, fully rounded,
+          Google Maps style. SOS floats bottom-right instead of sharing this zone. */}
       <div
         className="absolute top-0 left-0 right-0 px-4"
-        style={{ zIndex: 10, paddingTop: 'calc(max(env(safe-area-inset-top), 2.5rem) + 56px)' }}
+        style={{ zIndex: 10, paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}
       >
-        <AnimatePresence mode="wait">
-          {nearTarget ? (
-            <motion.div
-              key="arrived-banner"
-              initial={{ opacity: 0, y: -12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.3, ease: EASE }}
-              className="mb-2 rounded-2xl px-4 py-3 flex items-center gap-3"
-              style={GLASS}
-            >
-              <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center flex-shrink-0" aria-hidden>
-                <Check size={24} className="text-text-inverse" strokeWidth={2.5} />
+        <div className="rounded-3xl overflow-hidden" style={GLASS}>
+          <AnimatePresence mode="wait">
+            {nearTarget ? (
+              <motion.div
+                key="arrived-banner"
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.3, ease: EASE }}
+                className="flex items-center gap-3 px-4 py-3"
+              >
+                <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center flex-shrink-0" aria-hidden>
+                  <Check size={24} className="text-text-inverse" strokeWidth={2.5} />
+                </div>
+                <p className="text-text-primary font-bold text-sm truncate">
+                  {currentStop ? `Arrived — Stop ${currentStop.sequence}` : 'Arrived at the destination'}
+                </p>
+              </motion.div>
+            ) : (currentStep || isReconnecting || source !== 'google') && (
+              <motion.div
+                key="maneuver"
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.3, ease: EASE }}
+              >
+                <ManeuverBanner step={currentStep} distanceMetres={distanceToManeuver} isReconnecting={isReconnecting} source={source} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <div className="flex items-center gap-3 px-4 py-3 border-t border-border">
+            <div className="w-2.5 h-2.5 rounded-full bg-accent-red flex-shrink-0 animate-pulse" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-accent-red text-xs font-bold uppercase tracking-wider">Trip in Progress</p>
+                {activeRide?.rideType === 'rental' && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(109,40,217,0.12)', color: '#6D28D9' }}>RENTAL</span>
+                )}
+                {activeRide?.rideType === 'round_trip' && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: '#D97706' }}>RETURN</span>
+                )}
               </div>
               <p className="text-text-primary font-bold text-sm truncate">
-                {currentStop ? `Arrived — Stop ${currentStop.sequence}` : 'Arrived at the destination'}
+                {currentStop
+                  ? `Stop ${currentStop.sequence}: ${currentStop.address ?? 'Next stop'}`
+                  : activeRide?.rideType === 'rental' ? 'Flexible route' : (activeRide?.drop ?? '—')}
               </p>
-            </motion.div>
-          ) : (currentStep || isReconnecting || source !== 'google') && (
-            <motion.div
-              key="maneuver"
-              initial={{ opacity: 0, y: -12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.3, ease: EASE }}
-              className="mb-2"
-            >
-              <ManeuverBanner step={currentStep} distanceMetres={distanceToManeuver} isReconnecting={isReconnecting} source={source} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-        <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={GLASS}>
-          <div className="w-2.5 h-2.5 rounded-full bg-accent-red flex-shrink-0 animate-pulse" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-accent-red text-xs font-bold uppercase tracking-wider">Trip in Progress</p>
-              {activeRide?.rideType === 'rental' && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(109,40,217,0.12)', color: '#6D28D9' }}>RENTAL</span>
-              )}
-              {activeRide?.rideType === 'round_trip' && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: '#D97706' }}>RETURN</span>
-              )}
             </div>
-            <p className="text-text-primary font-bold text-sm truncate">
-              {currentStop
-                ? `Stop ${currentStop.sequence}: ${currentStop.address ?? 'Next stop'}`
-                : activeRide?.rideType === 'rental' ? 'Flexible route' : (activeRide?.drop ?? '—')}
-            </p>
+            <div className="flex items-center gap-1 text-text-secondary flex-shrink-0">
+              <Clock size={14} />
+              <span className="font-mono tabular-nums text-sm font-semibold">{elapsed}</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1 text-text-secondary flex-shrink-0">
-            <Clock size={14} />
-            <span className="font-mono tabular-nums text-sm font-semibold">{elapsed}</span>
-          </div>
+        </div>
+
+        {/* SOS — anchored right below the instruction card, in normal flow. */}
+        <div className="flex justify-end mt-2">
+          <SOSButton
+            rideId={activeRide?.id ?? ''}
+            onSOS={handleSOS}
+            className="w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+            style={GLASS}
+          />
         </div>
       </div>
 
@@ -389,17 +399,19 @@ export default function TripInProgress() {
           </div>
         )}
 
-        <div className="flex justify-between mb-0.5">
-          <p className="text-text-muted text-xs">
-            {activeRide?.rideType === 'rental' ? 'Route' : 'Drop-off'}
-          </p>
-          <p className="text-text-muted text-xs">Fare</p>
-        </div>
-        <div className="flex justify-between items-start mb-4">
-          <p className="text-text-primary font-bold text-base flex-1 pr-4">
-            {activeRide?.rideType === 'rental' ? 'Flexible · ends at rider request' : (activeRide?.drop ?? '—')}
-          </p>
-          <p className="text-primary font-black text-2xl flex-shrink-0">₹{activeRide?.fare ?? 0}</p>
+        <div className="-mx-2 px-3 py-2.5 rounded-2xl bg-surface-2 mb-4">
+          <div className="flex justify-between mb-0.5">
+            <p className="text-text-muted text-xs">
+              {activeRide?.rideType === 'rental' ? 'Route' : 'Drop-off'}
+            </p>
+            <p className="text-text-muted text-xs">Fare</p>
+          </div>
+          <div className="flex justify-between items-start">
+            <p className="text-text-primary font-bold text-base flex-1 pr-4">
+              {activeRide?.rideType === 'rental' ? 'Flexible · ends at rider request' : (activeRide?.drop ?? '—')}
+            </p>
+            <p className="text-primary font-black text-2xl flex-shrink-0">₹{activeRide?.fare ?? 0}</p>
+          </div>
         </div>
 
         <motion.button
@@ -463,23 +475,10 @@ export default function TripInProgress() {
         )}
       </AnimatePresence>
 
-      <SOSButton
-        rideId={activeRide?.id ?? ''}
-        onSOS={handleSOS}
-        style={{ top: 'max(env(safe-area-inset-top), 1rem)', right: '16px', bottom: 'auto', zIndex: 50 }}
-      />
-      <VoiceToggleButton style={{ bottom: 'calc(env(safe-area-inset-bottom) + 344px)', left: '16px' }} />
       <HindiVoiceHint active={!!currentStep} />
 
-      {/* Overview <-> navigation toggle */}
-      <button
-        aria-label={mapMode === 'nav' ? 'Show route overview' : 'Resume navigation'}
-        onClick={toggleOverview}
-        className="absolute w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-transform"
-        style={{ top: 'calc(max(env(safe-area-inset-top), 1rem) + 60px)', right: '16px', zIndex: 40, ...GLASS }}
-      >
-        <Layers size={18} className="text-text-secondary" />
-      </button>
+      {/* Voice-mute — the one remaining bottom-right utility button, above the sheet. */}
+      <VoiceToggleButton style={{ bottom: 'calc(env(safe-area-inset-bottom) + 344px)', left: 'auto', right: '16px' }} />
 
       {/* Re-center chip */}
       <AnimatePresence>
@@ -491,7 +490,7 @@ export default function TripInProgress() {
             transition={{ duration: 0.2, ease: EASE }}
             onClick={handleRecenter}
             className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-4 py-2 active:scale-95 transition-transform"
-            style={{ bottom: 'calc(env(safe-area-inset-bottom) + 300px)', zIndex: 40, ...GLASS }}
+            style={{ bottom: 'calc(env(safe-area-inset-bottom) + 344px)', zIndex: 40, ...GLASS }}
           >
             <Locate size={14} className="text-primary" />
             <span className="text-text-primary text-[13px] font-semibold">Re-center</span>

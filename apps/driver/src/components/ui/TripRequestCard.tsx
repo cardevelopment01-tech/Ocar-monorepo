@@ -181,8 +181,8 @@ export default function TripRequestCard({
           <DriverMapView initialCenter={position ?? pickupPos} zoom={14}>
             <FitBoundsToPoints points={[position, pickupPos]} padding={{ top: 70, bottom: 380, left: 36, right: 36 }} />
             {previewPolyline
-              ? <RoutePolyline encoded={previewPolyline} variant="pickup-leg" />
-              : fallbackPositions && <RoutePolyline positions={fallbackPositions} variant="pickup-leg" />}
+              ? <RoutePolyline encoded={previewPolyline} />
+              : fallbackPositions && <RoutePolyline positions={fallbackPositions} />}
             {position && <SelfCarMarker position={position} />}
             <LocationPin position={pickupPos} variant="pickup" />
           </DriverMapView>

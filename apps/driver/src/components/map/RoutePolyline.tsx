@@ -11,20 +11,12 @@ const ARROW_ICON = {
   scale: 3,
 }
 
-const DASH_ICON = {
-  path: 'M 0,-1 0,1',
-  strokeOpacity: 0.8,
-  strokeColor: '#64748B',
-  scale: 4,
-}
-
 interface RoutePolylineProps {
   encoded?: string
   positions?: [number, number][]
-  variant?: 'default' | 'pickup-leg'
 }
 
-export default function RoutePolyline({ encoded, positions, variant = 'default' }: RoutePolylineProps) {
+export default function RoutePolyline({ encoded, positions }: RoutePolylineProps) {
   const pts = useMemo<[number, number][]>(() => {
     if (encoded) return decodePolyline(encoded)
     if (positions && positions.length >= 3) return positions
@@ -38,42 +30,20 @@ export default function RoutePolyline({ encoded, positions, variant = 'default' 
 
   if (pts.length < 2) return null
 
-  if (variant === 'pickup-leg') {
-    return (
-      <>
-        <Polyline
-          path={path}
-          strokeColor="#ffffff"
-          strokeWeight={6}
-          strokeOpacity={0.6}
-          zIndex={1}
-        />
-        <Polyline
-          path={path}
-          strokeColor="#64748B"
-          strokeWeight={0}
-          strokeOpacity={0}
-          zIndex={2}
-          icons={[{ icon: DASH_ICON, offset: '0', repeat: '16px' }]}
-        />
-      </>
-    )
-  }
-
   return (
     <>
       <Polyline
         path={path}
         strokeColor="#ffffff"
-        strokeWeight={8}
-        strokeOpacity={0.75}
+        strokeWeight={11}
+        strokeOpacity={0.9}
         zIndex={1}
       />
       <Polyline
         path={path}
-        strokeColor="#1a1a2e"
-        strokeWeight={4.5}
-        strokeOpacity={0.92}
+        strokeColor="#1A73E8"
+        strokeWeight={7}
+        strokeOpacity={1}
         zIndex={2}
         icons={[{ icon: ARROW_ICON, repeat: '80px' }]}
       />
