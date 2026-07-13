@@ -1,7 +1,7 @@
 'use client'
 
 import { memo } from 'react'
-import { AdvancedMarker } from '@vis.gl/react-google-maps'
+import { AdvancedMarker, AdvancedMarkerAnchorPoint } from '@vis.gl/react-google-maps'
 
 interface CarMarkerProps {
   position: [number, number]
@@ -13,7 +13,12 @@ interface CarMarkerProps {
 function CarMarker({ position, heading = 0, headingKnown = true }: CarMarkerProps) {
   const rotation = heading % 360
   return (
-    <AdvancedMarker position={{ lat: position[0], lng: position[1] }}>
+    // Anchor at the icon's own center, not the library default (bottom-center):
+    // the inner div below rotates around its own center (default transform-origin),
+    // so anchoring anywhere else makes the visible car drift sideways off the true
+    // GPS coordinate as heading turns away from 0/180° — read as "car in the wrong
+    // lane" (see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 7c).
+    <AdvancedMarker position={{ lat: position[0], lng: position[1] }} anchorPoint={AdvancedMarkerAnchorPoint.CENTER}>
       <div
         style={{
           width: 22,

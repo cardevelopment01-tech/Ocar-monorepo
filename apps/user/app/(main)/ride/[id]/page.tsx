@@ -259,7 +259,15 @@ export default function RidePage() {
     () => (encodedPolyline ? decodePolyline(encodedPolyline) : undefined),
     [encodedPolyline],
   )
-  const { pos: smoothPos, heading: smoothHeading, headingKnown: smoothHeadingKnown } = useInterpolatedPosition(driverPos, routePoints)
+  const { pos: smoothPos, heading: smoothHeading, headingKnown: smoothHeadingKnown, matchedSegmentIndex } = useInterpolatedPosition(driverPos, routePoints)
+
+  // Trim the drawn route to what's still ahead of the last on-route snap —
+  // see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 7b. Undefined (falls back to
+  // the full route) whenever there's no snap yet.
+  const remainingPath = useMemo<[number, number][] | undefined>(() => {
+    if (matchedSegmentIndex == null || !routePoints || !smoothPos) return undefined
+    return [smoothPos, ...routePoints.slice(matchedSegmentIndex + 1)]
+  }, [matchedSegmentIndex, routePoints, smoothPos])
 
   const loadRide = useCallback(async () => {
     try {
@@ -541,6 +549,7 @@ export default function RidePage() {
           breadcrumb={breadcrumb}
           userPos={userPos}
           nearbyDrivers={nearbyDrivers}
+          remainingPath={remainingPath}
         />
 
         {/* Dev socket indicator */}

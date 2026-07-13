@@ -11,12 +11,20 @@ interface FitBoundsMap {
     bounds: { extend: (p: { lat: number; lng: number }) => void },
     padding?: { top?: number; bottom?: number; left?: number; right?: number },
   ) => void
+  setOptions: (options: { maxZoom: number | null }) => void
+  addListener: (event: string, handler: () => void) => { remove: () => void }
 }
 
 interface FitBoundsToPointsProps {
   points: ([number, number] | null)[]
   padding?: { top?: number; bottom?: number; left?: number; right?: number }
 }
+
+// Same rationale as the user app's FitBounds.tsx (Phase 7a) — belt-and-suspenders
+// here since the driver app's overview beat already self-corrects to
+// zoomForDistance() within ~600ms, but keeps both apps' one-shot fit behaviour
+// consistent.
+const MAX_FIT_ZOOM = 17
 
 /**
  * One-shot fit-bounds framing two or more points together — the "here's the
@@ -38,7 +46,13 @@ export default function FitBoundsToPoints({ points, padding }: FitBoundsToPoints
     if (!g?.maps?.LatLngBounds) return
     const bounds = new g.maps.LatLngBounds()
     valid.forEach(([lat, lng]) => bounds.extend({ lat, lng }))
-    ;(map as unknown as FitBoundsMap).fitBounds(bounds, padding)
+    const m = map as unknown as FitBoundsMap
+    m.setOptions({ maxZoom: MAX_FIT_ZOOM })
+    m.fitBounds(bounds, padding)
+    const listener = m.addListener('idle', () => {
+      listener.remove()
+      m.setOptions({ maxZoom: null })
+    })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, key])
 

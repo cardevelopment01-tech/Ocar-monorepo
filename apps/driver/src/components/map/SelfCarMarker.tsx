@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { AdvancedMarker } from '@vis.gl/react-google-maps'
+import { AdvancedMarker, AdvancedMarkerAnchorPoint } from '@vis.gl/react-google-maps'
 
 const GLASS: React.CSSProperties = {
   background:           'rgba(255,255,255,0.92)',
@@ -28,7 +28,13 @@ function SelfCarMarker({ position, areaName = null, loading = false, heading }: 
   const rotation  = typeof heading === 'number' ? heading % 360 : undefined
 
   return (
-    <AdvancedMarker position={{ lat: position[0], lng: position[1] }}>
+    // Anchor at the icon's own center (the label bubble is absolutely positioned
+    // and out of flow, so this wrapper's box is effectively just the car icon's
+    // 22x36 box) — the inner car div below rotates around its own center, so
+    // anchoring anywhere else drifts the visible car sideways off the true GPS
+    // coordinate as heading turns away from 0/180° (see
+    // docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 7c).
+    <AdvancedMarker position={{ lat: position[0], lng: position[1] }} anchorPoint={AdvancedMarkerAnchorPoint.CENTER}>
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
 
         {showLabel && (

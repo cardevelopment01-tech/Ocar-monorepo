@@ -31,6 +31,11 @@ interface RideMapSceneProps {
   breadcrumb?: [number, number][]
   userPos?: [number, number]
   nearbyDrivers?: Array<{ driver_id: string; lat: number; lng: number }>
+  /** Route trimmed to what's still ahead of the driver's last snapped position —
+   *  when present, rendered instead of the full route (see
+   *  docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 7b). Falls back to the full
+   *  `encodedPolyline` when absent (off-route, or before the first snap). */
+  remainingPath?: [number, number][]
 }
 
 export default function RideMapScene({
@@ -46,6 +51,7 @@ export default function RideMapScene({
   breadcrumb,
   userPos,
   nearbyDrivers,
+  remainingPath,
 }: RideMapSceneProps) {
   const isRecap      = routeMode === 'recap'
   const isPickupLeg  = routeMode === 'driver-pickup'
@@ -85,7 +91,14 @@ export default function RideMapScene({
       {isPickupLeg && userPos && <LocationPin position={userPos} variant="user" />}
       {showDrop && <LocationPin position={dropPos} variant="drop" />}
       {isInProgress && breadcrumb && <BreadcrumbTrail positions={breadcrumb} />}
-      <RoutePolyline encoded={encodedPolyline} variant={isPickupLeg ? 'pickup-leg' : 'default'} />
+      {/* Static full-route backdrop, only while a driver is actually being followed
+          (matches the trimming this backs) — see remainingPath's doc comment. */}
+      {driverPos && !isRecap && <RoutePolyline encoded={encodedPolyline} variant="traveled-backdrop" />}
+      <RoutePolyline
+        encoded={remainingPath ? undefined : encodedPolyline}
+        positions={remainingPath}
+        variant={isPickupLeg ? 'pickup-leg' : 'default'}
+      />
       {driverPos && !isRecap && (
         <CarMarker position={driverPos} heading={driverHeading} headingKnown={driverHeadingKnown} />
       )}

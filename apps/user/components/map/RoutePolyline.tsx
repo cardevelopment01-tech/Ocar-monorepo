@@ -24,13 +24,15 @@ const DASH_ICON = {
 interface RoutePolylineProps {
   encoded?: string
   positions?: [number, number][]
-  variant?: 'default' | 'pickup-leg'
+  variant?: 'default' | 'pickup-leg' | 'traveled-backdrop'
 }
 
 export default function RoutePolyline({ encoded, positions, variant = 'default' }: RoutePolylineProps) {
   const pts = useMemo<[number, number][]>(() => {
     if (encoded) return decodePolyline(encoded)
-    if (positions && positions.length >= 3) return positions
+    // >=2 (not >=3): a trimmed remaining path can legitimately be just the
+    // snapped point + the final route point near the end of a trip.
+    if (positions && positions.length >= 2) return positions
     return []
   }, [encoded, positions])
 
@@ -40,6 +42,22 @@ export default function RoutePolyline({ encoded, positions, variant = 'default' 
   )
 
   if (pts.length < 2) return null
+
+  // Static full-route backdrop (Phase 7b) — always the untrimmed route, rendered
+  // once underneath the trimmed "remaining" line on top, so the traveled portion
+  // reads as this dim line showing through rather than needing to be erased
+  // (avoids any trim-seam flicker; matches Mapbox's own vanishing-route-line approach).
+  if (variant === 'traveled-backdrop') {
+    return (
+      <Polyline
+        path={path}
+        strokeColor="#CBD5E1"
+        strokeWeight={5}
+        strokeOpacity={0.55}
+        zIndex={0}
+      />
+    )
+  }
 
   if (variant === 'pickup-leg') {
     return (

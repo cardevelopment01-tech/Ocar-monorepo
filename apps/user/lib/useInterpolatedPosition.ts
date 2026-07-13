@@ -36,19 +36,31 @@ function lerpAngle(from: number, to: number, t: number): number {
  * stays false until then, so callers can render a neutral/undirected marker
  * instead of guessing (previously this defaulted to a fake 0°/north on the
  * very first fix — see docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md §1.1).
+ *
+ * `matchedSegmentIndex` is the polyline segment the last on-route snap landed
+ * on, monotonically non-decreasing (never walks backward except when the
+ * route itself changes) — callers use it to trim the drawn route to what's
+ * still ahead (see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 7b). `null`
+ * before the first successful snap; frozen (not reset) while briefly
+ * off-route so the trimmed line doesn't flicker back to full length.
  */
 export function useInterpolatedPosition(
   rawPos: [number, number] | undefined,
   routePoints?: [number, number][],
-): { pos: [number, number] | undefined; heading: number; headingKnown: boolean } {
+): { pos: [number, number] | undefined; heading: number; headingKnown: boolean; matchedSegmentIndex: number | null } {
   const [pos,          setPos]          = useState<[number, number] | undefined>(rawPos)
   const [heading,       setHeading]      = useState(0)
   const [headingKnown, setHeadingKnown] = useState(false)
+  const [matchedSegmentIndex, setMatchedSegmentIndex] = useState<number | null>(null)
 
   const rafRef  = useRef<number | null>(null)
   const livePos = useRef<[number, number] | null>(null)
   const liveHdg = useRef(0)
   const hdgKnown = useRef(false)
+  // Last segment index actually applied — never allowed to go backward (see
+  // matchedSegmentIndex doc comment below) except when the route itself changes.
+  const lastSegmentIndex = useRef<number | null>(null)
+  const lastRoutePoints  = useRef<[number, number][] | undefined>(routePoints)
   const anim    = useRef<{
     from: [number, number]; fromHdg: number
     to:   [number, number]; toHdg:   number
@@ -66,6 +78,13 @@ export function useInterpolatedPosition(
       return
     }
 
+    // Route refetched (new leg/reroute) — segment progress resets, a new route
+    // has no relationship to the old one's index.
+    if (lastRoutePoints.current !== routePoints) {
+      lastRoutePoints.current = routePoints
+      lastSegmentIndex.current = null
+    }
+
     // Snap to the route line when close enough to it — see the hook doc comment.
     const snapped = routePoints && routePoints.length > 1
       ? nearestPointOnPolyline(rawPos, routePoints)
@@ -80,6 +99,15 @@ export function useInterpolatedPosition(
       const segEnd   = routePoints![snapped!.segmentIndex + 1]
       toHdg = segEnd && segStart ? bearingDeg(segStart, segEnd) : liveHdg.current
       hdgKnown.current = true
+      // Never let progress walk backward — GPS jitter near a point already passed,
+      // or a route that runs near itself (e.g. a round-trip's outbound/return legs),
+      // can otherwise make the traveled-polyline trim "grow back" (see
+      // docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 7b).
+      const clamped = lastSegmentIndex.current == null
+        ? snapped!.segmentIndex
+        : Math.max(snapped!.segmentIndex, lastSegmentIndex.current)
+      lastSegmentIndex.current = clamped
+      setMatchedSegmentIndex(clamped)
     } else {
       // Derive heading from direction of travel; keep current heading if nearly stationary
       target = rawPos
@@ -127,5 +155,5 @@ export function useInterpolatedPosition(
 
   useEffect(() => () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current) }, [])
 
-  return { pos, heading, headingKnown }
+  return { pos, heading, headingKnown, matchedSegmentIndex }
 }

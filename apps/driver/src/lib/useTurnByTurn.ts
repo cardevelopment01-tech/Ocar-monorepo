@@ -40,6 +40,14 @@ export interface TurnByTurnState {
    */
   snappedPosition: [number, number] | null
   snappedHeading: number | null
+  /**
+   * The polyline segment the last on-route snap landed on, monotonically
+   * non-decreasing (never walks backward except when the route itself is
+   * refetched) — used to trim the drawn route to what's still ahead (see
+   * docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 7b). `null` before the first
+   * successful snap; frozen (not reset) while briefly off-route.
+   */
+  snappedSegmentIndex: number | null
 }
 
 /**
@@ -65,6 +73,8 @@ export function useTurnByTurn(
   const [loading, setLoading] = useState(false)
   const [snappedPosition, setSnappedPosition] = useState<[number, number] | null>(null)
   const [snappedHeading, setSnappedHeading] = useState<number | null>(null)
+  const [snappedSegmentIndex, setSnappedSegmentIndex] = useState<number | null>(null)
+  const lastSegmentIndex = useRef<number | null>(null)
 
   const routePoints   = useRef<[number, number][]>([])  // concatenated decoded step polylines
   const destRef        = useRef<[number, number] | null>(null)
@@ -97,6 +107,8 @@ export function useTurnByTurn(
         setSource(r.source)
         setCurrentStepIndex(0)
         routePoints.current = newSteps.flatMap(s => decodePolyline(s.polyline))
+        lastSegmentIndex.current = null
+        setSnappedSegmentIndex(null)
         setIsOffRoute(false)
         setIsReconnecting(false)
         offRouteStreak.current = 0
@@ -150,6 +162,12 @@ export function useTurnByTurn(
       const next = routePoints.current[snapped.segmentIndex + 1]
       const segStart = routePoints.current[snapped.segmentIndex]
       setSnappedHeading(next && segStart ? bearingDeg(segStart, next) : null)
+      // Never let progress walk backward — see snappedSegmentIndex's doc comment.
+      const clamped = lastSegmentIndex.current == null
+        ? snapped.segmentIndex
+        : Math.max(snapped.segmentIndex, lastSegmentIndex.current)
+      lastSegmentIndex.current = clamped
+      setSnappedSegmentIndex(clamped)
     }
 
     if (offRouteStreak.current >= OFF_ROUTE_CONSECUTIVE_FIXES) {
@@ -179,6 +197,6 @@ export function useTurnByTurn(
   return {
     steps, encodedPolyline, trafficIntervals, trafficPolyline, source,
     currentStep, distanceToManeuver, isOffRoute, isReconnecting, loading,
-    snappedPosition, snappedHeading,
+    snappedPosition, snappedHeading, snappedSegmentIndex,
   }
 }

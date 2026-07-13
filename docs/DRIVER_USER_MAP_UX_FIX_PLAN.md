@@ -243,6 +243,88 @@ First real-device/staging pass, three screenshots (driver Home, driver TripInPro
 
 ---
 
+## Phase 7 — P1: Second round-trip field test (2026-07-13) — done 2026-07-13
+
+Two new real-device screenshots from `er.clienttesting.in` (user app), analyzed directly, on top of Phases 1-6 above:
+
+1. **"Driver has arrived" screen zoomed in absurdly tight** — buildings filled the screen, the (already-shrunk, Phase 4) car icon looked comically tiny, pickup pin and blue user-location dot almost touching.
+2. **En-route screen**: car marker sat slightly off the blue route line, and the already-driven portion of the route never disappeared — the full original polyline stayed drawn for the whole trip instead of trimming behind the car, unlike every major ride-hailing app.
+
+### 7a. fitBounds zoom-too-tight — root cause and fix
+
+`RideMapScene.tsx`'s overview beat calls `FitBounds([driverPos, legTarget])` whenever a driver first appears near a leg. `FitBounds.tsx` had **no max-zoom clamp** — a well-known `fitBounds` pitfall: when the two points are very close (exactly "driver has arrived," ~10-50m apart), computed zoom shoots to 19-20+. Worse, this **stuck forever** on the user app specifically: unlike the driver app's `RecenterMap.tsx` (which re-applies `zoomForDistance()` every render and self-heals in ~600ms), the user app's `RecenterMap.tsx` only ever pans/moves camera — it has no zoom logic at all, so an extreme arrival-zoom persisted for the rest of the trip.
+
+**Fix shipped:** `FitBounds.tsx` (user) and `FitBoundsToPoints.tsx` (driver, belt-and-suspenders — its own overview beat already self-corrects) now pre-set `map.setOptions({ maxZoom: 17 })` before calling `fitBounds`, restoring `maxZoom: null` on the next one-shot `idle` event. `fitBounds` natively respects `maxZoom`, so this prevents the overshoot rather than correcting it after a visible flash. z17 ≈ 300m viewport width — close enough to read "driver is right there" without amplifying GPS jitter (5-15m urban) into a visibly wandering marker, which is what z19+ does.
+
+### 7b. No traveled-polyline trimming — root cause and fix
+
+Confirmed via full read: `RoutePolyline.tsx` in both apps always rendered the entire decoded polyline from the last-fetched route string. The only "progress" indicator was `BreadcrumbTrail.tsx` (user), which *adds* a grey trail on top — never erases the original line. Both apps already computed the snapped point + matched `segmentIndex` every GPS tick via `nearestPointOnPolyline()` — it just wasn't exposed past deriving heading.
+
+**Fix shipped**, following Mapbox's own "vanishing route line" pattern rather than inventing one: a static, never-trimmed full-route line renders underneath (`RoutePolyline`'s new `'traveled-backdrop'` variant, muted gray `#CBD5E1`), and the existing default-styled line on top now renders only the **trimmed remaining path** — so the traveled portion reads as the dim backdrop showing through, with no trim-seam flicker.
+- `useInterpolatedPosition.ts` (user) and `useTurnByTurn.ts` (driver) now also return `matchedSegmentIndex`/`snappedSegmentIndex`, each **monotonically non-decreasing** (clamped forward via a ref, reset only when the route itself is refetched) — without this, GPS jitter or a round-trip route whose legs run near each other could walk the index backward and make the vanished line visibly "grow back" (a bug Mapbox's own navigation SDK hit and documented).
+- `RideMapScene.tsx` (user), `NavigateToPickup.tsx`/`TripInProgress.tsx` (driver) derive `remainingPath = [snappedPoint, ...routePoints.slice(segmentIndex + 1)]` and feed it to the top `RoutePolyline` as `positions`, falling back to the full `encoded` route whenever there's no snap yet (off-route, or before the first snap) — mirrors this codebase's existing raw-GPS-fallback convention.
+- Fixed a pre-existing off-by-one in `RoutePolyline.tsx` (both apps): the `positions` branch required `length >= 3`, silently refusing to render a valid 2-point remaining path near the end of a route (the `encoded` branch two lines below only required `>= 2`).
+- Left `TrafficColoredRoute`'s separate traffic-interval overlay untouched — different data source, out of scope for this trim.
+
+### 7c. "Car looks off-lane" — a real bug found, not just GPS noise
+
+`CarMarker.tsx` (user) and `SelfCarMarker.tsx` (driver) both render an `AdvancedMarker` with no `anchorPoint` set, which defaults to `BOTTOM` (confirmed by reading `@vis.gl/react-google-maps`'s source) — i.e. the true GPS coordinate maps to the bottom-center of the marker's content box. The inner car div is then rotated via `transform: rotate(heading)`, which rotates around its own center (default `transform-origin`), not the bottom anchor. Whenever heading isn't ~0°/180° (the car isn't pointed due north/south), the visually-rotated car drifts sideways from the true coordinate by roughly `halfHeight × sin(heading)` — reading exactly as "car sitting one lane off," worse the more the road bearing diverges from north. This is a more precise explanation than "GPS is just noisy": the corridor-snapping from Phase 2 was already correct, the *rendering* of the snapped point was the bug.
+
+**Fix shipped:** both markers now pass `anchorPoint={AdvancedMarkerAnchorPoint.CENTER}`, aligning the anchor with the rotation origin so the marker's anchor point stays visually pinned to the road through a turn, at any heading.
+
+**GPS accuracy filtering — checked, already covered:** the plan considered adding a `coords.accuracy` filter on both apps. Found the driver app already gates every fix on `accuracy <= 80m` before accepting or syncing it (`useDriverLocation.ts`); the user app's `driverPos` only ever arrives pre-filtered through that same sync pipeline (no raw accuracy value is forwarded to filter again). Adding a second filter would need new plumbing through the whole location-sync payload for marginal benefit over the existing gate — not done.
+
+**Explicitly not done:** full road-graph map-matching (declined already, per this doc's own "ops burden not worth it for 3 corridors" call), Kalman filtering on raw coordinates, tilt/3D camera for the rider view (flat is already correct, shipped Phase 4).
+
+### 7d. Bottom-sheet whitespace — flagged, not fixed blind
+
+The user also asked about "arrived at pickup" bottom-sheet whitespace, on a screenshot that (per its OTP/driver-row layout) is actually the **user app's** ride-tracking sheet (`ride/[id]/page.tsx`), not the driver app's own active-ride sheet. Read the file in full: it's `flexShrink: 0` intrinsic-height content, no fixed min-height, no explicit bottom padding after the "Trip details" toggle — nothing in the layout should produce a large dead-space gap. Round-1's own findings (§ above) already flagged the likely cause of gaps like this: a `100dvh`-vs-visible-viewport mismatch on mobile browsers, which this doc has already declined to blind-fix once "on a one-screenshot hunch." Not touched again here for the same reason — flagged as a named on-device check (compare with the browser address bar shown vs. hidden) rather than dropped; if confirmed, the fix is a coordinated `h-[100dvh]` → `h-[100svh]` swap across every screen that uses it, not a one-screen patch.
+
+**Files touched:** `apps/user/components/map/FitBounds.tsx`, `apps/driver/src/components/map/FitBoundsToPoints.tsx`, `apps/user/components/map/CarMarker.tsx`, `apps/driver/src/components/map/SelfCarMarker.tsx`, `apps/user/lib/useInterpolatedPosition.ts`, `apps/driver/src/lib/useTurnByTurn.ts`, `apps/user/components/map/RoutePolyline.tsx`, `apps/driver/src/components/map/RoutePolyline.tsx`, `apps/user/components/map/RideMapScene.tsx`, `apps/user/app/(main)/ride/[id]/page.tsx`, `apps/driver/src/pages/ActiveRide/NavigateToPickup.tsx`, `apps/driver/src/pages/ActiveRide/TripInProgress.tsx`.
+
+`tsc --noEmit` clean on both `apps/user` and `apps/driver`.
+
+**Review checklist:**
+- [ ] "Driver has arrived" map settles at a readable zoom (≈17), not 19-20+, no visible zoom-in-then-snap-back flash
+- [ ] Blue polyline visibly shortens from the tail as the car advances on a multi-turn drive, gray backdrop showing through behind it, no flicker
+- [ ] Route never "grows back" on a round-trip route where outbound/return legs run near each other
+- [ ] Car marker's anchor point stays visually pinned to the road centerline through a turn where heading swings well off 0°/180°, not just facing north/south
+- [ ] Existing Phase 2 checklist items still hold (marker stays on route through turns, heading never flips)
+- [ ] 7d real-device check (dvh vs address-bar state) run before any follow-up diff
+
+**Effort:** Medium (2-3 days incl. real-device verification for the checklist above).
+
+---
+
+## Phase 8 — P2: Collapsible driver active-ride sheet (2026-07-13) — done 2026-07-13
+
+Follow-up to the user's whitespace comment on Phase 7's round: not a layout bug, but a request — while navigating, the map should be the priority, and the driver should be able to shrink the trip card out of the way and still reach "Arrived"/"Complete Trip" without hunting for it.
+
+**Reused rather than built:** `Home.tsx` already has a fully-built draggable snap-sheet (Framer Motion `motionValue`-driven height, `ResizeObserver`-measured collapse point, spring-physics snap with velocity-based direction, RAF-throttled occlusion sync to the map camera). `NavigateToPickup.tsx` and `TripInProgress.tsx` now use the same mechanics, with one deliberate difference from Home's version: **the primary CTA is never the thing that collapses away.** Home's collapsed state hides everything except greeting+toggle; here, the collapse anchor sits *below* the CTA instead of above it, so "Arrived at Pickup" / "Complete Trip" stays reachable at every sheet height — only the rider-info card, context banners, stop itinerary, and (pickup screen) the cancel-ride link fade out as the sheet collapses.
+
+**Also added, from a driver-app UX research pass (Uber/Ola/Lyft-style driver apps):**
+- A mini always-visible status line above the CTA (rider name + rating on the pickup screen; current-stop/destination + fare on the trip-in-progress screen) — a collapsed sheet showing only a bare button was flagged as wrong per how these apps actually behave: a driver glancing mid-drive needs "who/what's next" more than the action button alone.
+- Tap-to-toggle on the handle, not just drag-to-resize — a driver holding the phone one-handed needs a big, forgiving tap target as much as a precise swipe gesture. Implemented via a movement-distance threshold (<6px total = tap) on the same pointer handlers driving the drag, rather than a separate `onClick` (avoids the double-fire/threshold gotchas of layering a tap handler on manual pointer-driven dragging).
+- `RecenterMap`'s `bottomPadding` and the floating Voice-mute/Re-center/"open in external maps" buttons now track the sheet's actual live height (`occlusion` state, RAF-throttled off the same motion value) instead of a hardcoded constant — previously these assumed a fixed ~220-344px sheet height, which would have been wrong the instant the sheet became collapsible.
+
+**Deliberately not done, flagged for a separate decision:** the research also surfaced that production driver apps often use a swipe-to-confirm slider (not a plain tap button) for trip-state-changing actions like "Complete Trip," specifically to prevent accidental taps on a phone bouncing in a mount — and that some apps auto-collapse the sheet the moment navigation starts rather than defaulting to expanded. Both are real patterns but are behavior changes beyond what was asked here (map-visibility control, not confirmation-safety or a new default state) — not implemented in this pass.
+
+**Files touched:** `apps/driver/src/pages/ActiveRide/NavigateToPickup.tsx`, `apps/driver/src/pages/ActiveRide/TripInProgress.tsx`.
+
+`tsc --noEmit` clean.
+
+**Review checklist:**
+- [ ] Drag the handle on both screens: sheet resizes smoothly between collapsed and peek, springs to the nearer snap point on release, faster flick snaps in the flick direction
+- [ ] Tap the handle (no drag): sheet toggles between collapsed and peek
+- [ ] At the most collapsed height, the CTA button and mini status line are still fully visible and tappable; rider details/banners/stop list/cancel link are the only things that faded away
+- [ ] Map visibly reclaims the space the sheet gave up as it collapses (camera re-centers, doesn't leave a dead gap or clip under the shrunk sheet)
+- [ ] Voice-mute button, re-center chip, and (trip-in-progress) the external-maps button never overlap the sheet nor float oddly far above it at any sheet height
+- [ ] `prefers-reduced-motion`: snap transitions become instant, no spring bounce
+
+**Effort:** Small-Medium (1-2 days incl. real-device drag-feel verification).
+
+---
+
 ## Sequencing summary
 
 ```
