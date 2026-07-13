@@ -215,12 +215,12 @@ export default function DocReviewModal({
     })
   }
 
-  // Trackpad pinch/scroll fires many small wheel ticks — scale the zoom change to each
-  // tick's actual size (deltaY ~100 = one real notch) instead of a fixed step per event,
-  // so a small pinch produces a small zoom change instead of overshooting.
+  // Trackpad tick sizes vary wildly by OS/browser — some report deltaY near a real mouse
+  // notch (~100), others much smaller. Scale to the tick size (capped at ZOOM_STEP so big
+  // notches don't overshoot) but keep a floor so small trackpad ticks still move visibly.
   function zoomByDelta(deltaY: number) {
-    const amount = Math.min(ZOOM_STEP, (Math.abs(deltaY) / 100) * ZOOM_STEP)
-    if (amount === 0) return
+    if (deltaY === 0) return
+    const amount = Math.min(ZOOM_STEP, Math.max(ZOOM_STEP * 0.15, (Math.abs(deltaY) / 100) * ZOOM_STEP))
     setZoomLevel(z => {
       const cur = z === 'fit' ? ZOOM_MIN : z
       const next = deltaY < 0 ? cur + amount : cur - amount
