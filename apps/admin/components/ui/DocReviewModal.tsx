@@ -79,6 +79,7 @@ function SidebarDoc({ doc, selected, idx, total, onClick }: {
 }) {
   const isMissing = !doc.fileUrl || doc.status === 'missing'
   const isPdf = doc.fileUrl && /\.pdf(\?|$)/i.test(doc.fileUrl)
+  const [imgState, setImgState] = useState<'loading' | 'loaded' | 'error'>('loading')
 
   return (
     <button
@@ -98,8 +99,24 @@ function SidebarDoc({ doc, selected, idx, total, onClick }: {
           <div className="w-full h-full bg-red-50 flex items-center justify-center">
             <FileText size={13} className="text-red-400" />
           </div>
+        ) : imgState === 'error' ? (
+          <div className="w-full h-full bg-surface-3 flex items-center justify-center">
+            <AlertCircle size={13} className="text-text-muted" />
+          </div>
         ) : (
-          <img src={doc.fileUrl} alt={label(doc.docType)} className="w-full h-full object-cover" loading="lazy" />
+          <>
+            {imgState === 'loading' && (
+              <div className="absolute inset-0 bg-surface-3 animate-pulse" />
+            )}
+            <img
+              src={doc.fileUrl}
+              alt={label(doc.docType)}
+              className={cn('w-full h-full object-cover transition-opacity', imgState === 'loaded' ? 'opacity-100' : 'opacity-0')}
+              loading="lazy"
+              onLoad={() => setImgState('loaded')}
+              onError={() => setImgState('error')}
+            />
+          </>
         )}
       </div>
 
