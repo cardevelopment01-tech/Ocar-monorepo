@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { APIProvider } from '@vis.gl/react-google-maps'
 import { motion } from 'framer-motion'
 import App from './App'
+import ErrorBoundary from './components/ErrorBoundary'
 import SplashScreen from './components/ui/SplashScreen'
 import './index.css'
 
@@ -31,7 +32,9 @@ function Root() {
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
         >
           <BrowserRouter>
-            <App />
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
           </BrowserRouter>
         </motion.div>
       </div>
