@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, AlertCircle,
-  FileText, ZoomIn, ZoomOut, ExternalLink, Minimize2,
+  FileText, ZoomIn, ZoomOut, ExternalLink, Minimize2, RotateCw,
 } from 'lucide-react'
 import type { DriverDetail } from '@/lib/admin-api'
 import StatusPill from './StatusPill'
@@ -188,6 +188,8 @@ export default function DocReviewModal({
 
   const [idx, setIdx]                     = useState(() => Math.min(initialDocIndex, Math.max(0, allDocs.length - 1)))
   const [zoomLevel, setZoomLevel]         = useState<number | 'fit'>('fit')
+  const [rotation, setRotation]           = useState(0) // 0 | 90 | 180 | 270
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 })
   const [imgLoaded, setImgLoaded]         = useState(false)
   const [docLoading, setDocLoading]       = useState(false)
   const [driverLoading, setDriverLoading] = useState(false)
@@ -232,8 +234,20 @@ export default function DocReviewModal({
   useEffect(() => {
     setRejectDoc(false)
     setZoomLevel('fit')
+    setRotation(0)
     setImgLoaded(false)
     scrollRef.current?.scrollTo(0, 0)
+  }, [idx])
+
+  // Track preview container size so a rotated image can be scaled to still fit
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const update = () => setContainerSize({ w: el.clientWidth, h: el.clientHeight })
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [idx])
 
   // After each zoom change, center the scroll so the image stays in view
@@ -596,9 +610,17 @@ export default function DocReviewModal({
                         draggable={false}
                         onLoad={() => setImgLoaded(true)}
                         className={cn(
-                          'select-none max-w-full max-h-full object-contain transition-opacity duration-300',
+                          'select-none object-contain transition-opacity duration-300',
+                          rotation % 180 === 0 && 'max-w-full max-h-full',
                           imgLoaded ? 'opacity-100' : 'opacity-0'
                         )}
+                        style={{
+                          transform: `rotate(${rotation}deg)`,
+                          transition: 'transform 0.25s ease, opacity 0.3s',
+                          ...(rotation % 180 !== 0 && containerSize.w && containerSize.h
+                            ? { maxWidth: containerSize.h, maxHeight: containerSize.w }
+                            : {}),
+                        }}
                       />
                     </div>
                   </div>
@@ -631,9 +653,16 @@ export default function DocReviewModal({
                     onClick={() => setZoomLevel('fit')}
                     disabled={!isZoomed}
                     aria-label="Reset to fit"
-                    className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors ml-0.5 border-l border-white/15 pl-1 disabled:opacity-25 disabled:cursor-not-allowed"
+                    className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
                   >
                     <Minimize2 size={12} />
+                  </button>
+                  <button
+                    onClick={() => setRotation(r => (r + 90) % 360)}
+                    aria-label="Rotate document 90 degrees"
+                    className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors ml-0.5 border-l border-white/15 pl-1"
+                  >
+                    <RotateCw size={13} />
                   </button>
                 </div>
               )}
