@@ -229,17 +229,6 @@ export default function DocReviewModal({
   }, [idx])
 
   useEffect(() => { setMounted(true) }, [])
-
-  // Trackpad pinch fires as wheel+ctrlKey — block the browser's native page-zoom for
-  // the whole modal (not just the image), since a pinch over the header/sidebar/backdrop
-  // would otherwise zoom the page instead of doing nothing.
-  useEffect(() => {
-    function blockPinchZoom(e: WheelEvent) {
-      if (e.ctrlKey) e.preventDefault()
-    }
-    window.addEventListener('wheel', blockPinchZoom, { passive: false })
-    return () => window.removeEventListener('wheel', blockPinchZoom)
-  }, [])
   useEffect(() => {
     setRejectDoc(false)
     setZoomLevel('fit')
