@@ -200,21 +200,18 @@ export default function DocReviewModal({
   const isDragging                        = useRef(false)
   const dragStart                         = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 })
 
-  const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 2.5] as const
+  const ZOOM_MIN  = 1
+  const ZOOM_MAX  = 4
+  const ZOOM_STEP = 0.2
 
   function zoomIn() {
-    setZoomLevel(z => {
-      // 'fit' already renders at 100% size, so stepping to 1 is a no-op — skip straight past it
-      if (z === 'fit') return 1.5
-      const next = ZOOM_STEPS.find(s => s > (z as number))
-      return next ?? z
-    })
+    setZoomLevel(z => Math.min(ZOOM_MAX, (z === 'fit' ? ZOOM_MIN : z) + ZOOM_STEP))
   }
   function zoomOut() {
     setZoomLevel(z => {
       if (z === 'fit') return z
-      const lower = [...ZOOM_STEPS].reverse().find(s => s < (z as number))
-      return lower ?? 'fit'
+      const next = z - ZOOM_STEP
+      return next <= ZOOM_MIN ? 'fit' : next
     })
   }
 
@@ -612,15 +609,19 @@ export default function DocReviewModal({
                         onLoad={() => setImgLoaded(true)}
                         className={cn(
                           'select-none object-contain transition-opacity duration-300',
-                          rotation % 180 === 0 && 'max-w-full max-h-full',
+                          !isZoomed && rotation % 180 === 0 && 'max-w-full max-h-full',
                           imgLoaded ? 'opacity-100' : 'opacity-0'
                         )}
                         style={{
                           transform: `rotate(${rotation}deg)`,
                           transition: 'transform 0.25s ease, opacity 0.3s',
-                          ...(rotation % 180 !== 0 && containerSize.w && containerSize.h
-                            ? { maxWidth: containerSize.h, maxHeight: containerSize.w }
-                            : {}),
+                          // Zoomed: force the image to actually fill the enlarged wrapper so object-contain
+                          // upscales it — otherwise it's capped at its natural pixel size and never grows.
+                          ...(isZoomed
+                            ? { width: '100%', height: '100%' }
+                            : rotation % 180 !== 0 && containerSize.w && containerSize.h
+                              ? { maxWidth: containerSize.h, maxHeight: containerSize.w }
+                              : {}),
                         }}
                       />
                     </div>
@@ -644,7 +645,7 @@ export default function DocReviewModal({
                   </span>
                   <button
                     onClick={zoomIn}
-                    disabled={zoomLevel === 2.5}
+                    disabled={zoomLevel !== 'fit' && zoomLevel >= ZOOM_MAX}
                     aria-label="Zoom in"
                     className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
                   >
