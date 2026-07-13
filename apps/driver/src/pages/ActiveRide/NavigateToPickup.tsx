@@ -200,7 +200,7 @@ export default function NavigateToPickup() {
   const navLanguage  = useNavPrefsStore(s => s.language)
 
   const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting, loading, snappedPosition, snappedHeading, snappedSegmentIndex } =
-    useTurnByTurn(position, pickupPos, navLanguage)
+    useTurnByTurn(position, pickupPos, navLanguage, selfHeading)
 
   // Prefer the route-snapped fix over raw GPS for anything rendered on the map —
   // raw GPS drifts 5-30m in cities, which is what puts the marker in the wrong

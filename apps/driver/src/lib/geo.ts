@@ -18,6 +18,31 @@ export function haversineMetres(a: [number, number], b: [number, number]): numbe
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
 }
 
+/** Smallest angle (0-180°) between two compass bearings. */
+export function angularDiffDeg(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360
+  return d > 180 ? 360 - d : d
+}
+
+/**
+ * Whether a GPS-to-route snap should be trusted: within `maxDistMetres` AND, when a
+ * device heading is available, pointing roughly along the matched segment's bearing.
+ * A fix can be close to the polyline yet on a different real road (parallel streets) —
+ * the bearing check is what rejects that case instead of force-snapping onto it.
+ */
+export function isTrustworthySnap(
+  distMetres: number,
+  heading: number | null,
+  segBearing: number | null,
+  maxDistMetres: number,
+  maxBearingDiffDeg: number,
+): boolean {
+  if (distMetres > maxDistMetres) return false
+  if (heading != null && segBearing != null
+      && angularDiffDeg(heading, segBearing) > maxBearingDiffDeg) return false
+  return true
+}
+
 export interface NearestPointResult {
   point: [number, number]
   distMetres: number

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { driverRideApi, type RouteStep, type TrafficInterval } from './ride-api'
 import { decodePolyline } from './polyline'
-import { bearingDeg, haversineMetres, nearestPointOnPolyline } from './geo'
+import { bearingDeg, haversineMetres, isTrustworthySnap, nearestPointOnPolyline } from './geo'
 
 // Mirrors api/src/constants/limits.ts (driver app can't import server code — keep in sync).
 const OFF_ROUTE_THRESHOLD_METRES = 40
@@ -10,6 +10,14 @@ const REROUTE_COOLDOWN_SECONDS = 12
 // Distance from a step's endpoint at which we consider that maneuver "reached."
 const STEP_ADVANCE_THRESHOLD_METRES = 25
 const BACKOFF_STEPS_MS = [2_000, 4_000, 8_000, 16_000]
+// A fix within OFF_ROUTE_THRESHOLD_METRES of the polyline can still be on a different
+// real road (parallel streets) — reject the snap if device heading disagrees with the
+// matched segment's bearing by more than this, instead of force-snapping onto it.
+const OFF_ROUTE_BEARING_THRESHOLD_DEG = 55
+// ponytail: index-count proxy for "this snap jumped implausibly far ahead," not a real
+// elapsed-time/speed check — tighten (or replace with a distance-along-route budget) if
+// field data shows it's too loose.
+const MAX_FORWARD_SEGMENT_JUMP = 80
 
 export interface TurnByTurnState {
   steps: RouteStep[]
@@ -61,6 +69,7 @@ export function useTurnByTurn(
   position: [number, number] | null,
   destination: [number, number] | null,
   language = 'en',
+  heading: number | null = null,
 ): TurnByTurnState {
   const [steps, setSteps] = useState<RouteStep[]>([])
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
@@ -77,6 +86,7 @@ export function useTurnByTurn(
   const lastSegmentIndex = useRef<number | null>(null)
 
   const routePoints   = useRef<[number, number][]>([])  // concatenated decoded step polylines
+  const stepStartIndex = useRef<number[]>([])           // routePoints index where each step begins
   const destRef        = useRef<[number, number] | null>(null)
   const offRouteStreak = useRef(0)
   const lastFetchAt    = useRef(0)
@@ -106,7 +116,19 @@ export function useTurnByTurn(
         setTrafficPolyline(r.trafficPolyline)
         setSource(r.source)
         setCurrentStepIndex(0)
-        routePoints.current = newSteps.flatMap(s => decodePolyline(s.polyline))
+        {
+          let cum = 0
+          const starts: number[] = []
+          const pts: [number, number][] = []
+          for (const s of newSteps) {
+            starts.push(cum)
+            const decoded = decodePolyline(s.polyline)
+            pts.push(...decoded)
+            cum += decoded.length
+          }
+          stepStartIndex.current = starts
+          routePoints.current = pts
+        }
         lastSegmentIndex.current = null
         setSnappedSegmentIndex(null)
         setIsOffRoute(false)
@@ -151,7 +173,20 @@ export function useTurnByTurn(
     const snapped = nearestPointOnPolyline(position, routePoints.current)
     if (!snapped) return
 
-    if (snapped.distMetres > OFF_ROUTE_THRESHOLD_METRES) {
+    const segEnd = routePoints.current[snapped.segmentIndex + 1]
+    const segStart = routePoints.current[snapped.segmentIndex]
+    const segBearing = segEnd && segStart ? bearingDeg(segStart, segEnd) : null
+
+    // A fix within OFF_ROUTE_THRESHOLD_METRES can still be on a different real road
+    // (parallel streets) — reject the snap if heading disagrees with the matched
+    // segment's bearing, instead of force-snapping onto the wrong street and drawing
+    // a straight line to wherever that road's next point happens to be.
+    const forwardJumpTooFar = lastSegmentIndex.current != null
+      && snapped.segmentIndex - lastSegmentIndex.current > MAX_FORWARD_SEGMENT_JUMP
+
+    let clampedIndex: number | null = null
+    if (!isTrustworthySnap(snapped.distMetres, heading, segBearing, OFF_ROUTE_THRESHOLD_METRES, OFF_ROUTE_BEARING_THRESHOLD_DEG)
+        || forwardJumpTooFar) {
       offRouteStreak.current += 1
       setSnappedPosition(null)
       setSnappedHeading(null)
@@ -159,15 +194,13 @@ export function useTurnByTurn(
       offRouteStreak.current = 0
       setIsOffRoute(false)
       setSnappedPosition(snapped.point)
-      const next = routePoints.current[snapped.segmentIndex + 1]
-      const segStart = routePoints.current[snapped.segmentIndex]
-      setSnappedHeading(next && segStart ? bearingDeg(segStart, next) : null)
+      setSnappedHeading(segBearing)
       // Never let progress walk backward — see snappedSegmentIndex's doc comment.
-      const clamped = lastSegmentIndex.current == null
+      clampedIndex = lastSegmentIndex.current == null
         ? snapped.segmentIndex
         : Math.max(snapped.segmentIndex, lastSegmentIndex.current)
-      lastSegmentIndex.current = clamped
-      setSnappedSegmentIndex(clamped)
+      lastSegmentIndex.current = clampedIndex
+      setSnappedSegmentIndex(clampedIndex)
     }
 
     if (offRouteStreak.current >= OFF_ROUTE_CONSECUTIVE_FIXES) {
@@ -181,10 +214,21 @@ export function useTurnByTurn(
 
     setCurrentStepIndex(idx => {
       const step = steps[idx]
-      if (!step) return idx
-      const distToEnd = haversineMetres(position, [step.endLat, step.endLng])
-      if (distToEnd < STEP_ADVANCE_THRESHOLD_METRES && idx < steps.length - 1) return idx + 1
-      return idx
+      let next = idx
+      if (step) {
+        const distToEnd = haversineMetres(position, [step.endLat, step.endLng])
+        if (distToEnd < STEP_ADVANCE_THRESHOLD_METRES && idx < steps.length - 1) next = idx + 1
+      }
+      // Self-heal: if the on-route snap is already past a later step's start (a
+      // maneuver's 25m endpoint radius was missed, e.g. a wide/fast turn), jump
+      // forward to match instead of leaving the banner frozen on a passed step.
+      if (clampedIndex != null) {
+        const starts = stepStartIndex.current
+        for (let i = starts.length - 1; i > next; i--) {
+          if (starts[i]! <= clampedIndex) { next = i; break }
+        }
+      }
+      return next
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position])

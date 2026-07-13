@@ -54,6 +54,7 @@ This upgrades two items from the prior investigation:
 | Client-authoritative driver presence, no heartbeat/TTL | Driver#4, Customer#4 | **Phase 3** |
 | Nav chrome not built for glanceability (camera, viewport, marker size, icon collisions, text overflow) | Driver#5,6,7, Customer#1,3 | **Phase 4** |
 | Driver homepage layout not mobile-ergonomic | Driver#1,2,3 | **Phase 5** |
+| Off-route/snap gate is distance-only (no bearing check); step-advance has no self-heal | Driver#9 (new, 2026-07-13 field test) | **Phase 9** |
 
 Phases 1-3 are backend/logic-heavy and independent of each other — can run in parallel. Phase 4 depends on Phase 2 (camera framing needs a stable, snapped heading to follow). Phase 5 is fully independent. Phase 6 is the closing gate for all of them.
 
@@ -325,6 +326,40 @@ Follow-up to the user's whitespace comment on Phase 7's round: not a layout bug,
 
 ---
 
+## Phase 9 — P0: Off-route/snap gate is distance-only — route chord + frozen banner (2026-07-13)
+
+Seven new real-device screenshots (driver app, Bhubaneswar/Puri corridor, `er.clienttesting.in`), analyzed directly. Two visible symptoms:
+1. The bright nav route line periodically draws a straight diagonal chord across buildings/blocks instead of following the road.
+2. The turn banner ("460m, RI Office Rd तीव्र राइट...") stays frozen with the identical instruction across multiple screenshots while the car is visibly on different streets (Kunjapatna Rd → Daka Bangala Chowk → Darji Sahi Rd).
+
+**Root cause (one shared flaw, both symptoms):** `useTurnByTurn.ts`'s snap effect (lines 148-190) gates a GPS fix as "on route" using **distance only** (`OFF_ROUTE_THRESHOLD_METRES = 40`, no bearing check). On dense parallel streets, a fix on a genuinely different real road can still land within 40m of the *old* polyline, so `nearestPointOnPolyline()` force-snaps it there anyway. `TripInProgress.tsx`/`NavigateToPickup.tsx` then draw `remainingPath = [snappedPosition, ...routePoints.slice(segmentIndex+1)]` — a straight line from that wrong-road snap point to the next real route point, i.e. the chord through buildings. The same wrong snap also means `offRouteStreak` never increments (the fix reads as "on route"), so no reroute fires — and separately, step-advance (line 182-188) only fires within `STEP_ADVANCE_THRESHOLD_METRES` (25m) of the *current* step's geometric endpoint, which the vehicle may never reach if it's actually on a different street — hence the frozen banner.
+
+**Decision:** add the two guardrails production map-matching already relies on (bearing agreement, bounded forward jump) directly to the existing snap effect — no new algorithm, no HMM/Viterbi map-matcher (that's a real upgrade path, tracked below as explicitly deferred, matching this doc's recurring "no speculative infra" principle). `useDriverLocation.ts` already computes a movement-derived heading (gated, non-jittery) that both nav screens already read as `selfHeading` for the camera — reused as-is, no new plumbing.
+
+**Fix shipped:**
+- `useTurnByTurn()` gains an optional `heading` parameter (4th arg); both call sites pass their existing `selfHeading` through.
+- The snap effect now rejects a fix as unsnapped (same code path as the existing distance gate) when the device heading disagrees with the matched segment's bearing by more than `OFF_ROUTE_BEARING_THRESHOLD_DEG = 55°` — this is what stops the force-snap onto a parallel wrong road, and correctly feeds `offRouteStreak` so a genuine road change now triggers a reroute instead of silently reading as "on route."
+- The forward-segment clamp (previously `Math.max(snapped.segmentIndex, lastSegmentIndex.current)` with no bound) now rejects a snap whose segment index jumps more than `MAX_FORWARD_SEGMENT_JUMP = 80` points ahead of the last confirmed one — marked `ponytail:` as an index-count proxy for "implausibly far, too fast" rather than a real elapsed-time/speed computation; tighten if field data shows it's too loose.
+- Step-advance now self-heals: alongside the existing 25m-to-step-end trigger, a new `stepStartIndex` array (built once per route fetch, the running start-segment-index of each step) lets the updater jump `currentStepIndex` forward to match wherever `snappedSegmentIndex` already is, so a missed maneuver-endpoint radius no longer freezes the banner indefinitely.
+
+**Implementation note:** `isTrustworthySnap`/`angularDiffDeg` ended up in `apps/driver/src/lib/geo.ts` (not `useTurnByTurn.ts`) — pure geo math with no dependency on the API client, matching where `nearestPointOnPolyline`/`bearingDeg` already live, and it's what let the regression check below run standalone via `tsx` without pulling in `ride-api.ts`'s `import.meta.env` (which only resolves inside Vite).
+
+**Explicitly not done (deferred, needs field data from this fix first):** a real local map-matching window (top-k candidate segments scored over a short sliding history, à la a lightweight Viterbi) — the fable-drafted plan flagged this as the next tier if the bearing+jump gate above still mis-snaps in the field; not building it speculatively. Also not done: unifying `TrafficColoredRoute`'s independently-fetched geometry with the main route (separate, lower-severity cosmetic divergence, not the chord bug), and moving off the public OSRM demo fallback tier onto self-hosted infra (business/ops decision, not a code fix).
+
+**Files:** `apps/driver/src/lib/geo.ts`, `apps/driver/src/lib/useTurnByTurn.ts`, `apps/driver/src/lib/__checks__/snap-gate.check.ts` (new), `apps/driver/src/pages/ActiveRide/TripInProgress.tsx`, `apps/driver/src/pages/ActiveRide/NavigateToPickup.tsx`.
+
+**Review checklist:**
+- [x] `tsc --noEmit` clean on `apps/driver` — confirmed 2026-07-13
+- [x] Synthetic check: GPS fix 25m off the route polyline with a heading ~90° off the segment bearing (parallel wrong street) is rejected as unsnapped; a fix 5m off with heading matching the segment is accepted — `snap-gate.check.ts` passes (`npx tsx apps/driver/src/lib/__checks__/snap-gate.check.ts`)
+- [ ] Drive/replay a route past a parallel side-street within 40m of the main road; marker does not snap onto the wrong street, no diagonal chord rendered — **needs a real device/drive, not verifiable from this environment**
+- [ ] Force an off-route excursion (bearing mismatch case, not just distance); reroute fires after 3 consecutive fixes + cooldown, same as the existing distance-triggered path — **needs a real device/drive**
+- [ ] Banner advances correctly even when a maneuver's 25m endpoint radius is missed on a wide/fast turn — **needs a real device/drive**
+- [ ] Existing Phase 2 checklist items still hold (marker stays on route through turns, heading never flips) — this phase only tightens the gate, doesn't change the rendering path — **needs a real device/drive**
+
+**Effort:** Small (same-day patch — shipped as one file split across `geo.ts`/`useTurnByTurn.ts` + two one-line call-site changes + one regression check). **Status: code complete + typecheck + synthetic check passing, 2026-07-13. Real-device drive verification still outstanding — do not mark this phase fully done until that's run, per this doc's own Phase 6 precedent (two prior "done" rounds on this exact surface were claimed complete without device verification and stayed broken).**
+
+---
+
 ## Sequencing summary
 
 ```
@@ -332,6 +367,7 @@ Phase 1 (SOS)         ─┐
 Phase 2 (snap+heading) ─┼─ parallel, independent ──→ Phase 4 (camera/chrome, depends on Phase 2)
 Phase 3 (ETA+presence) ─┘                                        │
 Phase 5 (homepage)     ─────────── independent, any time ────────┤
+Phase 9 (snap gate)    ─────────── depends on Phase 2's snap/heading plumbing ─┤
                                                                     ▼
                                                             Phase 6 (verification + sign-off, blocking)
 ```

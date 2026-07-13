@@ -210,7 +210,7 @@ export default function TripInProgress() {
   const navLanguage  = useNavPrefsStore(s => s.language)
 
   const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting, snappedPosition, snappedHeading, snappedSegmentIndex } =
-    useTurnByTurn(position, hasNavTarget ? dropPos : null, navLanguage)
+    useTurnByTurn(position, hasNavTarget ? dropPos : null, navLanguage, selfHeading)
 
   // Prefer the route-snapped fix over raw GPS for anything rendered on the map —
   // see the matching comment in NavigateToPickup.tsx. Arrival/distance checks
