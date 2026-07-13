@@ -20,7 +20,7 @@ import { useDriverLocation } from '@/lib/useDriverLocation'
 import { useTurnByTurn } from '@/lib/useTurnByTurn'
 import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
 import { useWakeLock } from '@/lib/useWakeLock'
-import { haversineMetres } from '@/lib/geo'
+import { haversineMetres, remainingRoutePath } from '@/lib/geo'
 import { decodePolyline } from '@/lib/polyline'
 
 const DriverMapView     = lazy(() => import('@/components/map/DriverMapView'))
@@ -219,8 +219,8 @@ export default function NavigateToPickup() {
   )
   const remainingPath = useMemo<[number, number][] | undefined>(() => {
     if (snappedSegmentIndex == null || !snappedPosition || routePoints.length === 0) return undefined
-    return [snappedPosition, ...routePoints.slice(snappedSegmentIndex + 1)]
-  }, [snappedSegmentIndex, snappedPosition, routePoints])
+    return remainingRoutePath(snappedPosition, routePoints, snappedSegmentIndex, pickupPos)
+  }, [snappedSegmentIndex, snappedPosition, routePoints, pickupPos])
   // Fall back to pickup only for map centering, never for the car marker or route fetch.
   // Without this guard, the car appears AT the pickup pin before GPS resolves, making
   // it look like the driver has already arrived.

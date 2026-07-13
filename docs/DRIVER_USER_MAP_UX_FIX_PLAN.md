@@ -1,7 +1,7 @@
 # Driver & User App — Map/Nav Correctness + UX Fix Plan
 
-**Date:** 2026-07-12
-**Status:** Draft, phase 0 not started
+**Date:** 2026-07-12 (Phase 10 added + shipped 2026-07-13)
+**Status:** Phase 10 code-complete, typecheck + regression checks passing. Real-device drive verification (Phase 10's own checklists + Phase 6) still blocking full sign-off. 10e's "recenter jumps to a random place" report remains open pending a captured repro.
 **Scope:** the 13 bugs reported against user-app tracking, driver-app nav, and driver homepage
 **Related docs:** [`NAVIGATION_PHASE5_FINAL_HARDENING_PLAN.md`](./NAVIGATION_PHASE5_FINAL_HARDENING_PLAN.md) (broader nav feature roadmap — trip share, canned messages, geofence; this doc does not duplicate it), [`MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md`](./MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md) (earlier audit)
 
@@ -368,6 +368,117 @@ Phase 2 (snap+heading) ─┼─ parallel, independent ──→ Phase 4 (camera
 Phase 3 (ETA+presence) ─┘                                        │
 Phase 5 (homepage)     ─────────── independent, any time ────────┤
 Phase 9 (snap gate)    ─────────── depends on Phase 2's snap/heading plumbing ─┤
+Phase 10 (rental free-drive + vanish-at-arrival + recenter) ──────┤
                                                                     ▼
                                                             Phase 6 (verification + sign-off, blocking)
 ```
+
+---
+
+## Phase 10 — P0: Rental free-drive mode, vanish-at-arrival, recenter audit (2026-07-13) — code complete 2026-07-13
+
+**Implementation status:** 10a, 10b, 10d, and 10e's idle-resume timer are code complete, `tsc --noEmit` clean on `apps/driver` and `apps/user`, and covered by a new regression check (`apps/driver/src/lib/__checks__/remaining-path.check.ts`, alongside the existing `snap-gate.check.ts` — both pass). **Real-device drive verification still outstanding for all of them** — per this doc's own repeated rule (Phase 6, Phase 9), nothing here is "done" until driven on an actual phone. 10c is a deploy-verification step, not a diff (no code change). 10e's "recenter jumps to a random place" report remains **open, unscoped, pending a captured repro** — deliberately not blind-fixed, see 10e below.
+
+Five new real-device screenshots, all on a **rental ("Flexible route") trip**, `er.clienttesting.in`. Reported symptoms: irregular/diagonal polyline through buildings; turn banner always says "left" regardless of the actual turn; route recomputes to a different path while the driver is already parked at the (rider-requested) location; polyline vanishes completely ~400m from the destination; half-rendered polyline segments; no directional arrows visible on the blue line; re-center jumping to an unrelated spot; camera dropping auto-follow "aggressively." Researched against how Uber/Ola/Mapbox Nav SDK/Google Nav SDK actually handle the equivalent trip type before deciding what's a bug vs. a missing product mode (fable-5 research, cited per finding below).
+
+**A finding before the fixes: most of this is one root cause, not five.** Every screenshot is from a **rental** trip, and `hasNavTarget`/`dropPos` in `TripInProgress.tsx` (L179-181, 208) treats a rental exactly like a fixed-destination ride — it runs `useTurnByTurn()` turn-by-turn guidance, off-route detection, and reroute-on-deviation against `activeRide.dropLat/dropLng`, the coordinate entered **at booking time**, or (if that's ever null — unconfirmed, flagged below) the hardcoded `DEFAULT_LAT/DEFAULT_LNG` (20.2961, 85.8245, central Bhubaneswar) — nowhere near the Puri/Cuttack corridor in these screenshots.
+
+### 10a. Root cause — turn-by-turn has no concept of "this trip has no real destination"
+
+**Decision, backed by how production apps actually handle this trip type:** Uber's Hourly/rental product and Ola Rentals do **not** run active-guidance turn-by-turn on an open trip — they run what Mapbox's Nav SDK explicitly names **`FreeDrive` mode** (Google's Nav SDK equivalent: never calling `setDestination`) — live map, driver puck, road-network map-matching for display, but **no maneuver banner, no reroute-to-a-fixed-point logic**, because rerouting is only meaningful against a committed destination and a rental trip doesn't have one. Reroute logic pointed at a stale/fallback coordinate that the driver was never actually heading toward will — by design of the algorithm, not as a bug in it — keep computing fresh routes to that point as the driver drives wherever the rider actually asked, off-route-detect constantly, and draw whatever Directions returns for "start here, end at that fixed point," which is exactly the erratic-looking, "recomputes a different way," always-a-turn-instruction behavior in the screenshots. **The polyline algorithm and snap gate are not lying — they're answering a question ("how do I get to booking-time drop coordinate X") the driver was never trying to answer.**
+
+**This also fully explains the "always shows left turn" complaint:** the banner is give real, correct instructions — toward `dropLat/dropLng`, not toward wherever the rider is actually directing the driver. It looks "wrong" because the destination itself is wrong for this trip type, not because maneuver-type mapping is broken (`ManeuverBanner.tsx`'s `maneuverIcon()` already correctly distinguishes left/right/slight/sharp/u-turn/roundabout — verified by reading it, not the bug).
+
+**Build:**
+1. Confirm with product/backend: for `rideType === 'rental'`, is `dropLat`/`dropLng` (i) the address entered at booking as a rough plan, (ii) genuinely null, or (iii) continuously updated by some other flow? This determines whether Phase 10a is "stop treating it as a destination" or "also fix a null-coordinate fallback bug" — **do not guess-fix without this answer, per the karpathy-guideline (surface the ambiguity, don't silently pick one).**
+2. `TripInProgress.tsx`: gate `hasNavTarget` (and therefore the entire `useTurnByTurn()` call, banner, and reroute machinery) on `rideType !== 'rental'` **unless** a rider has requested a specific interim stop (`currentStop` — that case already has a real, driver-confirmed target and should keep full turn-by-turn, matching how Uber starts a fresh active-guidance leg per named stop and drops back to free-drive after).
+3. For the free-drive state (rental, no `currentStop`): keep the live map, the car marker, and `TrafficLayer` — drop the maneuver banner, `RoutePolyline`/`TrafficColoredRoute`, and `useTurnByTurn`'s fetch/reroute cycle entirely (no route to draw when there's no committed destination — an empty map is correct here, not a bug to "fix" by drawing something). Top card shows elapsed time / "Flexible route" only, matching what these screenshots already show underneath the (currently wrong) nav chrome.
+4. Round-trip (`rideType === 'round_trip'`) is unaffected — it has a real return destination and keeps full turn-by-turn.
+
+**Files:** `apps/driver/src/pages/ActiveRide/TripInProgress.tsx` (the only screen that reaches a rental trip's in-progress state — `NavigateToPickup.tsx` always has a real pickup coordinate regardless of `rideType`, not in scope).
+
+**Shipped:** `hasNavTarget` now also requires `rideType !== 'rental'` (in addition to a real `currentStop` still getting full turn-by-turn). Since `hasNavTarget` was already the single gate feeding `useTurnByTurn`'s destination, the route/traffic overlay block, the drop pin, and the arrival-proximity effect, this one-line change was enough to fully suppress reroute/banner/polyline churn for a plain rental — no other conditional needed at any of those call sites. Also fixed a knock-on: the mode-switch effect only ever left `'overview'` mode via a `destKey` transition, which never fires when there's no nav target at all — without a change there, a pure rental trip would've been stuck in `'overview'` (and thus `RecenterMap` suspended) for the whole ride, since `FitBoundsToPoints` itself no-ops below 2 points. The effect now flips straight to `'nav'` mode on first render when there's no target, so the plain follow-camera (`RecenterMap`, unsuspended) drives the free-drive map instead of a frozen one.
+
+**Note — did not need the product/backend confirmation to ship:** the fix holds regardless of what `dropLat`/`dropLng` actually contains for a rental (a rough booking-time plan, or genuinely unset) — either way it isn't a committed destination the driver is trying to reach turn-by-turn, so gating on `rideType` alone is correct without knowing that answer. Flagging it as still worth confirming with product for other purposes (e.g. whether that address should show anywhere in the UI at all), but it wasn't a blocker for this fix.
+
+**Review checklist:**
+- [x] `tsc --noEmit` clean on `apps/driver`
+- [ ] Start a rental trip: no maneuver banner, no route line, no reroute churn while driving anywhere — **needs a real device/drive**
+- [ ] Rider requests an interim stop on a rental trip: full turn-by-turn to that stop works exactly as a normal ride's does, then reverts to free-drive after it's reached/skipped — **needs a real device/drive**
+- [ ] Point-to-point and round-trip rides: zero behavior change (regression check) — **needs a real device/drive**
+
+**Effort:** Small-Medium (1-2 days, mostly the product-confirmation step above; the code gate itself is a small conditional).
+
+### 10b. Polyline vanishes ~400m from the destination
+
+**Root cause, confirmed by reading `remainingPath`'s construction (`TripInProgress.tsx` L227-230, `NavigateToPickup.tsx` L220-223):** `remainingPath = [snappedPosition, ...routePoints.slice(snappedSegmentIndex + 1)]`. As the driver closes in on the destination, `snappedSegmentIndex` approaches `routePoints.length - 1` (the last decoded point) — once it reaches the final segment, `routePoints.slice(segmentIndex + 1)` returns `[]`, leaving `remainingPath` as a **single-point array** (`[snappedPosition]`). `RoutePolyline.tsx`'s own guard (`pts.length < 2` → render nothing, L34) then correctly refuses to draw a 1-point line — the bug isn't in that guard, it's that the slice never includes the route's actual final point (the destination itself), so the last real segment is silently dropped instead of shrinking to it. This is the exact "off-by-one that drops the final destination point" pattern flagged in the fable-5 research above as the standard cause of this failure mode.
+
+**Fix:** append the route's true final point (last element of `routePoints`, or `dropPos` if `routePoints` is empty) to `remainingPath` instead of leaving the slice to run dry — `[snappedPosition, ...routePoints.slice(snappedSegmentIndex + 1), routePoints[routePoints.length - 1] ?? dropPos]`, deduped if they're already equal (avoid a redundant zero-length final segment). This keeps the line rendering (now correctly 2+ points) all the way to arrival instead of disappearing early.
+
+**Files:** `apps/driver/src/lib/geo.ts` (new `remainingRoutePath()`, shared by both driver nav screens — this turned out to be identical logic in two call sites within the *same* app, unlike the cross-app duplication convention this doc otherwise follows, so it was extracted rather than copy-pasted twice), `apps/driver/src/pages/ActiveRide/TripInProgress.tsx`, `apps/driver/src/pages/ActiveRide/NavigateToPickup.tsx`, `apps/user/app/(main)/ride/[id]/page.tsx` (the user app's passenger-tracking screen builds the identical `remainingPath` independently per Phase 7b — same off-by-one existed there too, fixed inline since the user app doesn't share a `geo.ts` module with the driver app).
+
+**Shipped:** `remainingRoutePath(snappedPosition, routePoints, segmentIndex, fallbackFinal)` in `geo.ts` returns `[snapped, ...tail]` with the route's true last point appended unless the tail already ends there (avoids a redundant zero-length final segment). Both driver screens now call it instead of duplicating the slice. New check: `apps/driver/src/lib/__checks__/remaining-path.check.ts` — covers mid-route (final point present), near-arrival (tail empty, must still be >=2 points ending at the destination — the exact regression), and the no-duplicate-append case. Passes, alongside the pre-existing `snap-gate.check.ts` (confirmed no regression).
+
+**Review checklist:**
+- [x] `tsc --noEmit` clean on `apps/driver` and `apps/user`
+- [x] `remaining-path.check.ts` passes (`npx tsx src/lib/__checks__/remaining-path.check.ts` from `apps/driver`)
+- [ ] Drive to within 400m, then 100m, then arrival of a destination; polyline stays visible and shrinks to a point at the pin, never blanks out early — **needs a real device/drive**
+- [ ] No flicker/duplicate final segment introduced by the dedup — **needs a real device/drive**
+- [ ] Same check on the user app's passenger-tracking screen (driver-dest leg) — **needs a real device/drive**
+
+**Effort:** Small (same-day, shipped as one shared helper + two call-site updates in the driver app + one inline fix in the user app + one new regression check).
+
+### 10c. Diagonal chord + frozen-wrong banner still reproducing — deploy/verification gap, not a new bug
+
+Phase 9 (bearing gate + forward-jump clamp + step self-heal) already targets this exact failure mode and is marked **code-complete but real-device-unverified** in this same doc. These screenshots are consistent with either (i) the fix not yet deployed to `er.clienttesting.in` (this doc's own Phase 6 round already found one case of that staging host running a stale build missing an env var) or (ic) Phase 9's thresholds (`OFF_ROUTE_BEARING_THRESHOLD_DEG = 55°`, `MAX_FORWARD_SEGMENT_JUMP = 80`) being insufficient on this specific corridor's road layout. **Not re-diagnosed from scratch here — re-run Phase 9's own outstanding review-checklist items on a fresh deploy first**; only tune the constants if a confirmed-current build still reproduces the chord.
+
+**Build:** confirm `er.clienttesting.in` is running the commit containing Phase 9's `useTurnByTurn.ts`/`geo.ts` changes before doing anything else. If it is and the chord still reproduces, capture a fresh screenshot set with GPS coordinates/timestamps and tune `OFF_ROUTE_BEARING_THRESHOLD_DEG`/`MAX_FORWARD_SEGMENT_JUMP` against that data — do not retune blind.
+
+**Files:** none yet — this is a verification step, not a code change, until the above confirms otherwise.
+
+**Effort:** Small (deploy check), open-ended only if the constants genuinely need retuning.
+
+### 10d. Half-rendered polyline / no directional arrows visible
+
+`RoutePolyline.tsx` already draws a repeating arrow-icon overlay on the top (blue) line (`icons={[{ icon: ARROW_ICON, repeat: '80px' }]}`, L61-68) — this exists in code today, so "no direction assistance" in the screenshots is either (i) the same rental-trip issue as 10a (no route drawn at all for most of the trip, so there's no line to carry arrows), or (ii) the arrows are present but not visually distinguishable against the traffic-tinted overlay (`TrafficColoredRoute` renders at `zIndex={3}`, **above** the arrowed line's `zIndex={2}` — a congested segment would visually cover the arrows for that stretch). "Half-rendered … half line here and there" matches this exactly: wherever `TrafficColoredRoute` draws a SLOW/TRAFFIC_JAM segment on top, the base line's arrows disappear under it for that stretch, reading as a broken/incomplete line.
+
+**Fix:** re-verify against 10a first — once free-drive mode ships, rentals stop being the majority case showing "no arrows." For the remaining z-index overlap, either raise the arrowed line's z-index above `TrafficColoredRoute`'s (re-draw the arrow icon layer, not the casing, on top) or reduce the traffic overlay's opacity slightly so the arrows still read through it — a one-line z-index/opacity change, not a rewrite.
+
+**Files:** `apps/driver/src/components/map/RoutePolyline.tsx`. (`TrafficColoredRoute.tsx` itself untouched — its z-index was already correct per this doc's own convention; the arrowed line needed to move above it, not the other way around. Checked the user app's own `RoutePolyline.tsx` for the same issue — it has no traffic overlay at all, so this bug doesn't exist there; not touched.)
+
+**Shipped:** split the arrowed top layer into two: the solid blue casing stays at `zIndex={2}` (unchanged), and the arrow icons now ride their own `strokeOpacity={0}` polyline at `zIndex={4}` — above `TrafficColoredRoute`'s `zIndex={3}`, so a congestion-tinted segment no longer hides the arrows for that stretch.
+
+**Review checklist:**
+- [x] `tsc --noEmit` clean on `apps/driver`
+- [ ] On a point-to-point ride with real traffic data, arrows remain visible through a traffic-tinted segment, not covered by it — **needs a real device/drive with live traffic**
+- [ ] Re-test after 10a ships — confirm rentals no longer show a "brokenly rendered" line because there usually isn't one to render — **needs a real device/drive**
+
+**Effort:** Small (half-day) — shipped as a 3-line split in one file.
+
+### 10e. Re-center jumps to a random place; camera drops follow "aggressively"
+
+**Not root-caused with certainty from screenshots alone — flagged for instrumented investigation rather than a blind fix**, per this doc's own repeated lesson (don't retune/patch on a one-screenshot hunch). What's confirmed by reading `RecenterMap.tsx`:
+- **Follow-drop trigger is a single `dragstart` listener (L208-214)** — any manual pan, including a driver bumping/nudging the phone mount or a stray touch, immediately flips `following.current = false` and shows the re-center chip. This matches "stops following aggressively when he looks around" exactly — it's the *designed* behavior (any gesture pauses follow, matching Google/Mapbox Nav SDK's own `Following → Idle` transition on user interaction), but those SDKs' `Following` state also **auto-resumes after a short idle timeout** (~5-10s) if the driver doesn't explicitly cancel it — this codebase has no such timeout; a paused follow only ever resumes on an explicit tap. That's a plausible, research-backed, small UX fix distinct from a bug: **add an idle-resume timer** (e.g. 8s of no further drag) that calls the same path `handleRecenter()` already uses.
+- **The "jumps to a random place" report cannot be confirmed from the code alone** — `center`/`mapCenter` is always derived live (`displayPosition ?? dropPos`), not a stale captured value, so there's no obvious stale-closure bug matching the fable-5-flagged "recenter animates to a cached camera position" pattern. Needs an on-device repro with the browser console open (or a temporary debug overlay logging `mapCenter`/`resumeKey`/`following` on each recenter tap) to catch what `center` actually was at the moment of the jump — could be a transient `dropPos` fallback firing because `position`/`snappedPosition` were briefly null right when the tap landed (rare GPS gap), which would self-resolve on the next fix and isn't a real "wrong place," just a one-frame flash worth confirming rather than assuming.
+
+**Build:**
+1. Add the idle-resume timer to `RecenterMap.tsx`'s `dragstart` handler (clear/reset on any further drag, fire `handleRecenter()`'s equivalent after ~8s idle) — the one confirmed, low-risk fix.
+2. For the jump report: add a temporary console log of `center`, `following.current`, and whether `displayPosition` was null at the moment `handleRecenter` fires, ship it to the same staging build already used for device testing, and capture one real repro before writing a fix — **do not speculatively patch `paddedCenter`/`panTo` math without a captured bad value**, that's exactly the "blind edit" this doc has declined to do twice already (§ Phase 6, § Phase 7d).
+
+**Files:** `apps/driver/src/components/map/RecenterMap.tsx`.
+
+**Shipped:** the idle-resume timer only (build item 1). The `dragstart`/`dragend` listeners were merged into one effect: `dragstart` still pauses follow immediately (unchanged) and now also clears any pending resume timer (so a fresh drag mid-countdown doesn't fire a stale resume); `dragend` starts an 8s (`IDLE_RESUME_MS`) countdown, only while not-following, that resumes follow and forces every camera property to re-apply — same reset path the existing `resumeKey` effect already used. Timing off `dragend` (not `dragstart`) means a long sustained pan never gets auto-resumed mid-gesture — the countdown only starts once the driver actually lets go.
+
+**Deliberately not shipped:** build item 2 (the "jumps to a random place" repro/fix). Nothing in `RecenterMap.tsx`, `TripInProgress.tsx`, or `NavigateToPickup.tsx` shows a stale-captured camera target — `center`/`mapCenter` is recomputed live every render from `displayPosition ?? dropPos`, not cached — so there's no code-visible bug matching the report yet. Per this doc's own repeated rule (declined a blind fix twice already, Phase 6 + 7d), this stays **open and unscoped** until a real device repro is captured (console log or screen recording of `mapCenter`/`following`/`resumeKey` at the moment of a bad jump). Do not patch `paddedCenter`/`panTo` speculatively before that lands.
+
+**Review checklist:**
+- [x] `tsc --noEmit` clean on `apps/driver`
+- [ ] Driver glances away/nudges the phone briefly; camera auto-resumes following within ~8s without a manual tap — **needs a real device/drive**
+- [ ] A deliberate, sustained manual pan (driver actually repositioning the map) is NOT overridden mid-gesture by the idle timer — **needs a real device/drive**
+- [ ] Captured repro (log output or screen recording) of an actual bad re-center jump, with `center`/`following` values at that moment, before any fix to the jump itself is written — **still outstanding, blocks any further work on this item**
+
+**Effort:** Small (idle-resume timer, shipped) + open-ended for the jump bug pending a captured repro.
+
+**Sequencing note:** 10a should ship before re-testing 10c/10d on rental trips specifically (removes the majority of what's making those look broken); 10b and 10e are independent of everything else in this phase and can ship immediately.
+
+**Effort (phase total):** Medium (3-4 days for 10a-10d; 10e's timer is small, its jump-bug fix is unscoped pending repro).

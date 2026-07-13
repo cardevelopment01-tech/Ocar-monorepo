@@ -20,7 +20,7 @@ import { useDriverLocation } from '@/lib/useDriverLocation'
 import { useTurnByTurn } from '@/lib/useTurnByTurn'
 import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
 import { useWakeLock } from '@/lib/useWakeLock'
-import { haversineMetres } from '@/lib/geo'
+import { haversineMetres, remainingRoutePath } from '@/lib/geo'
 import { decodePolyline } from '@/lib/polyline'
 
 const DriverMapView     = lazy(() => import('@/components/map/DriverMapView'))
@@ -205,7 +205,15 @@ export default function TripInProgress() {
   // Nav target is the current pending stop when one exists, else the final drop —
   // the hook refetches automatically whenever this destination identity changes,
   // e.g. when the driver marks a stop reached/skipped.
-  const hasNavTarget = currentStop != null || (activeRide?.dropLat != null && activeRide?.dropLng != null)
+  //
+  // Rentals ("flexible route") have no committed destination — dropLat/dropLng is
+  // whatever was entered at booking, not where the driver is actually headed. Running
+  // turn-by-turn/reroute against it produces exactly the erratic-route/wrong-banner
+  // symptoms this was built to fix (see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 10a) —
+  // rentals fall back to a plain live-tracking map (free-drive) unless the rider has
+  // requested a real interim stop, which does have a driver-confirmed target.
+  const hasNavTarget = currentStop != null
+    || (activeRide?.rideType !== 'rental' && activeRide?.dropLat != null && activeRide?.dropLng != null)
   const voiceEnabled = useNavPrefsStore(s => s.voiceEnabled)
   const navLanguage  = useNavPrefsStore(s => s.language)
 
@@ -226,8 +234,8 @@ export default function TripInProgress() {
   )
   const remainingPath = useMemo<[number, number][] | undefined>(() => {
     if (snappedSegmentIndex == null || !snappedPosition || routePoints.length === 0) return undefined
-    return [snappedPosition, ...routePoints.slice(snappedSegmentIndex + 1)]
-  }, [snappedSegmentIndex, snappedPosition, routePoints])
+    return remainingRoutePath(snappedPosition, routePoints, snappedSegmentIndex, dropPos)
+  }, [snappedSegmentIndex, snappedPosition, routePoints, dropPos])
   // Fall back to drop only for map centering, never for the car marker or route fetch.
   // Without this guard, the car appears AT the drop pin before GPS resolves, making
   // it look like the driver has already reached the destination.
@@ -240,7 +248,15 @@ export default function TripInProgress() {
   const destKey = hasNavTarget ? `${dropPos[0].toFixed(5)},${dropPos[1].toFixed(5)}` : null
   const prevDestKey = useRef<string | null>(null)
   useEffect(() => {
-    if (destKey === null || prevDestKey.current === destKey) return
+    if (destKey === null) {
+      // Free-drive (rental, no target): nothing to preview, skip straight to a
+      // live-following camera instead of sitting suspended in 'overview' forever
+      // (FitBoundsToPoints no-ops below 2 points, so 'overview' would otherwise
+      // never move the camera at all — see Phase 10a).
+      if (isFirstBeat.current) { isFirstBeat.current = false; setMapMode('nav') }
+      return
+    }
+    if (prevDestKey.current === destKey) return
     prevDestKey.current = destKey
     const holdMs = isFirstBeat.current ? OVERVIEW_BEAT_MS : MINI_BEAT_MS
     isFirstBeat.current = false

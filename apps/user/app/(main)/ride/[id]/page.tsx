@@ -265,8 +265,17 @@ export default function RidePage() {
   // see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 7b. Undefined (falls back to
   // the full route) whenever there's no snap yet.
   const remainingPath = useMemo<[number, number][] | undefined>(() => {
-    if (matchedSegmentIndex == null || !routePoints || !smoothPos) return undefined
-    return [smoothPos, ...routePoints.slice(matchedSegmentIndex + 1)]
+    if (matchedSegmentIndex == null || !routePoints || !smoothPos || routePoints.length === 0) return undefined
+    const tail = routePoints.slice(matchedSegmentIndex + 1)
+    // Near arrival `tail` runs dry (the snap reaches the route's last segment) —
+    // append the route's true final point so the line still has >=2 points instead
+    // of vanishing early (same bug/fix as the driver app — see
+    // docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 10b).
+    const finalPoint = routePoints[routePoints.length - 1]!
+    const lastTailPoint = tail[tail.length - 1]
+    const alreadyEndsThere = lastTailPoint
+      && lastTailPoint[0] === finalPoint[0] && lastTailPoint[1] === finalPoint[1]
+    return alreadyEndsThere ? [smoothPos, ...tail] : [smoothPos, ...tail, finalPoint]
   }, [matchedSegmentIndex, routePoints, smoothPos])
 
   const loadRide = useCallback(async () => {

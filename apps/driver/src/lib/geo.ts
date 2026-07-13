@@ -95,3 +95,26 @@ export function nearestPointOnPolyline(
 
   return best
 }
+
+/**
+ * Builds the "remaining route" path for display: the current snapped position
+ * followed by whatever route points are still ahead, always ending at the route's
+ * true final point. Without appending that final point, the tail runs dry near
+ * arrival (the snap reaches the route's last segment) and the caller is left with
+ * a single-point path that RoutePolyline correctly refuses to draw — reading as
+ * the line vanishing early instead of shrinking to the destination (see
+ * docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 10b).
+ */
+export function remainingRoutePath(
+  snappedPosition: [number, number],
+  routePoints: [number, number][],
+  segmentIndex: number,
+  fallbackFinal: [number, number],
+): [number, number][] {
+  const tail = routePoints.slice(segmentIndex + 1)
+  const finalPoint = routePoints[routePoints.length - 1] ?? fallbackFinal
+  const lastTailPoint = tail[tail.length - 1]
+  const alreadyEndsThere = !!lastTailPoint
+    && lastTailPoint[0] === finalPoint[0] && lastTailPoint[1] === finalPoint[1]
+  return alreadyEndsThere ? [snappedPosition, ...tail] : [snappedPosition, ...tail, finalPoint]
+}

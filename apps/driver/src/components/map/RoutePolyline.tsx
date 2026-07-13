@@ -64,6 +64,15 @@ export default function RoutePolyline({ encoded, positions, variant = 'default' 
         strokeWeight={7}
         strokeOpacity={1}
         zIndex={2}
+      />
+      {/* Arrow markers on their own invisible-stroke line, above TrafficColoredRoute's
+          zIndex={3} — otherwise a congestion-tinted segment (drawn on top of the blue
+          fill above) covers the arrows for that stretch, reading as a broken/half-
+          rendered line (Phase 10d). */}
+      <Polyline
+        path={path}
+        strokeOpacity={0}
+        zIndex={4}
         icons={[{ icon: ARROW_ICON, repeat: '80px' }]}
       />
     </>

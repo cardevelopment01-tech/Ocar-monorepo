@@ -57,6 +57,11 @@ const HEADING_ANIM_MS = 350
 // docs/DRIVER_TRIP_UX_REDESIGN_PLAN.md §1/§5. Pitch and zoom share this so a
 // mode switch reads as one continuous camera move, not three separate snaps.
 const CAMERA_ANIM_MS = 600
+// A driver glancing at/nudging the map shouldn't have to tap "Re-center" every
+// time — matches Google/Mapbox Nav SDKs' own Following->Idle->Following auto-
+// resume (see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 10e). Counted from
+// dragend, not dragstart, so a sustained manual pan is never overridden mid-gesture.
+const IDLE_RESUME_MS = 8_000
 
 // Shift the pan center south so the target appears in the visible area between
 // topPadding and bottomPadding instead of at the raw geometric viewport center.
@@ -103,6 +108,7 @@ export default function RecenterMap({
   const lastZoom     = useRef<number | null>(null)
   const appliedZoom  = useRef<number | null>(null)
   const zoomRaf      = useRef<number | null>(null)
+  const idleResumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // True while RecenterMap is allowed to drive the camera. A driver drag
   // gesture sets this false (and fires onFollowChange(false)); bumping
   // resumeKey sets it back true. Plain ref, not state — pausing must not
@@ -202,15 +208,40 @@ export default function RecenterMap({
   }, [])
 
   // Driver drag pauses auto-follow; a bumped resumeKey resumes it and forces
-  // every camera property to re-apply (see the reset below).
+  // every camera property to re-apply (see the reset below). A resume also
+  // fires automatically after IDLE_RESUME_MS of no further dragging, timed
+  // from dragend so a sustained pan is never overridden mid-gesture.
   useEffect(() => {
     if (!map) return
-    const listener = map.addListener('dragstart', () => {
+    const clearIdleTimer = () => {
+      if (idleResumeTimer.current !== null) { clearTimeout(idleResumeTimer.current); idleResumeTimer.current = null }
+    }
+    const resume = () => {
+      following.current = true
+      onFollowChangeRef.current?.(true)
+      last.current      = null
+      lastPad.current    = -1
+      lastHdg.current    = -1
+      lastPitch.current  = null
+      lastZoom.current   = null
+      setRetryCount(c => c + 1)
+    }
+    const dragStartListener = map.addListener('dragstart', () => {
+      clearIdleTimer()
       if (!following.current) return
       following.current = false
       onFollowChangeRef.current?.(false)
     })
-    return () => listener.remove()
+    const dragEndListener = map.addListener('dragend', () => {
+      if (following.current) return
+      clearIdleTimer()
+      idleResumeTimer.current = setTimeout(resume, IDLE_RESUME_MS)
+    })
+    return () => {
+      dragStartListener.remove()
+      dragEndListener.remove()
+      clearIdleTimer()
+    }
   }, [map])
 
   useEffect(() => {
