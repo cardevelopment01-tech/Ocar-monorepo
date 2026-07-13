@@ -204,7 +204,8 @@ export default function DocReviewModal({
 
   function zoomIn() {
     setZoomLevel(z => {
-      if (z === 'fit') return 1
+      // 'fit' already renders at 100% size, so stepping to 1 is a no-op — skip straight past it
+      if (z === 'fit') return 1.5
       const next = ZOOM_STEPS.find(s => s > (z as number))
       return next ?? z
     })
