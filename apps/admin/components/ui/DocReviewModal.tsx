@@ -215,12 +215,42 @@ export default function DocReviewModal({
     })
   }
 
+  // Trackpad pinch/scroll fires many small wheel ticks — scale the zoom change to each
+  // tick's actual size (deltaY ~100 = one real notch) instead of a fixed step per event,
+  // so a small pinch produces a small zoom change instead of overshooting.
+  function zoomByDelta(deltaY: number) {
+    const amount = Math.min(ZOOM_STEP, (Math.abs(deltaY) / 100) * ZOOM_STEP)
+    if (amount === 0) return
+    setZoomLevel(z => {
+      const cur = z === 'fit' ? ZOOM_MIN : z
+      const next = deltaY < 0 ? cur + amount : cur - amount
+      if (next <= ZOOM_MIN) return 'fit'
+      return Math.min(ZOOM_MAX, next)
+    })
+  }
+
+  // Zoom in centered on the clicked point (or back to fit if already zoomed).
+  function zoomToPoint(clientX: number, clientY: number) {
+    const el = scrollRef.current
+    if (!el) return
+    if (zoomLevel !== 'fit') { setZoomLevel('fit'); return }
+    const rect = el.getBoundingClientRect()
+    const clickX = clientX - rect.left
+    const clickY = clientY - rect.top
+    const target = 2.5
+    setZoomLevel(target)
+    requestAnimationFrame(() => {
+      el.scrollLeft = clickX * target - rect.width / 2
+      el.scrollTop  = clickY * target - rect.height / 2
+    })
+  }
+
   // Non-passive wheel listener, required so we can preventDefault and prevent page scroll
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     function onWheel(e: WheelEvent) {
-      if (e.deltaY < 0) zoomIn(); else zoomOut()
+      zoomByDelta(e.deltaY)
       e.preventDefault()
     }
     el.addEventListener('wheel', onWheel, { passive: false })
@@ -589,6 +619,7 @@ export default function DocReviewModal({
                   {/* Image: fit mode centres in container, zoom mode grows wrapper so overflow scrolls */}
                   <div
                     ref={scrollRef}
+                    onDoubleClick={e => zoomToPoint(e.clientX, e.clientY)}
                     className={cn('w-full h-full overflow-auto', isZoomed && 'cursor-grab')}
                     style={isZoomed ? { touchAction: 'none' } : undefined}
                   >
