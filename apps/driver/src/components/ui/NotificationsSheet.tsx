@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Bell, CircleCheck, TriangleAlert, FileText, Car, X } from 'lucide-react'
 import { useNotificationsStore } from '@/store/useNotificationsStore'
@@ -9,6 +10,7 @@ const ICONS: Record<string, typeof Bell> = {
   ride_completed: CircleCheck,
   sos: TriangleAlert,
   driver_submitted_for_review: FileText,
+  document_rejected: FileText,
 }
 
 function relativeTime(iso: string): string {
@@ -23,13 +25,21 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
 
-function NotificationRow({ item, onRead }: { item: NotificationItem; onRead: (id: string) => void }) {
+function NotificationRow({ item, onRead, onNavigate }: {
+  item: NotificationItem
+  onRead: (id: string) => void
+  onNavigate: (route: string) => void
+}) {
   const Icon = ICONS[item.type] ?? Bell
   const unread = !item.readAt
 
   return (
     <button
-      onClick={() => onRead(item.id)}
+      onClick={() => {
+        onRead(item.id)
+        const route = item.payload?.['route']
+        if (typeof route === 'string') onNavigate(route)
+      }}
       className="w-full flex items-start gap-3 px-4 py-3.5 text-left active:bg-surface-2 transition-colors"
     >
       <span
@@ -59,6 +69,12 @@ function NotificationRow({ item, onRead }: { item: NotificationItem; onRead: (id
 export default function NotificationsSheet() {
   const { isSheetOpen, closeSheet, items, unreadCount, loading, markRead, markAllRead, fetchFirstPage } = useNotificationsStore()
   const prefersReducedMotion = useReducedMotion()
+  const navigate = useNavigate()
+
+  const handleNavigate = (route: string) => {
+    closeSheet()
+    navigate(`/onboarding/${route}`)
+  }
 
   useEffect(() => {
     if (isSheetOpen && items.length === 0) void fetchFirstPage()
@@ -142,7 +158,7 @@ export default function NotificationsSheet() {
               ) : (
                 <div className="divide-y divide-border">
                   {items.map(item => (
-                    <NotificationRow key={item.id} item={item} onRead={(id) => void markRead(id)} />
+                    <NotificationRow key={item.id} item={item} onRead={(id) => void markRead(id)} onNavigate={handleNavigate} />
                   ))}
                 </div>
               )}

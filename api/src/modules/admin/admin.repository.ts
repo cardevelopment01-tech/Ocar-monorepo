@@ -173,7 +173,7 @@ export async function getDriverById(id: bigint): Promise<AdminDriverDetail | nul
     experience_years: r.experience_years as number | null,
     emergency_contact: r.emergency_contact as string | null,
     languages_known: (r.languages_known as string[]) ?? [],
-    aadhaar_number: r.aadhaar_number as string | null,
+    aadhaar_number: r.aadhaar_number ? 'XXXX-XXXX-' + (r.aadhaar_number as string).slice(-4) : null,
     license_number: r.license_number as string | null,
     status: r.status as DriverStatus,
     onboarding_step: r.onboarding_step as string,
@@ -557,13 +557,16 @@ export async function approveDriverDoc(docId: bigint, adminId: bigint): Promise<
 
 export async function rejectDriverDoc(
   docId: bigint, adminId: bigint, rejectionNote: string
-): Promise<void> {
-  await pool.query(
+): Promise<{ driver_id: string; doc_type: string } | null> {
+  const res = await pool.query(
     `UPDATE driver_documents
      SET status = 'rejected', rejection_note = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
-     WHERE id = $3`,
+     WHERE id = $3
+     RETURNING driver_id, doc_type`,
     [rejectionNote, adminId, docId]
   )
+  const row = res.rows[0]
+  return row ? { driver_id: String(row.driver_id), doc_type: row.doc_type as string } : null
 }
 
 export async function approveVehicleDoc(docId: bigint, adminId: bigint): Promise<void> {
@@ -577,13 +580,17 @@ export async function approveVehicleDoc(docId: bigint, adminId: bigint): Promise
 
 export async function rejectVehicleDoc(
   docId: bigint, adminId: bigint, rejectionNote: string
-): Promise<void> {
-  await pool.query(
-    `UPDATE driver_vehicle_documents
+): Promise<{ driver_id: string; doc_type: string } | null> {
+  const res = await pool.query(
+    `UPDATE driver_vehicle_documents dvd
      SET status = 'rejected', rejection_note = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
-     WHERE id = $3`,
+     FROM driver_vehicles dv
+     WHERE dvd.id = $3 AND dv.id = dvd.vehicle_id
+     RETURNING dvd.doc_type, dv.driver_id`,
     [rejectionNote, adminId, docId]
   )
+  const row = res.rows[0]
+  return row ? { driver_id: String(row.driver_id), doc_type: row.doc_type as string } : null
 }
 
 export async function listExpiringDocs(daysAhead: number): Promise<ExpiringVehicleDoc[]> {

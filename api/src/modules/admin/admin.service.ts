@@ -4,6 +4,12 @@ import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
 import type { DriverStatus, UpdateDriverStatusPayload } from './admin.types'
 import { forceResolveRide as resolveStuckRide } from '@/modules/rides/rides.service'
+import { notifyOwner } from '@/modules/notifications/notifications.service'
+import { recordAuditLog } from '@/lib/audit-log'
+
+function docLabel(docType: string): string {
+  return docType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
 
 const VALID_STATUSES = new Set<DriverStatus>(['pending_docs', 'pending_approval', 'active', 'suspended', 'banned', 'docs_rejected'])
 
@@ -163,22 +169,60 @@ export async function unblacklistVehicle(vehicleId: bigint) {
 
 export async function listPendingVehicleDocs() { return repo.listPendingVehicleDocs() }
 
-export async function approveDriverDoc(docId: bigint, adminId: bigint) {
-  return repo.approveDriverDoc(docId, adminId)
+export async function approveDriverDoc(docId: bigint, adminId: bigint, ipAddress: string | null) {
+  await repo.approveDriverDoc(docId, adminId)
+  await recordAuditLog({
+    adminId, action: 'driver_documents.approve', targetTable: 'driver_documents', targetId: docId,
+    afterState: { status: 'approved' }, ipAddress,
+  })
 }
 
-export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: string) {
+export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: string, ipAddress: string | null) {
   if (!note || note.length < 10) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  return repo.rejectDriverDoc(docId, adminId, note)
+  const rejected = await repo.rejectDriverDoc(docId, adminId, note)
+  if (rejected) {
+    await recordAuditLog({
+      adminId, action: 'driver_documents.reject', targetTable: 'driver_documents', targetId: docId,
+      afterState: { status: 'rejected', doc_type: rejected.doc_type, note }, ipAddress,
+    })
+    await notifyOwner({
+      ownerType: 'driver',
+      ownerId: BigInt(rejected.driver_id),
+      type: 'document_rejected',
+      title: 'Document Rejected',
+      body: `Your ${docLabel(rejected.doc_type)} was rejected: ${note}. Please resubmit it to continue.`,
+      payload: { route: 'documents' },
+    })
+  }
+  return rejected
 }
 
-export async function approveVehicleDoc(docId: bigint, adminId: bigint) {
-  return repo.approveVehicleDoc(docId, adminId)
+export async function approveVehicleDoc(docId: bigint, adminId: bigint, ipAddress: string | null) {
+  await repo.approveVehicleDoc(docId, adminId)
+  await recordAuditLog({
+    adminId, action: 'vehicle_documents.approve', targetTable: 'driver_vehicle_documents', targetId: docId,
+    afterState: { status: 'approved' }, ipAddress,
+  })
 }
 
-export async function rejectVehicleDoc(docId: bigint, adminId: bigint, note: string) {
+export async function rejectVehicleDoc(docId: bigint, adminId: bigint, note: string, ipAddress: string | null) {
   if (!note || note.length < 10) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  return repo.rejectVehicleDoc(docId, adminId, note)
+  const rejected = await repo.rejectVehicleDoc(docId, adminId, note)
+  if (rejected) {
+    await recordAuditLog({
+      adminId, action: 'vehicle_documents.reject', targetTable: 'driver_vehicle_documents', targetId: docId,
+      afterState: { status: 'rejected', doc_type: rejected.doc_type, note }, ipAddress,
+    })
+    await notifyOwner({
+      ownerType: 'driver',
+      ownerId: BigInt(rejected.driver_id),
+      type: 'document_rejected',
+      title: 'Document Rejected',
+      body: `Your ${docLabel(rejected.doc_type)} was rejected: ${note}. Please resubmit it to continue.`,
+      payload: { route: 'vehicle-docs' },
+    })
+  }
+  return rejected
 }
 
 export async function listExpiringDocs(daysAhead = 30) {

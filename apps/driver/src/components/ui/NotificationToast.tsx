@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Bell } from 'lucide-react'
 import { useNotificationsStore } from '@/store/useNotificationsStore'
@@ -8,6 +9,7 @@ const AUTO_DISMISS_MS = 4000
 export default function NotificationToast() {
   const { toast, dismissToast, openSheet } = useNotificationsStore()
   const prefersReducedMotion = useReducedMotion()
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (!toast) return
@@ -19,7 +21,12 @@ export default function NotificationToast() {
     <AnimatePresence>
       {toast && (
         <motion.button
-          onClick={() => { dismissToast(); openSheet() }}
+          onClick={() => {
+            dismissToast()
+            const route = toast.payload?.['route']
+            if (typeof route === 'string') navigate(`/onboarding/${route}`)
+            else openSheet()
+          }}
           className="fixed left-4 right-4 z-[130] flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left"
           style={{
             top: 'max(env(safe-area-inset-top), 16px)',

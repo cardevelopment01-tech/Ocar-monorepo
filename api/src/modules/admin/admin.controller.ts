@@ -174,7 +174,7 @@ export async function getPendingVehicleDocs(req: Request, res: Response, next: N
 
 export async function approveDriverDoc(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await service.approveDriverDoc(BigInt(req.params['docId']!), req.admin!.id)
+    await service.approveDriverDoc(BigInt(req.params['docId']!), req.admin!.id, req.ip ?? null)
     res.json({ success: true })
   } catch (err) { next(err) }
 }
@@ -182,7 +182,7 @@ export async function approveDriverDoc(req: Request, res: Response, next: NextFu
 export async function rejectDriverDoc(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     await service.rejectDriverDoc(
-      BigInt(req.params['docId']!), req.admin!.id, String(req.body.rejection_note ?? '')
+      BigInt(req.params['docId']!), req.admin!.id, String(req.body.rejection_note ?? ''), req.ip ?? null
     )
     res.json({ success: true })
   } catch (err) { next(err) }
@@ -190,7 +190,7 @@ export async function rejectDriverDoc(req: Request, res: Response, next: NextFun
 
 export async function approveVehicleDoc(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await service.approveVehicleDoc(BigInt(req.params['docId']!), req.admin!.id)
+    await service.approveVehicleDoc(BigInt(req.params['docId']!), req.admin!.id, req.ip ?? null)
     res.json({ success: true })
   } catch (err) { next(err) }
 }
@@ -198,7 +198,7 @@ export async function approveVehicleDoc(req: Request, res: Response, next: NextF
 export async function rejectVehicleDoc(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     await service.rejectVehicleDoc(
-      BigInt(req.params['docId']!), req.admin!.id, String(req.body.rejection_note ?? '')
+      BigInt(req.params['docId']!), req.admin!.id, String(req.body.rejection_note ?? ''), req.ip ?? null
     )
     res.json({ success: true })
   } catch (err) { next(err) }
