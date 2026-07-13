@@ -204,16 +204,12 @@ export default function TripInProgress() {
 
   // Nav target is the current pending stop when one exists, else the final drop —
   // the hook refetches automatically whenever this destination identity changes,
-  // e.g. when the driver marks a stop reached/skipped.
-  //
-  // Rentals ("flexible route") have no committed destination — dropLat/dropLng is
-  // whatever was entered at booking, not where the driver is actually headed. Running
-  // turn-by-turn/reroute against it produces exactly the erratic-route/wrong-banner
-  // symptoms this was built to fix (see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 10a) —
-  // rentals fall back to a plain live-tracking map (free-drive) unless the rider has
-  // requested a real interim stop, which does have a driver-confirmed target.
-  const hasNavTarget = currentStop != null
-    || (activeRide?.rideType !== 'rental' && activeRide?.dropLat != null && activeRide?.dropLng != null)
+  // e.g. when the driver marks a stop reached/skipped. A rental with a rider-
+  // selected drop-off has a real dropLat/dropLng just like any other ride and gets
+  // full turn-by-turn — Phase 10a's original "rentals never have a committed
+  // destination" premise was wrong (reverted 2026-07-13, see Phase 10a-revert)
+  // and had been suppressing navigation for rentals that DO have a real drop.
+  const hasNavTarget = currentStop != null || (activeRide?.dropLat != null && activeRide?.dropLng != null)
   const voiceEnabled = useNavPrefsStore(s => s.voiceEnabled)
   const navLanguage  = useNavPrefsStore(s => s.language)
 

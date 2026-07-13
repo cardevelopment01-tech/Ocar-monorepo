@@ -1,7 +1,7 @@
 # Driver & User App — Map/Nav Correctness + UX Fix Plan
 
-**Date:** 2026-07-12 (Phase 10 added + shipped 2026-07-13)
-**Status:** Phase 10 code-complete, typecheck + regression checks passing. Real-device drive verification (Phase 10's own checklists + Phase 6) still blocking full sign-off. 10e's "recenter jumps to a random place" report remains open pending a captured repro.
+**Date:** 2026-07-12 (Phase 10 added + shipped 2026-07-13; 10a reverted same day after a real-usage regression report)
+**Status:** Phase 10 code-complete, typecheck + regression checks passing. 10a's `rideType`-based gate was wrong and caused a real production regression (rentals with a selected drop-off lost navigation entirely) — reverted back to the original destination-presence check within hours of shipping. Real-device drive verification (Phase 10's own checklists + Phase 6) still blocking full sign-off on everything else. 10e's "recenter jumps to a random place" report remains open pending a captured repro.
 **Scope:** the 13 bugs reported against user-app tracking, driver-app nav, and driver homepage
 **Related docs:** [`NAVIGATION_PHASE5_FINAL_HARDENING_PLAN.md`](./NAVIGATION_PHASE5_FINAL_HARDENING_PLAN.md) (broader nav feature roadmap — trip share, canned messages, geofence; this doc does not duplicate it), [`MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md`](./MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md) (earlier audit)
 
@@ -401,11 +401,14 @@ Five new real-device screenshots, all on a **rental ("Flexible route") trip**, `
 
 **Note — did not need the product/backend confirmation to ship:** the fix holds regardless of what `dropLat`/`dropLng` actually contains for a rental (a rough booking-time plan, or genuinely unset) — either way it isn't a committed destination the driver is trying to reach turn-by-turn, so gating on `rideType` alone is correct without knowing that answer. Flagging it as still worth confirming with product for other purposes (e.g. whether that address should show anywhere in the UI at all), but it wasn't a blocker for this fix.
 
-**Review checklist:**
+**⚠️ REVERTED 2026-07-13 — this premise was wrong.** First real-usage report after shipping: a rental where the rider *did* select a drop-off location showed **no destination, no polyline, no navigation at all** — this fix's `rideType !== 'rental'` gate was blocking turn-by-turn for exactly the case where it's needed, because the actual product has rentals both with and without a rider-selected drop-off, and this doc never confirmed which one the field-test screenshots were (the "confirm with product" step above was correctly flagged as needed and then skipped anyway before shipping — that was the mistake, not the absence of information itself). **The original pre-Phase-10 code was right all along**: `hasNavTarget = currentStop != null || (dropLat != null && dropLng != null)`, no `rideType` check. A rental *with* a real drop-off has real `dropLat`/`dropLng` and deserves full turn-by-turn like any other ride; a rental with no drop-off selected presumably has `dropLat`/`dropLng` null and was already correctly falling back to free-drive under the original null-check alone — the `rideType` condition added nothing but a regression. Reverted in `TripInProgress.tsx` back to the original one-line condition. The `destKey === null` → skip-straight-to-`'nav'`-mode fix from this same phase (the `FitBoundsToPoints`-no-ops-below-2-points knock-on) is unaffected and still correct — it only ever engages when there's genuinely no drop coordinate at all.
+
+**Corrected review checklist:**
 - [x] `tsc --noEmit` clean on `apps/driver`
-- [ ] Start a rental trip: no maneuver banner, no route line, no reroute churn while driving anywhere — **needs a real device/drive**
-- [ ] Rider requests an interim stop on a rental trip: full turn-by-turn to that stop works exactly as a normal ride's does, then reverts to free-drive after it's reached/skipped — **needs a real device/drive**
-- [ ] Point-to-point and round-trip rides: zero behavior change (regression check) — **needs a real device/drive**
+- [ ] Rental **with** a rider-selected drop-off: full turn-by-turn (banner, polyline, reroute) works exactly like a point-to-point ride — **needs a real device/drive, this is the case that just broke in production**
+- [ ] Rental **without** any drop-off selected: free-drive map, no banner/route/reroute churn — **needs a real device/drive**
+- [ ] Rider requests an interim stop mid-rental: full turn-by-turn to that stop, then reverts appropriately after reached/skipped — **needs a real device/drive**
+- [ ] Point-to-point and round-trip rides: zero behavior change (this was never touched by the revert) — **needs a real device/drive**
 
 **Effort:** Small-Medium (1-2 days, mostly the product-confirmation step above; the code gate itself is a small conditional).
 
