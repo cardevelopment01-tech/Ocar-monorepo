@@ -175,15 +175,19 @@ export default function ReferenceSelfie() {
     if (!video || !canvas) return
     if (!video.videoWidth || !video.videoHeight) return
 
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+    // Phone cameras often report 1920x1080+; downscale before encoding so we
+    // don't upload a multi-MB selfie for a face-match check.
+    const SELFIE_MAX_EDGE = 1024
+    const scale = Math.min(1, SELFIE_MAX_EDGE / Math.max(video.videoWidth, video.videoHeight))
+    canvas.width  = Math.round(video.videoWidth  * scale)
+    canvas.height = Math.round(video.videoHeight * scale)
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
     // Mirror the captured frame to match what the user saw
     ctx.translate(canvas.width, 0)
     ctx.scale(-1, 1)
-    ctx.drawImage(video, 0, 0)
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
     canvas.toBlob(blob => {
       if (!blob) return
@@ -191,7 +195,7 @@ export default function ReferenceSelfie() {
       setPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob) })
       setStage('preview')
       stopCamera()
-    }, 'image/jpeg', 0.92)
+    }, 'image/jpeg', 0.85)
   }
 
   function retake() {

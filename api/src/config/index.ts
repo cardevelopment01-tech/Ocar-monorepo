@@ -6,7 +6,9 @@ const envSchema = z.object({
   // Database
   DATABASE_URL: z.string().min(1),
   DATABASE_POOL_MIN: z.coerce.number().default(2),
-  DATABASE_POOL_MAX: z.coerce.number().default(10),
+  // gps-flush worker alone runs at concurrency 20 (see jobs/workers/gps-flush.worker.ts);
+  // must stay above that plus headroom for concurrent request handlers.
+  DATABASE_POOL_MAX: z.coerce.number().default(25),
 
   // Redis
   REDIS_URL: z.string().min(1),

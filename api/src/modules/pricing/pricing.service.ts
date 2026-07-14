@@ -15,7 +15,17 @@ export function clampTripHours(rideType: string, tripHours: number | undefined):
 export async function getFareEstimate(
   req: FareEstimateRequest
 ): Promise<FareEstimateResponse> {
-  const rateCard = await repo.getCurrentRateCard(req.category_id, req.ride_type)
+  // These four lookups are independent of each other — run them concurrently
+  // instead of paying 4 sequential round trips.
+  const [rateCard, chargePerStop, surgeEvent, pkg] = await Promise.all([
+    repo.getCurrentRateCard(req.category_id, req.ride_type),
+    repo.getStopCharge(req.category_id),
+    req.city_id ? repo.getActiveSurge(req.city_id, req.category_id) : Promise.resolve(null),
+    req.ride_type === 'rental' && req.rental_package_id
+      ? repo.getRentalPackage(req.rental_package_id)
+      : Promise.resolve(null),
+  ])
+
   if (!rateCard) {
     throw Object.assign(
       new Error(`No rate card for category ${req.category_id} / ${req.ride_type}`),
@@ -23,27 +33,17 @@ export async function getFareEstimate(
     )
   }
 
-  const chargePerStop = await repo.getStopCharge(req.category_id)
-
-  let surgeEvent = null
-  let surgeMultiplier = 1.0
-  if (req.city_id) {
-    surgeEvent = await repo.getActiveSurge(req.city_id, req.category_id)
-    if (surgeEvent) surgeMultiplier = parseFloat(surgeEvent.multiplier)
-  }
+  const surgeMultiplier = surgeEvent ? parseFloat(surgeEvent.multiplier) : 1.0
 
   let packageFare: number | null = null
   let extraPerKm = 0
   let extraPerMin = 0
   let rentalHours: number | undefined
-  if (req.ride_type === 'rental' && req.rental_package_id) {
-    const pkg = await repo.getRentalPackage(req.rental_package_id)
-    if (pkg) {
-      packageFare  = parseFloat(pkg.package_fare)
-      extraPerKm   = parseFloat(pkg.extra_per_km)
-      extraPerMin  = parseFloat(pkg.extra_per_min)
-      rentalHours  = Math.round(pkg.duration_minutes / 60)
-    }
+  if (pkg) {
+    packageFare  = parseFloat(pkg.package_fare)
+    extraPerKm   = parseFloat(pkg.extra_per_km)
+    extraPerMin  = parseFloat(pkg.extra_per_min)
+    rentalHours  = Math.round(pkg.duration_minutes / 60)
   }
 
   const breakdown = estimateFare({

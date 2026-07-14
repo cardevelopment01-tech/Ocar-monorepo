@@ -6,7 +6,10 @@ export const pool = new Pool({
   min: config.DATABASE_POOL_MIN,
   max: config.DATABASE_POOL_MAX,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 5000,
+  // Bounds a runaway/blocking query so it can't hold a connection (and any
+  // locks it took) forever and starve the rest of the pool.
+  statement_timeout: 10000,
 })
 
 export async function query<T extends object>(

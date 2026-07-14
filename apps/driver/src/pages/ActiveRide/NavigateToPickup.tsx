@@ -15,6 +15,7 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { useNavPrefsStore } from '@/store/useNavPrefsStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { driverSafetyApi } from '@/lib/safety-api'
+import { getDriverSocket } from '@/lib/socket'
 import { EASE, GLASS, fmtReturn } from '@/lib/constants'
 import { useDriverLocation } from '@/lib/useDriverLocation'
 import { useTurnByTurn } from '@/lib/useTurnByTurn'
@@ -192,7 +193,8 @@ export default function NavigateToPickup() {
     syncIntervalMs: 3_000,
     onSync: sessionId
       ? (lat, lng, heading) => {
-          driverRideApi.updateLocation({ sessionId: sessionId!, lat, lng, heading, recordedAt: new Date().toISOString() }).catch(() => {})
+          // Over the already-open socket instead of a fresh HTTP request every 3s.
+          getDriverSocket().emit('location:update', { sessionId, lat, lng, heading, recordedAt: new Date().toISOString() })
         }
       : undefined,
   })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
 import { Map as GoogleMap, AdvancedMarker, Polyline, useMap } from '@vis.gl/react-google-maps'
 import { adminSessionsApi, type ActiveDriverSession } from '@/lib/admin-api'
 import { getAdminSocket } from '@/lib/socket'
@@ -76,7 +76,11 @@ function useSmoothedLatLng(lat: number, lng: number): { lat: number; lng: number
 
 // ─── Driver dot marker ────────────────────────────────────────────────────────
 
-function DriverDot({ session, onClick }: { session: ActiveDriverSession; onClick: () => void }) {
+// Memoized on `session` identity only (ignores `onClick`, which is a fresh
+// closure every parent render but always resolves to the same session data) —
+// otherwise every driver marker re-renders on every OTHER driver's location
+// update, since `onClick`'s identity would defeat the default shallow compare.
+const DriverDot = memo(function DriverDot({ session, onClick }: { session: ActiveDriverSession; onClick: () => void }) {
   const isOnTrip = session.session_status === 'on_trip'
   const color = isOnTrip ? '#4F46E5' : '#10B981'
   const pos = useSmoothedLatLng(session.lat!, session.lng!)
@@ -102,7 +106,7 @@ function DriverDot({ session, onClick }: { session: ActiveDriverSession; onClick
       </div>
     </AdvancedMarker>
   )
-}
+}, (prev, next) => prev.session === next.session)
 
 // ─── FlyTo helper (must be inside Map tree) ───────────────────────────────────
 

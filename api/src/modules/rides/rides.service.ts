@@ -1,6 +1,6 @@
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
-import { startOtpKey, endOtpKey } from '@/constants/redis-keys'
+import { startOtpKey, endOtpKey, activeRideByDriverKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './rides.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
@@ -187,6 +187,8 @@ export async function goOffline(driverId: bigint, reason = 'driver_choice') {
 // set), not rideId, so it never leaks memory across completed rides.
 const lastRawPingByDriver = new Map<string, { lat: number; lng: number }>()
 
+const ACTIVE_RIDE_CACHE_TTL_SEC = 10
+
 export async function updateLocation(driverId: bigint, data: {
   sessionId: bigint
   lat: number
@@ -215,13 +217,22 @@ export async function updateLocation(driverId: bigint, data: {
     speed:    data.speed   ?? 0,
   })
 
-  // Emit live location to the user's tracking page
-  const activeRideRes = await pool.query<{ id: string }>(
-    `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress') LIMIT 1`,
-    [driverId]
-  )
-  if (activeRideRes.rows[0]) {
-    const rideId = activeRideRes.rows[0].id
+  // Emit live location to the user's tracking page. This query runs on every
+  // GPS ping (every ~3s per online driver), so the result is cached with a
+  // short TTL — worst case a status change (accept/complete/cancel) takes up
+  // to ACTIVE_RIDE_CACHE_TTL_SEC to be reflected, which just delays/extends
+  // live tracking emission by that long, never breaks correctness elsewhere.
+  const activeRideCacheKey = activeRideByDriverKey(driverId.toString())
+  let rideId = await redis.get(activeRideCacheKey)
+  if (rideId === null) {
+    const activeRideRes = await pool.query<{ id: string }>(
+      `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress') LIMIT 1`,
+      [driverId]
+    )
+    rideId = activeRideRes.rows[0]?.id ?? ''
+    await redis.set(activeRideCacheKey, rideId, 'EX', ACTIVE_RIDE_CACHE_TTL_SEC)
+  }
+  if (rideId) {
     const current = { lat: data.lat, lng: data.lng }
     const prevPing = lastRawPingByDriver.get(driverId.toString())
     lastRawPingByDriver.set(driverId.toString(), current)

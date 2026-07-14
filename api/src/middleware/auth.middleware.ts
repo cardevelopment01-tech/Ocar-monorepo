@@ -1,7 +1,8 @@
 import { RequestHandler } from 'express'
 import { verifyAccessToken } from '@/lib/jwt'
 import { AppErrors } from '@/constants/errors'
-import { PrincipalRole } from '@/constants/enums'
+import { PrincipalRole, AdminRole } from '@/constants/enums'
+import { getJSON, setWithTTL } from '@/db/redis'
 import {
   findUserById,
   findDriverById,
@@ -9,6 +10,21 @@ import {
 } from '@/modules/auth/auth.repository'
 
 const MANDATORY_TOTP_ROLES = new Set(['super_admin', 'finance_admin'])
+
+// Every authenticated request (including every GPS ping) hit the DB to re-verify
+// the principal still exists/isn't banned. Cache the small status-check result
+// instead — 20s TTL bounds how long a ban/suspend takes to take effect.
+const PRINCIPAL_CACHE_TTL_SEC = 20
+
+type CachedUser = { id: string; code: string; status: string }
+type CachedDriver = { id: string; code: string; status: string }
+type CachedAdmin = {
+  id: string
+  code: string
+  role: AdminRole
+  is_active: boolean
+  totp_enabled: boolean
+}
 
 export function authenticate(): RequestHandler {
   return async (req, res, next) => {
@@ -27,8 +43,21 @@ export function authenticate(): RequestHandler {
       const id = BigInt(payload.sub)
 
       if (payload.role === PrincipalRole.USER) {
-        const user = await findUserById(id)
-        if (!user || user.status === 'deleted') {
+        const cacheKey = `auth:user:${id}`
+        let user = await getJSON<CachedUser>(cacheKey)
+        if (!user) {
+          const dbUser = await findUserById(id)
+          if (!dbUser) {
+            res.status(401).json({
+              error: AppErrors.AUTH_TOKEN_INVALID.message,
+              code: AppErrors.AUTH_TOKEN_INVALID.code,
+            })
+            return
+          }
+          user = { id: dbUser.id, code: dbUser.code, status: dbUser.status }
+          await setWithTTL(cacheKey, JSON.stringify(user), PRINCIPAL_CACHE_TTL_SEC)
+        }
+        if (user.status === 'deleted') {
           res.status(401).json({
             error: AppErrors.AUTH_TOKEN_INVALID.message,
             code: AppErrors.AUTH_TOKEN_INVALID.code,
@@ -37,8 +66,21 @@ export function authenticate(): RequestHandler {
         }
         req.user = { id: BigInt(user.id), code: user.code, role: 'user', status: user.status }
       } else if (payload.role === PrincipalRole.DRIVER) {
-        const driver = await findDriverById(id)
-        if (!driver || driver.status === 'banned') {
+        const cacheKey = `auth:driver:${id}`
+        let driver = await getJSON<CachedDriver>(cacheKey)
+        if (!driver) {
+          const dbDriver = await findDriverById(id)
+          if (!dbDriver) {
+            res.status(401).json({
+              error: AppErrors.AUTH_TOKEN_INVALID.message,
+              code: AppErrors.AUTH_TOKEN_INVALID.code,
+            })
+            return
+          }
+          driver = { id: dbDriver.id, code: dbDriver.code, status: dbDriver.status }
+          await setWithTTL(cacheKey, JSON.stringify(driver), PRINCIPAL_CACHE_TTL_SEC)
+        }
+        if (driver.status === 'banned') {
           res.status(401).json({
             error: AppErrors.AUTH_TOKEN_INVALID.message,
             code: AppErrors.AUTH_TOKEN_INVALID.code,
@@ -47,13 +89,25 @@ export function authenticate(): RequestHandler {
         }
         req.driver = { id: BigInt(driver.id), code: driver.code, role: 'driver', status: driver.status }
       } else if (payload.role === PrincipalRole.ADMIN) {
-        const admin = await findAdminById(id)
+        const cacheKey = `auth:admin:${id}`
+        let admin = await getJSON<CachedAdmin>(cacheKey)
         if (!admin) {
-          res.status(401).json({
-            error: AppErrors.AUTH_TOKEN_INVALID.message,
-            code: AppErrors.AUTH_TOKEN_INVALID.code,
-          })
-          return
+          const dbAdmin = await findAdminById(id)
+          if (!dbAdmin) {
+            res.status(401).json({
+              error: AppErrors.AUTH_TOKEN_INVALID.message,
+              code: AppErrors.AUTH_TOKEN_INVALID.code,
+            })
+            return
+          }
+          admin = {
+            id: dbAdmin.id,
+            code: dbAdmin.code,
+            role: dbAdmin.role,
+            is_active: dbAdmin.is_active,
+            totp_enabled: dbAdmin.totp_enabled,
+          }
+          await setWithTTL(cacheKey, JSON.stringify(admin), PRINCIPAL_CACHE_TTL_SEC)
         }
         if (!admin.is_active) {
           res.status(401).json({

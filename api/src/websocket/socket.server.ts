@@ -7,6 +7,7 @@ import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import { rideAckKey } from '@/constants/redis-keys'
 import { getPendingAssignmentsForDriver } from '@/modules/rides/rides.repository'
+import { updateLocation } from '@/modules/rides/rides.service'
 
 // Room naming conventions:
 //   ride:{rideId}   user + driver tracking a ride
@@ -87,6 +88,29 @@ export function initSocketServer(httpServer: HttpServer): Server {
       // Clear ACK key when driver confirms receipt of a ride request
       socket.on('ride:request:ack', ({ rideId }: { rideId: string }) => {
         void redis.del(rideAckKey(rideId, user.sub))
+      })
+
+      // GPS ping over the already-open connection instead of a fresh HTTP
+      // request every ~3s — same handler the POST /sessions/location route uses.
+      socket.on('location:update', (data: {
+        sessionId: string
+        lat: number
+        lng: number
+        heading?: number
+        speed?: number
+        recordedAt: string
+      }) => {
+        const input: Parameters<typeof updateLocation>[1] = {
+          sessionId:  BigInt(data.sessionId),
+          lat:        data.lat,
+          lng:        data.lng,
+          recordedAt: data.recordedAt,
+        }
+        if (data.heading !== undefined) input.heading = data.heading
+        if (data.speed   !== undefined) input.speed   = data.speed
+        updateLocation(BigInt(user.sub), input).catch((err: unknown) => {
+          console.error(`location:update failed for driver ${user.sub}:`, err)
+        })
       })
 
       // On reconnect, immediately re-deliver any assignments the driver may have

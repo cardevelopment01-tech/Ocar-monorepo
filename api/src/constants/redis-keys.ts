@@ -6,6 +6,8 @@ export const endOtpKey   = (rideId: string): string => `ride:end_otp:${rideId}`
 
 export const walletTopupOrderKey = (orderId: string): string => `wallet:topup_order:${orderId}`
 
+export const activeRideByDriverKey = (driverId: string): string => `ride:active_by_driver:${driverId}`
+
 // Coordinates rounded to 4 decimal places (~11m precision) so nearby-identical
 // requests hit the same cache entry. Options are folded into the key since they
 // change the response shape (e.g. withSteps adds a steps array).
