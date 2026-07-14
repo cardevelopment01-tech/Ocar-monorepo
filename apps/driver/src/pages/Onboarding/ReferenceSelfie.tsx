@@ -6,7 +6,7 @@ import { onboardingApi } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 
-type Stage = 'camera' | 'preview' | 'submitting'
+type Stage = 'gate' | 'camera' | 'preview' | 'submitting'
 
 const STEPS = ['personal_info', 'vehicle_info', 'documents', 'selfie']
 const STEP_IDX = 3
@@ -75,6 +75,21 @@ function getBrowserPermissionGuide(): BrowserPermissionGuide {
   }
 }
 
+// Distinguishes an explicit, persisted "denied" from a plain dismiss/"prompt"
+// state. Once a browser records an explicit deny, no JS can re-trigger the
+// native popup — that's true of every getUserMedia-gated permission
+// (camera, mic, location alike), not something specific to this page.
+// Safari has no Permissions API entry for 'camera', so it falls through to
+// 'unsupported' and we trust the raw NotAllowedError as a real block.
+async function getCameraPermissionState(): Promise<'granted' | 'denied' | 'prompt' | 'unsupported'> {
+  try {
+    const status = await navigator.permissions.query({ name: 'camera' as PermissionName })
+    return status.state
+  } catch {
+    return 'unsupported'
+  }
+}
+
 export default function ReferenceSelfie() {
   const navigate = useNavigate()
   const updateDriver = useAuthStore(s => s.updateDriver)
@@ -83,7 +98,7 @@ export default function ReferenceSelfie() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
-  const [stage, setStage] = useState<Stage>('camera')
+  const [stage, setStage] = useState<Stage>('gate')
   const [cameraReady, setCameraReady] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null)
@@ -92,7 +107,16 @@ export default function ReferenceSelfie() {
   const [submitError, setSubmitError] = useState('')
 
   useEffect(() => {
-    void startCamera()
+    void (async () => {
+      // Only auto-open the camera if permission is already granted (returning
+      // user). Otherwise wait for a tap on the gate screen — firing
+      // getUserMedia with no user gesture is what causes the confused
+      // reflexive deny/dismiss the client reported.
+      if ((await getCameraPermissionState()) === 'granted') {
+        setStage('camera')
+        void startCamera()
+      }
+    })()
     return stopCamera
   }, [])
 
@@ -125,7 +149,15 @@ export default function ReferenceSelfie() {
     } catch (err) {
       const name = (err as Error).name
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        setPermissionDenied(true)
+        // A dismiss (tapped away / no explicit choice) leaves the permission
+        // in 'prompt' state — the browser WILL show the native popup again.
+        // Only a real 'denied' (or an unsupported Permissions API, e.g.
+        // Safari) needs the manual browser-settings instructions.
+        if ((await getCameraPermissionState()) === 'prompt') {
+          setStage('gate')
+        } else {
+          setPermissionDenied(true)
+        }
       } else {
         setCamError('Could not access camera. Please check your device settings.')
       }
@@ -268,6 +300,45 @@ export default function ReferenceSelfie() {
           >
             <RefreshCw size={16} />
             Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Gate: ask for the tap before requesting the camera ─────────────────────
+
+  if (stage === 'gate') {
+    return (
+      <div
+        className="min-h-[100dvh] bg-black flex flex-col"
+        style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="px-5 flex items-center pb-3" style={{ paddingTop: 'max(env(safe-area-inset-top), 0.75rem)' }}>
+          <button
+            onClick={() => navigate(-1)}
+            className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center"
+            aria-label="Go back"
+          >
+            <ArrowLeft size={18} className="text-white" />
+          </button>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mb-6">
+            <Camera size={32} className="text-white/80" />
+          </div>
+          <h2 className="text-white text-xl font-bold mb-3">Take a quick selfie</h2>
+          <p className="text-white/60 text-sm leading-relaxed">
+            We need camera access to verify your identity. Your browser will ask you to allow it.
+          </p>
+        </div>
+        <div className="px-6 pb-8">
+          <button
+            onClick={() => { setStage('camera'); void startCamera() }}
+            className="btn-go w-full flex items-center justify-center gap-2"
+          >
+            <Camera size={16} />
+            Enable camera
           </button>
         </div>
       </div>
