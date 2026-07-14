@@ -80,6 +80,10 @@ export async function getRoute(
   return result
 }
 
+export async function snapTrailToRoads(points: Array<{ lat: number; lng: number }>) {
+  return google.snapToRoads(points)
+}
+
 export async function classifyTrip(
   originLat: number,
   originLng: number,

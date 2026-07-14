@@ -2,6 +2,7 @@ import { config } from '@/config'
 
 const BASE = 'https://maps.googleapis.com/maps/api'
 const ROUTES_API_BASE = 'https://routes.googleapis.com/directions/v2:computeRoutes'
+const ROADS_API_BASE = 'https://roads.googleapis.com/v1/snapToRoads'
 
 export type PlaceSuggestion = {
   placeId: string
@@ -348,6 +349,35 @@ async function osrmRoute(
     durationMin: Math.round(route.duration / 60),
     polyline: route.geometry,
     source: 'osrm',
+  }
+}
+
+// Snaps a short GPS breadcrumb onto the nearest road geometry (interpolate=true
+// also fills gaps between sparse pings along the actual road curve) — used only
+// for the rider-facing rental "flexible route" trail, never for fare/ETA. Falls
+// back to the raw points on any failure/missing key so a cosmetic trail glitch
+// never blocks the ride flow. Roads API caps at 100 points/request; callers here
+// only ever pass small batches (see rides.service.ts TRAIL_SNAP_BATCH_SIZE), so
+// no chunking is needed.
+export async function snapToRoads(
+  points: Array<{ lat: number; lng: number }>
+): Promise<Array<{ lat: number; lng: number }>> {
+  if (!config.GOOGLE_MAPS_API_KEY || points.length < 2) return points
+  try {
+    const url = new URL(ROADS_API_BASE)
+    url.searchParams.set('path', points.map(p => `${p.lat},${p.lng}`).join('|'))
+    url.searchParams.set('interpolate', 'true')
+    url.searchParams.set('key', config.GOOGLE_MAPS_API_KEY)
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) })
+    if (!res.ok) return points
+
+    const body = await res.json() as {
+      snappedPoints?: Array<{ location: { latitude: number; longitude: number } }>
+    }
+    if (!body.snappedPoints?.length) return points
+    return body.snappedPoints.map(p => ({ lat: p.location.latitude, lng: p.location.longitude }))
+  } catch {
+    return points
   }
 }
 

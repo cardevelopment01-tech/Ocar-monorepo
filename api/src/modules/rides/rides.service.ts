@@ -23,7 +23,7 @@ import {
   creditCashback,
 } from '@/modules/payments/payments.service'
 import { calculateFare } from '@/lib/fare'
-import { classifyTrip, getRoute } from '@/modules/geo/geo.service'
+import { classifyTrip, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
 import { MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES } from '@/constants/limits'
 
@@ -181,6 +181,12 @@ export async function goOffline(driverId: bigint, reason = 'driver_choice') {
   return session
 }
 
+// Last raw ping per driver, so each new ping can be road-snapped together with
+// its predecessor (the exact hop where a straight chord would cut through a
+// building/lake, or across a turn) — keyed by driverId (a small, slowly-growing
+// set), not rideId, so it never leaks memory across completed rides.
+const lastRawPingByDriver = new Map<string, { lat: number; lng: number }>()
+
 export async function updateLocation(driverId: bigint, data: {
   sessionId: bigint
   lat: number
@@ -216,12 +222,27 @@ export async function updateLocation(driverId: bigint, data: {
   )
   if (activeRideRes.rows[0]) {
     const rideId = activeRideRes.rows[0].id
-    socketEvents.sendDriverLocation(rideId, {
-      lat:        data.lat,
-      lng:        data.lng,
-      heading:    data.heading ?? 0,
-      speed_kmph: data.speed ?? 0,
-    })
+    const current = { lat: data.lat, lng: data.lng }
+    const prevPing = lastRawPingByDriver.get(driverId.toString())
+    lastRawPingByDriver.set(driverId.toString(), current)
+
+    // Road-snap this hop (previous raw ping -> this one) so both the live driver
+    // marker and the rider's trail line follow real roads instead of a straight
+    // GPS chord — this is the exact segment that cuts through a building/lake or
+    // clips a turn. Fire-and-forget: a slow/failed Roads API call must never
+    // delay this response or the driver's location-update loop.
+    void (async () => {
+      const points = prevPing ? await snapTrailToRoads([prevPing, current]) : [current]
+      const marker = points[points.length - 1] ?? current
+      socketEvents.sendDriverLocation(rideId, {
+        lat:        marker.lat,
+        lng:        marker.lng,
+        heading:    data.heading ?? 0,
+        speed_kmph: data.speed ?? 0,
+      })
+      socketEvents.sendTrailSegment(rideId, points)
+    })().catch(() => {})
+
     // Async GPS track write — best-effort, does not block the response
     gpsFlushQueue.add('gps_track', {
       rideId,

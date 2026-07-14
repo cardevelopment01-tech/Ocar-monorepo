@@ -379,11 +379,18 @@ export default function RidePage() {
     }
     const onDriverLocation = (data: { lat: number; lng: number; heading: number }) => {
       setDriverPos([data.lat, data.lng])
-      if (rideStatusRef.current === 'in_progress') {
-        const next: [number, number][] = [...breadcrumbRef.current, [data.lat, data.lng]]
-        breadcrumbRef.current = next
-        setBreadcrumb(next)
-      }
+    }
+    // Road-snapped trail segments (see api rides.service.ts updateLocation) —
+    // replaces raw per-ping breadcrumb points so the line follows actual roads
+    // instead of cutting straight lines through buildings/water.
+    const onTrailSegment = (data: { points: Array<{ lat: number; lng: number }> }) => {
+      if (rideStatusRef.current !== 'in_progress') return
+      const next: [number, number][] = [
+        ...breadcrumbRef.current,
+        ...data.points.map((p): [number, number] => [p.lat, p.lng]),
+      ]
+      breadcrumbRef.current = next
+      setBreadcrumb(next)
     }
     const onStuckFlagged = (data: { reason?: string }) => {
       setRide(prev => prev ? {
@@ -406,6 +413,7 @@ export default function RidePage() {
     socket.on('ride:status_update', onStatusUpdate)
     socket.on('ride:driver_assigned', onDriverAssigned)
     socket.on('driver:location',    onDriverLocation)
+    socket.on('driver:trail_segment', onTrailSegment)
     socket.on('ride:stuck_flagged', onStuckFlagged)
     socket.on('stop:updated',       onStopUpdated)
 
@@ -425,6 +433,7 @@ export default function RidePage() {
       socket.off('ride:status_update', onStatusUpdate)
       socket.off('ride:driver_assigned', onDriverAssigned)
       socket.off('driver:location',    onDriverLocation)
+      socket.off('driver:trail_segment', onTrailSegment)
       socket.off('ride:stuck_flagged', onStuckFlagged)
       socket.off('stop:updated',       onStopUpdated)
       document.removeEventListener('visibilitychange', onVisible)

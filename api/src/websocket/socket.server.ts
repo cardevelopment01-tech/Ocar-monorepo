@@ -225,6 +225,12 @@ export const socketEvents = {
     getIO().to(`ride:${rideId}`).emit('driver:location', data)
   },
 
+  // Road-snapped segment of the rental "flexible route" trail — see
+  // rides.service.ts updateLocation's TRAIL_SNAP_BATCH_SIZE buffering.
+  sendTrailSegment: (rideId: string, points: Array<{ lat: number; lng: number }>) => {
+    getIO().to(`ride:${rideId}`).emit('driver:trail_segment', { points })
+  },
+
   sendDriverAssigned: (rideId: string, data: object) => {
     getIO().to(`ride:${rideId}`).emit('ride:driver_assigned', data)
   },
