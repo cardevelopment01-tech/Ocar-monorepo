@@ -60,11 +60,11 @@ export default function Profile() {
   const initial      = displayName.charAt(0).toUpperCase()
   const statusStyle  = STATUS_COLORS[driver?.status ?? ''] ?? { bg: '#F1F5F9', text: '#94A3B8' }
 
-  function doSignOut() {
+  async function doSignOut() {
     if (refreshToken) {
       void api.post('/api/v1/auth/logout', { refreshToken }).catch(() => undefined)
     }
-    void unregisterPush()
+    await unregisterPush()
     clearAuth()
     navigate('/login', { replace: true })
   }
@@ -192,7 +192,7 @@ export default function Profile() {
                 Cancel
               </button>
               <button
-                onClick={doSignOut}
+                onClick={() => void doSignOut()}
                 className="flex-1 py-3 rounded-2xl text-sm font-bold text-white bg-accent-red hover:opacity-90 transition-opacity"
               >
                 Sign Out

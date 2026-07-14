@@ -160,6 +160,15 @@ export default function App() {
     void fetchUnreadCount()
   }, [isAuthenticated]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The socket is a module-level singleton reused across logins on the same
+  // device — without this, a de-authed socket stays connected and joined to
+  // the previous driver's private room, so the next driver to log in on this
+  // device receives the previous driver's live notifications instead of
+  // their own.
+  useEffect(() => {
+    if (!isAuthenticated) disconnectDriverSocket()
+  }, [isAuthenticated])
+
   useEffect(() => {
     if (!isAuthenticated) return
     const socket = getDriverSocket()

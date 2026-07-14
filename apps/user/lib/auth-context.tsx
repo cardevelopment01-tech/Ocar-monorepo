@@ -11,7 +11,7 @@ interface AuthContextType {
   isLoading: boolean
   isAuthenticated: boolean
   setUser: (user: UserProfile | null) => void
-  logout: () => void
+  logout: () => Promise<void>
   refreshUser: () => Promise<void>
 }
 
@@ -64,12 +64,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void init()
   }, [])
 
-  const logout = () => {
+  const logout = async () => {
     const refreshToken = getRefreshToken()
     if (refreshToken) {
       void api.post('/api/v1/auth/logout', { refreshToken }).catch(() => undefined)
     }
-    void unregisterPush()
+    await unregisterPush()
     clearAuth()
     setUser(null)
     window.location.href = '/login'
