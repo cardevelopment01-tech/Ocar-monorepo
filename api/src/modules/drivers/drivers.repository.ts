@@ -16,6 +16,29 @@ export async function findDriverById(id: bigint): Promise<Driver | null> {
   return rows[0] ?? null
 }
 
+export async function countCompletedRides(driverId: bigint): Promise<number> {
+  const rows = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM rides WHERE driver_id = $1 AND status = 'completed'`,
+    [driverId.toString()]
+  )
+  return Number(rows[0]?.count ?? 0)
+}
+
+export async function updateProfile(
+  id: bigint,
+  data: { full_name: string; email?: string }
+): Promise<Driver> {
+  const params: unknown[] = [data.full_name, id.toString()]
+  let sql = 'UPDATE drivers SET full_name = $1, updated_at = now()'
+  if (data.email !== undefined) {
+    sql += ', email = $3'
+    params.push(data.email)
+  }
+  sql += ' WHERE id = $2 RETURNING *'
+  const rows = await query<Driver>(sql, params)
+  return rows[0]!
+}
+
 export async function updatePersonalInfo(
   id: bigint,
   data: {

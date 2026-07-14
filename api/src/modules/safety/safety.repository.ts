@@ -68,6 +68,21 @@ export async function insertRatingTags(ratingId: bigint, tagIds: bigint[]) {
   )
 }
 
+export async function getTopDriverTags(driverId: bigint, limit = 3) {
+  const res = await pool.query<{ label: string; count: string }>(
+    `SELECT d.label, COUNT(*)::text AS count
+     FROM rating_tags rt
+     JOIN ratings r ON r.id = rt.rating_id
+     JOIN rating_tag_definitions d ON d.id = rt.tag_id
+     WHERE r.to_driver_id = $1 AND d.sentiment = 'positive'
+     GROUP BY d.label
+     ORDER BY COUNT(*) DESC
+     LIMIT $2`,
+    [driverId, limit]
+  )
+  return res.rows.map(r => ({ label: r.label, count: Number(r.count) }))
+}
+
 export async function updateDriverRatingAvg(driverId: bigint) {
   await pool.query(
     `UPDATE drivers

@@ -3,6 +3,7 @@ import { AppErrors } from '@/constants/errors'
 import { uploadFile, getPresignedUrl } from '@/lib/storage'
 import { notificationsQueue } from '@/jobs/queues'
 import * as repo from './drivers.repository'
+import * as safetyRepo from '@/modules/safety/safety.repository'
 import type { Driver, DriverVehicle, OnboardingStatus } from './drivers.types'
 
 // ── Completion helpers ────────────────────────────────────────────────────────
@@ -74,12 +75,30 @@ export async function getOnboardingStatus(driverId: bigint): Promise<OnboardingS
 export async function getMe(driverId: bigint): Promise<{
   driver: Driver
   onboarding: OnboardingStatus
+  stats: { total_rides: number; rating_avg: number | null; top_tags: { label: string; count: number }[] }
 }> {
   const driver = await repo.findDriverById(driverId)
   if (!driver) throw createHttpError(AppErrors.NOT_FOUND)
 
-  const onboarding = await getOnboardingStatus(driverId)
-  return { driver, onboarding }
+  const [onboarding, totalRides, topTags] = await Promise.all([
+    getOnboardingStatus(driverId),
+    repo.countCompletedRides(driverId),
+    safetyRepo.getTopDriverTags(driverId),
+  ])
+
+  const ratingAvg = Number(driver.rating_avg)
+  return {
+    driver,
+    onboarding,
+    stats: { total_rides: totalRides, rating_avg: ratingAvg > 0 ? ratingAvg : null, top_tags: topTags },
+  }
+}
+
+export async function updateProfile(
+  driverId: bigint,
+  data: { full_name: string; email?: string }
+): Promise<Driver> {
+  return repo.updateProfile(driverId, data)
 }
 
 export async function getPersonalInfo(driverId: bigint): Promise<Partial<Driver>> {

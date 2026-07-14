@@ -8,13 +8,30 @@ export interface UserProfile extends UserRecord {
 }
 
 export async function findWithStats(id: bigint): Promise<UserProfile | null> {
-  // total_rides, rating_avg, wallet_balance aggregated in M09/M11
-  const rows = await query<UserRecord>(
+  const rows = await query<UserRecord & { rating_avg: string }>(
     'SELECT * FROM users WHERE id = $1 LIMIT 1',
     [id.toString()]
   )
   if (!rows[0]) return null
-  return { ...rows[0], total_rides: 0, rating_avg: null, wallet_balance: 0 }
+
+  const [rideRows, walletRows] = await Promise.all([
+    query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM rides WHERE user_id = $1 AND status = 'completed'`,
+      [id.toString()]
+    ),
+    query<{ balance: string }>(
+      'SELECT balance FROM user_wallets WHERE user_id = $1',
+      [id.toString()]
+    ),
+  ])
+
+  const ratingAvg = Number(rows[0].rating_avg)
+  return {
+    ...rows[0],
+    total_rides:    Number(rideRows[0]?.count ?? 0),
+    rating_avg:     ratingAvg > 0 ? ratingAvg : null,
+    wallet_balance: Number(walletRows[0]?.balance ?? 0),
+  }
 }
 
 export async function updateProfile(

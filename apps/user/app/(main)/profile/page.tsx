@@ -109,65 +109,59 @@ export default function ProfilePage() {
     <div className="h-full flex flex-col bg-background">
 
       {/* ── Header ── */}
-      <div
-        className="flex-shrink-0 px-5 pt-safe-top pb-6"
-        style={{ background: 'linear-gradient(160deg, #0F0F23 0%, #1E1B4B 100%)' }}
-      >
-        {/* Avatar + info */}
+      <div className="flex-shrink-0 px-5 pt-safe-top pb-2">
         <motion.div
-          className="flex items-center gap-4 mt-4 mb-6"
+          className="mt-4 rounded-3xl border border-border bg-surface p-5 shadow-card"
           initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, ease: EASE }}
         >
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold text-white flex-shrink-0"
-            style={{ background: 'rgba(99,102,241,0.50)', border: '2px solid rgba(255,255,255,0.15)' }}
-          >
-            {initial}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white font-bold text-lg leading-tight truncate">{displayName}</p>
-            <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.50)' }}>+91 {displayPhone}</p>
-            {displayEmail && (
-              <p className="text-xs truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.38)' }}>{displayEmail}</p>
-            )}
-          </div>
-          <motion.button
-            onClick={openEdit}
-            className="text-xs font-semibold rounded-xl px-3 py-1.5"
-            style={{ background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.80)' }}
-            whileTap={{ scale: 0.92 }}
-            transition={SPRING}
-          >
-            Edit
-          </motion.button>
-        </motion.div>
-
-        {/* Stats */}
-        <motion.div
-          className="grid grid-cols-3 gap-2"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.38, ease: EASE }}
-        >
-          {[
-            { value: stats?.total_rides ?? 0,  label: 'Rides' },
-            { value: stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '—', label: 'Rating', star: true },
-            { value: `₹${stats?.wallet_balance ?? 0}`, label: 'Wallet' },
-          ].map(s => (
+          {/* Avatar + info */}
+          <div className="flex items-center gap-4">
             <div
-              key={s.label}
-              className="rounded-2xl px-3 py-3 text-center"
-              style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)' }}
+              className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold text-white flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}
             >
-              <div className="flex items-center justify-center gap-1">
-                {s.star && <Star size={12} className="fill-status-warning text-status-warning" />}
-                <p className="text-lg font-bold text-white">{s.value}</p>
-              </div>
-              <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{s.label}</p>
+              {initial}
             </div>
-          ))}
+            <div className="flex-1 min-w-0">
+              <p className="text-text-primary font-bold text-lg leading-tight truncate">{displayName}</p>
+              <p className="text-text-muted text-sm mt-0.5">+91 {displayPhone}</p>
+              {displayEmail && (
+                <p className="text-text-muted text-xs truncate mt-0.5">{displayEmail}</p>
+              )}
+            </div>
+            <motion.button
+              onClick={openEdit}
+              className="text-xs font-semibold rounded-xl px-3 py-1.5 bg-primary-subtle text-primary"
+              whileTap={{ scale: 0.92 }}
+              transition={SPRING}
+            >
+              Edit
+            </motion.button>
+          </div>
+
+          {/* Stats */}
+          <motion.div
+            className="grid grid-cols-3 gap-2 mt-5 pt-5 border-t border-border-light"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15, duration: 0.38, ease: EASE }}
+          >
+            {[
+              { value: stats?.total_rides ?? 0,  label: 'Rides' },
+              { value: stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '—', label: 'Rating', star: true },
+              { value: `₹${stats?.wallet_balance ?? 0}`, label: 'Wallet' },
+            ].map(s => (
+              <div key={s.label} className="rounded-2xl px-3 py-3 text-center bg-surface-2">
+                <div className="flex items-center justify-center gap-1">
+                  {s.star && <Star size={12} className="fill-status-warning text-status-warning" />}
+                  <p className="text-lg font-bold text-text-primary">{s.value}</p>
+                </div>
+                <p className="text-[11px] mt-0.5 text-text-muted">{s.label}</p>
+              </div>
+            ))}
+          </motion.div>
         </motion.div>
       </div>
 
@@ -181,7 +175,7 @@ export default function ProfilePage() {
         {/* Menu */}
         <motion.div variants={fadeUp}>
           <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Account</p>
-          <div className="bg-surface rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}>
+          <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-card">
             {MENU.map((item, i) => (
               <motion.button
                 key={item.label}
@@ -207,8 +201,7 @@ export default function ProfilePage() {
         <motion.div variants={fadeUp} className="mt-4">
           <motion.button
             onClick={() => setShowSignOut(true)}
-            className="w-full flex items-center justify-center gap-2 bg-surface border border-border rounded-2xl py-3.5 text-sm font-semibold text-status-error"
-            style={{ boxShadow: '0 2px 12px rgba(15,15,35,0.07)' }}
+            className="w-full flex items-center justify-center gap-2 bg-surface border border-border rounded-2xl py-3.5 text-sm font-semibold text-status-error shadow-card"
             whileTap={{ scale: 0.98 }}
             transition={SPRING}
           >
@@ -238,8 +231,7 @@ export default function ProfilePage() {
             onClick={() => setShowSignOut(false)}
           >
             <motion.div
-              className="bg-surface rounded-t-3xl px-5 pt-5 pb-10"
-              style={{ boxShadow: '0 -6px 32px rgba(0,0,0,0.18)' }}
+              className="bg-surface rounded-t-3xl px-5 pt-5 pb-10 shadow-sheet"
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
@@ -285,8 +277,7 @@ export default function ProfilePage() {
             onClick={(e: React.MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget) setEditing(false) }}
           >
             <motion.div
-              className="bg-surface rounded-t-3xl px-5 pt-5 pb-10"
-              style={{ boxShadow: '0 -6px 32px rgba(0,0,0,0.18)' }}
+              className="bg-surface rounded-t-3xl px-5 pt-5 pb-10 shadow-sheet"
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}

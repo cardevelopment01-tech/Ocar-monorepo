@@ -5,6 +5,7 @@ import { authenticate } from '@/middleware/auth.middleware'
 import { requireDriver } from '@/middleware/role.middleware'
 import * as controller from './drivers.controller'
 import {
+  updateProfileSchema,
   personalInfoSchema,
   vehicleInfoSchema,
   identityDocumentSchema,
@@ -30,6 +31,7 @@ const router: IRouter = Router()
 const guard = [authenticate(), requireDriver()]
 
 router.get('/me', ...guard, controller.getMe)
+router.patch('/me', ...guard, validate(updateProfileSchema), controller.updateMe)
 
 router.get('/onboarding/personal-info',  ...guard, controller.getPersonalInfo)
 router.post('/onboarding/personal-info', ...guard, validate(personalInfoSchema), controller.savePersonalInfo)

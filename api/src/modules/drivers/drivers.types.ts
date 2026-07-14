@@ -20,6 +20,8 @@ export interface Driver {
   status: string
   onboarding_step: string
   fcm_token: string | null
+  rating_avg: string
+  total_ratings: number
   created_at: Date
   updated_at: Date
 }
