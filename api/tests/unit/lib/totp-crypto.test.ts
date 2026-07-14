@@ -20,7 +20,9 @@ describe('totp-crypto', () => {
   it('rejects a tampered ciphertext (auth tag mismatch)', () => {
     const encrypted = encryptTotpSecret('JBSWY3DPEHPK3PXP')
     const [iv, authTag, ciphertext] = encrypted.split(':')
-    const tampered = `${iv}:${authTag}:${ciphertext!.slice(0, -2)}00`
+    const lastByte = ciphertext!.slice(-2)
+    const flipped = lastByte === '00' ? '01' : '00' // guarantee the byte actually changes
+    const tampered = `${iv}:${authTag}:${ciphertext!.slice(0, -2)}${flipped}`
     expect(() => decryptTotpSecret(tampered)).toThrow()
   })
 
