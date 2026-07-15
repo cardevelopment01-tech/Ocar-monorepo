@@ -22,8 +22,6 @@ export async function postRating(req: Request, res: Response, next: NextFunction
       score: number
       comment?: string
       tagIds?: (string | number)[]
-      toDriverId?: string | number
-      toUserId?: string | number
     }
 
     const rideId    = BigInt(body.rideId)
@@ -42,8 +40,6 @@ export async function postRating(req: Request, res: Response, next: NextFunction
     const input: Parameters<typeof ratingsService.submitRating>[0] = { rideId, direction, score }
     if (req.user?.id   !== undefined) input.fromUserId   = req.user.id
     if (req.driver?.id !== undefined) input.fromDriverId = req.driver.id
-    if (body.toDriverId !== undefined) input.toDriverId  = BigInt(body.toDriverId)
-    if (body.toUserId   !== undefined) input.toUserId    = BigInt(body.toUserId)
     if (body.comment    !== undefined) input.comment     = body.comment
     if (body.tagIds     !== undefined) input.tagIds      = body.tagIds.map(t => BigInt(t))
 

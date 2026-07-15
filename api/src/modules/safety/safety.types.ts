@@ -15,8 +15,6 @@ export interface SubmitRatingInput {
   tagIds?:        bigint[]
   fromUserId?:    bigint
   fromDriverId?:  bigint
-  toUserId?:      bigint
-  toDriverId?:    bigint
 }
 
 export interface TriggerSosInput {

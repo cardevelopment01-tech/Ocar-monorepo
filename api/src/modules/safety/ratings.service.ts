@@ -32,14 +32,20 @@ export async function submitRating(input: SubmitRatingInput) {
     }
   }
 
+  // to_user_id/to_driver_id are derived from the verified ride row, never
+  // taken from client input — the ride's user_id/driver_id are the only
+  // trustworthy source for who is being rated.
+  const toDriverId = input.direction === 'user_to_driver' ? BigInt(ride.driver_id) : null
+  const toUserId   = input.direction === 'driver_to_user' ? BigInt(ride.user_id)   : null
+
   const rating = await repo.insertRating({
     ride_id:        input.rideId,
     direction:      input.direction,
     score:          input.score,
     from_user_id:   input.fromUserId   ?? null,
     from_driver_id: input.fromDriverId ?? null,
-    to_user_id:     input.toUserId     ?? null,
-    to_driver_id:   input.toDriverId   ?? null,
+    to_user_id:     toUserId,
+    to_driver_id:   toDriverId,
     comment:        input.comment      ?? null,
   })
 
@@ -47,10 +53,10 @@ export async function submitRating(input: SubmitRatingInput) {
     await repo.insertRatingTags(BigInt(rating.id), input.tagIds)
   }
 
-  if (input.direction === 'user_to_driver' && input.toDriverId) {
-    await repo.updateDriverRatingAvg(input.toDriverId)
-  } else if (input.direction === 'driver_to_user' && input.toUserId) {
-    await repo.updateUserRatingAvg(input.toUserId)
+  if (toDriverId) {
+    await repo.updateDriverRatingAvg(toDriverId)
+  } else if (toUserId) {
+    await repo.updateUserRatingAvg(toUserId)
   }
 
   return rating

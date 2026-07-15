@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Star, ArrowRight, RotateCcw, Clock, MapPin, Check } from 'lucide-react'
@@ -6,6 +6,7 @@ import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { fmtReturn } from '@/lib/constants'
+import { driverSafetyApi, type RatingTag } from '@/lib/safety-api'
 
 function fmt(n: number) {
   const s = n.toFixed(2)
@@ -25,6 +26,15 @@ export default function TripEnd() {
   const isRental    = activeRide?.rideType === 'rental'
   const isRoundTrip = activeRide?.rideType === 'round_trip'
 
+  const [riderRating,   setRiderRating]   = useState(0)
+  const [hoveredStar,   setHoveredStar]   = useState(0)
+  const [riderTags,     setRiderTags]     = useState<RatingTag[]>([])
+  const [selectedTags,  setSelectedTags]  = useState<string[]>([])
+  const [ratingSubmitting, setRatingSubmitting] = useState(false)
+  const [ratingSubmitted,  setRatingSubmitted]  = useState(false)
+  const [ratingError,      setRatingError]      = useState(false)
+  const displayStar = hoveredStar || riderRating
+
   useEffect(() => {
     if (confettiFired.current) return
     confettiFired.current = true
@@ -32,6 +42,28 @@ export default function TripEnd() {
       setOnline(sessionId, vehicleId, categoryId)
     }
   }, [sessionId, vehicleId, categoryId, setOnline])
+
+  useEffect(() => {
+    void driverSafetyApi.getRiderTags().then(setRiderTags).catch(() => {})
+  }, [])
+
+  function toggleTag(id: string) {
+    setSelectedTags(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id])
+  }
+
+  async function submitRiderRating() {
+    if (!riderRating || !activeRide || ratingSubmitting) return
+    setRatingSubmitting(true)
+    setRatingError(false)
+    try {
+      await driverSafetyApi.rateRider(activeRide.id, riderRating, selectedTags)
+      setRatingSubmitted(true)
+    } catch {
+      setRatingError(true)
+    } finally {
+      setRatingSubmitting(false)
+    }
+  }
 
   const handleBackHome = () => {
     clearRide()
@@ -155,6 +187,81 @@ export default function TripEnd() {
             <p className="text-text-muted text-xs mt-0.5">Your rating</p>
           </div>
         </div>
+      </motion.div>
+
+      {/* Rate the rider */}
+      <motion.div
+        initial={{ y: 30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.32 }}
+        className="bg-surface rounded-3xl border border-border p-5 mb-4"
+      >
+        {ratingSubmitted ? (
+          <div className="flex items-center gap-2 justify-center py-1">
+            <Check size={16} className="text-primary" aria-hidden="true" />
+            <span className="text-text-primary font-semibold text-sm">Thanks for rating your rider</span>
+          </div>
+        ) : (
+          <>
+            <p className="text-text-primary font-bold text-sm mb-3">
+              Rate {activeRide?.userName ?? 'your rider'}
+            </p>
+            <div className="flex justify-center gap-2 mb-1">
+              {[1, 2, 3, 4, 5].map(star => (
+                <button
+                  key={star}
+                  type="button"
+                  aria-label={`${star} star${star > 1 ? 's' : ''}`}
+                  onClick={() => setRiderRating(star)}
+                  onMouseEnter={() => setHoveredStar(star)}
+                  onMouseLeave={() => setHoveredStar(0)}
+                >
+                  <motion.div animate={{ scale: displayStar >= star ? 1.15 : 1 }} transition={{ type: 'spring', stiffness: 400, damping: 15 }}>
+                    <Star
+                      size={30}
+                      className={displayStar >= star ? 'text-accent-amber fill-accent-amber' : 'text-border fill-border'}
+                    />
+                  </motion.div>
+                </button>
+              ))}
+            </div>
+
+            {riderRating > 0 && riderTags.length > 0 && (
+              <div className="flex flex-wrap gap-2 justify-center mt-3">
+                {riderTags
+                  .filter(t => riderRating >= 4 ? t.sentiment === 'positive' : riderRating <= 2 ? t.sentiment === 'negative' : true)
+                  .map(tag => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => toggleTag(tag.id)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                        selectedTags.includes(tag.id)
+                          ? 'bg-primary border-primary text-white'
+                          : 'bg-bg border-border text-text-secondary'
+                      }`}
+                    >
+                      {tag.label}
+                    </button>
+                  ))}
+              </div>
+            )}
+
+            {riderRating > 0 && (
+              <button
+                type="button"
+                onClick={() => void submitRiderRating()}
+                disabled={ratingSubmitting}
+                className="w-full mt-4 py-2.5 rounded-2xl bg-primary text-white text-sm font-semibold active:scale-95 transition-transform disabled:opacity-60"
+              >
+                {ratingSubmitting ? 'Submitting…' : 'Submit rating'}
+              </button>
+            )}
+            {ratingError && (
+              <p className="text-status-error text-xs text-center mt-2">Could not submit, try again.</p>
+            )}
+          </>
+        )}
       </motion.div>
 
       <div className="flex-1" />
