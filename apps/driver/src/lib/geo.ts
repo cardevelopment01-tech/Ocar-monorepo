@@ -97,6 +97,33 @@ export function nearestPointOnPolyline(
 }
 
 /**
+ * True distance remaining along the route geometry — from a point snapped onto
+ * `segmentIndex` up to `polyline[targetIndex]` — as opposed to a straight-line
+ * distance to that target. Straight-line distance to a maneuver's endpoint can tick
+ * UP while the driver is genuinely making progress along a curving road (a highway
+ * bend inside a single "continue straight" step), since the chord to a fixed point
+ * shortens and lengthens as you move around the curve. Summing the polyline's own
+ * segments instead is monotonically non-increasing as the driver advances, because
+ * it's measuring the same path the driver is actually on.
+ */
+export function distanceAlongPolyline(
+  point: [number, number],
+  segmentIndex: number,
+  polyline: [number, number][],
+  targetIndex: number,
+): number {
+  if (targetIndex <= segmentIndex) return 0
+  const next = polyline[segmentIndex + 1]
+  let dist = next ? haversineMetres(point, next) : 0
+  for (let i = segmentIndex + 1; i < targetIndex; i++) {
+    const a = polyline[i]
+    const b = polyline[i + 1]
+    if (a && b) dist += haversineMetres(a, b)
+  }
+  return dist
+}
+
+/**
  * Builds the "remaining route" path for display: the current snapped position
  * followed by whatever route points are still ahead, always ending at the route's
  * true final point. Without appending that final point, the tail runs dry near

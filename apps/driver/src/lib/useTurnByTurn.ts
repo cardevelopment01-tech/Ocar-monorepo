@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { driverRideApi, type RouteStep, type TrafficInterval } from './ride-api'
 import { decodePolyline } from './polyline'
-import { bearingDeg, haversineMetres, isTrustworthySnap, nearestPointOnPolyline } from './geo'
+import { bearingDeg, distanceAlongPolyline, haversineMetres, isTrustworthySnap, nearestPointOnPolyline } from './geo'
 
 // Mirrors api/src/constants/limits.ts (driver app can't import server code — keep in sync).
 const OFF_ROUTE_THRESHOLD_METRES = 40
@@ -30,8 +30,9 @@ export interface TurnByTurnState {
    *  turn-by-turn/voice/traffic (Google Directions was unreachable). */
   source: 'google' | 'osrm' | 'fallback'
   currentStep: RouteStep | null
-  /** Straight-line distance to the current step's endpoint — an approximation that
-   *  holds well in practice since Google splits steps at bends, not mid-curve. */
+  /** Distance remaining to the current step's endpoint, measured along the route
+   *  geometry (not a straight-line chord) — so it's monotonically non-increasing as
+   *  the driver advances even through a long curving "continue straight" step. */
   distanceToManeuver: number | null
   isOffRoute: boolean
   /** True while a reroute fetch has failed and is retrying — UI can show "reconnecting…". */
@@ -83,7 +84,10 @@ export function useTurnByTurn(
   const [snappedPosition, setSnappedPosition] = useState<[number, number] | null>(null)
   const [snappedHeading, setSnappedHeading] = useState<number | null>(null)
   const [snappedSegmentIndex, setSnappedSegmentIndex] = useState<number | null>(null)
+  const [distanceToManeuver, setDistanceToManeuver] = useState<number | null>(null)
   const lastSegmentIndex = useRef<number | null>(null)
+  const stepIdxRef = useRef(0)
+  const lastDistanceToManeuver = useRef<number | null>(null)
 
   const routePoints   = useRef<[number, number][]>([])  // concatenated decoded step polylines
   const stepStartIndex = useRef<number[]>([])           // routePoints index where each step begins
@@ -116,6 +120,8 @@ export function useTurnByTurn(
         setTrafficPolyline(r.trafficPolyline)
         setSource(r.source)
         setCurrentStepIndex(0)
+        stepIdxRef.current = 0
+        lastDistanceToManeuver.current = null
         {
           let cum = 0
           const starts: number[] = []
@@ -212,31 +218,55 @@ export function useTurnByTurn(
       }
     }
 
-    setCurrentStepIndex(idx => {
-      const step = steps[idx]
-      let next = idx
-      if (step) {
-        const distToEnd = haversineMetres(position, [step.endLat, step.endLng])
-        if (distToEnd < STEP_ADVANCE_THRESHOLD_METRES && idx < steps.length - 1) next = idx + 1
+    // Last point of a given step within the concatenated routePoints array (the point
+    // where its polyline hands off to the next step, or the route's final point).
+    const stepEndPointIndex = (i: number) => (stepStartIndex.current[i + 1] ?? routePoints.current.length) - 1
+
+    const idx = stepIdxRef.current
+    const step = steps[idx]
+    let next = idx
+    if (step) {
+      const distToEnd = clampedIndex != null
+        ? distanceAlongPolyline(snapped.point, clampedIndex, routePoints.current, stepEndPointIndex(idx))
+        : haversineMetres(position, [step.endLat, step.endLng])
+      if (distToEnd < STEP_ADVANCE_THRESHOLD_METRES && idx < steps.length - 1) next = idx + 1
+    }
+    // Self-heal: if the on-route snap is already past a later step's start (a
+    // maneuver's 25m endpoint radius was missed, e.g. a wide/fast turn), jump
+    // forward to match instead of leaving the banner frozen on a passed step.
+    if (clampedIndex != null) {
+      const starts = stepStartIndex.current
+      for (let i = starts.length - 1; i > next; i--) {
+        if (starts[i]! <= clampedIndex) { next = i; break }
       }
-      // Self-heal: if the on-route snap is already past a later step's start (a
-      // maneuver's 25m endpoint radius was missed, e.g. a wide/fast turn), jump
-      // forward to match instead of leaving the banner frozen on a passed step.
+    }
+    if (next !== idx) {
+      stepIdxRef.current = next
+      setCurrentStepIndex(next)
+    }
+
+    const finalStep = steps[next]
+    if (finalStep) {
+      // Measure along the route geometry, not a straight-line chord to the endpoint —
+      // a chord can lengthen mid-curve even while the driver drives straight ahead
+      // and makes real progress (see distanceAlongPolyline's doc comment). Only
+      // recompute when this tick's snap is trustworthy; otherwise hold the last known
+      // value rather than substitute a noisy straight-line reading.
       if (clampedIndex != null) {
-        const starts = stepStartIndex.current
-        for (let i = starts.length - 1; i > next; i--) {
-          if (starts[i]! <= clampedIndex) { next = i; break }
-        }
+        lastDistanceToManeuver.current =
+          distanceAlongPolyline(snapped.point, clampedIndex, routePoints.current, stepEndPointIndex(next))
+      } else if (lastDistanceToManeuver.current == null) {
+        lastDistanceToManeuver.current = haversineMetres(position, [finalStep.endLat, finalStep.endLng])
       }
-      return next
-    })
+      setDistanceToManeuver(lastDistanceToManeuver.current)
+    } else {
+      lastDistanceToManeuver.current = null
+      setDistanceToManeuver(null)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position])
 
   const currentStep = steps[currentStepIndex] ?? null
-  const distanceToManeuver = position && currentStep
-    ? haversineMetres(position, [currentStep.endLat, currentStep.endLng])
-    : null
 
   return {
     steps, encodedPolyline, trafficIntervals, trafficPolyline, source,
