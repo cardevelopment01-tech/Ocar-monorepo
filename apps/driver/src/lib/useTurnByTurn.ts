@@ -29,6 +29,13 @@ export interface TurnByTurnState {
   /** Which tier the current route came from — 'osrm'/'fallback' means no real
    *  turn-by-turn/voice/traffic (Google Directions was unreachable). */
   source: 'google' | 'osrm' | 'fallback'
+  /** Every step's polyline decoded and concatenated, in order — the SAME array
+   *  `snappedSegmentIndex` is an index into. Callers slicing by that index (e.g.
+   *  `remainingRoutePath`) must use this array, not a separately-decoded
+   *  `encodedPolyline` (Google's overview_polyline, a different/simplified point
+   *  sequence) — mixing the two silently slices the wrong points and can draw a
+   *  straight line where the road curves. */
+  routePoints: [number, number][]
   currentStep: RouteStep | null
   /** Distance remaining to the current step's endpoint, measured along the route
    *  geometry (not a straight-line chord) — so it's monotonically non-increasing as
@@ -270,6 +277,7 @@ export function useTurnByTurn(
 
   return {
     steps, encodedPolyline, trafficIntervals, trafficPolyline, source,
+    routePoints: routePoints.current,
     currentStep, distanceToManeuver, isOffRoute, isReconnecting, loading,
     snappedPosition, snappedHeading, snappedSegmentIndex,
   }

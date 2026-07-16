@@ -22,7 +22,6 @@ import { useTurnByTurn } from '@/lib/useTurnByTurn'
 import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
 import { useWakeLock } from '@/lib/useWakeLock'
 import { haversineMetres, remainingRoutePath } from '@/lib/geo'
-import { decodePolyline } from '@/lib/polyline'
 
 const DriverMapView     = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap       = lazy(() => import('@/components/map/RecenterMap'))
@@ -201,7 +200,7 @@ export default function NavigateToPickup() {
   const voiceEnabled = useNavPrefsStore(s => s.voiceEnabled)
   const navLanguage  = useNavPrefsStore(s => s.language)
 
-  const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting, loading, snappedPosition, snappedHeading, snappedSegmentIndex } =
+  const { encodedPolyline, trafficIntervals, trafficPolyline, source, currentStep, distanceToManeuver, isReconnecting, loading, snappedPosition, snappedHeading, snappedSegmentIndex, routePoints } =
     useTurnByTurn(position, pickupPos, navLanguage, selfHeading)
 
   // Prefer the route-snapped fix over raw GPS for anything rendered on the map —
@@ -214,11 +213,9 @@ export default function NavigateToPickup() {
   const displayHeading  = snappedHeading ?? selfHeading
   // Trim the drawn route to what's still ahead of the last on-route snap —
   // see docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 7b. Undefined (falls back to
-  // the full route) whenever there's no snap yet.
-  const routePoints = useMemo(
-    () => (encodedPolyline ? decodePolyline(encodedPolyline) : []),
-    [encodedPolyline],
-  )
+  // the full route) whenever there's no snap yet. Must use the hook's own
+  // `routePoints` here, not a separate decode of `encodedPolyline` — see that
+  // field's doc comment for why mixing the two draws a straight line.
   const remainingPath = useMemo<[number, number][] | undefined>(() => {
     if (snappedSegmentIndex == null || !snappedPosition || routePoints.length === 0) return undefined
     return remainingRoutePath(snappedPosition, routePoints, snappedSegmentIndex, pickupPos)
