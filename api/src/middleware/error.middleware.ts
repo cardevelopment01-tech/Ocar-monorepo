@@ -9,63 +9,42 @@ interface PgError extends Error {
 
 export const errorMiddleware: ErrorRequestHandler = (err, req, res, _next) => {
   const requestId = req.requestId ?? 'unknown'
-  console.error(`[${requestId}] Error:`, err)
+
+  let status: number
+  let body: Record<string, unknown>
 
   if (err instanceof multer.MulterError) {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      res.status(422).json({ error: 'File size exceeds 5MB limit', code: 'FILE_TOO_LARGE', requestId })
-    } else {
-      res.status(422).json({ error: err.message, code: 'FILE_UPLOAD_ERROR', requestId })
-    }
-    return
-  }
-
-  const appErr = err as Error & { httpStatus?: number; appCode?: string; missing?: string[] }
-  if (typeof appErr.httpStatus === 'number') {
-    const body: Record<string, unknown> = { error: appErr.message, code: appErr.appCode, requestId }
+    status = 422
+    body = err.code === 'LIMIT_FILE_SIZE'
+      ? { error: 'File size exceeds 5MB limit', code: 'FILE_TOO_LARGE', requestId }
+      : { error: err.message, code: 'FILE_UPLOAD_ERROR', requestId }
+  } else if (typeof (err as Error & { httpStatus?: number }).httpStatus === 'number') {
+    const appErr = err as Error & { httpStatus: number; appCode?: string; missing?: string[] }
+    status = appErr.httpStatus
+    body = { error: appErr.message, code: appErr.appCode, requestId }
     if (appErr.missing) body['missing'] = appErr.missing
-    res.status(appErr.httpStatus).json(body)
-    return
-  }
-
-  if (err instanceof ZodError) {
-    res.status(422).json({
-      error: 'Validation failed',
-      code: 'VALIDATION_ERROR',
-      fields: err.flatten().fieldErrors,
+  } else if (err instanceof ZodError) {
+    status = 422
+    body = { error: 'Validation failed', code: 'VALIDATION_ERROR', fields: err.flatten().fieldErrors, requestId }
+  } else if ((err as PgError).code === '23505') {
+    status = 409
+    body = { error: 'Already exists', code: 'DUPLICATE_ENTRY', requestId }
+  } else if ((err as PgError).code === '23503') {
+    status = 409
+    body = { error: 'Referenced record not found', code: 'FK_VIOLATION', requestId }
+  } else {
+    status = 500
+    body = {
+      error: config.NODE_ENV !== 'production' ? (err as Error).message : 'Internal server error',
+      code: 'INTERNAL_ERROR',
       requestId,
-    })
-    return
+    }
   }
 
-  const pgErr = err as PgError
+  // Known 4xx (validation, not-found, forbidden, duplicate, ...) are already
+  // handled correctly by the caller — logging them at error level buries real
+  // 5xx bugs in expected-request noise. Only escalate actual server errors.
+  if (status >= 500) console.error(`[${requestId}] Error:`, err)
 
-  if (pgErr.code === '23505') {
-    res.status(409).json({
-      error: 'Already exists',
-      code: 'DUPLICATE_ENTRY',
-      requestId,
-    })
-    return
-  }
-
-  if (pgErr.code === '23503') {
-    res.status(409).json({
-      error: 'Referenced record not found',
-      code: 'FK_VIOLATION',
-      requestId,
-    })
-    return
-  }
-
-  const message =
-    config.NODE_ENV !== 'production'
-      ? (err as Error).message
-      : 'Internal server error'
-
-  res.status(500).json({
-    error: message,
-    code: 'INTERNAL_ERROR',
-    requestId,
-  })
+  res.status(status).json(body)
 }
