@@ -49,14 +49,40 @@ export interface NearestPointResult {
   segmentIndex: number
 }
 
+// A route can legitimately pass near itself twice — a rental "Flexible route"
+// doubling back on a road it already drove, or two distinct roads meeting at a
+// junction/turn within a few metres of each other. A pure global nearest-point
+// search has no way to prefer "the occurrence near where we actually are" over
+// a geometrically-closer-but-wrong occurrence far away in the route, which can
+// snap the drawn "remaining route" to a distant chunk of the same polyline —
+// the line then draws a spike connecting the driver's real position to that
+// distant chunk. Search a window around the last matched segment FIRST; only
+// fall back to the full search when nothing acceptable is in that window
+// (genuine off-route driving, or no prior match yet).
+// NEAR_WINDOW_FWD deliberately equals useTurnByTurn.ts's MAX_FORWARD_SEGMENT_JUMP:
+// anything the downstream "is this a plausible forward jump" guard would accept
+// is inside this window, so windowed and global search agree on what "nearby"
+// means — if one changes, change the other.
+const NEAR_WINDOW_BACK = 10
+const NEAR_WINDOW_FWD = 80
+// Mirrors useTurnByTurn.ts's OFF_ROUTE_THRESHOLD_METRES: within this of a windowed
+// match, trust it as on-route; beyond it, the driver may genuinely be off-route,
+// so fall through to the global search (which off-route detection then judges).
+const NEAR_WINDOW_ACCEPT_METRES = 40
+
 /**
  * Projects `p` onto the nearest point of a polyline (ordered [lat,lng] list), using a
  * local equirectangular (flat-plane) approximation centred on `p` — accurate to well
  * under a metre at city/highway scale, so a full geodesic library isn't needed here.
+ *
+ * `nearIndex`, when given, biases the search to a window around the last matched
+ * segment before falling back to a full scan — see the comment above the window
+ * constants for why an unbiased global search misfires on self-intersecting routes.
  */
 export function nearestPointOnPolyline(
   p: [number, number],
   polyline: [number, number][],
+  nearIndex?: number | null,
 ): NearestPointResult | null {
   if (polyline.length === 0) return null
   if (polyline.length === 1) {
@@ -75,25 +101,35 @@ export function nearestPointOnPolyline(
   ]
 
   const px = toXY(p)
-  let best: NearestPointResult | null = null
 
-  for (let i = 0; i < polyline.length - 1; i++) {
-    const a = toXY(polyline[i]!)
-    const b = toXY(polyline[i + 1]!)
-    const abx = b[0] - a[0]
-    const aby = b[1] - a[1]
-    const lenSq = abx * abx + aby * aby
-    let t = lenSq === 0 ? 0 : ((px[0] - a[0]) * abx + (px[1] - a[1]) * aby) / lenSq
-    t = Math.max(0, Math.min(1, t))
-    const projX = a[0] + abx * t
-    const projY = a[1] + aby * t
-    const dist = Math.hypot(px[0] - projX, px[1] - projY)
-    if (!best || dist < best.distMetres) {
-      best = { point: fromXY([projX, projY]), distMetres: dist, segmentIndex: i }
+  const scan = (lo: number, hi: number): NearestPointResult | null => {
+    let best: NearestPointResult | null = null
+    for (let i = lo; i < hi; i++) {
+      const a = toXY(polyline[i]!)
+      const b = toXY(polyline[i + 1]!)
+      const abx = b[0] - a[0]
+      const aby = b[1] - a[1]
+      const lenSq = abx * abx + aby * aby
+      let t = lenSq === 0 ? 0 : ((px[0] - a[0]) * abx + (px[1] - a[1]) * aby) / lenSq
+      t = Math.max(0, Math.min(1, t))
+      const projX = a[0] + abx * t
+      const projY = a[1] + aby * t
+      const dist = Math.hypot(px[0] - projX, px[1] - projY)
+      if (!best || dist < best.distMetres) {
+        best = { point: fromXY([projX, projY]), distMetres: dist, segmentIndex: i }
+      }
     }
+    return best
   }
 
-  return best
+  if (nearIndex != null) {
+    const lo = Math.max(0, nearIndex - NEAR_WINDOW_BACK)
+    const hi = Math.min(polyline.length - 1, nearIndex + NEAR_WINDOW_FWD)
+    const windowed = scan(lo, hi)
+    if (windowed && windowed.distMetres <= NEAR_WINDOW_ACCEPT_METRES) return windowed
+  }
+
+  return scan(0, polyline.length - 1)
 }
 
 /**
@@ -121,6 +157,24 @@ export function distanceAlongPolyline(
     if (a && b) dist += haversineMetres(a, b)
   }
   return dist
+}
+
+/**
+ * Whether accumulated off-route evidence should trigger a reroute fetch right now.
+ * `lastRerouteAtMs` must be the last actual REROUTE time, not the last route fetch
+ * of any kind — gating on the initial route fetch (which happens the moment a trip
+ * starts) can block a genuine early deviation for the full cooldown window even
+ * after enough off-route fixes have accumulated.
+ */
+export function shouldReroute(
+  offRouteStreak: number,
+  consecutiveThreshold: number,
+  lastRerouteAtMs: number,
+  nowMs: number,
+  cooldownMs: number,
+): boolean {
+  if (offRouteStreak < consecutiveThreshold) return false
+  return nowMs - lastRerouteAtMs >= cooldownMs
 }
 
 /**

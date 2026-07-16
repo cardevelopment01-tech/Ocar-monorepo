@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { driverRideApi, type RouteStep, type TrafficInterval } from './ride-api'
 import { decodePolyline } from './polyline'
-import { bearingDeg, distanceAlongPolyline, haversineMetres, isTrustworthySnap, nearestPointOnPolyline } from './geo'
+import { bearingDeg, distanceAlongPolyline, haversineMetres, isTrustworthySnap, nearestPointOnPolyline, shouldReroute } from './geo'
 
 // Mirrors api/src/constants/limits.ts (driver app can't import server code — keep in sync).
 const OFF_ROUTE_THRESHOLD_METRES = 40
-const OFF_ROUTE_CONSECUTIVE_FIXES = 3
+// Was 3: the locality-biased nearestPointOnPolyline search (see geo.ts) already
+// resolves most turn/junction ambiguity, so a shorter streak still filters a lone
+// GPS spike while cutting a full GPS-fix interval off reroute detection latency.
+const OFF_ROUTE_CONSECUTIVE_FIXES = 2
 const REROUTE_COOLDOWN_SECONDS = 12
 // Distance from a step's endpoint at which we consider that maneuver "reached."
 const STEP_ADVANCE_THRESHOLD_METRES = 25
@@ -100,14 +103,15 @@ export function useTurnByTurn(
   const stepStartIndex = useRef<number[]>([])           // routePoints index where each step begins
   const destRef        = useRef<[number, number] | null>(null)
   const offRouteStreak = useRef(0)
-  const lastFetchAt    = useRef(0)
+  // Last actual REROUTE time, not last fetch of any kind — see shouldReroute's doc
+  // comment for why gating on the initial fetch delays a genuine early deviation.
+  const lastRerouteAt  = useRef(0)
   const retryTimer     = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryAttempt   = useRef(0)
   const fetchSeq       = useRef(0)
 
   const fetchRoute = useCallback((origin: [number, number], dest: [number, number]) => {
     const seq = ++fetchSeq.current
-    lastFetchAt.current = Date.now()
     setLoading(true)
     driverRideApi.getRoute(origin[0], origin[1], dest[0], dest[1], {
       language, withSteps: true, trafficAware: true, withTrafficIntervals: true,
@@ -183,7 +187,7 @@ export function useTurnByTurn(
   useEffect(() => {
     if (!position || routePoints.current.length === 0) return
 
-    const snapped = nearestPointOnPolyline(position, routePoints.current)
+    const snapped = nearestPointOnPolyline(position, routePoints.current, lastSegmentIndex.current)
     if (!snapped) return
 
     const segEnd = routePoints.current[snapped.segmentIndex + 1]
@@ -196,11 +200,19 @@ export function useTurnByTurn(
     // a straight line to wherever that road's next point happens to be.
     const forwardJumpTooFar = lastSegmentIndex.current != null
       && snapped.segmentIndex - lastSegmentIndex.current > MAX_FORWARD_SEGMENT_JUMP
+    const trustworthy = isTrustworthySnap(snapped.distMetres, heading, segBearing, OFF_ROUTE_THRESHOLD_METRES, OFF_ROUTE_BEARING_THRESHOLD_DEG)
+    // Device heading is derived from movement between fixes and lags during a slow
+    // turn (see useDriverLocation.ts) — it can disagree with the post-turn segment's
+    // bearing even though the driver is genuinely on the road. A fix well within the
+    // distance threshold that only fails on bearing is far more likely a lagging
+    // heading than a real parallel-street mismatch, so don't let it count toward the
+    // off-route streak — but still don't trust it enough to snap to it this tick.
+    const bearingOnlyMismatch = !trustworthy && !forwardJumpTooFar
+      && snapped.distMetres <= OFF_ROUTE_THRESHOLD_METRES / 2
 
     let clampedIndex: number | null = null
-    if (!isTrustworthySnap(snapped.distMetres, heading, segBearing, OFF_ROUTE_THRESHOLD_METRES, OFF_ROUTE_BEARING_THRESHOLD_DEG)
-        || forwardJumpTooFar) {
-      offRouteStreak.current += 1
+    if (!trustworthy || forwardJumpTooFar) {
+      if (!bearingOnlyMismatch) offRouteStreak.current += 1
       setSnappedPosition(null)
       setSnappedHeading(null)
     } else {
@@ -218,9 +230,10 @@ export function useTurnByTurn(
 
     if (offRouteStreak.current >= OFF_ROUTE_CONSECUTIVE_FIXES) {
       setIsOffRoute(true)
-      const cooledDown = Date.now() - lastFetchAt.current >= REROUTE_COOLDOWN_SECONDS * 1000
-      if (cooledDown && destRef.current) {
+      const ready = shouldReroute(offRouteStreak.current, OFF_ROUTE_CONSECUTIVE_FIXES, lastRerouteAt.current, Date.now(), REROUTE_COOLDOWN_SECONDS * 1000)
+      if (ready && destRef.current) {
         offRouteStreak.current = 0
+        lastRerouteAt.current = Date.now()
         fetchRoute(position, destRef.current)
       }
     }

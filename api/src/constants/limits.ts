@@ -35,7 +35,7 @@ export const ROUTE_CACHE_TTL_SECONDS = 90
 // Driver turn-by-turn reroute tuning (apps/driver/src/lib/useTurnByTurn.ts mirrors
 // these locally — the driver app can't import server constants — keep both in sync).
 export const OFF_ROUTE_THRESHOLD_METRES = 40
-export const OFF_ROUTE_CONSECUTIVE_FIXES = 3
+export const OFF_ROUTE_CONSECUTIVE_FIXES = 2
 export const REROUTE_COOLDOWN_SECONDS = 12
 // Voice-announce distance-before-maneuver policy (Google doesn't supply this timing
 // metadata — see docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md §4 provider decision).
