@@ -12,6 +12,9 @@ export function getNextPartitionTarget(now: Date): { year: number; month: number
 // would silently start failing once the migration's initial 4
 // pre-created partitions ran out.
 export async function processCreateNextPartition(): Promise<void> {
+  // Dynamic import: a static top-level `import { pool } from '@/db/client'` here
+  // transitively pulls in `@/config`, whose eager process.exit(1) on invalid env
+  // crashes unrelated Vitest suites sharing this test run's worker pool. Keep dynamic.
   const { pool } = await import('@/db/client')
   const { year, month } = getNextPartitionTarget(new Date())
   await pool.query('SELECT create_gps_partition($1, $2)', [year, month])
