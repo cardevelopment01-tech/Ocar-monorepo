@@ -7,6 +7,7 @@ import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import TripReplayMap from '@/components/TripReplayMap'
 import { safetyApi, type Dispute } from '@/lib/safety-api'
 import { cn } from '@/lib/utils'
 
@@ -280,6 +281,8 @@ export default function DisputesPage() {
                 {selected.origin_address ?? '—'} → {selected.destination_address ?? '—'}
               </p>
             </div>
+
+            <TripReplayMap disputeId={selected.id} />
 
             <div>
               <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Description</p>
