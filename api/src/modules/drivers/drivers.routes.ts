@@ -28,20 +28,12 @@ const upload = multer({
   },
 })
 
-const uploadVerification = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIME.has(file.mimetype)) {
-      cb(null, true)
-    } else {
-      cb(new Error('Only JPEG, PNG, and PDF files are allowed'))
-    }
-  },
-})
-
 const router: IRouter = Router()
 const guard = [authenticate(), requireDriver()]
+// Daily verification is a pre-shift check for drivers who are already fully
+// onboarded — unlike the onboarding routes above, pending/suspended/banned
+// drivers shouldn't be able to submit it.
+const activeGuard = [authenticate(), requireDriver('active')]
 
 router.get('/me', ...guard, controller.getMe)
 router.patch('/me', ...guard, validate(updateProfileSchema), controller.updateMe)
@@ -65,11 +57,11 @@ router.get('/onboarding/documents/status', ...guard, controller.getDocumentStatu
 
 router.post('/onboarding/submit', ...guard, controller.submitApplication)
 
-router.get('/daily-verification/status', ...guard, verificationController.getVerificationStatus)
+router.get('/daily-verification/status', ...activeGuard, verificationController.getVerificationStatus)
 router.post(
   '/daily-verification',
-  ...guard,
-  uploadVerification.fields([{ name: 'selfie', maxCount: 1 }, { name: 'plate', maxCount: 1 }]),
+  ...activeGuard,
+  upload.fields([{ name: 'selfie', maxCount: 1 }, { name: 'plate', maxCount: 1 }]),
   verificationController.submitVerification
 )
 
