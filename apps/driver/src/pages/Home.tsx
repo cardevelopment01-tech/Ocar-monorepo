@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi, type EarningsSummary } from '@/lib/ride-api'
+import { driverVerificationApi } from '@/lib/driver-verification-api'
 import api from '@/lib/api'
 import { disconnectDriverSocket } from '@/lib/socket'
 import { useDriverLocation } from '@/lib/useDriverLocation'
@@ -134,8 +135,15 @@ export default function Home() {
   }, [gpsPosition])
 
   const handleToggle = () => {
-    if (!isOnline) navigate('/go-online/mode')
-    else setShowOfflineConfirm(true)
+    if (!isOnline) {
+      driverVerificationApi.getStatus()
+        .then((status) => {
+          navigate(status.complete ? '/go-online/mode' : '/daily-verification')
+        })
+        .catch(() => navigate('/go-online/mode')) // status check failed — don't block going online on a network hiccup; goOnline() itself still enforces the gate server-side
+    } else {
+      setShowOfflineConfirm(true)
+    }
   }
 
   const handleGoOffline = async () => {
