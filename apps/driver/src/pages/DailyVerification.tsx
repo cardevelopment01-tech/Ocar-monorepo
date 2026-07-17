@@ -27,14 +27,21 @@ export default function DailyVerification() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [pendingSelfie, setPendingSelfie] = useState<File | null>(null)
 
   useEffect(() => {
-    void startCamera()
-    return stopCamera
+    let cancelled = false
+    void startCamera(() => cancelled)
+    return () => {
+      cancelled = true
+      stopCamera()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
 
-  async function startCamera() {
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
+
+  async function startCamera(isCancelled: () => boolean) {
     setCamError('')
     setCameraReady(false)
     try {
@@ -42,13 +49,17 @@ export default function DailyVerification() {
         video: { facingMode: STEP_CONFIG[step].facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       })
+      if (isCancelled()) {
+        stream.getTracks().forEach((t) => t.stop())
+        return
+      }
       streamRef.current = stream
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         videoRef.current.onloadedmetadata = () => setCameraReady(true)
       }
     } catch {
-      setCamError('Could not access camera. Please check your device settings and try again.')
+      if (!isCancelled()) setCamError('Could not access camera. Please check your device settings and try again.')
     }
   }
 
@@ -90,13 +101,11 @@ export default function DailyVerification() {
     setSelfieBlob(null)
     setSubmitError('')
     setStage('camera')
-    void startCamera()
+    void startCamera(() => false)
   }
 
-  const [pendingSelfie, setPendingSelfie] = useState<File | null>(null)
-
   async function handleNext() {
-    if (!selfieBlob) return
+    if (submitting || !selfieBlob) return
     const file = new File([selfieBlob], `${step}.jpg`, { type: 'image/jpeg' })
 
     if (step === 'selfie') {
@@ -145,7 +154,7 @@ export default function DailyVerification() {
           onClick={handleBack}
           disabled={submitting}
           className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 disabled:opacity-40"
-          aria-label="Go back"
+          aria-label={stage === 'preview' ? 'Retake photo' : 'Go back'}
         >
           <ArrowLeft size={18} className="text-white" />
         </button>
@@ -162,7 +171,7 @@ export default function DailyVerification() {
           </div>
           <h2 className="text-white text-lg font-bold mb-2">Camera unavailable</h2>
           <p className="text-white/60 text-sm leading-relaxed mb-6">{camError}</p>
-          <button onClick={() => void startCamera()} className="btn-go w-full flex items-center justify-center gap-2">
+          <button onClick={() => void startCamera(() => false)} className="btn-go w-full flex items-center justify-center gap-2">
             <RefreshCw size={16} />
             Retry
           </button>
