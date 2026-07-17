@@ -300,10 +300,10 @@ export async function getDisputeById(id: bigint) {
   const res = await pool.query(
     `SELECT d.*,
             r.origin_address, r.destination_address,
-            r.origin_lat::float8      AS origin_lat,
-            r.origin_lng::float8      AS origin_lng,
-            r.destination_lat::float8 AS destination_lat,
-            r.destination_lng::float8 AS destination_lng,
+            ST_Y(r.origin::geometry)      AS origin_lat,
+            ST_X(r.origin::geometry)      AS origin_lng,
+            ST_Y(r.destination::geometry) AS destination_lat,
+            ST_X(r.destination::geometry) AS destination_lng,
             u.name       AS user_name,   u.phone AS user_phone,
             dr.full_name AS driver_name, dr.phone AS driver_phone,
             a.email      AS assigned_to_email
