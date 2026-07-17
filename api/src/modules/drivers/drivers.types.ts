@@ -7,7 +7,7 @@ export interface Driver {
   full_name: string | null
   email: string | null
   gender: 'male' | 'female' | 'other' | null
-  date_of_birth: Date | null
+  date_of_birth: string | null
   residential_address: string | null
   state: string | null
   city: string | null
@@ -67,7 +67,7 @@ export interface DriverVehicleDocument {
   doc_number: string | null
   status: string
   rejection_note: string | null
-  valid_until: Date | null
+  valid_until: string | null
   created_at: Date
   updated_at: Date
 }

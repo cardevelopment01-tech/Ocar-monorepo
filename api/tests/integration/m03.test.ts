@@ -343,7 +343,7 @@ describe('M03 — Driver Onboarding', () => {
       expect(res.body.doc_type).toBe('driving_license_front')
       expect(res.body.status).toBe('pending')
 
-      const { rows } = await pool.query<{ doc_type: string; valid_until: Date | null }>(
+      const { rows } = await pool.query<{ doc_type: string; valid_until: string | null }>(
         "SELECT doc_type, valid_until FROM driver_documents WHERE driver_id = $1 AND doc_type = 'driving_license_front'",
         [driverId]
       )
@@ -387,13 +387,15 @@ describe('M03 — Driver Onboarding', () => {
       expect(res.status).toBe(200)
       expect(res.body.next_step).toBe('documents')
 
-      const { rows } = await pool.query<{ registration_date: Date | null }>(
+      const { rows } = await pool.query<{ registration_date: string | null }>(
         'SELECT registration_date FROM driver_vehicles WHERE driver_id = $1 LIMIT 1',
         [driverId]
       )
       expect(rows).toHaveLength(1)
-      // DB returns a Date object; compare as ISO string prefix
-      expect(rows[0]?.registration_date?.toISOString().slice(0, 10)).toBe('2021-03-15')
+      // DATE columns come back as a plain 'YYYY-MM-DD' string (see db/client.ts's
+      // type parser) — never round-trip through a JS Date, which is timezone-ambiguous
+      // for a value that has no time component.
+      expect(rows[0]?.registration_date).toBe('2021-03-15')
     })
 
   })
