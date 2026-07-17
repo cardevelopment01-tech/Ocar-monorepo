@@ -16,12 +16,6 @@ import { updateLocation } from '@/modules/rides/rides.service'
 
 let io: Server
 
-// Grace period before marking a driver offline after socket disconnect.
-// Cancels if the driver reconnects within the window, handles page refreshes
-// and brief mobile network blips without flipping the driver's DB status.
-const OFFLINE_GRACE_MS = 45_000
-const pendingOffline = new Map<string, ReturnType<typeof setTimeout>>()
-
 export function initSocketServer(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
     cors: {
@@ -62,13 +56,6 @@ export function initSocketServer(httpServer: HttpServer): Server {
     console.log(`Socket connected: ${user?.sub} (${user?.role})`)
 
     if (user?.role === 'driver') {
-      // Cancel any pending offline timer, driver reconnected within grace period
-      const pending = pendingOffline.get(user.sub)
-      if (pending) {
-        clearTimeout(pending)
-        pendingOffline.delete(user.sub)
-        console.log(`Driver ${user.sub} reconnected — offline grace period cancelled`)
-      }
       void socket.join(`driver:${user.sub}`)
 
       // On reconnect, re-join the active ride room so cancellation / status
@@ -183,38 +170,6 @@ export function initSocketServer(httpServer: HttpServer): Server {
 
     socket.on('disconnect', () => {
       console.log(`Socket disconnected: ${user?.sub} (${user?.role})`)
-      if (user?.role === 'driver') {
-        const driverSub = user.sub
-        // Start grace period instead of marking offline immediately.
-        // If the driver reconnects (e.g. page refresh, brief network blip)
-        // within OFFLINE_GRACE_MS the timer is cancelled above and the DB
-        // session is left untouched.
-        const timer = setTimeout(() => {
-          pendingOffline.delete(driverSub)
-          const driverId = BigInt(driverSub)
-          // Only auto-offline an idle ('online') session on disconnect. A
-          // driver mid-trip ('on_trip') who loses connectivity for a bit
-          // (tunnel, dead zone, phone reboot) must not be silently flipped
-          // offline — that's what stranded a still-active ride's session
-          // state and made the driver app "go offline" on reconnect even
-          // though the ride was still live (see
-          // docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 3b). Whether an
-          // on-trip driver has truly gone dark is judged by GPS-heartbeat
-          // continuity instead — see cleanup.worker.ts's stuck-ride sweep.
-          pool.query(
-            `UPDATE driver_sessions SET status = 'offline', went_offline_at = now(), offline_reason = 'socket_disconnect'
-             WHERE driver_id = $1 AND status = 'online'`,
-            [driverId]
-          ).then(() =>
-            pool.query(
-              `UPDATE driver_location_snapshots SET is_available = false WHERE driver_id = $1`,
-              [driverId]
-            )
-          ).catch(() => {})
-          console.log(`Driver ${driverSub} grace period expired — marked offline`)
-        }, OFFLINE_GRACE_MS)
-        pendingOffline.set(driverSub, timer)
-      }
     })
   })
 
