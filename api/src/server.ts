@@ -62,7 +62,9 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '0 3 25 * *' }, removeOnComplete: true, removeOnFail: true }
   )
-  // Runs 30 minutes later, same day — purge after creation, never before.
+  // Runs 30 minutes later, same day. No ordering dependency on the create job
+  // above — purge only touches partitions past the 90-day retention window,
+  // never the partition just created — the stagger is just tidy scheduling.
   await partitionMaintenanceQueue.add(
     'purge_old_partitions',
     {},
