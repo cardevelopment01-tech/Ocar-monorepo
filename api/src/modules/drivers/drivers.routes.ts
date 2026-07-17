@@ -4,6 +4,7 @@ import { validate } from '@/middleware/validate.middleware'
 import { authenticate } from '@/middleware/auth.middleware'
 import { requireDriver } from '@/middleware/role.middleware'
 import * as controller from './drivers.controller'
+import * as verificationController from './driver-verification.controller'
 import {
   updateProfileSchema,
   personalInfoSchema,
@@ -18,6 +19,18 @@ const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'application/pdf'])
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIME.has(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error('Only JPEG, PNG, and PDF files are allowed'))
+    }
+  },
+})
+
+const uploadVerification = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_MIME.has(file.mimetype)) {
       cb(null, true)
@@ -51,5 +64,13 @@ router.post('/onboarding/documents/vehicle-upload',
 router.get('/onboarding/documents/status', ...guard, controller.getDocumentStatus)
 
 router.post('/onboarding/submit', ...guard, controller.submitApplication)
+
+router.get('/daily-verification/status', ...guard, verificationController.getVerificationStatus)
+router.post(
+  '/daily-verification',
+  ...guard,
+  uploadVerification.fields([{ name: 'selfie', maxCount: 1 }, { name: 'plate', maxCount: 1 }]),
+  verificationController.submitVerification
+)
 
 export default router
