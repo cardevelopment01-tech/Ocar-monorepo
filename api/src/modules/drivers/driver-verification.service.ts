@@ -1,4 +1,5 @@
 import { uploadFile } from '@/lib/storage'
+import { httpError } from '@/lib/errors'
 import { findVehicleByDriverId } from './drivers.repository'
 import * as repo from './driver-verification.repository'
 import type { VerificationStatusToday } from './driver-verification.repository'
@@ -14,9 +15,7 @@ export async function submit(
 ): Promise<{ complete: true }> {
   const vehicle = await findVehicleByDriverId(driverId)
   if (!vehicle) {
-    throw Object.assign(new Error('No registered vehicle found for this driver'), {
-      httpStatus: 422, appCode: 'NO_VEHICLE',
-    })
+    throw httpError(422, 'No registered vehicle found for this driver', 'NO_VEHICLE')
   }
 
   const folder = `drivers/${driverId}/daily-verification`
