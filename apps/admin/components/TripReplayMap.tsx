@@ -13,20 +13,25 @@ const FALLBACK_CENTER = { lat: 20.2961, lng: 85.8245 } // Bhubaneswar
 export default function TripReplayMap({ disputeId }: { disputeId: string }) {
   const [replay, setReplay] = useState<TripReplay | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
+  const [retryKey, setRetryKey] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     setLoading(true)
+    setError(false)
     setReplay(null)
     setIndex(0)
     setPlaying(false)
     safetyApi.getTripReplay(disputeId)
-      .then(setReplay)
-      .catch(() => setReplay({ actualTrail: [], plannedRoute: null }))
-      .finally(() => setLoading(false))
-  }, [disputeId])
+      .then((data) => { if (!cancelled) setReplay(data) })
+      .catch(() => { if (!cancelled) setError(true) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [disputeId, retryKey])
 
   const trail = replay?.actualTrail ?? []
 
@@ -57,12 +62,27 @@ export default function TripReplayMap({ disputeId }: { disputeId: string }) {
   )
 
   const current = trail[index]
-  const center = current ? { lat: current.lat, lng: current.lng } : (actualPath[0] ?? FALLBACK_CENTER)
+  const markerPosition = current ? { lat: current.lat, lng: current.lng } : (actualPath[0] ?? FALLBACK_CENTER)
+  const initialCenter = actualPath[0] ?? FALLBACK_CENTER
 
   if (loading) {
     return (
       <div className="h-64 flex items-center justify-center text-sm text-text-muted bg-surface-2 rounded-xl border border-border-light">
         Loading trail…
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="h-32 flex flex-col items-center justify-center gap-2 text-sm text-text-muted bg-surface-2 rounded-xl border border-border-light">
+        <span>Failed to load trip trail.</span>
+        <button
+          onClick={() => setRetryKey((k) => k + 1)}
+          className="text-xs font-semibold text-primary hover:underline"
+        >
+          Retry
+        </button>
       </div>
     )
   }
@@ -79,8 +99,7 @@ export default function TripReplayMap({ disputeId }: { disputeId: string }) {
     <div className="space-y-2">
       <div className="h-64 rounded-xl overflow-hidden border border-border-light">
         <GoogleMap
-          defaultCenter={center}
-          center={center}
+          defaultCenter={initialCenter}
           defaultZoom={DEFAULT_ZOOM}
           mapId={process.env.NEXT_PUBLIC_GOOGLE_MAPS_ID}
           gestureHandling="greedy"
@@ -93,7 +112,7 @@ export default function TripReplayMap({ disputeId }: { disputeId: string }) {
           {actualPath.length >= 2 && (
             <Polyline path={actualPath} strokeColor="#4F46E5" strokeWeight={4} strokeOpacity={0.95} zIndex={2} />
           )}
-          <AdvancedMarker position={center}>
+          <AdvancedMarker position={markerPosition}>
             <div style={{
               width: 16, height: 16, borderRadius: '50%',
               background: '#4F46E5', border: '2.5px solid #ffffff',
@@ -106,6 +125,7 @@ export default function TripReplayMap({ disputeId }: { disputeId: string }) {
       <div className="flex items-center gap-3">
         <button
           onClick={() => { if (index >= trail.length - 1) setIndex(0); setPlaying((p) => !p) }}
+          aria-label={playing ? 'Pause' : 'Play'}
           className="w-9 h-9 flex items-center justify-center rounded-full bg-primary text-white hover:bg-primary-dark transition-colors flex-shrink-0"
         >
           {playing ? <Pause size={14} /> : <Play size={14} />}
@@ -116,6 +136,7 @@ export default function TripReplayMap({ disputeId }: { disputeId: string }) {
           max={trail.length - 1}
           value={index}
           onChange={(e) => { setPlaying(false); setIndex(Number(e.target.value)) }}
+          aria-label="Trip position"
           className="flex-1"
         />
         <span className="text-xs text-text-muted flex-shrink-0 w-16 text-right">
