@@ -9,6 +9,7 @@ describe('M09 — Safety', () => {
     it.todo('TC-M09-005: SOS acknowledged updates status')
     it.todo('TC-M09-006: dispute created with evidence uploads')
     it.todo('TC-M09-007: dispute resolution applies fare adjustment')
+    it.todo('TC-M09-008: dispute trip-replay returns actual GPS trail and planned route')
     it.todo('TC-M09-008: driver warning issued increments warning count')
   })
 })

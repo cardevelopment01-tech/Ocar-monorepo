@@ -1,6 +1,7 @@
 import { pool } from '@/db/client'
 import * as repo from './safety.repository'
 import type { CreateDisputeInput, ResolveDisputeInput } from './safety.types'
+import * as geoService from '@/modules/geo/geo.service'
 
 export async function createDispute(input: CreateDisputeInput) {
   const ride = await repo.getRideBasic(input.rideId)
@@ -115,4 +116,31 @@ export async function resolveDispute(id: bigint, input: ResolveDisputeInput) {
   }
 
   return repo.getDisputeById(id)
+}
+
+export async function getTripReplay(id: bigint) {
+  const dispute = await repo.getDisputeById(id)
+  if (!dispute) throw Object.assign(new Error('Dispute not found'), { httpStatus: 404 })
+
+  const actualTrail = await repo.getGpsTrailForRide(dispute.ride_id)
+
+  let plannedRoute: { polyline: string } | null = null
+  if (
+    dispute.origin_lat != null && dispute.origin_lng != null &&
+    dispute.destination_lat != null && dispute.destination_lng != null
+  ) {
+    try {
+      const route = await geoService.getRoute(
+        dispute.origin_lat, dispute.origin_lng,
+        dispute.destination_lat, dispute.destination_lng
+      )
+      plannedRoute = { polyline: route.polyline }
+    } catch {
+      // Planned-route overlay is a nice-to-have on top of the actual trail —
+      // a Google Directions API failure shouldn't block replay of the trail itself.
+      plannedRoute = null
+    }
+  }
+
+  return { actualTrail, plannedRoute }
 }
