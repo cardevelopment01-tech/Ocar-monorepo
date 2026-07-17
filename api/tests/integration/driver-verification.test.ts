@@ -39,10 +39,14 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  // driver_verifications.driver_id has no ON DELETE CASCADE — must clear
-  // rows created by TC-DV-003 before deleting the driver, or the DELETE
-  // below throws a foreign-key violation.
+  // driver_verifications, driver_sessions and driver_location_snapshots all
+  // reference drivers(id) with no ON DELETE CASCADE — TC-DV-003 creates the
+  // first, TC-DV-004's goOnline() creates the other two (session insert +
+  // location upsert). All three must be cleared before deleting the driver,
+  // or the DELETE below throws a foreign-key violation.
   await pool.query(`DELETE FROM driver_verifications WHERE driver_id IN (SELECT id FROM drivers WHERE phone = $1)`, [PHONE])
+  await pool.query(`DELETE FROM driver_location_snapshots WHERE driver_id IN (SELECT id FROM drivers WHERE phone = $1)`, [PHONE])
+  await pool.query(`DELETE FROM driver_sessions WHERE driver_id IN (SELECT id FROM drivers WHERE phone = $1)`, [PHONE])
   await pool.query(`DELETE FROM drivers WHERE phone = $1`, [PHONE])
   await redis.del(`otp_rate:${PHONE}:login`)
   await redis.del(`otp:driver:${PHONE}:login`)

@@ -221,8 +221,20 @@ export function initSocketServer(httpServer: HttpServer): Server {
   return io
 }
 
+// Real-time emits are best-effort side effects of whatever DB action triggered them
+// (see goOnline in rides.service.ts, which persists the session/location rows before
+// emitting) — they must never be able to fail the primary action. `initSocketServer`
+// always runs before `httpServer.listen()` in server.ts, so `io` is unset only in
+// contexts that never call listen() at all, i.e. integration tests driving `createApp()`
+// directly through supertest. Throwing here turned that test gap into 500s with rows
+// left committed behind a "failed" response — return a no-op stub instead.
+const NOOP_IO = { to: () => ({ emit: () => {} }) } as unknown as Server
+
 export function getIO(): Server {
-  if (!io) throw new Error('Socket.io not initialised')
+  if (!io) {
+    console.warn('Socket.io not initialised — dropping real-time emit')
+    return NOOP_IO
+  }
   return io
 }
 
