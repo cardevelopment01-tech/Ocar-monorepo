@@ -1,4 +1,4 @@
-import { pool, withTransaction } from '@/db/client'
+import { query, withTransaction } from '@/db/client'
 
 const IST = `'Asia/Kolkata'`
 
@@ -14,14 +14,14 @@ export interface VerificationStatusToday {
 }
 
 export async function getTodayStatus(driverId: bigint): Promise<VerificationStatusToday> {
-  const res = await pool.query<{ kind: string }>(
+  const rows = await query<{ kind: string }>(
     `SELECT kind FROM driver_verifications
      WHERE driver_id = $1
        AND verified_for = ${TODAY_IST_EXPR}
        AND status IN ('passed', 'auto_passed')`,
     [driverId]
   )
-  const kinds = new Set(res.rows.map((r) => r.kind))
+  const kinds = new Set(rows.map((r) => r.kind))
   return {
     selfieDone: kinds.has('daily_selfie'),
     plateDone:  kinds.has('daily_plate'),
