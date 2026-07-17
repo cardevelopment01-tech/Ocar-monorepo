@@ -1,5 +1,13 @@
-import { Pool, PoolClient } from 'pg'
+import { Pool, PoolClient, types } from 'pg'
 import { config } from '@/config'
+
+// DATE columns (oid 1082 — date_of_birth, valid_until, license_expiry, verified_for,
+// etc.) have no time component, but pg's default parser builds a JS Date at LOCAL
+// midnight. Any later .toISOString()/JSON.stringify (which is always UTC) then shifts
+// the date backward a day on any host with a positive UTC offset (e.g. Asia/Calcutta).
+// Keep the 'YYYY-MM-DD' string Postgres already returns instead of round-tripping
+// through a timezone-ambiguous Date object.
+types.setTypeParser(1082, (val) => val)
 
 export const pool = new Pool({
   connectionString: config.DATABASE_URL,
