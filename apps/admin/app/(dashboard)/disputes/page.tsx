@@ -282,7 +282,9 @@ export default function DisputesPage() {
               </p>
             </div>
 
-            <TripReplayMap disputeId={selected.id} />
+            {selected.type !== 'payment_issue' && selected.type !== 'vehicle_condition' && (
+              <TripReplayMap disputeId={selected.id} />
+            )}
 
             <div>
               <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Description</p>
