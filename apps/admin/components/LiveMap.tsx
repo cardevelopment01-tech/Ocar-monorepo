@@ -5,6 +5,7 @@ import { Map as GoogleMap, AdvancedMarker, Polyline, useMap } from '@vis.gl/reac
 import { adminSessionsApi, type ActiveDriverSession } from '@/lib/admin-api'
 import { getAdminSocket } from '@/lib/socket'
 import api from '@/lib/api'
+import { decodePolyline } from '@/lib/polyline'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -18,21 +19,6 @@ const CITIES = [
   { label: 'Cuttack',     lat: 20.4625, lng: 85.8830, zoom: 13 },
   { label: 'Puri',        lat: 19.8135, lng: 85.8312, zoom: 13 },
 ]
-
-function decodePolyline(encoded: string): [number, number][] {
-  const pts: [number, number][] = []
-  let i = 0, lat = 0, lng = 0
-  while (i < encoded.length) {
-    let b, shift = 0, result = 0
-    do { b = encoded.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5 } while (b >= 0x20)
-    lat += result & 1 ? ~(result >> 1) : result >> 1
-    shift = 0; result = 0
-    do { b = encoded.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5 } while (b >= 0x20)
-    lng += result & 1 ? ~(result >> 1) : result >> 1
-    pts.push([lat / 1e5, lng / 1e5])
-  }
-  return pts
-}
 
 type SessionMap = Map<string, ActiveDriverSession>
 
