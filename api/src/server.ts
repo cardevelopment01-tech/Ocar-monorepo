@@ -9,7 +9,8 @@ import { gpsFlushWorker } from './jobs/workers/gps-flush.worker'
 import { cleanupWorker } from './jobs/workers/cleanup.worker'
 import { schedulerWorker } from './jobs/workers/scheduler.worker'
 import { auditWorker } from './jobs/workers/audit.worker'
-import { cleanupQueue, schedulerQueue } from './jobs/queues'
+import { partitionMaintenanceWorker } from './jobs/workers/partition-maintenance.worker'
+import { cleanupQueue, schedulerQueue, partitionMaintenanceQueue } from './jobs/queues'
 
 async function start(): Promise<void> {
   const dbOk = await testConnection()
@@ -50,6 +51,24 @@ async function start(): Promise<void> {
     'sweep_scheduled_rides',
     {},
     { repeat: { every: 60_000 }, removeOnComplete: true, removeOnFail: true }
+  )
+
+  void partitionMaintenanceWorker
+  console.log('[Worker] Partition maintenance worker started')
+  // Runs on the 25th of each month (same convention ADR-003 specified),
+  // ahead of month-end so next month's partition exists before it's needed.
+  await partitionMaintenanceQueue.add(
+    'create_next_partition',
+    {},
+    { repeat: { pattern: '0 3 25 * *' }, removeOnComplete: true, removeOnFail: true }
+  )
+  // Runs 30 minutes later, same day. No ordering dependency on the create job
+  // above — purge only touches partitions past the 90-day retention window,
+  // never the partition just created — the stagger is just tidy scheduling.
+  await partitionMaintenanceQueue.add(
+    'purge_old_partitions',
+    {},
+    { repeat: { pattern: '30 3 25 * *' }, removeOnComplete: true, removeOnFail: true }
   )
 
   httpServer.listen(config.API_PORT, () => {

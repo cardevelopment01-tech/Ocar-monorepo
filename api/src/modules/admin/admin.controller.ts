@@ -353,6 +353,12 @@ export async function getAdminDispute(req: Request, res: Response, next: NextFun
   } catch (err) { next(err) }
 }
 
+export async function getAdminDisputeTripReplay(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json(await disputeService.getTripReplay(BigInt(req.params['id']!)))
+  } catch (err) { next(err) }
+}
+
 export async function assignAdminDispute(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     res.json(await disputeService.assignDispute(BigInt(req.params['id']!), req.admin!.id))

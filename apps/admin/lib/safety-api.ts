@@ -54,6 +54,19 @@ export type Dispute = {
   }[]
 }
 
+export type GpsTrailPoint = {
+  lat: number
+  lng: number
+  recorded_at: string
+  speed_kmph: number | null
+  heading: number | null
+}
+
+export type TripReplay = {
+  actualTrail: GpsTrailPoint[]
+  plannedRoute: { polyline: string } | null
+}
+
 export const safetyApi = {
   // SOS
   getSosAlerts: (params?: { status?: string; limit?: number; offset?: number }) =>
@@ -77,4 +90,7 @@ export const safetyApi = {
 
   resolveDispute: (id: string, body: { outcome: string; note: string; refundAmount?: number }) =>
     api.patch<Dispute>(`/api/v1/admin/safety/disputes/${id}/resolve`, body).then(r => r.data),
+
+  getTripReplay: (disputeId: string) =>
+    api.get<TripReplay>(`/api/v1/admin/safety/disputes/${disputeId}/trip-replay`).then(r => r.data),
 }
