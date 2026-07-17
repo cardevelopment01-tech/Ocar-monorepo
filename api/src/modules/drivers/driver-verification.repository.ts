@@ -34,15 +34,20 @@ export async function insertTodayVerification(params: {
   selfieUrl: string
   plateUrl:  string
 }): Promise<void> {
+  // ON CONFLICT DO NOTHING: if a client retries after a lost response (e.g. a
+  // dropped mobile connection right after the server committed), the retry
+  // is a harmless no-op instead of a 500 from the daily-uniqueness indexes.
   await withTransaction(async (client) => {
     await client.query(
       `INSERT INTO driver_verifications (driver_id, vehicle_id, kind, verified_for, image_url, status)
-       VALUES ($1, NULL, 'daily_selfie', ${TODAY_IST_EXPR}, $2, 'auto_passed')`,
+       VALUES ($1, NULL, 'daily_selfie', ${TODAY_IST_EXPR}, $2, 'auto_passed')
+       ON CONFLICT (driver_id, verified_for) WHERE kind = 'daily_selfie' DO NOTHING`,
       [params.driverId, params.selfieUrl]
     )
     await client.query(
       `INSERT INTO driver_verifications (driver_id, vehicle_id, kind, verified_for, image_url, status)
-       VALUES ($1, $2, 'daily_plate', ${TODAY_IST_EXPR}, $3, 'auto_passed')`,
+       VALUES ($1, $2, 'daily_plate', ${TODAY_IST_EXPR}, $3, 'auto_passed')
+       ON CONFLICT (vehicle_id, verified_for) WHERE kind = 'daily_plate' DO NOTHING`,
       [params.driverId, params.vehicleId, params.plateUrl]
     )
   })
