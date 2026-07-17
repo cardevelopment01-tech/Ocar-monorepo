@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi, type EarningsSummary } from '@/lib/ride-api'
+import { driverVerificationApi } from '@/lib/driver-verification-api'
 import api from '@/lib/api'
 import { disconnectDriverSocket } from '@/lib/socket'
 import { useDriverLocation } from '@/lib/useDriverLocation'
@@ -63,6 +64,7 @@ export default function Home() {
   const [areaName,           setAreaName]          = useState<string | null>(null)
   const [geoLoading,         setGeoLoading]        = useState(false)
   const [showOfflineConfirm, setShowOfflineConfirm] = useState(false)
+  const [checkingVerification, setCheckingVerification] = useState(false)
   const [todayEarnings, setTodayEarnings] = useState<EarningsSummary>({
     total_earnings: 0, trip_count: 0, online_hours: '0m', rating: null,
     chart: [], chart_labels: [],
@@ -134,8 +136,18 @@ export default function Home() {
   }, [gpsPosition])
 
   const handleToggle = () => {
-    if (!isOnline) navigate('/go-online/mode')
-    else setShowOfflineConfirm(true)
+    if (!isOnline) {
+      if (checkingVerification) return // already awaiting a status check from a prior tap
+      setCheckingVerification(true)
+      driverVerificationApi.getStatus()
+        .then((status) => {
+          navigate(status.complete ? '/go-online/mode' : '/daily-verification')
+        })
+        .catch(() => navigate('/go-online/mode')) // status check failed — don't block going online on a network hiccup; goOnline() itself still enforces the gate server-side
+        .finally(() => setCheckingVerification(false))
+    } else {
+      setShowOfflineConfirm(true)
+    }
   }
 
   const handleGoOffline = async () => {
@@ -455,7 +467,7 @@ export default function Home() {
                   {isOnline ? 'You\'re live, ride requests incoming' : 'Go online to start earning'}
                 </p>
               </div>
-              <OnlineToggle isOnline={isOnline} onToggle={handleToggle} />
+              <OnlineToggle isOnline={isOnline} onToggle={handleToggle} disabled={checkingVerification} />
             </div>
 
             {/* ── Collapse anchor: sheet snaps to this point when minimised.

@@ -4,6 +4,7 @@ import { validate } from '@/middleware/validate.middleware'
 import { authenticate } from '@/middleware/auth.middleware'
 import { requireDriver } from '@/middleware/role.middleware'
 import * as controller from './drivers.controller'
+import * as verificationController from './driver-verification.controller'
 import {
   updateProfileSchema,
   personalInfoSchema,
@@ -29,6 +30,10 @@ const upload = multer({
 
 const router: IRouter = Router()
 const guard = [authenticate(), requireDriver()]
+// Daily verification is a pre-shift check for drivers who are already fully
+// onboarded — unlike the onboarding routes above, pending/suspended/banned
+// drivers shouldn't be able to submit it.
+const activeGuard = [authenticate(), requireDriver('active')]
 
 router.get('/me', ...guard, controller.getMe)
 router.patch('/me', ...guard, validate(updateProfileSchema), controller.updateMe)
@@ -51,5 +56,13 @@ router.post('/onboarding/documents/vehicle-upload',
 router.get('/onboarding/documents/status', ...guard, controller.getDocumentStatus)
 
 router.post('/onboarding/submit', ...guard, controller.submitApplication)
+
+router.get('/daily-verification/status', ...activeGuard, verificationController.getVerificationStatus)
+router.post(
+  '/daily-verification',
+  ...activeGuard,
+  upload.fields([{ name: 'selfie', maxCount: 1 }, { name: 'plate', maxCount: 1 }]),
+  verificationController.submitVerification
+)
 
 export default router

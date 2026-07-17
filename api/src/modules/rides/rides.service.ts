@@ -1,8 +1,10 @@
 import { pool } from '@/db/client'
+import { httpError } from '@/lib/errors'
 import { client as redis } from '@/db/redis'
 import { startOtpKey, endOtpKey, activeRideByDriverKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './rides.repository'
+import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES, gpsFlushQueue } from '@/jobs/queues'
@@ -92,6 +94,11 @@ export async function goOnline(driverId: bigint, data: {
   lng: number
   destinationCityId?: bigint
 }) {
+  const verification = await getTodayStatus(driverId)
+  if (!verification.selfieDone || !verification.plateDone) {
+    throw httpError(428, "Today's selfie and plate verification is required before going online", 'DAILY_CHECK_REQUIRED')
+  }
+
   const existing = await repo.getActiveSession(driverId)
   if (existing) {
     if (existing.status === 'on_trip') {
