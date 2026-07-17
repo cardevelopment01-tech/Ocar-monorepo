@@ -39,6 +39,10 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  // driver_verifications.driver_id has no ON DELETE CASCADE — must clear
+  // rows created by TC-DV-003 before deleting the driver, or the DELETE
+  // below throws a foreign-key violation.
+  await pool.query(`DELETE FROM driver_verifications WHERE driver_id IN (SELECT id FROM drivers WHERE phone = $1)`, [PHONE])
   await pool.query(`DELETE FROM drivers WHERE phone = $1`, [PHONE])
   await redis.del(`otp_rate:${PHONE}:login`)
   await redis.del(`otp:driver:${PHONE}:login`)
@@ -46,6 +50,10 @@ afterAll(async () => {
   redis.disconnect()
 })
 
+// These 4 tests deliberately run as one continuous flow (login → incomplete
+// status → blocked go-online → submit → complete status → allowed go-online)
+// sharing accessToken/driverId set in TC-DV-001 — not independently runnable
+// via .only, unlike most tests in m03.test.ts.
 describe('Driver daily verification', () => {
   let accessToken: string
   let driverId: string
