@@ -9,6 +9,7 @@ export const QUEUE_NAMES = {
   SCHEDULER: 'scheduler',
   CLEANUP: 'cleanup',
   AUDIT: 'audit',
+  PARTITION_MAINTENANCE: 'partition-maintenance',
 } as const
 
 function parseRedisUrl(url: string): { host: string; port: number; password?: string; tls?: object } {
@@ -36,6 +37,7 @@ export const analyticsQueue = new Queue(QUEUE_NAMES.ANALYTICS, { connection })
 export const schedulerQueue = new Queue(QUEUE_NAMES.SCHEDULER, { connection })
 export const cleanupQueue = new Queue(QUEUE_NAMES.CLEANUP, { connection })
 export const auditQueue = new Queue(QUEUE_NAMES.AUDIT, { connection })
+export const partitionMaintenanceQueue = new Queue(QUEUE_NAMES.PARTITION_MAINTENANCE, { connection })
 
 export const queues = {
   [QUEUE_NAMES.NOTIFICATIONS]: notificationsQueue,
@@ -45,4 +47,5 @@ export const queues = {
   [QUEUE_NAMES.SCHEDULER]: schedulerQueue,
   [QUEUE_NAMES.CLEANUP]: cleanupQueue,
   [QUEUE_NAMES.AUDIT]: auditQueue,
+  [QUEUE_NAMES.PARTITION_MAINTENANCE]: partitionMaintenanceQueue,
 } as const
