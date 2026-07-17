@@ -1,4 +1,5 @@
 import api from './api'
+import { compressImage } from './image-compress'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -60,34 +61,12 @@ export interface DocumentStatus {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 // Phone camera photos of ID docs are commonly 4-12MB; downscale before upload
-// to cut bandwidth and avoid timeouts on slow mobile connections. Non-image
-// files (e.g. PDFs) and already-small images pass through unchanged.
+// to cut bandwidth and avoid timeouts on slow mobile connections.
 const DOC_MAX_EDGE = 1600
 const DOC_JPEG_QUALITY = 0.82
 
 async function compressDocImage(file: File): Promise<File> {
-  if (!file.type.startsWith('image/')) return file
-  try {
-    const bitmap = await createImageBitmap(file)
-    const scale = Math.min(1, DOC_MAX_EDGE / Math.max(bitmap.width, bitmap.height))
-    if (scale === 1) return file
-
-    const canvas = document.createElement('canvas')
-    canvas.width  = Math.round(bitmap.width  * scale)
-    canvas.height = Math.round(bitmap.height * scale)
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return file
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-    bitmap.close()
-
-    const blob = await new Promise<Blob | null>(resolve =>
-      canvas.toBlob(resolve, 'image/jpeg', DOC_JPEG_QUALITY)
-    )
-    if (!blob) return file
-    return new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' })
-  } catch {
-    return file
-  }
+  return compressImage(file, { maxEdge: DOC_MAX_EDGE, quality: DOC_JPEG_QUALITY })
 }
 
 // ── API calls ──────────────────────────────────────────────────────────────────
