@@ -245,6 +245,76 @@ export async function confirmRidePayment(
   return true
 }
 
+// ── Pay for a ride from the user wallet (atomic debit) ──────────
+// One ride = one payment (payments.ride_id UNIQUE), so a prior ride_debit
+// ledger row for this ride means we already paid — return true without
+// re-debiting. Insufficient balance returns false: the caller leaves the
+// payment 'pending' and the app offers retry (online / wallet / cash).
+export async function payFromUserWallet(
+  rideId: bigint,
+  userId: bigint,
+  amount: number
+): Promise<boolean> {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    await client.query(
+      `INSERT INTO user_wallets (user_id, balance)
+       VALUES ($1, 0)
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userId]
+    )
+
+    const walletRes = await client.query(
+      `SELECT id, balance FROM user_wallets WHERE user_id = $1 FOR UPDATE`,
+      [userId]
+    )
+    const wallet = walletRes.rows[0]
+
+    const dupe = await client.query(
+      `SELECT id FROM user_wallet_ledger
+       WHERE ride_id = $1 AND entry_type = 'ride_debit' LIMIT 1`,
+      [rideId]
+    )
+    if ((dupe.rowCount ?? 0) > 0) {
+      await client.query('ROLLBACK')
+      return true
+    }
+
+    const balance = parseFloat(wallet.balance)
+    if (balance < amount) {
+      await client.query('ROLLBACK')
+      return false
+    }
+
+    const newBalance = Math.round((balance - amount) * 100) / 100
+
+    await client.query(
+      `UPDATE user_wallets
+       SET balance = $2, lifetime_spent = lifetime_spent + $3
+       WHERE id = $1`,
+      [wallet.id, newBalance, amount]
+    )
+
+    await client.query(
+      `INSERT INTO user_wallet_ledger (
+         wallet_id, user_id, entry_type,
+         amount, direction, balance_after, ride_id, note
+       ) VALUES ($1,$2,'ride_debit',$3,'debit',$4,$5,$6)`,
+      [wallet.id, userId, amount, newBalance, rideId, `Ride payment for ride #${rideId}`]
+    )
+
+    await client.query('COMMIT')
+    return true
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
 // ── Wallet queries ─────────────────────────────────────────────
 
 export async function getDriverWallet(driverId: bigint) {
