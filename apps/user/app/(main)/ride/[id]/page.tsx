@@ -13,6 +13,7 @@ import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
 import { useInterpolatedPosition } from '@/lib/useInterpolatedPosition'
 import { decodePolyline } from '@/lib/polyline'
+import { openRidePaymentCheckout } from '@/lib/razorpay-checkout'
 import CancelSheet from './CancelSheet'
 import SOSButton from '@/components/ui/SOSButton'
 
@@ -194,45 +195,6 @@ function OtpBadge({ otp, phase }: { otp: string | null; phase: 'start' | 'end' }
       </div>
     </div>
   )
-}
-
-// Opens Razorpay Checkout for the online-payment fare and verifies the
-// result server-side. Mirrors the driver app's wallet top-up Checkout flow
-// (apps/driver/src/pages/Wallet.tsx) — same script id/load pattern.
-async function openRidePaymentCheckout(
-  rideId: string,
-  opts: { orderId: string; key: string; amount: number },
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    if (document.getElementById('rzp-script')) { resolve(); return }
-    const s = document.createElement('script')
-    s.id = 'rzp-script'
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js'
-    s.onload = () => resolve()
-    s.onerror = reject
-    document.body.appendChild(s)
-  })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rzp = new (window as any).Razorpay({
-    key: opts.key,
-    order_id: opts.orderId,
-    amount: Math.round(opts.amount * 100),
-    currency: 'INR',
-    name: 'Ocar',
-    description: `Ride #${rideId}`,
-    handler: async (response: {
-      razorpay_order_id: string
-      razorpay_payment_id: string
-      razorpay_signature: string
-    }) => {
-      await rideApi.verifyPayment(rideId, {
-        orderId: response.razorpay_order_id,
-        paymentId: response.razorpay_payment_id,
-        signature: response.razorpay_signature,
-      })
-    },
-  })
-  rzp.open()
 }
 
 export default function RidePage() {
