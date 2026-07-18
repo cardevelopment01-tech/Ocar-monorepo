@@ -30,7 +30,8 @@ async function getCashbackExpiryDays(): Promise<number> {
 
 export async function createPaymentRecord(
   rideId: bigint,
-  channel: string = 'cash_direct'
+  channel: string = 'cash_direct',
+  opts: { status?: 'pending' | 'completed' } = {}
 ): Promise<void> {
   const fareRes = await pool.query(
     `SELECT fs.id AS fare_snapshot_id,
@@ -50,17 +51,22 @@ export async function createPaymentRecord(
   const commissionAmt = Math.round(amount * commissionPct) / 100
   const driverEarning = Math.round((amount - commissionAmt) * 100) / 100
 
+  const status = opts.status ?? 'completed'
+  // Only a captured (completed) payment has a capture timestamp. 'now()' / 'NULL'
+  // are hardcoded literals — never client input — so interpolation is safe.
+  const capturedAt = status === 'completed' ? 'now()' : 'NULL'
+
   await pool.query(
     `INSERT INTO payments (
        ride_id, user_id, driver_id, fare_snapshot_id,
        amount, channel, status,
        commission_percent, commission_amount, driver_earning,
        captured_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,'completed',$7,$8,$9,now())
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${capturedAt})
      ON CONFLICT (ride_id) DO NOTHING`,
     [
       rideId, fare.user_id, fare.driver_id, fare.fare_snapshot_id,
-      amount, channel, commissionPct, commissionAmt, driverEarning,
+      amount, channel, status, commissionPct, commissionAmt, driverEarning,
     ]
   )
 }
