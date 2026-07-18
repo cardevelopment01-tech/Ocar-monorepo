@@ -407,7 +407,14 @@ export default function RidePage() {
           orderId: data.razorpayOrderId,
           key: data.razorpayKey,
           amount: data.amount,
-        }).catch(() => { /* rider can retry from the recap screen */ })
+        }).catch(() => {
+          // No retry UI exists yet for a Checkout that fails to open (ad-blocker,
+          // offline, CSP). The payment row stays 'pending'; the backend
+          // reconciliation sweep (payments.service.ts reconcilePendingRidePayments)
+          // will eventually mark it 'failed' after the grace window, but nothing
+          // currently surfaces that to the rider. Known gap — needs a retry/recap
+          // UI in a follow-up.
+        })
       }
     }
     const onDriverAssigned = (data: {
