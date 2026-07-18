@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Bell, MessageSquare, Check } from 'lucide-react'
 import { motion, AnimatePresence, useReducedMotion, useMotionValue, animate } from 'framer-motion'
@@ -28,7 +28,7 @@ function isToday(iso: string): boolean {
   return d.toDateString() === now.toDateString()
 }
 
-function NotificationRow({ item, index, onRead }: { item: NotificationItem; index: number; onRead: (id: string) => void }) {
+function NotificationRow({ item, index, onRead, onOpen }: { item: NotificationItem; index: number; onRead: (id: string) => void; onOpen: (item: NotificationItem) => void }) {
   const Icon = getNotificationIcon(item.type)
   const unread = !item.readAt
   const tint = getNotificationTint(item.type, unread)
@@ -61,7 +61,7 @@ function NotificationRow({ item, index, onRead }: { item: NotificationItem; inde
         className="bg-surface"
       >
         <button
-          onClick={() => onRead(item.id)}
+          onClick={() => onOpen(item)}
           className="w-full flex items-start gap-3 px-4 py-3.5 text-left active:bg-surface-2 transition-colors duration-150"
         >
           <span className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors duration-200 ${tint.bg}`}>
@@ -100,6 +100,13 @@ export default function NotificationsPage() {
   const router = useRouter()
   const { items, loading, unreadCount, fetchFirstPage, markRead, markAllRead } = useNotifications()
   const prefersReducedMotion = useReducedMotion()
+
+  const handleOpen = useCallback((item: NotificationItem) => {
+    void markRead(item.id)
+    if (item.type === 'payment_failed' && item.rideId) {
+      router.push(`/ride/${item.rideId}/receipt`)
+    }
+  }, [markRead, router])
 
   useEffect(() => {
     void fetchFirstPage()
@@ -176,7 +183,7 @@ export default function NotificationsPage() {
                 <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest px-4 pt-5 pb-1">Today</p>
                 <div className="bg-surface divide-y divide-border">
                   {todayItems.map((item, index) => (
-                    <NotificationRow key={item.id} item={item} index={index} onRead={(id) => void markRead(id)} />
+                    <NotificationRow key={item.id} item={item} index={index} onRead={(id) => void markRead(id)} onOpen={handleOpen} />
                   ))}
                 </div>
               </>
@@ -186,7 +193,7 @@ export default function NotificationsPage() {
                 <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest px-4 pt-5 pb-1">Earlier</p>
                 <div className="bg-surface divide-y divide-border">
                   {earlierItems.map((item, index) => (
-                    <NotificationRow key={item.id} item={item} index={todayItems.length + index} onRead={(id) => void markRead(id)} />
+                    <NotificationRow key={item.id} item={item} index={todayItems.length + index} onRead={(id) => void markRead(id)} onOpen={handleOpen} />
                   ))}
                 </div>
               </>
