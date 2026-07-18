@@ -370,12 +370,11 @@ export default function RidePage() {
           key: data.razorpayKey,
           amount: data.amount,
         }).catch(() => {
-          // No retry UI exists yet for a Checkout that fails to open (ad-blocker,
-          // offline, CSP). The payment row stays 'pending'; the backend
-          // reconciliation sweep (payments.service.ts reconcilePendingRidePayments)
-          // will eventually mark it 'failed' after the grace window, but nothing
-          // currently surfaces that to the rider. Known gap — needs a retry/recap
-          // UI in a follow-up.
+          // Checkout failed to open (ad-blocker, offline, CSP). The payment row
+          // stays 'pending'; the backend reconciliation sweep eventually marks it
+          // 'failed' and notifies the rider (notifyRidePaymentFailed), who can
+          // retry from the trip receipt page (ride/[id]/receipt) — see the
+          // "Pay now" banner there for the recovery flow.
         })
       }
     }
