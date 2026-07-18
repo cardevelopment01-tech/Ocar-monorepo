@@ -213,6 +213,38 @@ export async function creditCashback(
   }
 }
 
+// ── Confirm a collected ride payment (shared by verify/webhook/reconcile) ──
+// The `WHERE status='pending'` guard is the idempotency lock: only the first
+// caller to flip pending→completed runs commission + cashback. Duplicate or
+// stale triggers hit zero rows and return false (no-op). Razorpay does not
+// guarantee webhook ordering, so this compare-before-write is mandatory.
+export async function confirmRidePayment(
+  rideId: bigint,
+  razorpayPaymentId?: string
+): Promise<boolean> {
+  const params: unknown[] = [rideId]
+  let extraSet = ''
+  if (razorpayPaymentId !== undefined) {
+    params.push(razorpayPaymentId)
+    extraSet = ', razorpay_payment_id = $2'
+  }
+
+  const res = await pool.query(
+    `UPDATE payments
+       SET status = 'completed', captured_at = now()${extraSet}
+     WHERE ride_id = $1 AND status = 'pending'
+     RETURNING driver_id, user_id, amount`,
+    params
+  )
+
+  if ((res.rowCount ?? 0) === 0) return false
+
+  const row = res.rows[0]
+  await deductCommission(rideId, BigInt(row.driver_id))
+  await creditCashback(rideId, BigInt(row.user_id), parseFloat(row.amount))
+  return true
+}
+
 // ── Wallet queries ─────────────────────────────────────────────
 
 export async function getDriverWallet(driverId: bigint) {
