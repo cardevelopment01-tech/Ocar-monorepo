@@ -1,4 +1,7 @@
 import { pool } from '@/db/client'
+import { config } from '@/config'
+import { client as redis } from '@/db/redis'
+import { ridePaymentOrderKey } from '@/constants/redis-keys'
 
 // ── Config helpers ─────────────────────────────────────────────
 
@@ -313,6 +316,41 @@ export async function payFromUserWallet(
   } finally {
     client.release()
   }
+}
+
+// ── Create a Razorpay order for an online ride payment ──────────
+// Returns the order handle for the client to open Checkout, or null in dev
+// (no Razorpay keys) after auto-confirming — same dev shortcut the driver
+// wallet top-up uses so the online flow is exercisable without a gateway.
+export async function createRidePaymentOrder(
+  rideId: bigint,
+  userId: bigint,
+  amount: number
+): Promise<{ orderId: string; key: string; amount: number } | null> {
+  if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) {
+    // ponytail: dev auto-confirm, mirrors driver topup dev-credit path.
+    await confirmRidePayment(rideId)
+    return null
+  }
+
+  const Razorpay = (await import('razorpay')).default
+  const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
+  const order = await (rzp.orders.create as Function)({
+    amount: Math.round(amount * 100),
+    currency: 'INR',
+    receipt: `ride_${rideId}_${Date.now()}`,
+  })
+  const orderId = (order as { id: string }).id
+
+  await pool.query(
+    `UPDATE payments SET razorpay_order_id = $2 WHERE ride_id = $1`,
+    [rideId, orderId]
+  )
+  // Bind this order to the user who created it so /verify (Task 8) can reject
+  // a paymentId/signature obtained for one user being replayed by another.
+  await redis.set(ridePaymentOrderKey(orderId), userId.toString(), 'EX', 1800)
+
+  return { orderId, key: config.RAZORPAY_KEY_ID, amount }
 }
 
 // ── Wallet queries ─────────────────────────────────────────────
