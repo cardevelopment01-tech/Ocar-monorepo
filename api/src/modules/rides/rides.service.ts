@@ -1184,15 +1184,16 @@ export async function verifyEndOTP(
 
   // Payment + wallet post-processing (non-blocking — ride is already completed)
   const rideData = await repo.getRideById(rideId)
-  const fareRow = await pool.query(
-    `SELECT COALESCE(total_final, total_estimated) AS amount
-     FROM fare_snapshots WHERE ride_id = $1`,
-    [rideId]
-  )
-  const fareAmount = parseFloat(fareRow.rows[0]?.amount ?? '0')
   const paymentChannel = rideData?.payment_channel ?? 'cash'
 
   void (async () => {
+    const fareRow = await pool.query(
+      `SELECT COALESCE(total_final, total_estimated) AS amount
+       FROM fare_snapshots WHERE ride_id = $1`,
+      [rideId]
+    )
+    const fareAmount = parseFloat(fareRow.rows[0]?.amount ?? '0')
+
     if (paymentChannel === 'online') {
       await createPaymentRecord(rideId, 'razorpay_online', { status: 'pending' })
       if (rideData?.user_id == null || fareAmount <= 0) return
