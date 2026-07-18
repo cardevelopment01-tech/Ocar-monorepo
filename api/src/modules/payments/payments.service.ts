@@ -412,6 +412,61 @@ export async function verifyRidePayment(
   await redis.del(ridePaymentOrderKey(input.orderId))
 }
 
+// ── Retry a stranded ride payment (rider-initiated) ────────────
+// Same-channel retry for a payment stuck 'pending'/'failed'. Resets the row and
+// re-runs the channel's EXISTING flow — online: createRidePaymentOrder (fresh
+// order, client reopens Checkout, confirmed via verify/webhook/reconcile);
+// wallet: payFromUserWallet then confirmRidePayment. No new confirmation path:
+// confirmRidePayment's WHERE status='pending' guard stays the single idempotency
+// lock. The reset itself is guarded so a payment a concurrent path just
+// completed is never dragged back to 'pending'.
+export type RetryRidePaymentResult =
+  | { channel: 'online'; order: { orderId: string; key: string; amount: number } | null }
+  | { channel: 'wallet'; paid: boolean }
+
+export async function retryRidePayment(
+  rideId: bigint,
+  userId: bigint
+): Promise<RetryRidePaymentResult> {
+  const payRes = await pool.query(
+    `SELECT user_id, channel, status, amount FROM payments WHERE ride_id = $1`,
+    [rideId]
+  )
+  const payment = payRes.rows[0]
+  if (!payment) throw Object.assign(new Error('Payment not found for this ride'), { httpStatus: 404 })
+  if (String(payment.user_id) !== userId.toString()) {
+    throw Object.assign(new Error('Payment does not belong to this user'), { httpStatus: 403 })
+  }
+
+  const retryable = payment.channel === 'razorpay_online' || payment.channel === 'platform_wallet'
+  const resettable = payment.status === 'pending' || payment.status === 'failed'
+  if (!retryable || !resettable) {
+    throw Object.assign(new Error('Payment is not eligible for retry'), { httpStatus: 400 })
+  }
+
+  const amount = parseFloat(payment.amount)
+
+  // Guarded reset: 0 rows means a concurrent verify/webhook already completed it.
+  const reset = await pool.query(
+    `UPDATE payments SET status='pending', failed_at=NULL, failure_reason=NULL
+     WHERE ride_id = $1 AND status IN ('pending','failed')`,
+    [rideId]
+  )
+  const alreadySettled = (reset.rowCount ?? 0) === 0
+
+  if (payment.channel === 'razorpay_online') {
+    if (alreadySettled) return { channel: 'online', order: null }
+    const order = await createRidePaymentOrder(rideId, userId, amount)
+    return { channel: 'online', order }
+  }
+
+  // platform_wallet
+  if (alreadySettled) return { channel: 'wallet', paid: true }
+  const paid = await payFromUserWallet(rideId, userId, amount)
+  if (paid) await confirmRidePayment(rideId)
+  return { channel: 'wallet', paid }
+}
+
 // ── Wallet queries ─────────────────────────────────────────────
 
 export async function getDriverWallet(driverId: bigint) {
