@@ -88,6 +88,8 @@ export type RideDetail = {
   endOtp: string | undefined
   driver_current_lat: number | null
   driver_current_lng: number | null
+  payment_channel: 'cash' | 'online' | 'wallet'
+  payment_status: string | null
   stops: RideStop[]
 }
 
@@ -128,6 +130,10 @@ export type RentalPackage = {
   extra_per_min: number
   is_active: boolean
 }
+
+export type RetryPaymentResult =
+  | { channel: 'online'; order: { orderId: string; key: string; amount: number } | null }
+  | { channel: 'wallet'; paid: boolean }
 
 export const rideApi = {
   getEstimate: async (params: {
@@ -266,5 +272,10 @@ export const rideApi = {
     input: { orderId: string; paymentId: string; signature: string },
   ): Promise<void> => {
     await api.post(`/api/v1/rides/${rideId}/payment/verify`, input)
+  },
+
+  retryPayment: async (rideId: string): Promise<RetryPaymentResult> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/payment/retry`)
+    return res.data as RetryPaymentResult
   },
 }
