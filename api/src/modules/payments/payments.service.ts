@@ -328,7 +328,8 @@ export async function createRidePaymentOrder(
   amount: number
 ): Promise<{ orderId: string; key: string; amount: number } | null> {
   if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) {
-    // ponytail: dev auto-confirm, mirrors driver topup dev-credit path.
+    // Dev mode: no Razorpay keys — auto-confirm so the online-payment flow is
+    // exercisable without a gateway, mirroring the driver wallet top-up dev path.
     await confirmRidePayment(rideId)
     return null
   }
