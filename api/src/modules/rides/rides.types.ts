@@ -38,6 +38,7 @@ export interface Ride {
   ride_type: 'one_way' | 'round_trip' | 'rental'
   is_return_cab: boolean
   status: string
+  payment_channel: 'cash' | 'online' | 'wallet'
   origin_address: string | null
   destination_address: string | null
   origin_lat: number
