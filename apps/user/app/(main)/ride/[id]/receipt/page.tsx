@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { ChevronLeft, CheckCircle2, XCircle, Navigation, Clock, Star, LifeBuoy } from 'lucide-react'
+import { ChevronLeft, CheckCircle2, XCircle, Navigation, Clock, Star, LifeBuoy, AlertCircle } from 'lucide-react'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
+import { openRidePaymentCheckout } from '@/lib/razorpay-checkout'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
@@ -40,11 +41,46 @@ export default function RideReceiptPage() {
 
   const [ride, setRide]       = useState<RideDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [retrying, setRetrying] = useState(false)
+  const [payMsg, setPayMsg]     = useState<string | null>(null)
 
   useEffect(() => {
     if (!rideId) return
     rideApi.getRide(rideId).then(setRide).catch(() => {}).finally(() => setLoading(false))
   }, [rideId])
+
+  const needsPayment =
+    (ride?.payment_status === 'pending' || ride?.payment_status === 'failed') &&
+    (ride?.payment_channel === 'online' || ride?.payment_channel === 'wallet')
+
+  async function handleRetryPayment() {
+    if (!rideId) return
+    setRetrying(true)
+    setPayMsg(null)
+    try {
+      const result = await rideApi.retryPayment(rideId)
+      if (result.channel === 'online') {
+        if (result.order) {
+          await openRidePaymentCheckout(rideId, result.order, () => {
+            rideApi.getRide(rideId).then(setRide).catch(() => {})
+          })
+        } else {
+          // dev auto-confirmed (no Razorpay keys) — refresh to clear the banner
+          const fresh = await rideApi.getRide(rideId)
+          setRide(fresh)
+        }
+      } else if (result.paid) {
+        const fresh = await rideApi.getRide(rideId)
+        setRide(fresh)
+      } else {
+        setPayMsg('Not enough wallet balance. Top up your wallet and try again.')
+      }
+    } catch {
+      setPayMsg('Could not start payment. Please try again.')
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -109,6 +145,33 @@ export default function RideReceiptPage() {
           </div>
           {total && !isCancelled && <p className="text-lg font-black text-text-primary">{total}</p>}
         </motion.div>
+
+        {needsPayment && (
+          <div className="rounded-2xl bg-status-warning/10 p-4">
+            <div className="flex items-center gap-3">
+              <AlertCircle size={20} className="text-status-warning flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-status-warning">
+                  {ride?.payment_status === 'failed' ? 'Payment failed' : 'Payment pending'}
+                </p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  {ride?.payment_channel === 'wallet'
+                    ? 'Your wallet payment for this trip is incomplete.'
+                    : 'Your online payment for this trip didn’t go through.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleRetryPayment()}
+                disabled={retrying}
+                className="flex-shrink-0 bg-primary text-white text-xs font-semibold px-4 py-2 rounded-full active:scale-[0.98] transition-transform disabled:opacity-50"
+              >
+                {retrying ? 'Processing…' : 'Pay now'}
+              </button>
+            </div>
+            {payMsg && <p className="text-xs text-status-error mt-2">{payMsg}</p>}
+          </div>
+        )}
 
         {/* Route */}
         <div className="bg-surface rounded-2xl border border-border p-4">
