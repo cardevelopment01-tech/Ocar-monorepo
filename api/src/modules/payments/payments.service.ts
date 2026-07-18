@@ -354,6 +354,64 @@ export async function createRidePaymentOrder(
   return { orderId, key: config.RAZORPAY_KEY_ID, amount }
 }
 
+// ── Client-driven verify (primary confirmation path) ───────────
+// Mirrors the proven driver wallet-topup verify (payments.routes.ts). Never
+// trusts client input: signature verified with our secret, payment re-fetched
+// from Razorpay, and the captured amount compared to the fare we stored. All
+// failures throw a safe-message error (no error.message leak) with an
+// httpStatus, handled by the shared error middleware.
+export async function verifyRidePayment(
+  rideId: bigint,
+  userId: bigint,
+  input: { orderId: string; paymentId: string; signature: string }
+): Promise<void> {
+  if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) {
+    throw Object.assign(new Error('Payment verification is not configured'), { httpStatus: 400 })
+  }
+
+  // The order must have been created for this user (bound at order creation) —
+  // stops a paymentId/signature tuple for one user's order being replayed
+  // against a different user's account.
+  const boundUserId = await redis.get(ridePaymentOrderKey(input.orderId))
+  if (boundUserId !== userId.toString()) {
+    throw Object.assign(new Error('Order does not belong to this user'), { httpStatus: 400 })
+  }
+
+  // ...and it must be the order recorded for THIS ride's payment (stops
+  // replaying a valid order/signature against an unrelated ride).
+  const payRes = await pool.query(
+    `SELECT amount, razorpay_order_id FROM payments WHERE ride_id = $1`,
+    [rideId]
+  )
+  const payment = payRes.rows[0]
+  if (!payment || payment.razorpay_order_id !== input.orderId) {
+    throw Object.assign(new Error('Payment not found for this ride'), { httpStatus: 404 })
+  }
+
+  const { createHmac } = await import('crypto')
+  const expected = createHmac('sha256', config.RAZORPAY_KEY_SECRET)
+    .update(`${input.orderId}|${input.paymentId}`)
+    .digest('hex')
+  if (input.signature !== expected) {
+    throw Object.assign(new Error('Invalid payment signature'), { httpStatus: 400 })
+  }
+
+  // Never trust the client-supplied amount — re-fetch straight from Razorpay
+  // and compare against the fare we stored server-side.
+  const Razorpay = (await import('razorpay')).default
+  const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
+  const rp = await (rzp.payments.fetch as Function)(input.paymentId) as {
+    order_id: string; status: string; amount: number
+  }
+  const expectedPaise = Math.round(parseFloat(payment.amount) * 100)
+  if (rp.order_id !== input.orderId || rp.status !== 'captured' || rp.amount !== expectedPaise) {
+    throw Object.assign(new Error('Payment not verified'), { httpStatus: 400 })
+  }
+
+  await confirmRidePayment(rideId, input.paymentId)
+  await redis.del(ridePaymentOrderKey(input.orderId))
+}
+
 // ── Wallet queries ─────────────────────────────────────────────
 
 export async function getDriverWallet(driverId: bigint) {
