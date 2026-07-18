@@ -23,6 +23,9 @@ import {
   createPaymentRecord,
   deductCommission,
   creditCashback,
+  confirmRidePayment,
+  payFromUserWallet,
+  createRidePaymentOrder,
 } from '@/modules/payments/payments.service'
 import { calculateFare } from '@/lib/fare'
 import { classifyTrip, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
@@ -1181,23 +1184,50 @@ export async function verifyEndOTP(
 
   // Payment + wallet post-processing (non-blocking — ride is already completed)
   const rideData = await repo.getRideById(rideId)
-  void createPaymentRecord(rideId, 'cash_direct')
-    .then(() => deductCommission(rideId, driverId))
-    .then(async () => {
-      if (rideData?.user_id == null) return
-      const fareRes = await pool.query(
-        `SELECT COALESCE(total_final, total_estimated) AS amount
-         FROM fare_snapshots WHERE ride_id = $1`,
-        [rideId]
-      )
-      const fareAmount = parseFloat(fareRes.rows[0]?.amount ?? '0')
-      if (fareAmount > 0) {
-        await creditCashback(rideId, BigInt(rideData.user_id), fareAmount)
+  const fareRow = await pool.query(
+    `SELECT COALESCE(total_final, total_estimated) AS amount
+     FROM fare_snapshots WHERE ride_id = $1`,
+    [rideId]
+  )
+  const fareAmount = parseFloat(fareRow.rows[0]?.amount ?? '0')
+  const paymentChannel = rideData?.payment_channel ?? 'cash'
+
+  void (async () => {
+    if (paymentChannel === 'online') {
+      await createPaymentRecord(rideId, 'razorpay_online', { status: 'pending' })
+      if (rideData?.user_id == null || fareAmount <= 0) return
+      const order = await createRidePaymentOrder(rideId, BigInt(rideData.user_id), fareAmount)
+      // order is null in dev (auto-confirmed); with keys, push order id so the
+      // app opens Checkout. Commission + cashback run only on confirm.
+      if (order) {
+        socketEvents.sendRideStatusUpdate(rideId.toString(), {
+          status:          'completed',
+          paymentChannel:  'online',
+          razorpayOrderId: order.orderId,
+          razorpayKey:     order.key,
+          amount:          order.amount,
+        })
       }
-    })
-    .catch((err: unknown) => {
-      console.error(`Payment post-processing failed for ride ${rideId}:`, err)
-    })
+      return
+    }
+
+    if (paymentChannel === 'wallet') {
+      await createPaymentRecord(rideId, 'platform_wallet', { status: 'pending' })
+      if (rideData?.user_id == null || fareAmount <= 0) return
+      const paid = await payFromUserWallet(rideId, BigInt(rideData.user_id), fareAmount)
+      // Insufficient balance → payment stays pending, app offers retry.
+      if (paid) await confirmRidePayment(rideId)
+      return
+    }
+
+    // cash (default) — unchanged behavior: capture immediately, commission + cashback now.
+    await createPaymentRecord(rideId, 'cash_direct')
+    await deductCommission(rideId, driverId)
+    if (rideData?.user_id == null || fareAmount <= 0) return
+    await creditCashback(rideId, BigInt(rideData.user_id), fareAmount)
+  })().catch((err: unknown) => {
+    console.error(`Payment post-processing failed for ride ${rideId}:`, err)
+  })
 
   return { success: true, rideId: rideId.toString() }
 }
