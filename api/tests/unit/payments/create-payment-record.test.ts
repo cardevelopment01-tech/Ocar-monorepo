@@ -20,22 +20,21 @@ describe('createPaymentRecord', () => {
 
   it('cash: inserts status=completed with captured_at=now()', async () => {
     await createPaymentRecord(BigInt(101), 'cash_direct')
-    const insert = vi.mocked(pool.query).mock.calls[2]!
+    const insert = vi.mocked(pool.query).mock.calls.find(([sql]) => (sql as string).includes('INSERT INTO payments'))!
     const sql = insert[0] as string
     const params = insert[1] as unknown[]
     expect(sql).toContain('captured_at')
-    expect(sql).toContain('now()')
     expect(params).toContain('completed')
     expect(params).toContain('cash_direct')
+    expect(params[params.length - 1]).toBeInstanceOf(Date)
   })
 
   it('online: inserts status=pending with NULL captured_at', async () => {
     await createPaymentRecord(BigInt(101), 'razorpay_online', { status: 'pending' })
-    const insert = vi.mocked(pool.query).mock.calls[2]!
-    const sql = insert[0] as string
+    const insert = vi.mocked(pool.query).mock.calls.find(([sql]) => (sql as string).includes('INSERT INTO payments'))!
     const params = insert[1] as unknown[]
-    expect(sql).not.toContain('now()')
     expect(params).toContain('pending')
     expect(params).toContain('razorpay_online')
+    expect(params[params.length - 1]).toBeNull()
   })
 })

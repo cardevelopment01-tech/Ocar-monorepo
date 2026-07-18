@@ -52,9 +52,8 @@ export async function createPaymentRecord(
   const driverEarning = Math.round((amount - commissionAmt) * 100) / 100
 
   const status = opts.status ?? 'completed'
-  // Only a captured (completed) payment has a capture timestamp. 'now()' / 'NULL'
-  // are hardcoded literals — never client input — so interpolation is safe.
-  const capturedAt = status === 'completed' ? 'now()' : 'NULL'
+  // Only a captured (completed) payment has a capture timestamp.
+  const capturedAt = status === 'completed' ? new Date() : null
 
   await pool.query(
     `INSERT INTO payments (
@@ -62,11 +61,12 @@ export async function createPaymentRecord(
        amount, channel, status,
        commission_percent, commission_amount, driver_earning,
        captured_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${capturedAt})
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      ON CONFLICT (ride_id) DO NOTHING`,
     [
       rideId, fare.user_id, fare.driver_id, fare.fare_snapshot_id,
       amount, channel, status, commissionPct, commissionAmt, driverEarning,
+      capturedAt,
     ]
   )
 }
