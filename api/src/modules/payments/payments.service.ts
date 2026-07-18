@@ -524,13 +524,37 @@ export async function topUpDriverWallet(
   }
 }
 
-// ── Razorpay webhook handler (Phase 2 stub) ────────────────────
+// ── Razorpay webhook handler (backstop confirmation) ────────────
+// Primary confirmation is the client-driven verify() (Task 8). This handler
+// is a backstop for when the client never calls verify (app killed / network
+// drop right after ride completion): if Razorpay tells us a payment captured,
+// we confirm it ourselves. confirmRidePayment's WHERE status='pending' guard
+// makes this a safe no-op if verify already ran.
+//
+// Only Razorpay dotted event names we map to a real `gateway_event_type` enum
+// value are logged — the old code inserted the raw event string (or the
+// literal 'unknown') into that enum column, neither of which is a valid enum
+// value, so every insert for an unmapped/unknown event was already failing.
+// Logging only tracked events keeps the log table consistent with what it can
+// actually store; untracked event types simply return early instead of erroring.
+const GATEWAY_EVENT_TYPE_MAP: Record<string, string> = {
+  'order.paid': 'order_created',
+  'payment.authorized': 'payment_authorized',
+  'payment.captured': 'payment_captured',
+  'payment.failed': 'payment_failed',
+}
 
 export async function handleWebhookEvent(
   payload: Record<string, unknown>
 ): Promise<void> {
-  const eventId = (payload as { payload?: { payment?: { entity?: { id?: string } } } })
-    ?.payload?.payment?.entity?.id
+  const event = (payload as { event?: string }).event
+  const eventType = event ? GATEWAY_EVENT_TYPE_MAP[event] : undefined
+  if (!eventType) return
+
+  const entity = (
+    payload as { payload?: { payment?: { entity?: { id?: string; order_id?: string } } } }
+  )?.payload?.payment?.entity
+  const eventId = entity?.id
 
   if (!eventId) return
 
@@ -544,12 +568,19 @@ export async function handleWebhookEvent(
     `INSERT INTO payment_gateway_events
        (event_type, razorpay_event_id, payload, processed, processed_at)
      VALUES ($1,$2,$3,true,now())`,
-    [
-      (payload as { event?: string }).event ?? 'unknown',
-      eventId,
-      JSON.stringify(payload),
-    ]
+    [eventType, eventId, JSON.stringify(payload)]
   )
+
+  if (event === 'payment.captured' && entity?.order_id) {
+    const pendingRes = await pool.query(
+      `SELECT ride_id FROM payments WHERE razorpay_order_id = $1 AND status = 'pending'`,
+      [entity.order_id]
+    )
+    const pending = pendingRes.rows[0]
+    if (pending) {
+      await confirmRidePayment(BigInt(pending.ride_id), eventId)
+    }
+  }
 }
 
 // ── Admin: list payments ───────────────────────────────────────
