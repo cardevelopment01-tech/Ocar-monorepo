@@ -418,7 +418,8 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
        vm.name          AS vehicle_model,
        vb.name          AS vehicle_brand,
        ST_Y(dls.location::geometry) AS driver_current_lat,
-       ST_X(dls.location::geometry) AS driver_current_lng
+       ST_X(dls.location::geometry) AS driver_current_lng,
+       p.status AS payment_status
      FROM rides r
      LEFT JOIN users u             ON u.id = r.user_id
      LEFT JOIN drivers d           ON d.id = r.driver_id
@@ -429,6 +430,7 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
      LEFT JOIN vehicle_models vm   ON vm.id = dv.model_id
      LEFT JOIN vehicle_brands vb   ON vb.id = dv.brand_id
      LEFT JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
+     LEFT JOIN payments p          ON p.ride_id = r.id
      WHERE r.id = $1`,
     [rideId]
   )

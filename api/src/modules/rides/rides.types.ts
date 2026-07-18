@@ -77,6 +77,7 @@ export interface Ride {
   vehicle_brand: string | null
   driver_current_lat: number | null
   driver_current_lng: number | null
+  payment_status: string | null
 }
 
 export interface StopInput {
