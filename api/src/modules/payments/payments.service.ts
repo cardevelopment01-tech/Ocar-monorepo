@@ -647,7 +647,7 @@ export async function reconcilePendingRidePayments(): Promise<void> {
   if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) return
 
   const res = await pool.query(
-    `SELECT ride_id, razorpay_order_id
+    `SELECT ride_id, razorpay_order_id, user_id, amount
      FROM payments
      WHERE status = 'pending'
        AND razorpay_order_id IS NOT NULL
@@ -668,12 +668,21 @@ export async function reconcilePendingRidePayments(): Promise<void> {
       if (captured) {
         await confirmRidePayment(BigInt(row.ride_id), captured.id)
       } else {
-        await pool.query(
+        const upd = await pool.query(
           `UPDATE payments
              SET status = 'failed', failed_at = now(), failure_reason = 'reconciliation_no_capture'
            WHERE ride_id = $1 AND status = 'pending'`,
           [BigInt(row.ride_id)]
         )
+        // Only notify if we actually flipped it to failed — a payment another
+        // path (verify/webhook) confirmed in the meantime hits 0 rows here.
+        // Lazy import: this module is imported broadly, and its transitive
+        // chain (socket.server → rides.service → jobs/queues) shouldn't load
+        // eagerly for every consumer of payments.service.ts.
+        if ((upd.rowCount ?? 0) > 0) {
+          const { notifyRidePaymentFailed } = await import('@/modules/notifications/notifications.service')
+          await notifyRidePaymentFailed(BigInt(row.user_id), BigInt(row.ride_id), parseFloat(row.amount))
+        }
       }
     } catch (err) {
       console.error(`[reconcile] ride ${row.ride_id} failed:`, err)
