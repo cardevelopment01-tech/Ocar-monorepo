@@ -61,4 +61,18 @@ describe('reconcilePendingRidePayments', () => {
     expect(failUpdate![0] as string).toContain("status = 'pending'") // guarded so a confirmed ride is untouched
     expect(notifyRidePaymentFailed).toHaveBeenCalledWith(BigInt(42), BigInt(101), 500)
   })
+
+  it('fail-UPDATE affects 0 rows (concurrent path already confirmed) → does not notify', async () => {
+    vi.mocked(pool.query)
+      .mockResolvedValueOnce({ rows: [{ ride_id: 101, razorpay_order_id: 'order_1', user_id: 42, amount: '500.00' }], rowCount: 1 } as never) // select pending
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 } as never) // UPDATE ... failed (0 rows — already confirmed elsewhere)
+    fetchPayments.mockResolvedValue({ items: [{ id: 'pay_9', status: 'failed' }] })
+
+    await svc.reconcilePendingRidePayments()
+
+    expect(confirmingUpdateWasIssued()).toBe(false)
+    const failUpdate = vi.mocked(pool.query).mock.calls.find(c => (c[0] as string).includes("status = 'failed'"))
+    expect(failUpdate).toBeTruthy()
+    expect(notifyRidePaymentFailed).not.toHaveBeenCalled()
+  })
 })
