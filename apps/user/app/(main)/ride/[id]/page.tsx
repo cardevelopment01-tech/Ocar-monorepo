@@ -196,6 +196,45 @@ function OtpBadge({ otp, phase }: { otp: string | null; phase: 'start' | 'end' }
   )
 }
 
+// Opens Razorpay Checkout for the online-payment fare and verifies the
+// result server-side. Mirrors the driver app's wallet top-up Checkout flow
+// (apps/driver/src/pages/Wallet.tsx) — same script id/load pattern.
+async function openRidePaymentCheckout(
+  rideId: string,
+  opts: { orderId: string; key: string; amount: number },
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    if (document.getElementById('rzp-script')) { resolve(); return }
+    const s = document.createElement('script')
+    s.id = 'rzp-script'
+    s.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    s.onload = () => resolve()
+    s.onerror = reject
+    document.body.appendChild(s)
+  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rzp = new (window as any).Razorpay({
+    key: opts.key,
+    order_id: opts.orderId,
+    amount: Math.round(opts.amount * 100),
+    currency: 'INR',
+    name: 'Ocar',
+    description: `Ride #${rideId}`,
+    handler: async (response: {
+      razorpay_order_id: string
+      razorpay_payment_id: string
+      razorpay_signature: string
+    }) => {
+      await rideApi.verifyPayment(rideId, {
+        orderId: response.razorpay_order_id,
+        paymentId: response.razorpay_payment_id,
+        signature: response.razorpay_signature,
+      })
+    },
+  })
+  rzp.open()
+}
+
 export default function RidePage() {
   const params = useParams<{ id: string }>()
   const rideId = params?.id ?? ''
@@ -343,6 +382,10 @@ export default function RidePage() {
     const onStatusUpdate = (data: {
       status: string; startOtp?: string; endOtp?: string
       fareDrift?: { previousFare: number; currentFare: number }
+      paymentChannel?: string
+      razorpayOrderId?: string
+      razorpayKey?: string
+      amount?: number
     }) => {
       setRideStatus(data.status)
       if (data.startOtp) setStartOtp(data.startOtp)
@@ -354,6 +397,17 @@ export default function RidePage() {
       if (data.status === 'in_progress') {
         breadcrumbRef.current = []
         setBreadcrumb([])
+      }
+      if (
+        data.status === 'completed' &&
+        data.paymentChannel === 'online' &&
+        data.razorpayOrderId && data.razorpayKey && typeof data.amount === 'number'
+      ) {
+        void openRidePaymentCheckout(rideId, {
+          orderId: data.razorpayOrderId,
+          key: data.razorpayKey,
+          amount: data.amount,
+        }).catch(() => { /* rider can retry from the recap screen */ })
       }
     }
     const onDriverAssigned = (data: {
