@@ -1,4 +1,5 @@
 import api from './api'
+import type { PaymentChannel } from './payment-channel'
 
 export type StopInput = { address: string; lat: number; lng: number }
 
@@ -175,7 +176,7 @@ export const rideApi = {
     returnAt?: string
     scheduledFor?: string
     stops?: StopInput[]
-    paymentChannel?: 'cash' | 'online' | 'wallet'
+    paymentChannel?: PaymentChannel
   }): Promise<BookingResult> => {
     const body: Record<string, unknown> = {
       categoryId:    params.categoryId,

@@ -12,3 +12,8 @@ export function setPaymentChannel(channel: PaymentChannel): void {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(KEY, channel)
 }
+
+export function clearPaymentChannel(): void {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(KEY)
+}
