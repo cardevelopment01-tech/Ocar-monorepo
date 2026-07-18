@@ -118,4 +118,5 @@ export interface BookingRequest {
   rentalPackageId?: number
   returnAt?: string
   scheduledFor?: string
+  paymentChannel?: 'cash' | 'online' | 'wallet'
 }

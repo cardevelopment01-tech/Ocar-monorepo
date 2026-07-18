@@ -377,6 +377,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   const storedTripHours = fareEstimate.rental_hours ?? (effectiveTripHours > 0 ? effectiveTripHours : undefined)
   if (storedTripHours !== undefined) rideInput.tripHours = storedTripHours
   if (data.returnAt           !== undefined) rideInput.returnAt           = data.returnAt
+  rideInput.paymentChannel = data.paymentChannel ?? 'cash'
   if (scheduledForDate && data.scheduledFor !== undefined) {
     rideInput.scheduledFor = data.scheduledFor
     rideInput.status = 'scheduled'
