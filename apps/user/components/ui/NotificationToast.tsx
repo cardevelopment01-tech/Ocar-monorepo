@@ -49,7 +49,13 @@ export default function NotificationToast() {
           exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -10, filter: 'blur(3px)' }}
           transition={{ type: 'spring', duration: 0.45, bounce: 0 }}
         >
-          <ToastCard toast={toast} onOpen={() => { dismissToast(); router.push('/notifications') }} />
+          <ToastCard
+            toast={toast}
+            onOpen={() => {
+              dismissToast()
+              router.push(toast.type === 'payment_failed' && toast.rideId ? `/ride/${toast.rideId}/receipt` : '/notifications')
+            }}
+          />
         </motion.div>
       )}
     </AnimatePresence>
