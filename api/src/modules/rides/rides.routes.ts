@@ -271,6 +271,14 @@ router.post('/:id/payment/verify', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+router.post('/:id/payment/retry', authenticate(), async (req, res, next) => {
+  try {
+    const rideId = BigInt(req.params['id']!)
+    const result = await paymentsService.retryRidePayment(rideId, req.user!.id)
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
 router.patch('/:id/stops/:sequence', authenticate(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id
