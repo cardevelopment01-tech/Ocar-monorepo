@@ -9,6 +9,7 @@ import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { rideApi, type FareEstimate, type StopInput } from '@/lib/ride-api'
+import { getPaymentChannel } from '@/lib/payment-channel'
 import { geoApi } from '@/lib/geo-api'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
@@ -219,6 +220,7 @@ function SelectRideContent() {
         originLat, originLng, originAddress,
         destinationLat, destinationLng, destinationAddress,
         distanceKm, durationMin,
+        paymentChannel: getPaymentChannel(),
       }
       if (originCityId)            bookingParams.originCityId  = originCityId
       if (tripHours !== undefined) bookingParams.tripHours     = tripHours
