@@ -583,6 +583,49 @@ export async function handleWebhookEvent(
   }
 }
 
+// ── Reconciliation sweep (app-killed-before-verify safety net) ──
+// Pending online payments older than the grace window get rechecked directly
+// against Razorpay. Captured → same confirm funnel. Not captured → failed
+// (guarded on status='pending' so a payment another path already confirmed is
+// never overwritten). Ride stays completed either way.
+export async function reconcilePendingRidePayments(): Promise<void> {
+  if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) return
+
+  const res = await pool.query(
+    `SELECT ride_id, razorpay_order_id
+     FROM payments
+     WHERE status = 'pending'
+       AND razorpay_order_id IS NOT NULL
+       AND created_at < now() - interval '10 minutes'`
+  )
+  if (res.rows.length === 0) return
+
+  const Razorpay = (await import('razorpay')).default
+  const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
+
+  for (const row of res.rows) {
+    try {
+      const orderId = row.razorpay_order_id as string
+      const list = await (rzp.orders.fetchPayments as Function)(orderId) as {
+        items: Array<{ id: string; status: string }>
+      }
+      const captured = list.items.find(p => p.status === 'captured')
+      if (captured) {
+        await confirmRidePayment(BigInt(row.ride_id), captured.id)
+      } else {
+        await pool.query(
+          `UPDATE payments
+             SET status = 'failed', failed_at = now(), failure_reason = 'reconciliation_no_capture'
+           WHERE ride_id = $1 AND status = 'pending'`,
+          [BigInt(row.ride_id)]
+        )
+      }
+    } catch (err) {
+      console.error(`[reconcile] ride ${row.ride_id} failed:`, err)
+    }
+  }
+}
+
 // ── Admin: list payments ───────────────────────────────────────
 
 export async function listPayments(opts: {
