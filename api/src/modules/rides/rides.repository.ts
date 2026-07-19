@@ -222,6 +222,7 @@ export async function createRide(data: {
   scheduledFor?: string
   returnAt?: string
   status?: string
+  paymentChannel?: string
 }) {
   const res = await pool.query(
     `INSERT INTO rides (
@@ -229,14 +230,15 @@ export async function createRide(data: {
        origin, destination,
        origin_address, destination_address,
        origin_city_id, destination_city_id,
-       rental_package_id, trip_hours, scheduled_for, return_at, status
+       rental_package_id, trip_hours, scheduled_for, return_at,
+       payment_channel, status
      ) VALUES (
        $1, $2, $3, $4,
        ST_SetSRID(ST_MakePoint($6::float8, $5::float8), 4326)::geography,
        CASE WHEN $7::float8 IS NOT NULL AND $8::float8 IS NOT NULL
          THEN ST_SetSRID(ST_MakePoint($8::float8, $7::float8), 4326)::geography
          ELSE NULL END,
-       $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::ride_status, 'requested'::ride_status)
+       $9, $10, $11, $12, $13, $14, $15, $16, $17, COALESCE($18::ride_status, 'requested'::ride_status)
      )
      RETURNING *`,
     [
@@ -249,6 +251,7 @@ export async function createRide(data: {
       data.tripHours ?? null,
       data.scheduledFor ?? null,
       data.returnAt ?? null,
+      data.paymentChannel ?? 'cash',
       data.status ?? null,
     ]
   )
@@ -415,7 +418,8 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
        vm.name          AS vehicle_model,
        vb.name          AS vehicle_brand,
        ST_Y(dls.location::geometry) AS driver_current_lat,
-       ST_X(dls.location::geometry) AS driver_current_lng
+       ST_X(dls.location::geometry) AS driver_current_lng,
+       p.status AS payment_status
      FROM rides r
      LEFT JOIN users u             ON u.id = r.user_id
      LEFT JOIN drivers d           ON d.id = r.driver_id
@@ -426,6 +430,7 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
      LEFT JOIN vehicle_models vm   ON vm.id = dv.model_id
      LEFT JOIN vehicle_brands vb   ON vb.id = dv.brand_id
      LEFT JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
+     LEFT JOIN payments p          ON p.ride_id = r.id
      WHERE r.id = $1`,
     [rideId]
   )

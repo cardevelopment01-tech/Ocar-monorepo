@@ -2,6 +2,7 @@ import * as repo from './notifications.repository'
 import { sendPush, type PushMessage } from './providers/push.provider'
 import { socketEvents } from '@/websocket/socket.server'
 import type { NotifOwnerType } from './notifications.repository'
+import { renderTemplate } from './templates.service'
 
 // Re-exported unchanged so existing callers (e.g. the notifications worker,
 // which uses `Parameters<typeof notifService.logNotification>[0]`) keep working.
@@ -95,3 +96,25 @@ export const listNotifications = repo.listNotifications
 export const getUnreadCount = repo.getUnreadCount
 export const markRead = repo.markRead
 export const markAllRead = repo.markAllRead
+
+// Proactive "your ride payment didn't go through" notification. Renders the
+// payment_failed push template and hands off to notifyOwner (in-app feed +
+// push + socket). Called from the two ride-payment failure sites:
+// reconcilePendingRidePayments (online) and settleRideCompletionPayment (wallet).
+export async function notifyRidePaymentFailed(
+  userId: bigint,
+  rideId: bigint,
+  amount: number
+): Promise<void> {
+  const { subject, body } = await renderTemplate('payment_failed', 'push', {
+    amount: String(Math.round(amount)),
+  })
+  await notifyOwner({
+    ownerType: 'user',
+    ownerId: userId,
+    type: 'payment_failed',
+    title: subject ?? 'Payment failed',
+    body,
+    rideId,
+  })
+}

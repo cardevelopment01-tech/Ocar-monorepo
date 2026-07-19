@@ -212,9 +212,15 @@ export function useTurnByTurn(
 
     let clampedIndex: number | null = null
     if (!trustworthy || forwardJumpTooFar) {
-      if (!bearingOnlyMismatch) offRouteStreak.current += 1
-      setSnappedPosition(null)
-      setSnappedHeading(null)
+      // A lagging heading during a turn already gets excluded from the off-route
+      // streak above — it should equally NOT wipe the marker/route back to raw
+      // GPS and the untrimmed full polyline for that tick. Hold the last known
+      // good snap instead; only a real off-route mismatch clears it.
+      if (!bearingOnlyMismatch) {
+        offRouteStreak.current += 1
+        setSnappedPosition(null)
+        setSnappedHeading(null)
+      }
     } else {
       offRouteStreak.current = 0
       setIsOffRoute(false)

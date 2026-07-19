@@ -78,6 +78,7 @@ router.patch('/safety/sos/:id/resolve',      requireAdmin('super_admin', 'ops_ad
 // ─── Safety — Disputes ────────────────────────────────────────────────────────
 router.get('/safety/disputes',           controller.getAdminDisputes)
 router.get('/safety/disputes/:id',       controller.getAdminDispute)
+router.get('/safety/disputes/:id/trip-replay', controller.getAdminDisputeTripReplay)
 router.patch('/safety/disputes/:id/assign',  requireAdmin('super_admin', 'support_admin'), controller.assignAdminDispute)
 router.patch('/safety/disputes/:id/resolve', requireAdmin('super_admin', 'support_admin'), controller.resolveAdminDispute)
 

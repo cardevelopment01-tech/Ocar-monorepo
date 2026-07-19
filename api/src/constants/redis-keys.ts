@@ -6,6 +6,8 @@ export const endOtpKey   = (rideId: string): string => `ride:end_otp:${rideId}`
 
 export const walletTopupOrderKey = (orderId: string): string => `wallet:topup_order:${orderId}`
 
+export const ridePaymentOrderKey = (orderId: string): string => `ride:payment_order:${orderId}`
+
 export const activeRideByDriverKey = (driverId: string): string => `ride:active_by_driver:${driverId}`
 
 // Coordinates rounded to 4 decimal places (~11m precision) so nearby-identical

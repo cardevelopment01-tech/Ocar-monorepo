@@ -24,7 +24,7 @@ export interface DriverRecord {
   full_name: string | null
   email: string | null
   gender: string | null
-  date_of_birth: Date | null
+  date_of_birth: string | null
   residential_address: string | null
   state: string | null
   city: string | null

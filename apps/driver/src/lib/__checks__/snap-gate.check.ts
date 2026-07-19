@@ -29,4 +29,21 @@ console.assert(
   'FAIL: without a heading reading, distance-only gate must still accept a 25m fix',
 )
 
+// Regression check for the turn-lag fix (bearingOnlyMismatch in useTurnByTurn.ts):
+// a close-but-bearing-mismatched fix (device heading lagging mid-turn) must be
+// distinguishable from a genuinely-far off-route fix, since only the latter should
+// clear the marker back to raw GPS / the untrimmed route.
+const OFF_ROUTE_THRESHOLD = 40
+const bearingOnlyMismatch = (distMetres: number, trustworthy: boolean, forwardJumpTooFar: boolean) =>
+  !trustworthy && !forwardJumpTooFar && distMetres <= OFF_ROUTE_THRESHOLD / 2
+
+console.assert(
+  bearingOnlyMismatch(10, false, false) === true,
+  'FAIL: a close (10m) fix that only fails the bearing check must be treated as a lagging heading, not off-route',
+)
+console.assert(
+  bearingOnlyMismatch(35, false, false) === false,
+  'FAIL: a far (35m) fix that fails the bearing check must still be treated as genuinely off-route',
+)
+
 console.log('snap-gate.check.ts: all assertions passed')

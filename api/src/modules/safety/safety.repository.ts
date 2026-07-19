@@ -300,6 +300,10 @@ export async function getDisputeById(id: bigint) {
   const res = await pool.query(
     `SELECT d.*,
             r.origin_address, r.destination_address,
+            ST_Y(r.origin::geometry)      AS origin_lat,
+            ST_X(r.origin::geometry)      AS origin_lng,
+            ST_Y(r.destination::geometry) AS destination_lat,
+            ST_X(r.destination::geometry) AS destination_lng,
             u.name       AS user_name,   u.phone AS user_phone,
             dr.full_name AS driver_name, dr.phone AS driver_phone,
             a.email      AS assigned_to_email
@@ -312,6 +316,28 @@ export async function getDisputeById(id: bigint) {
     [id]
   )
   return res.rows[0] ?? null
+}
+
+export async function getGpsTrailForRide(rideId: bigint) {
+  const res = await pool.query<{
+    lat: number
+    lng: number
+    recorded_at: string
+    speed_kmph: number | null
+    heading: number | null
+  }>(
+    `SELECT
+       ST_Y(location::geometry)  AS lat,
+       ST_X(location::geometry)  AS lng,
+       recorded_at,
+       speed_kmph::float8 AS speed_kmph,
+       heading::float8    AS heading
+     FROM gps_tracks
+     WHERE ride_id = $1
+     ORDER BY recorded_at ASC`,
+    [rideId]
+  )
+  return res.rows
 }
 
 export async function getDisputeActions(disputeId: bigint) {

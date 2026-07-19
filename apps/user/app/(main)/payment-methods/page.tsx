@@ -1,10 +1,26 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Banknote, CreditCard, Smartphone } from 'lucide-react'
+import { ArrowLeft, Banknote, CreditCard, Wallet, Check } from 'lucide-react'
+import { getPaymentChannel, setPaymentChannel, type PaymentChannel } from '@/lib/payment-channel'
+
+const OPTIONS: Array<{ id: PaymentChannel; Icon: typeof Banknote; label: string; sub: string }> = [
+  { id: 'cash',   Icon: Banknote,   label: 'Cash',        sub: 'Pay directly to driver' },
+  { id: 'online', Icon: CreditCard, label: 'UPI / Cards', sub: 'Pay online via Razorpay' },
+  { id: 'wallet', Icon: Wallet,     label: 'Ocar Wallet', sub: 'Use your wallet balance' },
+]
 
 export default function PaymentMethodsPage() {
   const router = useRouter()
+  const [selected, setSelected] = useState<PaymentChannel>('cash')
+
+  useEffect(() => { setSelected(getPaymentChannel()) }, [])
+
+  const choose = (id: PaymentChannel) => {
+    setSelected(id)
+    setPaymentChannel(id)
+  }
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -23,40 +39,33 @@ export default function PaymentMethodsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-5 pb-28">
-        <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Active</p>
-        <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-card mb-5">
-          <div className="flex items-center gap-3 px-4 py-3.5">
-            <span className="w-9 h-9 rounded-xl bg-status-success/10 flex items-center justify-center flex-shrink-0">
-              <Banknote size={15} strokeWidth={1.6} className="text-status-success" />
-            </span>
-            <span className="flex-1 min-w-0">
-              <span className="block text-sm font-semibold text-text-primary">Cash</span>
-              <span className="block text-xs text-text-muted mt-0.5">Pay directly to driver</span>
-            </span>
-            <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-status-success/10 text-status-success">Active</span>
-          </div>
-        </div>
-
-        <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Coming soon</p>
+        <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">
+          Choose how you pay
+        </p>
         <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-card">
-          {[
-            { Icon: Smartphone, label: 'UPI',   sub: 'GPay, PhonePe, Paytm & more' },
-            { Icon: CreditCard, label: 'Cards',  sub: 'Debit & credit cards'         },
-          ].map((item, i, arr) => (
-            <div
-              key={item.label}
-              className={`flex items-center gap-3 px-4 py-3.5${i < arr.length - 1 ? ' border-b border-border' : ''}`}
-            >
-              <span className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0">
-                <item.Icon size={15} strokeWidth={1.6} className="text-text-muted" />
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-semibold text-text-muted">{item.label}</span>
-                <span className="block text-xs text-text-muted mt-0.5">{item.sub}</span>
-              </span>
-              <span className="text-[10px] font-semibold text-text-muted bg-surface-2 rounded-lg px-2 py-1">Soon</span>
-            </div>
-          ))}
+          {OPTIONS.map((item, i, arr) => {
+            const active = selected === item.id
+            return (
+              <button
+                key={item.id}
+                onClick={() => choose(item.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < arr.length - 1 ? ' border-b border-border' : ''}`}
+              >
+                <span className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0">
+                  <item.Icon size={15} strokeWidth={1.6} className="text-text-primary" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-semibold text-text-primary">{item.label}</span>
+                  <span className="block text-xs text-text-muted mt-0.5">{item.sub}</span>
+                </span>
+                {active && (
+                  <span className="w-6 h-6 rounded-full bg-status-success/10 flex items-center justify-center flex-shrink-0">
+                    <Check size={13} strokeWidth={2.5} className="text-status-success" />
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>

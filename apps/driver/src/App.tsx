@@ -17,6 +17,7 @@ import TripEnd from '@/pages/ActiveRide/TripEnd'
 import ModeSelection from '@/pages/GoOnline/ModeSelection'
 import StandardConfirm from '@/pages/GoOnline/StandardConfirm'
 import ReturnCabSetup from '@/pages/GoOnline/ReturnCabSetup'
+import DailyVerification from '@/pages/DailyVerification'
 import PersonalDetails from '@/pages/Onboarding/PersonalDetails'
 import Documents from '@/pages/Onboarding/Documents'
 import VehicleRegistration from '@/pages/Onboarding/VehicleRegistration'
@@ -358,6 +359,10 @@ export default function App() {
             } />
             <Route path="/profile" element={
               <ProtectedRoute requireApproved><Profile /></ProtectedRoute>
+            } />
+
+            <Route path="/daily-verification" element={
+              <ProtectedRoute requireApproved><DailyVerification /></ProtectedRoute>
             } />
 
             {/* Go online flow */}
