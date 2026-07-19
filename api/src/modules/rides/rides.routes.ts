@@ -5,6 +5,7 @@ import { startOtpKey, endOtpKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
 import * as service from './rides.service'
 import * as repo from './rides.repository'
+import * as paymentsService from '@/modules/payments/payments.service'
 
 const HISTORY_LIMIT = 20
 
@@ -253,6 +254,27 @@ router.post('/:id/end-otp', authenticate(), async (req, res, next) => {
       body.actual_end_lat,
       body.actual_end_lng
     )
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
+// ── Online ride payment verification (user) ────────────────────
+
+router.post('/:id/payment/verify', authenticate(), async (req, res, next) => {
+  try {
+    const rideId = BigInt(req.params['id']!)
+    const { orderId, paymentId, signature } = req.body as {
+      orderId: string; paymentId: string; signature: string
+    }
+    await paymentsService.verifyRidePayment(rideId, req.user!.id, { orderId, paymentId, signature })
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
+router.post('/:id/payment/retry', authenticate(), async (req, res, next) => {
+  try {
+    const rideId = BigInt(req.params['id']!)
+    const result = await paymentsService.retryRidePayment(rideId, req.user!.id)
     res.json(result)
   } catch (err) { next(err) }
 })

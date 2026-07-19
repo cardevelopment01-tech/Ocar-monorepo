@@ -1,4 +1,5 @@
 import api from './api'
+import type { PaymentChannel } from './payment-channel'
 
 export type StopInput = { address: string; lat: number; lng: number }
 
@@ -87,6 +88,8 @@ export type RideDetail = {
   endOtp: string | undefined
   driver_current_lat: number | null
   driver_current_lng: number | null
+  payment_channel: 'cash' | 'online' | 'wallet'
+  payment_status: string | null
   stops: RideStop[]
 }
 
@@ -127,6 +130,10 @@ export type RentalPackage = {
   extra_per_min: number
   is_active: boolean
 }
+
+export type RetryPaymentResult =
+  | { channel: 'online'; order: { orderId: string; key: string; amount: number } | null }
+  | { channel: 'wallet'; paid: boolean }
 
 export const rideApi = {
   getEstimate: async (params: {
@@ -175,6 +182,7 @@ export const rideApi = {
     returnAt?: string
     scheduledFor?: string
     stops?: StopInput[]
+    paymentChannel?: PaymentChannel
   }): Promise<BookingResult> => {
     const body: Record<string, unknown> = {
       categoryId:    params.categoryId,
@@ -196,6 +204,7 @@ export const rideApi = {
     if (params.destinationCityId   !== undefined) body['destinationCityId']   = params.destinationCityId
     if (params.returnAt            !== undefined) body['returnAt']            = params.returnAt
     if (params.scheduledFor        !== undefined) body['scheduledFor']        = params.scheduledFor
+    if (params.paymentChannel      !== undefined) body['paymentChannel']      = params.paymentChannel
     const res = await api.post('/api/v1/rides', body)
     return res.data as BookingResult
   },
@@ -256,5 +265,17 @@ export const rideApi = {
     if (reasonCode !== undefined) body['reasonCode'] = reasonCode
     if (reason     !== undefined) body['reason']     = reason
     await api.post(`/api/v1/rides/${rideId}/cancel`, body)
+  },
+
+  verifyPayment: async (
+    rideId: string,
+    input: { orderId: string; paymentId: string; signature: string },
+  ): Promise<void> => {
+    await api.post(`/api/v1/rides/${rideId}/payment/verify`, input)
+  },
+
+  retryPayment: async (rideId: string): Promise<RetryPaymentResult> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/payment/retry`)
+    return res.data as RetryPaymentResult
   },
 }

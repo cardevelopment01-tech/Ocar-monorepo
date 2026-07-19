@@ -13,6 +13,7 @@ import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
 import { useInterpolatedPosition } from '@/lib/useInterpolatedPosition'
 import { decodePolyline } from '@/lib/polyline'
+import { openRidePaymentCheckout } from '@/lib/razorpay-checkout'
 import CancelSheet from './CancelSheet'
 import SOSButton from '@/components/ui/SOSButton'
 
@@ -343,6 +344,10 @@ export default function RidePage() {
     const onStatusUpdate = (data: {
       status: string; startOtp?: string; endOtp?: string
       fareDrift?: { previousFare: number; currentFare: number }
+      paymentChannel?: string
+      razorpayOrderId?: string
+      razorpayKey?: string
+      amount?: number
     }) => {
       setRideStatus(data.status)
       if (data.startOtp) setStartOtp(data.startOtp)
@@ -354,6 +359,23 @@ export default function RidePage() {
       if (data.status === 'in_progress') {
         breadcrumbRef.current = []
         setBreadcrumb([])
+      }
+      if (
+        data.status === 'completed' &&
+        data.paymentChannel === 'online' &&
+        data.razorpayOrderId && data.razorpayKey && typeof data.amount === 'number'
+      ) {
+        void openRidePaymentCheckout(rideId, {
+          orderId: data.razorpayOrderId,
+          key: data.razorpayKey,
+          amount: data.amount,
+        }).catch(() => {
+          // Checkout failed to open (ad-blocker, offline, CSP). The payment row
+          // stays 'pending'; the backend reconciliation sweep eventually marks it
+          // 'failed' and notifies the rider (notifyRidePaymentFailed), who can
+          // retry from the trip receipt page (ride/[id]/receipt) — see the
+          // "Pay now" banner there for the recovery flow.
+        })
       }
     }
     const onDriverAssigned = (data: {

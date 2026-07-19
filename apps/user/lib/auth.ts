@@ -1,4 +1,5 @@
 import api from './api'
+import { clearPaymentChannel } from './payment-channel'
 
 export interface UserProfile {
   id: string
@@ -52,6 +53,7 @@ export function clearAuth() {
   localStorage.removeItem('ocar_user_token')
   localStorage.removeItem('ocar_user_refresh')
   localStorage.removeItem('ocar_user_data')
+  clearPaymentChannel()
   document.cookie = 'ocar_user_session=; path=/; max-age=0'
   document.cookie = 'ocar_user_token=; path=/; max-age=0'
 }

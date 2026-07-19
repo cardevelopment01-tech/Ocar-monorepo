@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { rideApi, type RentalPackage, type FareEstimate, type StopInput } from '@/lib/ride-api'
+import { getPaymentChannel } from '@/lib/payment-channel'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import OcarSpinner from '@/components/ui/OcarSpinner'
@@ -205,6 +206,7 @@ function RentalContent() {
         distanceKm:      0,
         durationMin:     0,
         rentalPackageId: selectedPkgId,
+        paymentChannel: getPaymentChannel(),
       }
       if (originCityId) params.originCityId = originCityId
       if (scheduledFor) params.scheduledFor = scheduledFor.toISOString()

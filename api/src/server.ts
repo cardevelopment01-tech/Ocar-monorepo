@@ -10,7 +10,8 @@ import { cleanupWorker } from './jobs/workers/cleanup.worker'
 import { schedulerWorker } from './jobs/workers/scheduler.worker'
 import { auditWorker } from './jobs/workers/audit.worker'
 import { partitionMaintenanceWorker } from './jobs/workers/partition-maintenance.worker'
-import { cleanupQueue, schedulerQueue, partitionMaintenanceQueue } from './jobs/queues'
+import { paymentReconcileWorker } from './jobs/workers/payment-reconcile.worker'
+import { cleanupQueue, schedulerQueue, partitionMaintenanceQueue, paymentsQueue } from './jobs/queues'
 
 async function start(): Promise<void> {
   const dbOk = await testConnection()
@@ -69,6 +70,14 @@ async function start(): Promise<void> {
     'purge_old_partitions',
     {},
     { repeat: { pattern: '30 3 25 * *' }, removeOnComplete: true, removeOnFail: true }
+  )
+
+  void paymentReconcileWorker
+  console.log('[Worker] Payment reconciliation worker started')
+  await paymentsQueue.add(
+    'reconcile_pending_payments',
+    {},
+    { repeat: { every: 300_000 }, removeOnComplete: true, removeOnFail: true }
   )
 
   httpServer.listen(config.API_PORT, () => {

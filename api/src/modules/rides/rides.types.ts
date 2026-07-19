@@ -38,6 +38,7 @@ export interface Ride {
   ride_type: 'one_way' | 'round_trip' | 'rental'
   is_return_cab: boolean
   status: string
+  payment_channel: 'cash' | 'online' | 'wallet'
   origin_address: string | null
   destination_address: string | null
   origin_lat: number
@@ -76,6 +77,7 @@ export interface Ride {
   vehicle_brand: string | null
   driver_current_lat: number | null
   driver_current_lng: number | null
+  payment_status: string | null
 }
 
 export interface StopInput {
@@ -117,4 +119,5 @@ export interface BookingRequest {
   rentalPackageId?: number
   returnAt?: string
   scheduledFor?: string
+  paymentChannel?: 'cash' | 'online' | 'wallet'
 }

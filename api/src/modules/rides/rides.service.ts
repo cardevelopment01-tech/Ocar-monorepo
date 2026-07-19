@@ -23,7 +23,11 @@ import {
   createPaymentRecord,
   deductCommission,
   creditCashback,
+  confirmRidePayment,
+  payFromUserWallet,
+  createRidePaymentOrder,
 } from '@/modules/payments/payments.service'
+import { notifyRidePaymentFailed } from '@/modules/notifications/notifications.service'
 import { calculateFare } from '@/lib/fare'
 import { classifyTrip, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
@@ -377,6 +381,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   const storedTripHours = fareEstimate.rental_hours ?? (effectiveTripHours > 0 ? effectiveTripHours : undefined)
   if (storedTripHours !== undefined) rideInput.tripHours = storedTripHours
   if (data.returnAt           !== undefined) rideInput.returnAt           = data.returnAt
+  rideInput.paymentChannel = data.paymentChannel ?? 'cash'
   if (scheduledForDate && data.scheduledFor !== undefined) {
     rideInput.scheduledFor = data.scheduledFor
     rideInput.status = 'scheduled'
@@ -1179,24 +1184,66 @@ export async function verifyEndOTP(
   }
 
   // Payment + wallet post-processing (non-blocking — ride is already completed)
-  const rideData = await repo.getRideById(rideId)
-  void createPaymentRecord(rideId, 'cash_direct')
-    .then(() => deductCommission(rideId, driverId))
-    .then(async () => {
-      if (rideData?.user_id == null) return
-      const fareRes = await pool.query(
-        `SELECT COALESCE(total_final, total_estimated) AS amount
-         FROM fare_snapshots WHERE ride_id = $1`,
-        [rideId]
-      )
-      const fareAmount = parseFloat(fareRes.rows[0]?.amount ?? '0')
-      if (fareAmount > 0) {
-        await creditCashback(rideId, BigInt(rideData.user_id), fareAmount)
-      }
-    })
-    .catch((err: unknown) => {
-      console.error(`Payment post-processing failed for ride ${rideId}:`, err)
-    })
+  void settleRideCompletionPayment(rideId, driverId).catch((err: unknown) => {
+    console.error(`Payment post-processing failed for ride ${rideId}:`, err)
+  })
 
   return { success: true, rideId: rideId.toString() }
+}
+
+// Extracted from verifyEndOTP so the wallet-insufficient failure path is unit
+// testable. Behavior-preserving move of the completion payment post-processing,
+// plus a proactive notifyRidePaymentFailed when the wallet debit can't cover the
+// fare (payment stays 'pending'; the receipt offers retry).
+export async function settleRideCompletionPayment(
+  rideId: bigint,
+  driverId: bigint
+): Promise<void> {
+  const rideData = await repo.getRideById(rideId)
+  const paymentChannel = rideData?.payment_channel ?? 'cash'
+
+  const fareRow = await pool.query(
+    `SELECT COALESCE(total_final, total_estimated) AS amount
+     FROM fare_snapshots WHERE ride_id = $1`,
+    [rideId]
+  )
+  const fareAmount = parseFloat(fareRow.rows[0]?.amount ?? '0')
+
+  if (paymentChannel === 'online') {
+    await createPaymentRecord(rideId, 'razorpay_online', { status: 'pending' })
+    if (rideData?.user_id == null || fareAmount <= 0) return
+    const order = await createRidePaymentOrder(rideId, BigInt(rideData.user_id), fareAmount)
+    // order is null in dev (auto-confirmed); with keys, push order id so the
+    // app opens Checkout. Commission + cashback run only on confirm.
+    if (order) {
+      socketEvents.sendRideStatusUpdate(rideId.toString(), {
+        status:          'completed',
+        paymentChannel:  'online',
+        razorpayOrderId: order.orderId,
+        razorpayKey:     order.key,
+        amount:          order.amount,
+      })
+    }
+    return
+  }
+
+  if (paymentChannel === 'wallet') {
+    await createPaymentRecord(rideId, 'platform_wallet', { status: 'pending' })
+    if (rideData?.user_id == null || fareAmount <= 0) return
+    const paid = await payFromUserWallet(rideId, BigInt(rideData.user_id), fareAmount)
+    if (paid) {
+      await confirmRidePayment(rideId)
+    } else {
+      // Insufficient balance → payment stays pending. Tell the rider now so they
+      // can top up + retry from the receipt (no sweep needed for wallet).
+      await notifyRidePaymentFailed(BigInt(rideData.user_id), rideId, fareAmount)
+    }
+    return
+  }
+
+  // cash (default) — unchanged behavior: capture immediately, commission + cashback now.
+  await createPaymentRecord(rideId, 'cash_direct')
+  await deductCommission(rideId, driverId)
+  if (rideData?.user_id == null || fareAmount <= 0) return
+  await creditCashback(rideId, BigInt(rideData.user_id), fareAmount)
 }

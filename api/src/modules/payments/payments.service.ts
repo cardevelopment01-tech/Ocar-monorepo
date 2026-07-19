@@ -1,4 +1,7 @@
 import { pool } from '@/db/client'
+import { config } from '@/config'
+import { client as redis } from '@/db/redis'
+import { ridePaymentOrderKey } from '@/constants/redis-keys'
 
 // ── Config helpers ─────────────────────────────────────────────
 
@@ -30,7 +33,8 @@ async function getCashbackExpiryDays(): Promise<number> {
 
 export async function createPaymentRecord(
   rideId: bigint,
-  channel: string = 'cash_direct'
+  channel: string = 'cash_direct',
+  opts: { status?: 'pending' | 'completed' } = {}
 ): Promise<void> {
   const fareRes = await pool.query(
     `SELECT fs.id AS fare_snapshot_id,
@@ -50,17 +54,22 @@ export async function createPaymentRecord(
   const commissionAmt = Math.round(amount * commissionPct) / 100
   const driverEarning = Math.round((amount - commissionAmt) * 100) / 100
 
+  const status = opts.status ?? 'completed'
+  // Only a captured (completed) payment has a capture timestamp.
+  const capturedAt = status === 'completed' ? new Date() : null
+
   await pool.query(
     `INSERT INTO payments (
        ride_id, user_id, driver_id, fare_snapshot_id,
        amount, channel, status,
        commission_percent, commission_amount, driver_earning,
        captured_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,'completed',$7,$8,$9,now())
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      ON CONFLICT (ride_id) DO NOTHING`,
     [
       rideId, fare.user_id, fare.driver_id, fare.fare_snapshot_id,
-      amount, channel, commissionPct, commissionAmt, driverEarning,
+      amount, channel, status, commissionPct, commissionAmt, driverEarning,
+      capturedAt,
     ]
   )
 }
@@ -207,6 +216,257 @@ export async function creditCashback(
   }
 }
 
+// ── Confirm a collected ride payment (shared by verify/webhook/reconcile) ──
+// The `WHERE status='pending'` guard is the idempotency lock: only the first
+// caller to flip pending→completed runs commission + cashback. Duplicate or
+// stale triggers hit zero rows and return false (no-op). Razorpay does not
+// guarantee webhook ordering, so this compare-before-write is mandatory.
+export async function confirmRidePayment(
+  rideId: bigint,
+  razorpayPaymentId?: string
+): Promise<boolean> {
+  const params: unknown[] = [rideId]
+  let extraSet = ''
+  if (razorpayPaymentId !== undefined) {
+    params.push(razorpayPaymentId)
+    extraSet = ', razorpay_payment_id = $2'
+  }
+
+  const res = await pool.query(
+    `UPDATE payments
+       SET status = 'completed', captured_at = now()${extraSet}
+     WHERE ride_id = $1 AND status = 'pending'
+     RETURNING driver_id, user_id, amount`,
+    params
+  )
+
+  if ((res.rowCount ?? 0) === 0) return false
+
+  const row = res.rows[0]
+  await deductCommission(rideId, BigInt(row.driver_id))
+  await creditCashback(rideId, BigInt(row.user_id), parseFloat(row.amount))
+  return true
+}
+
+// ── Pay for a ride from the user wallet (atomic debit) ──────────
+// One ride = one payment (payments.ride_id UNIQUE), so a prior ride_debit
+// ledger row for this ride means we already paid — return true without
+// re-debiting. Insufficient balance returns false: the caller leaves the
+// payment 'pending' and the app offers retry (online / wallet / cash).
+export async function payFromUserWallet(
+  rideId: bigint,
+  userId: bigint,
+  amount: number
+): Promise<boolean> {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    await client.query(
+      `INSERT INTO user_wallets (user_id, balance)
+       VALUES ($1, 0)
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userId]
+    )
+
+    const walletRes = await client.query(
+      `SELECT id, balance FROM user_wallets WHERE user_id = $1 FOR UPDATE`,
+      [userId]
+    )
+    const wallet = walletRes.rows[0]
+
+    const dupe = await client.query(
+      `SELECT id FROM user_wallet_ledger
+       WHERE ride_id = $1 AND entry_type = 'ride_debit' LIMIT 1`,
+      [rideId]
+    )
+    if ((dupe.rowCount ?? 0) > 0) {
+      await client.query('ROLLBACK')
+      return true
+    }
+
+    const balance = parseFloat(wallet.balance)
+    if (balance < amount) {
+      await client.query('ROLLBACK')
+      return false
+    }
+
+    const newBalance = Math.round((balance - amount) * 100) / 100
+
+    await client.query(
+      `UPDATE user_wallets
+       SET balance = $2, lifetime_spent = lifetime_spent + $3
+       WHERE id = $1`,
+      [wallet.id, newBalance, amount]
+    )
+
+    await client.query(
+      `INSERT INTO user_wallet_ledger (
+         wallet_id, user_id, entry_type,
+         amount, direction, balance_after, ride_id, note
+       ) VALUES ($1,$2,'ride_debit',$3,'debit',$4,$5,$6)`,
+      [wallet.id, userId, amount, newBalance, rideId, `Ride payment for ride #${rideId}`]
+    )
+
+    await client.query('COMMIT')
+    return true
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+// ── Create a Razorpay order for an online ride payment ──────────
+// Returns the order handle for the client to open Checkout, or null in dev
+// (no Razorpay keys) after auto-confirming — same dev shortcut the driver
+// wallet top-up uses so the online flow is exercisable without a gateway.
+export async function createRidePaymentOrder(
+  rideId: bigint,
+  userId: bigint,
+  amount: number
+): Promise<{ orderId: string; key: string; amount: number } | null> {
+  if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) {
+    // Dev mode: no Razorpay keys — auto-confirm so the online-payment flow is
+    // exercisable without a gateway, mirroring the driver wallet top-up dev path.
+    await confirmRidePayment(rideId)
+    return null
+  }
+
+  const Razorpay = (await import('razorpay')).default
+  const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
+  const order = await (rzp.orders.create as Function)({
+    amount: Math.round(amount * 100),
+    currency: 'INR',
+    receipt: `ride_${rideId}_${Date.now()}`,
+  })
+  const orderId = (order as { id: string }).id
+
+  await pool.query(
+    `UPDATE payments SET razorpay_order_id = $2 WHERE ride_id = $1`,
+    [rideId, orderId]
+  )
+  // Bind this order to the user who created it so /verify (Task 8) can reject
+  // a paymentId/signature obtained for one user being replayed by another.
+  await redis.set(ridePaymentOrderKey(orderId), userId.toString(), 'EX', 1800)
+
+  return { orderId, key: config.RAZORPAY_KEY_ID, amount }
+}
+
+// ── Client-driven verify (primary confirmation path) ───────────
+// Mirrors the proven driver wallet-topup verify (payments.routes.ts). Never
+// trusts client input: signature verified with our secret, payment re-fetched
+// from Razorpay, and the captured amount compared to the fare we stored. All
+// failures throw a safe-message error (no error.message leak) with an
+// httpStatus, handled by the shared error middleware.
+export async function verifyRidePayment(
+  rideId: bigint,
+  userId: bigint,
+  input: { orderId: string; paymentId: string; signature: string }
+): Promise<void> {
+  if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) {
+    throw Object.assign(new Error('Payment verification is not configured'), { httpStatus: 400 })
+  }
+
+  // The order must have been created for this user (bound at order creation) —
+  // stops a paymentId/signature tuple for one user's order being replayed
+  // against a different user's account.
+  const boundUserId = await redis.get(ridePaymentOrderKey(input.orderId))
+  if (boundUserId !== userId.toString()) {
+    throw Object.assign(new Error('Order does not belong to this user'), { httpStatus: 400 })
+  }
+
+  // ...and it must be the order recorded for THIS ride's payment (stops
+  // replaying a valid order/signature against an unrelated ride).
+  const payRes = await pool.query(
+    `SELECT amount, razorpay_order_id FROM payments WHERE ride_id = $1`,
+    [rideId]
+  )
+  const payment = payRes.rows[0]
+  if (!payment || payment.razorpay_order_id !== input.orderId) {
+    throw Object.assign(new Error('Payment not found for this ride'), { httpStatus: 404 })
+  }
+
+  const { createHmac } = await import('crypto')
+  const expected = createHmac('sha256', config.RAZORPAY_KEY_SECRET)
+    .update(`${input.orderId}|${input.paymentId}`)
+    .digest('hex')
+  if (input.signature !== expected) {
+    throw Object.assign(new Error('Invalid payment signature'), { httpStatus: 400 })
+  }
+
+  // Never trust the client-supplied amount — re-fetch straight from Razorpay
+  // and compare against the fare we stored server-side.
+  const Razorpay = (await import('razorpay')).default
+  const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
+  const rp = await (rzp.payments.fetch as Function)(input.paymentId) as {
+    order_id: string; status: string; amount: number
+  }
+  const expectedPaise = Math.round(parseFloat(payment.amount) * 100)
+  if (rp.order_id !== input.orderId || rp.status !== 'captured' || rp.amount !== expectedPaise) {
+    throw Object.assign(new Error('Payment not verified'), { httpStatus: 400 })
+  }
+
+  await confirmRidePayment(rideId, input.paymentId)
+  await redis.del(ridePaymentOrderKey(input.orderId))
+}
+
+// ── Retry a stranded ride payment (rider-initiated) ────────────
+// Same-channel retry for a payment stuck 'pending'/'failed'. Resets the row and
+// re-runs the channel's EXISTING flow — online: createRidePaymentOrder (fresh
+// order, client reopens Checkout, confirmed via verify/webhook/reconcile);
+// wallet: payFromUserWallet then confirmRidePayment. No new confirmation path:
+// confirmRidePayment's WHERE status='pending' guard stays the single idempotency
+// lock. The reset itself is guarded so a payment a concurrent path just
+// completed is never dragged back to 'pending'.
+export type RetryRidePaymentResult =
+  | { channel: 'online'; order: { orderId: string; key: string; amount: number } | null }
+  | { channel: 'wallet'; paid: boolean }
+
+export async function retryRidePayment(
+  rideId: bigint,
+  userId: bigint
+): Promise<RetryRidePaymentResult> {
+  const payRes = await pool.query(
+    `SELECT user_id, channel, status, amount FROM payments WHERE ride_id = $1`,
+    [rideId]
+  )
+  const payment = payRes.rows[0]
+  if (!payment) throw Object.assign(new Error('Payment not found for this ride'), { httpStatus: 404 })
+  if (String(payment.user_id) !== userId.toString()) {
+    throw Object.assign(new Error('Payment does not belong to this user'), { httpStatus: 403 })
+  }
+
+  const retryable = payment.channel === 'razorpay_online' || payment.channel === 'platform_wallet'
+  const resettable = payment.status === 'pending' || payment.status === 'failed'
+  if (!retryable || !resettable) {
+    throw Object.assign(new Error('Payment is not eligible for retry'), { httpStatus: 400 })
+  }
+
+  const amount = parseFloat(payment.amount)
+
+  // Guarded reset: 0 rows means a concurrent verify/webhook already completed it.
+  const reset = await pool.query(
+    `UPDATE payments SET status='pending', failed_at=NULL, failure_reason=NULL
+     WHERE ride_id = $1 AND status IN ('pending','failed')`,
+    [rideId]
+  )
+  const alreadySettled = (reset.rowCount ?? 0) === 0
+
+  if (payment.channel === 'razorpay_online') {
+    if (alreadySettled) return { channel: 'online', order: null }
+    const order = await createRidePaymentOrder(rideId, userId, amount)
+    return { channel: 'online', order }
+  }
+
+  // platform_wallet
+  if (alreadySettled) return { channel: 'wallet', paid: true }
+  const paid = await payFromUserWallet(rideId, userId, amount)
+  if (paid) await confirmRidePayment(rideId)
+  return { channel: 'wallet', paid }
+}
+
 // ── Wallet queries ─────────────────────────────────────────────
 
 export async function getDriverWallet(driverId: bigint) {
@@ -319,13 +579,37 @@ export async function topUpDriverWallet(
   }
 }
 
-// ── Razorpay webhook handler (Phase 2 stub) ────────────────────
+// ── Razorpay webhook handler (backstop confirmation) ────────────
+// Primary confirmation is the client-driven verify() (Task 8). This handler
+// is a backstop for when the client never calls verify (app killed / network
+// drop right after ride completion): if Razorpay tells us a payment captured,
+// we confirm it ourselves. confirmRidePayment's WHERE status='pending' guard
+// makes this a safe no-op if verify already ran.
+//
+// Only Razorpay dotted event names we map to a real `gateway_event_type` enum
+// value are logged — the old code inserted the raw event string (or the
+// literal 'unknown') into that enum column, neither of which is a valid enum
+// value, so every insert for an unmapped/unknown event was already failing.
+// Logging only tracked events keeps the log table consistent with what it can
+// actually store; untracked event types simply return early instead of erroring.
+const GATEWAY_EVENT_TYPE_MAP: Record<string, string> = {
+  'order.paid': 'order_created',
+  'payment.authorized': 'payment_authorized',
+  'payment.captured': 'payment_captured',
+  'payment.failed': 'payment_failed',
+}
 
 export async function handleWebhookEvent(
   payload: Record<string, unknown>
 ): Promise<void> {
-  const eventId = (payload as { payload?: { payment?: { entity?: { id?: string } } } })
-    ?.payload?.payment?.entity?.id
+  const event = (payload as { event?: string }).event
+  const eventType = event ? GATEWAY_EVENT_TYPE_MAP[event] : undefined
+  if (!eventType) return
+
+  const entity = (
+    payload as { payload?: { payment?: { entity?: { id?: string; order_id?: string } } } }
+  )?.payload?.payment?.entity
+  const eventId = entity?.id
 
   if (!eventId) return
 
@@ -339,12 +623,71 @@ export async function handleWebhookEvent(
     `INSERT INTO payment_gateway_events
        (event_type, razorpay_event_id, payload, processed, processed_at)
      VALUES ($1,$2,$3,true,now())`,
-    [
-      (payload as { event?: string }).event ?? 'unknown',
-      eventId,
-      JSON.stringify(payload),
-    ]
+    [eventType, eventId, JSON.stringify(payload)]
   )
+
+  if (event === 'payment.captured' && entity?.order_id) {
+    const pendingRes = await pool.query(
+      `SELECT ride_id FROM payments WHERE razorpay_order_id = $1 AND status = 'pending'`,
+      [entity.order_id]
+    )
+    const pending = pendingRes.rows[0]
+    if (pending) {
+      await confirmRidePayment(BigInt(pending.ride_id), eventId)
+    }
+  }
+}
+
+// ── Reconciliation sweep (app-killed-before-verify safety net) ──
+// Pending online payments older than the grace window get rechecked directly
+// against Razorpay. Captured → same confirm funnel. Not captured → failed
+// (guarded on status='pending' so a payment another path already confirmed is
+// never overwritten). Ride stays completed either way.
+export async function reconcilePendingRidePayments(): Promise<void> {
+  if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) return
+
+  const res = await pool.query(
+    `SELECT ride_id, razorpay_order_id, user_id, amount
+     FROM payments
+     WHERE status = 'pending'
+       AND razorpay_order_id IS NOT NULL
+       AND created_at < now() - interval '10 minutes'`
+  )
+  if (res.rows.length === 0) return
+
+  const Razorpay = (await import('razorpay')).default
+  const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
+
+  for (const row of res.rows) {
+    try {
+      const orderId = row.razorpay_order_id as string
+      const list = await (rzp.orders.fetchPayments as Function)(orderId) as {
+        items: Array<{ id: string; status: string }>
+      }
+      const captured = list.items.find(p => p.status === 'captured')
+      if (captured) {
+        await confirmRidePayment(BigInt(row.ride_id), captured.id)
+      } else {
+        const upd = await pool.query(
+          `UPDATE payments
+             SET status = 'failed', failed_at = now(), failure_reason = 'reconciliation_no_capture'
+           WHERE ride_id = $1 AND status = 'pending'`,
+          [BigInt(row.ride_id)]
+        )
+        // Only notify if we actually flipped it to failed — a payment another
+        // path (verify/webhook) confirmed in the meantime hits 0 rows here.
+        // Lazy import: this module is imported broadly, and its transitive
+        // chain (socket.server → rides.service → jobs/queues) shouldn't load
+        // eagerly for every consumer of payments.service.ts.
+        if ((upd.rowCount ?? 0) > 0) {
+          const { notifyRidePaymentFailed } = await import('@/modules/notifications/notifications.service')
+          await notifyRidePaymentFailed(BigInt(row.user_id), BigInt(row.ride_id), parseFloat(row.amount))
+        }
+      }
+    } catch (err) {
+      console.error(`[reconcile] ride ${row.ride_id} failed:`, err)
+    }
+  }
 }
 
 // ── Admin: list payments ───────────────────────────────────────
