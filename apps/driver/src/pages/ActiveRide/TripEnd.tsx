@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, useReducedMotion } from 'framer-motion'
-import { Star, ArrowRight, RotateCcw, Clock, MapPin, Check } from 'lucide-react'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { Star, ArrowRight, RotateCcw, Clock, MapPin, Check, X } from 'lucide-react'
 import { useRideStore } from '@/store/useRideStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -33,6 +33,7 @@ export default function TripEnd() {
   const [ratingSubmitting, setRatingSubmitting] = useState(false)
   const [ratingSubmitted,  setRatingSubmitted]  = useState(false)
   const [ratingError,      setRatingError]      = useState(false)
+  const [sheetOpen,        setSheetOpen]        = useState(true)
   const displayStar = hoveredStar || riderRating
 
   useEffect(() => {
@@ -58,11 +59,16 @@ export default function TripEnd() {
     try {
       await driverSafetyApi.rateRider(activeRide.id, riderRating, selectedTags)
       setRatingSubmitted(true)
+      setTimeout(() => setSheetOpen(false), 700)
     } catch {
       setRatingError(true)
     } finally {
       setRatingSubmitting(false)
     }
+  }
+
+  function skipRating() {
+    setSheetOpen(false)
   }
 
   const handleBackHome = () => {
@@ -189,81 +195,6 @@ export default function TripEnd() {
         </div>
       </motion.div>
 
-      {/* Rate the rider */}
-      <motion.div
-        initial={{ y: 30, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.32 }}
-        className="bg-surface rounded-3xl border border-border p-5 mb-4"
-      >
-        {ratingSubmitted ? (
-          <div className="flex items-center gap-2 justify-center py-1">
-            <Check size={16} className="text-primary" aria-hidden="true" />
-            <span className="text-text-primary font-semibold text-sm">Thanks for rating your rider</span>
-          </div>
-        ) : (
-          <>
-            <p className="text-text-primary font-bold text-sm mb-3">
-              Rate {activeRide?.userName ?? 'your rider'}
-            </p>
-            <div className="flex justify-center gap-2 mb-1">
-              {[1, 2, 3, 4, 5].map(star => (
-                <button
-                  key={star}
-                  type="button"
-                  aria-label={`${star} star${star > 1 ? 's' : ''}`}
-                  onClick={() => setRiderRating(star)}
-                  onMouseEnter={() => setHoveredStar(star)}
-                  onMouseLeave={() => setHoveredStar(0)}
-                >
-                  <motion.div animate={{ scale: displayStar >= star ? 1.15 : 1 }} transition={{ type: 'spring', stiffness: 400, damping: 15 }}>
-                    <Star
-                      size={30}
-                      className={displayStar >= star ? 'text-accent-amber fill-accent-amber' : 'text-border fill-border'}
-                    />
-                  </motion.div>
-                </button>
-              ))}
-            </div>
-
-            {riderRating > 0 && riderTags.length > 0 && (
-              <div className="flex flex-wrap gap-2 justify-center mt-3">
-                {riderTags
-                  .filter(t => riderRating >= 4 ? t.sentiment === 'positive' : riderRating <= 2 ? t.sentiment === 'negative' : true)
-                  .map(tag => (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      onClick={() => toggleTag(tag.id)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                        selectedTags.includes(tag.id)
-                          ? 'bg-primary border-primary text-white'
-                          : 'bg-bg border-border text-text-secondary'
-                      }`}
-                    >
-                      {tag.label}
-                    </button>
-                  ))}
-              </div>
-            )}
-
-            {riderRating > 0 && (
-              <button
-                type="button"
-                onClick={() => void submitRiderRating()}
-                disabled={ratingSubmitting}
-                className="w-full mt-4 py-2.5 rounded-2xl bg-primary text-white text-sm font-semibold active:scale-95 transition-transform disabled:opacity-60"
-              >
-                {ratingSubmitting ? 'Submitting…' : 'Submit rating'}
-              </button>
-            )}
-            {ratingError && (
-              <p className="text-status-error text-xs text-center mt-2">Could not submit, try again.</p>
-            )}
-          </>
-        )}
-      </motion.div>
-
       <div className="flex-1" />
 
       <motion.button
@@ -276,6 +207,105 @@ export default function TripEnd() {
       >
         Back to Home <ArrowRight size={18} />
       </motion.button>
+
+      <AnimatePresence>
+        {sheetOpen && (
+          <>
+            <motion.div
+              key="backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={skipRating}
+              className="fixed inset-0 bg-black/50 z-40"
+            />
+            <motion.div
+              key="sheet"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="fixed left-0 right-0 bottom-0 z-50 bg-surface rounded-t-3xl border-t border-border p-5"
+              style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 1.25rem)' }}
+            >
+              <div className="w-10 h-1.5 rounded-full bg-border mx-auto mb-4" />
+
+              {ratingSubmitted ? (
+                <div className="flex items-center gap-2 justify-center py-4">
+                  <Check size={16} className="text-primary" aria-hidden="true" />
+                  <span className="text-text-primary font-semibold text-sm">Thanks for rating your rider</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between mb-1">
+                    <p className="text-text-primary font-bold text-base">
+                      Rate {activeRide?.userName ?? 'your rider'}
+                    </p>
+                    <button type="button" aria-label="Skip rating" onClick={skipRating}>
+                      <X size={20} className="text-text-muted" />
+                    </button>
+                  </div>
+
+                  <div className="flex justify-center gap-2 my-4">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button
+                        key={star}
+                        type="button"
+                        aria-label={`${star} star${star > 1 ? 's' : ''}`}
+                        onClick={() => setRiderRating(star)}
+                        onMouseEnter={() => setHoveredStar(star)}
+                        onMouseLeave={() => setHoveredStar(0)}
+                      >
+                        <motion.div animate={{ scale: displayStar >= star ? 1.15 : 1 }} transition={{ type: 'spring', stiffness: 400, damping: 15 }}>
+                          <Star
+                            size={34}
+                            className={displayStar >= star ? 'text-accent-amber fill-accent-amber' : 'text-border fill-border'}
+                          />
+                        </motion.div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {riderRating > 0 && riderTags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 justify-center mb-2">
+                      {riderTags
+                        .filter(t => riderRating >= 4 ? t.sentiment === 'positive' : riderRating <= 2 ? t.sentiment === 'negative' : true)
+                        .map(tag => (
+                          <button
+                            key={tag.id}
+                            type="button"
+                            onClick={() => toggleTag(tag.id)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                              selectedTags.includes(tag.id)
+                                ? 'bg-primary border-primary text-white'
+                                : 'bg-bg border-border text-text-secondary'
+                            }`}
+                          >
+                            {tag.label}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+
+                  {riderRating > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void submitRiderRating()}
+                      disabled={ratingSubmitting}
+                      className="w-full mt-3 py-3 rounded-2xl bg-primary text-white text-sm font-semibold active:scale-95 transition-transform disabled:opacity-60"
+                    >
+                      {ratingSubmitting ? 'Submitting…' : 'Submit rating'}
+                    </button>
+                  )}
+                  {ratingError && (
+                    <p className="text-status-error text-xs text-center mt-2">Could not submit, try again.</p>
+                  )}
+                </>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
