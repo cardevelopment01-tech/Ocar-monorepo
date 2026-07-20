@@ -44,7 +44,13 @@ export function createApp(): Application {
   )
 
   // 4. Body parsing
-  app.use(express.json({ limit: '100kb' }))
+  // `verify` stashes the exact raw bytes alongside the normal parse — the
+  // Razorpay webhook signature is computed over these, not a re-serialized
+  // req.body, which isn't guaranteed to byte-match what Razorpay signed.
+  app.use(express.json({
+    limit: '100kb',
+    verify: (req, _res, buf) => { (req as import('express').Request).rawBody = buf },
+  }))
   app.use(express.urlencoded({ extended: true, limit: '100kb' }))
 
   // 5. Health check

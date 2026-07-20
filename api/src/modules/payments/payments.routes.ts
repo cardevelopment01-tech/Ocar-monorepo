@@ -119,7 +119,7 @@ router.post('/webhook/razorpay', async (req, res, next) => {
 
     const { createHmac } = await import('crypto')
     const expected = createHmac('sha256', webhookSecret)
-      .update(JSON.stringify(req.body))
+      .update(req.rawBody ?? Buffer.from(JSON.stringify(req.body)))
       .digest('hex')
     if (signature !== expected) {
       res.status(400).json({ error: 'Invalid signature', code: 'WEBHOOK_INVALID_SIGNATURE' })
