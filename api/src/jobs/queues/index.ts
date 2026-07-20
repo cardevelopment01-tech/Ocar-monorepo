@@ -1,5 +1,5 @@
 import { Queue } from 'bullmq'
-import { config } from '@/config'
+import { client as connection } from '@/db/redis'
 
 export const QUEUE_NAMES = {
   NOTIFICATIONS: 'notifications',
@@ -13,18 +13,9 @@ export const QUEUE_NAMES = {
   PAYMENTS: 'payments',
 } as const
 
-function parseRedisUrl(url: string): { host: string; port: number; password?: string; tls?: object } {
-  const parsed = new URL(url)
-  const opts: { host: string; port: number; password?: string; tls?: object } = {
-    host: parsed.hostname || 'localhost',
-    port: parseInt(parsed.port || '6379', 10),
-  }
-  if (parsed.password) opts.password = decodeURIComponent(parsed.password)
-  if (parsed.protocol === 'rediss:') opts.tls = {}
-  return opts
-}
-
-const connection = parseRedisUrl(config.REDIS_URL)
+// Shared ioredis instance (not a plain options object) so BullMQ reuses one
+// connection across all queues instead of opening a new socket per queue.
+// Workers still duplicate one blocking connection each — that's unavoidable.
 export const redisConnection = connection
 
 export const notificationsQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS, {
