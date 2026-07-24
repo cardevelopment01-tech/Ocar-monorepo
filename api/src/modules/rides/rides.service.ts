@@ -498,17 +498,17 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   // All three rounds go through BullMQ so failures are logged consistently and
   // broadcastRound numbering is always correct even if an earlier round fails.
   await Promise.all([
-    queues[QUEUE_NAMES.NOTIFICATIONS].add(
+    queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride',
       { ...jobData, broadcastRound: 1 },
       { delay: 0, attempts: 2, removeOnComplete: true }
     ),
-    queues[QUEUE_NAMES.NOTIFICATIONS].add(
+    queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride',
       { ...jobData, broadcastRound: 2 },
       { delay: 25_000, attempts: 1, removeOnComplete: true }
     ),
-    queues[QUEUE_NAMES.NOTIFICATIONS].add(
+    queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride',
       { ...jobData, broadcastRound: 3 },
       { delay: 50_000, attempts: 1, removeOnComplete: true }

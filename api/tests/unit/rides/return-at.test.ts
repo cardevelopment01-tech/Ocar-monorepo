@@ -28,6 +28,7 @@ vi.mock('@/websocket/socket.server', () => ({
 vi.mock('@/jobs/queues', () => ({
   queues: {
     notifications: { add: vi.fn().mockResolvedValue(undefined) },
+    dispatch:      { add: vi.fn().mockResolvedValue(undefined) },
     'gps-flush':   { add: vi.fn().mockResolvedValue(undefined) },
     settlements:   { add: vi.fn().mockResolvedValue(undefined) },
     analytics:     { add: vi.fn().mockResolvedValue(undefined) },
@@ -36,6 +37,7 @@ vi.mock('@/jobs/queues', () => ({
   },
   QUEUE_NAMES: {
     NOTIFICATIONS: 'notifications',
+    DISPATCH:      'dispatch',
     GPS_FLUSH:     'gps-flush',
     SETTLEMENTS:   'settlements',
     ANALYTICS:     'analytics',

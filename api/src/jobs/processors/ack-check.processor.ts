@@ -56,7 +56,7 @@ export async function processAckCheck(data: AckCheckJobData): Promise<void> {
   socketEvents.sendRideRequest(data.driverId, payload)
 
   if (expiresMs - Date.now() > ACK_RETRY_MS) {
-    await queues[QUEUE_NAMES.NOTIFICATIONS].add(
+    await queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride_ack_check',
       data,
       { delay: ACK_RETRY_MS, attempts: 1, removeOnComplete: true, removeOnFail: true }

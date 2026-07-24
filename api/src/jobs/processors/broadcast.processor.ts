@@ -145,7 +145,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     if (data.destinationLat !== undefined) jobData.destinationLat = data.destinationLat
     if (data.destinationLng !== undefined) jobData.destinationLng = data.destinationLng
 
-    await queues[QUEUE_NAMES.NOTIFICATIONS].add(
+    await queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride_ack_check',
       jobData,
       { delay: 4_000, attempts: 1, removeOnComplete: true, removeOnFail: true }

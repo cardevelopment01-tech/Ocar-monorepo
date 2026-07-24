@@ -5,6 +5,7 @@ import { testConnection, pool } from './db/client'
 import { testConnection as testRedis, client as redisClient } from './db/redis'
 import { initSocketServer } from './websocket/socket.server'
 import { notificationsWorker } from './jobs/workers/notifications.worker'
+import { dispatchWorker } from './jobs/workers/dispatch.worker'
 import { gpsFlushWorker } from './jobs/workers/gps-flush.worker'
 import { cleanupWorker } from './jobs/workers/cleanup.worker'
 import { schedulerWorker } from './jobs/workers/scheduler.worker'
@@ -34,6 +35,8 @@ async function start(): Promise<void> {
 
   void notificationsWorker
   console.log('[Worker] Notifications worker started')
+  void dispatchWorker
+  console.log('[Worker] Dispatch worker started')
   void gpsFlushWorker
   console.log('[Worker] GPS flush worker started')
   void cleanupWorker

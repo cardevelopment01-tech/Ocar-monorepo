@@ -8,8 +8,8 @@ vi.mock('@/websocket/socket.server', () => ({
   getIO: vi.fn(() => ({ to: vi.fn(() => ({ emit: vi.fn() })) })),
 }))
 vi.mock('@/jobs/queues', () => ({
-  queues: { notifications: { add: vi.fn().mockResolvedValue(undefined) } },
-  QUEUE_NAMES: { NOTIFICATIONS: 'notifications' },
+  queues: { notifications: { add: vi.fn().mockResolvedValue(undefined) }, dispatch: { add: vi.fn().mockResolvedValue(undefined) } },
+  QUEUE_NAMES: { NOTIFICATIONS: 'notifications', DISPATCH: 'dispatch' },
   gpsFlushQueue: { add: vi.fn().mockResolvedValue(undefined) },
 }))
 vi.mock('@/modules/rides/rides.repository', () => ({

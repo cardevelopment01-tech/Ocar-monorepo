@@ -3,6 +3,7 @@ import { client as connection } from '@/db/redis'
 
 export const QUEUE_NAMES = {
   NOTIFICATIONS: 'notifications',
+  DISPATCH: 'dispatch',
   GPS_FLUSH: 'gps-flush',
   SETTLEMENTS: 'settlements',
   ANALYTICS: 'analytics',
@@ -21,6 +22,10 @@ export const redisConnection = connection
 export const notificationsQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS, {
   connection,
 })
+// Ride-matching fan-out (broadcast_ride, broadcast_ride_ack_check) — split out
+// of notificationsQueue so a burst of dispatch jobs never delays SMS sends,
+// which share a rate-limited worker (see notifications.worker.ts).
+export const dispatchQueue = new Queue(QUEUE_NAMES.DISPATCH, { connection })
 export const gpsFlushQueue = new Queue(QUEUE_NAMES.GPS_FLUSH, { connection })
 export const settlementsQueue = new Queue(QUEUE_NAMES.SETTLEMENTS, {
   connection,
@@ -34,6 +39,7 @@ export const paymentsQueue = new Queue(QUEUE_NAMES.PAYMENTS, { connection })
 
 export const queues = {
   [QUEUE_NAMES.NOTIFICATIONS]: notificationsQueue,
+  [QUEUE_NAMES.DISPATCH]: dispatchQueue,
   [QUEUE_NAMES.GPS_FLUSH]: gpsFlushQueue,
   [QUEUE_NAMES.SETTLEMENTS]: settlementsQueue,
   [QUEUE_NAMES.ANALYTICS]: analyticsQueue,

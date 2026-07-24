@@ -82,15 +82,15 @@ export async function processDispatchScheduled(data: DispatchScheduledJobData): 
 
   // Same 3-round broadcast schedule createBooking uses for immediate rides.
   await Promise.all([
-    queues[QUEUE_NAMES.NOTIFICATIONS].add(
+    queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride', { ...jobData, broadcastRound: 1 },
       { delay: 0, attempts: 2, removeOnComplete: true }
     ),
-    queues[QUEUE_NAMES.NOTIFICATIONS].add(
+    queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride', { ...jobData, broadcastRound: 2 },
       { delay: 25_000, attempts: 1, removeOnComplete: true }
     ),
-    queues[QUEUE_NAMES.NOTIFICATIONS].add(
+    queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride', { ...jobData, broadcastRound: 3 },
       { delay: 50_000, attempts: 1, removeOnComplete: true }
     ),
