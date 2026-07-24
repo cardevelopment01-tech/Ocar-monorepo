@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
-import { clearAvailableEarnings } from '@/modules/payments/submodules/settlements/settlements.service'
+import { clearAvailableEarnings, runScheduledSettlementBatch } from '@/modules/payments/submodules/settlements/settlements.service'
 
 // Two job types share this queue, both scheduled from server.ts:
 //  - 'clear_available_earnings' — every 15 min, flips pending->cleared
@@ -10,6 +10,10 @@ export const settlementsWorker = new Worker(
   async (job) => {
     if (job.name === 'clear_available_earnings') {
       await clearAvailableEarnings()
+      return
+    }
+    if (job.name === 'run_scheduled_settlement_batch') {
+      await runScheduledSettlementBatch()
     }
   },
   { connection: redisConnection }

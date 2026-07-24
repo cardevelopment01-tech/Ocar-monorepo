@@ -94,6 +94,67 @@ export async function clearAvailableEarnings(): Promise<void> {
   )
 }
 
+// Groups every driver's `cleared` earnings (excluding held drivers, and
+// drivers without a verified bank account) into one settlements row per
+// driver, all sharing the same period — that shared period IS the "batch";
+// no separate batch table. Runs the select-then-insert-then-stamp inside one
+// transaction so a line clearing mid-sweep is either fully swept or fully
+// left for next time, never double-counted.
+export async function runScheduledSettlementBatch(): Promise<void> {
+  const autoApproveLimit = parseFloat(await getConfigValue('settlement_auto_approve_limit', '50000'))
+  const periodTo = new Date()
+  const periodFrom = new Date(periodTo.getTime() - 24 * 60 * 60 * 1000)
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const eligible = await client.query(
+      `WITH cleared AS (
+         SELECT driver_id, amount FROM driver_earnings WHERE status = 'cleared'
+       )
+       SELECT cleared.driver_id, dba.id AS bank_account_id, SUM(cleared.amount) AS total
+       FROM cleared
+       JOIN driver_bank_accounts dba
+         ON dba.driver_id = cleared.driver_id AND dba.is_primary = true AND dba.status = 'verified'
+       WHERE NOT EXISTS (
+         SELECT 1 FROM driver_payout_holds h WHERE h.driver_id = cleared.driver_id AND h.active
+       )
+       GROUP BY cleared.driver_id, dba.id
+       HAVING SUM(cleared.amount) > 0`
+    )
+
+    let batchTotal = 0
+    for (const row of eligible.rows) batchTotal += parseFloat(row.total)
+    const initialStatus = batchTotal <= autoApproveLimit ? 'processing' : 'pending'
+
+    for (const row of eligible.rows) {
+      const settlementRes = await client.query(
+        `INSERT INTO settlements (
+           driver_id, period_from, period_to, net_payout, status, run_type, bank_account_id
+         ) VALUES ($1,$2,$3,$4,$5,'scheduled',$6)
+         RETURNING id`,
+        [row.driver_id, periodFrom, periodTo, row.total, initialStatus, row.bank_account_id]
+      )
+      const settlementId = settlementRes.rows[0].id
+
+      await client.query(
+        `UPDATE driver_earnings
+           SET status = 'in_payout', settlement_id = $2
+         WHERE driver_id = $1 AND status = 'cleared'`,
+        [row.driver_id, settlementId]
+      )
+    }
+
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
 export interface DriverEarningsSummary {
   payableBalance: number
   recentLedger: Array<Record<string, unknown>>

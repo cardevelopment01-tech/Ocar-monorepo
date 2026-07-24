@@ -91,6 +91,11 @@ async function start(): Promise<void> {
     {},
     { repeat: { every: 900_000 }, removeOnComplete: true, removeOnFail: true } // 15 min
   )
+  await settlementsQueue.add(
+    'run_scheduled_settlement_batch',
+    {},
+    { repeat: { pattern: '0 2 * * *' }, removeOnComplete: true, removeOnFail: true } // daily at 2 AM
+  )
 
   httpServer.listen(config.API_PORT, () => {
     console.log(
