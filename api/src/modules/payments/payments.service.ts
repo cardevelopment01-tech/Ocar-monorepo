@@ -596,11 +596,19 @@ export async function topUpDriverWallet(
 // value, so every insert for an unmapped/unknown event was already failing.
 // Logging only tracked events keeps the log table consistent with what it can
 // actually store; untracked event types simply return early instead of erroring.
+// RazorpayX sends payout.* events (driver disbursal, submitted by
+// submitProcessingSettlements in settlements.service.ts) to the SAME webhook
+// URL as the payment.* events above (ride/wallet collection) — Razorpay only
+// lets you configure one webhook URL per account. Both families share the
+// dedup-by-razorpay_event_id guard and the gateway_event_type log table.
 const GATEWAY_EVENT_TYPE_MAP: Record<string, string> = {
   'order.paid': 'order_created',
   'payment.authorized': 'payment_authorized',
   'payment.captured': 'payment_captured',
   'payment.failed': 'payment_failed',
+  'payout.processed': 'payout_processed',
+  'payout.failed': 'payout_failed',
+  'payout.reversed': 'payout_reversed',
 }
 
 export async function handleWebhookEvent(
@@ -610,9 +618,16 @@ export async function handleWebhookEvent(
   const eventType = event ? GATEWAY_EVENT_TYPE_MAP[event] : undefined
   if (!eventType) return
 
-  const entity = (
-    payload as { payload?: { payment?: { entity?: { id?: string; order_id?: string } } } }
-  )?.payload?.payment?.entity
+  const isPayoutEvent = event?.startsWith('payout.') ?? false
+  const entity = isPayoutEvent
+    ? (
+        payload as { payload?: { payout?: { entity?: {
+          id?: string; reference_id?: string; utr?: string; failure_reason?: string
+        } } } }
+      )?.payload?.payout?.entity
+    : (
+        payload as { payload?: { payment?: { entity?: { id?: string; order_id?: string } } } }
+      )?.payload?.payment?.entity
   const eventId = entity?.id
 
   if (!eventId) return
@@ -630,10 +645,52 @@ export async function handleWebhookEvent(
     [eventType, eventId, JSON.stringify(payload)]
   )
 
-  if (event === 'payment.captured' && entity?.order_id) {
+  if (isPayoutEvent) {
+    // reference_id was set by submitProcessingSettlements as `${settlementId}:${driverId}`.
+    const referenceId = (entity as { reference_id?: string }).reference_id
+    const settlementId = referenceId?.split(':')[0]
+    if (!settlementId) return
+
+    if (event === 'payout.processed') {
+      // status != 'completed' guard: Razorpay doesn't guarantee webhook
+      // delivery order, so a stale/duplicate event must not clobber a
+      // settlement another (later-arriving-but-earlier-fired) event already
+      // finalized.
+      await pool.query(
+        `UPDATE settlements SET status = 'completed', completed_at = now(), utr = $2
+         WHERE id = $1 AND status != 'completed'`,
+        [settlementId, (entity as { utr?: string }).utr ?? null]
+      )
+      await pool.query(
+        `UPDATE driver_earnings SET status = 'paid' WHERE settlement_id = $1 AND status = 'in_payout'`,
+        [settlementId]
+      )
+      return
+    }
+
+    // payout.failed / payout.reversed — same revert path either way. The
+    // gateway only fires this for a payout that was actually submitted
+    // successfully, so settlements.razorpay_payout_id already holds the real
+    // gateway payout id here (not the pre-submit placeholder) — nothing to
+    // reset on that column.
+    const failureReason = (entity as { failure_reason?: string }).failure_reason ?? event
+    await pool.query(
+      `UPDATE settlements SET status = 'failed', failed_at = now(), failure_reason = $2
+       WHERE id = $1 AND status != 'completed'`,
+      [settlementId, failureReason ?? null]
+    )
+    await pool.query(
+      `UPDATE driver_earnings SET status = 'cleared', settlement_id = NULL
+       WHERE settlement_id = $1 AND status = 'in_payout'`,
+      [settlementId]
+    )
+    return
+  }
+
+  if (event === 'payment.captured' && (entity as { order_id?: string })?.order_id) {
     const pendingRes = await pool.query(
       `SELECT ride_id FROM payments WHERE razorpay_order_id = $1 AND status = 'pending'`,
-      [entity.order_id]
+      [(entity as { order_id?: string }).order_id]
     )
     const pending = pendingRes.rows[0]
     if (pending) {
