@@ -1,4 +1,5 @@
 import { pool } from '@/db/client'
+import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
 import { httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
@@ -260,6 +261,81 @@ export async function instantCashOut(driverId: bigint): Promise<bigint> {
     throw err
   } finally {
     client.release()
+  }
+}
+
+// Submits every settlement row that's `processing` (approved, either
+// auto-advanced under the auto-approve threshold or admin-approved) but not
+// yet sent to the gateway (`razorpay_payout_id IS NULL`) to RazorpayX
+// Payouts. Dev mode (no keys) marks them completed directly, mirroring the
+// existing Razorpay dev-mode bypass elsewhere in this module — lets the
+// whole pipeline be exercised without a gateway.
+export async function submitProcessingSettlements(): Promise<void> {
+  const pending = await pool.query(
+    `SELECT id, driver_id, net_payout FROM settlements
+     WHERE status = 'processing' AND razorpay_payout_id IS NULL`
+  )
+  if (pending.rows.length === 0) return
+
+  const devMode = !config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET
+
+  for (const row of pending.rows) {
+    if (devMode) {
+      await pool.query(
+        `UPDATE settlements SET status = 'completed', completed_at = now(),
+           razorpay_payout_id = $2, utr = $2
+         WHERE id = $1`,
+        [row.id, `dev_payout_${row.id}`]
+      )
+      await pool.query(
+        `UPDATE driver_earnings SET status = 'paid' WHERE settlement_id = $1`,
+        [row.id]
+      )
+      continue
+    }
+
+    try {
+      // RazorpayX Payouts is a separate API surface on the same account —
+      // reuses the same key pair already configured for collection.
+      const Razorpay = (await import('razorpay')).default
+      const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
+      const bankRes = await pool.query(
+        `SELECT gateway_fund_account_id FROM driver_bank_accounts
+         JOIN settlements s ON s.bank_account_id = driver_bank_accounts.id
+         WHERE s.id = $1`,
+        [row.id]
+      )
+      const fundAccountId = bankRes.rows[0]?.gateway_fund_account_id
+      // RazorpayX Payouts isn't in this SDK version's TS types (only added via
+      // addResources at runtime) — cast through unknown, same as elsewhere
+      // this SDK's dynamic surface is used beyond its declared types.
+      const rzpPayouts = (rzp as unknown as { payouts: { create: Function } }).payouts
+      const payout = await (rzpPayouts.create as Function)({
+        account_number: config.RAZORPAY_KEY_ID,
+        fund_account_id: fundAccountId,
+        amount: Math.round(parseFloat(row.net_payout) * 100),
+        currency: 'INR',
+        mode: 'IMPS',
+        purpose: 'payout',
+        queue_if_low_balance: true,
+        reference_id: `${row.id}:${row.driver_id}`,
+      }) as { id: string }
+
+      await pool.query(
+        `UPDATE settlements SET razorpay_payout_id = $2 WHERE id = $1`,
+        [row.id, payout.id]
+      )
+    } catch (err) {
+      console.error(`[settlements] payout submit failed for settlement ${row.id}:`, err)
+      await pool.query(
+        `UPDATE settlements SET status = 'failed', failed_at = now(), failure_reason = $2 WHERE id = $1`,
+        [row.id, err instanceof Error ? err.message : 'unknown error']
+      )
+      await pool.query(
+        `UPDATE driver_earnings SET status = 'cleared', settlement_id = NULL WHERE settlement_id = $1`,
+        [row.id]
+      )
+    }
   }
 }
 
