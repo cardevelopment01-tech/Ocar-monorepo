@@ -667,15 +667,17 @@ export async function handleWebhookEvent(
       // finalized. razorpay_payout_id guard: only apply this update to the
       // settlement row this specific gateway payout was actually submitted
       // for — reference_id alone isn't proof of that.
-      await pool.query(
+      const settlementUpdate = await pool.query(
         `UPDATE settlements SET status = 'completed', completed_at = now(), utr = $2
          WHERE id = $1 AND status != 'completed' AND razorpay_payout_id = $3`,
         [settlementId, (entity as { utr?: string }).utr ?? null, eventId]
       )
-      await pool.query(
-        `UPDATE driver_earnings SET status = 'paid' WHERE settlement_id = $1 AND status = 'in_payout'`,
-        [settlementId]
-      )
+      if ((settlementUpdate.rowCount ?? 0) > 0) {
+        await pool.query(
+          `UPDATE driver_earnings SET status = 'paid' WHERE settlement_id = $1 AND status = 'in_payout'`,
+          [settlementId]
+        )
+      }
       return
     }
 
@@ -685,16 +687,18 @@ export async function handleWebhookEvent(
     // gateway payout id here (not the pre-submit placeholder) — nothing to
     // reset on that column.
     const failureReason = (entity as { failure_reason?: string }).failure_reason ?? event
-    await pool.query(
+    const settlementUpdate = await pool.query(
       `UPDATE settlements SET status = 'failed', failed_at = now(), failure_reason = $2
        WHERE id = $1 AND status != 'completed' AND razorpay_payout_id = $3`,
       [settlementId, failureReason ?? null, eventId]
     )
-    await pool.query(
-      `UPDATE driver_earnings SET status = 'cleared', settlement_id = NULL
-       WHERE settlement_id = $1 AND status = 'in_payout'`,
-      [settlementId]
-    )
+    if ((settlementUpdate.rowCount ?? 0) > 0) {
+      await pool.query(
+        `UPDATE driver_earnings SET status = 'cleared', settlement_id = NULL
+         WHERE settlement_id = $1 AND status = 'in_payout'`,
+        [settlementId]
+      )
+    }
     return
   }
 

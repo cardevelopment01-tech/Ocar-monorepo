@@ -64,7 +64,39 @@ describe('handleWebhookEvent — payout events', () => {
     )
     expect(updateSettlementsCall).toBeDefined()
     expect(updateSettlementsCall![0]).toContain('razorpay_payout_id')
-    expect(updateSettlementsCall![1]).toContain('pout_1')
+    expect(updateSettlementsCall![1]).toEqual(['901', 'UTR123', 'pout_1'])
+  })
+
+  it('payout.processed: settlement id parses fine but does not match razorpay_payout_id — driver_earnings must NOT be touched', async () => {
+    poolQuery
+      .mockResolvedValueOnce({ rows: [] }) // dedup check
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // insert gateway event log
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE settlements — WHERE clause matched nothing
+
+    await handleWebhookEvent({
+      event: 'payout.processed',
+      payload: { payout: { entity: { id: 'pout_mismatch', reference_id: '901:42', utr: 'UTR123' } } },
+    })
+
+    const calls = poolQuery.mock.calls.map(c => c[0] as string)
+    expect(calls.some(s => s.includes('UPDATE driver_earnings'))).toBe(false)
+    expect(poolQuery).toHaveBeenCalledTimes(3)
+  })
+
+  it('payout.failed: settlement id parses fine but does not match razorpay_payout_id — driver_earnings must NOT be touched', async () => {
+    poolQuery
+      .mockResolvedValueOnce({ rows: [] }) // dedup check
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // insert gateway event log
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE settlements — WHERE clause matched nothing
+
+    await handleWebhookEvent({
+      event: 'payout.failed',
+      payload: { payout: { entity: { id: 'pout_mismatch2', reference_id: '902:43', failure_reason: 'invalid account' } } },
+    })
+
+    const calls = poolQuery.mock.calls.map(c => c[0] as string)
+    expect(calls.some(s => s.includes('UPDATE driver_earnings'))).toBe(false)
+    expect(poolQuery).toHaveBeenCalledTimes(3)
   })
 
   it('malformed reference_id on payout.processed: returns early without touching the dedup/insert/update sequence', async () => {
