@@ -109,40 +109,66 @@ export async function runScheduledSettlementBatch(): Promise<void> {
   try {
     await client.query('BEGIN')
 
-    const eligible = await client.query(
-      `WITH cleared AS (
-         SELECT driver_id, amount FROM driver_earnings WHERE status = 'cleared'
-       )
-       SELECT cleared.driver_id, dba.id AS bank_account_id, SUM(cleared.amount) AS total
-       FROM cleared
+    // Candidate drivers: distinct, no SUM here — the authoritative sum comes
+    // from the FOR UPDATE select below, per driver, so it's always the exact
+    // set of rows we go on to lock and sweep (never a stale/racing total).
+    const candidates = await client.query(
+      `SELECT DISTINCT de.driver_id, dba.id AS bank_account_id
+       FROM driver_earnings de
        JOIN driver_bank_accounts dba
-         ON dba.driver_id = cleared.driver_id AND dba.is_primary = true AND dba.status = 'verified'
-       WHERE NOT EXISTS (
-         SELECT 1 FROM driver_payout_holds h WHERE h.driver_id = cleared.driver_id AND h.active
-       )
-       GROUP BY cleared.driver_id, dba.id
-       HAVING SUM(cleared.amount) > 0`
+         ON dba.driver_id = de.driver_id AND dba.is_primary = true AND dba.status = 'verified'
+       WHERE de.status = 'cleared'
+         AND NOT EXISTS (
+           SELECT 1 FROM driver_payout_holds h WHERE h.driver_id = de.driver_id AND h.active
+         )`
     )
 
-    let batchTotal = 0
-    for (const row of eligible.rows) batchTotal += parseFloat(row.total)
+    // First pass: lock each candidate driver's cleared rows and compute the
+    // real total from exactly those locked rows. A concurrent overlapping
+    // run's FOR UPDATE on the same driver blocks here until this transaction
+    // commits or rolls back, then sees those rows already 'in_payout' —
+    // naturally yielding zero rows and zero total, so it correctly skips
+    // that driver instead of double-sweeping.
+    const perDriver: Array<{ driverId: string; bankAccountId: string; rowIds: string[]; total: number }> = []
+    for (const row of candidates.rows) {
+      const locked = await client.query(
+        `SELECT id, amount FROM driver_earnings
+         WHERE driver_id = $1 AND status = 'cleared'
+         FOR UPDATE`,
+        [row.driver_id]
+      )
+      const total = locked.rows.reduce((sum: number, r: { amount: string }) => sum + parseFloat(r.amount), 0)
+      if (total > 0) {
+        perDriver.push({
+          driverId: row.driver_id,
+          bankAccountId: row.bank_account_id,
+          rowIds: locked.rows.map((r: { id: string }) => r.id),
+          total,
+        })
+      }
+    }
+
+    const batchTotal = perDriver.reduce((sum, d) => sum + d.total, 0)
     const initialStatus = batchTotal <= autoApproveLimit ? 'processing' : 'pending'
 
-    for (const row of eligible.rows) {
+    for (const d of perDriver) {
       const settlementRes = await client.query(
         `INSERT INTO settlements (
            driver_id, period_from, period_to, net_payout, status, run_type, bank_account_id
          ) VALUES ($1,$2,$3,$4,$5,'scheduled',$6)
          RETURNING id`,
-        [row.driver_id, periodFrom, periodTo, row.total, initialStatus, row.bank_account_id]
+        [d.driverId, periodFrom, periodTo, d.total, initialStatus, d.bankAccountId]
       )
       const settlementId = settlementRes.rows[0].id
 
+      // Sweep by explicit id list — the exact rows we locked and summed
+      // above, never a fresh WHERE re-evaluation that could pick up a row
+      // that cleared after we computed the total.
       await client.query(
         `UPDATE driver_earnings
            SET status = 'in_payout', settlement_id = $2
-         WHERE driver_id = $1 AND status = 'cleared'`,
-        [row.driver_id, settlementId]
+         WHERE id = ANY($1::bigint[])`,
+        [d.rowIds, settlementId]
       )
     }
 
