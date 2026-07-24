@@ -22,6 +22,7 @@ import templatesRouter from '@/modules/notifications/templates.routes'
 import adminInvitesRouter from '@/modules/admin-invites/admin-invites.routes'
 import adminAuditRouter from '@/modules/admin-audit/admin-audit.routes'
 import adminTotpRouter from '@/modules/admin-totp/admin-totp.routes'
+import settlementsRouter from '@/modules/payments/submodules/settlements/settlements.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -81,6 +82,7 @@ export function createApp(): Application {
   apiRouter.use('/pricing', pricingRouter)
   apiRouter.use('/rides', ridesRouter)
   apiRouter.use('/payments', paymentsRouter)
+apiRouter.use('/payments/settlements', settlementsRouter)
   apiRouter.use('/safety',    safetyRouter)
   apiRouter.use('/users',     usersRouter)
   apiRouter.use('/admin/analytics', analyticsRouter)
