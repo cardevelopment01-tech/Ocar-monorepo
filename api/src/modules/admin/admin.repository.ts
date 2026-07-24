@@ -124,11 +124,13 @@ export async function getDriverById(id: bigint): Promise<AdminDriverDetail | nul
        v.id AS vehicle_id, v.number_plate, v.vehicle_name, v.model_year,
        v.color, v.fuel_type, v.seating_capacity, v.luggage_capacity, v.ac_availability,
        vc.display_name AS vehicle_category,
-       vb.name AS vehicle_brand
+       vb.name AS vehicle_brand,
+       dw.balance AS wallet_balance, dw.is_frozen AS wallet_is_frozen
      FROM drivers d
      LEFT JOIN driver_vehicles v ON v.driver_id = d.id
      LEFT JOIN vehicle_categories vc ON vc.id = v.category_id
      LEFT JOIN vehicle_brands vb ON vb.id = v.brand_id
+     LEFT JOIN driver_wallets dw ON dw.driver_id = d.id
      WHERE d.id = $1`,
     [id]
   )
@@ -195,6 +197,9 @@ export async function getDriverById(id: bigint): Promise<AdminDriverDetail | nul
     documents: docsRes.rows as AdminDriverDetail['documents'],
     vehicle_documents: vehicleDocsRes.rows as AdminDriverDetail['vehicle_documents'],
     status_history: historyRes.rows as AdminDriverDetail['status_history'],
+    wallet: r.wallet_balance !== null
+      ? { balance: r.wallet_balance as string, is_frozen: r.wallet_is_frozen as boolean }
+      : null,
   }
 }
 

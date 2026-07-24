@@ -118,3 +118,24 @@ export async function notifyRidePaymentFailed(
     rideId,
   })
 }
+
+// Driver's wallet dropped below the minimum required to receive rides after
+// a commission deduction. Called from deductCommission (payments.service.ts).
+export async function notifyDriverLowWalletBalance(
+  driverId: bigint,
+  balance: number,
+  minBalance: number
+): Promise<void> {
+  const { subject, body } = await renderTemplate('wallet_low_balance', 'push', {
+    balance: String(balance),
+    minBalance: String(minBalance),
+  })
+  await notifyOwner({
+    ownerType: 'driver',
+    ownerId: driverId,
+    type: 'wallet_low_balance',
+    title: subject ?? 'Wallet balance low',
+    body,
+    payload: { path: '/wallet' },
+  })
+}

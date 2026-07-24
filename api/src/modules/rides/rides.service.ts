@@ -1,5 +1,6 @@
 import { pool } from '@/db/client'
-import { httpError } from '@/lib/errors'
+import { httpError, createHttpError } from '@/lib/errors'
+import { AppErrors } from '@/constants/errors'
 import { client as redis } from '@/db/redis'
 import { startOtpKey, endOtpKey, activeRideByDriverKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
@@ -26,6 +27,8 @@ import {
   confirmRidePayment,
   payFromUserWallet,
   createRidePaymentOrder,
+  getDriverWallet,
+  getMinWalletBalance,
 } from '@/modules/payments/payments.service'
 import { notifyRidePaymentFailed } from '@/modules/notifications/notifications.service'
 import { calculateFare } from '@/lib/fare'
@@ -101,6 +104,15 @@ export async function goOnline(driverId: bigint, data: {
   const verification = await getTodayStatus(driverId)
   if (!verification.selfieDone || !verification.plateDone) {
     throw httpError(428, "Today's selfie and plate verification is required before going online", 'DAILY_CHECK_REQUIRED')
+  }
+
+  const [minBalance, wallet] = await Promise.all([getMinWalletBalance(), getDriverWallet(driverId)])
+  if (wallet?.is_frozen) {
+    throw createHttpError(AppErrors.WALLET_FROZEN)
+  }
+  const balance = wallet ? parseFloat(wallet.balance) : 0
+  if (balance < minBalance) {
+    throw createHttpError(AppErrors.LOW_WALLET_BALANCE)
   }
 
   const existing = await repo.getActiveSession(driverId)

@@ -57,6 +57,7 @@ export interface DriverDetail {
   documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null }[]
   vehicle_documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null }[]
   status_history: { from_status: string | null; to_status: string; reason: string | null; created_at: string }[]
+  wallet: { balance: string; is_frozen: boolean } | null
 }
 
 export interface DriversResponse {

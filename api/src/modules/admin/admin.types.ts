@@ -72,6 +72,7 @@ export interface AdminDriverDetail {
     reason: string | null
     created_at: string
   }[]
+  wallet: { balance: string; is_frozen: boolean } | null
 }
 
 export interface UpdateDriverStatusPayload {

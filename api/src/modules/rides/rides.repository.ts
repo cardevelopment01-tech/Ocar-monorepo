@@ -102,6 +102,7 @@ export async function findNearbyDrivers(params: {
   categoryId: bigint
   radiusMetres?: number
   maxDrivers?: number
+  minWalletBalance: number
 }): Promise<NearbyDriver[]> {
   const radius = params.radiusMetres ?? 5000
   const max    = params.maxDrivers ?? 5
@@ -118,10 +119,13 @@ export async function findNearbyDrivers(params: {
        ) AS distance_metres
      FROM driver_location_snapshots dls
      JOIN driver_sessions ds ON ds.id = dls.session_id
+     LEFT JOIN driver_wallets dw ON dw.driver_id = ds.driver_id
      WHERE dls.is_available = true
        AND ds.status = 'online'
        AND ds.mode = 'standard'
        AND ds.category_id = $3
+       AND COALESCE(dw.balance, 0) >= $6
+       AND NOT COALESCE(dw.is_frozen, false)
        AND ST_DWithin(
          dls.location,
          ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography,
@@ -129,7 +133,7 @@ export async function findNearbyDrivers(params: {
        )
      ORDER BY distance_metres ASC
      LIMIT $5`,
-    [params.lat, params.lng, params.categoryId, radius, max]
+    [params.lat, params.lng, params.categoryId, radius, max, params.minWalletBalance]
   )
   return res.rows
 }
@@ -167,6 +171,7 @@ export async function findReturnCabDrivers(params: {
   dropLat: number
   dropLng: number
   categoryId: bigint
+  minWalletBalance: number
 }): Promise<NearbyDriver[]> {
   const res = await pool.query<NearbyDriver>(
     `SELECT
@@ -182,9 +187,12 @@ export async function findReturnCabDrivers(params: {
      FROM return_cab_routes rcr
      JOIN driver_sessions ds ON ds.id = rcr.session_id
      JOIN driver_location_snapshots dls ON dls.driver_id = rcr.driver_id
+     LEFT JOIN driver_wallets dw ON dw.driver_id = rcr.driver_id
      WHERE rcr.is_active = true
        AND ds.status = 'online'
        AND ds.category_id = $5
+       AND COALESCE(dw.balance, 0) >= $6
+       AND NOT COALESCE(dw.is_frozen, false)
        AND ST_DWithin(
          rcr.corridor,
          ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography,
@@ -197,7 +205,7 @@ export async function findReturnCabDrivers(params: {
        )
      ORDER BY distance_metres ASC
      LIMIT 3`,
-    [params.pickupLat, params.pickupLng, params.dropLat, params.dropLng, params.categoryId]
+    [params.pickupLat, params.pickupLng, params.dropLat, params.dropLng, params.categoryId, params.minWalletBalance]
   )
   return res.rows
 }

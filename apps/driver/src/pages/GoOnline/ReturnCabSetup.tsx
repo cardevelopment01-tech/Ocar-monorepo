@@ -35,6 +35,7 @@ export default function ReturnCabSetup() {
   const [goingOnline,     setGoingOnline]     = useState(false)
   const [locationWarning, setLocationWarning] = useState(false)
   const [error,           setError]           = useState<string | null>(null)
+  const [lowBalance,      setLowBalance]      = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -56,6 +57,7 @@ export default function ReturnCabSetup() {
     if (!selectedCityId) { setError('Select a destination city first.'); return }
     setGoingOnline(true)
     setError(null)
+    setLowBalance(false)
 
     let lat = DEFAULT_LAT
     let lng = DEFAULT_LNG
@@ -80,8 +82,9 @@ export default function ReturnCabSetup() {
       connectDriverSocket()
       navigate('/')
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error
-      setError(msg ?? 'Failed to go online. Please try again.')
+      const data = (err as { response?: { data?: { error?: string; code?: string } } }).response?.data
+      setError(data?.error ?? 'Failed to go online. Please try again.')
+      setLowBalance(data?.code === 'LOW_WALLET_BALANCE') // WALLET_FROZEN isn't fixed by a top-up, so no CTA for it
     } finally {
       setGoingOnline(false)
     }
@@ -204,7 +207,17 @@ export default function ReturnCabSetup() {
               className="flex items-start gap-3 rounded-2xl px-4 py-3 mb-3 overflow-hidden bg-surface-2 border border-border"
             >
               <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-text-primary text-sm">{error}</p>
+              <div className="flex-1">
+                <p className="text-text-primary text-sm">{error}</p>
+                {lowBalance && (
+                  <button
+                    onClick={() => navigate('/wallet')}
+                    className="mt-2 text-sm font-bold text-emerald-700 underline underline-offset-2"
+                  >
+                    Recharge wallet
+                  </button>
+                )}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

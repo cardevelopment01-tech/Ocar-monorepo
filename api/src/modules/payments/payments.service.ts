@@ -2,6 +2,7 @@ import { pool } from '@/db/client'
 import { config } from '@/config'
 import { client as redis } from '@/db/redis'
 import { ridePaymentOrderKey } from '@/constants/redis-keys'
+import { notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
 
 // ── Config helpers ─────────────────────────────────────────────
 
@@ -17,7 +18,7 @@ async function getCommissionPercent(): Promise<number> {
   return parseFloat(await getConfigValue('commission_percent', '15'))
 }
 
-async function getMinWalletBalance(): Promise<number> {
+export async function getMinWalletBalance(): Promise<number> {
   return parseFloat(await getConfigValue('driver_minimum_balance', '500'))
 }
 
@@ -142,9 +143,22 @@ export async function deductCommission(
       ]
     )
 
-    // Low balance is handled at go-online time (blocks going online) — no suspension here
+    // Ride-matching/go-online enforcement always re-reads live wallet balance
+    // (see rides.repository.ts / goOnline) — this is a notify-only signal,
+    // it never touches drivers.status. drivers.status is driver-lifecycle
+    // state owned by admin/vehicle/onboarding flows; conflating a wallet dip
+    // with it let a wallet top-up silently undo an unrelated admin suspension.
+    const justCrossedBelowMin = currentBalance >= minBalance && newBalance < minBalance
 
     await client.query('COMMIT')
+
+    if (justCrossedBelowMin) {
+      try {
+        await notifyDriverLowWalletBalance(driverId, newBalance, minBalance)
+      } catch (err) {
+        console.error('[WALLET] low-balance notify failed:', err instanceof Error ? err.message : 'unknown error')
+      }
+    }
   } catch (err) {
     await client.query('ROLLBACK')
     throw err
@@ -560,15 +574,10 @@ export async function topUpDriverWallet(
       [wallet.id, driverId, amount, newBalance, referenceId]
     )
 
-    const minBalance = await getMinWalletBalance()
-    if (newBalance >= minBalance) {
-      await client.query(
-        `UPDATE drivers
-         SET status = 'active', updated_at = now()
-         WHERE id = $1 AND status = 'suspended'`,
-        [driverId]
-      )
-    }
+    // Ride eligibility is re-derived live from balance on every go-online/
+    // matching check — nothing to "reactivate" here. drivers.status is
+    // driver-lifecycle state owned by admin/vehicle/onboarding flows, not
+    // wallet events (see deductCommission).
 
     await client.query('COMMIT')
   } catch (err) {

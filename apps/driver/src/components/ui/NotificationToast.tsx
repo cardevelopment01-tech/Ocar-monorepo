@@ -23,6 +23,8 @@ export default function NotificationToast() {
         <motion.button
           onClick={() => {
             dismissToast()
+            const path = toast.payload?.['path']
+            if (typeof path === 'string') { navigate(path); return }
             const route = toast.payload?.['route']
             if (typeof route === 'string') navigate(`/onboarding/${route}`)
             else openSheet()

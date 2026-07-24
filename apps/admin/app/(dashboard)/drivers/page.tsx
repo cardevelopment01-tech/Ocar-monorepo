@@ -719,6 +719,24 @@ export default function DriversPage() {
                       <span className="text-text-muted">Licence</span> <span className="font-mono text-text-primary">{detail.license_number ?? '—'}</span>
                     </div>
                   </div>
+                  <div className="bg-surface-2 rounded-xl p-4 border border-border-light">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Wallet</p>
+                      {detail.wallet?.is_frozen && (
+                        <span className="text-[10px] font-bold text-danger bg-danger/10 rounded-full px-2 py-0.5">Frozen</span>
+                      )}
+                    </div>
+                    {detail.wallet ? (
+                      <p className={`text-lg font-bold ${parseFloat(detail.wallet.balance) < 500 ? 'text-warning' : 'text-text-primary'}`}>
+                        ₹{parseFloat(detail.wallet.balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        {parseFloat(detail.wallet.balance) < 500 && (
+                          <span className="ml-2 text-xs font-semibold text-warning align-middle">Below ₹500 minimum</span>
+                        )}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-text-muted">No wallet yet — balance ₹0.00, below ₹500 minimum</p>
+                    )}
+                  </div>
                   <div className="space-y-2 pt-1">
                     {detail.status === 'pending_approval' && <>
                       <button onClick={() => openActionFromDetail('approve')}     className="w-full py-2.5 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 transition-colors">Approve Driver</button>

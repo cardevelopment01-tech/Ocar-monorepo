@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
-import { Bell, CircleCheck, TriangleAlert, FileText, Car, X } from 'lucide-react'
+import { Bell, CircleCheck, TriangleAlert, FileText, Car, Wallet, X } from 'lucide-react'
 import { useNotificationsStore } from '@/store/useNotificationsStore'
 import type { NotificationItem } from '@/lib/notifications-api'
 
@@ -11,6 +11,7 @@ const ICONS: Record<string, typeof Bell> = {
   sos: TriangleAlert,
   driver_submitted_for_review: FileText,
   document_rejected: FileText,
+  wallet_low_balance: Wallet,
 }
 
 function relativeTime(iso: string): string {
@@ -28,7 +29,7 @@ function relativeTime(iso: string): string {
 function NotificationRow({ item, onRead, onNavigate }: {
   item: NotificationItem
   onRead: (id: string) => void
-  onNavigate: (route: string) => void
+  onNavigate: (item: NotificationItem) => void
 }) {
   const Icon = ICONS[item.type] ?? Bell
   const unread = !item.readAt
@@ -37,8 +38,7 @@ function NotificationRow({ item, onRead, onNavigate }: {
     <button
       onClick={() => {
         onRead(item.id)
-        const route = item.payload?.['route']
-        if (typeof route === 'string') onNavigate(route)
+        if (item.payload?.['path'] || item.payload?.['route']) onNavigate(item)
       }}
       className="w-full flex items-start gap-3 px-4 py-3.5 text-left active:bg-surface-2 transition-colors"
     >
@@ -71,9 +71,12 @@ export default function NotificationsSheet() {
   const prefersReducedMotion = useReducedMotion()
   const navigate = useNavigate()
 
-  const handleNavigate = (route: string) => {
+  const handleNavigate = (item: NotificationItem) => {
     closeSheet()
-    navigate(`/onboarding/${route}`)
+    const path = item.payload?.['path']
+    if (typeof path === 'string') { navigate(path); return }
+    const route = item.payload?.['route']
+    if (typeof route === 'string') navigate(`/onboarding/${route}`)
   }
 
   useEffect(() => {

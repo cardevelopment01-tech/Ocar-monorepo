@@ -4,6 +4,7 @@ import { BROADCAST_WINDOW_SECONDS, BROADCAST_MAX_DRIVERS } from '@/constants/lim
 import { rideAckKey } from '@/constants/redis-keys'
 import { client as redis } from '@/db/redis'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
+import { getMinWalletBalance } from '@/modules/payments/payments.service'
 import type { AckCheckJobData } from './ack-check.processor'
 
 const MAX_DRIVERS = BROADCAST_MAX_DRIVERS
@@ -37,6 +38,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   }
 
   const stops = await repo.getRideStops(rideId)
+  const minWalletBalance = await getMinWalletBalance()
 
   let drivers: Array<{
     driver_id: bigint
@@ -53,6 +55,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       dropLat:   data.destinationLat,
       dropLng:   data.destinationLng,
       categoryId,
+      minWalletBalance,
     })
     drivers = returnDrivers.map(d => ({
       driver_id:        BigInt(d.driver_id),
@@ -71,6 +74,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       categoryId,
       maxDrivers: MAX_DRIVERS - drivers.length,
       radiusMetres,
+      minWalletBalance,
     })
     const included = new Set(drivers.map(d => d.driver_id.toString()))
     for (const sd of standardDrivers) {

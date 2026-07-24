@@ -75,6 +75,11 @@ export const AppErrors = {
     message: 'Driver account is suspended',
     httpStatus: 403,
   },
+  LOW_WALLET_BALANCE: {
+    code: 'LOW_WALLET_BALANCE',
+    message: 'Wallet balance is below the minimum required to receive rides',
+    httpStatus: 402,
+  },
   DRIVER_SESSION_ACTIVE: {
     code: 'DRIVER_SESSION_ACTIVE',
     message: 'Driver already has an active session',
