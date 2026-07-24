@@ -632,6 +632,19 @@ export async function handleWebhookEvent(
 
   if (!eventId) return
 
+  // reference_id was set by submitProcessingSettlements as `${settlementId}:${driverId}`.
+  // Validate the format BEFORE marking the event processed below: a
+  // malformed/unrelated reference_id (e.g. a payout created manually in the
+  // RazorpayX dashboard, not matching our convention) must not be recorded
+  // as processed, or a corrected/retried webhook delivery would be silently
+  // swallowed forever by the dedup check with no way to recover.
+  let settlementId: string | undefined
+  if (isPayoutEvent) {
+    const referenceId = (entity as { reference_id?: string }).reference_id
+    settlementId = referenceId?.split(':')[0]
+    if (!settlementId || !/^\d+$/.test(settlementId)) return
+  }
+
   const existing = await pool.query(
     `SELECT id FROM payment_gateway_events WHERE razorpay_event_id = $1`,
     [eventId]
@@ -646,20 +659,18 @@ export async function handleWebhookEvent(
   )
 
   if (isPayoutEvent) {
-    // reference_id was set by submitProcessingSettlements as `${settlementId}:${driverId}`.
-    const referenceId = (entity as { reference_id?: string }).reference_id
-    const settlementId = referenceId?.split(':')[0]
-    if (!settlementId) return
-
+    // settlementId already extracted + format-validated above.
     if (event === 'payout.processed') {
       // status != 'completed' guard: Razorpay doesn't guarantee webhook
       // delivery order, so a stale/duplicate event must not clobber a
       // settlement another (later-arriving-but-earlier-fired) event already
-      // finalized.
+      // finalized. razorpay_payout_id guard: only apply this update to the
+      // settlement row this specific gateway payout was actually submitted
+      // for — reference_id alone isn't proof of that.
       await pool.query(
         `UPDATE settlements SET status = 'completed', completed_at = now(), utr = $2
-         WHERE id = $1 AND status != 'completed'`,
-        [settlementId, (entity as { utr?: string }).utr ?? null]
+         WHERE id = $1 AND status != 'completed' AND razorpay_payout_id = $3`,
+        [settlementId, (entity as { utr?: string }).utr ?? null, eventId]
       )
       await pool.query(
         `UPDATE driver_earnings SET status = 'paid' WHERE settlement_id = $1 AND status = 'in_payout'`,
@@ -676,8 +687,8 @@ export async function handleWebhookEvent(
     const failureReason = (entity as { failure_reason?: string }).failure_reason ?? event
     await pool.query(
       `UPDATE settlements SET status = 'failed', failed_at = now(), failure_reason = $2
-       WHERE id = $1 AND status != 'completed'`,
-      [settlementId, failureReason ?? null]
+       WHERE id = $1 AND status != 'completed' AND razorpay_payout_id = $3`,
+      [settlementId, failureReason ?? null, eventId]
     )
     await pool.query(
       `UPDATE driver_earnings SET status = 'cleared', settlement_id = NULL
