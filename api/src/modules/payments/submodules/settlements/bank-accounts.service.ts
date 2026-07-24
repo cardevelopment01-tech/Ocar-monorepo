@@ -87,3 +87,23 @@ export async function getPrimaryVerifiedBankAccount(driverId: bigint) {
   )
   return res.rows[0] ? BigInt(res.rows[0].id) : null
 }
+
+export async function setBankAccountStatus(
+  bankAccountId: bigint, status: 'verified' | 'invalid' | 'pending_verification'
+): Promise<void> {
+  await pool.query(
+    `UPDATE driver_bank_accounts SET status = $2 WHERE id = $1`,
+    [bankAccountId, status]
+  )
+}
+
+export async function listUnverifiedBankAccounts() {
+  const res = await pool.query(
+    `SELECT dba.id, dba.driver_id, d.full_name AS driver_name, dba.ifsc, dba.status, dba.created_at
+     FROM driver_bank_accounts dba
+     JOIN drivers d ON d.id = dba.driver_id
+     WHERE dba.status IN ('pending_verification', 'invalid')
+     ORDER BY dba.created_at`
+  )
+  return res.rows
+}

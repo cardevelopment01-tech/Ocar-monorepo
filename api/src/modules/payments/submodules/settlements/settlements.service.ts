@@ -447,6 +447,50 @@ export async function createManualAdjustment(
   )
 }
 
+// "Stuck" here is scoped narrowly: submission never got a gateway payout id
+// back (submitProcessingSettlements crashed/timed out before its claim
+// UPDATE, or before the real-id UPDATE landed) and enough time has passed
+// that it's not just an in-flight cron cycle. Rows that DID get a payout id
+// and are awaiting webhook confirmation are a different (unaddressed) case —
+// out of scope for this task; see plan Task 11.
+export async function listStuckSettlements() {
+  const res = await pool.query(
+    `SELECT s.id, s.driver_id, d.full_name AS driver_name, s.net_payout, s.created_at
+     FROM settlements s
+     JOIN drivers d ON d.id = s.driver_id
+     WHERE s.status = 'processing' AND s.razorpay_payout_id IS NULL
+       AND s.created_at < now() - interval '2 hours'
+     ORDER BY s.created_at`
+  )
+  return res.rows
+}
+
+export async function retryFailedSettlement(settlementId: bigint): Promise<boolean> {
+  const res = await pool.query(
+    `UPDATE settlements
+       SET status = 'processing', razorpay_payout_id = NULL, utr = NULL,
+           failed_at = NULL, failure_reason = NULL
+     WHERE id = $1 AND status = 'failed'`,
+    [settlementId]
+  )
+  return (res.rowCount ?? 0) > 0
+}
+
+export async function getDriverTaxStatement(driverId: bigint, fy: string) {
+  const res = await pool.query(
+    `SELECT fy, SUM(tds_amount) AS total_tds, SUM(taxable_base) AS total_taxable_base, COUNT(*) AS entries
+     FROM tax_deductions WHERE driver_id = $1 AND fy = $2 GROUP BY fy`,
+    [driverId, fy]
+  )
+  const row = res.rows[0]
+  return {
+    fy,
+    totalTds: row ? parseFloat(row.total_tds) : 0,
+    totalTaxableBase: row ? parseFloat(row.total_taxable_base) : 0,
+    entries: row ? parseInt(row.entries) : 0,
+  }
+}
+
 export interface DriverEarningsSummary {
   payableBalance: number
   recentLedger: Array<Record<string, unknown>>

@@ -4,6 +4,7 @@ import { requireAdmin } from '@/middleware/role.middleware'
 import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import * as service from './settlements.service'
+import * as bankAccounts from './bank-accounts.service'
 
 const router: IRouter = Router()
 
@@ -58,6 +59,49 @@ router.post('/adjustments', async (req, res, next) => {
     }
     await service.createManualAdjustment(BigInt(driverId), amount, reason, req.admin!.id)
     res.status(201).json({ success: true })
+  } catch (err) { next(err) }
+})
+
+router.get('/reconciliation/stuck', async (_req, res, next) => {
+  try {
+    res.json({ settlements: await service.listStuckSettlements() })
+  } catch (err) { next(err) }
+})
+
+router.get('/bank-accounts/unverified', async (_req, res, next) => {
+  try {
+    res.json({ accounts: await bankAccounts.listUnverifiedBankAccounts() })
+  } catch (err) { next(err) }
+})
+
+router.patch('/bank-accounts/:id/status', async (req, res, next) => {
+  try {
+    const { status } = req.body as { status?: string }
+    if (status !== 'verified' && status !== 'invalid' && status !== 'pending_verification') {
+      throw httpError(422, 'invalid status', AppErrors.VALIDATION_ERROR.code)
+    }
+    await bankAccounts.setBankAccountStatus(BigInt(req.params['id']!), status)
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
+router.get('/tax-statement/:driverId/:fy', async (req, res, next) => {
+  try {
+    const statement = await service.getDriverTaxStatement(BigInt(req.params['driverId']!), req.params['fy']!)
+    res.json(statement)
+  } catch (err) { next(err) }
+})
+
+// Placed after all more specific literal-prefixed routes above (reconciliation/*,
+// bank-accounts/*, tax-statement/*) even though none of them structurally collide
+// with this one (different segment counts and/or HTTP verbs) — kept last for
+// readability so a generic single-segment :id pattern never reads as shadowing
+// a more specific route.
+router.post('/:id/retry', async (req, res, next) => {
+  try {
+    const ok = await service.retryFailedSettlement(BigInt(req.params['id']!))
+    if (!ok) throw httpError(400, 'Settlement is not in a retryable state', AppErrors.VALIDATION_ERROR.code)
+    res.json({ success: true })
   } catch (err) { next(err) }
 })
 
