@@ -83,3 +83,13 @@ export async function accrueDriverEarning(rideId: bigint, driverId: bigint): Pro
     client.release()
   }
 }
+
+// Runs every 15 min. A held driver's lines still clear here — holds only
+// block the batch sweep (Task 6/7), not visibility of the payable balance.
+export async function clearAvailableEarnings(): Promise<void> {
+  await pool.query(
+    `UPDATE driver_earnings
+       SET status = 'cleared'
+     WHERE status = 'pending' AND available_at <= now()`
+  )
+}

@@ -12,7 +12,8 @@ import { schedulerWorker } from './jobs/workers/scheduler.worker'
 import { auditWorker } from './jobs/workers/audit.worker'
 import { partitionMaintenanceWorker } from './jobs/workers/partition-maintenance.worker'
 import { paymentReconcileWorker } from './jobs/workers/payment-reconcile.worker'
-import { cleanupQueue, schedulerQueue, partitionMaintenanceQueue, paymentsQueue } from './jobs/queues'
+import { settlementsWorker } from './jobs/workers/settlements.worker'
+import { cleanupQueue, schedulerQueue, partitionMaintenanceQueue, paymentsQueue, settlementsQueue } from './jobs/queues'
 
 async function start(): Promise<void> {
   const dbOk = await testConnection()
@@ -81,6 +82,14 @@ async function start(): Promise<void> {
     'reconcile_pending_payments',
     {},
     { repeat: { every: 300_000 }, removeOnComplete: true, removeOnFail: true }
+  )
+
+  void settlementsWorker
+  console.log('[Worker] Settlements worker started')
+  await settlementsQueue.add(
+    'clear_available_earnings',
+    {},
+    { repeat: { every: 900_000 }, removeOnComplete: true, removeOnFail: true } // 15 min
   )
 
   httpServer.listen(config.API_PORT, () => {
