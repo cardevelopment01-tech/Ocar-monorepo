@@ -5,7 +5,11 @@ vi.mock('@/db/client', () => ({
   pool: { query: (...args: unknown[]) => poolQuery(...args) },
 }))
 
-import { listStuckSettlements, retryFailedSettlement, getDriverTaxStatement } from '@/modules/payments/submodules/settlements/settlements.service'
+// retryNeverSubmittedSettlement's dev-mode branch reads config directly,
+// same pattern as submit-processing-settlements.test.ts.
+vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '', RAZORPAYX_ACCOUNT_NUMBER: '' } }))
+
+import { listStuckSettlements, retryFailedSettlement, retryNeverSubmittedSettlement, getDriverTaxStatement } from '@/modules/payments/submodules/settlements/settlements.service'
 import { setBankAccountStatus, listUnverifiedBankAccounts } from '@/modules/payments/submodules/settlements/bank-accounts.service'
 
 describe('admin reconciliation + tax', () => {
@@ -28,6 +32,28 @@ describe('admin reconciliation + tax', () => {
     const [sql] = poolQuery.mock.calls[0] as [string]
     expect(sql).toContain("SET status = 'processing'")
     expect(sql).toContain('razorpay_payout_id = NULL')
+  })
+
+  it('retryNeverSubmittedSettlement submits immediately (dev mode) for a processing/unsubmitted row', async () => {
+    poolQuery
+      .mockResolvedValueOnce({ rows: [{ id: '901', driver_id: '42', net_payout: '850.00' }] }) // SELECT match
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE settlements completed (dev mode)
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE driver_earnings paid
+    const ok = await retryNeverSubmittedSettlement(BigInt(901))
+    expect(ok).toBe(true)
+    const [selectSql, selectParams] = poolQuery.mock.calls[0] as [string, unknown[]]
+    expect(selectSql).toContain("status = 'processing'")
+    expect(selectSql).toContain('razorpay_payout_id IS NULL')
+    expect(selectParams).toEqual([BigInt(901)])
+    const calls = poolQuery.mock.calls.map(c => c[0] as string)
+    expect(calls.some(s => s.includes("UPDATE settlements") && s.includes("'completed'"))).toBe(true)
+  })
+
+  it('retryNeverSubmittedSettlement returns false when the row is not processing/unsubmitted (e.g. already claimed or failed)', async () => {
+    poolQuery.mockResolvedValueOnce({ rows: [] })
+    const ok = await retryNeverSubmittedSettlement(BigInt(902))
+    expect(ok).toBe(false)
+    expect(poolQuery).toHaveBeenCalledTimes(1)
   })
 
   it('getDriverTaxStatement aggregates tax_deductions by FY', async () => {

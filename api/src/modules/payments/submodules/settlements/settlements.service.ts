@@ -270,6 +270,112 @@ export async function instantCashOut(driverId: bigint): Promise<bigint> {
 // Payouts. Dev mode (no keys) marks them completed directly, mirroring the
 // existing Razorpay dev-mode bypass elsewhere in this module — lets the
 // whole pipeline be exercised without a gateway.
+interface ProcessingSettlementRow {
+  id: string
+  driver_id: string
+  net_payout: string
+}
+
+// Submits a single already-claimed-eligible settlement row to the gateway
+// (or dev-mode-completes it). Shared by the batch sweep below and by
+// retryNeverSubmittedSettlement (admin "attempt now" action) so both paths
+// go through the exact same claim-before-call / failure-revert discipline.
+async function submitSettlementRow(row: ProcessingSettlementRow, devMode: boolean): Promise<void> {
+  if (devMode) {
+    await pool.query(
+      `UPDATE settlements SET status = 'completed', completed_at = now(),
+         razorpay_payout_id = $2, utr = $2
+       WHERE id = $1`,
+      [row.id, `dev_payout_${row.id}`]
+    )
+    await pool.query(
+      `UPDATE driver_earnings SET status = 'paid' WHERE settlement_id = $1`,
+      [row.id]
+    )
+    return
+  }
+
+  // Claim the row before calling the gateway: an atomic UPDATE...WHERE on
+  // the same razorpay_payout_id IS NULL guard the caller's SELECT used. If a
+  // crash/timeout happens between the gateway call succeeding and the
+  // "real id" UPDATE below, this placeholder is what's left behind instead
+  // of NULL — so the next cron run's SELECT (still filtering on IS NULL)
+  // will NOT pick this row up again and fire a second real bank transfer.
+  // (Detecting/resolving stuck placeholders is reconciliation — Task 11.)
+  const placeholderPayoutId = `pending_submit:${row.id}:${Date.now()}`
+  const claim = await pool.query(
+    `UPDATE settlements SET razorpay_payout_id = $2
+     WHERE id = $1 AND razorpay_payout_id IS NULL`,
+    [row.id, placeholderPayoutId]
+  )
+  if (claim.rowCount === 0) {
+    // Another process already claimed this settlement — skip, don't resubmit.
+    return
+  }
+
+  try {
+    const bankRes = await pool.query(
+      `SELECT gateway_fund_account_id FROM driver_bank_accounts
+       JOIN settlements s ON s.bank_account_id = driver_bank_accounts.id
+       WHERE s.id = $1`,
+      [row.id]
+    )
+    const fundAccountId = bankRes.rows[0]?.gateway_fund_account_id
+
+    // RazorpayX Payouts has no resource in the installed `razorpay` SDK
+    // (v2.9.6) — rzp.payouts is undefined at runtime (confirmed by reading
+    // dist/razorpay.js). Call the REST API directly instead. Auth is HTTP
+    // Basic with the same key pair used for collection (standard across all
+    // Razorpay REST endpoints). X-Payout-Idempotency guards against a
+    // retried call after a timeout/crash creating a second real bank
+    // transfer for the same settlement — this is the actual gateway-side
+    // idempotency guard the local claim-before-call UPDATE alone can't
+    // provide.
+    const authHeader = 'Basic ' + Buffer.from(`${config.RAZORPAY_KEY_ID}:${config.RAZORPAY_KEY_SECRET}`).toString('base64')
+    const idempotencyKey = `${row.id}:${row.driver_id}`
+    const payoutRes = await fetch('https://api.razorpay.com/v1/payouts', {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+        'X-Payout-Idempotency': idempotencyKey,
+      },
+      body: JSON.stringify({
+        account_number: config.RAZORPAYX_ACCOUNT_NUMBER,
+        fund_account_id: fundAccountId,
+        amount: Math.round(parseFloat(row.net_payout) * 100),
+        currency: 'INR',
+        mode: 'IMPS',
+        purpose: 'payout',
+        queue_if_low_balance: true,
+        reference_id: idempotencyKey,
+      }),
+    })
+    if (!payoutRes.ok) {
+      const errBody = await payoutRes.text()
+      throw new Error(`RazorpayX payout API returned ${payoutRes.status}: ${errBody}`)
+    }
+    const payout = await payoutRes.json() as { id: string }
+
+    await pool.query(
+      `UPDATE settlements SET razorpay_payout_id = $2 WHERE id = $1`,
+      [row.id, payout.id]
+    )
+  } catch (err) {
+    console.error(`[settlements] payout submit failed for settlement ${row.id}:`, err)
+    await pool.query(
+      `UPDATE settlements
+         SET status = 'failed', failed_at = now(), failure_reason = $2, razorpay_payout_id = NULL
+       WHERE id = $1`,
+      [row.id, err instanceof Error ? err.message : 'unknown error']
+    )
+    await pool.query(
+      `UPDATE driver_earnings SET status = 'cleared', settlement_id = NULL WHERE settlement_id = $1`,
+      [row.id]
+    )
+  }
+}
+
 export async function submitProcessingSettlements(): Promise<void> {
   const pending = await pool.query(
     `SELECT id, driver_id, net_payout FROM settlements
@@ -280,99 +386,7 @@ export async function submitProcessingSettlements(): Promise<void> {
   const devMode = !config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET
 
   for (const row of pending.rows) {
-    if (devMode) {
-      await pool.query(
-        `UPDATE settlements SET status = 'completed', completed_at = now(),
-           razorpay_payout_id = $2, utr = $2
-         WHERE id = $1`,
-        [row.id, `dev_payout_${row.id}`]
-      )
-      await pool.query(
-        `UPDATE driver_earnings SET status = 'paid' WHERE settlement_id = $1`,
-        [row.id]
-      )
-      continue
-    }
-
-    // Claim the row before calling the gateway: an atomic UPDATE...WHERE on
-    // the same razorpay_payout_id IS NULL guard the SELECT above used. If a
-    // crash/timeout happens between the gateway call succeeding and the
-    // "real id" UPDATE below, this placeholder is what's left behind instead
-    // of NULL — so the next cron run's SELECT (still filtering on IS NULL)
-    // will NOT pick this row up again and fire a second real bank transfer.
-    // (Detecting/resolving stuck placeholders is reconciliation — Task 11.)
-    const placeholderPayoutId = `pending_submit:${row.id}:${Date.now()}`
-    const claim = await pool.query(
-      `UPDATE settlements SET razorpay_payout_id = $2
-       WHERE id = $1 AND razorpay_payout_id IS NULL`,
-      [row.id, placeholderPayoutId]
-    )
-    if (claim.rowCount === 0) {
-      // Another process already claimed this settlement — skip, don't resubmit.
-      continue
-    }
-
-    try {
-      const bankRes = await pool.query(
-        `SELECT gateway_fund_account_id FROM driver_bank_accounts
-         JOIN settlements s ON s.bank_account_id = driver_bank_accounts.id
-         WHERE s.id = $1`,
-        [row.id]
-      )
-      const fundAccountId = bankRes.rows[0]?.gateway_fund_account_id
-
-      // RazorpayX Payouts has no resource in the installed `razorpay` SDK
-      // (v2.9.6) — rzp.payouts is undefined at runtime (confirmed by reading
-      // dist/razorpay.js). Call the REST API directly instead. Auth is HTTP
-      // Basic with the same key pair used for collection (standard across all
-      // Razorpay REST endpoints). X-Payout-Idempotency guards against a
-      // retried call after a timeout/crash creating a second real bank
-      // transfer for the same settlement — this is the actual gateway-side
-      // idempotency guard the local claim-before-call UPDATE alone can't
-      // provide.
-      const authHeader = 'Basic ' + Buffer.from(`${config.RAZORPAY_KEY_ID}:${config.RAZORPAY_KEY_SECRET}`).toString('base64')
-      const idempotencyKey = `${row.id}:${row.driver_id}`
-      const payoutRes = await fetch('https://api.razorpay.com/v1/payouts', {
-        method: 'POST',
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/json',
-          'X-Payout-Idempotency': idempotencyKey,
-        },
-        body: JSON.stringify({
-          account_number: config.RAZORPAYX_ACCOUNT_NUMBER,
-          fund_account_id: fundAccountId,
-          amount: Math.round(parseFloat(row.net_payout) * 100),
-          currency: 'INR',
-          mode: 'IMPS',
-          purpose: 'payout',
-          queue_if_low_balance: true,
-          reference_id: idempotencyKey,
-        }),
-      })
-      if (!payoutRes.ok) {
-        const errBody = await payoutRes.text()
-        throw new Error(`RazorpayX payout API returned ${payoutRes.status}: ${errBody}`)
-      }
-      const payout = await payoutRes.json() as { id: string }
-
-      await pool.query(
-        `UPDATE settlements SET razorpay_payout_id = $2 WHERE id = $1`,
-        [row.id, payout.id]
-      )
-    } catch (err) {
-      console.error(`[settlements] payout submit failed for settlement ${row.id}:`, err)
-      await pool.query(
-        `UPDATE settlements
-           SET status = 'failed', failed_at = now(), failure_reason = $2, razorpay_payout_id = NULL
-         WHERE id = $1`,
-        [row.id, err instanceof Error ? err.message : 'unknown error']
-      )
-      await pool.query(
-        `UPDATE driver_earnings SET status = 'cleared', settlement_id = NULL WHERE settlement_id = $1`,
-        [row.id]
-      )
-    }
+    await submitSettlementRow(row, devMode)
   }
 }
 
@@ -480,6 +494,30 @@ export async function retryFailedSettlement(settlementId: bigint): Promise<boole
     [settlementId]
   )
   return (res.rowCount ?? 0) > 0
+}
+
+// For the 'never_submitted' stuck case (status='processing', no
+// razorpay_payout_id yet): the row is already in the exact state
+// submitProcessingSettlements' own SELECT looks for, so it's already
+// eligible for automatic pickup on the next cron tick — there's no status
+// to "reset" the way retryFailedSettlement resets a failed row. Stuck for
+// 2+ hours despite that means something is preventing the cron from
+// reaching it; the useful admin action is to attempt submission for this
+// one row right now rather than wait for/hope for the next tick. Reuses
+// submitSettlementRow so it goes through the identical claim-before-call /
+// failure-revert path as the scheduled sweep.
+export async function retryNeverSubmittedSettlement(settlementId: bigint): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT id, driver_id, net_payout FROM settlements
+     WHERE id = $1 AND status = 'processing' AND razorpay_payout_id IS NULL`,
+    [settlementId]
+  )
+  const row = res.rows[0]
+  if (!row) return false
+
+  const devMode = !config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET
+  await submitSettlementRow(row, devMode)
+  return true
 }
 
 export async function getDriverTaxStatement(driverId: bigint, fy: string) {

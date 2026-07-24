@@ -105,4 +105,17 @@ router.post('/:id/retry', async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// For 'never_submitted' stuck rows (status='processing', razorpay_payout_id
+// still NULL) — distinct from /:id/retry above, which only resets rows that
+// are status='failed'. A never-submitted row has no status to reset; this
+// attempts submission for it immediately instead of waiting for the next
+// submit_processing_settlements cron tick.
+router.post('/:id/retry-submit', async (req, res, next) => {
+  try {
+    const ok = await service.retryNeverSubmittedSettlement(BigInt(req.params['id']!))
+    if (!ok) throw httpError(400, 'Settlement is not in a never-submitted state', AppErrors.VALIDATION_ERROR.code)
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
 export default router

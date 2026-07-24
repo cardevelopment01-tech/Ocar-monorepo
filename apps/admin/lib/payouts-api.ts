@@ -71,6 +71,12 @@ export const payoutsApi = {
   retrySettlement: async (id: string): Promise<void> => {
     await api.post(`/api/v1/admin/payouts/${id}/retry`)
   },
+  // For 'never_submitted' stuck rows only — those are status='processing',
+  // not 'failed', so retrySettlement's endpoint (status='failed' guard)
+  // always rejects them. This attempts submission for the row immediately.
+  retryNeverSubmittedSettlement: async (id: string): Promise<void> => {
+    await api.post(`/api/v1/admin/payouts/${id}/retry-submit`)
+  },
   placeHold: async (driverId: string, reason: string): Promise<void> => {
     await api.post('/api/v1/admin/payouts/holds', { driverId, reason })
   },

@@ -133,7 +133,10 @@ export default function PayoutsPage() {
   useEffect(() => { void loadStuck() }, [])
 
   async function retryStuck(id: string) {
-    await payoutsApi.retrySettlement(id)
+    // Only ever called for 'never_submitted' rows (see the button below) —
+    // those are status='processing', so the /:id/retry endpoint (which only
+    // matches status='failed') would always reject them.
+    await payoutsApi.retryNeverSubmittedSettlement(id)
     await loadStuck()
   }
 
@@ -388,7 +391,7 @@ export default function PayoutsPage() {
                 <td>
                   {s.stuck_reason === 'never_submitted' && (
                     <button className="text-primary text-xs font-semibold cursor-pointer" onClick={() => void retryStuck(s.id)}>
-                      Retry
+                      Retry now
                     </button>
                   )}
                 </td>
