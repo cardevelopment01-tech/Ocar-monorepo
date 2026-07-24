@@ -10,6 +10,7 @@ const PROTECTED_PATHS = [
   '/disputes',
   '/sos',
   '/payments',
+  '/payouts',
   '/settlements',
   '/refunds',
   '/config',
