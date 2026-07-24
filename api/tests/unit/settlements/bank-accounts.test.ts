@@ -5,7 +5,13 @@ const poolQuery = vi.fn()
 vi.mock('@/db/client', () => ({
   pool: { query: (...args: unknown[]) => poolQuery(...args), connect: vi.fn(() => Promise.resolve(client)) },
 }))
-vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '' } }))
+vi.mock('@/config', () => ({
+  config: {
+    RAZORPAY_KEY_ID: '',
+    RAZORPAY_KEY_SECRET: '',
+    BANK_ACCOUNT_ENCRYPTION_KEY: '0'.repeat(64),
+  },
+}))
 
 import { addBankAccount } from '@/modules/payments/submodules/settlements/bank-accounts.service'
 

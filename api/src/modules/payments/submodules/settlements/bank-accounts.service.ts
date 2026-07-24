@@ -1,6 +1,6 @@
 import { pool } from '@/db/client'
 import { config } from '@/config'
-import { createHmac } from 'crypto'
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 
 export interface AddBankAccountInput {
   accountHolderName: string
@@ -9,14 +9,31 @@ export interface AddBankAccountInput {
   upiVpa?: string
 }
 
-// Simple reversible encoding so raw account numbers are never stored in
-// plaintext at rest — same threat model as other sensitive-but-not-password
-// fields in this codebase (no bcrypt needed, this must be decryptable to
-// pass to the payout gateway). Uses the Razorpay webhook secret as the key
-// so no new secret needs provisioning.
+// AES-256-GCM so account numbers are never recoverable from a DB dump alone —
+// must be decryptable (not hashed) so it can be sent to the payout gateway later.
+function getEncryptionKey(): Buffer {
+  const hex = config.BANK_ACCOUNT_ENCRYPTION_KEY
+  if (!hex || hex.length !== 64) {
+    throw new Error('BANK_ACCOUNT_ENCRYPTION_KEY must be a 32-byte (64 hex char) key')
+  }
+  return Buffer.from(hex, 'hex')
+}
+
 function encryptAccountNumber(accountNumber: string): string {
-  const key = config.RAZORPAY_WEBHOOK_SECRET || 'dev-only-key'
-  return createHmac('sha256', key).update(accountNumber).digest('hex') + ':' + Buffer.from(accountNumber).toString('base64')
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', getEncryptionKey(), iv)
+  const encrypted = Buffer.concat([cipher.update(accountNumber, 'utf8'), cipher.final()])
+  const authTag = cipher.getAuthTag()
+  return [iv.toString('hex'), authTag.toString('hex'), encrypted.toString('hex')].join(':')
+}
+
+// Not used yet — the RazorpayX disbursal flow (Task 8) will need to decrypt
+// the account number to send to the payout gateway.
+export function decryptAccountNumber(stored: string): string {
+  const [ivHex, authTagHex, dataHex] = stored.split(':')
+  const decipher = createDecipheriv('aes-256-gcm', getEncryptionKey(), Buffer.from(ivHex!, 'hex'))
+  decipher.setAuthTag(Buffer.from(authTagHex!, 'hex'))
+  return Buffer.concat([decipher.update(Buffer.from(dataHex!, 'hex')), decipher.final()]).toString('utf8')
 }
 
 export async function addBankAccount(driverId: bigint, input: AddBankAccountInput): Promise<bigint> {

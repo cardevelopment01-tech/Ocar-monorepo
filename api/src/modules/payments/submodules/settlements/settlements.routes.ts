@@ -1,19 +1,21 @@
 import { type IRouter, Router } from 'express'
 import { authenticate } from '@/middleware/auth.middleware'
+import { requireDriver } from '@/middleware/role.middleware'
 import { httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import * as bankAccounts from './bank-accounts.service'
 
 const router: IRouter = Router()
+router.use(authenticate(), requireDriver())
 
-router.get('/bank-accounts', authenticate(), async (req, res, next) => {
+router.get('/bank-accounts', async (req, res, next) => {
   try {
     const accounts = await bankAccounts.listBankAccounts(req.driver!.id)
     res.json({ accounts })
   } catch (err) { next(err) }
 })
 
-router.post('/bank-accounts', authenticate(), async (req, res, next) => {
+router.post('/bank-accounts', async (req, res, next) => {
   try {
     const { accountHolderName, accountNumber, ifsc, upiVpa } = req.body as Record<string, unknown>
     if (typeof accountHolderName !== 'string' || accountHolderName.trim().length === 0) {
