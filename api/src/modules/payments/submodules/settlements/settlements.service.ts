@@ -294,6 +294,24 @@ export async function submitProcessingSettlements(): Promise<void> {
       continue
     }
 
+    // Claim the row before calling the gateway: an atomic UPDATE...WHERE on
+    // the same razorpay_payout_id IS NULL guard the SELECT above used. If a
+    // crash/timeout happens between the gateway call succeeding and the
+    // "real id" UPDATE below, this placeholder is what's left behind instead
+    // of NULL — so the next cron run's SELECT (still filtering on IS NULL)
+    // will NOT pick this row up again and fire a second real bank transfer.
+    // (Detecting/resolving stuck placeholders is reconciliation — Task 11.)
+    const placeholderPayoutId = `pending_submit:${row.id}:${Date.now()}`
+    const claim = await pool.query(
+      `UPDATE settlements SET razorpay_payout_id = $2
+       WHERE id = $1 AND razorpay_payout_id IS NULL`,
+      [row.id, placeholderPayoutId]
+    )
+    if (claim.rowCount === 0) {
+      // Another process already claimed this settlement — skip, don't resubmit.
+      continue
+    }
+
     try {
       // RazorpayX Payouts is a separate API surface on the same account —
       // reuses the same key pair already configured for collection.
@@ -309,9 +327,25 @@ export async function submitProcessingSettlements(): Promise<void> {
       // RazorpayX Payouts isn't in this SDK version's TS types (only added via
       // addResources at runtime) — cast through unknown, same as elsewhere
       // this SDK's dynamic surface is used beyond its declared types.
+      //
+      // KNOWN GAP (found by inspecting the installed package, not assumed):
+      // razorpay@2.9.6's own addResources() (node_modules/.pnpm/razorpay@2.9.6/
+      // node_modules/razorpay/dist/razorpay.js) does NOT register a `payouts`
+      // resource at all — `rzp.payouts` is undefined on a real instance, and
+      // its low-level `api.post()` (dist/api.js) never forwards a headers arg
+      // through to axios, so there is no clean way to send the RazorpayX
+      // `X-Payout-Idempotency` header via this SDK version as installed. The
+      // idempotencyHeaders argument below is passed defensively (harmless if
+      // ignored) but is NOT a verified guard. The real hard guard against
+      // double-payout for this task is the local claim UPDATE above (2a).
+      // Follow-up: either upgrade the SDK to one with a real payouts resource,
+      // or call RazorpayX via `rzp.api.rq` (the underlying axios instance,
+      // which does accept a per-call headers config) directly against
+      // `/v1/payouts`.
+      const idempotencyHeaders = { 'X-Payout-Idempotency': `${row.id}:${row.driver_id}` }
       const rzpPayouts = (rzp as unknown as { payouts: { create: Function } }).payouts
       const payout = await (rzpPayouts.create as Function)({
-        account_number: config.RAZORPAY_KEY_ID,
+        account_number: config.RAZORPAYX_ACCOUNT_NUMBER,
         fund_account_id: fundAccountId,
         amount: Math.round(parseFloat(row.net_payout) * 100),
         currency: 'INR',
@@ -319,7 +353,7 @@ export async function submitProcessingSettlements(): Promise<void> {
         purpose: 'payout',
         queue_if_low_balance: true,
         reference_id: `${row.id}:${row.driver_id}`,
-      }) as { id: string }
+      }, idempotencyHeaders) as { id: string }
 
       await pool.query(
         `UPDATE settlements SET razorpay_payout_id = $2 WHERE id = $1`,
@@ -328,7 +362,9 @@ export async function submitProcessingSettlements(): Promise<void> {
     } catch (err) {
       console.error(`[settlements] payout submit failed for settlement ${row.id}:`, err)
       await pool.query(
-        `UPDATE settlements SET status = 'failed', failed_at = now(), failure_reason = $2 WHERE id = $1`,
+        `UPDATE settlements
+           SET status = 'failed', failed_at = now(), failure_reason = $2, razorpay_payout_id = NULL
+         WHERE id = $1`,
         [row.id, err instanceof Error ? err.message : 'unknown error']
       )
       await pool.query(

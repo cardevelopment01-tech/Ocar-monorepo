@@ -30,6 +30,9 @@ const envSchema = z.object({
   RAZORPAY_KEY_ID: z.string().default(''),
   RAZORPAY_KEY_SECRET: z.string().default(''),
   RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+  // RazorpayX current/virtual account number to debit driver payouts from
+  // (NOT the API key id — see RazorpayX dashboard > Accounts)
+  RAZORPAYX_ACCOUNT_NUMBER: z.string().default(''),
 
   // SMS
   MSG91_AUTH_KEY: z.string().default(''),
