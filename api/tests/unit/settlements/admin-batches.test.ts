@@ -19,11 +19,18 @@ describe('admin settlement controls', () => {
   })
 
   it('placeDriverPayoutHold requires a reason and records the admin', async () => {
-    poolQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] })
-    await placeDriverPayoutHold(BigInt(42), 'fraud review', BigInt(1))
+    poolQuery.mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 })
+    const placed = await placeDriverPayoutHold(BigInt(42), 'fraud review', BigInt(1))
     const [sql, params] = poolQuery.mock.calls[0] as [string, unknown[]]
     expect(sql).toContain('INSERT INTO driver_payout_holds')
     expect(params).toContain('fraud review')
+    expect(placed).toBe(true)
+  })
+
+  it('placeDriverPayoutHold returns false when the driver already has an active hold', async () => {
+    poolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 })
+    const placed = await placeDriverPayoutHold(BigInt(42), 'second reason', BigInt(1))
+    expect(placed).toBe(false)
   })
 
   it('createManualAdjustment inserts a signed, reasoned earnings line', async () => {

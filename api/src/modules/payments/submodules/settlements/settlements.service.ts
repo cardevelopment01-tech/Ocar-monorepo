@@ -415,20 +415,22 @@ export async function approveSettlementPeriod(
   return res.rowCount ?? 0
 }
 
-export async function placeDriverPayoutHold(driverId: bigint, reason: string, placedBy: bigint): Promise<void> {
-  await pool.query(
+export async function placeDriverPayoutHold(driverId: bigint, reason: string, placedBy: bigint): Promise<boolean> {
+  const res = await pool.query(
     `INSERT INTO driver_payout_holds (driver_id, reason, placed_by)
      VALUES ($1,$2,$3)
      ON CONFLICT (driver_id) WHERE active DO NOTHING`,
     [driverId, reason, placedBy]
   )
+  return (res.rowCount ?? 0) > 0
 }
 
-export async function releaseDriverPayoutHold(driverId: bigint): Promise<void> {
-  await pool.query(
+export async function releaseDriverPayoutHold(driverId: bigint): Promise<boolean> {
+  const res = await pool.query(
     `UPDATE driver_payout_holds SET active = false WHERE driver_id = $1 AND active`,
     [driverId]
   )
+  return (res.rowCount ?? 0) > 0
 }
 
 // amount is signed (credit or debit) — inserted directly as 'cleared' since

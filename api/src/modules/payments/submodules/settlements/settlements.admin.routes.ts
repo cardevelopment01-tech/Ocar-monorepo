@@ -1,7 +1,7 @@
 import { type IRouter, Router } from 'express'
 import { authenticate } from '@/middleware/auth.middleware'
 import { requireAdmin } from '@/middleware/role.middleware'
-import { httpError } from '@/lib/errors'
+import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import * as service from './settlements.service'
 
@@ -36,14 +36,16 @@ router.post('/holds', async (req, res, next) => {
     if (!driverId || !reason || reason.trim().length === 0) {
       throw httpError(422, 'driverId and reason are required', AppErrors.VALIDATION_ERROR.code)
     }
-    await service.placeDriverPayoutHold(BigInt(driverId), reason, req.admin!.id)
+    const placed = await service.placeDriverPayoutHold(BigInt(driverId), reason, req.admin!.id)
+    if (!placed) throw createHttpError(AppErrors.DUPLICATE_ENTRY)
     res.status(201).json({ success: true })
   } catch (err) { next(err) }
 })
 
 router.delete('/holds/:driverId', async (req, res, next) => {
   try {
-    await service.releaseDriverPayoutHold(BigInt(req.params['driverId']!))
+    const released = await service.releaseDriverPayoutHold(BigInt(req.params['driverId']!))
+    if (!released) throw createHttpError(AppErrors.NOT_FOUND)
     res.json({ success: true })
   } catch (err) { next(err) }
 })
