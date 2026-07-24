@@ -93,3 +93,25 @@ export async function clearAvailableEarnings(): Promise<void> {
      WHERE status = 'pending' AND available_at <= now()`
   )
 }
+
+export interface DriverEarningsSummary {
+  payableBalance: number
+  recentLedger: Array<Record<string, unknown>>
+}
+
+export async function getDriverEarningsSummary(driverId: bigint): Promise<DriverEarningsSummary> {
+  const balanceRes = await pool.query(
+    `SELECT COALESCE(SUM(amount), 0) AS payable_balance
+     FROM driver_earnings WHERE driver_id = $1 AND status = 'cleared'`,
+    [driverId]
+  )
+  const ledgerRes = await pool.query(
+    `SELECT id, ride_id, entry_type, amount, status, created_at, note
+     FROM driver_earnings WHERE driver_id = $1 ORDER BY created_at DESC LIMIT 20`,
+    [driverId]
+  )
+  return {
+    payableBalance: parseFloat(balanceRes.rows[0].payable_balance),
+    recentLedger: ledgerRes.rows,
+  }
+}

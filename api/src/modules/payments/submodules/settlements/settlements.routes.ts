@@ -4,6 +4,7 @@ import { requireDriver } from '@/middleware/role.middleware'
 import { httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import * as bankAccounts from './bank-accounts.service'
+import * as service from './settlements.service'
 
 const router: IRouter = Router()
 router.use(authenticate(), requireDriver())
@@ -32,6 +33,13 @@ router.post('/bank-accounts', async (req, res, next) => {
       ...(typeof upiVpa === 'string' ? { upiVpa } : {}),
     })
     res.status(201).json({ id: id.toString() })
+  } catch (err) { next(err) }
+})
+
+router.get('/earnings', async (req, res, next) => {
+  try {
+    const summary = await service.getDriverEarningsSummary(req.driver!.id)
+    res.json(summary)
   } catch (err) { next(err) }
 })
 
