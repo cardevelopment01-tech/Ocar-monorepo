@@ -160,6 +160,26 @@ export default function PayoutsPage() {
     await loadBankAccounts()
   }
 
+  // --- PAN verification ---
+  const [panDriverId, setPanDriverId] = useState('')
+  const [panBusy, setPanBusy] = useState(false)
+  const [panMsg, setPanMsg] = useState('')
+
+  async function setPanVerified(verified: boolean) {
+    if (!panDriverId) return
+    setPanBusy(true)
+    setPanMsg('')
+    try {
+      await payoutsApi.verifyDriverPan(panDriverId, verified)
+      setPanMsg(verified ? 'PAN marked verified.' : 'PAN marked unverified.')
+      setPanDriverId('')
+    } catch {
+      setPanMsg('Failed to update PAN verification (driver may not have submitted a PAN yet).')
+    } finally {
+      setPanBusy(false)
+    }
+  }
+
   // --- Tax statement lookup ---
   const [taxDriverId, setTaxDriverId] = useState('')
   const [taxFy, setTaxFy] = useState('')
@@ -437,6 +457,35 @@ export default function PayoutsPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* PAN verification */}
+      <div className="admin-card">
+        <p className="text-sm font-semibold text-text-primary mb-3">PAN Verification</p>
+        <p className="text-xs text-text-muted mb-3">Verifying a driver&apos;s submitted PAN lowers their TDS rate from 20% to 1%.</p>
+        <div className="flex gap-3 items-start">
+          <input
+            value={panDriverId}
+            onChange={e => setPanDriverId(e.target.value)}
+            placeholder="Driver ID"
+            className="w-full max-w-xs px-3 py-2 text-sm border border-border rounded-xl outline-none focus:border-primary transition-colors"
+          />
+          <button
+            onClick={() => void setPanVerified(true)}
+            disabled={panBusy || !panDriverId}
+            className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-primary hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
+          >
+            Verify
+          </button>
+          <button
+            onClick={() => void setPanVerified(false)}
+            disabled={panBusy || !panDriverId}
+            className="px-4 py-2 rounded-xl text-sm font-semibold text-text-secondary border border-border hover:bg-surface-2 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            Unverify
+          </button>
+        </div>
+        {panMsg && <p className="text-xs text-text-muted mt-2">{panMsg}</p>}
       </div>
 
       {/* Tax statement lookup */}

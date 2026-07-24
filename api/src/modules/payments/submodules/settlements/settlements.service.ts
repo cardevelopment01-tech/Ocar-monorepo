@@ -485,15 +485,70 @@ export async function listStuckSettlements() {
   return res.rows
 }
 
+// By the time a settlement reaches 'failed' (whether via submitSettlementRow's
+// own catch or via a payout.failed/payout.reversed webhook in
+// handleWebhookEvent), its linked driver_earnings rows are ALREADY reverted to
+// status='cleared', settlement_id=NULL — independently eligible for the next
+// scheduled batch or instant cash-out. Blindly resurrecting the old row's
+// stale net_payout and resubmitting it would double-pay: that amount is no
+// longer backed by any dedicated earnings. Instead, re-derive the payout from
+// whatever is CURRENTLY cleared for this driver, using the same FOR UPDATE
+// lock-and-sum-then-sweep-by-id discipline as runScheduledSettlementBatch/
+// instantCashOut, and create a fresh settlements row — the old failed row is
+// left untouched as a historical record.
 export async function retryFailedSettlement(settlementId: bigint): Promise<boolean> {
-  const res = await pool.query(
-    `UPDATE settlements
-       SET status = 'processing', razorpay_payout_id = NULL, utr = NULL,
-           failed_at = NULL, failure_reason = NULL
+  const oldRes = await pool.query(
+    `SELECT driver_id, bank_account_id, run_type FROM settlements
      WHERE id = $1 AND status = 'failed'`,
     [settlementId]
   )
-  return (res.rowCount ?? 0) > 0
+  const old = oldRes.rows[0]
+  if (!old) return false
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const lockedRes = await client.query(
+      `SELECT id, amount FROM driver_earnings
+       WHERE driver_id = $1 AND status = 'cleared'
+       FOR UPDATE`,
+      [old.driver_id]
+    )
+    const total = lockedRes.rows.reduce((sum: number, r: { amount: string }) => sum + parseFloat(r.amount), 0)
+    if (total <= 0) {
+      // Nothing to retry — the earlier failure's earnings were presumably
+      // already swept out by the normal sweep in the meantime.
+      await client.query('ROLLBACK')
+      return false
+    }
+
+    const now = new Date()
+    const settlementRes = await client.query(
+      `INSERT INTO settlements (
+         driver_id, period_from, period_to, net_payout, status, run_type, bank_account_id
+       ) VALUES ($1,$2,$2,$3,'processing',$4,$5)
+       RETURNING id`,
+      [old.driver_id, now, total, old.run_type, old.bank_account_id]
+    )
+    const newSettlementId = settlementRes.rows[0].id
+
+    const rowIds = lockedRes.rows.map((r: { id: string }) => r.id)
+    await client.query(
+      `UPDATE driver_earnings
+         SET status = 'in_payout', settlement_id = $2
+       WHERE id = ANY($1::bigint[])`,
+      [rowIds, newSettlementId]
+    )
+
+    await client.query('COMMIT')
+    return true
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
 // For the 'never_submitted' stuck case (status='processing', no

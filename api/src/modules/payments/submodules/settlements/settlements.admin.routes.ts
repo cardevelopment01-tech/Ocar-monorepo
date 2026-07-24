@@ -5,6 +5,7 @@ import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import * as service from './settlements.service'
 import * as bankAccounts from './bank-accounts.service'
+import { verifyDriverPan } from './tax-profile.service'
 
 const router: IRouter = Router()
 
@@ -80,7 +81,25 @@ router.patch('/bank-accounts/:id/status', async (req, res, next) => {
     if (status !== 'verified' && status !== 'invalid' && status !== 'pending_verification') {
       throw httpError(422, 'invalid status', AppErrors.VALIDATION_ERROR.code)
     }
-    await bankAccounts.setBankAccountStatus(BigInt(req.params['id']!), status)
+    const result = await bankAccounts.setBankAccountStatus(BigInt(req.params['id']!), status)
+    if (!result.ok) {
+      // result.error may contain raw gateway response text — log it server-side
+      // only, never forward it to the client (no error.message leakage rule).
+      console.error(`[settlements] bank account ${req.params['id']} verification gateway step failed:`, result.error)
+      throw httpError(502, 'Could not verify bank account with the payout gateway', AppErrors.VALIDATION_ERROR.code)
+    }
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
+router.patch('/tax-profile/:driverId', async (req, res, next) => {
+  try {
+    const { verified } = req.body as { verified?: boolean }
+    if (typeof verified !== 'boolean') {
+      throw httpError(422, 'verified must be a boolean', AppErrors.VALIDATION_ERROR.code)
+    }
+    const ok = await verifyDriverPan(BigInt(req.params['driverId']!), verified)
+    if (!ok) throw createHttpError(AppErrors.NOT_FOUND)
     res.json({ success: true })
   } catch (err) { next(err) }
 })

@@ -5,6 +5,7 @@ import { httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import * as bankAccounts from './bank-accounts.service'
 import * as service from './settlements.service'
+import { submitDriverPan } from './tax-profile.service'
 
 const router: IRouter = Router()
 router.use(authenticate(), requireDriver())
@@ -40,6 +41,17 @@ router.get('/earnings', async (req, res, next) => {
   try {
     const summary = await service.getDriverEarningsSummary(req.driver!.id)
     res.json(summary)
+  } catch (err) { next(err) }
+})
+
+router.post('/tax-profile', async (req, res, next) => {
+  try {
+    const { pan } = req.body as Record<string, unknown>
+    if (typeof pan !== 'string' || pan.trim().length === 0) {
+      throw httpError(422, 'pan is required', AppErrors.VALIDATION_ERROR.code)
+    }
+    await submitDriverPan(req.driver!.id, pan)
+    res.status(201).json({ success: true })
   } catch (err) { next(err) }
 })
 

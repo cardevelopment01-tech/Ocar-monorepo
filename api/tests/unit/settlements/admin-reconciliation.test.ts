@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const client = { query: vi.fn(), release: vi.fn() }
 const poolQuery = vi.fn()
 vi.mock('@/db/client', () => ({
-  pool: { query: (...args: unknown[]) => poolQuery(...args) },
+  pool: { query: (...args: unknown[]) => poolQuery(...args), connect: vi.fn(() => Promise.resolve(client)) },
 }))
 
 // retryNeverSubmittedSettlement's dev-mode branch reads config directly,
@@ -25,13 +26,71 @@ describe('admin reconciliation + tax', () => {
     expect(sql).toContain('stuck_reason')
   })
 
-  it('retryFailedSettlement resets a failed row back to processing for resubmission', async () => {
-    poolQuery.mockResolvedValueOnce({ rowCount: 1 })
+  it('retryFailedSettlement returns false when the old row is not failed (or does not exist)', async () => {
+    poolQuery.mockResolvedValueOnce({ rows: [] })
+    const ok = await retryFailedSettlement(BigInt(901))
+    expect(ok).toBe(false)
+    expect(client.query).not.toHaveBeenCalled()
+  })
+
+  it('retryFailedSettlement re-derives the payout from currently-cleared earnings (lock-and-sum), not the stale old amount', async () => {
+    poolQuery.mockResolvedValueOnce({
+      rows: [{ driver_id: '42', bank_account_id: '5', run_type: 'scheduled' }],
+    })
+    client.query.mockImplementation((sql: string) => {
+      if (sql.includes('SELECT id, amount FROM driver_earnings') && sql.includes('FOR UPDATE')) {
+        return Promise.resolve({
+          rows: [
+            { id: '501', amount: '300.00' },
+            { id: '502', amount: '120.00' },
+          ],
+        })
+      }
+      if (sql.includes('INSERT INTO settlements')) {
+        return Promise.resolve({ rows: [{ id: '950' }] })
+      }
+      return Promise.resolve({ rows: [], rowCount: 1 })
+    })
+
     const ok = await retryFailedSettlement(BigInt(901))
     expect(ok).toBe(true)
-    const [sql] = poolQuery.mock.calls[0] as [string]
-    expect(sql).toContain("SET status = 'processing'")
-    expect(sql).toContain('razorpay_payout_id = NULL')
+
+    const calls = client.query.mock.calls as Array<[string, unknown[]?]>
+    const lockCall = calls.find(([sql]) => sql.includes('FOR UPDATE'))
+    expect(lockCall).toBeDefined()
+    expect((lockCall![1] as unknown[])[0]).toBe('42')
+
+    const insertCall = calls.find(([sql]) => sql.includes('INSERT INTO settlements'))
+    expect(insertCall).toBeDefined()
+    const insertParams = insertCall![1] as unknown[]
+    expect(insertParams[2]).toBe(420) // freshly summed, not the old row's stale net_payout
+    expect(insertParams[3]).toBe('scheduled')
+    expect(insertParams[4]).toBe('5')
+
+    const sweepCall = calls.find(([sql]) => sql.includes('UPDATE driver_earnings') && sql.includes("'in_payout'"))
+    expect(sweepCall).toBeDefined()
+    expect((sweepCall![1] as unknown[])[0]).toEqual(['501', '502'])
+
+    expect(calls.some(([sql]) => sql.includes('COMMIT'))).toBe(true)
+  })
+
+  it('retryFailedSettlement returns false and rolls back when currently-cleared earnings sum to zero', async () => {
+    poolQuery.mockResolvedValueOnce({
+      rows: [{ driver_id: '42', bank_account_id: '5', run_type: 'scheduled' }],
+    })
+    client.query.mockImplementation((sql: string) => {
+      if (sql.includes('SELECT id, amount FROM driver_earnings') && sql.includes('FOR UPDATE')) {
+        return Promise.resolve({ rows: [] })
+      }
+      return Promise.resolve({ rows: [], rowCount: 1 })
+    })
+
+    const ok = await retryFailedSettlement(BigInt(901))
+    expect(ok).toBe(false)
+
+    const calls = client.query.mock.calls.map(c => c[0] as string)
+    expect(calls.some(s => s.includes('ROLLBACK'))).toBe(true)
+    expect(calls.some(s => s.includes('INSERT INTO settlements'))).toBe(false)
   })
 
   it('retryNeverSubmittedSettlement submits immediately (dev mode) for a processing/unsubmitted row', async () => {
@@ -62,11 +121,25 @@ describe('admin reconciliation + tax', () => {
     expect(statement.totalTds).toBe(340)
   })
 
-  it('setBankAccountStatus updates verification state', async () => {
+  it('setBankAccountStatus (non-verified transition) just updates status, no gateway call', async () => {
     poolQuery.mockResolvedValueOnce({ rowCount: 1 })
-    await setBankAccountStatus(BigInt(5), 'verified')
+    const result = await setBankAccountStatus(BigInt(5), 'invalid')
+    expect(result).toEqual({ ok: true })
+    expect(poolQuery).toHaveBeenCalledTimes(1)
     const [sql] = poolQuery.mock.calls[0] as [string]
     expect(sql).toContain("SET status = $2")
+  })
+
+  it('setBankAccountStatus (verified, dev mode) sets a placeholder fund account id then flips status', async () => {
+    poolQuery
+      .mockResolvedValueOnce({ rowCount: 1 }) // placeholder gateway_fund_account_id UPDATE
+      .mockResolvedValueOnce({ rowCount: 1 }) // status UPDATE
+    const result = await setBankAccountStatus(BigInt(5), 'verified')
+    expect(result).toEqual({ ok: true })
+    const calls = poolQuery.mock.calls as Array<[string, unknown[]?]>
+    expect(calls[0]![0]).toContain('gateway_fund_account_id')
+    expect((calls[0]![1] as unknown[])[1]).toBe('dev_fund_account_5')
+    expect(calls[1]![0]).toContain('SET status = $2')
   })
 
   it('listUnverifiedBankAccounts returns pending/invalid accounts', async () => {

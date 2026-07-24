@@ -19,7 +19,10 @@ function getEncryptionKey(): Buffer {
   return Buffer.from(hex, 'hex')
 }
 
-function encryptAccountNumber(accountNumber: string): string {
+// Exported (not just accountNumber-specific in practice — AES-256-GCM over any
+// string) so tax-profile.service.ts can reuse it for PAN encryption instead of
+// duplicating the same crypto logic.
+export function encryptAccountNumber(accountNumber: string): string {
   const iv = randomBytes(12)
   const cipher = createCipheriv('aes-256-gcm', getEncryptionKey(), iv)
   const encrypted = Buffer.concat([cipher.update(accountNumber, 'utf8'), cipher.final()])
@@ -27,8 +30,8 @@ function encryptAccountNumber(accountNumber: string): string {
   return [iv.toString('hex'), authTag.toString('hex'), encrypted.toString('hex')].join(':')
 }
 
-// Not used yet — the RazorpayX disbursal flow (Task 8) will need to decrypt
-// the account number to send to the payout gateway.
+// Used by createRazorpayXFundAccount below to send the real account number
+// to the payout gateway when a bank account is marked verified.
 export function decryptAccountNumber(stored: string): string {
   const [ivHex, authTagHex, dataHex] = stored.split(':')
   const decipher = createDecipheriv('aes-256-gcm', getEncryptionKey(), Buffer.from(ivHex!, 'hex'))
@@ -88,13 +91,97 @@ export async function getPrimaryVerifiedBankAccount(driverId: bigint) {
   return res.rows[0] ? BigInt(res.rows[0].id) : null
 }
 
+// RazorpayX Payouts needs a fund_account_id to pay out to, which itself needs
+// a contact_id first — neither has a resource in the installed `razorpay` SDK
+// (v2.9.6 only ships the older Customer Fund Account API, keyed off
+// customer_id, not the RazorpayX contact/fund-account pair), so this calls
+// the REST API directly, same pattern as submitSettlementRow's payout call.
+// Returns null on success (fund account created / dev placeholder set), or an
+// error message on failure — caller must not mark the account verified if
+// this fails, or admin gets a verified-but-non-functional payout target.
+async function createRazorpayXFundAccount(
+  bankAccountId: bigint, driverId: bigint, accountHolderName: string, ifsc: string, accountNumberEnc: string
+): Promise<string | null> {
+  const authHeader = 'Basic ' + Buffer.from(`${config.RAZORPAY_KEY_ID}:${config.RAZORPAY_KEY_SECRET}`).toString('base64')
+
+  try {
+    const contactRes = await fetch('https://api.razorpay.com/v1/contacts', {
+      method: 'POST',
+      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: accountHolderName,
+        type: 'employee',
+        reference_id: driverId.toString(),
+      }),
+    })
+    if (!contactRes.ok) {
+      return `RazorpayX contact creation failed (${contactRes.status}): ${await contactRes.text()}`
+    }
+    const contact = await contactRes.json() as { id: string }
+
+    const fundAccountRes = await fetch('https://api.razorpay.com/v1/fund_accounts', {
+      method: 'POST',
+      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contact_id: contact.id,
+        account_type: 'bank_account',
+        bank_account: {
+          name: accountHolderName,
+          ifsc,
+          account_number: decryptAccountNumber(accountNumberEnc),
+        },
+      }),
+    })
+    if (!fundAccountRes.ok) {
+      return `RazorpayX fund account creation failed (${fundAccountRes.status}): ${await fundAccountRes.text()}`
+    }
+    const fundAccount = await fundAccountRes.json() as { id: string }
+
+    await pool.query(
+      `UPDATE driver_bank_accounts SET gateway_fund_account_id = $2 WHERE id = $1`,
+      [bankAccountId, fundAccount.id]
+    )
+    return null
+  } catch (err) {
+    return err instanceof Error ? err.message : 'unknown error'
+  }
+}
+
+// Verifying is the natural gate for creating the gateway fund account — a
+// bank account shouldn't be payout-usable before it's verified anyway. On
+// failure the status update does NOT happen, so the admin sees the failure
+// instead of silently getting a verified-but-non-functional account.
 export async function setBankAccountStatus(
   bankAccountId: bigint, status: 'verified' | 'invalid' | 'pending_verification'
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (status === 'verified') {
+    const devMode = !config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET
+    if (devMode) {
+      await pool.query(
+        `UPDATE driver_bank_accounts SET gateway_fund_account_id = $2 WHERE id = $1`,
+        [bankAccountId, `dev_fund_account_${bankAccountId}`]
+      )
+    } else {
+      const acctRes = await pool.query(
+        `SELECT driver_id, account_holder_name, ifsc, account_number_enc
+         FROM driver_bank_accounts WHERE id = $1`,
+        [bankAccountId]
+      )
+      const acct = acctRes.rows[0]
+      if (!acct) return { ok: false, error: 'Bank account not found' }
+
+      const error = await createRazorpayXFundAccount(
+        bankAccountId, BigInt(acct.driver_id), acct.account_holder_name, acct.ifsc, acct.account_number_enc
+      )
+      if (error) return { ok: false, error }
+    }
+  }
+
   await pool.query(
     `UPDATE driver_bank_accounts SET status = $2 WHERE id = $1`,
     [bankAccountId, status]
   )
+  return { ok: true }
 }
 
 export async function listUnverifiedBankAccounts() {

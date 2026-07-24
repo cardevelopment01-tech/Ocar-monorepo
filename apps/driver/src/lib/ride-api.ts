@@ -288,4 +288,7 @@ export const driverPayoutApi = {
     const { data } = await api.post<{ settlementId: string }>('/api/v1/payments/settlements/payout/instant')
     return data
   },
+  submitPan: async (pan: string): Promise<void> => {
+    await api.post('/api/v1/payments/settlements/tax-profile', { pan })
+  },
 }

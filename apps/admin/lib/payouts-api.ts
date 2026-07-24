@@ -101,4 +101,7 @@ export const payoutsApi = {
     const { data } = await api.get<TaxStatement>(`/api/v1/admin/payouts/tax-statement/${driverId}/${fy}`)
     return data
   },
+  verifyDriverPan: async (driverId: string, verified: boolean): Promise<void> => {
+    await api.patch(`/api/v1/admin/payouts/tax-profile/${driverId}`, { verified })
+  },
 }

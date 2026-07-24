@@ -42,10 +42,31 @@ export default function BankAccountSection({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [pan, setPan] = useState('')
+  const [panSaving, setPanSaving] = useState(false)
+  const [panError, setPanError] = useState<string | null>(null)
+  const [panSaved, setPanSaved] = useState(false)
+
   const isValid =
     accountHolderName.trim().length > 0 &&
     /^\d{9,18}$/.test(accountNumber) &&
     /^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)
+
+  const isPanValid = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)
+
+  async function handlePanSubmit() {
+    if (!isPanValid) return
+    setPanSaving(true)
+    setPanError(null)
+    try {
+      await driverPayoutApi.submitPan(pan)
+      setPanSaved(true)
+    } catch {
+      setPanError('Could not save PAN. Please check the details and try again.')
+    } finally {
+      setPanSaving(false)
+    }
+  }
 
   async function handleSubmit() {
     if (!isValid) return
@@ -72,35 +93,75 @@ export default function BankAccountSection({
     }
   }
 
+  const panCard = (
+    <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
+      <p className="text-text-primary text-sm font-bold mb-1">PAN</p>
+      <p className="text-text-secondary text-xs mb-3">
+        Submit your PAN for verification — lowers TDS on ride earnings from 20% to 1% once an admin confirms it.
+      </p>
+      {panSaved ? (
+        <p className="text-accent-amber text-xs font-semibold">Submitted — awaiting admin verification.</p>
+      ) : (
+        <div className="space-y-3">
+          <Field label="PAN" id="driver-pan">
+            <input
+              id="driver-pan"
+              className="input-dark w-full uppercase"
+              placeholder="PAN (e.g. ABCDE1234F)"
+              maxLength={10}
+              value={pan}
+              onChange={e => setPan(e.target.value.toUpperCase().slice(0, 10))}
+            />
+          </Field>
+          {panError && <p className="text-accent-red text-xs">{panError}</p>}
+          <button
+            onClick={() => void handlePanSubmit()}
+            disabled={!isPanValid || panSaving}
+            className="rounded-2xl px-4 py-3 text-sm font-bold text-white bg-primary w-full disabled:opacity-50 cursor-pointer"
+          >
+            {panSaving ? 'Saving…' : 'Save PAN'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+
   if (loading) {
     return (
-      <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
-        <div className="h-4 skeleton rounded w-1/3 mb-3" />
-        <div className="h-4 skeleton rounded w-3/4 mb-2" />
-        <div className="h-3 skeleton rounded w-1/4" />
-      </div>
+      <>
+        <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
+          <div className="h-4 skeleton rounded w-1/3 mb-3" />
+          <div className="h-4 skeleton rounded w-3/4 mb-2" />
+          <div className="h-3 skeleton rounded w-1/4" />
+        </div>
+        {panCard}
+      </>
     )
   }
 
   if (account && !showForm) {
     return (
-      <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
-        <p className="text-text-primary text-sm font-bold mb-1">Bank Account</p>
-        <p className="text-text-secondary text-sm">
-          {account.account_holder_name} · IFSC {maskIfsc(account.ifsc)}
-        </p>
-        <p className={
-          account.status === 'verified'
-            ? 'text-accent-green text-xs font-semibold mt-1'
-            : 'text-accent-amber text-xs font-semibold mt-1'
-        }>
-          {statusLabel(account.status)}
-        </p>
-      </div>
+      <>
+        <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
+          <p className="text-text-primary text-sm font-bold mb-1">Bank Account</p>
+          <p className="text-text-secondary text-sm">
+            {account.account_holder_name} · IFSC {maskIfsc(account.ifsc)}
+          </p>
+          <p className={
+            account.status === 'verified'
+              ? 'text-accent-green text-xs font-semibold mt-1'
+              : 'text-accent-amber text-xs font-semibold mt-1'
+          }>
+            {statusLabel(account.status)}
+          </p>
+        </div>
+        {panCard}
+      </>
     )
   }
 
   return (
+    <>
     <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
       <p className="text-text-primary text-sm font-bold mb-3">Add Bank Account</p>
       {!showForm ? (
@@ -161,5 +222,7 @@ export default function BankAccountSection({
         </div>
       )}
     </div>
+    {panCard}
+    </>
   )
 }
