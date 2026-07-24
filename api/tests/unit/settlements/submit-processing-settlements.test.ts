@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const poolQuery = vi.fn()
 vi.mock('@/db/client', () => ({
@@ -29,17 +29,10 @@ describe('submitProcessingSettlements', () => {
 })
 
 describe('submitProcessingSettlements (live gateway, keys configured)', () => {
-  const payoutsCreate = vi.fn()
-
   beforeEach(() => {
     vi.clearAllMocks()
     vi.resetModules()
-    payoutsCreate.mockReset()
-    vi.doMock('razorpay', () => ({
-      default: class {
-        payouts = { create: payoutsCreate }
-      },
-    }))
+    vi.unstubAllGlobals()
     vi.doMock('@/config', () => ({
       config: {
         RAZORPAY_KEY_ID: 'rzp_test_live',
@@ -52,8 +45,13 @@ describe('submitProcessingSettlements (live gateway, keys configured)', () => {
     }))
   })
 
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('success: claims the row, submits to the gateway, stores the real payout id', async () => {
-    payoutsCreate.mockResolvedValue({ id: 'pout_123' })
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'pout_123' }) })
+    vi.stubGlobal('fetch', fetchMock)
     poolQuery
       .mockResolvedValueOnce({ rows: [{ id: '901', driver_id: '42', net_payout: '850.00' }] }) // SELECT processing
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // claim UPDATE (placeholder)
@@ -65,17 +63,25 @@ describe('submitProcessingSettlements (live gateway, keys configured)', () => {
     )
     await submit()
 
-    expect(payoutsCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ account_number: '2323230012345678', fund_account_id: 'fa_1' }),
-      expect.anything()
-    )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.razorpay.com/v1/payouts')
+    expect(opts.method).toBe('POST')
+    expect(opts.headers['Authorization']).toMatch(/^Basic /)
+    expect(opts.headers['X-Payout-Idempotency']).toBe('901:42')
+    const body = JSON.parse(opts.body)
+    expect(body.account_number).toBe('2323230012345678')
+    expect(body.fund_account_id).toBe('fa_1')
+    expect(body.amount).toBe(85000)
+
     const finalUpdate = poolQuery.mock.calls[3]
     expect(finalUpdate[0]).toContain('UPDATE settlements SET razorpay_payout_id = $2')
     expect(finalUpdate[1]).toEqual(['901', 'pout_123'])
   })
 
   it('failure: reverts settlement to failed with razorpay_payout_id cleared, and earnings back to cleared', async () => {
-    payoutsCreate.mockRejectedValue(new Error('gateway down'))
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => 'Invalid fund account' })
+    vi.stubGlobal('fetch', fetchMock)
     poolQuery
       .mockResolvedValueOnce({ rows: [{ id: '901', driver_id: '42', net_payout: '850.00' }] }) // SELECT processing
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // claim UPDATE (placeholder)
@@ -91,7 +97,8 @@ describe('submitProcessingSettlements (live gateway, keys configured)', () => {
     const failUpdate = poolQuery.mock.calls[3]
     expect(failUpdate[0]).toContain("status = 'failed'")
     expect(failUpdate[0]).toContain('razorpay_payout_id = NULL')
-    expect(failUpdate[1]).toEqual(['901', 'gateway down'])
+    expect(failUpdate[1][0]).toBe('901')
+    expect(failUpdate[1][1]).toContain('Invalid fund account')
 
     const earningsRevert = poolQuery.mock.calls[4]
     expect(earningsRevert[0]).toContain("status = 'cleared'")

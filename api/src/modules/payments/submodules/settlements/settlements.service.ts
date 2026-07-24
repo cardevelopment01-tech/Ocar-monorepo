@@ -313,10 +313,6 @@ export async function submitProcessingSettlements(): Promise<void> {
     }
 
     try {
-      // RazorpayX Payouts is a separate API surface on the same account —
-      // reuses the same key pair already configured for collection.
-      const Razorpay = (await import('razorpay')).default
-      const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
       const bankRes = await pool.query(
         `SELECT gateway_fund_account_id FROM driver_bank_accounts
          JOIN settlements s ON s.bank_account_id = driver_bank_accounts.id
@@ -324,36 +320,41 @@ export async function submitProcessingSettlements(): Promise<void> {
         [row.id]
       )
       const fundAccountId = bankRes.rows[0]?.gateway_fund_account_id
-      // RazorpayX Payouts isn't in this SDK version's TS types (only added via
-      // addResources at runtime) — cast through unknown, same as elsewhere
-      // this SDK's dynamic surface is used beyond its declared types.
-      //
-      // KNOWN GAP (found by inspecting the installed package, not assumed):
-      // razorpay@2.9.6's own addResources() (node_modules/.pnpm/razorpay@2.9.6/
-      // node_modules/razorpay/dist/razorpay.js) does NOT register a `payouts`
-      // resource at all — `rzp.payouts` is undefined on a real instance, and
-      // its low-level `api.post()` (dist/api.js) never forwards a headers arg
-      // through to axios, so there is no clean way to send the RazorpayX
-      // `X-Payout-Idempotency` header via this SDK version as installed. The
-      // idempotencyHeaders argument below is passed defensively (harmless if
-      // ignored) but is NOT a verified guard. The real hard guard against
-      // double-payout for this task is the local claim UPDATE above (2a).
-      // Follow-up: either upgrade the SDK to one with a real payouts resource,
-      // or call RazorpayX via `rzp.api.rq` (the underlying axios instance,
-      // which does accept a per-call headers config) directly against
-      // `/v1/payouts`.
-      const idempotencyHeaders = { 'X-Payout-Idempotency': `${row.id}:${row.driver_id}` }
-      const rzpPayouts = (rzp as unknown as { payouts: { create: Function } }).payouts
-      const payout = await (rzpPayouts.create as Function)({
-        account_number: config.RAZORPAYX_ACCOUNT_NUMBER,
-        fund_account_id: fundAccountId,
-        amount: Math.round(parseFloat(row.net_payout) * 100),
-        currency: 'INR',
-        mode: 'IMPS',
-        purpose: 'payout',
-        queue_if_low_balance: true,
-        reference_id: `${row.id}:${row.driver_id}`,
-      }, idempotencyHeaders) as { id: string }
+
+      // RazorpayX Payouts has no resource in the installed `razorpay` SDK
+      // (v2.9.6) — rzp.payouts is undefined at runtime (confirmed by reading
+      // dist/razorpay.js). Call the REST API directly instead. Auth is HTTP
+      // Basic with the same key pair used for collection (standard across all
+      // Razorpay REST endpoints). X-Payout-Idempotency guards against a
+      // retried call after a timeout/crash creating a second real bank
+      // transfer for the same settlement — this is the actual gateway-side
+      // idempotency guard the local claim-before-call UPDATE alone can't
+      // provide.
+      const authHeader = 'Basic ' + Buffer.from(`${config.RAZORPAY_KEY_ID}:${config.RAZORPAY_KEY_SECRET}`).toString('base64')
+      const idempotencyKey = `${row.id}:${row.driver_id}`
+      const payoutRes = await fetch('https://api.razorpay.com/v1/payouts', {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+          'X-Payout-Idempotency': idempotencyKey,
+        },
+        body: JSON.stringify({
+          account_number: config.RAZORPAYX_ACCOUNT_NUMBER,
+          fund_account_id: fundAccountId,
+          amount: Math.round(parseFloat(row.net_payout) * 100),
+          currency: 'INR',
+          mode: 'IMPS',
+          purpose: 'payout',
+          queue_if_low_balance: true,
+          reference_id: idempotencyKey,
+        }),
+      })
+      if (!payoutRes.ok) {
+        const errBody = await payoutRes.text()
+        throw new Error(`RazorpayX payout API returned ${payoutRes.status}: ${errBody}`)
+      }
+      const payout = await payoutRes.json() as { id: string }
 
       await pool.query(
         `UPDATE settlements SET razorpay_payout_id = $2 WHERE id = $1`,
