@@ -43,4 +43,11 @@ router.get('/earnings', async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+router.post('/payout/instant', async (req, res, next) => {
+  try {
+    const settlementId = await service.instantCashOut(req.driver!.id)
+    res.status(201).json({ settlementId: settlementId.toString() })
+  } catch (err) { next(err) }
+})
+
 export default router

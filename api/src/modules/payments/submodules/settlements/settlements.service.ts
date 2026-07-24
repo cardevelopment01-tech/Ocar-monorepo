@@ -1,5 +1,7 @@
 import { pool } from '@/db/client'
 import { getConfigValue } from '@/lib/system-config'
+import { httpError } from '@/lib/errors'
+import { AppErrors } from '@/constants/errors'
 
 function currentFyQuarter(now: Date): { fy: string; quarter: number } {
   // Indian FY: Apr 1 - Mar 31. Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar.
@@ -173,6 +175,86 @@ export async function runScheduledSettlementBatch(): Promise<void> {
     }
 
     await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+// Driver-initiated instant payout. Same FOR UPDATE lock-then-sweep-by-id
+// discipline as runScheduledSettlementBatch — the fee row is inserted
+// already 'cleared' inside this transaction so it's naturally included in
+// the same locked-and-summed set, never a second uncoordinated write.
+export async function instantCashOut(driverId: bigint): Promise<bigint> {
+  const feeAmount = parseFloat(await getConfigValue('instant_payout_fee', '10'))
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const bankRes = await client.query(
+      `SELECT id FROM driver_bank_accounts
+       WHERE driver_id = $1 AND is_primary = true AND status = 'verified'
+       FOR UPDATE`,
+      [driverId]
+    )
+    const bankAccount = bankRes.rows[0]
+    if (!bankAccount) {
+      throw httpError(400, 'No verified bank account on file', AppErrors.VALIDATION_ERROR.code)
+    }
+
+    const holdRes = await client.query(
+      `SELECT 1 FROM driver_payout_holds WHERE driver_id = $1 AND active`,
+      [driverId]
+    )
+    if (holdRes.rows.length > 0) {
+      throw httpError(403, 'Payouts are on hold for this account', AppErrors.AUTH_FORBIDDEN.code)
+    }
+
+    await client.query(
+      `INSERT INTO driver_earnings (
+         driver_id, entry_type, amount, status, idempotency_key, note
+       ) VALUES ($1,'adjustment',$2,'cleared',$3,'Instant cash-out fee')`,
+      [driverId, -feeAmount, `instant_fee:${driverId}:${Date.now()}`]
+    )
+
+    // Lock and sum the driver's cleared rows (now including the fee row
+    // just inserted above) — the same discipline as the scheduled batch
+    // sweep: never SUM in one query and sweep via a separate re-evaluated
+    // WHERE, always sweep the exact ids we locked and summed here.
+    const lockedRes = await client.query(
+      `SELECT id, amount FROM driver_earnings
+       WHERE driver_id = $1 AND status = 'cleared'
+       FOR UPDATE`,
+      [driverId]
+    )
+    const rowIds = lockedRes.rows.map((r: { id: string }) => r.id)
+    const total = lockedRes.rows.reduce((sum: number, r: { amount: string }) => sum + parseFloat(r.amount), 0)
+    if (total <= 0) {
+      throw httpError(400, 'No payable balance', AppErrors.VALIDATION_ERROR.code)
+    }
+
+    const now = new Date()
+    const settlementRes = await client.query(
+      `INSERT INTO settlements (
+         driver_id, period_from, period_to, net_payout, fee, status, run_type, bank_account_id
+       ) VALUES ($1,$2,$2,$3,$4,'processing','instant',$5)
+       RETURNING id`,
+      [driverId, now, total, feeAmount, bankAccount.id]
+    )
+    const settlementId = settlementRes.rows[0].id
+
+    await client.query(
+      `UPDATE driver_earnings
+         SET status = 'in_payout', settlement_id = $2
+       WHERE id = ANY($1::bigint[])`,
+      [rowIds, settlementId]
+    )
+
+    await client.query('COMMIT')
+    return BigInt(settlementId)
   } catch (err) {
     await client.query('ROLLBACK')
     throw err
