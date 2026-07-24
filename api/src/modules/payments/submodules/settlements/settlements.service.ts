@@ -447,18 +447,24 @@ export async function createManualAdjustment(
   )
 }
 
-// "Stuck" here is scoped narrowly: submission never got a gateway payout id
-// back (submitProcessingSettlements crashed/timed out before its claim
-// UPDATE, or before the real-id UPDATE landed) and enough time has passed
-// that it's not just an in-flight cron cycle. Rows that DID get a payout id
-// and are awaiting webhook confirmation are a different (unaddressed) case —
-// out of scope for this task; see plan Task 11.
+// "Stuck" covers both failure modes named in the design doc's lost-webhook
+// research: (1) razorpay_payout_id IS NULL — submission itself never
+// completed (submitProcessingSettlements crashed/timed out before its claim
+// UPDATE, or before the real-id UPDATE landed); safe to retry via
+// retryFailedSettlement. (2) razorpay_payout_id NOT NULL — submission to
+// RazorpayX succeeded but no payout.processed/payout.failed webhook ever
+// arrived; must NOT be blindly resubmitted (would risk a duplicate payout at
+// the gateway) — needs a status check against the gateway instead.
+// stuck_reason tells the admin UI (Task 13) which case it's looking at; this
+// function stays read-only reconciliation, it doesn't act on either case.
 export async function listStuckSettlements() {
   const res = await pool.query(
-    `SELECT s.id, s.driver_id, d.full_name AS driver_name, s.net_payout, s.created_at
+    `SELECT s.id, s.driver_id, d.full_name AS driver_name, s.net_payout, s.created_at,
+            s.razorpay_payout_id,
+            CASE WHEN s.razorpay_payout_id IS NOT NULL THEN 'awaiting_webhook' ELSE 'never_submitted' END AS stuck_reason
      FROM settlements s
      JOIN drivers d ON d.id = s.driver_id
-     WHERE s.status = 'processing' AND s.razorpay_payout_id IS NULL
+     WHERE s.status = 'processing'
        AND s.created_at < now() - interval '2 hours'
      ORDER BY s.created_at`
   )

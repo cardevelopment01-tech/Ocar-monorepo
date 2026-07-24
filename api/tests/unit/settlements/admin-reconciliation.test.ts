@@ -11,12 +11,14 @@ import { setBankAccountStatus, listUnverifiedBankAccounts } from '@/modules/paym
 describe('admin reconciliation + tax', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('listStuckSettlements finds processing rows past a threshold with no gateway payout id', async () => {
+  it('listStuckSettlements finds processing rows past a threshold, both never-submitted and awaiting-webhook', async () => {
     poolQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] })
     const rows = await listStuckSettlements()
     expect(rows).toHaveLength(1)
     const [sql] = poolQuery.mock.calls[0] as [string]
     expect(sql).toContain("status = 'processing'")
+    expect(sql).not.toContain('razorpay_payout_id IS NULL')
+    expect(sql).toContain('stuck_reason')
   })
 
   it('retryFailedSettlement resets a failed row back to processing for resubmission', async () => {
