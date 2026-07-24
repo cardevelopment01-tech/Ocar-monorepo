@@ -62,34 +62,33 @@ makes reconciliation against the payment gateway unreliable. This spec keeps
 
 ### 1. Data model
 
-New tables (`api/src/db/migrations/037_driver_earnings_payouts.sql`), enums
-added to `002_enums.sql`-style pattern (new migration, since `002` is already
-applied):
+**Correction from initial draft**: `008_m6_payments.sql` (already applied)
+already has a `settlements` table — one row per driver per payout period
+(`period_from`/`period_to`, `net_payout`, `status`, `razorpay_payout_id`,
+`bank_account_ref`) — and an already-defined `settlement_status` enum
+(`pending/processing/completed/failed/on_hold`) that maps directly onto the
+payout state machine (§2). This is exactly the "payouts" row this spec
+needs; it was never wired up (`settlements.service.ts` is a TODO stub). Per
+this codebase's own "reuse before you build" bar, this spec **extends
+`settlements` via `ALTER TABLE`** instead of creating new `payout_batches`/
+`payouts` tables. "Batch" is not a separate table — it's just the set of
+`settlements` rows sharing one `period_from`/`period_to`, created together in
+one cron run; admin batch-approval is a bulk `UPDATE ... WHERE period_from=$1
+AND period_to=$2 AND status='pending'`.
+
+(There is also an orphaned `ledger_entry_type` enum in `002_enums.sql` —
+`ride_earning`, `settlement_debit`, `cancellation_fee`, `adjustment_credit`,
+`adjustment_debit`, `commission_debit` — never attached to any table. It
+isn't reused here: its value set conflates both ledger directions
+[`commission_debit`/`settlement_debit` are driver-owes-platform, the rest are
+platform-owes-driver], which is exactly the mixing this spec's two-ledger
+principle exists to avoid. A fresh, single-direction enum is used for the new
+`driver_earnings` ledger instead.)
+
+New tables/columns (`api/src/db/migrations/051_driver_earnings.sql`, next
+free migration number — `050` is the latest applied):
 
 ```sql
--- Append-only ledger. One row per financial event. Never UPDATE amount/type;
--- status transitions and payout linkage are the only mutable fields.
-CREATE TABLE driver_earnings (
-  id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  driver_id       BIGINT NOT NULL REFERENCES drivers(id),
-  ride_id         BIGINT NULL REFERENCES rides(id),
-  payment_id      BIGINT NULL REFERENCES payments(id),
-  entry_type      driver_earning_entry_type NOT NULL,
-  -- signed: credits positive, deductions negative
-  amount          NUMERIC(12,2) NOT NULL,
-  status          driver_earning_status NOT NULL DEFAULT 'pending',
-  available_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  payout_id       BIGINT NULL REFERENCES payouts(id),
-  idempotency_key VARCHAR(120) NOT NULL UNIQUE,
-  note            TEXT NULL,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX driver_earnings_driver_status_idx
-  ON driver_earnings (driver_id, status);
-CREATE INDEX driver_earnings_payout_idx
-  ON driver_earnings (payout_id) WHERE payout_id IS NOT NULL;
-
 CREATE TABLE driver_bank_accounts (
   id                     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   driver_id              BIGINT NOT NULL REFERENCES drivers(id),
@@ -106,33 +105,41 @@ CREATE TABLE driver_bank_accounts (
 CREATE UNIQUE INDEX driver_bank_accounts_primary_idx
   ON driver_bank_accounts (driver_id) WHERE is_primary;
 
-CREATE TABLE payout_batches (
-  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  run_type     payout_run_type NOT NULL, -- 'scheduled' | 'instant'
-  status       payout_batch_status NOT NULL DEFAULT 'draft',
-  cutoff_at    TIMESTAMPTZ NOT NULL,
-  created_by   BIGINT NULL REFERENCES admins(id),
-  approved_by  BIGINT NULL REFERENCES admins(id),
-  approved_at  TIMESTAMPTZ NULL,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Extend the existing settlements table (008_m6_payments.sql) to serve as
+-- the payout row per driver per run, instead of a new payouts table.
+ALTER TABLE settlements
+  ADD COLUMN run_type        settlement_run_type NOT NULL DEFAULT 'scheduled',
+  ADD COLUMN bank_account_id BIGINT NULL REFERENCES driver_bank_accounts(id),
+  ADD COLUMN fee             NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+  ADD COLUMN mode            payout_mode NULL,
+  ADD COLUMN utr             VARCHAR(40) NULL,
+  ADD COLUMN approved_by     BIGINT NULL REFERENCES admins(id),
+  ADD COLUMN approved_at     TIMESTAMPTZ NULL;
+-- bank_account_ref (existing free-text column) is superseded by
+-- bank_account_id for all new rows; left in place, unused going forward.
+
+-- Append-only ledger. One row per financial event. Never UPDATE amount/type;
+-- status transitions and settlement linkage are the only mutable fields.
+CREATE TABLE driver_earnings (
+  id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  driver_id       BIGINT NOT NULL REFERENCES drivers(id),
+  ride_id         BIGINT NULL REFERENCES rides(id),
+  payment_id      BIGINT NULL REFERENCES payments(id),
+  entry_type      driver_earning_entry_type NOT NULL,
+  -- signed: credits positive, deductions negative
+  amount          NUMERIC(12,2) NOT NULL,
+  status          driver_earning_status NOT NULL DEFAULT 'pending',
+  available_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  settlement_id   BIGINT NULL REFERENCES settlements(id),
+  idempotency_key VARCHAR(120) NOT NULL UNIQUE,
+  note            TEXT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE payouts (
-  id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  batch_id         BIGINT NOT NULL REFERENCES payout_batches(id),
-  driver_id        BIGINT NOT NULL REFERENCES drivers(id),
-  bank_account_id  BIGINT NOT NULL REFERENCES driver_bank_accounts(id),
-  amount           NUMERIC(12,2) NOT NULL CHECK (amount > 0),
-  fee              NUMERIC(12,2) NOT NULL DEFAULT 0,
-  mode             payout_mode NULL, -- IMPS/UPI/NEFT, set once gateway assigns it
-  gateway_payout_id VARCHAR(80) NULL,
-  utr              VARCHAR(40) NULL,
-  status           payout_status NOT NULL DEFAULT 'queued',
-  failure_reason   TEXT NULL,
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE UNIQUE INDEX payouts_batch_driver_idx ON payouts (batch_id, driver_id);
+CREATE INDEX driver_earnings_driver_status_idx
+  ON driver_earnings (driver_id, status);
+CREATE INDEX driver_earnings_settlement_idx
+  ON driver_earnings (settlement_id) WHERE settlement_id IS NOT NULL;
 
 CREATE TABLE driver_payout_holds (
   id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -149,7 +156,7 @@ CREATE TABLE tax_deductions (
   id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   driver_id        BIGINT NOT NULL REFERENCES drivers(id),
   ride_id          BIGINT NULL REFERENCES rides(id),
-  payout_id        BIGINT NULL REFERENCES payouts(id),
+  settlement_id    BIGINT NULL REFERENCES settlements(id),
   section          VARCHAR(20) NOT NULL DEFAULT '194O',
   taxable_base     NUMERIC(12,2) NOT NULL,
   rate_pct         NUMERIC(5,2) NOT NULL,
@@ -169,14 +176,16 @@ CREATE TABLE driver_tax_profile (
 );
 ```
 
-Enums: `driver_earning_entry_type` (`ride_fare_net`, `tip`, `incentive`,
+New enums: `driver_earning_entry_type` (`ride_fare_net`, `tip`, `incentive`,
 `cancellation_fee`, `adjustment`, `tds_deduction`, `compliance_recovery`),
 `driver_earning_status` (`pending`, `cleared`, `on_hold`, `in_payout`,
 `paid`, `reversed`, `clawed_back`), `bank_account_status`
-(`pending_verification`, `verified`, `invalid`), `payout_run_type`
-(`scheduled`, `instant`), `payout_batch_status` (`draft`, `approved`,
-`processing`, `completed`, `failed`), `payout_mode` (`IMPS`, `UPI`, `NEFT`),
-`payout_status` (`queued`, `processing`, `processed`, `failed`, `reversed`).
+(`pending_verification`, `verified`, `invalid`), `settlement_run_type`
+(`scheduled`, `instant`), `payout_mode` (`IMPS`, `UPI`, `NEFT`). Reused as-is:
+the existing `settlement_status` enum (`pending`, `processing`, `completed`,
+`failed`, `on_hold`) drives the payout row's state machine —
+`pending`=queued/draft, `processing`=submitted to gateway,
+`completed`=paid, `failed`=failed, `on_hold`=admin-held.
 
 `FOR UPDATE` locking, transactional balance math, and idempotency-via-unique-
 constraint follow the exact pattern already used in `deductCommission` /
@@ -210,53 +219,62 @@ holds block the *sweep into a batch*, not accrual/clearing visibility.
 
 ### 4. Scheduled payout batch
 
-Daily cron: within one transaction, create a `payout_batches` row
-(`run_type='scheduled'`, `status='draft'`), select `cleared` earnings for
-drivers who are **not** held and have a `verified` bank account, group by
-driver, insert one `payouts` row per driver, and stamp those `driver_earnings`
-rows `status='in_payout', payout_id=<new id>` — same transaction, closing the
+Daily cron: within one transaction, select `cleared` earnings for drivers
+who are **not** held and have a `verified` bank account, group by driver,
+insert one `settlements` row per driver (`run_type='scheduled'`,
+`period_from`/`period_to`=the sweep window, `status='pending'`,
+`net_payout`=sum), and stamp those `driver_earnings` rows
+`status='in_payout', settlement_id=<new id>` — same transaction, closing the
 cutoff race (a line clearing mid-sweep is either fully in or fully out, never
-double-counted). Batches under a configurable total auto-`approve`; larger
-ones stay `draft` for admin approval.
+double-counted). All rows from one cron run share the same `period_from`/
+`period_to`, which *is* the "batch" — no separate table needed. Batches
+under a configurable total auto-advance to `processing`; larger ones stay
+`pending` for admin approval (bulk `UPDATE ... WHERE period_from=$1 AND
+period_to=$2 AND status='pending'`).
 
 ### 5. Instant cash-out
 
 Driver-initiated endpoint, same sweep logic scoped to one driver,
-`run_type='instant'`, always auto-approved. A flat fee (from
-`system_config`) is added as a negative `adjustment` earnings line before
-the payout amount is summed.
+`run_type='instant'`, `period_from=period_to=today`, always auto-advanced to
+`processing`. A flat fee (from `system_config`) is added as a negative
+`adjustment` earnings line before the payout amount is summed, and stored on
+`settlements.fee`.
 
 ### 6. Disbursal + webhook confirmation
 
-Approved batch → for each `payouts` row, call RazorpayX Payouts with
-`reference_id = batch_id || ':' || driver_id` as the idempotency key (guards
-retried API calls). Store `gateway_payout_id`, set `status='processing'`.
-Never mark `paid` from the synchronous API response.
+Approved rows (`status='processing'`) → for each `settlements` row, call
+RazorpayX Payouts with `reference_id = settlements.id || ':' || driver_id` as
+the idempotency key (guards retried API calls). Store `gateway_payout_id` (in
+the existing `razorpay_payout_id` column). Never mark `completed` from the
+synchronous API response.
 
 Webhook handler (extends the existing `handleWebhookEvent` pattern —
 signature verified against raw bytes, same as the ride-payment webhook):
 
-- `payout.processed` → `payouts.status='processed'`, store `utr`; matching
-  `driver_earnings` rows → `status='paid'`.
-- `payout.failed` → `payouts.status='failed'`; `driver_earnings` rows revert
-  to `cleared` (so they're picked up next batch); if the failure reason
-  indicates bad account details, flag `driver_bank_accounts.status='invalid'`
-  and notify the driver via the existing notifications module.
+- `payout.processed` → `settlements.status='completed'`, `completed_at=now()`,
+  store `utr`; matching `driver_earnings` rows → `status='paid'`.
+- `payout.failed` → `settlements.status='failed'`, `failure_reason` set;
+  `driver_earnings` rows revert to `cleared` (so they're picked up next
+  batch); if the failure reason indicates bad account details, flag
+  `driver_bank_accounts.status='invalid'` and notify the driver via the
+  existing notifications module.
 - `payout.reversed` → same revert-to-`cleared` path, offsetting entry noted.
 
 ### 7. Admin surface
 
-New `api/src/modules/payments/submodules/settlements/` implementation
-(currently a stub) + new admin routes under `/api/v1/admin/payouts/*`,
-mirroring the existing admin notification-templates page pattern:
+Real implementation of `api/src/modules/payments/submodules/settlements/
+settlements.service.ts` (currently a TODO stub) + new admin routes under
+`/api/v1/admin/payouts/*`, mirroring the existing admin
+notification-templates page pattern:
 
-- Batch list + drill-in (per-driver `payouts` rows, statuses, UTRs).
-- Batch approval action.
+- Batch list (grouped by `period_from`/`period_to`) + drill-in (per-driver
+  `settlements` rows, statuses, UTRs).
+- Batch approval action (bulk status update for a period).
 - Place/release `driver_payout_holds` (required reason), surfaced on the
   existing driver detail page next to the wallet section.
 - Manual adjustment: admin creates a signed `driver_earnings` `adjustment`
   row (reason + admin_id required, never edits existing rows).
-- Reconciliation view: `payouts` stuck `processing` beyond a threshold,
+- Reconciliation view: `settlements` stuck `processing` beyond a threshold,
   flagged for manual retry/investigation.
 - Retry failed payout (fresh idempotency key per retry attempt).
 - Bank account verification queue (`pending_verification`/`invalid`),
@@ -278,7 +296,7 @@ existing convention:
   produces exactly one `ride_fare_net` line (unique constraint on
   `idempotency_key`).
 - Batch-sweep atomicity: a `driver_earnings` row can't end up referenced by
-  two `payout_batches` (no double-sweep across overlapping cron runs).
+  two `settlements` rows (no double-sweep across overlapping cron runs).
 - TDS calc: PAN-verified vs unverified driver produce the correct rate and
   `tax_deductions` row.
 - Webhook status transitions: `processed`/`failed`/`reversed` each move the
