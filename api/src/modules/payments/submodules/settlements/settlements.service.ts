@@ -376,6 +376,75 @@ export async function submitProcessingSettlements(): Promise<void> {
   }
 }
 
+export async function listSettlementBatches() {
+  const res = await pool.query(
+    `SELECT period_from, period_to, run_type, status,
+            COUNT(*) AS driver_count, SUM(net_payout) AS total
+     FROM settlements
+     GROUP BY period_from, period_to, run_type, status
+     ORDER BY period_from DESC LIMIT 50`
+  )
+  return res.rows
+}
+
+export async function getSettlementBatchDetail(periodFrom: string, periodTo: string) {
+  const res = await pool.query(
+    `SELECT s.id, s.driver_id, d.full_name AS driver_name, s.net_payout, s.fee,
+            s.status, s.mode, s.utr, s.razorpay_payout_id, s.failure_reason, s.created_at
+     FROM settlements s
+     JOIN drivers d ON d.id = s.driver_id
+     WHERE s.period_from = $1 AND s.period_to = $2
+     ORDER BY s.created_at`,
+    [periodFrom, periodTo]
+  )
+  return res.rows
+}
+
+// Only pending rows advance — never re-approves rows already processing/
+// completed/failed (avoids double-submitting a batch already sent to the
+// gateway or resurrecting a failed one through this endpoint).
+export async function approveSettlementPeriod(
+  periodFrom: string, periodTo: string, approvedBy: bigint
+): Promise<number> {
+  const res = await pool.query(
+    `UPDATE settlements
+       SET status = 'processing', approved_by = $3, approved_at = now()
+     WHERE period_from = $1 AND period_to = $2 AND status = 'pending'`,
+    [periodFrom, periodTo, approvedBy]
+  )
+  return res.rowCount ?? 0
+}
+
+export async function placeDriverPayoutHold(driverId: bigint, reason: string, placedBy: bigint): Promise<void> {
+  await pool.query(
+    `INSERT INTO driver_payout_holds (driver_id, reason, placed_by)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (driver_id) WHERE active DO NOTHING`,
+    [driverId, reason, placedBy]
+  )
+}
+
+export async function releaseDriverPayoutHold(driverId: bigint): Promise<void> {
+  await pool.query(
+    `UPDATE driver_payout_holds SET active = false WHERE driver_id = $1 AND active`,
+    [driverId]
+  )
+}
+
+// amount is signed (credit or debit) — inserted directly as 'cleared' since
+// this is an immediate admin-issued line, not a ride-accrual, matching the
+// same pattern instantCashOut's fee line already uses.
+export async function createManualAdjustment(
+  driverId: bigint, amount: number, reason: string, adminId: bigint
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO driver_earnings (
+       driver_id, entry_type, amount, status, idempotency_key, note
+     ) VALUES ($1,'adjustment',$2,'cleared',$3,$4)`,
+    [driverId, amount, `manual_adj:${driverId}:${Date.now()}`, `Admin #${adminId}: ${reason}`]
+  )
+}
+
 export interface DriverEarningsSummary {
   payableBalance: number
   recentLedger: Array<Record<string, unknown>>
