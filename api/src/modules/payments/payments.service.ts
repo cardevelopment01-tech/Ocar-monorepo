@@ -3,6 +3,7 @@ import { config } from '@/config'
 import { client as redis } from '@/db/redis'
 import { ridePaymentOrderKey } from '@/constants/redis-keys'
 import { notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
+import { accrueDriverEarning } from '@/modules/payments/submodules/settlements/settlements.service'
 
 // ── Config helpers ─────────────────────────────────────────────
 
@@ -258,6 +259,7 @@ export async function confirmRidePayment(
 
   const row = res.rows[0]
   await deductCommission(rideId, BigInt(row.driver_id))
+  await accrueDriverEarning(rideId, BigInt(row.driver_id))
   await creditCashback(rideId, BigInt(row.user_id), parseFloat(row.amount))
   return true
 }
