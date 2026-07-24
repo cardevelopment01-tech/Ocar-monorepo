@@ -61,7 +61,11 @@ export const notificationsWorker = new Worker(
       try {
         const slug = data.type === 'trip_start' ? 'otp_trip_start' : data.type === 'trip_end' ? 'otp_trip_end' : 'otp_auth'
         const { body: message } = await renderTemplate(slug, 'sms', { otp: data.otp })
-        await sendSms(data.phone, message)
+        // DLT template 193042 is approved for login OTP wording only — ride
+        // start/end OTPs tell the rider to share the code with their driver,
+        // which this template's "do not share" text would contradict.
+        const templateId = slug === 'otp_auth' ? (config.BULKSMSPLANS_OTP_TEMPLATE_ID || undefined) : undefined
+        await sendSms(data.phone, message, templateId)
         await notifService.markSent(logId)
       } catch (err) {
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))

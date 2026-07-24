@@ -618,13 +618,6 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
       startOtp: otp,
     })
   }
-  if (ride?.user_phone) {
-    await queues[QUEUE_NAMES.NOTIFICATIONS].add('otp_sms', {
-      phone: ride.user_phone,
-      otp,
-      type: 'trip_start',
-    })
-  }
 
   return { success: true }
 }
@@ -684,14 +677,6 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     status: 'in_progress',
     endOtp,
   })
-
-  if (ride.user_phone) {
-    await queues[QUEUE_NAMES.NOTIFICATIONS].add('otp_sms', {
-      phone: ride.user_phone,
-      otp:   endOtp,
-      type:  'trip_end',
-    })
-  }
 
   return { success: true }
 }

@@ -31,7 +31,11 @@ const envSchema = z.object({
   // SMS
   MSG91_AUTH_KEY: z.string().default(''),
   MSG91_SENDER_ID: z.string().default(''),
-  FAST2SMS_API_KEY: z.string().default(''),
+  BULKSMSPLANS_API_ID: z.string().default(''),
+  BULKSMSPLANS_API_PASSWORD: z.string().default(''),
+  BULKSMSPLANS_SENDER_ID: z.string().default(''),
+  // DLT-approved template — login OTP only (see notifications.worker.ts otp_sms handler)
+  BULKSMSPLANS_OTP_TEMPLATE_ID: z.string().default(''),
   ADMIN_PHONE: z.string().default(''),
 
   // Push (FCM)
@@ -45,7 +49,7 @@ const envSchema = z.object({
   S3_SECRET_KEY: z.string().min(1),
 
   // Email (AWS SES) — reuses the S3 AWS credentials/account, just a different service.
-  // SES_FROM_EMAIL empty = dev bypass (logs instead of sending), same pattern as FAST2SMS_API_KEY.
+  // SES_FROM_EMAIL empty = dev bypass (logs instead of sending), same pattern as BULKSMSPLANS_API_ID.
   SES_REGION: z.string().default('ap-south-1'),
   SES_FROM_EMAIL: z.string().default(''),
 
