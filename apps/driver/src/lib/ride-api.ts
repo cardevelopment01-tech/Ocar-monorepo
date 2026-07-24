@@ -248,8 +248,8 @@ export type EarningsSummary = {
 }
 
 export interface DriverEarningsLedgerEntry {
-  id: number
-  ride_id: number | null
+  id: string
+  ride_id: string | null
   entry_type: string
   amount: string
   status: string
@@ -263,7 +263,7 @@ export interface DriverEarningsBalance {
 }
 
 export interface DriverBankAccount {
-  id: number
+  id: string
   account_holder_name: string
   ifsc: string
   upi_vpa: string | null

@@ -54,9 +54,13 @@ export default function Earnings() {
   const [cashingOut, setCashingOut] = useState(false)
   const [cashOutError, setCashOutError] = useState<string | null>(null)
   const [bankAccounts, setBankAccounts] = useState<DriverBankAccount[]>([])
+  const [bankAccountsLoading, setBankAccountsLoading] = useState(true)
 
   const loadBankAccounts = () => {
-    driverPayoutApi.listBankAccounts().then(setBankAccounts).catch(() => {})
+    driverPayoutApi.listBankAccounts()
+      .then(setBankAccounts)
+      .catch(() => {})
+      .finally(() => setBankAccountsLoading(false))
   }
 
   useEffect(() => {
@@ -191,7 +195,7 @@ export default function Earnings() {
         </div>
       )}
 
-      <BankAccountSection account={primaryAccount} onAdded={loadBankAccounts} />
+      <BankAccountSection account={primaryAccount} loading={bankAccountsLoading} onAdded={loadBankAccounts} />
 
       {/* Bar chart */}
       <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
