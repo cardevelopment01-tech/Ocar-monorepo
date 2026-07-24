@@ -14,8 +14,13 @@ function scriptAccrue(opts: { driverEarning: string; grossFare: string; panVerif
     .mockResolvedValueOnce({ rows: [{ driver_earning: opts.driverEarning, amount: opts.grossFare }], rowCount: 1 }) // SELECT payments
     .mockResolvedValueOnce({ rows: [{ value: '24' }], rowCount: 1 })   // payout_hold_hours
     .mockResolvedValueOnce({ rows: [{ pan_verified: opts.panVerified }], rowCount: opts.panVerified ? 1 : 0 }) // driver_tax_profile
-    .mockResolvedValueOnce({ rows: [{ value: '1' }], rowCount: 1 })    // tds_rate_with_pan_pct
-    .mockResolvedValueOnce({ rows: [{ value: '20' }], rowCount: 1 })   // tds_rate_without_pan_pct
+    .mockResolvedValueOnce({
+      rows: [
+        { key: 'tds_rate_with_pan_pct', value: '1' },
+        { key: 'tds_rate_without_pan_pct', value: '20' },
+      ],
+      rowCount: 2,
+    }) // batched TDS rates query
 
   client.query.mockReset()
   client.query.mockResolvedValue({ rows: [], rowCount: 1 })
@@ -30,12 +35,11 @@ describe('accrueDriverEarning', () => {
 
     const inserts = client.query.mock.calls
       .filter(c => (c[0] as string).includes('INSERT INTO driver_earnings'))
-      .map(c => c[1] as unknown[])
     expect(inserts).toHaveLength(2)
-    expect(inserts[0]?.includes('ride_fare_net')).toBe(true)
-    expect(inserts[1]?.includes('tds_deduction')).toBe(true)
+    expect(inserts[0]?.[0] as string).toContain("'ride_fare_net'")
+    expect(inserts[1]?.[0] as string).toContain("'tds_deduction'")
     // 1% of gross fare 400 = 4.00, stored as a negative amount
-    expect(inserts[1]).toContain(-4)
+    expect(inserts[1]?.[1]).toContain(-4)
   })
 
   it('PAN not verified: uses the 20% rate', async () => {
@@ -43,7 +47,7 @@ describe('accrueDriverEarning', () => {
     await accrueDriverEarning(BigInt(1), BigInt(42))
 
     const tdsInsert = client.query.mock.calls
-      .find(c => (c[0] as string).includes('INSERT INTO driver_earnings') && (c[1] as unknown[]).includes('tds_deduction'))
+      .find(c => (c[0] as string).includes('INSERT INTO driver_earnings') && (c[0] as string).includes("'tds_deduction'"))
     expect(tdsInsert?.[1]).toContain(-80) // 20% of 400
   })
 
@@ -52,7 +56,16 @@ describe('accrueDriverEarning', () => {
     await accrueDriverEarning(BigInt(7), BigInt(42))
 
     const rideFareInsert = client.query.mock.calls
-      .find(c => (c[0] as string).includes('INSERT INTO driver_earnings') && (c[1] as unknown[]).includes('ride_fare_net'))
+      .find(c => (c[0] as string).includes('INSERT INTO driver_earnings') && (c[0] as string).includes("'ride_fare_net'"))
     expect(rideFareInsert?.[1]).toContain('ride_fare_net:ride:7')
+  })
+
+  it('fetches both TDS rate keys in a single batched query, not two round trips', async () => {
+    scriptAccrue({ driverEarning: '340.00', grossFare: '400.00', panVerified: true })
+    await accrueDriverEarning(BigInt(1), BigInt(42))
+
+    const batchedCall = poolQuery.mock.calls.find(c => (c[0] as string).includes('key = ANY'))
+    expect(batchedCall).toBeDefined()
+    expect(batchedCall?.[1]).toEqual([['tds_rate_with_pan_pct', 'tds_rate_without_pan_pct']])
   })
 })

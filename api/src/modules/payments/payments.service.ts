@@ -4,16 +4,9 @@ import { client as redis } from '@/db/redis'
 import { ridePaymentOrderKey } from '@/constants/redis-keys'
 import { notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
 import { accrueDriverEarning } from '@/modules/payments/submodules/settlements/settlements.service'
+import { getConfigValue } from '@/lib/system-config'
 
 // ── Config helpers ─────────────────────────────────────────────
-
-async function getConfigValue(key: string, fallback: string): Promise<string> {
-  const res = await pool.query(
-    `SELECT value FROM system_config WHERE key = $1 AND status = 'active'`,
-    [key]
-  )
-  return res.rows[0]?.value ?? fallback
-}
 
 async function getCommissionPercent(): Promise<number> {
   return parseFloat(await getConfigValue('commission_percent', '15'))

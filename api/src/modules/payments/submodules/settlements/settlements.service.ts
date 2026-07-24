@@ -1,12 +1,5 @@
 import { pool } from '@/db/client'
-
-async function getConfigValue(key: string, fallback: string): Promise<string> {
-  const res = await pool.query(
-    `SELECT value FROM system_config WHERE key = $1 AND status = 'active'`,
-    [key]
-  )
-  return res.rows[0]?.value ?? fallback
-}
+import { getConfigValue } from '@/lib/system-config'
 
 function currentFyQuarter(now: Date): { fy: string; quarter: number } {
   // Indian FY: Apr 1 - Mar 31. Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar.
@@ -39,9 +32,15 @@ export async function accrueDriverEarning(rideId: bigint, driverId: bigint): Pro
     [driverId]
   )
   const panVerified = taxRes.rows[0]?.pan_verified === true
-  const rateWithPan = parseFloat(await getConfigValue('tds_rate_with_pan_pct', '1'))
-  const rateWithoutPan = parseFloat(await getConfigValue('tds_rate_without_pan_pct', '20'))
-  const ratePct = panVerified ? rateWithPan : rateWithoutPan
+
+  const ratesRes = await pool.query(
+    `SELECT key, value FROM system_config WHERE key = ANY($1) AND status = 'active'`,
+    [['tds_rate_with_pan_pct', 'tds_rate_without_pan_pct']]
+  )
+  const rates = Object.fromEntries(ratesRes.rows.map((r: { key: string; value: string }) => [r.key, r.value]))
+  const ratePct = panVerified
+    ? parseFloat(rates['tds_rate_with_pan_pct'] ?? '1')
+    : parseFloat(rates['tds_rate_without_pan_pct'] ?? '20')
   const tdsAmount = Math.round(grossFare * ratePct) / 100
   const { fy, quarter } = currentFyQuarter(new Date())
 
@@ -52,25 +51,26 @@ export async function accrueDriverEarning(rideId: bigint, driverId: bigint): Pro
     await client.query(
       `INSERT INTO driver_earnings (
          driver_id, ride_id, entry_type, amount, status, available_at, idempotency_key, note
-       ) VALUES ($1,$2,$3,$4,'pending', now() + ($5 || ' hours')::interval, $6, $7)
+       ) VALUES ($1,$2,'ride_fare_net',$3,'pending', now() + ($4 || ' hours')::interval, $5, $6)
        ON CONFLICT (idempotency_key) DO NOTHING`,
-      [driverId, rideId, 'ride_fare_net', netEarning, holdHours, `ride_fare_net:ride:${rideId}`, `Ride fare net for ride #${rideId}`]
+      [driverId, rideId, netEarning, holdHours, `ride_fare_net:ride:${rideId}`, `Ride fare net for ride #${rideId}`]
     )
 
     if (tdsAmount > 0) {
       await client.query(
         `INSERT INTO driver_earnings (
            driver_id, ride_id, entry_type, amount, status, available_at, idempotency_key, note
-         ) VALUES ($1,$2,$3,$4,'pending', now() + ($5 || ' hours')::interval, $6, $7)
+         ) VALUES ($1,$2,'tds_deduction',$3,'pending', now() + ($4 || ' hours')::interval, $5, $6)
          ON CONFLICT (idempotency_key) DO NOTHING`,
-        [driverId, rideId, 'tds_deduction', -tdsAmount, holdHours, `tds_deduction:ride:${rideId}`, `194-O TDS @ ${ratePct}% on ride #${rideId}`]
+        [driverId, rideId, -tdsAmount, holdHours, `tds_deduction:ride:${rideId}`, `194-O TDS @ ${ratePct}% on ride #${rideId}`]
       )
 
       await client.query(
         `INSERT INTO tax_deductions (
            driver_id, ride_id, section, taxable_base, rate_pct, tds_amount, pan_at_deduction, fy, quarter
          ) VALUES ($1,$2,'194O',$3,$4,$5,
-           (SELECT pan_enc FROM driver_tax_profile WHERE driver_id = $1), $6, $7)`,
+           (SELECT pan_enc FROM driver_tax_profile WHERE driver_id = $1), $6, $7)
+         ON CONFLICT (ride_id) DO NOTHING`,
         [driverId, rideId, grossFare, ratePct, tdsAmount, fy, quarter]
       )
     }
