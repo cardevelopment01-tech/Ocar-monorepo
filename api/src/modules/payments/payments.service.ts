@@ -3,16 +3,10 @@ import { config } from '@/config'
 import { client as redis } from '@/db/redis'
 import { ridePaymentOrderKey } from '@/constants/redis-keys'
 import { notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
+import { accrueDriverEarning } from '@/modules/payments/submodules/settlements/settlements.service'
+import { getConfigValue } from '@/lib/system-config'
 
 // ── Config helpers ─────────────────────────────────────────────
-
-async function getConfigValue(key: string, fallback: string): Promise<string> {
-  const res = await pool.query(
-    `SELECT value FROM system_config WHERE key = $1 AND status = 'active'`,
-    [key]
-  )
-  return res.rows[0]?.value ?? fallback
-}
 
 async function getCommissionPercent(): Promise<number> {
   return parseFloat(await getConfigValue('commission_percent', '15'))
@@ -258,6 +252,7 @@ export async function confirmRidePayment(
 
   const row = res.rows[0]
   await deductCommission(rideId, BigInt(row.driver_id))
+  await accrueDriverEarning(rideId, BigInt(row.driver_id))
   await creditCashback(rideId, BigInt(row.user_id), parseFloat(row.amount))
   return true
 }
@@ -601,11 +596,19 @@ export async function topUpDriverWallet(
 // value, so every insert for an unmapped/unknown event was already failing.
 // Logging only tracked events keeps the log table consistent with what it can
 // actually store; untracked event types simply return early instead of erroring.
+// RazorpayX sends payout.* events (driver disbursal, submitted by
+// submitProcessingSettlements in settlements.service.ts) to the SAME webhook
+// URL as the payment.* events above (ride/wallet collection) — Razorpay only
+// lets you configure one webhook URL per account. Both families share the
+// dedup-by-razorpay_event_id guard and the gateway_event_type log table.
 const GATEWAY_EVENT_TYPE_MAP: Record<string, string> = {
   'order.paid': 'order_created',
   'payment.authorized': 'payment_authorized',
   'payment.captured': 'payment_captured',
   'payment.failed': 'payment_failed',
+  'payout.processed': 'payout_processed',
+  'payout.failed': 'payout_failed',
+  'payout.reversed': 'payout_reversed',
 }
 
 export async function handleWebhookEvent(
@@ -615,12 +618,32 @@ export async function handleWebhookEvent(
   const eventType = event ? GATEWAY_EVENT_TYPE_MAP[event] : undefined
   if (!eventType) return
 
-  const entity = (
-    payload as { payload?: { payment?: { entity?: { id?: string; order_id?: string } } } }
-  )?.payload?.payment?.entity
+  const isPayoutEvent = event?.startsWith('payout.') ?? false
+  const entity = isPayoutEvent
+    ? (
+        payload as { payload?: { payout?: { entity?: {
+          id?: string; reference_id?: string; utr?: string; failure_reason?: string
+        } } } }
+      )?.payload?.payout?.entity
+    : (
+        payload as { payload?: { payment?: { entity?: { id?: string; order_id?: string } } } }
+      )?.payload?.payment?.entity
   const eventId = entity?.id
 
   if (!eventId) return
+
+  // reference_id was set by submitProcessingSettlements as `${settlementId}:${driverId}`.
+  // Validate the format BEFORE marking the event processed below: a
+  // malformed/unrelated reference_id (e.g. a payout created manually in the
+  // RazorpayX dashboard, not matching our convention) must not be recorded
+  // as processed, or a corrected/retried webhook delivery would be silently
+  // swallowed forever by the dedup check with no way to recover.
+  let settlementId: string | undefined
+  if (isPayoutEvent) {
+    const referenceId = (entity as { reference_id?: string }).reference_id
+    settlementId = referenceId?.split(':')[0]
+    if (!settlementId || !/^\d+$/.test(settlementId)) return
+  }
 
   const existing = await pool.query(
     `SELECT id FROM payment_gateway_events WHERE razorpay_event_id = $1`,
@@ -635,10 +658,54 @@ export async function handleWebhookEvent(
     [eventType, eventId, JSON.stringify(payload)]
   )
 
-  if (event === 'payment.captured' && entity?.order_id) {
+  if (isPayoutEvent) {
+    // settlementId already extracted + format-validated above.
+    if (event === 'payout.processed') {
+      // status != 'completed' guard: Razorpay doesn't guarantee webhook
+      // delivery order, so a stale/duplicate event must not clobber a
+      // settlement another (later-arriving-but-earlier-fired) event already
+      // finalized. razorpay_payout_id guard: only apply this update to the
+      // settlement row this specific gateway payout was actually submitted
+      // for — reference_id alone isn't proof of that.
+      const settlementUpdate = await pool.query(
+        `UPDATE settlements SET status = 'completed', completed_at = now(), utr = $2
+         WHERE id = $1 AND status != 'completed' AND razorpay_payout_id = $3`,
+        [settlementId, (entity as { utr?: string }).utr ?? null, eventId]
+      )
+      if ((settlementUpdate.rowCount ?? 0) > 0) {
+        await pool.query(
+          `UPDATE driver_earnings SET status = 'paid' WHERE settlement_id = $1 AND status = 'in_payout'`,
+          [settlementId]
+        )
+      }
+      return
+    }
+
+    // payout.failed / payout.reversed — same revert path either way. The
+    // gateway only fires this for a payout that was actually submitted
+    // successfully, so settlements.razorpay_payout_id already holds the real
+    // gateway payout id here (not the pre-submit placeholder) — nothing to
+    // reset on that column.
+    const failureReason = (entity as { failure_reason?: string }).failure_reason ?? event
+    const settlementUpdate = await pool.query(
+      `UPDATE settlements SET status = 'failed', failed_at = now(), failure_reason = $2
+       WHERE id = $1 AND status != 'completed' AND razorpay_payout_id = $3`,
+      [settlementId, failureReason ?? null, eventId]
+    )
+    if ((settlementUpdate.rowCount ?? 0) > 0) {
+      await pool.query(
+        `UPDATE driver_earnings SET status = 'cleared', settlement_id = NULL
+         WHERE settlement_id = $1 AND status = 'in_payout'`,
+        [settlementId]
+      )
+    }
+    return
+  }
+
+  if (event === 'payment.captured' && (entity as { order_id?: string })?.order_id) {
     const pendingRes = await pool.query(
       `SELECT ride_id FROM payments WHERE razorpay_order_id = $1 AND status = 'pending'`,
-      [entity.order_id]
+      [(entity as { order_id?: string }).order_id]
     )
     const pending = pendingRes.rows[0]
     if (pending) {

@@ -23,10 +23,16 @@ const envSchema = z.object({
   // TOTP (admin 2FA) — 32-byte key, hex-encoded (64 hex chars), for AES-256-GCM
   TOTP_ENCRYPTION_KEY: z.string().length(64).regex(/^[0-9a-f]+$/i),
 
+  // Bank account encryption (driver payouts) — 32-byte key, hex-encoded (64 hex chars), for AES-256-GCM
+  BANK_ACCOUNT_ENCRYPTION_KEY: z.string().length(64).regex(/^[0-9a-f]+$/i),
+
   // Razorpay
   RAZORPAY_KEY_ID: z.string().default(''),
   RAZORPAY_KEY_SECRET: z.string().default(''),
   RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+  // RazorpayX current/virtual account number to debit driver payouts from
+  // (NOT the API key id — see RazorpayX dashboard > Accounts)
+  RAZORPAYX_ACCOUNT_NUMBER: z.string().default(''),
 
   // SMS
   MSG91_AUTH_KEY: z.string().default(''),

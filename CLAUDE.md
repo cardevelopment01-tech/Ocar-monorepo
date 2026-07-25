@@ -375,6 +375,14 @@ cd api && npx tsc --noEmit
 
 ---
 
+## Pending Ops Actions
+
+- **Driver instant cash-out is behind a kill switch, `system_config.driver_payouts_enabled` (default `'false'`).** The driver app hides the "Cash Out Now" button and the API rejects the endpoint while it's off — this is intentional until RazorpayX payouts are confirmed working end-to-end in an environment (real `RAZORPAYX_ACCOUNT_NUMBER` set, webhook events `payout.processed`/`payout.failed`/`payout.reversed` enabled in the Razorpay dashboard, a real payout tested and confirmed to land). Once verified, flip it on:
+  ```sql
+  UPDATE system_config SET value = 'true' WHERE key = 'driver_payouts_enabled';
+  ```
+  No deploy needed — read live on every request. Delete this note once flipped on for good.
+
 ## Security Rules (non-negotiable)
 
 - No `error.message` in production API responses — only codes/safe messages

@@ -246,3 +246,50 @@ export type EarningsSummary = {
   chart_labels: string[]
   breakdown: { base_fare: number; tips: number; incentives: number; platform_fee: number }
 }
+
+export interface DriverEarningsLedgerEntry {
+  id: string
+  ride_id: string | null
+  entry_type: string
+  amount: string
+  status: string
+  created_at: string
+  note: string | null
+}
+
+export interface DriverEarningsBalance {
+  payableBalance: number
+  recentLedger: DriverEarningsLedgerEntry[]
+  payoutsEnabled: boolean
+}
+
+export interface DriverBankAccount {
+  id: string
+  account_holder_name: string
+  ifsc: string
+  upi_vpa: string | null
+  status: 'pending_verification' | 'verified' | 'invalid'
+  is_primary: boolean
+}
+
+export const driverPayoutApi = {
+  getEarningsBalance: async (): Promise<DriverEarningsBalance> => {
+    const { data } = await api.get<DriverEarningsBalance>('/api/v1/payments/settlements/earnings')
+    return data
+  },
+  listBankAccounts: async (): Promise<DriverBankAccount[]> => {
+    const { data } = await api.get<{ accounts: DriverBankAccount[] }>('/api/v1/payments/settlements/bank-accounts')
+    return data.accounts
+  },
+  addBankAccount: async (params: { accountHolderName: string; accountNumber: string; ifsc: string; upiVpa?: string }) => {
+    const { data } = await api.post<{ id: string }>('/api/v1/payments/settlements/bank-accounts', params)
+    return data
+  },
+  instantCashOut: async (): Promise<{ settlementId: string }> => {
+    const { data } = await api.post<{ settlementId: string }>('/api/v1/payments/settlements/payout/instant')
+    return data
+  },
+  submitPan: async (pan: string): Promise<void> => {
+    await api.post('/api/v1/payments/settlements/tax-profile', { pan })
+  },
+}

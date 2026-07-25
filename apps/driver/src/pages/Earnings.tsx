@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import StatusBar from '@/components/ui/StatusBar'
+import BankAccountSection from '@/components/BankAccountSection'
 import { useSessionStore } from '@/store/useSessionStore'
-import { driverRideApi, type TripHistoryItem, type EarningsSummary } from '@/lib/ride-api'
+import {
+  driverRideApi, driverPayoutApi,
+  type TripHistoryItem, type EarningsSummary, type DriverEarningsBalance, type DriverBankAccount,
+} from '@/lib/ride-api'
 import { cn } from '@/lib/utils'
 import { Car } from 'lucide-react'
 
@@ -45,6 +49,41 @@ export default function Earnings() {
       .catch(() => {})
       .finally(() => setTripsLoading(false))
   }, [])
+
+  const [payout, setPayout] = useState<DriverEarningsBalance | null>(null)
+  const [cashingOut, setCashingOut] = useState(false)
+  const [cashOutError, setCashOutError] = useState<string | null>(null)
+  const [bankAccounts, setBankAccounts] = useState<DriverBankAccount[]>([])
+  const [bankAccountsLoading, setBankAccountsLoading] = useState(true)
+
+  const loadBankAccounts = () => {
+    driverPayoutApi.listBankAccounts()
+      .then(setBankAccounts)
+      .catch(() => {})
+      .finally(() => setBankAccountsLoading(false))
+  }
+
+  useEffect(() => {
+    driverPayoutApi.getEarningsBalance().then(setPayout).catch(() => {})
+    loadBankAccounts()
+  }, [])
+
+  const primaryAccount = bankAccounts.find(a => a.is_primary) ?? bankAccounts[0] ?? null
+  const hasVerifiedAccount = bankAccounts.some(a => a.status === 'verified')
+
+  async function handleCashOut() {
+    setCashingOut(true)
+    setCashOutError(null)
+    try {
+      await driverPayoutApi.instantCashOut()
+      const updated = await driverPayoutApi.getEarningsBalance()
+      setPayout(updated)
+    } catch {
+      setCashOutError('Cash out failed. Please try again.')
+    } finally {
+      setCashingOut(false)
+    }
+  }
 
   const e = summary
   const maxBar = Math.max(...e.chart, 1)
@@ -127,6 +166,40 @@ export default function Earnings() {
           </span>
         </div>
       </div>
+
+      {/* Payable balance + cash out */}
+      {payout && payout.payableBalance > 0 && (
+        <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-text-muted text-[11px] font-semibold mb-1">Payable Balance</p>
+              <p className="text-2xl font-black text-text-primary tabular-nums">
+                ₹{payout.payableBalance.toLocaleString('en-IN')}
+              </p>
+            </div>
+            {!payout.payoutsEnabled ? (
+              <p className="text-text-muted text-xs text-right max-w-[140px]">
+                Cash out is coming soon
+              </p>
+            ) : hasVerifiedAccount ? (
+              <button
+                onClick={() => void handleCashOut()}
+                disabled={cashingOut}
+                className="rounded-2xl px-4 py-3 text-sm font-bold text-white bg-primary disabled:opacity-50 cursor-pointer"
+              >
+                {cashingOut ? 'Processing…' : 'Cash Out Now'}
+              </button>
+            ) : (
+              <p className="text-text-muted text-xs text-right max-w-[140px]">
+                Add &amp; verify a bank account below to cash out
+              </p>
+            )}
+          </div>
+          {cashOutError && <p className="text-accent-red text-xs mt-2">{cashOutError}</p>}
+        </div>
+      )}
+
+      <BankAccountSection account={primaryAccount} loading={bankAccountsLoading} onAdded={loadBankAccounts} />
 
       {/* Bar chart */}
       <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">

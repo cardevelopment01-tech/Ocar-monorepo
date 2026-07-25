@@ -49,6 +49,7 @@ const NAV: NavGroup[] = [
     label: 'Finance',
     items: [
       { href: '/payments',    label: 'Payments',    icon: CreditCard, roles: ['super_admin','finance_admin'] },
+      { href: '/payouts',     label: 'Payouts',     icon: Wallet,     roles: ['super_admin','finance_admin'] },
       { href: '/settlements', label: 'Settlements', icon: Wallet,     roles: ['super_admin','finance_admin'], demo: true },
       { href: '/refunds',     label: 'Refunds',     icon: RotateCcw,  roles: ['super_admin','finance_admin'], demo: true },
     ],
