@@ -260,6 +260,7 @@ export interface DriverEarningsLedgerEntry {
 export interface DriverEarningsBalance {
   payableBalance: number
   recentLedger: DriverEarningsLedgerEntry[]
+  payoutsEnabled: boolean
 }
 
 export interface DriverBankAccount {

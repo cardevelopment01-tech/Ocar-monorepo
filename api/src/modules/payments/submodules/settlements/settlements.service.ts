@@ -189,6 +189,11 @@ export async function runScheduledSettlementBatch(): Promise<void> {
 // already 'cleared' inside this transaction so it's naturally included in
 // the same locked-and-summed set, never a second uncoordinated write.
 export async function instantCashOut(driverId: bigint): Promise<bigint> {
+  const payoutsEnabled = (await getConfigValue('driver_payouts_enabled', 'false')) === 'true'
+  if (!payoutsEnabled) {
+    throw httpError(403, 'Instant cash-out is not available yet', AppErrors.VALIDATION_ERROR.code)
+  }
+
   const feeAmount = parseFloat(await getConfigValue('instant_payout_fee', '10'))
 
   const client = await pool.connect()
@@ -593,6 +598,7 @@ export async function getDriverTaxStatement(driverId: bigint, fy: string) {
 export interface DriverEarningsSummary {
   payableBalance: number
   recentLedger: Array<Record<string, unknown>>
+  payoutsEnabled: boolean
 }
 
 export async function getDriverEarningsSummary(driverId: bigint): Promise<DriverEarningsSummary> {
@@ -606,8 +612,10 @@ export async function getDriverEarningsSummary(driverId: bigint): Promise<Driver
      FROM driver_earnings WHERE driver_id = $1 ORDER BY created_at DESC LIMIT 20`,
     [driverId]
   )
+  const payoutsEnabled = (await getConfigValue('driver_payouts_enabled', 'false')) === 'true'
   return {
     payableBalance: parseFloat(balanceRes.rows[0].payable_balance),
     recentLedger: ledgerRes.rows,
+    payoutsEnabled,
   }
 }

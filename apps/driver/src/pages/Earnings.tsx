@@ -177,7 +177,11 @@ export default function Earnings() {
                 ₹{payout.payableBalance.toLocaleString('en-IN')}
               </p>
             </div>
-            {hasVerifiedAccount ? (
+            {!payout.payoutsEnabled ? (
+              <p className="text-text-muted text-xs text-right max-w-[140px]">
+                Cash out is coming soon
+              </p>
+            ) : hasVerifiedAccount ? (
               <button
                 onClick={() => void handleCashOut()}
                 disabled={cashingOut}

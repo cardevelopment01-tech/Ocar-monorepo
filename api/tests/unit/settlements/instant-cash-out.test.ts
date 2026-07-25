@@ -37,9 +37,19 @@ function baseMockImpl(overrides?: { bankRows?: unknown[]; holdRows?: unknown[]; 
 describe('instantCashOut', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it('throws when the driver_payouts_enabled kill switch is off, before touching any locks', async () => {
+    client.query.mockImplementation(baseMockImpl())
+    poolQuery.mockResolvedValueOnce({ rows: [{ value: 'false' }] }) // driver_payouts_enabled
+
+    await expect(instantCashOut(42n)).rejects.toThrow('Instant cash-out is not available yet')
+    expect(client.query).not.toHaveBeenCalled()
+  })
+
   it('throws when no verified primary bank account is on file', async () => {
     client.query.mockImplementation(baseMockImpl({ bankRows: [] }))
-    poolQuery.mockResolvedValueOnce({ rows: [{ value: '10' }] }) // instant_payout_fee
+    poolQuery
+      .mockResolvedValueOnce({ rows: [{ value: 'true' }] }) // driver_payouts_enabled
+      .mockResolvedValueOnce({ rows: [{ value: '10' }] }) // instant_payout_fee
 
     await expect(instantCashOut(42n)).rejects.toThrow('No verified bank account on file')
 
@@ -50,7 +60,9 @@ describe('instantCashOut', () => {
 
   it('throws when the driver has an active payout hold', async () => {
     client.query.mockImplementation(baseMockImpl({ holdRows: [{ '?column?': 1 }] }))
-    poolQuery.mockResolvedValueOnce({ rows: [{ value: '10' }] })
+    poolQuery
+      .mockResolvedValueOnce({ rows: [{ value: 'true' }] })
+      .mockResolvedValueOnce({ rows: [{ value: '10' }] })
 
     await expect(instantCashOut(42n)).rejects.toThrow('Payouts are on hold for this account')
 
@@ -61,7 +73,9 @@ describe('instantCashOut', () => {
 
   it('throws when locked earnings rows sum to zero or less', async () => {
     client.query.mockImplementation(baseMockImpl({ lockedRows: [] }))
-    poolQuery.mockResolvedValueOnce({ rows: [{ value: '10' }] })
+    poolQuery
+      .mockResolvedValueOnce({ rows: [{ value: 'true' }] })
+      .mockResolvedValueOnce({ rows: [{ value: '10' }] })
 
     await expect(instantCashOut(42n)).rejects.toThrow('No payable balance')
 
@@ -72,7 +86,9 @@ describe('instantCashOut', () => {
 
   it('inserts the fee row, creates an instant/processing settlement, and sweeps exactly the locked ids', async () => {
     client.query.mockImplementation(baseMockImpl())
-    poolQuery.mockResolvedValueOnce({ rows: [{ value: '10' }] })
+    poolQuery
+      .mockResolvedValueOnce({ rows: [{ value: 'true' }] })
+      .mockResolvedValueOnce({ rows: [{ value: '10' }] })
 
     const settlementId = await instantCashOut(42n)
 
