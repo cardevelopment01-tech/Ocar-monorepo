@@ -73,6 +73,7 @@ jobs:
           JWT_REFRESH_EXPIRY_USER=30d
           JWT_REFRESH_EXPIRY_ADMIN=24h
           TOTP_ENCRYPTION_KEY=abababababababababababababababababababababababababababababababab
+          BANK_ACCOUNT_ENCRYPTION_KEY=abababababababababababababababababababababababababababababababab
           S3_BUCKET_NAME=test-bucket
           S3_REGION=ap-south-1
           S3_ACCESS_KEY=test-access-key
@@ -95,6 +96,7 @@ jobs:
           JWT_REFRESH_EXPIRY_USER: 30d
           JWT_REFRESH_EXPIRY_ADMIN: 24h
           TOTP_ENCRYPTION_KEY: abababababababababababababababababababababababababababababababab
+          BANK_ACCOUNT_ENCRYPTION_KEY: abababababababababababababababababababababababababababababababab
           S3_BUCKET_NAME: test-bucket
           S3_REGION: ap-south-1
           S3_ACCESS_KEY: test-access-key
