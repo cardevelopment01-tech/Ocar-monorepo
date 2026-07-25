@@ -47,6 +47,8 @@ afterAll(async () => {
   await pool.query(`DELETE FROM driver_verifications WHERE driver_id IN (SELECT id FROM drivers WHERE phone = $1)`, [PHONE])
   await pool.query(`DELETE FROM driver_location_snapshots WHERE driver_id IN (SELECT id FROM drivers WHERE phone = $1)`, [PHONE])
   await pool.query(`DELETE FROM driver_sessions WHERE driver_id IN (SELECT id FROM drivers WHERE phone = $1)`, [PHONE])
+  await pool.query(`DELETE FROM driver_wallet_ledger WHERE driver_id IN (SELECT id FROM drivers WHERE phone = $1)`, [PHONE])
+  await pool.query(`DELETE FROM driver_wallets WHERE driver_id IN (SELECT id FROM drivers WHERE phone = $1)`, [PHONE])
   await pool.query(`DELETE FROM drivers WHERE phone = $1`, [PHONE])
   await redis.del(`otp_rate:${PHONE}:login`)
   await redis.del(`otp:driver:${PHONE}:login`)
@@ -73,6 +75,15 @@ describe('Driver daily verification', () => {
       `INSERT INTO driver_vehicles (driver_id, category_id, brand_id, model_id, number_plate, status, is_primary)
        VALUES ($1, $2, $3, $4, 'OD02XX9999', 'active', true)`,
       [driverId, categoryId, brandId, modelId]
+    )
+
+    // TC-DV-004 calls goOnline(), which since the minimum-wallet-balance
+    // gate (driver_minimum_balance, default 500) requires balance >= that
+    // threshold — fund well above it so this flow isn't coupled to the
+    // configured minimum's exact value.
+    await pool.query(
+      `INSERT INTO driver_wallets (driver_id, balance) VALUES ($1, 10000)`,
+      [driverId]
     )
 
     const res = await request(app)
