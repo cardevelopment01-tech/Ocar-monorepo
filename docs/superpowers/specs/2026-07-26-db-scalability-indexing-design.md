@@ -77,9 +77,9 @@ copy that pattern.
 
 ## Tier 2 — Maintainability
 
-### 2.1 CHECK constraints on unguarded money columns
+### 2.1 CHECK constraints on unguarded money columns — ✅ DONE
 
-Every ledger/wallet table already has `CHECK (amount > 0)`/`CHECK (balance >= 0)` — but several financial tables don't:
+Every ledger/wallet table already has `CHECK (amount > 0)`/`CHECK (balance >= 0)` — but several financial tables didn't:
 
 ```sql
 ALTER TABLE payments ADD CONSTRAINT payments_amount_nonneg CHECK (amount >= 0);
@@ -99,7 +99,7 @@ ALTER TABLE tax_deductions ADD CONSTRAINT tax_deductions_amounts_nonneg
   CHECK (taxable_base >= 0 AND tds_amount >= 0);
 ```
 
-Before applying: check existing rows don't already violate these (dev DB is at ~8500 rows max, should be safe, but verify with a `SELECT count(*) WHERE amount < 0` per column first — a migration that fails on `ALTER TABLE ... ADD CONSTRAINT` because of pre-existing bad data is worse than not adding it).
+Applied as `059_money_column_checks.sql`. Verified against the live Neon dev DB before writing it (zero rows violate any of these constraints), then ran `pnpm migrate` against Neon to confirm all of 055-059 apply cleanly — they do.
 
 **Not adding a CHECK on `driver_earnings.amount`** — it's intentionally signed (+/-) for both earnings and deductions, a non-negative check would be wrong.
 
@@ -110,19 +110,21 @@ Before applying: check existing rows don't already violate these (dev DB is at ~
 
 ---
 
-## Migration plan (once approved for execution)
-
-Suggested file split, in this order (each independently safe to run, use `CREATE INDEX CONCURRENTLY` outside a transaction block per Postgres requirement — `migrate.ts` must not wrap these in the default transaction if it does one per file):
+## Migration plan — ✅ ALL APPLIED (2026-07-26)
 
 ```
-055_docs_rejected.sql                  — renumber (Tier 0.1)
-056_rides_fk_indexes.sql               — Tier 1.1
-057_financial_join_indexes.sql         — Tier 1.2
-058_admin_search_trgm.sql              — Tier 1.3 (+ pg_trgm extension)
-059_money_column_checks.sql            — Tier 2.1
+055_docs_rejected.sql                  — renumber (Tier 0.1)                     ran
+056_rides_fk_indexes.sql               — Tier 1.1                               ran
+057_financial_join_indexes.sql         — Tier 1.2                               ran
+058_admin_search_trgm.sql              — Tier 1.3 (+ pg_trgm extension)         ran
+059_money_column_checks.sql            — Tier 2.1                               ran
 ```
 
-Tier 1.4 (partition job) is not a migration — it's a scheduled job to add under `api/src/jobs/`.
+All 5 use plain `CREATE INDEX`/`ALTER TABLE` (not `CONCURRENTLY`), matching this codebase's one-transaction-per-migration-file convention in `migrate.ts` — fine at current row counts. Verified by running `pnpm migrate` against the live Neon dev DB: all applied without error.
+
+Tier 1.4 (gps_tracks partition job) turned out to already be implemented (`api/src/jobs/processors/partition-creator.processor.ts` + `partition-maintenance.worker.ts`, scheduled in `server.ts`) — no new code needed.
+
+Remaining open items (not resolved by this pass, by design): Tier 0.3 (drop dead `rating_count` column — user decision was to leave it for now) and Tier 2.2 (duplicate `cities` boundary columns, duplicate notification enum families — flagged for a product decision, not touched).
 
 ---
 
