@@ -29,7 +29,7 @@ function OriginGlyph() {
 function DestinationGlyph({ set }: { set: boolean }) {
   return <span className="w-3 h-3 flex-shrink-0" style={{ background: set ? '#4F46E5' : '#CBD5E1', borderRadius: 3 }} />
 }
-function StopGlyph({ n, state }: { n: number; state: StopState }) {
+function StopGlyph({ n, state, current = false }: { n: number; state: StopState; current?: boolean }) {
   if (state === 'reached') {
     return (
       <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#10B981' }}>
@@ -47,7 +47,11 @@ function StopGlyph({ n, state }: { n: number; state: StopState }) {
   return (
     <span
       className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
-      style={{ background: '#EDE9FE', color: '#7C3AED' }}
+      style={{
+        background: '#EDE9FE',
+        color: '#7C3AED',
+        ...(current ? { boxShadow: '0 0 0 3px rgba(124,58,237,0.25)' } : {}),
+      }}
     >
       {n}
     </span>
@@ -55,23 +59,32 @@ function StopGlyph({ n, state }: { n: number; state: StopState }) {
 }
 
 // A row's left rail: the threaded line (halves hidden at the ends) + the glyph.
-function Rail({ isFirst, isLast, children }: { isFirst: boolean; isLast: boolean; children: React.ReactNode }) {
+// Segment colors carry live progress — green where the leg is already traversed.
+function Rail({
+  isFirst, isLast, aboveColor = '#C7D2FE', belowColor = '#C7D2FE', children,
+}: {
+  isFirst: boolean; isLast: boolean; aboveColor?: string; belowColor?: string; children: React.ReactNode
+}) {
   return (
     <span className="relative w-6 flex-shrink-0 flex items-center justify-center self-stretch">
-      {!isFirst && <span className="absolute top-0 h-1/2 w-0.5" style={{ background: '#C7D2FE' }} />}
-      {!isLast &&  <span className="absolute bottom-0 h-1/2 w-0.5" style={{ background: '#C7D2FE' }} />}
+      {!isFirst && <span className="absolute top-0 h-1/2 w-0.5" style={{ background: aboveColor }} />}
+      {!isLast &&  <span className="absolute bottom-0 h-1/2 w-0.5" style={{ background: belowColor }} />}
       <span className="relative z-10 flex items-center justify-center">{children}</span>
     </span>
   )
 }
 
-export default function RouteTimeline({ nodes, className }: { nodes: TimelineNode[]; className?: string }) {
+export default function RouteTimeline({ nodes, className, live = false }: { nodes: TimelineNode[]; className?: string; live?: boolean }) {
   // Reduced motion: swap the height/scale row transitions for a plain crossfade.
   const reduce = useReducedMotion()
 
   // Auto-number stops by their order among stop-kind nodes.
   let stopCounter = 0
   const numbered = nodes.map(node => (node.kind === 'stop' ? { node, n: ++stopCounter } : { node, n: 0 }))
+  // Live mode: the first still-pending stop is the leg the rider is on.
+  const currentIdx = live
+    ? numbered.findIndex(({ node }) => node.kind === 'stop' && (node.state ?? 'pending') === 'pending')
+    : -1
 
   return (
     <div
@@ -111,10 +124,15 @@ export default function RouteTimeline({ nodes, className }: { nodes: TimelineNod
             )
           }
 
+          const prevNode = numbered[i - 1]?.node
+          const aboveColor = (live && prevNode?.kind === 'stop' && prevNode.state === 'reached') ? '#10B981' : '#C7D2FE'
+          const belowColor = (live && node.kind === 'stop' && node.state === 'reached') ? '#10B981' : '#C7D2FE'
+          const isCurrent = live && i === currentIdx
+
           const glyph =
             node.kind === 'origin'      ? <OriginGlyph /> :
             node.kind === 'destination' ? <DestinationGlyph set={!!node.address} /> :
-            <StopGlyph n={n} state={node.state ?? 'pending'} />
+            <StopGlyph n={n} state={node.state ?? 'pending'} current={isCurrent} />
 
           const overline =
             node.kind === 'origin'      ? (node.label ?? 'From') :
@@ -123,8 +141,8 @@ export default function RouteTimeline({ nodes, className }: { nodes: TimelineNod
 
           const skipped = node.kind === 'stop' && node.state === 'skipped'
           const body = (
-            <span className="flex items-center gap-3 px-4 py-3.5">
-              <Rail isFirst={isFirst} isLast={isLast}>{glyph}</Rail>
+            <span className="flex items-center gap-3 px-4 py-3.5" style={{ background: isCurrent ? '#EEF2FF' : undefined }}>
+              <Rail isFirst={isFirst} isLast={isLast} aboveColor={aboveColor} belowColor={belowColor}>{glyph}</Rail>
               <span className="flex-1 min-w-0">
                 <span className={`block ${OVERLINE}`} style={{ color: '#94A3B8' }}>{overline}</span>
                 {node.kind === 'destination' && !node.address ? (

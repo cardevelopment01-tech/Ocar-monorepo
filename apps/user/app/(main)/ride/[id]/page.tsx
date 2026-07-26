@@ -835,14 +835,30 @@ export default function RidePage() {
 
                       {/* Stop itinerary — mirrors driver state via the stop:updated socket event */}
                       {ride && ride.stops.length > 0 && (
-                        <RouteTimeline
-                          nodes={ride.stops.map((stop, i) => ({
-                            kind: 'stop' as const,
-                            key: stop.id,
-                            address: stop.address ?? `Stop ${i + 1}`,
-                            state: stop.status,
-                          }))}
-                        />
+                        <div className="space-y-2">
+                          {rideStatus === 'in_progress' && (() => {
+                            const pendingIdx = ride.stops.findIndex(s => s.status === 'pending')
+                            if (pendingIdx === -1) return null
+                            const cur = ride.stops[pendingIdx]!
+                            return (
+                              <div className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}>
+                                <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#4F46E5', color: '#fff' }}>
+                                  Stop {pendingIdx + 1} of {ride.stops.length}
+                                </span>
+                                <span className="text-[13px] font-semibold truncate" style={{ color: '#0F172A' }}>{cur.address ?? `Stop ${pendingIdx + 1}`}</span>
+                              </div>
+                            )
+                          })()}
+                          <RouteTimeline
+                            live={rideStatus === 'in_progress'}
+                            nodes={ride.stops.map((stop, i) => ({
+                              kind: 'stop' as const,
+                              key: stop.id,
+                              address: stop.address ?? `Stop ${i + 1}`,
+                              state: stop.status,
+                            }))}
+                          />
+                        </div>
                       )}
 
                       {(rideStatus === 'accepted' || rideStatus === 'driver_arrived') && (
