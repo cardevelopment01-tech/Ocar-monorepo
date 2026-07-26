@@ -66,6 +66,19 @@ function distanceMetres(lat1: number, lng1: number, lat2: number, lng2: number):
   return R * 2 * Math.asin(Math.sqrt(a))
 }
 
+const INDIAN_PHONE_RE = /^\+91[6-9]\d{9}$/
+
+function validateRider(data: BookingRequest): void {
+  if (data.riderName === undefined && data.riderPhone === undefined) return
+  const name = data.riderName?.trim()
+  if (!name || name.length > 50) {
+    throw Object.assign(new Error('Rider name is required and must be under 50 characters'), { httpStatus: 422 })
+  }
+  if (!data.riderPhone || !INDIAN_PHONE_RE.test(data.riderPhone)) {
+    throw Object.assign(new Error('Rider phone must be a valid Indian mobile number (+91XXXXXXXXXX)'), { httpStatus: 422 })
+  }
+}
+
 function validateStops(data: BookingRequest): void {
   if (!data.stops || data.stops.length === 0) return
   if (data.rideType !== 'round_trip' && data.rideType !== 'rental') {
@@ -357,6 +370,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     }
   }
 
+  validateRider(data)
   validateStops(data)
   // Derived server-side so the persisted count and ride_stops rows can never
   // diverge — client-supplied stopCount is accepted-but-ignored (see BookingRequest).
@@ -399,6 +413,8 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   const storedTripHours = fareEstimate.rental_hours ?? (effectiveTripHours > 0 ? effectiveTripHours : undefined)
   if (storedTripHours !== undefined) rideInput.tripHours = storedTripHours
   if (data.returnAt           !== undefined) rideInput.returnAt           = data.returnAt
+  if (data.riderName          !== undefined) rideInput.riderName          = data.riderName.trim()
+  if (data.riderPhone         !== undefined) rideInput.riderPhone         = data.riderPhone
   rideInput.paymentChannel = data.paymentChannel ?? 'cash'
   if (scheduledForDate && data.scheduledFor !== undefined) {
     rideInput.scheduledFor = data.scheduledFor

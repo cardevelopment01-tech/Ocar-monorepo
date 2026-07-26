@@ -34,6 +34,8 @@ export type RideDetail = {
   user_name: string | null
   user_phone: string | null
   user_rating: string | null
+  rider_name: string | null
+  rider_phone: string | null
   total_estimated: string | null
   return_at: string | null
   trip_hours: number | null

@@ -8,6 +8,7 @@ import OcarSpinner from '@/components/ui/OcarSpinner'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { isAxiosError } from 'axios'
 import { rideApi, type FareEstimate, type StopInput } from '@/lib/ride-api'
 import { getPaymentChannel } from '@/lib/payment-channel'
 import { geoApi } from '@/lib/geo-api'
@@ -54,6 +55,8 @@ function SelectRideContent() {
   const durationMin        = parseFloat(sp.get('durationMin') ?? '20')
   const originCityId       = parseInt(sp.get('originCityId') ?? '1', 10)
   const encodedPolyline    = sp.get('polyline') ?? undefined
+  const riderName          = sp.get('riderName') ?? undefined
+  const riderPhone         = sp.get('riderPhone') ?? undefined
 
   // When arriving from /round-trip, tripHours is in the URL and rideType is round_trip
   const tripHoursFromUrl   = sp.get('tripHours') ? parseInt(sp.get('tripHours')!) : undefined
@@ -118,6 +121,8 @@ function SelectRideContent() {
           originCityId: String(originCityId),
         })
         if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+        if (riderName)  params.set('riderName', riderName)
+        if (riderPhone) params.set('riderPhone', riderPhone)
         setTimeout(() => { if (!cancelled) router.replace(`/rental?${params.toString()}`) }, 1500)
       })
       .catch(() => {})
@@ -227,10 +232,14 @@ function SelectRideContent() {
       if (isReturnCab)             bookingParams.isReturnCab   = true
       if (scheduledFor)            bookingParams.scheduledFor  = scheduledFor.toISOString()
       if (rideType === 'round_trip' && stops.length > 0) bookingParams.stops = stops
+      if (riderName)  bookingParams.riderName  = riderName
+      if (riderPhone) bookingParams.riderPhone = riderPhone
       const result = await rideApi.createBooking(bookingParams)
       router.push(scheduledFor ? '/history?scheduled=1' : `/ride/${result.rideId}`)
-    } catch {
-      setBookError('Booking failed. Please try again.')
+    } catch (err) {
+      const status = isAxiosError(err) ? err.response?.status : undefined
+      const serverMessage = isAxiosError(err) ? (err.response?.data as { error?: string } | undefined)?.error : undefined
+      setBookError(status === 422 && serverMessage ? serverMessage : 'Booking failed. Please try again.')
     } finally {
       setIsBooking(false)
     }
@@ -253,6 +262,8 @@ function SelectRideContent() {
     })
     if (rideType === 'round_trip' && tripHours) params.set('tripHours', String(tripHours))
     if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+    if (riderName)  params.set('riderName', riderName)
+    if (riderPhone) params.set('riderPhone', riderPhone)
     stops.forEach((s, i) => {
       params.set(`stops[${i}][address]`, s.address)
       params.set(`stops[${i}][lat]`, String(s.lat))

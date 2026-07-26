@@ -47,6 +47,8 @@ function RoundTripContent() {
   const distanceKm  = sp.get('distanceKm')  ? parseFloat(sp.get('distanceKm')!)  : null
   const durationMin = sp.get('durationMin') ? parseFloat(sp.get('durationMin')!)  : null
   const polyline    = sp.get('polyline') ?? undefined
+  const riderName   = sp.get('riderName') ?? undefined
+  const riderPhone  = sp.get('riderPhone') ?? undefined
 
   const hasDestination = destLat !== null && destLng !== null && destAddress !== null
   const stops = parseStops(sp)
@@ -82,6 +84,8 @@ function RoundTripContent() {
     if (durationMin !== null) params.set('durationMin', String(durationMin))
     if (polyline) params.set('polyline', polyline)
     if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+    if (riderName)  params.set('riderName', riderName)
+    if (riderPhone) params.set('riderPhone', riderPhone)
     ;(stopsOverride ?? stops).forEach((s, i) => {
       params.set(`stops[${i}][address]`, s.address)
       params.set(`stops[${i}][lat]`, String(s.lat))
@@ -126,6 +130,8 @@ function RoundTripContent() {
     })
     if (polyline) params.set('polyline', polyline)
     if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+    if (riderName)  params.set('riderName', riderName)
+    if (riderPhone) params.set('riderPhone', riderPhone)
     stops.forEach((s, i) => {
       params.set(`stops[${i}][address]`, s.address)
       params.set(`stops[${i}][lat]`, String(s.lat))

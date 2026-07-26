@@ -106,8 +106,9 @@ export default function App() {
         }
         if (ride.dest_lat    != null) activeRideInput.dropLat       = ride.dest_lat
         if (ride.dest_lng    != null) activeRideInput.dropLng       = ride.dest_lng
-        if (ride.user_phone  != null) activeRideInput.userPhone     = ride.user_phone
-        if (ride.user_name   != null) activeRideInput.userName      = ride.user_name
+        // Booked-for-someone-else rides route the driver to the actual rider, not the account holder
+        if (ride.rider_phone ?? ride.user_phone) activeRideInput.userPhone = (ride.rider_phone ?? ride.user_phone)!
+        if (ride.rider_name  ?? ride.user_name)  activeRideInput.userName  = (ride.rider_name  ?? ride.user_name)!
         if (ride.user_rating != null) activeRideInput.userRating    = parseFloat(ride.user_rating)
         if (ride.return_at   != null) activeRideInput.returnAt      = ride.return_at
         if (ride.trip_hours  != null) activeRideInput.tripHours     = ride.trip_hours
@@ -306,8 +307,8 @@ export default function App() {
       }
       if (ride.dest_lat   != null) activeRideInput.dropLat   = ride.dest_lat
       if (ride.dest_lng   != null) activeRideInput.dropLng   = ride.dest_lng
-      if (ride.user_phone != null) activeRideInput.userPhone = ride.user_phone
-      if (ride.user_name  != null) activeRideInput.userName  = ride.user_name
+      if (ride.rider_phone ?? ride.user_phone) activeRideInput.userPhone = (ride.rider_phone ?? ride.user_phone)!
+      if (ride.rider_name  ?? ride.user_name)  activeRideInput.userName  = (ride.rider_name  ?? ride.user_name)!
       if (ride.user_rating != null) activeRideInput.userRating = parseFloat(ride.user_rating)
       if (ride.return_at  != null) activeRideInput.returnAt  = ride.return_at
       if (ride.trip_hours != null) activeRideInput.tripHours = ride.trip_hours
