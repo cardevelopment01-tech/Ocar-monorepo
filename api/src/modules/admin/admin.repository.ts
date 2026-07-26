@@ -1,4 +1,5 @@
 import { pool } from '@/db/client'
+import type { PoolClient, QueryResult, QueryResultRow } from 'pg'
 import { recordAuditLog } from '@/lib/audit-log'
 import type {
   AdminDriverListRow, AdminDriverDetail, DriverStatus,
@@ -1155,20 +1156,42 @@ export async function createAdminRateCard(data: {
 
 // ─── Dashboard stats ──────────────────────────────────────────────────────────
 
-export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
-  const IST_TODAY = `(NOW() AT TIME ZONE 'Asia/Kolkata')::date`
+// Runs a query with a per-query statement_timeout (SET LOCAL inside the
+// caller's transaction — reverts on COMMIT, never leaks onto other pool
+// users). Smaller ceiling than analytics since this is polled frequently.
+async function dashboardQuery<T extends QueryResultRow>(
+  client: PoolClient, text: string, params: unknown[] = [], timeoutMs = 30_000
+): Promise<QueryResult<T>> {
+  await client.query(`SET LOCAL statement_timeout = ${Number(timeoutMs)}`) // Number()-coerced — never user input
+  return client.query<T>(text, params)
+}
 
-  const [statsRes, chartRes] = await Promise.all([
-    pool.query(`
+export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
+  // IST is UTC+5:30, no DST. Compute today's [start, end) once in JS as UTC
+  // timestamptz bounds so the predicates below stay sargable (half-open
+  // range on the raw column, no function wrapping it — see getDriverEarningsSummary).
+  const nowIst = new Date(Date.now() + 5.5 * 3600_000)
+  const istMidnightUtc = new Date(Date.UTC(
+    nowIst.getUTCFullYear(), nowIst.getUTCMonth(), nowIst.getUTCDate()
+  ) - 5.5 * 3600_000)
+  const dayStart = istMidnightUtc.toISOString()
+  const dayEnd = new Date(istMidnightUtc.getTime() + 86_400_000).toISOString()
+
+  const client = await pool.connect()
+  let statsRes: QueryResult, chartRes: QueryResult
+  try {
+    await client.query('BEGIN')
+    ;[statsRes, chartRes] = await Promise.all([
+      dashboardQuery(client, `
       SELECT
         (SELECT COUNT(*) FROM rides
-         WHERE (requested_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
+         WHERE requested_at >= $1 AND requested_at < $2
         )::int                                                              AS total_rides_today,
         (SELECT COUNT(*) FROM driver_sessions
          WHERE status IN ('online', 'on_trip')
         )::int                                                              AS active_drivers_online,
         (SELECT COALESCE(SUM(amount), 0) FROM payments
-         WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
+         WHERE created_at >= $1 AND created_at < $2
            AND status = 'completed'
         )::numeric                                                          AS revenue_today,
         (SELECT COUNT(*) FROM disputes
@@ -1176,20 +1199,20 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
         )::int                                                              AS open_disputes,
         (SELECT COUNT(*) FROM rides
          WHERE status = 'completed'
-           AND (requested_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
+           AND requested_at >= $1 AND requested_at < $2
         )::int                                                              AS completed_rides,
         (SELECT COUNT(*) FROM rides
          WHERE status = 'cancelled'
-           AND (requested_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
+           AND requested_at >= $1 AND requested_at < $2
         )::int                                                              AS cancelled_rides,
         (SELECT COUNT(*) FROM drivers
-         WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date = ${IST_TODAY}
+         WHERE created_at >= $1 AND created_at < $2
         )::int                                                              AS new_driver_signups,
         (SELECT COUNT(*) FROM rides
          WHERE status IN ('accepted', 'driver_arrived', 'in_progress')
         )::int                                                              AS active_trips
-    `),
-    pool.query(`
+      `, [dayStart, dayEnd]),
+      dashboardQuery(client, `
       SELECT
         (11 - FLOOR(EXTRACT(EPOCH FROM (NOW() - requested_at)) / 3600)::int) AS bucket,
         COUNT(*)::int AS count
@@ -1197,8 +1220,15 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
       WHERE requested_at >= NOW() - INTERVAL '12 hours'
       GROUP BY bucket
       ORDER BY bucket
-    `),
-  ])
+      `),
+    ])
+    await client.query('COMMIT')
+  } catch (e) {
+    await client.query('ROLLBACK')
+    throw e
+  } finally {
+    client.release()
+  }
 
   const s = statsRes.rows[0]
   const chart = Array(12).fill(0) as number[]

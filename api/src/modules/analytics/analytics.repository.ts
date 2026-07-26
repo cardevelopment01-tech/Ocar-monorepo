@@ -1,11 +1,33 @@
 import { pool } from '@/db/client'
+import type { QueryResultRow } from 'pg'
 import type {
   DailyRevenue, RideFunnel, TopDriver,
   CityBreakdown, CategoryBreakdown, EtaAccuracy,
 } from './analytics.types'
 
+// Analytics are heavy GROUP-BY scans that legitimately exceed the 10s OLTP
+// statement_timeout at scale. Raise it per-query via SET LOCAL — transaction-
+// scoped, reverts on COMMIT, never leaks onto wallet/ride queries sharing the pool.
+async function analyticsQuery<T extends QueryResultRow>(
+  text: string, params: unknown[], timeoutMs = 60_000
+): Promise<T[]> {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query(`SET LOCAL statement_timeout = ${Number(timeoutMs)}`) // Number()-coerced — never user input, no injection surface
+    const res = await client.query<T>(text, params)
+    await client.query('COMMIT')
+    return res.rows
+  } catch (e) {
+    await client.query('ROLLBACK')
+    throw e
+  } finally {
+    client.release()
+  }
+}
+
 export async function getDailyRevenue(days: number): Promise<DailyRevenue[]> {
-  const res = await pool.query<{ day: Date; revenue: string; ride_count: string }>(
+  const rows = await analyticsQuery<{ day: Date; revenue: string; ride_count: string }>(
     `SELECT
        (r.requested_at AT TIME ZONE 'Asia/Kolkata')::date AS day,
        COALESCE(SUM(p.amount), 0)                         AS revenue,
@@ -18,7 +40,7 @@ export async function getDailyRevenue(days: number): Promise<DailyRevenue[]> {
      ORDER BY day`,
     [days]
   )
-  return res.rows.map(r => ({
+  return rows.map(r => ({
     day:        r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day),
     revenue:    parseFloat(r.revenue),
     ride_count: parseInt(r.ride_count, 10),
@@ -26,7 +48,7 @@ export async function getDailyRevenue(days: number): Promise<DailyRevenue[]> {
 }
 
 export async function getRideFunnel(days: number): Promise<RideFunnel> {
-  const res = await pool.query<{
+  const rows = await analyticsQuery<{
     requested: string; accepted: string; completed: string; cancelled: string
   }>(
     `SELECT
@@ -38,7 +60,7 @@ export async function getRideFunnel(days: number): Promise<RideFunnel> {
      WHERE requested_at >= NOW() - ($1 || ' days')::INTERVAL`,
     [days]
   )
-  const r = res.rows[0]
+  const r = rows[0]
   if (!r) return { requested: 0, accepted: 0, completed: 0, cancelled: 0 }
   return {
     requested: parseInt(r.requested, 10),
@@ -49,7 +71,7 @@ export async function getRideFunnel(days: number): Promise<RideFunnel> {
 }
 
 export async function getTopDrivers(days: number): Promise<TopDriver[]> {
-  const res = await pool.query(
+  const rows = await analyticsQuery<QueryResultRow>(
     `SELECT
        d.id::text          AS driver_id,
        d.full_name         AS driver_name,
@@ -66,7 +88,7 @@ export async function getTopDrivers(days: number): Promise<TopDriver[]> {
      LIMIT 10`,
     [days]
   )
-  return res.rows.map(r => ({
+  return rows.map(r => ({
     driver_id:      r.driver_id as string,
     driver_name:    r.driver_name as string | null,
     driver_code:    r.driver_code as string,
@@ -77,7 +99,7 @@ export async function getTopDrivers(days: number): Promise<TopDriver[]> {
 }
 
 export async function getCityBreakdown(days: number): Promise<CityBreakdown[]> {
-  const res = await pool.query(
+  const rows = await analyticsQuery<QueryResultRow>(
     `SELECT
        c.name             AS city_name,
        COUNT(r.id)        AS ride_count,
@@ -90,7 +112,7 @@ export async function getCityBreakdown(days: number): Promise<CityBreakdown[]> {
      ORDER BY ride_count DESC`,
     [days]
   )
-  return res.rows.map(r => ({
+  return rows.map(r => ({
     city_name:  r.city_name as string,
     ride_count: parseInt(r.ride_count as string, 10),
     revenue:    parseFloat(r.revenue as string),
@@ -98,7 +120,7 @@ export async function getCityBreakdown(days: number): Promise<CityBreakdown[]> {
 }
 
 export async function getCategoryBreakdown(days: number): Promise<CategoryBreakdown[]> {
-  const res = await pool.query(
+  const rows = await analyticsQuery<QueryResultRow>(
     `SELECT
        vc.display_name    AS category_name,
        COUNT(r.id)        AS ride_count,
@@ -111,7 +133,7 @@ export async function getCategoryBreakdown(days: number): Promise<CategoryBreakd
      ORDER BY ride_count DESC`,
     [days]
   )
-  return res.rows.map(r => ({
+  return rows.map(r => ({
     category_name: r.category_name as string,
     ride_count:    parseInt(r.ride_count as string, 10),
     revenue:       parseFloat(r.revenue as string),
@@ -122,7 +144,7 @@ export async function getCategoryBreakdown(days: number): Promise<CategoryBreakd
 // docs/PRODUCTION_NAVIGATION_SYSTEM_PLAN.md Phase 4. Actuals are derived from
 // rides' existing transition timestamps, not stored redundantly.
 export async function getEtaAccuracy(days: number): Promise<EtaAccuracy[]> {
-  const res = await pool.query(
+  const rows = await analyticsQuery<QueryResultRow>(
     `SELECT
        oc.name AS origin_city,
        dc.name AS destination_city,
@@ -146,7 +168,7 @@ export async function getEtaAccuracy(days: number): Promise<EtaAccuracy[]> {
      ORDER BY oc.name, dc.name, s.leg`,
     [days]
   )
-  return res.rows.map(r => ({
+  return rows.map(r => ({
     origin_city:      r.origin_city as string | null,
     destination_city: r.destination_city as string | null,
     leg:              r.leg as 'to_pickup' | 'to_destination',
