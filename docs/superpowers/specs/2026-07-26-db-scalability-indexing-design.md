@@ -23,7 +23,7 @@ Findings below are cross-referenced against both: an "unindexed FK" only makes T
 
 Cheap, zero risk, do first. These are things that look bad on a `git grep` or `\d` during the client's DB-access call, not performance issues.
 
-1. ✅ **DONE.** `017` migration numbering collision — renamed `017_docs_rejected.sql` → `055_docs_rejected.sql` (verified `migrate.ts` tracks by filename via `schema_migrations.filename`, and both `017` files use `IF NOT EXISTS`/`ADD VALUE IF NOT EXISTS`, so re-running the renamed file on an environment that already applied it under the old name is a safe no-op).
+1. ✅ **DONE.** `017` migration numbering collision — renamed `017_docs_rejected.sql` → `056_docs_rejected.sql` (verified `migrate.ts` tracks by filename via `schema_migrations.filename`, and both `017` files use `IF NOT EXISTS`/`ADD VALUE IF NOT EXISTS`, so re-running the renamed file on an environment that already applied it under the old name is a safe no-op). Originally landed as `055_docs_rejected.sql`, then bumped to `056` after rebasing onto a remote commit that had independently claimed `055` for `055_merge_khorda_bbsr_ctc_boundary.sql` — same lesson this whole item was about, avoided a second collision by rebasing before pushing.
 
 2. ✅ **DONE.** 25 unreferenced one-line stub files deleted (`config/bullmq.ts`, `config/razorpay.ts`, 3 job processors, `analytics.worker.ts`, `lib/spatial.ts`, 3 notification providers, `notifications/template.service.ts`, `payments.controller.ts`/`.types.ts`, `razorpay.service.ts`, `wallet.service.ts`, `rides.controller.ts`/`.validator.ts`, `broadcast.service.ts`/`.types.ts`, `gps.service.ts`, `otp.service.ts`, `types/api.types.ts`/`db.types.ts`, 3 websocket handlers, `ride.rooms.ts`). Each confirmed zero-reference by grep across `api/src`, `apps/*`, `api/tests`; `tsc --noEmit` clean and test pass/fail counts unchanged before/after (26 pre-existing failures are a missing-env-var issue in the test config loader, unrelated to this cleanup).
    - `payments.repository.ts` — also a 1-line stub, also confirmed zero-reference by two independent greps, but **kept on explicit user decision** (not deleted).
@@ -38,7 +38,7 @@ Cheap, zero risk, do first. These are things that look bad on a `git grep` or `\
 
 `rides` is the highest-traffic entity table (every ride lifecycle transition is a write against it) yet 6 of its FK columns have no index.
 
-✅ **DONE** — `056_rides_fk_indexes.sql`. Uses plain `CREATE INDEX` (not `CONCURRENTLY`): `migrate.ts` wraps each migration file in one `BEGIN`/`COMMIT` transaction, and `CONCURRENTLY` cannot run inside a transaction block — matches the existing convention in this codebase's migrations. Fine at current row counts (~8500 max); re-run with `CONCURRENTLY` by hand outside `migrate.ts` if ever applying to a live, loaded production table.
+✅ **DONE** — `057_rides_fk_indexes.sql`. Uses plain `CREATE INDEX` (not `CONCURRENTLY`): `migrate.ts` wraps each migration file in one `BEGIN`/`COMMIT` transaction, and `CONCURRENTLY` cannot run inside a transaction block — matches the existing convention in this codebase's migrations. Fine at current row counts (~8500 max); re-run with `CONCURRENTLY` by hand outside `migrate.ts` if ever applying to a live, loaded production table.
 
 `category_id` is the most surprising gap — it's used in matching/analytics joins.
 
@@ -46,13 +46,13 @@ Cheap, zero risk, do first. These are things that look bad on a `git grep` or `\
 
 These back "find all ledger entries for this ride/payment" queries — currently unindexed on tables that are append-only and growing on every completed ride.
 
-✅ **DONE** — `057_financial_join_indexes.sql`. Also added `tax_deductions.settlement_id` (same reconciliation-join shape as `driver_earnings.settlement_id`, which already had an index).
+✅ **DONE** — `058_financial_join_indexes.sql`. Also added `tax_deductions.settlement_id` (same reconciliation-join shape as `driver_earnings.settlement_id`, which already had an index).
 
 ### 1.3 Admin search — `pg_trgm` GIN indexes
 
 `admin.repository.ts`'s four list endpoints (`listDrivers`, `listAdminRides`, `listAdminUsers`, `listAdminPayments`) all filter with `ILIKE '%...%'` (leading wildcard) on `phone`/`full_name`/`code`/`name`/`email`. A leading-wildcard `ILIKE` cannot use a standard btree index — these will sequential-scan `drivers`/`users`/`rides`/`payments`, which are exactly the tables growing fastest. This is the single biggest full-scan risk found in the codebase.
 
-✅ **DONE** — `058_admin_search_trgm.sql` (one GIN index per searched column, rather than one combined multi-column index, so each column's trigram index is usable independently since the queries OR across columns rather than ANDing them).
+✅ **DONE** — `059_admin_search_trgm.sql` (one GIN index per searched column, rather than one combined multi-column index, so each column's trigram index is usable independently since the queries OR across columns rather than ANDing them).
 
 Also fixed: `listAdminUsers`' filter wrapped `email` in `COALESCE(u.email,'')`, which would have defeated the new trigram index (an expression index would be needed to match it). Dropped the `COALESCE` in `admin.repository.ts` — a null email simply won't match a search term either way, so behavior is unchanged, and the raw-column trigram index now applies.
 
@@ -99,7 +99,7 @@ ALTER TABLE tax_deductions ADD CONSTRAINT tax_deductions_amounts_nonneg
   CHECK (taxable_base >= 0 AND tds_amount >= 0);
 ```
 
-Applied as `059_money_column_checks.sql`. Verified against the live Neon dev DB before writing it (zero rows violate any of these constraints), then ran `pnpm migrate` against Neon to confirm all of 055-059 apply cleanly — they do.
+Applied as `060_money_column_checks.sql`. Verified against the live Neon dev DB before writing it (zero rows violate any of these constraints), then ran `pnpm migrate` against Neon to confirm all 5 apply cleanly — they do.
 
 **Not adding a CHECK on `driver_earnings.amount`** — it's intentionally signed (+/-) for both earnings and deductions, a non-negative check would be wrong.
 
@@ -113,12 +113,14 @@ Applied as `059_money_column_checks.sql`. Verified against the live Neon dev DB 
 ## Migration plan — ✅ ALL APPLIED (2026-07-26)
 
 ```
-055_docs_rejected.sql                  — renumber (Tier 0.1)                     ran
-056_rides_fk_indexes.sql               — Tier 1.1                               ran
-057_financial_join_indexes.sql         — Tier 1.2                               ran
-058_admin_search_trgm.sql              — Tier 1.3 (+ pg_trgm extension)         ran
-059_money_column_checks.sql            — Tier 2.1                               ran
+056_docs_rejected.sql                  — renumber (Tier 0.1)                     ran
+057_rides_fk_indexes.sql               — Tier 1.1                               ran
+058_financial_join_indexes.sql         — Tier 1.2                               ran
+059_admin_search_trgm.sql              — Tier 1.3 (+ pg_trgm extension)         ran
+060_money_column_checks.sql            — Tier 2.1                               ran
 ```
+
+(Originally numbered 055-059; bumped to 056-060 after rebasing onto a remote commit that had independently taken the `055` slot.)
 
 All 5 use plain `CREATE INDEX`/`ALTER TABLE` (not `CONCURRENTLY`), matching this codebase's one-transaction-per-migration-file convention in `migrate.ts` — fine at current row counts. Verified by running `pnpm migrate` against the live Neon dev DB: all applied without error.
 
