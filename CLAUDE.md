@@ -295,7 +295,7 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 - Home "recent trips" now comes from a real API; saved places, popular routes, and promo banner are still **hardcoded constants**
 - Profile "Account" menu items (Saved places, Payment methods, Safety, Help & Support) are non-functional — no navigation wired yet. **Notifications is now live** (real in-app feed, wired)
 - Payment method is display-only "Cash" — no payment selection flow yet
-- "Add new rider" (For me sheet) is `disabled`; "Add stops" shows a "coming soon" toast
+- "Add new rider" (For me sheet) is `disabled`. Multi-stop is live across **all** ride types: round-trip/rental add stops on their own pages, and one-way adds stops on `/select-ride` (routes through the waypoints for true detour distance since one-way is per-km; round-trip stays a flat per-stop fee). The `/search` "Add stops" pill just hints "set destination, add stops next".
 - Bottom nav: only **My Trip** and **Profile** are active — Messages and Help show "SOON"
 - Round-trip booking has a dedicated flow (`/round-trip` page → search → `/select-ride`); passes `rideType: 'round_trip'` and computed `tripHours` to the booking API. Rental fare differentiation is not yet wired.
 - Message driver button on ride tracking screen has no handler
