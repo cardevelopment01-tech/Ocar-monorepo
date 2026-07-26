@@ -295,7 +295,7 @@ export async function insertRideStops(
          )
          RETURNING id, ride_id, sequence,
            ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-           address, status, reached_at, stop_charge_applied`,
+           address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
         [rideId, i + 1, stop.lat, stop.lng, stop.address ?? null, stop.chargeApplied]
       )
       rows.push(res.rows[0]!)
@@ -314,7 +314,7 @@ export async function getRideStops(rideId: bigint): Promise<RideStop[]> {
   const res = await pool.query<RideStop>(
     `SELECT id, ride_id, sequence,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-       address, status, reached_at, stop_charge_applied
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge
      FROM ride_stops
      WHERE ride_id = $1
      ORDER BY sequence ASC`,
@@ -323,23 +323,73 @@ export async function getRideStops(rideId: bigint): Promise<RideStop[]> {
   return res.rows
 }
 
+// Stamp arrival at a stop so wait time can be measured server-side. Idempotent
+// (COALESCE) so a re-tap doesn't reset the clock. One-way only in practice —
+// the driver app only sends 'arrived' for one-way rides.
+export async function markStopArrived(
+  rideId: bigint,
+  sequence: number
+): Promise<RideStop | null> {
+  const res = await pool.query<RideStop>(
+    `UPDATE ride_stops
+     SET arrived_at = COALESCE(arrived_at, now()), updated_at = now()
+     WHERE ride_id = $1 AND sequence = $2 AND status = 'pending'
+     RETURNING id, ride_id, sequence,
+       ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
+    [rideId, sequence]
+  )
+  return res.rows[0] ?? null
+}
+
 export async function markStopStatus(
   rideId: bigint,
   sequence: number,
-  status: 'reached' | 'skipped'
+  status: 'reached' | 'skipped',
+  ratePerMin = 0,
+  freeMinutes = 0
 ): Promise<RideStop | null> {
+  // wait_charge is derived from server timestamps (now() - arrived_at), never
+  // from client-supplied durations. Non-one-way callers pass ratePerMin=0, and
+  // their stops never have arrived_at, so wait_charge stays 0 either way.
   const res = await pool.query<RideStop>(
     `UPDATE ride_stops
      SET status = $3::stop_status,
          reached_at = CASE WHEN $3::stop_status = 'reached' THEN now() ELSE reached_at END,
+         wait_charge = CASE
+           WHEN $3::stop_status = 'reached' AND arrived_at IS NOT NULL
+             THEN round(GREATEST(0::numeric, EXTRACT(EPOCH FROM (now() - arrived_at)) / 60.0 - $4::numeric) * $5::numeric, 2)
+           ELSE wait_charge END,
          updated_at = now()
      WHERE ride_id = $1 AND sequence = $2 AND status = 'pending'
      RETURNING id, ride_id, sequence,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-       address, status, reached_at, stop_charge_applied`,
-    [rideId, sequence, status]
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
+    [rideId, sequence, status, freeMinutes, ratePerMin]
   )
   return res.rows[0] ?? null
+}
+
+// The ride's per-minute rate from its frozen snapshot's rate card — used as the
+// wait rate for metered stop wait (the per-minute value of the driver's time).
+export async function getRideRatePerMin(rideId: bigint): Promise<number> {
+  const res = await pool.query<{ rate_per_min: string }>(
+    `SELECT rc.rate_per_min
+     FROM fare_snapshots fs JOIN rate_cards rc ON rc.id = fs.rate_card_id
+     WHERE fs.ride_id = $1`,
+    [rideId]
+  )
+  return parseFloat(res.rows[0]?.rate_per_min ?? '0')
+}
+
+// Sum of metered wait charges across a ride's stops, folded into the final fare
+// at settlement. 0 for round-trip/rental (their stops never accrue wait_charge).
+export async function getStopWaitTotal(rideId: bigint): Promise<number> {
+  const res = await pool.query<{ total: string }>(
+    `SELECT COALESCE(SUM(wait_charge), 0)::text AS total FROM ride_stops WHERE ride_id = $1`,
+    [rideId]
+  )
+  return parseFloat(res.rows[0]?.total ?? '0')
 }
 
 // Per-status staleness cutoffs so an orphaned ride (broadcast job never ran,

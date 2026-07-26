@@ -4,6 +4,7 @@ import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
 import type { DriverStatus, UpdateDriverStatusPayload } from './admin.types'
 import { forceResolveRide as resolveStuckRide } from '@/modules/rides/rides.service'
+import { getRideStops } from '@/modules/rides/rides.repository'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { recordAuditLog } from '@/lib/audit-log'
 
@@ -299,7 +300,8 @@ export async function listUpcomingScheduledRides() {
 export async function getAdminRideById(rideId: bigint) {
   const ride = await repo.getAdminRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
-  return ride
+  const stops = await getRideStops(rideId)
+  return { ...ride, stops }
 }
 
 export async function forceResolveAdminRide(

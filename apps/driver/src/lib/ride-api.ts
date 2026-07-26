@@ -17,8 +17,10 @@ export type RideStop = {
   lng: number
   address: string | null
   status: 'pending' | 'reached' | 'skipped'
+  arrived_at: string | null
   reached_at: string | null
   stop_charge_applied: string
+  wait_charge: string
 }
 
 export type RideDetail = {
@@ -158,7 +160,7 @@ export const driverRideApi = {
   markStopStatus: async (
     rideId: string,
     sequence: number,
-    status: 'reached' | 'skipped'
+    status: 'arrived' | 'reached' | 'skipped'
   ): Promise<{ success: boolean; stop: RideStop }> => {
     const res = await api.patch(`/api/v1/rides/${rideId}/stops/${sequence}`, { status })
     return res.data as { success: boolean; stop: RideStop }

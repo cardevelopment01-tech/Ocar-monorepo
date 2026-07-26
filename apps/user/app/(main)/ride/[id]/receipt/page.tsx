@@ -272,6 +272,15 @@ export default function RideReceiptPage() {
                   </div>
                 )
               })}
+              {(() => {
+                const waitTotal = (ride.stops ?? []).reduce((s, st) => s + parseFloat(st.wait_charge ?? '0'), 0)
+                return waitTotal > 0 ? (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-text-secondary">Waiting at stops</span>
+                    <span className="text-text-primary font-medium">₹{Math.round(waitTotal).toLocaleString('en-IN')}</span>
+                  </div>
+                ) : null
+              })()}
               <div className="flex items-center justify-between pt-2 mt-1 border-t border-border">
                 <span className="text-sm font-bold text-text-primary">Total</span>
                 <span className="text-base font-black text-text-primary">{total ?? '—'}</span>

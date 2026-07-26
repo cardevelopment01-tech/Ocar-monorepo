@@ -284,11 +284,14 @@ router.patch('/:id/stops/:sequence', authenticate(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const sequence = parseInt(req.params['sequence']!, 10)
-    const { status } = req.body as { status: 'reached' | 'skipped' }
-    if (isNaN(sequence) || (status !== 'reached' && status !== 'skipped')) {
-      res.status(400).json({ error: 'sequence and status (reached|skipped) required' }); return
+    const { status } = req.body as { status: 'arrived' | 'reached' | 'skipped' }
+    if (isNaN(sequence) || (status !== 'arrived' && status !== 'reached' && status !== 'skipped')) {
+      res.status(400).json({ error: 'sequence and status (arrived|reached|skipped) required' }); return
     }
-    const result = await service.markStopStatus(driverId, BigInt(req.params['id']!), sequence, status)
+    const rideId = BigInt(req.params['id']!)
+    const result = status === 'arrived'
+      ? await service.markStopArrived(driverId, rideId, sequence)
+      : await service.markStopStatus(driverId, rideId, sequence, status)
     res.json(result)
   } catch (err) { next(err) }
 })

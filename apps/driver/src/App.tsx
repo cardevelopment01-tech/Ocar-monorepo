@@ -115,7 +115,7 @@ export default function App() {
         if (ride.started_at  != null) activeRideInput.rideStartedAt = ride.started_at
         if (ride.stops.length > 0) activeRideInput.stops = ride.stops.map(s => ({
           id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
-          address: s.address, status: s.status, reached_at: s.reached_at,
+          address: s.address, status: s.status, arrived_at: s.arrived_at, reached_at: s.reached_at,
         }))
         setActiveRide(activeRideInput)
         getDriverSocket().emit('join:ride', ride.id)
@@ -314,7 +314,7 @@ export default function App() {
       if (ride.trip_hours != null) activeRideInput.tripHours = ride.trip_hours
       if (ride.stops.length > 0) activeRideInput.stops = ride.stops.map(s => ({
         id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
-        address: s.address, status: s.status, reached_at: s.reached_at,
+        address: s.address, status: s.status, arrived_at: s.arrived_at, reached_at: s.reached_at,
       }))
       setActiveRide(activeRideInput)
       getDriverSocket().emit('join:ride', rideId)

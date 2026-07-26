@@ -146,6 +146,18 @@ export interface AdminRideItem {
   cancellation_actor: string | null
 }
 
+export interface AdminRideStop {
+  id: string
+  sequence: number
+  address: string | null
+  status: 'pending' | 'reached' | 'skipped'
+  arrived_at: string | null
+  reached_at: string | null
+  wait_charge: string
+}
+
+export type AdminRideDetail = AdminRideItem & { stops: AdminRideStop[] }
+
 export interface AdminRidesResponse {
   rides: AdminRideItem[]
   pagination: { total: number; page: number; limit: number; pages: number }
@@ -172,9 +184,9 @@ export const adminRideApi = {
     const res = await api.get('/api/v1/admin/rides/upcoming')
     return (res.data as { rides: AdminUpcomingRideItem[] }).rides
   },
-  getById: async (rideId: string): Promise<AdminRideItem> => {
+  getById: async (rideId: string): Promise<AdminRideDetail> => {
     const res = await api.get(`/api/v1/admin/rides/${rideId}`)
-    return res.data as AdminRideItem
+    return res.data as AdminRideDetail
   },
   forceResolve: async (rideId: string, action: 'complete' | 'cancel', note?: string): Promise<void> => {
     await api.post(`/api/v1/admin/rides/${rideId}/force-resolve`, { action, note })

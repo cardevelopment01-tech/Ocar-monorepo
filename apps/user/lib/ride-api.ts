@@ -10,8 +10,10 @@ export type RideStop = {
   lng: number
   address: string | null
   status: 'pending' | 'reached' | 'skipped'
+  arrived_at: string | null
   reached_at: string | null
   stop_charge_applied: string
+  wait_charge: string
 }
 
 export type FareEstimate = {

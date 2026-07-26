@@ -35,7 +35,7 @@ import { notifyRidePaymentFailed } from '@/modules/notifications/notifications.s
 import { calculateFare } from '@/lib/fare'
 import { classifyTrip, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
-import { MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES } from '@/constants/limits'
+import { MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES } from '@/constants/limits'
 
 // Logs the routing engine's predicted ETA at the start of a leg (see
 // docs/PRODUCTION_NAVIGATION_SYSTEM_PLAN.md Phase 4) — instrumentation only,
@@ -708,12 +708,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
 
 // ── Ride stops ───────────────────────────────────────────────
 
-export async function markStopStatus(
-  driverId: bigint,
-  rideId: bigint,
-  sequence: number,
-  status: 'reached' | 'skipped'
-) {
+async function assertRideStopAccess(driverId: bigint, rideId: bigint) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
@@ -722,8 +717,50 @@ export async function markStopStatus(
   if (ride.status !== 'in_progress') {
     throw Object.assign(new Error('Ride not in progress'), { httpStatus: 409 })
   }
+  return ride
+}
 
-  const stop = await repo.markStopStatus(rideId, sequence, status)
+// Driver reached a stop — starts the server-side wait clock (one-way only).
+export async function markStopArrived(
+  driverId: bigint,
+  rideId: bigint,
+  sequence: number
+) {
+  await assertRideStopAccess(driverId, rideId)
+
+  const stop = await repo.markStopArrived(rideId, sequence)
+  if (!stop) {
+    throw Object.assign(new Error('Stop not found or already resolved'), { httpStatus: 409 })
+  }
+
+  socketEvents.sendStopUpdated(rideId.toString(), {
+    rideId: rideId.toString(),
+    sequence: stop.sequence,
+    status: stop.status,
+    reachedAt: stop.reached_at,
+  })
+
+  return { success: true, stop }
+}
+
+export async function markStopStatus(
+  driverId: bigint,
+  rideId: bigint,
+  sequence: number,
+  status: 'reached' | 'skipped'
+) {
+  const ride = await assertRideStopAccess(driverId, rideId)
+
+  // Only one-way meters wait (round-trip/rental absorb it in the hours package).
+  // Wait is billed at the ride's per-minute rate beyond the free window.
+  let ratePerMin = 0
+  let freeMinutes = 0
+  if (status === 'reached' && ride.ride_type === 'one_way') {
+    ratePerMin  = await repo.getRideRatePerMin(rideId)
+    freeMinutes = STOP_FREE_WAIT_MINUTES
+  }
+
+  const stop = await repo.markStopStatus(rideId, sequence, status, ratePerMin, freeMinutes)
   if (!stop) {
     throw Object.assign(new Error('Stop not found or already resolved'), { httpStatus: 409 })
   }
@@ -1174,6 +1211,29 @@ export async function verifyEndOTP(
     )
 
     finalFare = totalFinal
+  }
+
+  // One-way: fold metered stop-wait charges into the final fare. Each stop's
+  // wait_charge was computed live from server timestamps at resume time (see
+  // markStopStatus). One-way total_final always equals total_estimated before
+  // wait (early-termination recompute is round-trip-only), so we RECOMPUTE from
+  // total_estimated rather than add to total_final — that makes a replayed or
+  // concurrent settlement idempotent (never double-charges). No-op for round-
+  // trip/rental, whose stops never accrue wait_charge (wait is in the hours pkg).
+  if (ride.ride_type === 'one_way') {
+    const waitTotal = await repo.getStopWaitTotal(rideId)
+    if (waitTotal > 0) {
+      const upd = await pool.query<{ total_final: string }>(
+        `UPDATE fare_snapshots
+         SET total_final  = round(total_estimated + $2::numeric, 2),
+             status       = 'final',
+             finalised_at = now()
+         WHERE ride_id = $1
+         RETURNING total_final`,
+        [rideId, waitTotal]
+      )
+      if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
+    }
   }
 
   await pool.query(
