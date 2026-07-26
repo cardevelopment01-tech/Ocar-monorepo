@@ -992,7 +992,7 @@ export async function listAdminUsers(filters: {
     params.push(filters.status)
   }
   if (filters.search) {
-    conditions.push(`(u.name ILIKE $${p} OR u.phone ILIKE $${p} OR COALESCE(u.email,'') ILIKE $${p})`)
+    conditions.push(`(u.name ILIKE $${p} OR u.phone ILIKE $${p} OR u.email ILIKE $${p})`)
     params.push(`%${filters.search}%`)
     p++
   }

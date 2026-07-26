@@ -36,53 +36,31 @@ Cheap, zero risk, do first. These are things that look bad on a `git grep` or `\
 
 ### 1.1 Missing FK indexes on `rides` (the central hot-path table)
 
-`rides` is the highest-traffic entity table (every ride lifecycle transition is a write against it) yet 6 of its FK columns have no index:
+`rides` is the highest-traffic entity table (every ride lifecycle transition is a write against it) yet 6 of its FK columns have no index.
 
-```sql
-CREATE INDEX CONCURRENTLY idx_rides_session_id ON rides (session_id);
-CREATE INDEX CONCURRENTLY idx_rides_vehicle_id ON rides (vehicle_id);
-CREATE INDEX CONCURRENTLY idx_rides_category_id ON rides (category_id);
-CREATE INDEX CONCURRENTLY idx_rides_origin_city_id ON rides (origin_city_id);
-CREATE INDEX CONCURRENTLY idx_rides_destination_city_id ON rides (destination_city_id);
-CREATE INDEX CONCURRENTLY idx_rides_rental_package_id ON rides (rental_package_id);
-```
+✅ **DONE** — `056_rides_fk_indexes.sql`. Uses plain `CREATE INDEX` (not `CONCURRENTLY`): `migrate.ts` wraps each migration file in one `BEGIN`/`COMMIT` transaction, and `CONCURRENTLY` cannot run inside a transaction block — matches the existing convention in this codebase's migrations. Fine at current row counts (~8500 max); re-run with `CONCURRENTLY` by hand outside `migrate.ts` if ever applying to a live, loaded production table.
 
 `category_id` is the most surprising gap — it's used in matching/analytics joins.
 
 ### 1.2 Missing indexes on financial reconciliation joins
 
-These back "find all ledger entries for this ride/payment" queries — currently unindexed on tables that are append-only and growing on every completed ride:
+These back "find all ledger entries for this ride/payment" queries — currently unindexed on tables that are append-only and growing on every completed ride.
 
-```sql
-CREATE INDEX CONCURRENTLY idx_driver_wallet_ledger_driver_id ON driver_wallet_ledger (driver_id);
-CREATE INDEX CONCURRENTLY idx_driver_earnings_ride_id ON driver_earnings (ride_id);
-CREATE INDEX CONCURRENTLY idx_driver_earnings_payment_id ON driver_earnings (payment_id);
-CREATE INDEX CONCURRENTLY idx_fare_snapshots_rate_card_id ON fare_snapshots (rate_card_id);
-CREATE INDEX CONCURRENTLY idx_fare_snapshots_rental_package_id ON fare_snapshots (rental_package_id);
-CREATE INDEX CONCURRENTLY idx_fare_snapshots_surge_event_id ON fare_snapshots (surge_event_id);
-CREATE INDEX CONCURRENTLY idx_payments_user_id ON payments (user_id);
-CREATE INDEX CONCURRENTLY idx_payments_fare_snapshot_id ON payments (fare_snapshot_id);
-```
-
-Also worth a look (lower confidence, smaller tables, include only if migration budget allows): `driver_earnings.settlement_id` already indexed; `tax_deductions.settlement_id` is not — same reconciliation-join shape.
+✅ **DONE** — `057_financial_join_indexes.sql`. Also added `tax_deductions.settlement_id` (same reconciliation-join shape as `driver_earnings.settlement_id`, which already had an index).
 
 ### 1.3 Admin search — `pg_trgm` GIN indexes
 
 `admin.repository.ts`'s four list endpoints (`listDrivers`, `listAdminRides`, `listAdminUsers`, `listAdminPayments`) all filter with `ILIKE '%...%'` (leading wildcard) on `phone`/`full_name`/`code`/`name`/`email`. A leading-wildcard `ILIKE` cannot use a standard btree index — these will sequential-scan `drivers`/`users`/`rides`/`payments`, which are exactly the tables growing fastest. This is the single biggest full-scan risk found in the codebase.
 
-```sql
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE INDEX CONCURRENTLY idx_drivers_search_trgm ON drivers USING gin (phone gin_trgm_ops, full_name gin_trgm_ops, code gin_trgm_ops);
-CREATE INDEX CONCURRENTLY idx_users_search_trgm ON users USING gin (name gin_trgm_ops, phone gin_trgm_ops);
-```
+✅ **DONE** — `058_admin_search_trgm.sql` (one GIN index per searched column, rather than one combined multi-column index, so each column's trigram index is usable independently since the queries OR across columns rather than ANDing them).
 
-Note: `listAdminUsers`' filter wraps `email` in `COALESCE(u.email,'')` — a trigram index on the raw column won't be used by that expression. Either drop the `COALESCE` (email search on NULL just won't match, which is correct behavior anyway) or build the trigram index on the same expression. Prefer dropping the `COALESCE` — simpler, and searching for a null email was never a meaningful use case.
+Also fixed: `listAdminUsers`' filter wrapped `email` in `COALESCE(u.email,'')`, which would have defeated the new trigram index (an expression index would be needed to match it). Dropped the `COALESCE` in `admin.repository.ts` — a null email simply won't match a search term either way, so behavior is unchanged, and the raw-column trigram index now applies.
 
-### 1.4 `gps_tracks` partition horizon — hard failure risk, not just perf
+### 1.4 `gps_tracks` partition horizon — ✅ ALREADY FIXED
 
-`005_m3_geo.sql`'s `create_gps_partition()` helper is called for "current month + 3" (4 months) at migration time. **There is no recurring job in the migrations that calls it again.** No `DEFAULT` partition exists either. Once the pre-created window is exhausted, GPS inserts will start erroring outright — this is worse than a performance issue, it's an outage.
+`005_m3_geo.sql`'s `create_gps_partition()` helper only pre-creates 4 months of partitions at migration time, with no recurring caller — this was flagged as an outage risk (inserts fail once the window runs out).
 
-Fix: a scheduled job (pg_cron if the Postgres install has the extension — confirm on Neon, which does support `pg_cron` as of recent versions; otherwise a BullMQ repeatable job in `api/src/jobs/` calling `create_gps_partition` monthly, 2-3 months ahead of need). This is infra work, not a migration — flag as the top action item, since the current partitions run out **2026-09** per the existing memory note.
+**Re-verified 2026-07-26: this is already resolved.** `api/src/jobs/processors/partition-creator.processor.ts` calls `create_gps_partition()` for next month, run via `api/src/jobs/workers/partition-maintenance.worker.ts` on a BullMQ repeatable schedule wired in `server.ts` (`create_next_partition` + `purge_old_partitions`, both on the `PARTITION_MAINTENANCE` queue). The processor's own comment confirms it was written specifically to fix this audit finding. No action needed — the original memory note (partitions run out 2026-09) predates this fix.
 
 ### 1.5 Admin list pagination (lower priority — known ceiling, not urgent)
 
