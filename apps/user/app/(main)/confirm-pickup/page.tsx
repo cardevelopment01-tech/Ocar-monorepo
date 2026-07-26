@@ -37,6 +37,8 @@ function ConfirmPickupContent() {
   const ptOriginLat  = sp.get('originLat')     ?? ''
   const ptOriginLng  = sp.get('originLng')     ?? ''
   const ptOriginAddr = sp.get('originAddress') ?? ''
+  const ptRiderName  = sp.get('riderName')     ?? ''
+  const ptRiderPhone = sp.get('riderPhone')    ?? ''
 
   const initLat = parseFloat(sp.get('centerLat') ?? '') || DEFAULT_LAT
   const initLng = parseFloat(sp.get('centerLng') ?? '') || DEFAULT_LNG
@@ -123,6 +125,8 @@ function ConfirmPickupContent() {
         params.set('originLng',     String(centerLng))
         params.set('originAddress', address)
       }
+      if (ptRiderName)  params.set('riderName', ptRiderName)
+      if (ptRiderPhone) params.set('riderPhone', ptRiderPhone)
       router.replace(`/search?${params.toString()}`)
     } finally {
       setConfirming(false)
@@ -186,6 +190,8 @@ function ConfirmPickupContent() {
               if (ptOriginLat)  p.set('originLat',     ptOriginLat)
               if (ptOriginLng)  p.set('originLng',     ptOriginLng)
               if (ptOriginAddr) p.set('originAddress', ptOriginAddr)
+              if (ptRiderName)  p.set('riderName',     ptRiderName)
+              if (ptRiderPhone) p.set('riderPhone',    ptRiderPhone)
               const qs = p.toString()
               router.replace(qs ? `/search?${qs}` : '/search')
             }}

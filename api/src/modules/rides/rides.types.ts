@@ -62,6 +62,8 @@ export interface Ride {
   actual_distance_km: string | null
   actual_duration_min: string | null
   sos_triggered: boolean
+  rider_phone: string | null
+  rider_name: string | null
   user_phone: string | null
   user_name: string | null
   user_rating: string | null
@@ -120,4 +122,7 @@ export interface BookingRequest {
   returnAt?: string
   scheduledFor?: string
   paymentChannel?: 'cash' | 'online' | 'wallet'
+  /** Booking on behalf of someone else — omitted/undefined means "myself" */
+  riderName?: string
+  riderPhone?: string
 }

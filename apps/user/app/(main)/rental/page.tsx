@@ -8,12 +8,14 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
+import { isAxiosError } from 'axios'
 import { rideApi, type RentalPackage, type FareEstimate, type StopInput } from '@/lib/ride-api'
 import { getPaymentChannel } from '@/lib/payment-channel'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
+import BookingForSheet from '@/components/booking/BookingForSheet'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -86,6 +88,11 @@ function RentalContent() {
   })
   const [schedulePickerOpen,  setSchedulePickerOpen]  = useState(false)
 
+  const [forMeOpen,  setForMeOpen]  = useState(false)
+  const [riderName,  setRiderName]  = useState(() => sp.get('riderName') ?? '')
+  const [riderPhone, setRiderPhone] = useState(() => sp.get('riderPhone') ?? '')
+  const bookingForOther = riderName !== '' && riderPhone !== ''
+
   // Carries origin/destination/schedule/stops forward through the /search bounce
   function buildCarriedParams(stopsOverride?: StopInput[]) {
     const params = new URLSearchParams({
@@ -100,6 +107,8 @@ function RentalContent() {
       params.set('destinationAddress', destAddress!)
     }
     if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+    if (riderName)  params.set('riderName', riderName)
+    if (riderPhone) params.set('riderPhone', riderPhone)
     ;(stopsOverride ?? stops).forEach((s, i) => {
       params.set(`stops[${i}][address]`, s.address)
       params.set(`stops[${i}][lat]`, String(s.lat))
@@ -216,10 +225,14 @@ function RentalContent() {
         params.destinationLng = parseFloat(destLng)
         params.destinationAddress = destAddress!
       }
+      if (riderName)  params.riderName  = riderName
+      if (riderPhone) params.riderPhone = riderPhone
       const result = await rideApi.createBooking(params)
       router.push(scheduledFor ? '/history?scheduled=1' : `/ride/${result.rideId}`)
-    } catch {
-      setBookError('Booking failed. Please try again.')
+    } catch (err) {
+      const status = isAxiosError(err) ? err.response?.status : undefined
+      const serverMessage = isAxiosError(err) ? (err.response?.data as { error?: string } | undefined)?.error : undefined
+      setBookError(status === 422 && serverMessage ? serverMessage : 'Booking failed. Please try again.')
       setIsBooking(false)
     }
   }
@@ -233,7 +246,7 @@ function RentalContent() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-white overflow-hidden">
+    <div className="h-full flex flex-col bg-white overflow-hidden relative">
 
       {/* ── Header ─────────────────────────────────────────────── */}
       <div
@@ -254,7 +267,27 @@ function RentalContent() {
             <p className="text-[11px] text-slate-400 truncate">{originAddress}</p>
           </div>
         </div>
+        <button
+          onClick={() => setForMeOpen(true)}
+          className="flex items-center gap-1.5 h-11 pl-2.5 pr-2 rounded-full bg-slate-100 flex-shrink-0 max-w-[130px]"
+        >
+          <span className="w-5 h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
+            <Users size={11} strokeWidth={2} className="text-violet-600" />
+          </span>
+          <span className="text-xs font-semibold text-slate-800 truncate">
+            {bookingForOther ? riderName : 'For me'}
+          </span>
+        </button>
       </div>
+
+      <BookingForSheet
+        open={forMeOpen}
+        onClose={() => setForMeOpen(false)}
+        riderName={riderName}
+        riderPhone={riderPhone}
+        onCommit={(n, p) => { setRiderName(n); setRiderPhone(p); setForMeOpen(false) }}
+        onClearToMyself={() => { setRiderName(''); setRiderPhone(''); setForMeOpen(false) }}
+      />
 
       {/* ── Scrollable body ─────────────────────────────────────── */}
       <div

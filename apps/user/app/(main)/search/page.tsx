@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
+import BookingForSheet from '@/components/booking/BookingForSheet'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
 
@@ -109,6 +110,9 @@ function SearchContent() {
   const autoNavRef     = useRef(false)
 
   const [forMeOpen, setForMeOpen] = useState(false)
+  const [riderName,  setRiderName]  = useState(() => sp.get('riderName') ?? '')
+  const [riderPhone, setRiderPhone] = useState(() => sp.get('riderPhone') ?? '')
+  const bookingForOther = riderName !== '' && riderPhone !== ''
   const [stopToast, setStopToast] = useState(false)
   const [redirectToast, setRedirectToast] = useState<string | null>(null)
 
@@ -278,6 +282,7 @@ function SearchContent() {
       if (route.polyline) params.set('polyline', route.polyline)
       if (rideType)      params.set('rideType', rideType)
       if (scheduledFor)  params.set('scheduledFor', scheduledFor.toISOString())
+      if (bookingForOther) { params.set('riderName', riderName); params.set('riderPhone', riderPhone) }
 
       const isInCity  = classification?.scope === 'in_city'
       const cityLabel = classification?.cityName ?? 'the city'
@@ -411,6 +416,7 @@ function SearchContent() {
         params.set('centerLng', String(originLng))
       }
     }
+    if (bookingForOther) { params.set('riderName', riderName); params.set('riderPhone', riderPhone) }
     router.push(`/confirm-pickup?${params.toString()}`)
   }
 
@@ -439,14 +445,16 @@ function SearchContent() {
           {!isStopMode && (
             <motion.button
               onClick={() => setForMeOpen(true)}
-              className="ml-auto flex items-center gap-1.5 h-9 pl-2.5 pr-2 rounded-full bg-surface border border-border"
+              className="ml-auto flex items-center gap-1.5 h-11 pl-2.5 pr-2 rounded-full bg-surface border border-border max-w-[150px]"
               whileTap={{ scale: 0.94 }} transition={SPRING}
             >
               <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
                 <User size={11} strokeWidth={2} style={{ color: ICON_CLR }} />
               </span>
-              <span className="text-xs font-semibold text-text-primary">For me</span>
-              <ChevronDown size={13} className="text-text-muted" strokeWidth={2.2} />
+              <span className="text-xs font-semibold text-text-primary truncate">
+                {bookingForOther ? riderName : 'For me'}
+              </span>
+              <ChevronDown size={13} className="text-text-muted flex-shrink-0" strokeWidth={2.2} />
             </motion.button>
           )}
         </div>
@@ -701,86 +709,14 @@ function SearchContent() {
       </div>
 
       {/* Booking-for bottom sheet */}
-      <AnimatePresence>
-        {forMeOpen && (
-          <>
-            <motion.div
-              key="forme-backdrop"
-              className="absolute inset-0 z-40"
-              style={{ background: 'rgba(15,23,42,0.48)' }}
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => setForMeOpen(false)}
-            />
-            <motion.div
-              key="forme-sheet"
-              className="absolute bottom-0 left-0 right-0 z-50 bg-white overflow-hidden"
-              style={{
-                borderRadius: '32px 32px 0 0',
-                boxShadow: '0 -6px 32px rgba(79,70,229,0.10)',
-                paddingBottom: 'max(32px, env(safe-area-inset-bottom, 0px))',
-              }}
-              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', stiffness: 380, damping: 40 }}
-            >
-              {/* Handle */}
-              <div className="w-9 h-1 rounded-full mx-auto mt-3 mb-5" style={{ background: 'rgba(79,70,229,0.15)' }} />
-
-              {/* Title */}
-              <p
-                className="text-[18px] font-bold px-6 mb-4"
-                style={{ color: '#0F172A', letterSpacing: '-0.01em' }}
-              >
-                Who&apos;s travelling?
-              </p>
-
-              {/* Myself, selected state */}
-              <button
-                onClick={() => setForMeOpen(false)}
-                className="w-full flex items-center gap-3.5 px-6 py-3.5 text-left"
-                style={{ background: '#EEF2FF' }}
-              >
-                <span
-                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ background: '#4F46E5' }}
-                >
-                  <User size={16} color="white" strokeWidth={1.8} />
-                </span>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-[15px] font-semibold" style={{ color: '#0F172A' }}>Myself</span>
-                  <span className="block text-[12px] font-medium mt-0.5" style={{ color: '#6366F1' }}>My own trip</span>
-                </span>
-                <span
-                  className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0"
-                  style={{ borderColor: '#4F46E5' }}
-                >
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: '#4F46E5' }} />
-                </span>
-              </button>
-
-              {/* Privacy note */}
-              <p className="text-[11px] font-medium px-6 pt-3 pb-5" style={{ color: '#94A3B8' }}>
-                Your contact details are never shared with the driver.
-              </p>
-
-              {/* CTA */}
-              <div className="px-6">
-                <button
-                  onClick={() => setForMeOpen(false)}
-                  className="w-full py-4 rounded-full text-[15px] font-bold text-white active:scale-[0.98] transition-transform"
-                  style={{
-                    background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-                    boxShadow: '0 4px 20px rgba(79,70,229,0.40)',
-                    minHeight: 52,
-                  }}
-                >
-                  Confirm
-                </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <BookingForSheet
+        open={forMeOpen}
+        onClose={() => setForMeOpen(false)}
+        riderName={riderName}
+        riderPhone={riderPhone}
+        onCommit={(n, p) => { setRiderName(n); setRiderPhone(p); setForMeOpen(false) }}
+        onClearToMyself={() => { setRiderName(''); setRiderPhone(''); setForMeOpen(false) }}
+      />
 
       {/* Add stops coming-soon toast, portal escapes Framer Motion transform context */}
       {typeof document !== 'undefined' && createPortal(

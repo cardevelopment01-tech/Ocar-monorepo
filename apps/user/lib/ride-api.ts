@@ -183,6 +183,8 @@ export const rideApi = {
     scheduledFor?: string
     stops?: StopInput[]
     paymentChannel?: PaymentChannel
+    riderName?: string
+    riderPhone?: string
   }): Promise<BookingResult> => {
     const body: Record<string, unknown> = {
       categoryId:    params.categoryId,
@@ -205,6 +207,8 @@ export const rideApi = {
     if (params.returnAt            !== undefined) body['returnAt']            = params.returnAt
     if (params.scheduledFor        !== undefined) body['scheduledFor']        = params.scheduledFor
     if (params.paymentChannel      !== undefined) body['paymentChannel']      = params.paymentChannel
+    if (params.riderName           !== undefined) body['riderName']           = params.riderName
+    if (params.riderPhone          !== undefined) body['riderPhone']          = params.riderPhone
     const res = await api.post('/api/v1/rides', body)
     return res.data as BookingResult
   },
