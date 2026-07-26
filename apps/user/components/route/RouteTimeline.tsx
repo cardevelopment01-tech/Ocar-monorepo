@@ -67,14 +67,24 @@ function Rail({
 }) {
   return (
     <span className="relative w-6 flex-shrink-0 flex items-center justify-center self-stretch">
-      {!isFirst && <span className="absolute top-0 h-1/2 w-0.5" style={{ background: aboveColor }} />}
-      {!isLast &&  <span className="absolute bottom-0 h-1/2 w-0.5" style={{ background: belowColor }} />}
+      {!isFirst && <span className="absolute top-0 h-1/2 w-0.5" style={{ background: aboveColor, transition: 'background-color 450ms ease' }} />}
+      {!isLast &&  <span className="absolute bottom-0 h-1/2 w-0.5" style={{ background: belowColor, transition: 'background-color 450ms ease' }} />}
       <span className="relative z-10 flex items-center justify-center">{children}</span>
     </span>
   )
 }
 
-export default function RouteTimeline({ nodes, className, live = false }: { nodes: TimelineNode[]; className?: string; live?: boolean }) {
+export default function RouteTimeline({
+  nodes, className, live = false, activeIndex = null, onStopClick,
+}: {
+  nodes: TimelineNode[]
+  className?: string
+  live?: boolean
+  /** 0-based index (among stop nodes) currently selected — highlighted. */
+  activeIndex?: number | null
+  /** When set, stop rows become tappable and report their 0-based stop index. */
+  onStopClick?: (index: number) => void
+}) {
   // Reduced motion: swap the height/scale row transitions for a plain crossfade.
   const reduce = useReducedMotion()
 
@@ -128,6 +138,9 @@ export default function RouteTimeline({ nodes, className, live = false }: { node
           const aboveColor = (live && prevNode?.kind === 'stop' && prevNode.state === 'reached') ? '#10B981' : '#C7D2FE'
           const belowColor = (live && node.kind === 'stop' && node.state === 'reached') ? '#10B981' : '#C7D2FE'
           const isCurrent = live && i === currentIdx
+          const stopIdx = node.kind === 'stop' ? n - 1 : -1
+          const isSelected = node.kind === 'stop' && activeIndex === stopIdx
+          const clickable = node.kind === 'stop' && !!onStopClick
 
           const glyph =
             node.kind === 'origin'      ? <OriginGlyph /> :
@@ -141,8 +154,19 @@ export default function RouteTimeline({ nodes, className, live = false }: { node
 
           const skipped = node.kind === 'stop' && node.state === 'skipped'
           const body = (
-            <span className="flex items-center gap-3 px-4 py-3.5" style={{ background: isCurrent ? '#EEF2FF' : undefined }}>
-              <Rail isFirst={isFirst} isLast={isLast} aboveColor={aboveColor} belowColor={belowColor}>{glyph}</Rail>
+            <span className="flex items-center gap-3 px-4 py-3.5" style={{ background: isSelected ? '#E9E4FB' : isCurrent ? '#EEF2FF' : undefined, cursor: clickable ? 'pointer' : undefined }}>
+              <Rail isFirst={isFirst} isLast={isLast} aboveColor={aboveColor} belowColor={belowColor}>
+                {/* Keyed by state so the glyph pops when a stop flips pending→reached (check-morph). */}
+                <motion.span
+                  key={node.kind === 'stop' ? (node.state ?? 'pending') : 'static'}
+                  initial={reduce ? false : { scale: 0.4, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 520, damping: 22 }}
+                  className="flex items-center justify-center"
+                >
+                  {glyph}
+                </motion.span>
+              </Rail>
               <span className="flex-1 min-w-0">
                 <span className={`block ${OVERLINE}`} style={{ color: '#94A3B8' }}>{overline}</span>
                 {node.kind === 'destination' && !node.address ? (
@@ -218,7 +242,11 @@ export default function RouteTimeline({ nodes, className, live = false }: { node
             )
           }
           return (
-            <motion.div key={node.kind === 'stop' ? (node.key ?? `stop-${n}`) : node.kind} {...rowMotion}>
+            <motion.div
+              key={node.kind === 'stop' ? (node.key ?? `stop-${n}`) : node.kind}
+              {...rowMotion}
+              onClick={clickable ? () => onStopClick!(stopIdx) : undefined}
+            >
               {body}
             </motion.div>
           )
