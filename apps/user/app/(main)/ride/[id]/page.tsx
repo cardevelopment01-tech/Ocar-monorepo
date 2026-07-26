@@ -591,6 +591,7 @@ export default function RidePage() {
           userPos={userPos}
           nearbyDrivers={nearbyDrivers}
           remainingPath={remainingPath}
+          stops={ride ? ride.stops.map(s => [s.lat, s.lng] as [number, number]) : []}
         />
 
         {/* Dev socket indicator */}

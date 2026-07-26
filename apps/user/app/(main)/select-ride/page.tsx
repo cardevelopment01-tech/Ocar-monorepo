@@ -105,6 +105,7 @@ function SelectRideContent() {
   // Round-trip keeps its base origin↔dest distance (stops there are a flat fee).
   const [routedDistanceKm, setRoutedDistanceKm] = useState<number | null>(null)
   const [routedDurationMin, setRoutedDurationMin] = useState<number | null>(null)
+  const [routedLegPolylines, setRoutedLegPolylines] = useState<string[]>([])
   const [routingStops, setRoutingStops] = useState(false)
   const detourPriced = rideType === 'one_way' && stops.length > 0
   const effectiveDistanceKm = detourPriced && routedDistanceKm != null ? routedDistanceKm : distanceKm
@@ -149,7 +150,7 @@ function SelectRideContent() {
   // routing endpoint is needed — reuse the existing origin→dest getRoute per leg.
   const stopsKey = stops.map(s => `${s.lat},${s.lng}`).join('|')
   useEffect(() => {
-    if (!detourPriced) { setRoutedDistanceKm(null); setRoutedDurationMin(null); return }
+    if (!detourPriced) { setRoutedDistanceKm(null); setRoutedDurationMin(null); setRoutedLegPolylines([]); return }
     let cancelled = false
     setRoutingStops(true)
     const points = [
@@ -167,8 +168,12 @@ function SelectRideContent() {
         if (cancelled) return
         setRoutedDistanceKm(Math.round(legs.reduce((s, l) => s + l.distanceKm, 0) * 10) / 10)
         setRoutedDurationMin(Math.round(legs.reduce((s, l) => s + l.durationMin, 0)))
+        // Only draw the per-leg detour if EVERY leg has a polyline; a partial set
+        // would render a gapped route, so fall back ([]) to the origin→dest line.
+        const polys = legs.map(l => l.polyline).filter((p): p is string => !!p)
+        setRoutedLegPolylines(polys.length === legs.length ? polys : [])
       })
-      .catch(() => { if (!cancelled) { setRoutedDistanceKm(null); setRoutedDurationMin(null) } })
+      .catch(() => { if (!cancelled) { setRoutedDistanceKm(null); setRoutedDurationMin(null); setRoutedLegPolylines([]) } })
       .finally(() => { if (!cancelled) setRoutingStops(false) })
     return () => { cancelled = true }
   // stopsKey captures stop identity+order; the primitive coords cover origin/dest moves.
@@ -380,6 +385,8 @@ function SelectRideContent() {
           pickupPos={[originLat, originLng]}
           dropPos={[destinationLat, destinationLng]}
           encodedPolyline={encodedPolyline}
+          stops={stops.map(s => [s.lat, s.lng] as [number, number])}
+          legPolylines={detourPriced && routedLegPolylines.length > 0 ? routedLegPolylines : undefined}
           nearbyDrivers={nearbyDrivers}
         />
         <div className="absolute top-4 left-4 right-4 z-10 flex items-center gap-2">
