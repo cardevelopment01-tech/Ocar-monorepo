@@ -11,6 +11,7 @@ import { cn, swapAt } from '@/lib/utils'
 import { isAxiosError } from 'axios'
 import { rideApi, type FareEstimate, type StopInput } from '@/lib/ride-api'
 import RouteTimeline, { type TimelineNode } from '@/components/route/RouteTimeline'
+import AddStopSheet from '@/components/route/AddStopSheet'
 import { getPaymentChannel } from '@/lib/payment-channel'
 import { geoApi } from '@/lib/geo-api'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
@@ -316,30 +317,7 @@ function SelectRideContent() {
     router.push(`/search?${params.toString()}`)
   }
 
-  // Bounce to the stop picker (reuses /search in stopIndex mode), carrying the
-  // whole in-progress trip so nothing is lost on the return hop.
-  function goToAddStop(index: number) {
-    const params = new URLSearchParams({
-      originLat: String(originLat), originLng: String(originLng), originAddress,
-      destinationLat: String(destinationLat), destinationLng: String(destinationLng), destinationAddress,
-      distanceKm: String(distanceKm), durationMin: String(durationMin),
-      originCityId: String(originCityId),
-      rideType,
-      backTo: 'select-ride',
-      stopIndex: String(index),
-    })
-    if (encodedPolyline) params.set('polyline', encodedPolyline)
-    if (rideType === 'round_trip' && tripHours) params.set('tripHours', String(tripHours))
-    if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
-    if (riderName)  params.set('riderName', riderName)
-    if (riderPhone) params.set('riderPhone', riderPhone)
-    stops.forEach((s, i) => {
-      params.set(`stops[${i}][address]`, s.address)
-      params.set(`stops[${i}][lat]`, String(s.lat))
-      params.set(`stops[${i}][lng]`, String(s.lng))
-    })
-    router.push(`/search?${params.toString()}`)
-  }
+  const [addStopOpen, setAddStopOpen] = useState(false)
 
   function writeStops(nextStops: StopInput[]) {
     const params = new URLSearchParams(sp.toString())
@@ -375,10 +353,10 @@ function SelectRideContent() {
     stopNodes.push(stops.length > 0
       ? {
           kind: 'add',
-          onTap: () => goToAddStop(stops.length),
+          onTap: () => setAddStopOpen(true),
           hint: routingStops ? 'Updating fare…' : detourPriced ? 'Fare covers the detour' : `${stops.length} on the way`,
         }
-      : { kind: 'add', onTap: () => goToAddStop(stops.length) })
+      : { kind: 'add', onTap: () => setAddStopOpen(true) })
   }
 
   // Round trip disabled when no hours selected
@@ -393,7 +371,7 @@ function SelectRideContent() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-white">
+    <div className="h-full flex flex-col overflow-hidden bg-white relative">
 
       {/* ── Map ── */}
       <div className="relative flex-shrink-0" style={{ height: '42%' }}>
@@ -834,6 +812,15 @@ function SelectRideContent() {
         </AnimatePresence>,
         document.body,
       )}
+
+      <AddStopSheet
+        open={addStopOpen}
+        onClose={() => setAddStopOpen(false)}
+        onSelect={(s) => { setAddStopOpen(false); writeStops([...stops, s]) }}
+        title={`Add stop ${stops.length + 1}`}
+        originLat={originLat}
+        originLng={originLng}
+      />
     </div>
   )
 }

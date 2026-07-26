@@ -16,6 +16,7 @@ import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
 import RouteTimeline, { type TimelineNode } from '@/components/route/RouteTimeline'
+import AddStopSheet from '@/components/route/AddStopSheet'
 import BookingForSheet from '@/components/booking/BookingForSheet'
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -130,11 +131,7 @@ function RentalContent() {
     router.push(`/search?${params.toString()}`)
   }
 
-  function goToAddStop() {
-    const params = buildCarriedParams()
-    params.set('stopIndex', String(stops.length))
-    router.push(`/search?${params.toString()}`)
-  }
+  const [addStopOpen, setAddStopOpen] = useState(false)
 
   function removeStop(index: number) {
     const nextStops = stops.filter((_, i) => i !== index)
@@ -152,7 +149,7 @@ function RentalContent() {
     onRemove: () => removeStop(i),
     ...(i < stops.length - 1 ? { onSwap: () => swapStops(i) } : {}),
   }))
-  if (stops.length < MAX_STOPS) rentalStopNodes.push({ kind: 'add', onTap: goToAddStop })
+  if (stops.length < MAX_STOPS) rentalStopNodes.push({ kind: 'add', onTap: () => setAddStopOpen(true) })
 
   const [selectedCatId,   setSelectedCatId]  = useState<number>(CATEGORIES[1]!.id)
   const [packages,        setPackages]        = useState<RentalPackage[]>([])
@@ -575,6 +572,15 @@ function RentalContent() {
           }
         </button>
       </div>
+
+      <AddStopSheet
+        open={addStopOpen}
+        onClose={() => setAddStopOpen(false)}
+        onSelect={(s) => { setAddStopOpen(false); router.replace(`/rental?${buildCarriedParams([...stops, s]).toString()}`) }}
+        title={`Add stop ${stops.length + 1}`}
+        originLat={originLat}
+        originLng={originLng}
+      />
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { motion } from 'framer-motion'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
 import RouteTimeline, { type TimelineNode } from '@/components/route/RouteTimeline'
+import AddStopSheet from '@/components/route/AddStopSheet'
 import { swapAt } from '@/lib/utils'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -61,6 +62,7 @@ function RoundTripContent() {
     return raw ? new Date(raw) : null
   })
   const [schedulePickerOpen, setSchedulePickerOpen] = useState(false)
+  const [addStopOpen, setAddStopOpen] = useState(false)
 
   const canProceed = hasDestination && selectedHours !== null
 
@@ -99,13 +101,6 @@ function RoundTripContent() {
   function goToSearch() {
     const params = buildCarriedParams()
     params.set('backTo', 'round_trip')
-    router.push(`/search?${params.toString()}`)
-  }
-
-  function goToAddStop() {
-    const params = buildCarriedParams()
-    params.set('backTo', 'round_trip')
-    params.set('stopIndex', String(stops.length))
     router.push(`/search?${params.toString()}`)
   }
 
@@ -163,7 +158,7 @@ function RoundTripContent() {
       onRemove: () => removeStop(i),
       ...(i < stops.length - 1 ? { onSwap: () => swapStops(i) } : {}),
     }))
-    if (stops.length < MAX_STOPS) timelineNodes.push({ kind: 'add', onTap: goToAddStop })
+    if (stops.length < MAX_STOPS) timelineNodes.push({ kind: 'add', onTap: () => setAddStopOpen(true) })
   }
   timelineNodes.push({ kind: 'destination', address: destAddress, placeholder: 'Where are you going?', onTap: goToSearch })
 
@@ -176,7 +171,7 @@ function RoundTripContent() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ background: '#F5F7FF' }}>
+    <div className="h-full flex flex-col overflow-hidden relative" style={{ background: '#F5F7FF' }}>
 
       {/* ── Header ──────────────────────────────────────────────── */}
       <div
@@ -354,6 +349,15 @@ function RoundTripContent() {
           {buttonLabel}
         </button>
       </div>
+
+      <AddStopSheet
+        open={addStopOpen}
+        onClose={() => setAddStopOpen(false)}
+        onSelect={(s) => { setAddStopOpen(false); router.replace(`/round-trip?${buildCarriedParams([...stops, s]).toString()}`) }}
+        title={`Add stop ${stops.length + 1}`}
+        originLat={originLat}
+        originLng={originLng}
+      />
     </div>
   )
 }
