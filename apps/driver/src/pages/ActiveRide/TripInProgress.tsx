@@ -11,6 +11,7 @@ import VoiceToggleButton from '@/components/ui/VoiceToggleButton'
 import HindiVoiceHint from '@/components/ui/HindiVoiceHint'
 import ManeuverBanner from '@/components/map/ManeuverBanner'
 import { useRideStore } from '@/store/useRideStore'
+import SwipeToConfirm from '@/components/ui/SwipeToConfirm'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useNavPrefsStore } from '@/store/useNavPrefsStore'
 import { driverRideApi } from '@/lib/ride-api'
@@ -566,30 +567,25 @@ export default function TripInProgress() {
                   border: `1px solid ${waitFreeLeftSec > 0 ? 'rgba(16,185,129,0.30)' : 'rgba(245,158,11,0.30)'}`,
                 }}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: waitFreeLeftSec > 0 ? '#059669' : '#D97706' }}>
-                      Waiting · Stop {waitingStop.sequence}
-                    </p>
-                    <p className="text-[26px] font-black tabular-nums leading-tight" style={{ color: 'var(--text-primary)' }}>
-                      {fmtClock(waitElapsedSec)}
-                    </p>
-                    <p className="text-[11px] font-medium mt-0.5" style={{ color: waitFreeLeftSec > 0 ? '#059669' : '#D97706' }}>
-                      {waitFreeLeftSec > 0
-                        ? `${fmtClock(waitFreeLeftSec)} of free wait left`
-                        : 'Free wait used — extra time is added to the rider’s fare'}
-                    </p>
-                  </div>
-                  <motion.button
-                    onClick={() => handleStopAction(waitingStop.sequence, 'reached')}
-                    disabled={stopActionPending === waitingStop.sequence}
-                    whileTap={{ scale: 0.96 }}
-                    className="text-[12px] font-bold text-white rounded-full px-4 py-2.5 flex-shrink-0 disabled:opacity-60"
-                    style={{ background: '#4F46E5' }}
-                  >
-                    {stopActionPending === waitingStop.sequence ? '…' : 'Continue'}
-                  </motion.button>
+                <div className="min-w-0 mb-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: waitFreeLeftSec > 0 ? '#059669' : '#D97706' }}>
+                    Waiting · Stop {waitingStop.sequence}
+                  </p>
+                  <p className="text-[26px] font-black tabular-nums leading-tight" style={{ color: 'var(--text-primary)' }}>
+                    {fmtClock(waitElapsedSec)}
+                  </p>
+                  <p className="text-[11px] font-medium mt-0.5" style={{ color: waitFreeLeftSec > 0 ? '#059669' : '#D97706' }}>
+                    {waitFreeLeftSec > 0
+                      ? `${fmtClock(waitFreeLeftSec)} of free wait left`
+                      : 'Free wait used — extra time is added to the rider’s fare'}
+                  </p>
                 </div>
+                <SwipeToConfirm
+                  key={`wait-${waitingStop.sequence}`}
+                  label="Slide to start next leg"
+                  onConfirm={() => handleStopAction(waitingStop.sequence, 'reached')}
+                  disabled={stopActionPending === waitingStop.sequence}
+                />
               </div>
             )}
 
@@ -638,6 +634,15 @@ export default function TripInProgress() {
                         isOneWay && isCurrent && stop.arrived_at != null ? (
                           // Waiting — the meter banner above owns the Continue action.
                           <span className="text-[11px] font-bold flex-shrink-0" style={{ color: '#D97706' }}>Waiting…</span>
+                        ) : isCurrent ? (
+                          // Current stop's confirm is the swipe below the checklist; only Skip lives in the row.
+                          <button
+                            onClick={() => handleStopAction(stop.sequence, 'skipped')}
+                            disabled={isPending}
+                            className="text-[11px] font-semibold text-text-muted px-2 py-1.5 flex-shrink-0 active:opacity-60 disabled:opacity-40"
+                          >
+                            Skip
+                          </button>
                         ) : (
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             <button
@@ -647,27 +652,34 @@ export default function TripInProgress() {
                             >
                               Skip
                             </button>
-                            <motion.button
-                              onClick={() => isOneWay && isCurrent
-                                ? handleStopArrived(stop.sequence)
-                                : handleStopAction(stop.sequence, 'reached')}
+                            <button
+                              onClick={() => handleStopAction(stop.sequence, 'reached')}
                               disabled={isPending}
-                              animate={isCurrent && nearTarget && !isPending ? { scale: [1, 1.06, 1] } : { scale: 1 }}
-                              transition={{ duration: 0.7, repeat: isCurrent && nearTarget && !isPending ? Infinity : 0, ease: 'easeInOut' }}
                               className="text-[11px] font-bold text-white rounded-full px-3 py-1.5 active:scale-95 transition-transform disabled:opacity-60"
-                              style={{
-                                background: '#4F46E5',
-                                boxShadow: isCurrent && nearTarget ? '0 0 0 3px rgba(79,70,229,0.30)' : undefined,
-                              }}
+                              style={{ background: '#4F46E5' }}
                             >
-                              {isPending ? '…' : (isOneWay && isCurrent ? 'Arrive' : 'Reached')}
-                            </motion.button>
+                              {isPending ? '…' : 'Reached'}
+                            </button>
                           </div>
                         )
                       )}
                     </div>
                   )
                 })}
+              </div>
+            )}
+
+            {/* Primary advance for the current stop — swipe, not tap (accident-proof while driving) */}
+            {currentStop && !(isOneWay && currentStop.arrived_at != null) && (
+              <div className="mt-3 mb-1">
+                <SwipeToConfirm
+                  key={`cur-${currentStop.sequence}`}
+                  label={isOneWay ? 'Slide to confirm arrival' : 'Slide to confirm stop'}
+                  onConfirm={() => (isOneWay
+                    ? handleStopArrived(currentStop.sequence)
+                    : handleStopAction(currentStop.sequence, 'reached'))}
+                  disabled={stopActionPending === currentStop.sequence}
+                />
               </div>
             )}
 
