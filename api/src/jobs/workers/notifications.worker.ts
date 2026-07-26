@@ -5,7 +5,7 @@ import { sendSms } from '@/providers/sms.provider'
 import { sendEmail } from '@/lib/email'
 import * as notifService from '@/modules/notifications/notifications.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
-import { pool } from '@/db/client'
+import { workerPool as pool } from '@/db/client'
 
 type LogParams = Parameters<typeof notifService.logNotification>[0]
 

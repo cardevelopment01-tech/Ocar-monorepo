@@ -18,6 +18,24 @@ export const pool = new Pool({
   // Bounds a runaway/blocking query so it can't hold a connection (and any
   // locks it took) forever and starve the rest of the pool.
   statement_timeout: 10000,
+  // Bound a stalled mid-transaction client so it can't hold locks + a connection forever.
+  idle_in_transaction_session_timeout: 15000,
+})
+
+// Dedicated pool for high-rate direct-query BullMQ workers (gps-flush, notifications)
+// so their insert/select bursts don't compete with HTTP request handlers for `pool`.
+// ponytail: only DIRECT-query workers use this. The dispatch worker routes through
+// repository functions that import the shared request `pool`, so it still shares the
+// request pool as a documented ceiling — revisit (thread an executor through the repos)
+// only if a load test proves request-pool starvation from dispatch.
+export const workerPool = new Pool({
+  connectionString: config.DATABASE_URL,
+  min: 1,
+  max: config.WORKER_POOL_MAX,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+  statement_timeout: 10000,
+  idle_in_transaction_session_timeout: 15000,
 })
 
 export async function query<T extends object>(

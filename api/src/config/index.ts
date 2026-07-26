@@ -6,9 +6,14 @@ const envSchema = z.object({
   // Database
   DATABASE_URL: z.string().min(1),
   DATABASE_POOL_MIN: z.coerce.number().default(2),
-  // gps-flush worker alone runs at concurrency 20 (see jobs/workers/gps-flush.worker.ts);
-  // must stay above that plus headroom for concurrent request handlers.
-  DATABASE_POOL_MAX: z.coerce.number().default(25),
+  // Request-handler pool. The high-rate workers (gps-flush @ concurrency 20, etc.)
+  // now run on their own workerPool (WORKER_POOL_MAX below), so this no longer has to
+  // absorb their connections. Kept at request max 15 + worker max 10 = 25 conns/instance,
+  // which fits under Neon Launch's pooler ceiling.
+  DATABASE_POOL_MAX: z.coerce.number().default(15),
+  // Dedicated pool for direct-query BullMQ workers (gps-flush, notifications) so their
+  // insert/select bursts don't starve HTTP request handlers of the request pool.
+  WORKER_POOL_MAX: z.coerce.number().default(10),
 
   // Redis
   REDIS_URL: z.string().min(1),
