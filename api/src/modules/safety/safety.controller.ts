@@ -26,7 +26,10 @@ export async function postRating(req: Request, res: Response, next: NextFunction
 
     const rideId    = BigInt(body.rideId)
     const direction = body.direction
-    const score     = Number(body.score)
+    // Round to an integer at the trust boundary: ratings.score is SMALLINT (stores
+    // rounded), and rating_sum is incremented by this same value — they must agree,
+    // or the incremental rating_avg drifts from a true SUM/COUNT over time.
+    const score     = Math.round(Number(body.score))
 
     if (!direction || !['user_to_driver', 'driver_to_user'].includes(direction)) {
       res.status(400).json({ error: 'Invalid direction', code: 'VALIDATION_ERROR' })

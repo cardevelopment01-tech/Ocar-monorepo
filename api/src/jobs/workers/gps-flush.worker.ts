@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq'
-import { pool } from '@/db/client'
+import { workerPool as pool } from '@/db/client'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 
 interface GpsTrackJob {

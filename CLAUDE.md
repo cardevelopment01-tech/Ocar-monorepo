@@ -383,6 +383,12 @@ cd api && npx tsc --noEmit
   ```
   No deploy needed — read live on every request. Delete this note once flipped on for good.
 
+- **Before the client DB load test, enable observability in the Neon dashboard (can't be done from code):**
+  1. Enable the `pg_stat_statements` extension.
+  2. Set `log_min_duration_statement = 500` (log queries slower than 500ms).
+  3. Confirm the app's `DATABASE_URL` uses the `-pooler` host (see `api/.env.example`).
+  After the test, run `api/scripts/index-usage-audit.sql` to find unused indexes, dead-tuple pressure, and the slowest query shapes — that data decides whether to build keyset pagination and `ride_status_history` partitioning (both deliberately deferred until proven necessary — see `docs/superpowers/specs/2026-07-26-db-loadtest-readiness-design.md`).
+
 ## Security Rules (non-negotiable)
 
 - No `error.message` in production API responses — only codes/safe messages

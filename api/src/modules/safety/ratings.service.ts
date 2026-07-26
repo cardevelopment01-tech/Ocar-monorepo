@@ -54,9 +54,9 @@ export async function submitRating(input: SubmitRatingInput) {
   }
 
   if (toDriverId) {
-    await repo.updateDriverRatingAvg(toDriverId)
+    await repo.updateDriverRatingAvg(toDriverId, input.score)
   } else if (toUserId) {
-    await repo.updateUserRatingAvg(toUserId)
+    await repo.updateUserRatingAvg(toUserId, input.score)
   }
 
   return rating
