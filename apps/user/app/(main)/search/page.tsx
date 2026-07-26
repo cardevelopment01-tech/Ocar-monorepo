@@ -56,15 +56,7 @@ function SearchContent() {
   const [originLng,     setOriginLng]     = useState(() => parseFloat(sp.get('originLng') ?? '') || 0)
   const [originAddress, setOriginAddress] = useState(() => sp.get('originAddress') ?? '')
 
-  // Adding a waypoint to an already-planned round-trip/rental — origin AND the
-  // ride's real destination are already known, this screen only captures ONE
-  // more point. See docs/MULTI_STOP_PLAN.md §3.2.
-  const stopIndexParam = sp.get('stopIndex')
-  const stopIndex   = stopIndexParam !== null ? parseInt(stopIndexParam, 10) : null
-  const isStopMode  = stopIndex !== null && !isNaN(stopIndex)
-
   const [confirmedDest, setConfirmedDest] = useState<ConfirmedDest | null>(() => {
-    if (isStopMode) return null   // destinationAddress in the URL is the ride's, not this stop's
     const lat     = parseFloat(sp.get('destinationLat') ?? '')
     const lng     = parseFloat(sp.get('destinationLng') ?? '')
     const address = sp.get('destinationAddress') ?? ''
@@ -160,7 +152,6 @@ function SearchContent() {
   // Auto-navigate when map picker returns with both origin + destination in URL
   useEffect(() => {
     if (autoNavRef.current) return
-    if (isStopMode) return  // this screen's dest params belong to the ride, not this stop
     if (sp.get('focus')) return  // came back from select-ride, don't auto-navigate forward
     const destLat  = parseFloat(sp.get('destinationLat') ?? '')
     const destLng  = parseFloat(sp.get('destinationLng') ?? '')
@@ -342,19 +333,6 @@ function SearchContent() {
     }
   }
 
-  // Confirm a stop location — no route/classification call (fare is stop-count
-  // based, not distance-based), just append stops[stopIndex] and bounce back.
-  function confirmStop(lat: number, lng: number, address: string) {
-    const params = new URLSearchParams(sp.toString())
-    params.delete('stopIndex')
-    params.delete('focus')
-    params.set(`stops[${stopIndex}][address]`, address)
-    params.set(`stops[${stopIndex}][lat]`, String(lat))
-    params.set(`stops[${stopIndex}][lng]`, String(lng))
-    const dest = backTo === 'rental' ? 'rental' : backTo === 'select-ride' ? 'select-ride' : 'round-trip'
-    router.replace(`/${dest}?${params.toString()}`)
-  }
-
   // Confirm a destination, auto-navigates if origin is set
   function confirmDest(lat: number, lng: number, address: string) {
     setConfirmedDest({ lat, lng, address })
@@ -373,7 +351,6 @@ function SearchContent() {
     setResolving(true)
     try {
       const detail = await geoApi.placeDetails(s.placeId)
-      if (isStopMode) { confirmStop(detail.latitude, detail.longitude, detail.address); return }
       // keep resolving=true, confirmDest → navigateToRide holds it until navigation
       confirmDest(detail.latitude, detail.longitude, detail.address)
     } catch {
@@ -438,26 +415,22 @@ function SearchContent() {
           >
             <ArrowLeft size={17} className="text-text-primary" strokeWidth={2} />
           </motion.button>
-          <span className="text-base font-bold text-text-primary">
-            {isStopMode ? `Add stop ${stopIndex! + 1}` : 'Plan your trip'}
-          </span>
+          <span className="text-base font-bold text-text-primary">Plan your trip</span>
 
-          {/* For me pill, not relevant while picking a mid-trip waypoint */}
-          {!isStopMode && (
-            <motion.button
-              onClick={() => setForMeOpen(true)}
-              className="ml-auto flex items-center gap-1.5 h-11 pl-2.5 pr-2 rounded-full bg-surface border border-border max-w-[150px]"
-              whileTap={{ scale: 0.94 }} transition={SPRING}
-            >
-              <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
-                <User size={11} strokeWidth={2} style={{ color: ICON_CLR }} />
-              </span>
-              <span className="text-xs font-semibold text-text-primary truncate">
-                {bookingForOther ? riderName : 'For me'}
-              </span>
-              <ChevronDown size={13} className="text-text-muted flex-shrink-0" strokeWidth={2.2} />
-            </motion.button>
-          )}
+          {/* For me pill */}
+          <motion.button
+            onClick={() => setForMeOpen(true)}
+            className="ml-auto flex items-center gap-1.5 h-11 pl-2.5 pr-2 rounded-full bg-surface border border-border max-w-[150px]"
+            whileTap={{ scale: 0.94 }} transition={SPRING}
+          >
+            <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
+              <User size={11} strokeWidth={2} style={{ color: ICON_CLR }} />
+            </span>
+            <span className="text-xs font-semibold text-text-primary truncate">
+              {bookingForOther ? riderName : 'For me'}
+            </span>
+            <ChevronDown size={13} className="text-text-muted flex-shrink-0" strokeWidth={2.2} />
+          </motion.button>
         </div>
 
         {/* Unified from → to card */}
@@ -477,11 +450,7 @@ function SearchContent() {
                 }}
               />
               <div className="flex-1 flex items-center justify-center">
-                {isStopMode ? (
-                  <div className="w-2.5 h-2.5 relative z-10" style={{ background: '#7C3AED', borderRadius: 3 }} />
-                ) : (
-                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500 relative z-10" />
-                )}
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-500 relative z-10" />
               </div>
             </div>
 
@@ -489,9 +458,9 @@ function SearchContent() {
             <div className="flex-1 min-w-0">
               {/* FROM row, single line, no label — read-only while adding a stop */}
               <motion.button
-                onClick={() => { if (!isStopMode && mode !== 'origin') switchMode('origin') }}
+                onClick={() => { if (mode !== 'origin') switchMode('origin') }}
                 className="w-full text-left px-3 py-2.5 border-b border-border"
-                whileTap={isStopMode ? undefined : { scale: 0.99 }} transition={SPRING}
+                whileTap={{ scale: 0.99 }} transition={SPRING}
               >
                 {mode === 'origin' ? (
                   <div className="flex items-center gap-1">
@@ -549,7 +518,7 @@ function SearchContent() {
                       ref={destInputRef}
                       value={query}
                       onChange={e => handleQueryChange(e.target.value)}
-                      placeholder={isStopMode ? 'Search for this stop' : 'Where to?'}
+                      placeholder="Where to?"
                       className="flex-1 bg-transparent text-[14px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
                       disabled={resolving}
                     />
@@ -565,17 +534,14 @@ function SearchContent() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-[14px] text-text-muted font-normal">
-                    {isStopMode ? 'Search for this stop' : 'Where to?'}
-                  </p>
+                  <p className="text-[14px] text-text-muted font-normal">Where to?</p>
                 )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Pinned action pills, always fixed, never scroll — not shown while adding a stop */}
-        {!isStopMode && (
+        {/* Pinned action pills, always fixed, never scroll */}
         <div className="flex gap-2 px-4 pb-1.5">
           <motion.button
             onClick={goToMapPicker}
@@ -594,10 +560,8 @@ function SearchContent() {
             <span className="text-[13px] font-semibold text-white">Add stops</span>
           </motion.button>
         </div>
-        )}
 
-        {/* Pickup time, own row, decoupled from the map/stops actions above — not relevant mid-stop-add */}
-        {!isStopMode && (
+        {/* Pickup time, own row, decoupled from the map/stops actions above */}
         <div className="px-4 pb-1.5">
           <PickupTimeChip
             value={scheduledFor}
@@ -607,7 +571,6 @@ function SearchContent() {
             onChange={setScheduledFor}
           />
         </div>
-        )}
 
         {/* Sweep loader, clean violet bar bouncing edge to edge */}
         <AnimatePresence>
@@ -686,7 +649,7 @@ function SearchContent() {
                 <motion.button
                   onClick={() => mode === 'origin'
                     ? (setOriginLat(d.lat), setOriginLng(d.lng), setOriginAddress(d.address), switchMode('destination', true))
-                    : isStopMode ? confirmStop(d.lat, d.lng, d.address) : confirmDest(d.lat, d.lng, d.address)
+                    : confirmDest(d.lat, d.lng, d.address)
                   }
                   className="w-full flex items-center gap-3 px-1 py-3 text-left"
                   whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
