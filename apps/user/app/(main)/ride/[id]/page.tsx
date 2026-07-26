@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import axios from 'axios'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
+import RouteTimeline from '@/components/route/RouteTimeline'
 import { safetyApi } from '@/lib/safety-api'
 import { formatReturnAt } from '@/lib/utils'
 import { geoApi } from '@/lib/geo-api'
@@ -833,35 +834,14 @@ export default function RidePage() {
 
                       {/* Stop itinerary — mirrors driver state via the stop:updated socket event */}
                       {ride && ride.stops.length > 0 && (
-                        <div
-                          className="rounded-2xl overflow-hidden"
-                          style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}
-                        >
-                          {ride.stops.map((stop, i) => (
-                            <div
-                              key={stop.id}
-                              className="flex items-center gap-3 px-4 py-2.5"
-                              style={{ borderTop: i > 0 ? '1px solid #E2E8F0' : undefined }}
-                            >
-                              {stop.status === 'reached' ? (
-                                <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
-                              ) : stop.status === 'skipped' ? (
-                                <X size={14} className="text-gray-300 flex-shrink-0" />
-                              ) : (
-                                <div className="w-2.5 h-2.5 flex-shrink-0" style={{ background: '#7C3AED', borderRadius: 3 }} />
-                              )}
-                              <span
-                                className="text-sm font-medium truncate"
-                                style={{
-                                  color: stop.status === 'skipped' ? '#94A3B8' : '#334155',
-                                  textDecoration: stop.status === 'skipped' ? 'line-through' : undefined,
-                                }}
-                              >
-                                {stop.address ?? `Stop ${i + 1}`}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+                        <RouteTimeline
+                          nodes={ride.stops.map((stop, i) => ({
+                            kind: 'stop' as const,
+                            key: stop.id,
+                            address: stop.address ?? `Stop ${i + 1}`,
+                            state: stop.status,
+                          }))}
+                        />
                       )}
 
                       {(rideStatus === 'accepted' || rideStatus === 'driver_arrived') && (

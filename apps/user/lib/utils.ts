@@ -3,6 +3,14 @@ import { twMerge } from 'tailwind-merge'
 
 export const cn = (...args: ClassValue[]) => twMerge(clsx(args))
 
+/** Returns a copy of `arr` with items at `i` and `i+1` swapped. No-op if out of range. */
+export function swapAt<T>(arr: T[], i: number): T[] {
+  if (i < 0 || i + 1 >= arr.length) return arr
+  const next = [...arr]
+  ;[next[i], next[i + 1]] = [next[i + 1]!, next[i]!]
+  return next
+}
+
 /** Converts a Date to a datetime-local input string using the device's local timezone. */
 export function toDatetimeLocal(d: Date): string {
   const z = (n: number) => String(n).padStart(2, '0')
