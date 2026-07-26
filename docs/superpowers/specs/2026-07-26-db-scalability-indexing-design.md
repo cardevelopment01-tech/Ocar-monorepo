@@ -103,10 +103,14 @@ Applied as `060_money_column_checks.sql`. Verified against the live Neon dev DB 
 
 **Not adding a CHECK on `driver_earnings.amount`** — it's intentionally signed (+/-) for both earnings and deductions, a non-negative check would be wrong.
 
-### 2.2 Flag, don't auto-resolve
+### 2.2 Duplicate representations — ✅ RESOLVED, both were dead
 
-- `cities.boundary` (geometry, added `026`) vs `cities.rental_boundary` (geography, `005`) — two parallel boundary representations, each with its own GiST index. Pick one; this is a product/data decision.
-- `notification_channel`/`notification_delivery` (used only by `sos_notifications`) vs `notif_channel`/`notif_status` (used by `notification_logs`/`notification_templates`) — two parallel enum families for what's conceptually the same concept. Consolidating means touching the SOS module; scope it separately if pursued.
+Follow-up investigation (2026-07-26) found both were more clear-cut than "pick one":
+
+- `cities.rental_boundary` (geography, `005_m3_geo.sql`) — grepped all of `api/src`, referenced nowhere outside its own migration. `cities.boundary` (geometry, added `017`, widened `026`/`033`/`055`) is the live column: `geo.repository.ts`'s `findContainingCity()` queries it, and `rides.service.ts`'s trip classification depends on that. Confirmed 0 non-null `rental_boundary` rows on the live dev DB before dropping.
+- `notification_channel`/`notification_delivery` — used only by `sos_notifications`, which was scaffolded in `009_m7_safety.sql` alongside `sos_alerts` but never had an app-code `INSERT` wired to it. SOS notifications actually route through the same `notificationsQueue` → `notification_logs` (`notif_channel`/`notif_status`) path every other notification type uses. Confirmed 0 rows on the live dev DB before dropping.
+
+Applied as `061_drop_dead_sos_notifications_and_rental_boundary.sql`: drops `sos_notifications` + its 2 enums, drops `cities.rental_boundary` + its GiST index. Ran against Neon, confirmed clean.
 
 ---
 
