@@ -83,25 +83,32 @@ export async function getTopDriverTags(driverId: bigint, limit = 3) {
   return res.rows.map(r => ({ label: r.label, count: Number(r.count) }))
 }
 
-export async function updateDriverRatingAvg(driverId: bigint) {
+// ponytail: incremental scheme assumes `ratings` is append-only (no UPDATE/DELETE)
+// — verified true today. If an edit/delete path is ever added, rating_sum needs
+// delta correction (subtract the old score / decrement total_ratings).
+export async function updateDriverRatingAvg(driverId: bigint, newScore: number) {
   await pool.query(
     `UPDATE drivers
-     SET rating_avg    = COALESCE((SELECT AVG(score)   FROM ratings WHERE to_driver_id = $1), 0),
-         total_ratings =          (SELECT COUNT(*)     FROM ratings WHERE to_driver_id = $1),
-         updated_at    = now()
+       SET rating_sum    = rating_sum + $2,
+           total_ratings = total_ratings + 1,
+           rating_avg    = (rating_sum + $2)::numeric / (total_ratings + 1),
+           updated_at    = now()
      WHERE id = $1`,
-    [driverId]
+    [driverId, newScore]
   )
 }
 
-export async function updateUserRatingAvg(userId: bigint) {
+// ponytail: same append-only assumption as updateDriverRatingAvg — no UPDATE/DELETE
+// on `ratings` today; adding one requires delta-correcting rating_sum here too.
+export async function updateUserRatingAvg(userId: bigint, newScore: number) {
   await pool.query(
     `UPDATE users
-     SET rating_avg    = COALESCE((SELECT AVG(score)   FROM ratings WHERE to_user_id = $1), 0),
-         total_ratings =          (SELECT COUNT(*)     FROM ratings WHERE to_user_id = $1),
-         updated_at    = now()
+       SET rating_sum    = rating_sum + $2,
+           total_ratings = total_ratings + 1,
+           rating_avg    = (rating_sum + $2)::numeric / (total_ratings + 1),
+           updated_at    = now()
      WHERE id = $1`,
-    [userId]
+    [userId, newScore]
   )
 }
 
