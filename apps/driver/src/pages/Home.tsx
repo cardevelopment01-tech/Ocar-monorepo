@@ -4,8 +4,9 @@ import {
   useMotionValue, useTransform, useMotionValueEvent, animate,
 } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { IndianRupee, Clock, Star, TrendingUp, Bell, Wallet, ChevronRight, LocateOff } from 'lucide-react'
+import { IndianRupee, Clock, Star, TrendingUp, Wallet, ChevronRight, LocateOff } from 'lucide-react'
 import OnlineToggle from '@/components/ui/OnlineToggle'
+import StatusBar from '@/components/ui/StatusBar'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useRideStore } from '@/store/useRideStore'
@@ -14,8 +15,6 @@ import { driverVerificationApi } from '@/lib/driver-verification-api'
 import api from '@/lib/api'
 import { disconnectDriverSocket } from '@/lib/socket'
 import { useDriverLocation } from '@/lib/useDriverLocation'
-import { useNotificationsStore } from '@/store/useNotificationsStore'
-import { GLASS } from '@/lib/constants'
 
 const DriverMapView = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap   = lazy(() => import('@/components/map/RecenterMap'))
@@ -28,9 +27,8 @@ const NAV_HEIGHT  = 60
 export default function Home() {
   const navigate = useNavigate()
   const driver   = useAuthStore(s => s.driver)
-  const { isOnline, sessionId, mode, destinationCityName, setOffline } = useSessionStore()
+  const { isOnline, sessionId, mode, destinationCityName, setOffline, earningsToday, tripsToday, setEarnings } = useSessionStore()
   const activeRide = useRideStore(s => s.activeRide)
-  const { unreadCount, openSheet } = useNotificationsStore()
   const prefersReducedMotion = useReducedMotion()
 
   // ── Refs ────────────────────────────────────────────────────────────────────
@@ -282,6 +280,15 @@ export default function Home() {
   // Fallback for a failed/slow session-restore fetch (App.tsx): if the store
   // still has an active ride but we somehow landed on Home, offer a manual
   // way back in instead of leaving the driver stranded with no active-ride UI.
+  // Today's earnings for the header chip. Fetched on every Home mount — Home
+  // remounts when the driver returns from a completed ride, so the total is
+  // always fresh, and the persisted store value renders instantly meanwhile.
+  useEffect(() => {
+    void driverRideApi.getEarningsSummary('today')
+      .then(s => setEarnings(s.total_earnings, s.trip_count))
+      .catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const resumeRoute =
     activeRide?.status === 'accepted'        ? '/ride/navigate'
     : activeRide?.status === 'driver_arrived' ? '/ride/otp'
@@ -305,50 +312,10 @@ export default function Home() {
         </Suspense>
       </div>
 
-      {/* Floating header, sits above the map, never moves with the sheet.
-          Safe-area-aware (Driver#1) — was a hardcoded pt-12 that didn't
-          account for a device notch/status bar the way every other floating
-          overlay on this screen already does (see the resumeRoute/GPS-error
-          banners below), so it could sit flush against or under the notch on
-          taller-inset devices. */}
-      <div
-        className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pb-2"
-        style={{ zIndex: 10, paddingTop: 'max(calc(env(safe-area-inset-top) + 12px), 48px)' }}
-      >
-        <div className="px-3.5 py-2 rounded-2xl" style={GLASS}>
-          <span className="font-display font-black text-[17px] tracking-tight leading-none select-none">
-            <span className="text-primary">O</span>
-            <span className="text-text-primary">car</span>
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Live status pill */}
-          <div
-            className="flex items-center gap-1.5 rounded-full px-3 py-1.5"
-            style={isOnline ? { ...GLASS, border: '1px solid rgba(249,115,22,0.28)' } : GLASS}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isOnline ? 'bg-accent-orange animate-pulse-soft' : 'bg-text-muted'}`} />
-            <span className={`text-[11px] font-bold ${isOnline ? 'text-amber-700' : 'text-text-muted'}`}>
-              {isOnline ? 'Online' : 'Offline'}
-            </span>
-          </div>
-          <button
-            aria-label="Notifications"
-            onClick={openSheet}
-            className="relative w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-            style={GLASS}
-          >
-            <Bell size={17} className="text-text-secondary" strokeWidth={1.8} />
-            {unreadCount > 0 && (
-              <span
-                className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500"
-                style={{ boxShadow: '0 0 0 1.5px #FFFFFF' }}
-              />
-            )}
-          </button>
-        </div>
-      </div>
+      {/* Floating header — the shared two-skin StatusBar (floating skin) sits
+          above the map and never moves with the sheet. Safe-area handling lives
+          in the component. */}
+      <StatusBar surface="floating" isOnline={isOnline} earningsToday={earningsToday} tripsToday={tripsToday} />
 
       {/* Resume-trip banner: shown when the store has an active ride but we
           landed on Home anyway (restore-fetch failure fallback). Takes
