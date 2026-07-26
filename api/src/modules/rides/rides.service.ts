@@ -17,6 +17,7 @@ import {
   MIN_ADVANCE_BOOKING_MINUTES,
   MAX_ADVANCE_BOOKING_DAYS,
   MAX_CONCURRENT_SCHEDULED_BOOKINGS,
+  IN_CITY_MAX_TRIP_DISTANCE_METRES,
 } from '@/constants/limits'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import type { BookingRequest } from './rides.types'
@@ -315,10 +316,15 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
       data.originLat, data.originLng, data.destinationLat, data.destinationLng
     )
     if (classification.scope === 'in_city') {
-      throw Object.assign(
-        new Error(`This trip stays within ${classification.cityName} — book it as a City Ride instead`),
-        { httpStatus: 422 }
+      const tripDistanceMetres = distanceMetres(
+        data.originLat, data.originLng, data.destinationLat, data.destinationLng
       )
+      if (tripDistanceMetres < IN_CITY_MAX_TRIP_DISTANCE_METRES) {
+        throw Object.assign(
+          new Error(`This trip stays within ${classification.cityName} — book an hourly rental package instead`),
+          { httpStatus: 422 }
+        )
+      }
     }
   }
 
