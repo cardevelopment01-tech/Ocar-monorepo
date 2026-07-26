@@ -13,9 +13,10 @@ vi.mock('@/jobs/queues', () => ({
   gpsFlushQueue: { add: vi.fn().mockResolvedValue(undefined) },
 }))
 vi.mock('@/modules/rides/rides.repository', () => ({
-  getRideById:     vi.fn(),
+  getRideById:      vi.fn(),
   updateRideStatus: vi.fn(),
   logStatusHistory: vi.fn(),
+  getStopWaitTotal: vi.fn().mockResolvedValue(0),
 }))
 vi.mock('@/modules/payments/payments.service', () => ({
   createPaymentRecord:   vi.fn().mockResolvedValue(undefined),
