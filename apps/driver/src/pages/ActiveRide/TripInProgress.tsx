@@ -21,6 +21,9 @@ import { EASE, GLASS, fmtReturn } from '@/lib/constants'
 import { useDriverLocation } from '@/lib/useDriverLocation'
 import { useTurnByTurn } from '@/lib/useTurnByTurn'
 import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
+import { useSpeedAlert } from '@/lib/useSpeedAlert'
+import { classifyLimit, HIGHWAY_SPEED_LIMIT_KMPH, type SpeedLimitCity } from '@/lib/speedLimit'
+import api from '@/lib/api'
 import { useWakeLock } from '@/lib/useWakeLock'
 import { haversineMetres, remainingRoutePath } from '@/lib/geo'
 
@@ -233,7 +236,7 @@ export default function TripInProgress() {
     : 0
   const waitFreeLeftSec = Math.max(0, STOP_FREE_WAIT_SECONDS - waitElapsedSec)
 
-  const { position, heading: selfHeading } = useDriverLocation({
+  const { position, heading: selfHeading, speedKmph } = useDriverLocation({
     highAccuracy: true,
     syncIntervalMs: 3_000,
     onSync: sessionId
@@ -278,6 +281,18 @@ export default function TripInProgress() {
   // it look like the driver has already reached the destination.
   const mapCenter: [number, number] = displayPosition ?? dropPos
   useVoiceGuidance(currentStep, distanceToManeuver, voiceEnabled, navLanguage)
+
+  // Over-speed voice alert: classify the posted limit (city 50 / highway 70) from
+  // the driver's raw GPS position against the active city list, then let
+  // useSpeedAlert fire a "slow down" voice cue when they hold above it.
+  const [cities, setCities] = useState<SpeedLimitCity[]>([])
+  useEffect(() => {
+    api.get<SpeedLimitCity[]>('/api/v1/geo/cities').then(r => setCities(r.data ?? [])).catch(() => {})
+  }, [])
+  const limitKmph = position && cities.length
+    ? classifyLimit(position, cities)
+    : HIGHWAY_SPEED_LIMIT_KMPH
+  useSpeedAlert(speedKmph, limitKmph, voiceEnabled, navLanguage)
 
   // "Here's the journey" beat on mount (trip just started), "here's the next
   // leg" mini-beat whenever the nav target changes (a stop is reached/skipped

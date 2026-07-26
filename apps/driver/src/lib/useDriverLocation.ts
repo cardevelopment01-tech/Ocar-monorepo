@@ -9,6 +9,8 @@ const HEADING_MOVEMENT_THRESHOLD_METRES = 8
 export interface DriverLocationState {
   position: [number, number] | null
   heading:  number
+  /** Ground speed in km/h, null until the first movement fix. */
+  speedKmph: number | null
   error:    GeolocationPositionError | null
 }
 
@@ -33,15 +35,18 @@ export function useDriverLocation({
   onSync,
   syncIntervalMs = 30_000,
 }: UseDriverLocationOptions = {}): DriverLocationState {
-  const [position, setPosition] = useState<[number, number] | null>(null)
-  const [heading,  setHeading]  = useState(0)
-  const [error,    setError]    = useState<GeolocationPositionError | null>(null)
+  const [position,  setPosition]  = useState<[number, number] | null>(null)
+  const [heading,   setHeading]   = useState(0)
+  const [speedKmph, setSpeedKmph] = useState<number | null>(null)
+  const [error,     setError]     = useState<GeolocationPositionError | null>(null)
 
   const lastSyncAt  = useRef(0)
   const onSyncRef   = useRef(onSync)
   const hasFirstFix = useRef(false)
   const lastHeadingPos = useRef<[number, number] | null>(null)
   const lastHeadingVal = useRef(0)
+  const lastFixPos = useRef<[number, number] | null>(null)
+  const lastFixTs  = useRef(0)
   onSyncRef.current = onSync
 
   useEffect(() => {
@@ -58,6 +63,22 @@ export function useDriverLocation({
       const lat = pos.coords.latitude
       const lng = pos.coords.longitude
       setPosition([lat, lng])
+
+      // Prefer the GPS chipset's Doppler-derived speed (accurate, low-latency);
+      // fall back to distance/time between accepted fixes when it's null/-1
+      // (iOS at low speed, some Android fixes). Floor tiny values to 0 — parked
+      // GPS drifts and reports phantom 2-4 km/h. Spikes are handled downstream by
+      // useSpeedAlert's sustain window, so no smoothing is done here.
+      let kmph: number | null = null
+      if (pos.coords.speed != null && pos.coords.speed >= 0) {
+        kmph = pos.coords.speed * 3.6
+      } else if (lastFixPos.current && lastFixTs.current) {
+        const dtSec = (pos.timestamp - lastFixTs.current) / 1000
+        if (dtSec > 0) kmph = (haversineMetres(lastFixPos.current, [lat, lng]) / dtSec) * 3.6
+      }
+      lastFixPos.current = [lat, lng]
+      lastFixTs.current  = pos.timestamp
+      if (kmph != null) setSpeedKmph(kmph < 4 ? 0 : kmph)
 
       // Raw device coords.heading is noisy at near-zero speed (compass jitter),
       // which is what caused the map/marker heading twitch — derive heading from
@@ -117,5 +138,5 @@ export function useDriverLocation({
     }
   }, [highAccuracy, maxAccuracyM, syncIntervalMs])
 
-  return { position, heading, error }
+  return { position, heading, speedKmph, error }
 }
