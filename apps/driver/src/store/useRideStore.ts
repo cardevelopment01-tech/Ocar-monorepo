@@ -8,6 +8,7 @@ export interface RideStop {
   lng: number
   address: string | null
   status: 'pending' | 'reached' | 'skipped'
+  arrived_at: string | null
   reached_at: string | null
 }
 
@@ -57,6 +58,7 @@ interface RideState {
   setRestoreChecked: () => void
   updateRideStatus:  (status: string) => void
   setRideStartedAt:  (ts: string) => void
+  arriveStop:        (sequence: number, arrivedAt: string | null) => void
   updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null) => void
   clearRide:         () => void
   setIncomingRequest: (req: RideState['incomingRequest']) => void
@@ -81,6 +83,16 @@ export const useRideStore = create<RideState>()(
 
       setRideStartedAt: (ts) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, rideStartedAt: ts } : null })),
+
+      arriveStop: (sequence, arrivedAt) =>
+        set((s) => ({
+          activeRide: s.activeRide ? {
+            ...s.activeRide,
+            stops: (s.activeRide.stops ?? []).map(stop =>
+              stop.sequence === sequence ? { ...stop, arrived_at: arrivedAt } : stop
+            ),
+          } : null,
+        })),
 
       updateStop: (sequence, status, reachedAt) =>
         set((s) => ({

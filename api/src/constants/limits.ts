@@ -46,6 +46,10 @@ export const MANEUVER_ANNOUNCE_NEAR_METRES = 100
 // (Uber tops out at 2 extra stops) — see docs/MULTI_STOP_PLAN.md §2.1.
 export const MAX_STOPS_PER_RIDE = 3
 export const STOP_DUPLICATE_RADIUS_METRES = 100
+// Free wait window per stop before metered wait kicks in (one-way only — an
+// intercity stop is an errand, so 10 min, not the 3-min city-handoff cap).
+// Beyond this, wait is billed at the rate card's rate_per_min. See docs research.
+export const STOP_FREE_WAIT_MINUTES = 10
 export const ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES = 15
 export const MIN_ADVANCE_BOOKING_MINUTES = 60
 export const MAX_ADVANCE_BOOKING_DAYS = 7

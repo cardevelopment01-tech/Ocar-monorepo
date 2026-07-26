@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import axios from 'axios'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
+import RouteTimeline from '@/components/route/RouteTimeline'
 import { safetyApi } from '@/lib/safety-api'
 import { formatReturnAt } from '@/lib/utils'
 import { geoApi } from '@/lib/geo-api'
@@ -222,7 +223,7 @@ export default function RidePage() {
   const [reportSending,  setReportSending]  = useState(false)
   const [reportSent,     setReportSent]     = useState(false)
   const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null)
-  const lastFetch      = useRef<{ mode: RouteMode; origin: [number, number]; dest: [number, number]; at: number } | null>(null)
+  const lastFetch      = useRef<{ mode: RouteMode; origin: [number, number]; dest: [number, number]; at: number; stopsKey: string } | null>(null)
   const fetchSeq       = useRef(0)
   const breadcrumbRef  = useRef<[number, number][]>([])
   const [breadcrumb, setBreadcrumb] = useState<[number, number][]>([])
@@ -256,9 +257,15 @@ export default function RidePage() {
 
   // Snap target for useInterpolatedPosition — see its doc comment. Recomputed only
   // when the route string itself changes, not on every driver GPS tick.
+  // Detour override: a ride with pending stops is routed leg-by-leg through them
+  // (see the route-fetch effect), so the drawn line, the driver snapping, and the
+  // trim all follow the detour instead of a straight origin→dest line.
+  const [routeOverride, setRouteOverride] = useState<[number, number][] | undefined>(undefined)
+  // Tap a stop row ↔ its map pin: shared selection (0-based index into ride.stops).
+  const [selectedStop, setSelectedStop] = useState<number | null>(null)
   const routePoints = useMemo(
-    () => (encodedPolyline ? decodePolyline(encodedPolyline) : undefined),
-    [encodedPolyline],
+    () => routeOverride ?? (encodedPolyline ? decodePolyline(encodedPolyline) : undefined),
+    [routeOverride, encodedPolyline],
   )
   const { pos: smoothPos, heading: smoothHeading, headingKnown: smoothHeadingKnown, matchedSegmentIndex } = useInterpolatedPosition(driverPos, routePoints)
 
@@ -508,23 +515,56 @@ export default function RidePage() {
       dest   = dropPos
     }
 
-    const prev        = lastFetch.current
-    const modeChanged = !prev || prev.mode !== routeMode
-    const deviated    = prev && driverPos ? haversineMetres(driverPos, prev.origin) > 200 : false
-    const userDeviated = prev && userPos ? haversineMetres(userPos, prev.dest) > 100 : false
-    const stale       = prev ? (Date.now() - prev.at) > 60_000 : false
+    // Pending-stop identity: when a stop is reached mid-trip it leaves this set,
+    // so the route must refetch to stop bending toward the already-visited stop.
+    const stopsKey = ride.stops.filter(s => s.status === 'pending').map(s => `${s.lat},${s.lng}`).join('|')
 
-    if (!modeChanged && !deviated && !userDeviated && !stale) return
+    const prev         = lastFetch.current
+    const modeChanged  = !prev || prev.mode !== routeMode
+    const stopsChanged = !prev || prev.stopsKey !== stopsKey
+    const deviated     = prev && driverPos ? haversineMetres(driverPos, prev.origin) > 200 : false
+    const userDeviated = prev && userPos ? haversineMetres(userPos, prev.dest) > 100 : false
+    const stale        = prev ? (Date.now() - prev.at) > 60_000 : false
+
+    if (!modeChanged && !stopsChanged && !deviated && !userDeviated && !stale) return
     if (routeMode === 'recap' && prev?.mode === 'recap') return
 
     const seq = ++fetchSeq.current
-    lastFetch.current = { mode: routeMode, origin, dest, at: Date.now() }
-    if (modeChanged) { setEncodedPolyline(undefined); setLiveEta(null); setLiveEtaAt(null) }
+    lastFetch.current = { mode: routeMode, origin, dest, at: Date.now(), stopsKey }
+    if (modeChanged) { setEncodedPolyline(undefined); setRouteOverride(undefined); setLiveEta(null); setLiveEtaAt(null) }
 
     // Live ETA only makes sense once a driver is actually en route (pickup or dest leg) —
     // meaningless during the pre-assignment search phase or the post-trip recap.
     const wantsEta = routeMode === 'driver-pickup' || routeMode === 'driver-dest'
 
+    // Route through the still-pending stops so the line detours to them. Not on the
+    // pickup leg — stops sit between pickup and drop, not before pickup.
+    const waypoints: [number, number][] = routeMode === 'driver-pickup'
+      ? []
+      : ride.stops.filter(s => s.status === 'pending').map(s => [s.lat, s.lng])
+
+    if (waypoints.length > 0) {
+      const pts = [origin, ...waypoints, dest]
+      Promise.all(pts.slice(0, -1).map((p, i) =>
+        geoApi.getRoute(p[0], p[1], pts[i + 1]![0], pts[i + 1]![1], { trafficAware: wantsEta })))
+        .then(legs => {
+          if (fetchSeq.current !== seq) return
+          const concat = legs.flatMap(l => (l.polyline ? decodePolyline(l.polyline) : []))
+          setRouteOverride(concat.length >= 2 ? concat : undefined)
+          setEncodedPolyline(undefined)
+          if (wantsEta) {
+            setLiveEta({
+              etaMin: Math.round(legs.reduce((s, l) => s + (l.trafficDurationMin ?? l.durationMin), 0)),
+              distanceKm: Math.round(legs.reduce((s, l) => s + l.distanceKm, 0) * 10) / 10,
+            })
+            setLiveEtaAt(Date.now())
+          } else { setLiveEta(null); setLiveEtaAt(null) }
+        })
+        .catch(() => { if (fetchSeq.current === seq) { setRouteOverride(undefined); setLiveEta(null); setLiveEtaAt(null) } })
+      return
+    }
+
+    setRouteOverride(undefined)
     geoApi.getRoute(origin[0], origin[1], dest[0], dest[1], { trafficAware: wantsEta })
       .then(r => {
         if (fetchSeq.current !== seq) return
@@ -590,6 +630,10 @@ export default function RidePage() {
           userPos={userPos}
           nearbyDrivers={nearbyDrivers}
           remainingPath={remainingPath}
+          stops={ride ? ride.stops.map(s => [s.lat, s.lng] as [number, number]) : []}
+          routeOverride={routeOverride}
+          selectedStopIdx={selectedStop}
+          onSelectStop={(i) => setSelectedStop(prev => (prev === i ? null : i))}
         />
 
         {/* Dev socket indicator */}
@@ -833,34 +877,31 @@ export default function RidePage() {
 
                       {/* Stop itinerary — mirrors driver state via the stop:updated socket event */}
                       {ride && ride.stops.length > 0 && (
-                        <div
-                          className="rounded-2xl overflow-hidden"
-                          style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}
-                        >
-                          {ride.stops.map((stop, i) => (
-                            <div
-                              key={stop.id}
-                              className="flex items-center gap-3 px-4 py-2.5"
-                              style={{ borderTop: i > 0 ? '1px solid #E2E8F0' : undefined }}
-                            >
-                              {stop.status === 'reached' ? (
-                                <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
-                              ) : stop.status === 'skipped' ? (
-                                <X size={14} className="text-gray-300 flex-shrink-0" />
-                              ) : (
-                                <div className="w-2.5 h-2.5 flex-shrink-0" style={{ background: '#7C3AED', borderRadius: 3 }} />
-                              )}
-                              <span
-                                className="text-sm font-medium truncate"
-                                style={{
-                                  color: stop.status === 'skipped' ? '#94A3B8' : '#334155',
-                                  textDecoration: stop.status === 'skipped' ? 'line-through' : undefined,
-                                }}
-                              >
-                                {stop.address ?? `Stop ${i + 1}`}
-                              </span>
-                            </div>
-                          ))}
+                        <div className="space-y-2">
+                          {rideStatus === 'in_progress' && (() => {
+                            const pendingIdx = ride.stops.findIndex(s => s.status === 'pending')
+                            if (pendingIdx === -1) return null
+                            const cur = ride.stops[pendingIdx]!
+                            return (
+                              <div className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}>
+                                <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#4F46E5', color: '#fff' }}>
+                                  Stop {pendingIdx + 1} of {ride.stops.length}
+                                </span>
+                                <span className="text-[13px] font-semibold truncate" style={{ color: '#0F172A' }}>{cur.address ?? `Stop ${pendingIdx + 1}`}</span>
+                              </div>
+                            )
+                          })()}
+                          <RouteTimeline
+                            live={rideStatus === 'in_progress'}
+                            activeIndex={selectedStop}
+                            onStopClick={(idx) => setSelectedStop(prev => (prev === idx ? null : idx))}
+                            nodes={ride.stops.map((stop, i) => ({
+                              kind: 'stop' as const,
+                              key: stop.id,
+                              address: stop.address ?? `Stop ${i + 1}`,
+                              state: stop.status,
+                            }))}
+                          />
                         </div>
                       )}
 

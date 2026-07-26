@@ -1,11 +1,14 @@
 'use client'
 
 import { Suspense, useState, useEffect } from 'react'
-import { ArrowLeft, RotateCcw, ArrowRight, CreditCard, MapPin, Plus, X } from 'lucide-react'
+import { ArrowLeft, RotateCcw, CreditCard } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
+import RouteTimeline, { type TimelineNode } from '@/components/route/RouteTimeline'
+import AddStopSheet from '@/components/route/AddStopSheet'
+import { swapAt } from '@/lib/utils'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 const HOUR_OPTIONS = [4, 6, 8, 10, 12] as const
@@ -59,6 +62,7 @@ function RoundTripContent() {
     return raw ? new Date(raw) : null
   })
   const [schedulePickerOpen, setSchedulePickerOpen] = useState(false)
+  const [addStopOpen, setAddStopOpen] = useState(false)
 
   const canProceed = hasDestination && selectedHours !== null
 
@@ -100,17 +104,14 @@ function RoundTripContent() {
     router.push(`/search?${params.toString()}`)
   }
 
-  function goToAddStop() {
-    const params = buildCarriedParams()
-    params.set('backTo', 'round_trip')
-    params.set('stopIndex', String(stops.length))
-    router.push(`/search?${params.toString()}`)
-  }
-
   function removeStop(index: number) {
     const nextStops = stops.filter((_, i) => i !== index)
     const params = buildCarriedParams(nextStops)
     router.replace(`/round-trip?${params.toString()}`)
+  }
+
+  function swapStops(index: number) {
+    router.replace(`/round-trip?${buildCarriedParams(swapAt(stops, index)).toString()}`)
   }
 
   function handleProceed() {
@@ -148,6 +149,19 @@ function RoundTripContent() {
     ? `Schedule your cab · ${selectedHours}h round trip`
     : `Choose your cab · ${selectedHours}h round trip`
 
+  const timelineNodes: TimelineNode[] = [{ kind: 'origin', address: originAddress }]
+  if (hasDestination) {
+    stops.forEach((s, i) => timelineNodes.push({
+      kind: 'stop',
+      key: `${s.lat}-${s.lng}`,
+      address: s.address,
+      onRemove: () => removeStop(i),
+      ...(i < stops.length - 1 ? { onSwap: () => swapStops(i) } : {}),
+    }))
+    if (stops.length < MAX_STOPS) timelineNodes.push({ kind: 'add', onTap: () => setAddStopOpen(true) })
+  }
+  timelineNodes.push({ kind: 'destination', address: destAddress, placeholder: 'Where are you going?', onTap: goToSearch })
+
   if (!hasOrigin) {
     return (
       <div className="h-full flex items-center justify-center bg-white">
@@ -157,7 +171,7 @@ function RoundTripContent() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ background: '#F5F7FF' }}>
+    <div className="h-full flex flex-col overflow-hidden relative" style={{ background: '#F5F7FF' }}>
 
       {/* ── Header ──────────────────────────────────────────────── */}
       <div
@@ -201,103 +215,7 @@ function RoundTripContent() {
 
           {/* Route card */}
           <motion.div {...fadeUp(0)}>
-            <div
-              className="rounded-2xl overflow-hidden bg-white"
-              style={{ border: '1px solid #E8EEFF', boxShadow: '0 2px 16px rgba(79,70,229,0.07)' }}
-            >
-              {/* From, read-only */}
-              <div
-                className="flex items-center gap-3 px-4 py-3.5"
-                style={{ borderBottom: '1px solid #E8EEFF' }}
-              >
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>From</p>
-                  <p className="text-[13px] font-semibold truncate mt-0.5" style={{ color: '#0F172A' }}>{originAddress}</p>
-                </div>
-                <MapPin size={13} style={{ color: '#C7D2FE' }} className="flex-shrink-0" />
-              </div>
-
-              {/* Stops, waypoints on the outbound leg only */}
-              {hasDestination && (
-                <AnimatePresence initial={false}>
-                  {stops.map((stop, i) => (
-                    <motion.div
-                      key={`${stop.lat}-${stop.lng}-${i}`}
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.2, ease: EASE }}
-                      style={{ overflow: 'hidden' }}
-                    >
-                      <div
-                        className="flex items-center gap-3 px-4 py-3.5"
-                        style={{ borderBottom: '1px solid #E8EEFF' }}
-                      >
-                        <div
-                          className="w-2.5 h-2.5 flex-shrink-0"
-                          style={{ background: '#7C3AED', borderRadius: 3 }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>
-                            Stop {i + 1}
-                          </p>
-                          <p className="text-[13px] font-semibold truncate mt-0.5" style={{ color: '#0F172A' }}>
-                            {stop.address}
-                          </p>
-                        </div>
-                        <motion.button
-                          onClick={() => removeStop(i)}
-                          aria-label={`Remove stop ${i + 1}`}
-                          whileTap={{ scale: 0.9 }}
-                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-opacity active:opacity-60"
-                        >
-                          <X size={14} strokeWidth={2} style={{ color: '#94A3B8' }} />
-                        </motion.button>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              )}
-
-              {/* "+ Add a stop" ghost row */}
-              {hasDestination && stops.length < MAX_STOPS && (
-                <motion.button
-                  {...fadeUp(0)}
-                  onClick={goToAddStop}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition-opacity active:opacity-60"
-                  style={{ borderBottom: '1px solid #E8EEFF' }}
-                >
-                  <div
-                    className="w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ border: '1.5px dashed #C7D2FE' }}
-                  >
-                    <Plus size={12} strokeWidth={2.4} style={{ color: '#4F46E5' }} />
-                  </div>
-                  <span className="text-[13px] font-semibold" style={{ color: '#4F46E5' }}>Add a stop</span>
-                </motion.button>
-              )}
-
-              {/* To, tappable */}
-              <button
-                onClick={goToSearch}
-                className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-opacity active:opacity-60"
-              >
-                <div
-                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 transition-colors"
-                  style={{ background: hasDestination ? '#4F46E5' : '#CBD5E1' }}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>To</p>
-                  {hasDestination ? (
-                    <p className="text-[13px] font-semibold truncate mt-0.5" style={{ color: '#0F172A' }}>{destAddress}</p>
-                  ) : (
-                    <p className="text-[13px] mt-0.5" style={{ color: '#94A3B8' }}>Where are you going?</p>
-                  )}
-                </div>
-                <ArrowRight size={14} style={{ color: hasDestination ? '#C7D2FE' : '#4F46E5' }} className="flex-shrink-0" />
-              </button>
-            </div>
+            <RouteTimeline nodes={timelineNodes} className="shadow-[0_2px_16px_rgba(79,70,229,0.07)]" />
 
             {/* Route meta */}
             {hasDestination && distanceKm !== null && durationMin !== null && (
@@ -431,6 +349,15 @@ function RoundTripContent() {
           {buttonLabel}
         </button>
       </div>
+
+      <AddStopSheet
+        open={addStopOpen}
+        onClose={() => setAddStopOpen(false)}
+        onSelect={(s) => { setAddStopOpen(false); router.replace(`/round-trip?${buildCarriedParams([...stops, s]).toString()}`) }}
+        title={`Add stop ${stops.length + 1}`}
+        originLat={originLat}
+        originLng={originLng}
+      />
     </div>
   )
 }

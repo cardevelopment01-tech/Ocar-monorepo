@@ -7,7 +7,7 @@ import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
-import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem } from '@/lib/admin-api'
+import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem, type AdminRideStop } from '@/lib/admin-api'
 
 function fmt(iso: string | null) {
   if (!iso) return '—'
@@ -47,6 +47,7 @@ function RidesPageContent() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
   const [selected, setSelected] = useState<AdminRideItem | null>(null)
+  const [detailStops, setDetailStops] = useState<AdminRideStop[]>([])
   const [resolving, setResolving] = useState(false)
 
   const [upcoming, setUpcoming] = useState<AdminUpcomingRideItem[]>([])
@@ -64,6 +65,17 @@ function RidesPageContent() {
   }, [])
 
   useEffect(() => { void fetchUpcoming() }, [fetchUpcoming])
+
+  // Fetch the ride's stop timeline (incl. wait charges) when a ride is opened —
+  // the list row doesn't carry stops. Needed for wait-charge dispute resolution.
+  useEffect(() => {
+    if (!selected) { setDetailStops([]); return }
+    let cancelled = false
+    adminRideApi.getById(selected.id)
+      .then(d => { if (!cancelled) setDetailStops(d.stops ?? []) })
+      .catch(() => { if (!cancelled) setDetailStops([]) })
+    return () => { cancelled = true }
+  }, [selected?.id])
 
   async function handleForceResolve(action: 'complete' | 'cancel') {
     if (!selected) return
@@ -390,6 +402,28 @@ function RidesPageContent() {
                 </div>
               ) : null)}
             </div>
+
+            {detailStops.length > 0 && (
+              <div className="bg-surface-2 rounded-xl p-3 border border-border-light space-y-1.5">
+                <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Stops</p>
+                {detailStops.map((s) => {
+                  const dwellMin = s.arrived_at && s.reached_at
+                    ? Math.round((new Date(s.reached_at).getTime() - new Date(s.arrived_at).getTime()) / 60000)
+                    : null
+                  const wait = parseFloat(s.wait_charge)
+                  return (
+                    <div key={s.id} className="flex justify-between items-center gap-2">
+                      <span className="text-xs text-text-primary truncate">{s.sequence}. {s.address ?? 'Stop'}</span>
+                      <span className="text-xs text-text-muted whitespace-nowrap capitalize">
+                        {s.status}
+                        {dwellMin != null ? ` · ${dwellMin}m wait` : ''}
+                        {wait > 0 ? ` · ₹${Math.round(wait)}` : ''}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             {(selected.payment_status || selected.payment_channel) && (
               <div className="bg-surface-2 rounded-xl p-3 border border-border-light">

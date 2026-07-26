@@ -9,6 +9,8 @@ import LocationPin from './LocationPin'
 import CarMarker from './CarMarker'
 import RoutePolyline from './RoutePolyline'
 import TrafficLayer from './TrafficLayer'
+import StopPin from './StopPin'
+import FlyTo from './FlyTo'
 
 // Brief "here's the whole picture" beat when a driver first appears or the leg
 // changes (pickup -> destination), then settles into a plain follow — mirrors
@@ -31,6 +33,14 @@ interface RideMapSceneProps {
   breadcrumb?: [number, number][]
   userPos?: [number, number]
   nearbyDrivers?: Array<{ driver_id: string; lat: number; lng: number }>
+  /** Numbered intermediary stops, drawn as violet pins matching the itinerary. */
+  stops?: [number, number][]
+  /** Currently selected stop (index into `stops`) — emphasised + flown to. */
+  selectedStopIdx?: number | null
+  onSelectStop?: (i: number) => void
+  /** Full route decoded through the stops — drawn instead of `encodedPolyline`
+   *  so the line detours to the pins (trimming still applies via remainingPath). */
+  routeOverride?: [number, number][]
   /** Route trimmed to what's still ahead of the driver's last snapped position —
    *  when present, rendered instead of the full route (see
    *  docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 7b). Falls back to the full
@@ -51,6 +61,10 @@ export default function RideMapScene({
   breadcrumb,
   userPos,
   nearbyDrivers,
+  stops = [],
+  selectedStopIdx,
+  onSelectStop,
+  routeOverride,
   remainingPath,
 }: RideMapSceneProps) {
   const isRecap      = routeMode === 'recap'
@@ -76,7 +90,7 @@ export default function RideMapScene({
     <MapViewInner center={center} zoom={13}>
       {!isRecap && <TrafficLayer />}
       {isRecap
-        ? (showDrop && <FitBounds positions={[pickupPos, dropPos]} paddingBottom={40} />)
+        ? (showDrop && <FitBounds positions={[pickupPos, ...stops, dropPos]} paddingBottom={40} />)
         : driverPos
           ? (overview
               ? <FitBounds positions={[driverPos, legTarget]} paddingBottom={40} />
@@ -84,19 +98,30 @@ export default function RideMapScene({
               // heading. Also rotating the map via RecenterMap's heading prop would double-
               // rotate (the exact bug the driver app's SelfCarMarker comment already warns
               // about), which is what made heading look like it was spinning indefinitely.
-              : <RecenterMap center={driverPos} />)
-          : (showDrop && <FitBounds positions={[pickupPos, dropPos]} paddingBottom={40} />)
+              // Pause following while a stop is selected so its FlyTo frame holds.
+              : (selectedStopIdx != null ? null : <RecenterMap center={driverPos} />))
+          : (showDrop && <FitBounds positions={[pickupPos, ...stops, dropPos]} paddingBottom={40} />)
       }
       <LocationPin position={pickupPos} variant="pickup" />
       {isPickupLeg && userPos && <LocationPin position={userPos} variant="user" />}
+      {stops.map((p, i) => (
+        <StopPin
+          key={`${p[0]}-${p[1]}`}
+          position={p}
+          index={i + 1}
+          selected={selectedStopIdx === i}
+          onClick={onSelectStop ? () => onSelectStop(i) : undefined}
+        />
+      ))}
+      {selectedStopIdx != null && stops[selectedStopIdx] && <FlyTo target={stops[selectedStopIdx]!} />}
       {showDrop && <LocationPin position={dropPos} variant="drop" />}
       {isInProgress && breadcrumb && <BreadcrumbTrail positions={breadcrumb} />}
       {/* Static full-route backdrop, only while a driver is actually being followed
           (matches the trimming this backs) — see remainingPath's doc comment. */}
-      {driverPos && !isRecap && <RoutePolyline encoded={encodedPolyline} variant="traveled-backdrop" />}
+      {driverPos && !isRecap && <RoutePolyline encoded={routeOverride ? undefined : encodedPolyline} positions={routeOverride} variant="traveled-backdrop" />}
       <RoutePolyline
-        encoded={remainingPath ? undefined : encodedPolyline}
-        positions={remainingPath}
+        encoded={(remainingPath || routeOverride) ? undefined : encodedPolyline}
+        positions={remainingPath ?? routeOverride}
         variant={isPickupLeg ? 'pickup-leg' : 'default'}
       />
       {driverPos && !isRecap && (
