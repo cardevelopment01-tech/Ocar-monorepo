@@ -51,6 +51,10 @@ export const MIN_ADVANCE_BOOKING_MINUTES = 60
 export const MAX_ADVANCE_BOOKING_DAYS = 7
 export const MAX_CONCURRENT_SCHEDULED_BOOKINGS = 3
 export const RETURN_CAB_MATCH_RADIUS_METRES = 2000
+// Khorda/Bhubaneswar/Cuttack share one boundary box (see 055_merge_khorda_bbsr_ctc_boundary.sql)
+// so a genuine Bhubaneswar<->Cuttack intercity trip can still land inside it. Only block
+// one_way/round_trip as "book a City Ride instead" when the trip is actually short.
+export const IN_CITY_MAX_TRIP_DISTANCE_METRES = 15_000
 
 export const PAGINATION_DEFAULT_LIMIT = 20
 export const PAGINATION_MAX_LIMIT = 100
