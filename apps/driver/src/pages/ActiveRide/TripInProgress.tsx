@@ -596,6 +596,16 @@ export default function TripInProgress() {
             {/* Stop itinerary checklist */}
             {stops.length > 0 && (
               <div className="rounded-2xl mt-3 mb-3 overflow-hidden border border-border">
+                {currentStop && (
+                  <div className="flex items-center gap-2 px-3.5 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
+                    <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#4F46E5', color: '#fff' }}>
+                      Stop {currentStop.sequence} of {stops.length}
+                    </span>
+                    <span className="text-[12px] font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                      {currentStop.address ?? `Stop ${currentStop.sequence}`}
+                    </span>
+                  </div>
+                )}
                 {stops.map((stop, i) => {
                   const isCurrent = stop.status === 'pending' && currentStop?.sequence === stop.sequence
                   const isPending = stopActionPending === stop.sequence
@@ -605,8 +615,7 @@ export default function TripInProgress() {
                       className="flex items-center gap-3 px-3.5 py-2.5"
                       style={{
                         borderTop: i > 0 ? '1px solid var(--border)' : undefined,
-                        borderLeft: isCurrent ? '3px solid #4F46E5' : '3px solid transparent',
-                        background: isCurrent ? 'rgba(79,70,229,0.05)' : undefined,
+                        background: isCurrent ? 'rgba(79,70,229,0.09)' : undefined,
                       }}
                     >
                       {stop.status === 'reached' ? (
