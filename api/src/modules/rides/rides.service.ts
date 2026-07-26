@@ -81,8 +81,8 @@ function validateRider(data: BookingRequest): void {
 
 function validateStops(data: BookingRequest): void {
   if (!data.stops || data.stops.length === 0) return
-  if (data.rideType !== 'round_trip' && data.rideType !== 'rental') {
-    throw Object.assign(new Error('Stops are only supported for Round Trip and Rental rides'), { httpStatus: 422 })
+  if (data.rideType !== 'round_trip' && data.rideType !== 'rental' && data.rideType !== 'one_way') {
+    throw Object.assign(new Error('Stops are not supported for this ride type'), { httpStatus: 422 })
   }
   if (data.stops.length > MAX_STOPS_PER_RIDE) {
     throw Object.assign(new Error(`A ride can have at most ${MAX_STOPS_PER_RIDE} stops`), { httpStatus: 422 })
@@ -375,8 +375,11 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   // Derived server-side so the persisted count and ride_stops rows can never
   // diverge — client-supplied stopCount is accepted-but-ignored (see BookingRequest).
   const stopCount = data.stops?.length ?? 0
-  // Rental stops are a free itinerary (§2.2 of the plan) — they never touch fare.
-  const fareStopCount = data.rideType === 'rental' ? 0 : stopCount
+  // Only round trips levy the flat per-stop charge. Rental stops are a free
+  // itinerary (§2.2); one-way stops are priced through the detour distance the
+  // client routes through the waypoints (§5.2 v2 trigger) — the flat fee would
+  // double-charge on a per-km ride type, so both pass 0 here.
+  const fareStopCount = data.rideType === 'round_trip' ? stopCount : 0
 
   // Enforce minimum 4h for round trips — must match pricing.service clamp so
   // fare_snapshots.trip_hours records the same value used to compute the fare.

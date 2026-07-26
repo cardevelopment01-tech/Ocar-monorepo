@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, ArrowRightLeft, ChevronRight, Users, Zap, Clock, CreditCard, RotateCcw } from 'lucide-react'
+import { ArrowLeft, ArrowRightLeft, ChevronRight, Users, Zap, Clock, CreditCard, RotateCcw, Plus, X } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -62,7 +62,8 @@ function SelectRideContent() {
   const tripHoursFromUrl   = sp.get('tripHours') ? parseInt(sp.get('tripHours')!) : undefined
   const fromRoundTripPage  = tripHoursFromUrl !== undefined && sp.get('rideType') === 'round_trip'
 
-  // Stops only apply to round trip here — rental books directly from /rental, one-way is out of scope (v1)
+  // Stops apply to one-way (priced via detour distance) and round trip (flat
+  // per-stop fee). Rental books directly from /rental, so it never lands here.
   const stops: StopInput[] = useMemo(() => {
     const out: StopInput[] = []
     for (let i = 0; i < 3; i++) {
@@ -97,6 +98,16 @@ function SelectRideContent() {
   })
   const [schedulePickerOpen, setSchedulePickerOpen] = useState(false)
 
+  // One-way stops are priced through the detour: sum the routed legs
+  // origin→stop→…→dest and feed the total distance to the estimate + booking.
+  // Round-trip keeps its base origin↔dest distance (stops there are a flat fee).
+  const [routedDistanceKm, setRoutedDistanceKm] = useState<number | null>(null)
+  const [routedDurationMin, setRoutedDurationMin] = useState<number | null>(null)
+  const [routingStops, setRoutingStops] = useState(false)
+  const detourPriced = rideType === 'one_way' && stops.length > 0
+  const effectiveDistanceKm = detourPriced && routedDistanceKm != null ? routedDistanceKm : distanceKm
+  const effectiveDurationMin = detourPriced && routedDurationMin != null ? routedDurationMin : durationMin
+
   // One Way and Round Trip can never serve an in-city trip (docs/RIDE_TYPES_PLAN.md —
   // Round Trip is outstation-only, Rental is in-city-only; the backend 422s this at
   // booking time). This screen has no other guard against reaching it for an in-city
@@ -130,6 +141,37 @@ function SelectRideContent() {
   // Only the trip identity should trigger a reclassification, not every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [originLat, originLng, destinationLat, destinationLng])
+
+  // Route through the waypoints so one-way fare covers the real detour. Summing
+  // per-leg routed distance IS the through-waypoint total, so no waypoint-aware
+  // routing endpoint is needed — reuse the existing origin→dest getRoute per leg.
+  const stopsKey = stops.map(s => `${s.lat},${s.lng}`).join('|')
+  useEffect(() => {
+    if (!detourPriced) { setRoutedDistanceKm(null); setRoutedDurationMin(null); return }
+    let cancelled = false
+    setRoutingStops(true)
+    const points = [
+      { lat: originLat, lng: originLng },
+      ...stops,
+      { lat: destinationLat, lng: destinationLng },
+    ]
+    Promise.all(
+      points.slice(0, -1).map((p, i) => {
+        const n = points[i + 1]!
+        return geoApi.getRoute(p.lat, p.lng, n.lat, n.lng)
+      })
+    )
+      .then(legs => {
+        if (cancelled) return
+        setRoutedDistanceKm(Math.round(legs.reduce((s, l) => s + l.distanceKm, 0) * 10) / 10)
+        setRoutedDurationMin(Math.round(legs.reduce((s, l) => s + l.durationMin, 0)))
+      })
+      .catch(() => { if (!cancelled) { setRoutedDistanceKm(null); setRoutedDurationMin(null) } })
+      .finally(() => { if (!cancelled) setRoutingStops(false) })
+    return () => { cancelled = true }
+  // stopsKey captures stop identity+order; the primitive coords cover origin/dest moves.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detourPriced, stopsKey, originLat, originLng, destinationLat, destinationLng])
 
   // tripHours: from URL (round_trip from /round-trip page) or inline selection
   const tripHours = rideType === 'round_trip'
@@ -180,15 +222,16 @@ function SelectRideContent() {
         try {
           const estParams: Parameters<typeof rideApi.getEstimate>[0] = {
             categoryId: cat.id, rideType,
-            distanceKm, durationMin, originCityId,
+            distanceKm: effectiveDistanceKm, durationMin: effectiveDurationMin, originCityId,
             tripHours,
           }
           if (rideType === 'round_trip') estParams.stopCount = stops.length
           results[cat.id] = await rideApi.getEstimate(estParams)
         } catch {}
 
-        // Parallel: check return cab availability for one_way rides
-        if (rideType === 'one_way') {
+        // Parallel: check return cab availability for one_way rides.
+        // A detour with stops can't match a return driver's fixed route, so skip it.
+        if (rideType === 'one_way' && stops.length === 0) {
           try {
             const rc = await rideApi.getReturnCabAvailable({
               pickupLat: originLat, pickupLng: originLng,
@@ -212,7 +255,7 @@ function SelectRideContent() {
     setReturnCabCategories(rcAvailable)
     setReturnCabEstimates(rcResults)
     setLoading(false)
-  }, [categories, rideType, distanceKm, durationMin, originCityId, tripHours, originLat, originLng, destinationLat, destinationLng, stops.length])
+  }, [categories, rideType, effectiveDistanceKm, effectiveDurationMin, originCityId, tripHours, originLat, originLng, destinationLat, destinationLng, stops.length])
 
   useEffect(() => { void loadEstimates() }, [loadEstimates])
 
@@ -224,14 +267,14 @@ function SelectRideContent() {
         categoryId: selected, rideType,
         originLat, originLng, originAddress,
         destinationLat, destinationLng, destinationAddress,
-        distanceKm, durationMin,
+        distanceKm: effectiveDistanceKm, durationMin: effectiveDurationMin,
         paymentChannel: getPaymentChannel(),
       }
       if (originCityId)            bookingParams.originCityId  = originCityId
       if (tripHours !== undefined) bookingParams.tripHours     = tripHours
       if (isReturnCab)             bookingParams.isReturnCab   = true
       if (scheduledFor)            bookingParams.scheduledFor  = scheduledFor.toISOString()
-      if (rideType === 'round_trip' && stops.length > 0) bookingParams.stops = stops
+      if (stops.length > 0) bookingParams.stops = stops
       if (riderName)  bookingParams.riderName  = riderName
       if (riderPhone) bookingParams.riderPhone = riderPhone
       const result = await rideApi.createBooking(bookingParams)
@@ -270,6 +313,46 @@ function SelectRideContent() {
       params.set(`stops[${i}][lng]`, String(s.lng))
     })
     router.push(`/search?${params.toString()}`)
+  }
+
+  // Bounce to the stop picker (reuses /search in stopIndex mode), carrying the
+  // whole in-progress trip so nothing is lost on the return hop.
+  function goToAddStop(index: number) {
+    const params = new URLSearchParams({
+      originLat: String(originLat), originLng: String(originLng), originAddress,
+      destinationLat: String(destinationLat), destinationLng: String(destinationLng), destinationAddress,
+      distanceKm: String(distanceKm), durationMin: String(durationMin),
+      originCityId: String(originCityId),
+      rideType,
+      backTo: 'select-ride',
+      stopIndex: String(index),
+    })
+    if (encodedPolyline) params.set('polyline', encodedPolyline)
+    if (rideType === 'round_trip' && tripHours) params.set('tripHours', String(tripHours))
+    if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+    if (riderName)  params.set('riderName', riderName)
+    if (riderPhone) params.set('riderPhone', riderPhone)
+    stops.forEach((s, i) => {
+      params.set(`stops[${i}][address]`, s.address)
+      params.set(`stops[${i}][lat]`, String(s.lat))
+      params.set(`stops[${i}][lng]`, String(s.lng))
+    })
+    router.push(`/search?${params.toString()}`)
+  }
+
+  function removeStop(index: number) {
+    const params = new URLSearchParams(sp.toString())
+    for (let i = 0; i < 3; i++) {
+      params.delete(`stops[${i}][address]`)
+      params.delete(`stops[${i}][lat]`)
+      params.delete(`stops[${i}][lng]`)
+    }
+    stops.filter((_, i) => i !== index).forEach((s, i) => {
+      params.set(`stops[${i}][address]`, s.address)
+      params.set(`stops[${i}][lat]`, String(s.lat))
+      params.set(`stops[${i}][lng]`, String(s.lng))
+    })
+    router.replace(`/select-ride?${params.toString()}`)
   }
 
   // Round trip disabled when no hours selected
@@ -331,7 +414,7 @@ function SelectRideContent() {
           <div className="flex items-center justify-between mb-2">
             <p className="text-[15px] font-bold text-slate-900">Choose a ride</p>
             <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
-              {distanceKm} km · {rideType === 'round_trip' ? 'round trip' : `${Math.round(durationMin)} min`}
+              {effectiveDistanceKm} km · {rideType === 'round_trip' ? 'round trip' : `${Math.round(effectiveDurationMin)} min`}
             </span>
           </div>
 
@@ -422,6 +505,59 @@ function SelectRideContent() {
 
         {/* Ride list, scrollable */}
         <div className="flex-1 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+
+          {/* ── Stops itinerary — up to 3 waypoints; one-way prices the detour, round trip a flat per-stop fee ── */}
+          {!isReturnCab && (stops.length > 0 || rideType === 'one_way' || !fromRoundTripPage) && (
+            <div className="mx-4 mt-2 mb-1 rounded-2xl overflow-hidden bg-white" style={{ border: '1px solid #E8EEFF' }}>
+              <AnimatePresence initial={false}>
+                {stops.map((stop, i) => (
+                  <motion.div
+                    key={`${stop.lat}-${stop.lng}-${i}`}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2, ease: EASE }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <div className="flex items-center gap-3 px-3.5 py-2.5" style={{ borderBottom: '1px solid #E8EEFF' }}>
+                      <div className="w-2.5 h-2.5 flex-shrink-0" style={{ background: '#7C3AED', borderRadius: 3 }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>Stop {i + 1}</p>
+                        <p className="text-[13px] font-semibold truncate mt-0.5" style={{ color: '#0F172A' }}>{stop.address}</p>
+                      </div>
+                      <motion.button
+                        onClick={() => removeStop(i)}
+                        aria-label={`Remove stop ${i + 1}`}
+                        whileTap={{ scale: 0.9 }}
+                        className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-opacity active:opacity-60"
+                      >
+                        <X size={14} strokeWidth={2} style={{ color: '#94A3B8' }} />
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              {stops.length < 3 && (
+                <button
+                  onClick={() => goToAddStop(stops.length)}
+                  className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left transition-opacity active:opacity-60"
+                >
+                  <div
+                    className="w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ border: '1.5px dashed #C7D2FE' }}
+                  >
+                    <Plus size={12} strokeWidth={2.4} style={{ color: '#4F46E5' }} />
+                  </div>
+                  <span className="text-[13px] font-semibold" style={{ color: '#4F46E5' }}>Add a stop</span>
+                  {stops.length > 0 && (
+                    <span className="ml-auto text-[11px] font-medium" style={{ color: '#94A3B8' }}>
+                      {routingStops ? 'Updating fare…' : detourPriced ? 'Fare covers the detour' : `${stops.length} on the way`}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* ── Return Cab section (one_way only, when available) ── */}
           {/* Return-cab matches a specific driver's live route right now, meaningless for a future scheduled pickup. */}
@@ -653,7 +789,8 @@ function SelectRideContent() {
             disabled={
               isBooking || loading || selectedFare == null || allUnavailable ||
               (!scheduledFor && !isReturnCab && (driverEta[selected]?.count === 0)) ||
-              roundTripMissingHours
+              roundTripMissingHours ||
+              (detourPriced && (routingStops || routedDistanceKm == null))
             }
             className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
             style={{ background: isBooking ? '#6D28D9' : 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', minHeight: 52 }}

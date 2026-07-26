@@ -351,7 +351,8 @@ function SearchContent() {
     params.set(`stops[${stopIndex}][address]`, address)
     params.set(`stops[${stopIndex}][lat]`, String(lat))
     params.set(`stops[${stopIndex}][lng]`, String(lng))
-    router.replace(`/${backTo === 'rental' ? 'rental' : 'round-trip'}?${params.toString()}`)
+    const dest = backTo === 'rental' ? 'rental' : backTo === 'select-ride' ? 'select-ride' : 'round-trip'
+    router.replace(`/${dest}?${params.toString()}`)
   }
 
   // Confirm a destination, auto-navigates if origin is set
@@ -740,7 +741,7 @@ function SearchContent() {
               }}
             >
               <span className="text-base">🛣️</span>
-              Multi-stop trips coming soon
+              Set your destination — add stops on the next screen
             </motion.div>
           )}
         </AnimatePresence>,
