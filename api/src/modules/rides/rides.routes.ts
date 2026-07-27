@@ -83,7 +83,7 @@ router.get('/me/active', authenticate(), async (req, res, next) => {
     const ride = await repo.getActiveRideForDriver(driverId)
     if (!ride) { res.status(404).json({ error: 'No active ride' }); return }
     const stops = await repo.getRideStops(BigInt(ride.id))
-    res.json({ ...ride, stops })
+    res.json({ ...service.maskRideContacts(ride, 'driver'), stops })
   } catch (err) { next(err) }
 })
 
@@ -188,7 +188,9 @@ router.get('/:id', authenticate(), async (req, res, next) => {
       catch { driverPhoto = null }
     }
 
-    res.json({ ...ride, stops, driver_photo: driverPhoto, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
+    const viewer = req.admin ? 'admin' : isRider ? 'user' : 'driver'
+    const maskedRide = service.maskRideContacts(ride, viewer)
+    res.json({ ...maskedRide, stops, driver_photo: driverPhoto, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
   } catch (err) { next(err) }
 })
 
