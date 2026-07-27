@@ -151,14 +151,15 @@ export const notificationsWorker = new Worker(
       }
       const lp: LogParams = { jobName: job.name, recipientPhone: data.userPhone, payload: data as Record<string, unknown> }
       const logId = await notifService.logNotification(lp)
+      let fareStr = ''
       try {
         const fareRes = await pool.query<{ amount: string }>(
           `SELECT COALESCE(total_final, total_estimated)::numeric AS amount
            FROM fare_snapshots WHERE ride_id = $1`,
           [BigInt(data.rideId)]
         )
-        const fare    = fareRes.rows[0] ? Math.round(parseFloat(fareRes.rows[0].amount)) : null
-        const fareStr = fare != null && fare > 0 ? ` Total fare: ₹${fare}.` : ''
+        const fare = fareRes.rows[0] ? Math.round(parseFloat(fareRes.rows[0].amount)) : null
+        fareStr = fare != null && fare > 0 ? ` Total fare: ₹${fare}.` : ''
         const { body: message } = await renderTemplate('ride_completed', 'sms', { fareStr })
         await sendSms(data.userPhone, message)
         await notifService.markSent(logId)
