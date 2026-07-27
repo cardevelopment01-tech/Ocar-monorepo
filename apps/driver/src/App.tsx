@@ -14,6 +14,7 @@ import NavigateToPickup from '@/pages/ActiveRide/NavigateToPickup'
 import OTPVerify from '@/pages/ActiveRide/OTPVerify'
 import TripInProgress from '@/pages/ActiveRide/TripInProgress'
 import TripEnd from '@/pages/ActiveRide/TripEnd'
+import CollectCash from '@/pages/ActiveRide/CollectCash'
 import ModeSelection from '@/pages/GoOnline/ModeSelection'
 import StandardConfirm from '@/pages/GoOnline/StandardConfirm'
 import ReturnCabSetup from '@/pages/GoOnline/ReturnCabSetup'
@@ -401,6 +402,11 @@ export default function App() {
             <Route path="/ride/end" element={
               <ProtectedRoute requireApproved>
                 <TripEnd />
+              </ProtectedRoute>
+            } />
+            <Route path="/ride/collect-cash" element={
+              <ProtectedRoute requireApproved>
+                <CollectCash />
               </ProtectedRoute>
             } />
 
