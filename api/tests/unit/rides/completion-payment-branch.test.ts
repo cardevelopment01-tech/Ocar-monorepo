@@ -77,6 +77,15 @@ describe('verifyEndOTP — payment channel branch', () => {
     expect(pay.deductCommission).toHaveBeenCalledWith(BigInt(101), BigInt(9))
     expect(pay.creditCashback).toHaveBeenCalled()
     expect(pay.createRidePaymentOrder).not.toHaveBeenCalled()
+
+    // Must stamp cash_collected_at so a later collectCash call (client hasn't
+    // learned the kill switch flipped) sees the ride already claimed and no-ops
+    // instead of double-settling.
+    const upd = vi.mocked(pool.query).mock.calls.find(
+      c => /UPDATE rides/.test(c[0] as string) && /cash_collected_at/.test(c[0] as string),
+    )
+    expect(upd).toBeTruthy()
+    expect(upd![1]).toEqual([BigInt(101), 500])
   })
 
   it('online: pending payment + order + emits razorpayOrderId, defers commission', async () => {

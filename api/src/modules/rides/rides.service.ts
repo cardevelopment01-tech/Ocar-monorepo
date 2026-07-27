@@ -1271,7 +1271,11 @@ export async function verifyEndOTP(
     console.error(`Payment post-processing failed for ride ${rideId}:`, err)
   })
 
-  return { success: true, rideId: rideId.toString() }
+  return {
+    success: true,
+    rideId: rideId.toString(),
+    ...(finalFare !== null ? { finalFare } : {}),
+  }
 }
 
 // Extracted from verifyEndOTP so the wallet-insufficient failure path is unit
@@ -1339,6 +1343,16 @@ export async function settleRideCompletionPayment(
   }
   await createPaymentRecord(rideId, 'cash_direct')
   await deductCommission(rideId, driverId)
+  // Stamp the same claim collectCash uses, so a client still on the
+  // cash-collection screen (kill switch flipped after it loaded) sees
+  // cash_collected_at already set and no-ops instead of double-settling.
+  await pool.query(
+    `UPDATE rides
+       SET cash_collected_amount = $2, cash_collected_at = now(),
+           cash_discrepancy = false, cash_collection_note = NULL
+     WHERE id = $1 AND cash_collected_at IS NULL`,
+    [rideId, fareAmount]
+  )
   if (rideData?.user_id == null || fareAmount <= 0) return
   await creditCashback(rideId, BigInt(rideData.user_id), fareAmount)
 }
