@@ -48,8 +48,12 @@ function baseRide(over: Record<string, unknown> = {}) {
 describe('collectCash', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // fare_snapshots lookup → 480
-    vi.mocked(pool.query).mockResolvedValue({ rows: [{ amount: '480.00' }], rowCount: 1 } as never)
+    // fare_snapshots lookup → 480; UPDATE rides (claim) → rowCount 1 (claim won)
+    vi.mocked(pool.query).mockImplementation((sql: unknown) =>
+      /UPDATE rides/.test(sql as string)
+        ? ({ rows: [], rowCount: 1 } as never)
+        : ({ rows: [{ amount: '480.00' }], rowCount: 1 } as never),
+    )
     vi.mocked(getConfigValue).mockResolvedValue('1')
   })
 
@@ -105,6 +109,25 @@ describe('collectCash', () => {
     expect(res).toEqual({ collected: 480, discrepancy: false })
     expect(pay.createPaymentRecord).not.toHaveBeenCalled()
     expect(pay.deductCommission).not.toHaveBeenCalled()
+  })
+
+  it('claim lost (concurrent settle): no double-settle, returns fresh ride state', async () => {
+    // read-time guard passes (cash_collected_at null), but the atomic UPDATE claims
+    // 0 rows because a concurrent call already settled.
+    vi.mocked(repo.getRideById)
+      .mockResolvedValueOnce(baseRide() as never) // first read: unsettled
+      .mockResolvedValueOnce(baseRide({ cash_collected_amount: '480.00', cash_discrepancy: false, cash_collected_at: 'x' }) as never) // fresh read after lost claim
+    vi.mocked(pool.query).mockImplementation((sql: unknown) =>
+      /UPDATE rides/.test(sql as string)
+        ? ({ rows: [], rowCount: 0 } as never)   // claim lost
+        : ({ rows: [{ amount: '480.00' }], rowCount: 1 } as never),
+    )
+
+    const res = await collectCash(BigInt(9), BigInt(101), { collectedAmount: 480 })
+    expect(res).toEqual({ collected: 480, discrepancy: false })
+    expect(pay.createPaymentRecord).not.toHaveBeenCalled()
+    expect(pay.deductCommission).not.toHaveBeenCalled()
+    expect(pay.creditCashback).not.toHaveBeenCalled()
   })
 
   it('rejects non-owner driver with 403', async () => {

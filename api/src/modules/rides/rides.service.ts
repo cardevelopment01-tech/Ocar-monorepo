@@ -1368,16 +1368,30 @@ export async function collectCash(
   const tolerance = parseFloat(await getConfigValue('cash_collection_tolerance', '1'))
   const discrepancy = input.notCollected === true || Math.abs(collected - fare) > tolerance
 
-  await pool.query(
+  // Atomic claim: only the caller that flips cash_collected_at from NULL wins and
+  // settles. Guards the TOCTOU race (driver double-tap / SwipeToConfirm auto-retry /
+  // network retry) — the read-time early-exit above is just a fast-path, this is the
+  // real guard. deductCommission/creditCashback are NOT idempotent, so a loser must not
+  // reach them.
+  const claim = await pool.query(
     `UPDATE rides
-     SET cash_collected_amount = $2, cash_collected_at = now(),
-         cash_discrepancy = $3, cash_collection_note = $4
-     WHERE id = $1`,
+       SET cash_collected_amount = $2, cash_collected_at = now(),
+           cash_discrepancy = $3, cash_collection_note = $4
+     WHERE id = $1 AND cash_collected_at IS NULL`,
     [rideId, collected, discrepancy, input.note ?? null]
   )
+  if (claim.rowCount === 0) {
+    const fresh = await repo.getRideById(rideId)
+    return {
+      collected:   parseFloat(fresh?.cash_collected_amount ?? '0'),
+      discrepancy: fresh?.cash_discrepancy ?? false,
+    }
+  }
 
   // Settle: commission on the fare (not the collected amount) so short/no collection
   // still owes the platform. createPaymentRecord is ON CONFLICT DO NOTHING = idempotent.
+  // ponytail: settlement helpers aren't in one txn; a mid-settlement crash won't auto-retry
+  // (matches legacy settleRideCompletionPayment). Reconciliation is future work.
   await createPaymentRecord(rideId, 'cash_direct')
   await deductCommission(rideId, driverId)
   if (ride.user_id != null && fare > 0) await creditCashback(rideId, BigInt(ride.user_id), fare)
