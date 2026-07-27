@@ -43,6 +43,8 @@ export type RideDetail = {
   trip_hours: number | null
   started_at: string | null
   stops: RideStop[]
+  payment_channel: 'cash' | 'online' | 'wallet'
+  cash_collected_at: string | null
 }
 
 export type TripHistoryItem = {
@@ -169,6 +171,14 @@ export const driverRideApi = {
   getRide: async (rideId: string): Promise<RideDetail> => {
     const res = await api.get(`/api/v1/rides/${rideId}`)
     return res.data as RideDetail
+  },
+
+  collectCash: async (
+    rideId: string,
+    body: { collectedAmount?: number; notCollected?: boolean; note?: string }
+  ): Promise<{ collected: number; discrepancy: boolean }> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/collect-cash`, body)
+    return res.data as { collected: number; discrepancy: boolean }
   },
 
   getActiveRide: async (): Promise<RideDetail | null> => {

@@ -117,6 +117,7 @@ export default function App() {
           id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
           address: s.address, status: s.status, arrived_at: s.arrived_at, reached_at: s.reached_at,
         }))
+        activeRideInput.paymentChannel = ride.payment_channel
         setActiveRide(activeRideInput)
         getDriverSocket().emit('join:ride', ride.id)
         if (ride.status === 'accepted')        navigate('/ride/navigate', { replace: true })
@@ -316,6 +317,7 @@ export default function App() {
         id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
         address: s.address, status: s.status, arrived_at: s.arrived_at, reached_at: s.reached_at,
       }))
+      activeRideInput.paymentChannel = ride.payment_channel
       setActiveRide(activeRideInput)
       getDriverSocket().emit('join:ride', rideId)
       setAccepting(false)

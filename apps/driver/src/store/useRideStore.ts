@@ -30,6 +30,7 @@ export interface ActiveRide {
   tripHours?: number
   rideStartedAt?: string
   stops?: RideStop[]
+  paymentChannel?: 'cash' | 'online' | 'wallet'
 }
 
 interface RideState {
