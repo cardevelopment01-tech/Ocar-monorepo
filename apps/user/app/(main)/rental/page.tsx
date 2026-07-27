@@ -228,7 +228,7 @@ function RentalContent() {
 
   const selectedCat = categories.find(c => c.id === selectedCatId)
   const selectedPkg = packages.find(p => p.id === selectedPkgId) ?? null
-  const canBook     = selectedPkgId !== null && estimate !== null && !estLoading && !isBooking
+  const canBook     = selectedPkgId !== null && estimate !== null && !estLoading && !isBooking && hasDestination
 
   async function handleBook() {
     if (selectedPkgId === null || !selectedPkg) return
@@ -336,7 +336,7 @@ function RentalContent() {
             />
           </motion.section>
 
-          {/* Drop-off (optional) */}
+          {/* Drop-off (required) */}
           <motion.section {...fadeUp(0)}>
             {hasDestination ? (
               <motion.button
@@ -358,7 +358,7 @@ function RentalContent() {
                 style={{ border: '1.5px dashed #CBD5E1' }}
               >
                 <Navigation size={13} strokeWidth={2.2} className="text-slate-400 flex-shrink-0" />
-                <span className="flex-1 text-[12px] font-medium text-slate-400">Add a drop-off (optional)</span>
+                <span className="flex-1 text-[12px] font-medium text-slate-400">Add a drop-off</span>
               </button>
             )}
           </motion.section>
