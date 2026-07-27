@@ -4,6 +4,7 @@ import { AppErrors } from '@/constants/errors'
 import { client as redis } from '@/db/redis'
 import { startOtpKey, endOtpKey, activeRideByDriverKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
+import { getConfigValue } from '@/lib/system-config'
 import * as repo from './rides.repository'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
@@ -1323,7 +1324,19 @@ export async function settleRideCompletionPayment(
     return
   }
 
-  // cash (default) — unchanged behavior: capture immediately, commission + cashback now.
+  // cash (default) — settlement now happens on explicit driver confirmation
+  // (POST /rides/:id/collect-cash). Kill switch reverts to legacy auto-settle.
+  const cashCollectionEnabled = (await getConfigValue('cash_collection_enabled', 'true')) === 'true'
+  if (cashCollectionEnabled) {
+    // Tell the driver app to show the cash-collection screen.
+    socketEvents.sendRideStatusUpdate(rideId.toString(), {
+      status:              'completed',
+      paymentChannel:      'cash',
+      needsCashCollection: true,
+      amount:              fareAmount,
+    })
+    return
+  }
   await createPaymentRecord(rideId, 'cash_direct')
   await deductCommission(rideId, driverId)
   if (rideData?.user_id == null || fareAmount <= 0) return

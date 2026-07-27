@@ -26,11 +26,13 @@ vi.mock('@/modules/payments/payments.service', () => ({
   payFromUserWallet:     vi.fn().mockResolvedValue(true),
   createRidePaymentOrder: vi.fn().mockResolvedValue({ orderId: 'order_XYZ', key: 'k', amount: 500 }),
 }))
+vi.mock('@/lib/system-config', () => ({ getConfigValue: vi.fn().mockResolvedValue('true') }))
 
 import * as repo from '@/modules/rides/rides.repository'
 import * as pay  from '@/modules/payments/payments.service'
 import { pool }  from '@/db/client'
 import { socketEvents } from '@/websocket/socket.server'
+import { getConfigValue } from '@/lib/system-config'
 import { verifyEndOTP } from '@/modules/rides/rides.service'
 
 const flush = () => new Promise(r => setTimeout(r, 0)) // let the non-blocking void chain settle
@@ -50,9 +52,24 @@ describe('verifyEndOTP — payment channel branch', () => {
     vi.mocked(pool.query).mockResolvedValue({ rows: [{ amount: '500.00' }], rowCount: 1 } as never)
     vi.mocked(repo.updateRideStatus).mockResolvedValue(undefined as never)
     vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
+    vi.mocked(getConfigValue).mockResolvedValue('true')
   })
 
-  it('cash: createPaymentRecord(cash_direct) + commission + cashback', async () => {
+  it('cash + kill switch ON (default): defers settlement, notifies driver app, no payment side-effects', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(baseRide('cash') as never)
+    await verifyEndOTP(BigInt(9), BigInt(101), '1234')
+    await flush()
+    expect(pay.createPaymentRecord).not.toHaveBeenCalled()
+    expect(pay.deductCommission).not.toHaveBeenCalled()
+    expect(pay.creditCashback).not.toHaveBeenCalled()
+    const emitted = vi.mocked(socketEvents.sendRideStatusUpdate).mock.calls
+      .map(c => c[1] as Record<string, unknown>)
+      .find(p => p['needsCashCollection'] === true)
+    expect(emitted).toMatchObject({ status: 'completed', paymentChannel: 'cash', needsCashCollection: true, amount: 500 })
+  })
+
+  it('cash + kill switch OFF: legacy immediate settle — createPaymentRecord(cash_direct) + commission + cashback', async () => {
+    vi.mocked(getConfigValue).mockResolvedValue('false')
     vi.mocked(repo.getRideById).mockResolvedValue(baseRide('cash') as never)
     await verifyEndOTP(BigInt(9), BigInt(101), '1234')
     await flush()
