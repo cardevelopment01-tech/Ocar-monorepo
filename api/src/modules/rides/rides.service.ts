@@ -32,7 +32,8 @@ import {
   getDriverWallet,
   getMinWalletBalance,
 } from '@/modules/payments/payments.service'
-import { notifyRidePaymentFailed, notifyAllAdmins } from '@/modules/notifications/notifications.service'
+import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner } from '@/modules/notifications/notifications.service'
+import { renderTemplate } from '@/modules/notifications/templates.service'
 import { calculateFare } from '@/lib/fare'
 import { classifyTrip, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
@@ -855,6 +856,24 @@ export async function addRideStop(
     rideId: rideId.toString(),
     stop: newStop,
   })
+
+  if (ride.driver_id != null) {
+    try {
+      const { subject, body } = await renderTemplate('stop_added', 'push', {
+        stopAddress: newStop!.address ? ` at ${newStop!.address}` : '',
+      })
+      await notifyOwner({
+        ownerType: 'driver',
+        ownerId: BigInt(ride.driver_id),
+        type: 'stop_added',
+        title: subject ?? 'New stop added',
+        body,
+        rideId,
+      })
+    } catch (err) {
+      console.error('[NOTIFY] stop_added notification failed:', err instanceof Error ? err.message : 'unknown error')
+    }
+  }
 
   return newStop!
 }

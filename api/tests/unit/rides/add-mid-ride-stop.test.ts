@@ -15,8 +15,19 @@ vi.mock('@/websocket/socket.server', () => ({
   getIO: vi.fn(() => ({ to: vi.fn(() => ({ emit: vi.fn() })) })),
 }))
 
+vi.mock('@/modules/notifications/templates.service', () => ({
+  renderTemplate: vi.fn().mockResolvedValue({ subject: 'New stop added', body: 'A rider added a stop to your trip at Patia.' }),
+}))
+
+vi.mock('@/modules/notifications/notifications.service', () => ({
+  notifyOwner: vi.fn(),
+  notifyRidePaymentFailed: vi.fn(),
+  notifyAllAdmins: vi.fn(),
+}))
+
 import * as repo from '@/modules/rides/rides.repository'
 import { socketEvents } from '@/websocket/socket.server'
+import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { addRideStop } from '@/modules/rides/rides.service'
 import { MAX_STOPS_PER_RIDE } from '@/constants/limits'
 
@@ -57,7 +68,7 @@ describe('addRideStop', () => {
 
   it('adds a stop with no charge for a one_way ride in progress', async () => {
     vi.mocked(repo.getRideById).mockResolvedValue({
-      id: RIDE_ID, user_id: USER_ID, status: 'in_progress', ride_type: 'one_way', category_id: BigInt(1),
+      id: RIDE_ID, user_id: USER_ID, driver_id: BigInt(55), status: 'in_progress', ride_type: 'one_way', category_id: BigInt(1),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
     } as never)
 
@@ -65,6 +76,22 @@ describe('addRideStop', () => {
 
     expect(repo.appendRideStop).toHaveBeenCalledWith(RIDE_ID, { ...STOP, chargeApplied: 0 })
     expect(socketEvents.sendStopAdded).toHaveBeenCalledWith(RIDE_ID.toString(), expect.any(Object))
+    expect(notifyOwner).toHaveBeenCalledWith(expect.objectContaining({
+      ownerType: 'driver',
+      ownerId: BigInt(55),
+      rideId: RIDE_ID,
+    }))
+  })
+
+  it('does not notify the driver when the ride has no driver assigned yet', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({
+      id: RIDE_ID, user_id: USER_ID, driver_id: null, status: 'in_progress', ride_type: 'one_way', category_id: BigInt(1),
+      origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
+    } as never)
+
+    await addRideStop(USER_ID, RIDE_ID, STOP)
+
+    expect(notifyOwner).not.toHaveBeenCalled()
   })
 
   it('applies the flat stop charge for a round_trip ride', async () => {
