@@ -264,6 +264,7 @@ export default function RidePage() {
   const [fareDrift, setFareDrift] = useState<{ previousFare: number; currentFare: number } | null>(null)
   const [reportSending,  setReportSending]  = useState(false)
   const [reportSent,     setReportSent]     = useState(false)
+  const [addStopError,   setAddStopError]   = useState<string | null>(null)
   const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastFetch      = useRef<{ mode: RouteMode; origin: [number, number]; dest: [number, number]; at: number; stopsKey: string } | null>(null)
   const fetchSeq       = useRef(0)
@@ -377,9 +378,16 @@ export default function RidePage() {
     try {
       const newStop = await rideApi.addStop(rideId, stop)
       setRide(prev => prev ? { ...prev, stops: [...prev.stops, newStop] } : prev)
-    } catch {
-      // Best-effort — the driver-side socket/notification still lands even if
-      // this optimistic local update fails; a reload picks up the real state.
+      setAddStopError(null)
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined
+      const serverMessage = axios.isAxiosError(err) ? (err.response?.data as { error?: string } | undefined)?.error : undefined
+      setAddStopError(
+        (status === 409 || status === 422) && serverMessage
+          ? serverMessage
+          : "Couldn't add that stop. Please try again.",
+      )
+      setTimeout(() => setAddStopError(null), 5000)
     }
   }
 
@@ -722,13 +730,19 @@ export default function RidePage() {
         )}
 
         {(rideStatus === 'accepted' || rideStatus === 'driver_arrived' || rideStatus === 'in_progress') && (
-          <button
-            onClick={() => setAddStopOpen(true)}
-            className="absolute top-16 right-4 z-20 px-3 py-2 rounded-full bg-white shadow-md text-xs font-semibold text-slate-700 active:scale-95 transition-transform"
-            style={{ marginTop: 'env(safe-area-inset-top)' }}
-          >
-            Add stop
-          </button>
+          <div className="absolute top-20 right-4 z-20 flex flex-col items-end gap-1.5" style={{ marginTop: 'env(safe-area-inset-top)' }}>
+            <button
+              onClick={() => setAddStopOpen(true)}
+              className="px-3 py-2 rounded-full bg-white shadow-md text-xs font-semibold text-slate-700 active:scale-95 transition-transform"
+            >
+              Add stop
+            </button>
+            {addStopError && (
+              <span className="px-2.5 py-1 rounded-lg bg-red-50 text-[11px] font-medium text-red-600 shadow-sm max-w-[180px] text-right">
+                {addStopError}
+              </span>
+            )}
+          </div>
         )}
       </div>
 
