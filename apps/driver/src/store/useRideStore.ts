@@ -62,6 +62,7 @@ interface RideState {
   setRideStartedAt:  (ts: string) => void
   arriveStop:        (sequence: number, arrivedAt: string | null) => void
   updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null) => void
+  addStop:           (stop: RideStop) => void
   clearRide:         () => void
   setIncomingRequest: (req: RideState['incomingRequest']) => void
   clearIncomingRequest: () => void
@@ -106,6 +107,14 @@ export const useRideStore = create<RideState>()(
             stops: (s.activeRide.stops ?? []).map(stop =>
               stop.sequence === sequence ? { ...stop, status, reached_at: reachedAt } : stop
             ),
+          } : null,
+        })),
+
+      addStop: (stop) =>
+        set((s) => ({
+          activeRide: s.activeRide ? {
+            ...s.activeRide,
+            stops: [...(s.activeRide.stops ?? []), stop],
           } : null,
         })),
 

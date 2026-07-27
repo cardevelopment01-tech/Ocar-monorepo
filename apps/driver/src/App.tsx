@@ -29,6 +29,7 @@ import PendingReview from '@/pages/Onboarding/PendingReview'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useRideStore } from '@/store/useRideStore'
+import type { RideStop } from '@/store/useRideStore'
 import { useNotificationsStore } from '@/store/useNotificationsStore'
 import api from '@/lib/api'
 import type { DriverProfile } from '@/store/useAuthStore'
@@ -55,7 +56,7 @@ export default function App() {
   const navigate = useNavigate()
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
   const { isOnline, setOnline, setOffline } = useSessionStore()
-  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, setRestoreChecked, clearRide, activeRide, updateStop } = useRideStore()
+  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, setRestoreChecked, clearRide, activeRide, updateStop, addStop } = useRideStore()
   const { fetchUnreadCount, addLive } = useNotificationsStore()
   const [accepting, setAccepting] = useState(false)
   const [acceptedBeat, setAcceptedBeat] = useState(false)
@@ -277,9 +278,13 @@ export default function App() {
     const onStopUpdated = (data: { sequence: number; status: 'reached' | 'skipped'; reachedAt: string | null }) => {
       updateStop(data.sequence, data.status, data.reachedAt)
     }
+    const onStopAdded = (data: { stop: RideStop }) => {
+      addStop({ ...data.stop, id: String(data.stop.id) })
+    }
     socket.on('ride:status_update', onStatusUpdate)
     socket.on('connect', onConnect)
     socket.on('stop:updated', onStopUpdated)
+    socket.on('stop:added', onStopAdded)
     // Session-restore path: socket may already be connected before this effect
     // mounts, so the 'connect' event never fires. Emit join:ride immediately.
     if (socket.connected) socket.emit('join:ride', activeRide.id)
@@ -287,6 +292,7 @@ export default function App() {
       socket.off('ride:status_update', onStatusUpdate)
       socket.off('connect', onConnect)
       socket.off('stop:updated', onStopUpdated)
+      socket.off('stop:added', onStopAdded)
     }
   }, [activeRide?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
