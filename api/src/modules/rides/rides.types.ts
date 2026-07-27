@@ -61,6 +61,10 @@ export interface Ride {
   cancelled_at: string | null
   actual_distance_km: string | null
   actual_duration_min: string | null
+  cash_collected_amount: string | null
+  cash_collected_at: string | null
+  cash_discrepancy: boolean
+  cash_collection_note: string | null
   sos_triggered: boolean
   rider_phone: string | null
   rider_name: string | null

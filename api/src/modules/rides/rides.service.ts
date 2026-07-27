@@ -32,7 +32,7 @@ import {
   getDriverWallet,
   getMinWalletBalance,
 } from '@/modules/payments/payments.service'
-import { notifyRidePaymentFailed } from '@/modules/notifications/notifications.service'
+import { notifyRidePaymentFailed, notifyAllAdmins } from '@/modules/notifications/notifications.service'
 import { calculateFare } from '@/lib/fare'
 import { classifyTrip, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
@@ -1341,4 +1341,57 @@ export async function settleRideCompletionPayment(
   await deductCommission(rideId, driverId)
   if (rideData?.user_id == null || fareAmount <= 0) return
   await creditCashback(rideId, BigInt(rideData.user_id), fareAmount)
+}
+
+// Explicit driver confirmation that cash was collected. Idempotent (cash_collected_at
+// guard + createPaymentRecord's ON CONFLICT(ride_id)). Commission always accrues on the
+// *fare* (driver owes on what they earned) so short/no collection still owes the platform;
+// a collected amount off from the fare beyond tolerance flags the ride for ops but never blocks.
+export async function collectCash(
+  driverId: bigint,
+  rideId: bigint,
+  input: { collectedAmount?: number; notCollected?: boolean; note?: string }
+): Promise<{ collected: number; discrepancy: boolean }> {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
+  if (String(ride.driver_id) !== String(driverId)) throw httpError(403, 'Not your ride', 'FORBIDDEN')
+  if (ride.status !== 'completed') throw httpError(409, 'Ride is not completed', 'RIDE_NOT_COMPLETED')
+  if ((ride.payment_channel ?? 'cash') !== 'cash') throw httpError(409, 'Ride is not a cash ride', 'NOT_CASH_RIDE')
+  if (ride.cash_collected_at) return { collected: parseFloat(ride.cash_collected_amount ?? '0'), discrepancy: ride.cash_discrepancy }
+
+  const fareRow = await pool.query(
+    `SELECT COALESCE(total_final, total_estimated) AS amount FROM fare_snapshots WHERE ride_id = $1`,
+    [rideId]
+  )
+  const fare = parseFloat(fareRow.rows[0]?.amount ?? '0')
+  const collected = input.notCollected ? 0 : (input.collectedAmount ?? fare)
+  const tolerance = parseFloat(await getConfigValue('cash_collection_tolerance', '1'))
+  const discrepancy = input.notCollected === true || Math.abs(collected - fare) > tolerance
+
+  await pool.query(
+    `UPDATE rides
+     SET cash_collected_amount = $2, cash_collected_at = now(),
+         cash_discrepancy = $3, cash_collection_note = $4
+     WHERE id = $1`,
+    [rideId, collected, discrepancy, input.note ?? null]
+  )
+
+  // Settle: commission on the fare (not the collected amount) so short/no collection
+  // still owes the platform. createPaymentRecord is ON CONFLICT DO NOTHING = idempotent.
+  await createPaymentRecord(rideId, 'cash_direct')
+  await deductCommission(rideId, driverId)
+  if (ride.user_id != null && fare > 0) await creditCashback(rideId, BigInt(ride.user_id), fare)
+
+  if (discrepancy) {
+    // Best-effort ops alert; the cash_discrepancy flag on the ride is the source of truth.
+    await notifyAllAdmins({
+      type:  'cash_discrepancy',
+      title: 'Cash discrepancy',
+      body:  `Ride #${rideId}: fare Rs.${fare}, driver logged Rs.${collected}${input.notCollected ? ' (not collected)' : ''}.`,
+      payload: { rideId: rideId.toString(), fare, collected },
+      rideId,
+    }).catch(() => {})
+  }
+
+  return { collected, discrepancy }
 }
