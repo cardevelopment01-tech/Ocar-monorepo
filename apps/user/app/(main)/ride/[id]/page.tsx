@@ -416,8 +416,12 @@ export default function RidePage() {
       razorpayOrderId?: string
       razorpayKey?: string
       amount?: number
+      finalFare?: number
     }) => {
       setRideStatus(data.status)
+      if (typeof data.finalFare === 'number') {
+        setRide(prev => prev ? { ...prev, total_final: String(data.finalFare) } : prev)
+      }
       if (data.startOtp) setStartOtp(data.startOtp)
       if (data.endOtp)   setEndOtp(data.endOtp)
       if (data.fareDrift) {
@@ -690,7 +694,9 @@ export default function RidePage() {
   }
   const hasDriver = rideStatus !== 'requested' && rideStatus !== 'scheduled'
 
-  const fare = ride?.total_estimated != null ? `₹${Math.round(parseFloat(ride.total_estimated))}` : null
+  const fare = ride?.total_final != null
+    ? `₹${Math.round(parseFloat(ride.total_final))}`
+    : ride?.total_estimated != null ? `₹${Math.round(parseFloat(ride.total_estimated))}` : null
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
