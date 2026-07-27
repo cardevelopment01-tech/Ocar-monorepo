@@ -120,7 +120,6 @@ export const notificationsWorker = new Worker(
       try {
         const { body: message } = await renderTemplate('ride_accepted', 'sms', {
           driverName,
-          driverPhoneSuffix: data.driverPhone ? ` (${data.driverPhone})` : '',
         })
         await sendSms(data.userPhone, message)
         await notifService.markSent(logId)
