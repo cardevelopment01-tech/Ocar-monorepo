@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plane, Train, Building2, ShoppingBag,
   GraduationCap, X, Map,
-  Plus, ChevronDown, User, Clock, Heart, ArrowRightLeft,
+  ChevronDown, User, Clock, Heart, ArrowRightLeft,
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
@@ -105,7 +105,6 @@ function SearchContent() {
   const [riderName,  setRiderName]  = useState(() => sp.get('riderName') ?? '')
   const [riderPhone, setRiderPhone] = useState(() => sp.get('riderPhone') ?? '')
   const bookingForOther = riderName !== '' && riderPhone !== ''
-  const [stopToast, setStopToast] = useState(false)
   const [redirectToast, setRedirectToast] = useState<string | null>(null)
 
   // On mount: try GPS once, fast network-position fix, cached ok up to 1 min
@@ -177,13 +176,6 @@ function SearchContent() {
       }, 60)
     }
   }, [mode])
-
-  // Auto-dismiss "add stops" toast
-  useEffect(() => {
-    if (!stopToast) return
-    const t = setTimeout(() => setStopToast(false), 1800)
-    return () => clearTimeout(t)
-  }, [stopToast])
 
   const runSearch = useCallback((q: string, lat: number, lng: number) => {
     if (!q || q.length < 2) { setSuggestions([]); setSearching(false); return }
@@ -542,7 +534,7 @@ function SearchContent() {
         </div>
 
         {/* Pinned action pills, always fixed, never scroll */}
-        <div className="flex gap-2 px-4 pb-1.5">
+        <div className="flex items-center gap-2 px-4 pb-1.5">
           <motion.button
             onClick={goToMapPicker}
             className="flex-1 h-9 rounded-full flex items-center justify-center gap-1.5 border border-slate-200 bg-white"
@@ -551,18 +543,6 @@ function SearchContent() {
             <Map size={14} strokeWidth={1.8} style={{ color: ICON_CLR }} />
             <span className="text-[13px] font-semibold text-slate-700">Select on map</span>
           </motion.button>
-          <motion.button
-            onClick={() => setStopToast(true)}
-            className="flex-1 h-9 rounded-full flex items-center justify-center gap-1.5 bg-slate-900"
-            whileTap={{ scale: 0.97 }} transition={SPRING}
-          >
-            <Plus size={14} strokeWidth={2.2} className="text-white" />
-            <span className="text-[13px] font-semibold text-white">Add stops</span>
-          </motion.button>
-        </div>
-
-        {/* Pickup time, own row, decoupled from the map/stops actions above */}
-        <div className="px-4 pb-1.5">
           <PickupTimeChip
             value={scheduledFor}
             pickerOpen={schedulePickerOpen}
@@ -681,35 +661,6 @@ function SearchContent() {
         onCommit={(n, p) => { setRiderName(n); setRiderPhone(p); setForMeOpen(false) }}
         onClearToMyself={() => { setRiderName(''); setRiderPhone(''); setForMeOpen(false) }}
       />
-
-      {/* Add stops coming-soon toast, portal escapes Framer Motion transform context */}
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {stopToast && (
-            <motion.div
-              key="stop-toast"
-              role="status"
-              aria-live="polite"
-              initial={{ opacity: 0, y: 16, scale: 0.92 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.95 }}
-              transition={{ duration: 0.22, ease: EASE }}
-              className="fixed left-1/2 z-[999] flex items-center gap-2.5 px-5 py-3 rounded-2xl text-white text-[13px] font-semibold shadow-2xl pointer-events-none"
-              style={{
-                bottom: 'max(84px, calc(env(safe-area-inset-bottom, 0px) + 76px))',
-                x: '-50%',
-                maxWidth: 'calc(100vw - 32px)',
-                background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.28), 0 2px 8px rgba(0,0,0,0.2)',
-              }}
-            >
-              <span className="text-base">🛣️</span>
-              Set your destination — add stops on the next screen
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body,
-      )}
 
       {/* Ride-type mismatch redirect toast */}
       {typeof document !== 'undefined' && createPortal(
