@@ -149,14 +149,14 @@ export const driverRideApi = {
     actualDurationMin?: number,
     actualEndLat?: number,
     actualEndLng?: number,
-  ): Promise<{ success: boolean; rideId: string }> => {
+  ): Promise<{ success: boolean; rideId: string; finalFare?: number }> => {
     const body: Record<string, unknown> = { otp }
     if (actualDistanceKm  !== undefined) body['actual_distance_km']  = actualDistanceKm
     if (actualDurationMin !== undefined) body['actual_duration_min'] = actualDurationMin
     if (actualEndLat      !== undefined) body['actual_end_lat']      = actualEndLat
     if (actualEndLng      !== undefined) body['actual_end_lng']      = actualEndLng
     const res = await api.post(`/api/v1/rides/${rideId}/end-otp`, body)
-    return res.data as { success: boolean; rideId: string }
+    return res.data as { success: boolean; rideId: string; finalFare?: number }
   },
 
   markStopStatus: async (

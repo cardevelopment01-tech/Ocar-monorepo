@@ -109,4 +109,30 @@ describe('verifyEndOTP — payment channel branch', () => {
     expect(pay.payFromUserWallet).toHaveBeenCalledWith(BigInt(101), BigInt(42), 500)
     expect(pay.confirmRidePayment).toHaveBeenCalledWith(BigInt(101))
   })
+
+  it('one-way with stop-wait charge: HTTP response carries the authoritative finalFare (total_estimated + wait), not the stale estimate', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(baseRide('cash') as never)
+    vi.mocked(repo.getStopWaitTotal).mockResolvedValueOnce(45)
+    vi.mocked(pool.query).mockImplementation(((sql: string) => {
+      if (/UPDATE fare_snapshots/.test(sql) && /total_final\s*=\s*round\(total_estimated/.test(sql)) {
+        return Promise.resolve({ rows: [{ total_final: '545.00' }], rowCount: 1 })
+      }
+      return Promise.resolve({ rows: [{ amount: '500.00' }], rowCount: 1 })
+    }) as never)
+
+    const result = await verifyEndOTP(BigInt(9), BigInt(101), '1234', 12, 30)
+    await flush()
+
+    expect(result).toMatchObject({ success: true, rideId: '101', finalFare: 545 })
+  })
+
+  it('no wait charge / no early termination: finalFare omitted from response (client falls back to estimate, which equals final)', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(baseRide('cash') as never)
+    vi.mocked(repo.getStopWaitTotal).mockResolvedValueOnce(0)
+
+    const result = await verifyEndOTP(BigInt(9), BigInt(101), '1234')
+    await flush()
+
+    expect(result).toEqual({ success: true, rideId: '101' })
+  })
 })
