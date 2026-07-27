@@ -6,7 +6,7 @@ import { Phone, X, ChevronDown, RotateCcw, CheckCircle, Shield, Clock } from 'lu
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import axios from 'axios'
-import { rideApi, type RideDetail } from '@/lib/ride-api'
+import { rideApi, type RideDetail, type RideStop } from '@/lib/ride-api'
 import RouteTimeline from '@/components/route/RouteTimeline'
 import { safetyApi } from '@/lib/safety-api'
 import { formatReturnAt } from '@/lib/utils'
@@ -24,6 +24,17 @@ const PICKUP = { lat: 20.2961, lng: 85.8245 }
 const DROP   = { lat: 20.2726, lng: 85.8385 }
 
 const EASE = [0.22, 1, 0.36, 1] as const
+
+// Free wait window per stop before wait is billed (one-way only). Mirror of the
+// driver app's STOP_FREE_WAIT_SECONDS / the API's STOP_FREE_WAIT_MINUTES — the
+// server is authoritative on the actual charge.
+const STOP_FREE_WAIT_SECONDS = 10 * 60
+
+function fmtClock(totalSec: number) {
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
 
 type RouteMode = 'pickup-dest' | 'driver-pickup' | 'driver-dest' | 'recap'
 
@@ -198,6 +209,34 @@ function OtpBadge({ otp, phase }: { otp: string | null; phase: 'start' | 'end' }
   )
 }
 
+// Compact peek-row badge — same slot/sizing convention as OtpBadge above, so the
+// rider sees live stop-wait status without expanding "Trip details". Mirrors the
+// driver app's wait-meter card (colors, copy) so both sides read the same fact
+// the same way.
+function StopWaitBadge({ stop, nowMs }: { stop: RideStop; nowMs: number }) {
+  const elapsedSec = Math.max(0, Math.floor((nowMs - Date.parse(stop.arrived_at!)) / 1000))
+  const freeLeftSec = Math.max(0, STOP_FREE_WAIT_SECONDS - elapsedSec)
+  const accent = freeLeftSec > 0 ? '#059669' : '#D97706'
+  const bg     = freeLeftSec > 0 ? '#D1FAE5' : '#FEF3C7'
+
+  return (
+    <div className="flex items-center gap-2.5 pl-2.5 pr-3.5 py-2 rounded-xl flex-shrink-0" style={{ background: bg }}>
+      <Clock size={14} style={{ color: accent }} className="flex-shrink-0" />
+      <div className="flex flex-col leading-none gap-1">
+        <span className="text-[11px] font-medium whitespace-nowrap" style={{ color: accent }}>
+          Waiting · Stop {stop.sequence}
+        </span>
+        <span className="text-sm font-bold tabular-nums" style={{ color: '#0F172A' }}>
+          {fmtClock(elapsedSec)}
+          <span className="font-medium" style={{ color: accent }}>
+            {' · '}{freeLeftSec > 0 ? `${fmtClock(freeLeftSec)} free left` : 'extra time added to fare'}
+          </span>
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export default function RidePage() {
   const params = useParams<{ id: string }>()
   const rideId = params?.id ?? ''
@@ -213,6 +252,7 @@ export default function RidePage() {
   // of sitting frozen for up to 60s (docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 3a).
   const [liveEtaAt, setLiveEtaAt] = useState<number | null>(null)
   const [nowTick, setNowTick] = useState(0)
+  const [waitNowMs, setWaitNowMs] = useState(0)
   const [socketOk,       setSocketOk]       = useState(false)
   const [cancelling,     setCancelling]     = useState(false)
   const [startOtp,       setStartOtp]       = useState<string | null>(null)
@@ -590,6 +630,19 @@ export default function RidePage() {
     return () => clearInterval(id)
   }, [liveEta, liveEtaAt])
 
+  // Driver waiting at a one-way stop — same fact the driver app's meter shows,
+  // surfaced live instead of only appearing after the fact on the receipt.
+  const waitingStop = rideStatus === 'in_progress'
+    ? ride?.stops.find(s => s.status === 'pending' && s.arrived_at != null) ?? null
+    : null
+
+  useEffect(() => {
+    if (!waitingStop) return
+    setWaitNowMs(Date.now())
+    const id = setInterval(() => setWaitNowMs(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [waitingStop?.sequence, waitingStop?.arrived_at])
+
   const displayEta = useMemo(() => {
     if (!liveEta || liveEtaAt == null || nowTick === 0) return liveEta
     const rateKmPerMin = liveEta.etaMin > 0 ? liveEta.distanceKm / liveEta.etaMin : 0
@@ -828,7 +881,11 @@ export default function RidePage() {
                   </div>
                 )}
                 {rideStatus === 'driver_arrived' && <OtpBadge otp={startOtp} phase="start" />}
-                {rideStatus === 'in_progress' && <OtpBadge otp={endOtp} phase="end" />}
+                {rideStatus === 'in_progress' && (
+                  waitingStop
+                    ? <StopWaitBadge stop={waitingStop} nowMs={waitNowMs} />
+                    : <OtpBadge otp={endOtp} phase="end" />
+                )}
               </div>
 
               {/* Rare safety note — surfaced even collapsed, unlike routine trip detail */}

@@ -648,7 +648,10 @@ export default function TripInProgress() {
                       {stop.status === 'pending' && (
                         isOneWay && isCurrent && stop.arrived_at != null ? (
                           // Waiting — the meter banner above owns the Continue action.
-                          <span className="text-[11px] font-bold flex-shrink-0" style={{ color: '#D97706' }}>Waiting…</span>
+                          // Same clock/colors as that banner so it reads as one timer, not two.
+                          <span className="text-[11px] font-bold tabular-nums flex-shrink-0" style={{ color: waitFreeLeftSec > 0 ? '#059669' : '#D97706' }}>
+                            {fmtClock(waitElapsedSec)}
+                          </span>
                         ) : isCurrent ? (
                           // Current stop's confirm is the swipe below the checklist; only Skip lives in the row.
                           <button
@@ -689,7 +692,7 @@ export default function TripInProgress() {
               <div className="mt-3 mb-1">
                 <SwipeToConfirm
                   key={`cur-${currentStop.sequence}`}
-                  label={isOneWay ? 'Slide to confirm arrival' : 'Slide to confirm stop'}
+                  label={isOneWay ? 'Slide to start wait clock' : 'Slide to confirm stop'}
                   onConfirm={() => (isOneWay
                     ? handleStopArrived(currentStop.sequence)
                     : handleStopAction(currentStop.sequence, 'reached'))}
