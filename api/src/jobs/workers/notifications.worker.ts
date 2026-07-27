@@ -168,7 +168,7 @@ export const notificationsWorker = new Worker(
       }
 
       try {
-        const { subject, body } = await renderTemplate('ride_completed', 'push', {})
+        const { subject, body } = await renderTemplate('ride_completed', 'push', { fareStr })
         await notifService.notifyOwner({
           ownerType: 'user',
           ownerId: BigInt(data.userId),
