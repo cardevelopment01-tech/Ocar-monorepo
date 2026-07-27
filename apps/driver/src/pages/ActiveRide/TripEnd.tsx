@@ -21,10 +21,11 @@ export default function TripEnd() {
   const driver = useAuthStore(s => s.driver)
 
   const fare        = activeRide?.fare ?? 0
-  const commission  = Math.round(fare * 0.2)
+  const commission  = Math.round(fare * 0.15)
   const net         = parseFloat((fare - commission).toFixed(2))
   const isRental    = activeRide?.rideType === 'rental'
   const isRoundTrip = activeRide?.rideType === 'round_trip'
+  const isCash      = activeRide?.paymentChannel === 'cash'
 
   const [riderRating,   setRiderRating]   = useState(0)
   const [hoveredStar,   setHoveredStar]   = useState(0)
@@ -152,8 +153,10 @@ export default function TripEnd() {
         className="bg-surface rounded-3xl border border-border p-5 mb-4"
         style={{ boxShadow: '0 4px 24px rgba(34,197,94,0.14)' }}
       >
-        <p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">You Earned</p>
-        <p className="text-[44px] font-black text-primary leading-none mb-4">₹{fmt(net)}</p>
+        <p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">
+          {isCash ? 'Cash Collected' : 'You Earned'}
+        </p>
+        <p className="text-[44px] font-black text-primary leading-none mb-4">₹{fmt(isCash ? fare : net)}</p>
 
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
@@ -161,14 +164,21 @@ export default function TripEnd() {
             <span className="text-text-primary font-semibold">₹{fmt(fare)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-text-secondary">Platform commission (20%)</span>
+            <span className="text-text-secondary">
+              {isCash ? 'Commission (deducted from wallet, est.)' : 'Platform commission (est.)'}
+            </span>
             <span className="text-accent-red font-semibold">-₹{commission}</span>
           </div>
           <div className="border-t border-border pt-2 flex justify-between text-sm">
-            <span className="text-text-primary font-bold">Net earnings</span>
-            <span className="text-primary font-black">₹{fmt(net)}</span>
+            <span className="text-text-primary font-bold">{isCash ? 'You keep' : 'Net earnings'}</span>
+            <span className="text-primary font-black">₹{fmt(isCash ? fare : net)}</span>
           </div>
         </div>
+        {isCash && (
+          <p className="text-text-muted text-xs mt-3 pt-2 border-t border-border">
+            You collected this fare in cash. Commission has already been deducted from your wallet — no payout is due for this ride.
+          </p>
+        )}
       </motion.div>
 
       {/* Stats row */}

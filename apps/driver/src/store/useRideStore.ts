@@ -30,6 +30,7 @@ export interface ActiveRide {
   tripHours?: number
   rideStartedAt?: string
   stops?: RideStop[]
+  paymentChannel?: 'cash' | 'online' | 'wallet'
 }
 
 interface RideState {
@@ -57,6 +58,7 @@ interface RideState {
   setActiveRide:     (ride: ActiveRide) => void
   setRestoreChecked: () => void
   updateRideStatus:  (status: string) => void
+  setFare:           (fare: number) => void
   setRideStartedAt:  (ts: string) => void
   arriveStop:        (sequence: number, arrivedAt: string | null) => void
   updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null) => void
@@ -80,6 +82,9 @@ export const useRideStore = create<RideState>()(
 
       updateRideStatus: (status) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, status } : null })),
+
+      setFare: (fare) =>
+        set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, fare } : null })),
 
       setRideStartedAt: (ts) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, rideStartedAt: ts } : null })),

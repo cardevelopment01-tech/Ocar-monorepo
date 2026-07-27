@@ -12,6 +12,7 @@ const STATUS_MAP: Record<string, string> = {
   under_review: 'pill-warning', resolved: 'pill-success',
   open: 'pill-warning',
   cash_direct: 'pill-muted', online_upi: 'pill-info', online_card: 'pill-purple', platform_wallet: 'pill-success',
+  cash_flagged: 'pill-danger',
 }
 
 const LABELS: Record<string, string> = {
@@ -23,6 +24,7 @@ const LABELS: Record<string, string> = {
   round_trip: 'Round Trip',
   under_review: 'Under Review',
   cash_direct: 'Cash',
+  cash_flagged: 'Cash Flag',
   online_upi: 'UPI',
   online_card: 'Card',
   platform_wallet: 'Wallet',

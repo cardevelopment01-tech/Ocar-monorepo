@@ -69,7 +69,7 @@ function useElapsed(startedAt?: string) {
 
 export default function TripInProgress() {
   const navigate = useNavigate()
-  const { activeRide, updateRideStatus, updateStop, arriveStop } = useRideStore()
+  const { activeRide, updateRideStatus, updateStop, arriveStop, setFare } = useRideStore()
   const elapsed = useElapsed(activeRide?.rideStartedAt)
   const { sessionId } = useSessionStore()
 
@@ -362,7 +362,8 @@ export default function TripInProgress() {
       }
       const [mm, ss] = elapsed.split(':').map(Number)
       const actualDurationMin = mm + Math.round((ss ?? 0) / 60)
-      await driverRideApi.verifyEndOtp(activeRide.id, otp, actualDistanceKm, actualDurationMin || undefined, position?.[0], position?.[1])
+      const result = await driverRideApi.verifyEndOtp(activeRide.id, otp, actualDistanceKm, actualDurationMin || undefined, position?.[0], position?.[1])
+      if (result.finalFare !== undefined) setFare(result.finalFare)
       updateRideStatus('completed')
     } catch {
       setOtpError(true)
@@ -753,7 +754,10 @@ export default function TripInProgress() {
                 submitLabel="Complete Trip"
                 verifiedLabel="Trip completed"
                 onSubmit={handleCompleteTrip}
-                onVerified={() => navigate('/ride/end', { replace: true })}
+                onVerified={() => navigate(
+                  activeRide?.paymentChannel === 'cash' ? '/ride/collect-cash' : '/ride/end',
+                  { replace: true },
+                )}
               />
             </motion.div>
           </>

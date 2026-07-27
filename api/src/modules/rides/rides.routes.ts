@@ -259,6 +259,36 @@ router.post('/:id/end-otp', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+router.post('/:id/collect-cash', authenticate(), async (req, res, next) => {
+  try {
+    const driverId = req.driver!.id
+    const rideId = BigInt(req.params['id']!)
+    const raw = req.body as { collectedAmount?: unknown; notCollected?: unknown; note?: unknown }
+    const body: { collectedAmount?: number; notCollected?: boolean; note?: string } = {}
+    if (raw.collectedAmount !== undefined) {
+      const n = Number(raw.collectedAmount)
+      if (!Number.isFinite(n) || n < 0) {
+        res.status(400).json({ error: 'collectedAmount must be a non-negative number' }); return
+      }
+      body.collectedAmount = n
+    }
+    if (raw.notCollected !== undefined) {
+      if (typeof raw.notCollected !== 'boolean') {
+        res.status(400).json({ error: 'notCollected must be a boolean' }); return
+      }
+      body.notCollected = raw.notCollected
+    }
+    if (raw.note !== undefined) {
+      if (typeof raw.note !== 'string' || raw.note.length > 280) {
+        res.status(400).json({ error: 'note must be a string up to 280 characters' }); return
+      }
+      body.note = raw.note
+    }
+    const result = await service.collectCash(driverId, rideId, body)
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
 // ── Online ride payment verification (user) ────────────────────
 
 router.post('/:id/payment/verify', authenticate(), async (req, res, next) => {

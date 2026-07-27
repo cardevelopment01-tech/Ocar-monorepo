@@ -4,6 +4,7 @@ import { AppErrors } from '@/constants/errors'
 import { client as redis } from '@/db/redis'
 import { startOtpKey, endOtpKey, activeRideByDriverKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
+import { getConfigValue } from '@/lib/system-config'
 import * as repo from './rides.repository'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
@@ -31,7 +32,7 @@ import {
   getDriverWallet,
   getMinWalletBalance,
 } from '@/modules/payments/payments.service'
-import { notifyRidePaymentFailed } from '@/modules/notifications/notifications.service'
+import { notifyRidePaymentFailed, notifyAllAdmins } from '@/modules/notifications/notifications.service'
 import { calculateFare } from '@/lib/fare'
 import { classifyTrip, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
@@ -1270,7 +1271,11 @@ export async function verifyEndOTP(
     console.error(`Payment post-processing failed for ride ${rideId}:`, err)
   })
 
-  return { success: true, rideId: rideId.toString() }
+  return {
+    success: true,
+    rideId: rideId.toString(),
+    ...(finalFare !== null ? { finalFare } : {}),
+  }
 }
 
 // Extracted from verifyEndOTP so the wallet-insufficient failure path is unit
@@ -1323,9 +1328,98 @@ export async function settleRideCompletionPayment(
     return
   }
 
-  // cash (default) — unchanged behavior: capture immediately, commission + cashback now.
+  // cash (default) — settlement now happens on explicit driver confirmation
+  // (POST /rides/:id/collect-cash). Kill switch reverts to legacy auto-settle.
+  const cashCollectionEnabled = (await getConfigValue('cash_collection_enabled', 'true')) === 'true'
+  if (cashCollectionEnabled) {
+    // Tell the driver app to show the cash-collection screen.
+    socketEvents.sendRideStatusUpdate(rideId.toString(), {
+      status:              'completed',
+      paymentChannel:      'cash',
+      needsCashCollection: true,
+      amount:              fareAmount,
+    })
+    return
+  }
   await createPaymentRecord(rideId, 'cash_direct')
   await deductCommission(rideId, driverId)
+  // Stamp the same claim collectCash uses, so a client still on the
+  // cash-collection screen (kill switch flipped after it loaded) sees
+  // cash_collected_at already set and no-ops instead of double-settling.
+  await pool.query(
+    `UPDATE rides
+       SET cash_collected_amount = $2, cash_collected_at = now(),
+           cash_discrepancy = false, cash_collection_note = NULL
+     WHERE id = $1 AND cash_collected_at IS NULL`,
+    [rideId, fareAmount]
+  )
   if (rideData?.user_id == null || fareAmount <= 0) return
   await creditCashback(rideId, BigInt(rideData.user_id), fareAmount)
+}
+
+// Explicit driver confirmation that cash was collected. Idempotent (cash_collected_at
+// guard + createPaymentRecord's ON CONFLICT(ride_id)). Commission always accrues on the
+// *fare* (driver owes on what they earned) so short/no collection still owes the platform;
+// a collected amount off from the fare beyond tolerance flags the ride for ops but never blocks.
+export async function collectCash(
+  driverId: bigint,
+  rideId: bigint,
+  input: { collectedAmount?: number; notCollected?: boolean; note?: string }
+): Promise<{ collected: number; discrepancy: boolean }> {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
+  if (String(ride.driver_id) !== String(driverId)) throw httpError(403, 'Not your ride', 'FORBIDDEN')
+  if (ride.status !== 'completed') throw httpError(409, 'Ride is not completed', 'RIDE_NOT_COMPLETED')
+  if ((ride.payment_channel ?? 'cash') !== 'cash') throw httpError(409, 'Ride is not a cash ride', 'NOT_CASH_RIDE')
+  if (ride.cash_collected_at) return { collected: parseFloat(ride.cash_collected_amount ?? '0'), discrepancy: ride.cash_discrepancy }
+
+  const fareRow = await pool.query(
+    `SELECT COALESCE(total_final, total_estimated) AS amount FROM fare_snapshots WHERE ride_id = $1`,
+    [rideId]
+  )
+  const fare = parseFloat(fareRow.rows[0]?.amount ?? '0')
+  const collected = input.notCollected ? 0 : (input.collectedAmount ?? fare)
+  const tolerance = parseFloat(await getConfigValue('cash_collection_tolerance', '1'))
+  const discrepancy = input.notCollected === true || Math.abs(collected - fare) > tolerance
+
+  // Atomic claim: only the caller that flips cash_collected_at from NULL wins and
+  // settles. Guards the TOCTOU race (driver double-tap / SwipeToConfirm auto-retry /
+  // network retry) — the read-time early-exit above is just a fast-path, this is the
+  // real guard. deductCommission/creditCashback are NOT idempotent, so a loser must not
+  // reach them.
+  const claim = await pool.query(
+    `UPDATE rides
+       SET cash_collected_amount = $2, cash_collected_at = now(),
+           cash_discrepancy = $3, cash_collection_note = $4
+     WHERE id = $1 AND cash_collected_at IS NULL`,
+    [rideId, collected, discrepancy, input.note ?? null]
+  )
+  if (claim.rowCount === 0) {
+    const fresh = await repo.getRideById(rideId)
+    return {
+      collected:   parseFloat(fresh?.cash_collected_amount ?? '0'),
+      discrepancy: fresh?.cash_discrepancy ?? false,
+    }
+  }
+
+  // Settle: commission on the fare (not the collected amount) so short/no collection
+  // still owes the platform. createPaymentRecord is ON CONFLICT DO NOTHING = idempotent.
+  // ponytail: settlement helpers aren't in one txn; a mid-settlement crash won't auto-retry
+  // (matches legacy settleRideCompletionPayment). Reconciliation is future work.
+  await createPaymentRecord(rideId, 'cash_direct')
+  await deductCommission(rideId, driverId)
+  if (ride.user_id != null && fare > 0) await creditCashback(rideId, BigInt(ride.user_id), fare)
+
+  if (discrepancy) {
+    // Best-effort ops alert; the cash_discrepancy flag on the ride is the source of truth.
+    await notifyAllAdmins({
+      type:  'cash_discrepancy',
+      title: 'Cash discrepancy',
+      body:  `Ride #${rideId}: fare Rs.${fare}, driver logged Rs.${collected}${input.notCollected ? ' (not collected)' : ''}.`,
+      payload: { rideId: rideId.toString(), fare, collected },
+      rideId,
+    }).catch(() => {})
+  }
+
+  return { collected, discrepancy }
 }

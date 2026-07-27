@@ -281,14 +281,15 @@ export async function cancelAdminSurgeEvent(id: bigint, adminId: bigint) {
 // ─── Rides / Users / Payments ─────────────────────────────────────────────────
 
 export async function listAdminRides(query: {
-  status?: string; ride_type?: string; search?: string; page?: number; limit?: number
+  status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean; page?: number; limit?: number
 }) {
   const limit = Math.min(query.limit ?? 20, 100)
   const page  = Math.max(query.page ?? 1, 1)
-  const q: { status?: string; ride_type?: string; search?: string; limit: number; offset: number } = { limit, offset: (page - 1) * limit }
-  if (query.status    !== undefined) q.status    = query.status
-  if (query.ride_type !== undefined) q.ride_type = query.ride_type
-  if (query.search    !== undefined) q.search    = query.search
+  const q: { status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean; limit: number; offset: number } = { limit, offset: (page - 1) * limit }
+  if (query.status          !== undefined) q.status           = query.status
+  if (query.ride_type       !== undefined) q.ride_type        = query.ride_type
+  if (query.search          !== undefined) q.search           = query.search
+  if (query.cash_discrepancy !== undefined) q.cash_discrepancy = query.cash_discrepancy
   const { rows, total } = await repo.listAdminRides(q)
   return { rides: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
 }

@@ -26,11 +26,13 @@ vi.mock('@/modules/payments/payments.service', () => ({
   payFromUserWallet:     vi.fn().mockResolvedValue(true),
   createRidePaymentOrder: vi.fn().mockResolvedValue({ orderId: 'order_XYZ', key: 'k', amount: 500 }),
 }))
+vi.mock('@/lib/system-config', () => ({ getConfigValue: vi.fn().mockResolvedValue('true') }))
 
 import * as repo from '@/modules/rides/rides.repository'
 import * as pay  from '@/modules/payments/payments.service'
 import { pool }  from '@/db/client'
 import { socketEvents } from '@/websocket/socket.server'
+import { getConfigValue } from '@/lib/system-config'
 import { verifyEndOTP } from '@/modules/rides/rides.service'
 
 const flush = () => new Promise(r => setTimeout(r, 0)) // let the non-blocking void chain settle
@@ -50,9 +52,24 @@ describe('verifyEndOTP — payment channel branch', () => {
     vi.mocked(pool.query).mockResolvedValue({ rows: [{ amount: '500.00' }], rowCount: 1 } as never)
     vi.mocked(repo.updateRideStatus).mockResolvedValue(undefined as never)
     vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
+    vi.mocked(getConfigValue).mockResolvedValue('true')
   })
 
-  it('cash: createPaymentRecord(cash_direct) + commission + cashback', async () => {
+  it('cash + kill switch ON (default): defers settlement, notifies driver app, no payment side-effects', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(baseRide('cash') as never)
+    await verifyEndOTP(BigInt(9), BigInt(101), '1234')
+    await flush()
+    expect(pay.createPaymentRecord).not.toHaveBeenCalled()
+    expect(pay.deductCommission).not.toHaveBeenCalled()
+    expect(pay.creditCashback).not.toHaveBeenCalled()
+    const emitted = vi.mocked(socketEvents.sendRideStatusUpdate).mock.calls
+      .map(c => c[1] as Record<string, unknown>)
+      .find(p => p['needsCashCollection'] === true)
+    expect(emitted).toMatchObject({ status: 'completed', paymentChannel: 'cash', needsCashCollection: true, amount: 500 })
+  })
+
+  it('cash + kill switch OFF: legacy immediate settle — createPaymentRecord(cash_direct) + commission + cashback', async () => {
+    vi.mocked(getConfigValue).mockResolvedValue('false')
     vi.mocked(repo.getRideById).mockResolvedValue(baseRide('cash') as never)
     await verifyEndOTP(BigInt(9), BigInt(101), '1234')
     await flush()
@@ -60,6 +77,15 @@ describe('verifyEndOTP — payment channel branch', () => {
     expect(pay.deductCommission).toHaveBeenCalledWith(BigInt(101), BigInt(9))
     expect(pay.creditCashback).toHaveBeenCalled()
     expect(pay.createRidePaymentOrder).not.toHaveBeenCalled()
+
+    // Must stamp cash_collected_at so a later collectCash call (client hasn't
+    // learned the kill switch flipped) sees the ride already claimed and no-ops
+    // instead of double-settling.
+    const upd = vi.mocked(pool.query).mock.calls.find(
+      c => /UPDATE rides/.test(c[0] as string) && /cash_collected_at/.test(c[0] as string),
+    )
+    expect(upd).toBeTruthy()
+    expect(upd![1]).toEqual([BigInt(101), 500])
   })
 
   it('online: pending payment + order + emits razorpayOrderId, defers commission', async () => {
@@ -82,5 +108,31 @@ describe('verifyEndOTP — payment channel branch', () => {
     expect(pay.createPaymentRecord).toHaveBeenCalledWith(BigInt(101), 'platform_wallet', { status: 'pending' })
     expect(pay.payFromUserWallet).toHaveBeenCalledWith(BigInt(101), BigInt(42), 500)
     expect(pay.confirmRidePayment).toHaveBeenCalledWith(BigInt(101))
+  })
+
+  it('one-way with stop-wait charge: HTTP response carries the authoritative finalFare (total_estimated + wait), not the stale estimate', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(baseRide('cash') as never)
+    vi.mocked(repo.getStopWaitTotal).mockResolvedValueOnce(45)
+    vi.mocked(pool.query).mockImplementation(((sql: string) => {
+      if (/UPDATE fare_snapshots/.test(sql) && /total_final\s*=\s*round\(total_estimated/.test(sql)) {
+        return Promise.resolve({ rows: [{ total_final: '545.00' }], rowCount: 1 })
+      }
+      return Promise.resolve({ rows: [{ amount: '500.00' }], rowCount: 1 })
+    }) as never)
+
+    const result = await verifyEndOTP(BigInt(9), BigInt(101), '1234', 12, 30)
+    await flush()
+
+    expect(result).toMatchObject({ success: true, rideId: '101', finalFare: 545 })
+  })
+
+  it('no wait charge / no early termination: finalFare omitted from response (client falls back to estimate, which equals final)', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(baseRide('cash') as never)
+    vi.mocked(repo.getStopWaitTotal).mockResolvedValueOnce(0)
+
+    const result = await verifyEndOTP(BigInt(9), BigInt(101), '1234')
+    await flush()
+
+    expect(result).toEqual({ success: true, rideId: '101' })
   })
 })

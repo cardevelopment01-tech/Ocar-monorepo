@@ -43,6 +43,8 @@ export type RideDetail = {
   trip_hours: number | null
   started_at: string | null
   stops: RideStop[]
+  payment_channel: 'cash' | 'online' | 'wallet'
+  cash_collected_at: string | null
 }
 
 export type TripHistoryItem = {
@@ -147,14 +149,14 @@ export const driverRideApi = {
     actualDurationMin?: number,
     actualEndLat?: number,
     actualEndLng?: number,
-  ): Promise<{ success: boolean; rideId: string }> => {
+  ): Promise<{ success: boolean; rideId: string; finalFare?: number }> => {
     const body: Record<string, unknown> = { otp }
     if (actualDistanceKm  !== undefined) body['actual_distance_km']  = actualDistanceKm
     if (actualDurationMin !== undefined) body['actual_duration_min'] = actualDurationMin
     if (actualEndLat      !== undefined) body['actual_end_lat']      = actualEndLat
     if (actualEndLng      !== undefined) body['actual_end_lng']      = actualEndLng
     const res = await api.post(`/api/v1/rides/${rideId}/end-otp`, body)
-    return res.data as { success: boolean; rideId: string }
+    return res.data as { success: boolean; rideId: string; finalFare?: number }
   },
 
   markStopStatus: async (
@@ -169,6 +171,14 @@ export const driverRideApi = {
   getRide: async (rideId: string): Promise<RideDetail> => {
     const res = await api.get(`/api/v1/rides/${rideId}`)
     return res.data as RideDetail
+  },
+
+  collectCash: async (
+    rideId: string,
+    body: { collectedAmount?: number; notCollected?: boolean; note?: string }
+  ): Promise<{ collected: number; discrepancy: boolean }> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/collect-cash`, body)
+    return res.data as { collected: number; discrepancy: boolean }
   },
 
   getActiveRide: async (): Promise<RideDetail | null> => {
@@ -193,6 +203,13 @@ export const driverRideApi = {
     const res = await api.get('/api/v1/drivers/onboarding/vehicle-info')
     const data = res.data as { vehicle: { id: number; category_id: number; number_plate: string; status: string } | null }
     return data.vehicle
+  },
+
+  // Used to distinguish "cash dues owed" (negative balance) from a merely
+  // below-minimum-but-positive balance when goOnline rejects with LOW_WALLET_BALANCE.
+  getWalletBalance: async (): Promise<number> => {
+    const res = await api.get('/api/v1/payments/wallet/driver')
+    return parseFloat((res.data as { balance: string }).balance)
   },
 
   getEarningsSummary: async (period: 'today' | 'week' | 'month'): Promise<EarningsSummary> => {

@@ -43,6 +43,7 @@ function RidesPageContent() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [rideTypeFilter, setRideTypeFilter] = useState('')
+  const [cashFlagFilter, setCashFlagFilter] = useState('')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
@@ -110,6 +111,7 @@ function RidesPageContent() {
       if (statusFilter)    params.status    = statusFilter
       if (rideTypeFilter)  params.ride_type = rideTypeFilter
       if (debouncedSearch) params.search    = debouncedSearch
+      if (cashFlagFilter)  params.cashDiscrepancy = true
       const data = await adminRideApi.list(params)
       setRides(data.rides)
       setTotal(data.pagination.total)
@@ -119,7 +121,7 @@ function RidesPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [page, statusFilter, rideTypeFilter, debouncedSearch])
+  }, [page, statusFilter, rideTypeFilter, debouncedSearch, cashFlagFilter])
 
   useEffect(() => { void fetchRides() }, [fetchRides])
 
@@ -182,7 +184,15 @@ function RidesPageContent() {
         ? <span className="font-bold text-text-primary">₹{parseFloat(r.fare).toLocaleString('en-IN')}</span>
         : <span className="text-text-muted">—</span>,
     },
-    { key: 'status', header: 'Status', render: (r: AdminRideItem) => <StatusPill status={r.status} /> },
+    {
+      key: 'status', header: 'Status',
+      render: (r: AdminRideItem) => (
+        <span className="inline-flex items-center gap-1 flex-wrap">
+          <StatusPill status={r.status} />
+          {r.cash_discrepancy && <StatusPill status="cash_flagged" />}
+        </span>
+      ),
+    },
     {
       key: 'requested_at', header: 'Time',
       render: (r: AdminRideItem) => <span className="text-text-muted text-xs">{fmt(r.requested_at)}</span>,
@@ -281,6 +291,14 @@ function RidesPageContent() {
                 ],
                 value: rideTypeFilter,
                 onChange: (v) => { setRideTypeFilter(v); setPage(1) },
+              },
+              {
+                key: 'cash_flag', label: 'All Rides',
+                options: [
+                  { value: 'flagged', label: 'Cash Flagged Only' },
+                ],
+                value: cashFlagFilter,
+                onChange: (v) => { setCashFlagFilter(v); setPage(1) },
               },
             ]}
             onExport={() => {}}
@@ -429,11 +447,20 @@ function RidesPageContent() {
               <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
                 <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Payment</p>
                 <div className="flex justify-between items-center">
-                  <StatusPill status={selected.payment_status ?? 'pending'} />
+                  <span className="inline-flex items-center gap-1 flex-wrap">
+                    <StatusPill status={selected.payment_status ?? 'pending'} />
+                    {selected.cash_discrepancy && <StatusPill status="cash_flagged" />}
+                  </span>
                   {selected.payment_channel && (
                     <span className="text-xs text-text-muted capitalize">{selected.payment_channel.replace(/_/g, ' ')}</span>
                   )}
                 </div>
+                {selected.cash_discrepancy && (
+                  <p className="text-xs text-danger mt-2">
+                    Collected ₹{selected.cash_collected_amount ? parseFloat(selected.cash_collected_amount).toLocaleString('en-IN') : '0'}
+                    {selected.fare ? ` vs fare ₹${parseFloat(selected.fare).toLocaleString('en-IN')}` : ''}
+                  </p>
+                )}
               </div>
             )}
 
