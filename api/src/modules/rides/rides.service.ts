@@ -604,7 +604,6 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
     status:             'accepted',
     driverId:           driverId.toString(),
     driverName:         ride?.driver_name ?? null,
-    driverPhone:        ride?.driver_phone ?? null,
     driverRating:       ride?.driver_rating ?? null,
     driverPhoto:        driverPhoto,
     vehicleModel:       ride?.vehicle_model ?? null,
