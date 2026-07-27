@@ -753,7 +753,10 @@ export default function TripInProgress() {
                 submitLabel="Complete Trip"
                 verifiedLabel="Trip completed"
                 onSubmit={handleCompleteTrip}
-                onVerified={() => navigate('/ride/end', { replace: true })}
+                onVerified={() => navigate(
+                  activeRide?.paymentChannel === 'cash' ? '/ride/collect-cash' : '/ride/end',
+                  { replace: true },
+                )}
               />
             </motion.div>
           </>
