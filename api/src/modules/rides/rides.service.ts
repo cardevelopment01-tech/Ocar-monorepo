@@ -820,6 +820,21 @@ export async function addRideStop(
     throw Object.assign(new Error('Stops can only be added while the ride is on the way'), { httpStatus: 409 })
   }
 
+  const existingStops = await repo.getRideStops(rideId)
+  if (existingStops.length + 1 > MAX_STOPS_PER_RIDE) {
+    throw Object.assign(new Error(`A ride can have at most ${MAX_STOPS_PER_RIDE} stops`), { httpStatus: 422 })
+  }
+  const anchors: Array<{ lat: number; lng: number }> = [{ lat: ride.origin_lat, lng: ride.origin_lng }]
+  if (ride.dest_lat !== null && ride.dest_lng !== null) {
+    anchors.push({ lat: ride.dest_lat, lng: ride.dest_lng })
+  }
+  const others = [...anchors, ...existingStops.map(s => ({ lat: s.lat, lng: s.lng }))]
+  for (const other of others) {
+    if (distanceMetres(stop.lat, stop.lng, other.lat, other.lng) < STOP_DUPLICATE_RADIUS_METRES) {
+      throw Object.assign(new Error('This stop is too close to another point in this trip'), { httpStatus: 422 })
+    }
+  }
+
   const chargeApplied = ride.ride_type === 'round_trip'
     ? await getStopCharge(Number(ride.category_id))
     : 0
