@@ -21,7 +21,7 @@ import {
   IN_CITY_MAX_TRIP_DISTANCE_METRES,
 } from '@/constants/limits'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
-import type { BookingRequest } from './rides.types'
+import type { BookingRequest, StopInput } from './rides.types'
 import {
   createPaymentRecord,
   deductCommission,
@@ -794,6 +794,54 @@ export async function markStopStatus(
   })
 
   return { success: true, stop }
+}
+
+const STOP_ADDABLE_STATUSES = new Set(['accepted', 'driver_arrived', 'in_progress'])
+
+// Lets the rider add a stop to a ride that's already been accepted/is on the
+// way. Mirrors createBooking's stop pricing rule: only round_trip levies the
+// flat per-stop charge (one_way prices the detour through distance instead;
+// rental stops are a free itinerary) — see validateStops/createBooking for
+// why. Retries once on a unique-violation (ride_stops has UNIQUE(ride_id,
+// sequence)) because two concurrent adds for the same ride can race on the
+// server-computed MAX(sequence)+1 — a bounded retry recomputes it fresh
+// rather than surfacing a raw DB error to the rider.
+export async function addRideStop(
+  userId: bigint,
+  rideId: bigint,
+  stop: StopInput
+) {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (BigInt(ride.user_id) !== userId) {
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  }
+  if (!STOP_ADDABLE_STATUSES.has(ride.status)) {
+    throw Object.assign(new Error('Stops can only be added while the ride is on the way'), { httpStatus: 409 })
+  }
+
+  const chargeApplied = ride.ride_type === 'round_trip'
+    ? await getStopCharge(Number(ride.category_id))
+    : 0
+
+  let newStop
+  const MAX_ATTEMPTS = 3
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      newStop = await repo.appendRideStop(rideId, { ...stop, chargeApplied })
+      break
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505' && attempt < MAX_ATTEMPTS) continue
+      throw err
+    }
+  }
+
+  socketEvents.sendStopAdded(rideId.toString(), {
+    rideId: rideId.toString(),
+    stop: newStop,
+  })
+
+  return newStop!
 }
 
 // ── Ride cancellation ─────────────────────────────────────────

@@ -312,6 +312,15 @@ router.post('/:id/payment/retry', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+router.post('/:id/stops', authenticate(), async (req, res, next) => {
+  try {
+    const userId = req.user!.id
+    const stop = req.body as import('./rides.types').StopInput
+    const newStop = await service.addRideStop(userId, BigInt(req.params['id']!), stop)
+    res.status(201).json(newStop)
+  } catch (err) { next(err) }
+})
+
 router.patch('/:id/stops/:sequence', authenticate(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id
