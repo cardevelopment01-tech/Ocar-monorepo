@@ -356,6 +356,13 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     }
   }
 
+  if (data.rideType === 'rental' && (data.destinationLat === undefined || data.destinationLng === undefined)) {
+    throw Object.assign(
+      new Error('Please add a drop-off location before booking this rental'),
+      { httpStatus: 422 }
+    )
+  }
+
   let scheduledForDate: Date | null = null
   if (data.scheduledFor !== undefined) {
     scheduledForDate = new Date(data.scheduledFor)
