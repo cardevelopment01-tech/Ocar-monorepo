@@ -111,10 +111,10 @@ export async function deductCommission(
     }
 
     const currentBalance = parseFloat(wallet.balance)
-    const newBalance = Math.max(
-      Math.round((currentBalance - commission) * 100) / 100,
-      0
-    )
+    // Signed balance: negative = driver owes the platform (cash dues). The goOnline
+    // min-balance gate blocks re-activation until this is cleared (netted by digital
+    // earnings or topped up). See migration 064.
+    const newBalance = Math.round((currentBalance - commission) * 100) / 100
 
     await client.query(
       `UPDATE driver_wallets
