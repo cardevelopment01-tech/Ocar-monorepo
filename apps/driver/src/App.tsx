@@ -436,29 +436,35 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Global ride request overlay, persists across all tabs, not just Home */}
+      {/* Global ride request overlay, persists across all tabs, not just Home.
+          TripRequestCard embeds a map preview, so it needs its own APIProvider —
+          MapProviderLayout only wraps Home/NavigateToPickup/TripInProgress, but
+          a request can arrive while the driver is on any route (Wallet, Profile,
+          go-online screens, ...). */}
       <AnimatePresence>
         {incomingRequest && (
-          <TripRequestCard
-            key={incomingRequest.rideId}
-            pickup={incomingRequest.pickup}
-            drop={incomingRequest.drop}
-            pickupDistance={incomingRequest.pickupDistance}
-            tripDistance={incomingRequest.tripDistance}
-            fare={incomingRequest.fare}
-            timeRemaining={incomingRequest.timeoutSeconds}
-            rideType={incomingRequest.rideType}
-            tripHours={incomingRequest.tripHours}
-            returnAt={incomingRequest.returnAt}
-            stopCount={incomingRequest.stopCount}
-            pickupLat={incomingRequest.pickupLat}
-            pickupLng={incomingRequest.pickupLng}
-            isAccepting={accepting}
-            accepted={acceptedBeat}
-            failed={acceptFailed}
-            onAccept={() => void handleAcceptRide(incomingRequest.rideId, incomingRequest.rideType)}
-            onDecline={clearIncomingRequest}
-          />
+          <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_KEY} libraries={['places']}>
+            <TripRequestCard
+              key={incomingRequest.rideId}
+              pickup={incomingRequest.pickup}
+              drop={incomingRequest.drop}
+              pickupDistance={incomingRequest.pickupDistance}
+              tripDistance={incomingRequest.tripDistance}
+              fare={incomingRequest.fare}
+              timeRemaining={incomingRequest.timeoutSeconds}
+              rideType={incomingRequest.rideType}
+              tripHours={incomingRequest.tripHours}
+              returnAt={incomingRequest.returnAt}
+              stopCount={incomingRequest.stopCount}
+              pickupLat={incomingRequest.pickupLat}
+              pickupLng={incomingRequest.pickupLng}
+              isAccepting={accepting}
+              accepted={acceptedBeat}
+              failed={acceptFailed}
+              onAccept={() => void handleAcceptRide(incomingRequest.rideId, incomingRequest.rideType)}
+              onDecline={clearIncomingRequest}
+            />
+          </APIProvider>
         )}
       </AnimatePresence>
 
