@@ -67,6 +67,7 @@ export default function AdminTopBar({
       <div className="flex items-center gap-1.5">
         {/* Search */}
         <button
+          aria-label="Search"
           className="w-8 h-8 rounded-xl hover:bg-surface-2 flex items-center justify-center transition-colors cursor-pointer"
           style={{ color: '#94A3B8' }}
         >

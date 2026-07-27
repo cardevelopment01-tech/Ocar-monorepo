@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
+import { APIProvider } from '@vis.gl/react-google-maps'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import BottomNav from '@/components/ui/BottomNav'
 import TripRequestCard from '@/components/ui/TripRequestCard'
@@ -39,6 +40,16 @@ import NotificationToast from '@/components/ui/NotificationToast'
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
+
+// Only Home/NavigateToPickup/TripInProgress render a Google map — scope the
+// Maps SDK load (1.6MB+ of JS/WASM) to those routes instead of the whole app.
+function MapProviderLayout() {
+  return (
+    <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_KEY} libraries={['places']}>
+      <Outlet />
+    </APIProvider>
+  )
+}
 
 export default function App() {
   const navigate = useNavigate()
@@ -348,9 +359,22 @@ export default function App() {
             <Route path="/login" element={<Login />} />
 
             {/* Main tabs, approved drivers only */}
-            <Route path="/" element={
-              <ProtectedRoute requireApproved><Home /></ProtectedRoute>
-            } />
+            <Route element={<MapProviderLayout />}>
+              <Route path="/" element={
+                <ProtectedRoute requireApproved><Home /></ProtectedRoute>
+              } />
+              <Route path="/ride/navigate" element={
+                <ProtectedRoute requireApproved>
+                  <NavigateToPickup />
+                </ProtectedRoute>
+              } />
+              <Route path="/ride/in-progress" element={
+                <ProtectedRoute requireApproved>
+                  <TripInProgress />
+                </ProtectedRoute>
+              } />
+            </Route>
+
             <Route path="/earnings" element={
               <ProtectedRoute requireApproved>
                 <Earnings />
@@ -384,19 +408,9 @@ export default function App() {
             <Route path="/ride/incoming" element={
               <ProtectedRoute requireApproved><IncomingRequest /></ProtectedRoute>
             } />
-            <Route path="/ride/navigate" element={
-              <ProtectedRoute requireApproved>
-                <NavigateToPickup />
-              </ProtectedRoute>
-            } />
             <Route path="/ride/otp" element={
               <ProtectedRoute requireApproved>
                 <OTPVerify />
-              </ProtectedRoute>
-            } />
-            <Route path="/ride/in-progress" element={
-              <ProtectedRoute requireApproved>
-                <TripInProgress />
               </ProtectedRoute>
             } />
             <Route path="/ride/end" element={
