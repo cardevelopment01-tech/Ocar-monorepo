@@ -390,12 +390,13 @@ export async function resolveAdminDispute(req: Request, res: Response, next: Nex
 
 export async function getAdminRides(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const q: { status?: string; ride_type?: string; search?: string; page?: number; limit?: number } = {}
-    if (req.query['status'])    q.status    = req.query['status'] as string
-    if (req.query['ride_type']) q.ride_type = req.query['ride_type'] as string
-    if (req.query['search'])    q.search    = req.query['search'] as string
-    if (req.query['page'])      q.page      = parseInt(req.query['page'] as string, 10)
-    if (req.query['limit'])     q.limit     = parseInt(req.query['limit'] as string, 10)
+    const q: { status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean; page?: number; limit?: number } = {}
+    if (req.query['status'])          q.status           = req.query['status'] as string
+    if (req.query['ride_type'])       q.ride_type        = req.query['ride_type'] as string
+    if (req.query['search'])          q.search           = req.query['search'] as string
+    if (req.query['cashDiscrepancy']) q.cash_discrepancy = req.query['cashDiscrepancy'] === 'true'
+    if (req.query['page'])            q.page             = parseInt(req.query['page'] as string, 10)
+    if (req.query['limit'])           q.limit            = parseInt(req.query['limit'] as string, 10)
     res.json(await service.listAdminRides(q))
   } catch (err) { next(err) }
 }

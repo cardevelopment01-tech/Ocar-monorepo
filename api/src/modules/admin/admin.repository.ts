@@ -798,6 +798,7 @@ export async function listAdminRides(filters: {
   status?: string
   ride_type?: string
   search?: string
+  cash_discrepancy?: boolean
   limit: number
   offset: number
 }) {
@@ -812,6 +813,10 @@ export async function listAdminRides(filters: {
   if (filters.ride_type) {
     conditions.push(`r.ride_type = $${p++}`)
     params.push(filters.ride_type)
+  }
+  if (filters.cash_discrepancy) {
+    conditions.push(`r.cash_discrepancy = $${p++}`)
+    params.push(true)
   }
   if (filters.search) {
     const likeParam = p++
@@ -834,6 +839,7 @@ export async function listAdminRides(filters: {
        r.origin_address, r.destination_address,
        r.requested_at, r.accepted_at, r.driver_arrived_at, r.started_at, r.completed_at,
        r.review_flagged_at, r.review_reason,
+       r.cash_discrepancy, r.cash_collected_amount::text AS cash_collected_amount,
        u.name AS user_name, u.phone AS user_phone,
        d.full_name AS driver_name, d.phone AS driver_phone,
        COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
@@ -878,6 +884,7 @@ export async function getAdminRideById(rideId: bigint) {
        r.origin_address, r.destination_address,
        r.requested_at, r.accepted_at, r.driver_arrived_at, r.started_at, r.completed_at,
        r.review_flagged_at, r.review_reason,
+       r.cash_discrepancy, r.cash_collected_amount::text AS cash_collected_amount,
        u.name AS user_name, u.phone AS user_phone,
        d.full_name AS driver_name, d.phone AS driver_phone,
        COALESCE(fs.total_final, fs.total_estimated)::text AS fare,

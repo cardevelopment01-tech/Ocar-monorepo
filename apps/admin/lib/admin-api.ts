@@ -134,6 +134,8 @@ export interface AdminRideItem {
   completed_at: string | null
   review_flagged_at: string | null
   review_reason: string | null
+  cash_discrepancy: boolean
+  cash_collected_amount: string | null
   user_name: string
   user_phone: string
   driver_name: string | null
@@ -176,7 +178,7 @@ export interface AdminUpcomingRideItem {
 }
 
 export const adminRideApi = {
-  list: async (params: { status?: string; ride_type?: string; search?: string; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
+  list: async (params: { status?: string; ride_type?: string; search?: string; cashDiscrepancy?: boolean; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
     const res = await api.get('/api/v1/admin/rides', { params })
     return res.data as AdminRidesResponse
   },
