@@ -323,6 +323,30 @@ export async function getRideStops(rideId: bigint): Promise<RideStop[]> {
   return res.rows
 }
 
+// Inserts one stop onto a ride that already exists (post-booking add), taking
+// the next sequence number. Distinct from insertRideStops (pre-booking, bulk,
+// caller-supplied sequence via array index) because this must be safe to call
+// while other stops already exist and are mid-flight.
+export async function appendRideStop(
+  rideId: bigint,
+  stop: StopInput & { chargeApplied: number }
+): Promise<RideStop> {
+  const res = await pool.query<RideStop>(
+    `INSERT INTO ride_stops (ride_id, sequence, location, address, stop_charge_applied)
+     VALUES (
+       $1,
+       COALESCE((SELECT MAX(sequence) FROM ride_stops WHERE ride_id = $1), 0) + 1,
+       ST_SetSRID(ST_MakePoint($3::float8, $2::float8), 4326)::geography,
+       $4, $5
+     )
+     RETURNING id, ride_id, sequence,
+       ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
+    [rideId, stop.lat, stop.lng, stop.address ?? null, stop.chargeApplied]
+  )
+  return res.rows[0]!
+}
+
 // Stamp arrival at a stop so wait time can be measured server-side. Idempotent
 // (COALESCE) so a re-tap doesn't reset the clock. One-way only in practice —
 // the driver app only sends 'arrived' for one-way rides.
