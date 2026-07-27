@@ -584,6 +584,8 @@ function RentalContent() {
             ? 'Booking…'
             : !selectedPkg
             ? 'Select a package'
+            : !hasDestination
+            ? 'Add a drop-off to continue'
             : estimate != null
             ? `${scheduledFor ? 'Schedule' : 'Book'} ${selectedCat?.display_name ?? ''} · ₹${Math.round(estimate.breakdown.total)}`
             : `${scheduledFor ? 'Schedule' : 'Book'} ${selectedCat?.display_name ?? ''}`
