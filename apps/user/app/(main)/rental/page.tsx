@@ -191,6 +191,16 @@ function RentalContent() {
     vehicleApi.getCategories().then(setCategories).catch(() => {})
   }, [])
 
+  // selectedCatId defaults to FALLBACK_CATEGORIES' sedan id, which may not
+  // exist once the real list loads (categories can be added/removed/reordered
+  // from admin) — re-point to the first available category instead of
+  // leaving selectedCat unresolved.
+  useEffect(() => {
+    if (categories.length > 0 && !categories.some(c => c.id === selectedCatId)) {
+      setSelectedCatId(categories[0]!.id)
+    }
+  }, [categories, selectedCatId])
+
   // Fetch estimate whenever the selected package changes
   const loadEstimate = useCallback(async (pkgId: number, catId: number) => {
     setEstLoading(true)
@@ -216,7 +226,7 @@ function RentalContent() {
     if (selectedPkgId !== null) void loadEstimate(selectedPkgId, selectedCatId)
   }, [selectedPkgId, selectedCatId, loadEstimate])
 
-  const selectedCat = categories.find(c => c.id === selectedCatId)!
+  const selectedCat = categories.find(c => c.id === selectedCatId)
   const selectedPkg = packages.find(p => p.id === selectedPkgId) ?? null
   const canBook     = selectedPkgId !== null && estimate !== null && !estLoading && !isBooking
 
@@ -489,7 +499,7 @@ function RentalContent() {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-[12px] font-semibold text-slate-700">
-                      {selectedCat.display_name} · {formatDuration(selectedPkg.duration_minutes)} / {selectedPkg.km_limit} km
+                      {selectedCat?.display_name} · {formatDuration(selectedPkg.duration_minutes)} / {selectedPkg.km_limit} km
                     </p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
                       Overage charged at end of trip
@@ -575,8 +585,8 @@ function RentalContent() {
             : !selectedPkg
             ? 'Select a package'
             : estimate != null
-            ? `${scheduledFor ? 'Schedule' : 'Book'} ${selectedCat.display_name} · ₹${Math.round(estimate.breakdown.total)}`
-            : `${scheduledFor ? 'Schedule' : 'Book'} ${selectedCat.display_name}`
+            ? `${scheduledFor ? 'Schedule' : 'Book'} ${selectedCat?.display_name ?? ''} · ₹${Math.round(estimate.breakdown.total)}`
+            : `${scheduledFor ? 'Schedule' : 'Book'} ${selectedCat?.display_name ?? ''}`
           }
         </button>
       </div>
