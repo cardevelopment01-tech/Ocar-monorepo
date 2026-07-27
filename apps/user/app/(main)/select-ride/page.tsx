@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { cn, swapAt } from '@/lib/utils'
 import { isAxiosError } from 'axios'
 import { rideApi, type FareEstimate, type StopInput } from '@/lib/ride-api'
+import { vehicleApi, type VehicleCategory } from '@/lib/vehicle-api'
 import RouteTimeline, { type TimelineNode } from '@/components/route/RouteTimeline'
 import AddStopSheet from '@/components/route/AddStopSheet'
 import { getPaymentChannel } from '@/lib/payment-channel'
@@ -22,7 +23,7 @@ const SelectRideMapScene = dynamic(() => import('@/components/map/SelectRideMapS
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
-type Category = { id: number; slug: string; display_name: string; max_passengers: number }
+type Category = VehicleCategory
 
 const FALLBACK_CATEGORIES: Category[] = [
   { id: 1, slug: 'hatchback', display_name: 'Hatchback', max_passengers: 4 },
@@ -78,7 +79,7 @@ function SelectRideContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp])
 
-  const [categories]        = useState<Category[]>(FALLBACK_CATEGORIES)
+  const [categories,        setCategories]        = useState<Category[]>(FALLBACK_CATEGORIES)
   const [rideType,          setRideType]          = useState<'one_way' | 'round_trip'>(
     () => sp.get('rideType') === 'round_trip' ? 'round_trip' : 'one_way'
   )
@@ -120,6 +121,12 @@ function SelectRideContent() {
   useEffect(() => {
     if (!hasOriginDest) router.replace('/home')
   }, [hasOriginDest, router])
+
+  // Live vehicle categories (passenger capacity, display name) from admin —
+  // FALLBACK_CATEGORIES only covers the fetch failing.
+  useEffect(() => {
+    vehicleApi.getCategories().then(setCategories).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!hasOriginDest) return

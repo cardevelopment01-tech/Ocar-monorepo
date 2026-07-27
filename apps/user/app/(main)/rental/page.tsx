@@ -10,6 +10,7 @@ import { motion } from 'framer-motion'
 import { cn, swapAt } from '@/lib/utils'
 import { isAxiosError } from 'axios'
 import { rideApi, type RentalPackage, type FareEstimate, type StopInput } from '@/lib/ride-api'
+import { vehicleApi, type VehicleCategory } from '@/lib/vehicle-api'
 import { getPaymentChannel } from '@/lib/payment-channel'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
@@ -21,9 +22,9 @@ import BookingForSheet from '@/components/booking/BookingForSheet'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-type Category = { id: number; slug: string; display_name: string; max_passengers: number }
+type Category = VehicleCategory
 
-const CATEGORIES: Category[] = [
+const FALLBACK_CATEGORIES: Category[] = [
   { id: 1, slug: 'hatchback', display_name: 'Hatchback', max_passengers: 4 },
   { id: 2, slug: 'sedan',     display_name: 'Sedan',     max_passengers: 4 },
   { id: 3, slug: 'suv',       display_name: 'SUV',       max_passengers: 6 },
@@ -151,7 +152,8 @@ function RentalContent() {
   }))
   if (stops.length < MAX_STOPS) rentalStopNodes.push({ kind: 'add', onTap: () => setAddStopOpen(true) })
 
-  const [selectedCatId,   setSelectedCatId]  = useState<number>(CATEGORIES[1]!.id)
+  const [categories,      setCategories]      = useState<Category[]>(FALLBACK_CATEGORIES)
+  const [selectedCatId,   setSelectedCatId]  = useState<number>(FALLBACK_CATEGORIES[1]!.id)
   const [packages,        setPackages]        = useState<RentalPackage[]>([])
   const [pkgsLoading,     setPkgsLoading]     = useState(true)
   const [selectedPkgId,   setSelectedPkgId]  = useState<number | null>(null)
@@ -183,6 +185,12 @@ function RentalContent() {
     if (!hasOrigin) router.replace('/home')
   }, [hasOrigin, router])
 
+  // Live vehicle categories (passenger capacity, display name) from admin —
+  // FALLBACK_CATEGORIES only covers the fetch failing.
+  useEffect(() => {
+    vehicleApi.getCategories().then(setCategories).catch(() => {})
+  }, [])
+
   // Fetch estimate whenever the selected package changes
   const loadEstimate = useCallback(async (pkgId: number, catId: number) => {
     setEstLoading(true)
@@ -208,7 +216,7 @@ function RentalContent() {
     if (selectedPkgId !== null) void loadEstimate(selectedPkgId, selectedCatId)
   }, [selectedPkgId, selectedCatId, loadEstimate])
 
-  const selectedCat = CATEGORIES.find(c => c.id === selectedCatId)!
+  const selectedCat = categories.find(c => c.id === selectedCatId)!
   const selectedPkg = packages.find(p => p.id === selectedPkgId) ?? null
   const canBook     = selectedPkgId !== null && estimate !== null && !estLoading && !isBooking
 
@@ -362,7 +370,7 @@ function RentalContent() {
               Vehicle
             </p>
             <div className="grid grid-cols-5 gap-1.5">
-              {CATEGORIES.map(cat => {
+              {categories.map(cat => {
                 const active = cat.id === selectedCatId
                 return (
                   <button
