@@ -12,19 +12,13 @@ export default function DemoBlock({ feature }: DemoBlockProps) {
 
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-[480px] px-8">
-      <div
-        className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5 flex-shrink-0"
-        style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}
-      >
+      <div className="w-14 h-14 rounded-2xl bg-brand flex items-center justify-center mb-5 flex-shrink-0">
         <Lock size={22} color="white" strokeWidth={1.8} />
       </div>
 
       <h2 className="text-lg font-bold text-text-primary mb-1.5 text-center">{feature}</h2>
 
-      <span
-        className="text-[10px] font-bold uppercase tracking-widest mb-3 px-3 py-1 rounded-full"
-        style={{ background: '#EEF2FF', color: '#4F46E5' }}
-      >
+      <span className="text-[11px] font-semibold mb-3 px-3 py-1 rounded-full bg-primary-light text-primary">
         Coming Soon
       </span>
 

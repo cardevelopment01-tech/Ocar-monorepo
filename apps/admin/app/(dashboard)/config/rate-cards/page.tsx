@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Tag, Pencil, Zap, AlertTriangle, ChevronDown, ChevronUp, History, Package, Plus, Trash2 } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
+import Toggle from '@/components/ui/Toggle'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { pricingApi, rentalPackageApi, type RateCard, type SurgeEvent, type RentalPackageAdmin } from '@/lib/pricing-api'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 
@@ -43,19 +45,6 @@ function SkeletonRows({ cols, n }: { cols: number; n: number }) {
       ))}
     </tr>
   ))}</>
-}
-
-function Toggle({ value, onChange, disabled }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={() => { if (!disabled) onChange(!value) }}
-      disabled={disabled}
-      className={`relative w-10 h-5 rounded-full transition-colors duration-200 disabled:opacity-50 ${value ? 'bg-primary' : 'bg-border'}`}
-    >
-      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${value ? 'translate-x-5' : 'translate-x-0'}`} />
-    </button>
-  )
 }
 
 const inputCls = 'w-full border border-border rounded-xl px-3 py-2 text-sm text-text-primary bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted'
@@ -103,7 +92,7 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
-        <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-light rounded-lg transition-colors" title="Update rate">
+        <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-light rounded-lg transition-colors" title="Update rate" aria-label="Update rate">
           <Pencil size={13} />
         </button>
       </Dialog.Trigger>
@@ -337,7 +326,7 @@ function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
-        <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-light rounded-lg transition-colors" title="Edit package">
+        <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-light rounded-lg transition-colors" title="Edit package" aria-label="Edit package">
           <Pencil size={13} />
         </button>
       </Dialog.Trigger>
@@ -572,6 +561,7 @@ export default function RateCardsPage() {
   const [toggling,      setToggling]      = useState<number | null>(null)
   const [deleting,      setDeleting]      = useState<number | null>(null)
   const [deleteError,   setDeleteError]   = useState('')
+  const [deleteTarget,  setDeleteTarget]  = useState<RentalPackageAdmin | null>(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true); setError('')
@@ -608,8 +598,10 @@ export default function RateCardsPage() {
     finally { setToggling(null) }
   }
 
-  async function deleteRentalPackage(pkg: RentalPackageAdmin) {
-    if (!window.confirm(`Delete the ${formatDuration(pkg.duration_minutes)} / ${pkg.km_limit}km package for ${pkg.category_name}? This cannot be undone.`)) return
+  async function confirmDeleteRentalPackage() {
+    const pkg = deleteTarget
+    if (!pkg) return
+    setDeleteTarget(null)
     setDeleting(pkg.id); setDeleteError('')
     try {
       await rentalPackageApi.remove(pkg.id)
@@ -703,7 +695,7 @@ export default function RateCardsPage() {
       {activeTab === 'rate_cards' && (
         <div className="space-y-5">
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="admin-card flex items-center gap-4">
               <div className="w-10 h-10 rounded-xl bg-primary-light flex items-center justify-center flex-shrink-0">
                 <Tag size={18} className="text-primary" />
@@ -886,7 +878,7 @@ export default function RateCardsPage() {
       {activeTab === 'rental' && (
         <div className="space-y-5">
           {/* Stats row */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="admin-card flex items-center gap-4">
               <div className="w-10 h-10 rounded-xl bg-primary-light flex items-center justify-center flex-shrink-0">
                 <Package size={18} className="text-primary" />
@@ -977,7 +969,7 @@ export default function RateCardsPage() {
                           <td className="!text-right font-mono text-text-muted">{numFmt(pkg.extra_per_min)}</td>
                           <td className="text-center">
                             <Toggle
-                              value={pkg.is_active}
+                              checked={pkg.is_active}
                               onChange={() => void toggleRentalPackage(pkg)}
                               disabled={toggling === pkg.id}
                             />
@@ -987,10 +979,11 @@ export default function RateCardsPage() {
                           </td>
                           <td className="!text-right">
                             <button
-                              onClick={() => void deleteRentalPackage(pkg)}
+                              onClick={() => setDeleteTarget(pkg)}
                               disabled={deleting === pkg.id}
                               className="p-1.5 rounded-lg text-danger hover:bg-danger-light disabled:opacity-50 transition-colors"
                               title="Delete package"
+                              aria-label="Delete package"
                             >
                               <Trash2 size={15} />
                             </button>
@@ -1005,6 +998,16 @@ export default function RateCardsPage() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={v => { if (!v) setDeleteTarget(null) }}
+        title="Delete rental package?"
+        description={deleteTarget ? `Delete the ${formatDuration(deleteTarget.duration_minutes)} / ${deleteTarget.km_limit}km package for ${deleteTarget.category_name}? This cannot be undone.` : ''}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => void confirmDeleteRentalPackage()}
+      />
     </div>
   )
 }

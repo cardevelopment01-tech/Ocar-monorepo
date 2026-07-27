@@ -212,7 +212,7 @@ export default function DisputesPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Open"          value={disputes.filter(d=>d.status==='open').length}         change="Needs action" changeType="neutral" icon={AlertTriangle} gradient="blue"   />
         <StatCard title="Under Review"  value={disputes.filter(d=>d.status==='under_review').length} change="In progress"  changeType="neutral" icon={Clock}         gradient="amber"  />
         <StatCard title="Resolved"      value={disputes.filter(d=>d.status==='resolved').length}     change="All time"     changeType="up"      icon={CheckCircle}   gradient="green"  />
@@ -238,7 +238,6 @@ export default function DisputesPage() {
               value: statusFilter,
               onChange: setStatusFilter,
             }]}
-            onExport={() => {}}
           />
         </div>
         {loading ? (
@@ -270,7 +269,7 @@ export default function DisputesPage() {
             </div>
 
             <div className="bg-surface-2 rounded-xl p-4 border border-border-light">
-              <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Ride</p>
+              <p className="text-xs font-semibold text-text-secondary mb-2">Ride</p>
               <p className="font-mono text-sm text-primary">#{selected.ride_id}</p>
               <p className="text-sm text-text-secondary mt-1 capitalize">
                 {selected.type.replace(/_/g, ' ')} · Raised by{' '}
@@ -287,7 +286,7 @@ export default function DisputesPage() {
             )}
 
             <div>
-              <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Description</p>
+              <p className="text-xs font-semibold text-text-secondary mb-2">Description</p>
               <p className="text-sm text-text-secondary leading-relaxed bg-surface-2 rounded-xl p-4 border border-border-light">
                 {selected.description}
               </p>
@@ -295,7 +294,7 @@ export default function DisputesPage() {
 
             {selected.outcome && (
               <div className="bg-surface-2 rounded-xl p-4 border border-border-light">
-                <p className="text-xs text-text-muted uppercase tracking-wide mb-1">Outcome</p>
+                <p className="text-xs font-semibold text-text-secondary mb-1">Outcome</p>
                 <p className="font-medium capitalize text-text-primary">{selected.outcome.replace(/_/g, ' ')}</p>
                 {selected.outcome_note && <p className="text-sm text-text-secondary mt-1">{selected.outcome_note}</p>}
               </div>
@@ -313,7 +312,7 @@ export default function DisputesPage() {
                   </button>
                 )}
 
-                <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Resolve</p>
+                <p className="text-xs font-semibold text-text-secondary">Resolve</p>
                 <select
                   value={outcome}
                   onChange={e => setOutcome(e.target.value)}

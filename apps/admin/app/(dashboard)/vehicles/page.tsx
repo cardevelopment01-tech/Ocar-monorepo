@@ -4,6 +4,8 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Car, Tag, Layers, FileText, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import StatCard from '@/components/ui/StatCard'
+import Toggle from '@/components/ui/Toggle'
+import ReasonDialog from '@/components/ui/ReasonDialog'
 import { cn } from '@/lib/utils'
 import {
   vehicleCategoryApi, vehicleBrandApi, vehicleModelApi, fleetApi, vehicleDocApi,
@@ -22,23 +24,6 @@ function daysLeft(iso: string) {
 }
 
 // ─── primitives ───────────────────────────────────────────────────────────────
-
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      onClick={() => onChange(!checked)}
-      className={cn(
-        'relative inline-flex w-9 h-5 rounded-full transition-colors duration-200 flex-shrink-0',
-        checked ? 'bg-success' : 'bg-border'
-      )}
-    >
-      <span className={cn(
-        'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200',
-        checked ? 'translate-x-4' : 'translate-x-0'
-      )} />
-    </button>
-  )
-}
 
 function SkeletonRows({ cols, rows = 5 }: { cols: number; rows?: number }) {
   return <>{Array.from({ length: rows }).map((_, i) => (
@@ -71,40 +56,6 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
   )
 }
 
-// ─── shared reason / confirm dialogs ─────────────────────────────────────────
-
-interface ReasonDialogProps {
-  open: boolean; title: string; description: string
-  confirmLabel: string; variant: 'danger' | 'warning'
-  loading: boolean; onCancel: () => void; onConfirm: (r: string) => void
-}
-function ReasonDialog({ open, title, description, confirmLabel, variant, loading, onCancel, onConfirm }: ReasonDialogProps) {
-  const [reason, setReason] = useState('')
-  useEffect(() => { if (!open) setReason('') }, [open])
-  const btnCls = variant === 'danger' ? 'bg-danger text-white hover:bg-red-600' : 'bg-warning text-white hover:bg-amber-600'
-  return (
-    <Dialog.Root open={open} onOpenChange={v => { if (!v) onCancel() }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-text-primary/40 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 bg-surface rounded-2xl shadow-hover p-6 w-full max-w-[440px]">
-          <Dialog.Title className="text-lg font-bold text-text-primary mb-2">{title}</Dialog.Title>
-          <Dialog.Description className="text-sm text-text-secondary mb-4">{description}</Dialog.Description>
-          <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} placeholder="Enter reason (min 10 chars)…"
-            className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted mb-1" />
-          <p className="text-xs text-text-muted mb-5">{reason.trim().length}/10 min</p>
-          <div className="flex gap-3 justify-end">
-            <button onClick={onCancel} className="px-4 py-2 text-sm border border-border rounded-xl hover:bg-surface-2">Cancel</button>
-            <button onClick={() => onConfirm(reason.trim())} disabled={reason.trim().length < 10 || loading}
-              className={cn('px-4 py-2 text-sm font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed', btnCls)}>
-              {loading ? 'Submitting…' : confirmLabel}
-            </button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  )
-}
-
 // ─── field dialog (add/edit generic) ─────────────────────────────────────────
 
 interface FieldDef { key: string; label: string; type: 'text' | 'number' | 'toggle'; readOnly?: boolean; min?: number; max?: number }
@@ -124,7 +75,7 @@ function FieldDialog({ open, title, fields, values, onChange, loading, onCancel,
           <div className="space-y-4">
             {fields.map(f => (
               <div key={f.key}>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">{f.label}</label>
+                <label className="block text-xs font-semibold text-text-secondary mb-1.5">{f.label}</label>
                 {f.type === 'toggle' ? (
                   <Toggle checked={!!values[f.key]} onChange={v => onChange(f.key, v)} />
                 ) : (
@@ -542,12 +493,12 @@ function BrandsTab() {
             <Dialog.Title className="text-lg font-bold text-text-primary mb-5">Add Model</Dialog.Title>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Model Name</label>
+                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Model Name</label>
                 <input value={String(formVals.name ?? '')} onChange={e => setFormVals(p => ({ ...p, name: e.target.value }))}
                   className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Typical Category</label>
+                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Typical Category</label>
                 <select value={String(formVals.typical_category_id ?? '')} onChange={e => setFormVals(p => ({ ...p, typical_category_id: e.target.value }))}
                   className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30">
                   <option value="">None</option>
@@ -555,7 +506,7 @@ function BrandsTab() {
                 </select>
               </div>
               <div className="flex items-center gap-3">
-                <label className="text-xs font-semibold text-text-muted uppercase tracking-wide">Active</label>
+                <label className="text-xs font-semibold text-text-secondary">Active</label>
                 <Toggle checked={!!formVals.is_active} onChange={v => setFormVals(p => ({ ...p, is_active: v }))} />
               </div>
             </div>
@@ -577,12 +528,12 @@ function BrandsTab() {
             <Dialog.Title className="text-lg font-bold text-text-primary mb-5">Edit Model</Dialog.Title>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Model Name</label>
+                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Model Name</label>
                 <input value={String(formVals.name ?? '')} onChange={e => setFormVals(p => ({ ...p, name: e.target.value }))}
                   className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Typical Category</label>
+                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Typical Category</label>
                 <select value={String(formVals.typical_category_id ?? '')} onChange={e => setFormVals(p => ({ ...p, typical_category_id: e.target.value }))}
                   className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30">
                   <option value="">None</option>
@@ -590,7 +541,7 @@ function BrandsTab() {
                 </select>
               </div>
               <div className="flex items-center gap-3">
-                <label className="text-xs font-semibold text-text-muted uppercase tracking-wide">Active</label>
+                <label className="text-xs font-semibold text-text-secondary">Active</label>
                 <Toggle checked={!!formVals.is_active} onChange={v => setFormVals(p => ({ ...p, is_active: v }))} />
               </div>
             </div>
@@ -653,7 +604,7 @@ function FleetTab() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard title="Total Vehicles" value={total} change="All time" changeType="neutral" icon={Car} gradient="blue" />
         <StatCard title="Active" value={active} change="On road" changeType="up" icon={CheckCircle} gradient="green" />
         <StatCard title="Blacklisted" value={blacklisted} change="Blocked" changeType="neutral" icon={XCircle} gradient="purple" />

@@ -63,7 +63,7 @@ export default function OverviewPage() {
     <div className="space-y-5">
 
       {/* ── Primary stat cards ── */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Rides Today"
           value={loading ? '—' : s.total_rides_today}
@@ -99,7 +99,7 @@ export default function OverviewPage() {
       </div>
 
       {/* ── Secondary stat row ── */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
           { label: 'Completed Rides',    value: s.completed_rides,    pill: 'completed' },
           { label: 'Cancelled Rides',    value: s.cancelled_rides,    pill: 'cancelled' },
@@ -132,7 +132,7 @@ export default function OverviewPage() {
       </div>
 
       {/* ── Main two-column ── */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
 
         {/* Recent Rides: 3 cols */}
         <div className="col-span-3 admin-card">
@@ -143,8 +143,7 @@ export default function OverviewPage() {
             </div>
             <a
               href="/rides"
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-              style={{ color: '#4F46E5', background: '#EEF2FF' }}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-primary bg-primary-light"
             >
               View all →
             </a>
@@ -224,7 +223,7 @@ export default function OverviewPage() {
             </div>
 
             {/* Bar chart */}
-            <p className="text-xs font-bold text-text-muted uppercase tracking-widest mb-2">Rides / Last 12h</p>
+            <p className="text-xs font-semibold text-text-secondary mb-2">Rides / Last 12h</p>
             <div className="flex items-end gap-1 h-14">
               {s.rides_last_12h.map((v, i) => {
                 const isLast = i === s.rides_last_12h.length - 1
@@ -272,8 +271,7 @@ export default function OverviewPage() {
             }
             <a
               href="/sos"
-              className="inline-block mt-3 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-              style={{ color: '#EF4444', background: '#FEE2E2' }}
+              className="inline-block mt-3 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-danger bg-danger-light"
             >
               View SOS page →
             </a>

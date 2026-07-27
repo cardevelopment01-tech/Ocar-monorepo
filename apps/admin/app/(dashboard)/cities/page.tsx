@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { MapPin, Plus, Pencil, CheckCircle2, Clock } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
+import Toggle from '@/components/ui/Toggle'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -28,18 +29,6 @@ function SkeletonRows({ n }: { n: number }) {
       ))}
     </tr>
   ))}</>
-}
-
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!value)}
-      className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${value ? 'bg-primary' : 'bg-border'}`}
-    >
-      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${value ? 'translate-x-5' : 'translate-x-0'}`} />
-    </button>
-  )
 }
 
 const inputCls = 'w-full border border-border rounded-xl px-3 py-2 text-sm text-text-primary bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted'
@@ -142,11 +131,11 @@ function AddCityDialog({ onCreated }: { onCreated: () => void }) {
             <div className="space-y-3 pt-1 border-t border-border-light">
               <div className="flex items-center justify-between pt-3">
                 <span className="text-sm font-medium text-text-secondary">Rental Enabled</span>
-                <Toggle value={form.is_rental_enabled} onChange={v => set('is_rental_enabled', v)} />
+                <Toggle checked={form.is_rental_enabled} onChange={v => set('is_rental_enabled', v)} />
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-text-secondary">Return Cab Enabled</span>
-                <Toggle value={form.is_return_cab_enabled} onChange={v => set('is_return_cab_enabled', v)} />
+                <Toggle checked={form.is_return_cab_enabled} onChange={v => set('is_return_cab_enabled', v)} />
               </div>
             </div>
             <p className="text-xs text-text-muted">Status starts as <span className="text-warning font-semibold">Draft</span>. Activate after verifying coordinates.</p>
@@ -224,7 +213,7 @@ function EditCityDialog({ city, onUpdated }: { city: AdminCity; onUpdated: () =>
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
-        <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-light rounded-lg transition-colors" title="Edit">
+        <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-light rounded-lg transition-colors" title="Edit" aria-label="Edit city">
           <Pencil size={14} />
         </button>
       </Dialog.Trigger>
@@ -263,11 +252,11 @@ function EditCityDialog({ city, onUpdated }: { city: AdminCity; onUpdated: () =>
                     <p className="text-xs text-text-muted mt-0.5">Rental boundary must be configured separately</p>
                   )}
                 </div>
-                <Toggle value={form.is_rental_enabled} onChange={v => set('is_rental_enabled', v)} />
+                <Toggle checked={form.is_rental_enabled} onChange={v => set('is_rental_enabled', v)} />
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-text-secondary">Return Cab Enabled</span>
-                <Toggle value={form.is_return_cab_enabled} onChange={v => set('is_return_cab_enabled', v)} />
+                <Toggle checked={form.is_return_cab_enabled} onChange={v => set('is_return_cab_enabled', v)} />
               </div>
             </div>
             {error && <p className="text-xs text-danger font-semibold">{error}</p>}
@@ -330,7 +319,7 @@ export default function CitiesPage() {
       </div>
 
       {/* Stat tiles */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="admin-card flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-success-light flex items-center justify-center flex-shrink-0">
             <CheckCircle2 size={18} className="text-success" />

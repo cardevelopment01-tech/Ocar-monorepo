@@ -147,7 +147,7 @@ export default function AnalyticsPage() {
       <div className="admin-card">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <p className="text-xs text-text-muted font-semibold uppercase tracking-wider mb-0.5">Total Revenue</p>
+            <p className="text-xs text-text-muted font-semibold mb-0.5">Total Revenue</p>
             {loading
               ? <div className="skeleton h-8 w-32 rounded" />
               : <p className="text-3xl font-black text-text-primary tabular-nums">
@@ -164,7 +164,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* ── Funnel + breakdowns ── */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
         {/* Ride funnel */}
         <div className="admin-card">
@@ -175,7 +175,7 @@ export default function AnalyticsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <HBar label="Requested" value={funnel.requested} max={funnel.requested} color="#94A3B8" />
+              <HBar label="Requested" value={funnel.requested} max={funnel.requested} color="#5B6B85" />
               <HBar
                 label="Accepted"
                 value={funnel.accepted}

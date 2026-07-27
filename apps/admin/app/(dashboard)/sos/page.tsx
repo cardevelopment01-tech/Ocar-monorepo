@@ -99,7 +99,7 @@ export default function SOSPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Active Now"     value={active.length}   change={active.length > 0 ? 'Needs action' : 'All clear'} changeType={active.length > 0 ? 'down' : 'neutral'} icon={Shield}        gradient="pink"   />
         <StatCard title="Resolved"       value={resolved}        change="All time"   changeType="up"    icon={CheckCircle}   gradient="green"  />
         <StatCard title="False Alarms"   value={falseAlarm}      change="All time"   changeType="neutral" icon={AlertTriangle} gradient="amber"  />

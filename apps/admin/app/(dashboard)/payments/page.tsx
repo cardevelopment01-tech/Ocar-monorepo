@@ -141,7 +141,6 @@ export default function PaymentsPage() {
               value: channelFilter,
               onChange: (v) => { setChannelFilter(v); setPage(1) },
             }]}
-            onExport={() => {}}
           />
         </div>
         {loading

@@ -39,13 +39,10 @@ html.overflow-hidden {
   .data-table tr:hover td { background-color: #F5F7FF; }
   .data-table tr:last-child td { @apply border-b-0; }
 
-  /* ── Stat card base ── */
-  .stat-card { @apply rounded-2xl p-5 text-white relative overflow-hidden; }
-
   /* ── Sidebar nav item ── */
   .nav-item {
     @apply relative flex items-center gap-3 px-3 py-2.5 rounded-xl
-           text-text-muted text-sm font-medium cursor-pointer
+           text-text-muted text-base font-semibold cursor-pointer
            transition-all duration-150 hover:bg-sidebar-hover hover:text-text-secondary;
   }
   .nav-item.active { @apply bg-primary text-white shadow-sm; }

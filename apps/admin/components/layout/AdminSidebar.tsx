@@ -101,18 +101,12 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
       {/* Logo */}
       <div className="px-5 pt-5 pb-4">
         <div className="flex items-center gap-2.5 mb-1">
-          <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}
-          >
+          <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center flex-shrink-0">
             <span className="text-white font-black text-sm tracking-tight">O</span>
           </div>
           <div>
             <span className="text-text-primary font-black text-lg leading-none">car</span>
-            <span
-              className="ml-1.5 text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md"
-              style={{ background: '#EEF2FF', color: '#4F46E5' }}
-            >
+            <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary-light text-primary">
               Admin
             </span>
           </div>
@@ -128,7 +122,7 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
           if (!visible.length) return null
           return (
             <div key={group.label}>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted/60 px-3 mb-1.5">
+              <p className="text-[11px] font-semibold text-text-muted px-3 mb-1.5">
                 {group.label}
               </p>
               {visible.map(item => {
@@ -155,10 +149,7 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
       {/* Bottom profile */}
       <div className="border-t border-sidebar-border mx-4 pt-4 pb-5">
         <div className="flex items-center gap-3 px-2">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}
-          >
+          <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center flex-shrink-0">
             <span className="text-white text-xs font-bold">{adminInitials}</span>
           </div>
           <div className="flex-1 min-w-0">
@@ -169,6 +160,7 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
             onClick={() => setShowLogoutConfirm(true)}
             className="text-text-muted hover:text-danger transition-colors cursor-pointer"
             title="Logout"
+            aria-label="Log out"
           >
             <LogOut size={14} />
           </button>

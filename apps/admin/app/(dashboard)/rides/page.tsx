@@ -301,7 +301,6 @@ function RidesPageContent() {
                 onChange: (v) => { setCashFlagFilter(v); setPage(1) },
               },
             ]}
-            onExport={() => {}}
           />
         </div>
         {loading
@@ -344,8 +343,8 @@ function RidesPageContent() {
                 ? 'bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2'
                 : 'bg-surface-2 border border-border-light rounded-xl p-3 space-y-2'}>
                 <p className={selected.review_flagged_at
-                  ? 'text-xs font-semibold text-amber-800 uppercase tracking-wide'
-                  : 'text-xs font-semibold text-text-secondary uppercase tracking-wide'}>
+                  ? 'text-xs font-semibold text-amber-800'
+                  : 'text-xs font-semibold text-text-secondary'}>
                   {selected.review_flagged_at ? 'Flagged, possibly stuck' : 'Trip in progress'}
                 </p>
                 <p className={selected.review_flagged_at ? 'text-xs text-amber-700' : 'text-xs text-text-muted'}>
@@ -378,7 +377,7 @@ function RidesPageContent() {
                 { label: 'Driver', name: selected.driver_name ?? 'Unassigned', sub: selected.driver_phone ?? '' },
               ].map(p => (
                 <div key={p.label} className="bg-surface-2 rounded-xl p-3 border border-border-light">
-                  <p className="text-xs text-text-muted uppercase tracking-wide mb-1">{p.label}</p>
+                  <p className="text-xs font-semibold text-text-secondary mb-1">{p.label}</p>
                   <p className="font-semibold text-text-primary">{p.name}</p>
                   <p className="text-xs text-text-muted">{p.sub}</p>
                 </div>
@@ -386,7 +385,7 @@ function RidesPageContent() {
             </div>
 
             <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
-              <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Route</p>
+              <p className="text-xs font-semibold text-text-secondary mb-2">Route</p>
               <div className="space-y-2">
                 <div className="flex items-start gap-2">
                   <MapPin className="w-3.5 h-3.5 text-success mt-0.5 shrink-0" />
@@ -404,7 +403,7 @@ function RidesPageContent() {
             </div>
 
             <div className="bg-surface-2 rounded-xl p-3 border border-border-light space-y-1.5">
-              <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Timeline</p>
+              <p className="text-xs font-semibold text-text-secondary mb-2">Timeline</p>
               {(
                 [
                   { label: 'Requested',       ts: selected.requested_at },
@@ -423,7 +422,7 @@ function RidesPageContent() {
 
             {detailStops.length > 0 && (
               <div className="bg-surface-2 rounded-xl p-3 border border-border-light space-y-1.5">
-                <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Stops</p>
+                <p className="text-xs font-semibold text-text-secondary mb-2">Stops</p>
                 {detailStops.map((s) => {
                   const dwellMin = s.arrived_at && s.reached_at
                     ? Math.round((new Date(s.reached_at).getTime() - new Date(s.arrived_at).getTime()) / 60000)
@@ -445,7 +444,7 @@ function RidesPageContent() {
 
             {(selected.payment_status || selected.payment_channel) && (
               <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
-                <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Payment</p>
+                <p className="text-xs font-semibold text-text-secondary mb-2">Payment</p>
                 <div className="flex justify-between items-center">
                   <span className="inline-flex items-center gap-1 flex-wrap">
                     <StatusPill status={selected.payment_status ?? 'pending'} />
@@ -466,7 +465,7 @@ function RidesPageContent() {
 
             {selected.status === 'cancelled' && (
               <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
-                <p className="text-xs text-text-muted uppercase tracking-wide mb-1">Cancellation</p>
+                <p className="text-xs font-semibold text-text-secondary mb-1">Cancellation</p>
                 {selected.cancellation_actor && (
                   <p className="text-xs text-text-muted capitalize mb-1">By: {selected.cancellation_actor}</p>
                 )}

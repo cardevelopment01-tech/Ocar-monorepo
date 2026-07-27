@@ -1,6 +1,5 @@
 'use client'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
 import {
   Users, UserCheck, Clock, ShieldOff, X,
   FileText, CheckCircle, XCircle, AlertCircle, Layers,
@@ -11,6 +10,7 @@ import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import ReasonDialog from '@/components/ui/ReasonDialog'
 import DocReviewModal from '@/components/ui/DocReviewModal'
 import { adminDriverApi, type DriverListItem, type DriverDetail } from '@/lib/admin-api'
 import { cn } from '@/lib/utils'
@@ -46,49 +46,6 @@ function docLabel(key: string) {
 
 const REQUIRED_DRIVER_DOCS  = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
 const REQUIRED_VEHICLE_DOCS = ['vehicle_rc', 'insurance', 'permit']
-
-// ─── ReasonDialog (for list-level actions only) ───────────────────────────────
-
-interface ReasonDialogProps {
-  open: boolean; title: string; description: string
-  confirmLabel: string; variant: 'danger' | 'warning'
-  loading: boolean; onCancel: () => void; onConfirm: (r: string) => void
-}
-function ReasonDialog({ open, title, description, confirmLabel, variant, loading, onCancel, onConfirm }: ReasonDialogProps) {
-  const [reason, setReason] = useState('')
-  const valid = reason.trim().length >= 10
-  useEffect(() => { if (!open) setReason('') }, [open])
-  const btnCls = variant === 'danger'
-    ? 'bg-danger text-white hover:bg-red-600'
-    : 'bg-warning text-white hover:bg-amber-600'
-  return (
-    <Dialog.Root open={open} onOpenChange={v => { if (!v) onCancel() }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[60] -translate-x-1/2 -translate-y-1/2 bg-surface rounded-2xl shadow-hover p-6 w-full max-w-[440px]">
-          <Dialog.Title className="text-lg font-bold text-text-primary mb-2">{title}</Dialog.Title>
-          <Dialog.Description className="text-sm text-text-secondary mb-4 leading-relaxed">{description}</Dialog.Description>
-          <textarea
-            value={reason} onChange={e => setReason(e.target.value)}
-            placeholder="Enter reason (minimum 10 characters)…" rows={3}
-            className="w-full border border-border rounded-xl px-3 py-2 text-sm text-text-primary bg-surface-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted mb-1"
-          />
-          <p className="text-xs text-text-muted mb-5">{reason.trim().length}/10 min chars</p>
-          <div className="flex gap-3 justify-end">
-            <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-text-secondary border border-border rounded-xl hover:bg-surface-2 transition-colors">Cancel</button>
-            <button
-              onClick={() => onConfirm(reason.trim())}
-              disabled={!valid || loading}
-              className={cn('px-4 py-2 text-sm font-semibold rounded-xl transition-colors disabled:opacity-50', btnCls)}
-            >
-              {loading ? 'Submitting…' : confirmLabel}
-            </button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  )
-}
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 
@@ -440,7 +397,7 @@ export default function DriversPage() {
         {/* Driver docs checklist */}
         {d.documents.filter(x => x.doc_type !== 'profile_photo').length > 0 && (
           <div>
-            <p className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-2">Identity Documents</p>
+            <p className="text-xs font-semibold text-text-secondary mb-2">Identity Documents</p>
             <div className="space-y-1.5">
               {d.documents.filter(x => x.doc_type !== 'profile_photo').map((doc, i) => (
                 <DocCheckItem
@@ -459,7 +416,7 @@ export default function DriversPage() {
         {/* Vehicle docs checklist */}
         {(d.vehicle_documents.length > 0 || missingVehicle.length > 0) && (
           <div>
-            <p className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-2">Vehicle Documents</p>
+            <p className="text-xs font-semibold text-text-secondary mb-2">Vehicle Documents</p>
             <div className="space-y-1.5">
               {d.vehicle_documents.map(doc => (
                 <DocCheckItem
@@ -492,7 +449,7 @@ export default function DriversPage() {
         {/* Application decision */}
         {(d.status === 'pending_approval' || d.status === 'docs_rejected' || d.status === 'active' || d.status === 'suspended') && (
           <div className="pt-1 border-t border-border space-y-2">
-            <p className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-2 pt-1">Application Decision</p>
+            <p className="text-xs font-semibold text-text-secondary mb-2 pt-1">Application Decision</p>
             {d.status === 'pending_approval' && (
               <>
                 {totalMissing > 0 && (
@@ -528,7 +485,7 @@ export default function DriversPage() {
   return (
     <div className="space-y-5">
       {/* Stat cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Total Drivers"    value={total}                                                 change="All time"        changeType="neutral" icon={Users}    gradient="blue"   />
         <StatCard title="Active"           value={drivers.filter(d => d.status === 'active').length}      change="+3 this week"    changeType="up"      icon={UserCheck} gradient="green"  />
         <StatCard title="Pending Approval" value={pending.length}                                         change="Needs attention" changeType="neutral" icon={Clock}    gradient="amber"  />
@@ -600,7 +557,6 @@ export default function DriversPage() {
               value: statusFilter,
               onChange: v => { setStatusFilter(v); setPage(1) },
             }]}
-            onExport={() => {}}
           />
         </div>
 
@@ -700,7 +656,7 @@ export default function DriversPage() {
               {activeTab === 'overview' && (
                 <>
                   <div className="bg-surface-2 rounded-xl p-4 border border-border-light space-y-2">
-                    <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Contact</p>
+                    <p className="text-xs font-semibold text-text-secondary">Contact</p>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                       <span className="text-text-muted">Phone</span>      <span className="text-text-primary font-medium">{detail.phone}</span>
                       <span className="text-text-muted">Email</span>      <span className="text-text-primary font-medium">{detail.email ?? '—'}</span>
@@ -713,7 +669,7 @@ export default function DriversPage() {
                     </div>
                   </div>
                   <div className="bg-surface-2 rounded-xl p-4 border border-border-light">
-                    <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Identity</p>
+                    <p className="text-xs font-semibold text-text-secondary mb-2">Identity</p>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                       <span className="text-text-muted">Aadhaar</span> <span className="font-mono text-text-primary">{detail.aadhaar_number ?? '—'}</span>
                       <span className="text-text-muted">Licence</span> <span className="font-mono text-text-primary">{detail.license_number ?? '—'}</span>
@@ -721,7 +677,7 @@ export default function DriversPage() {
                   </div>
                   <div className="bg-surface-2 rounded-xl p-4 border border-border-light">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Wallet</p>
+                      <p className="text-xs font-semibold text-text-secondary">Wallet</p>
                       {detail.wallet?.is_frozen && (
                         <span className="text-[10px] font-bold text-danger bg-danger/10 rounded-full px-2 py-0.5">Frozen</span>
                       )}
@@ -766,7 +722,7 @@ export default function DriversPage() {
                     <p className="text-sm text-text-muted text-center py-8">No vehicle registered yet</p>
                   ) : (
                     <div className="bg-surface-2 rounded-xl p-4 border border-border-light">
-                      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Vehicle Details</p>
+                      <p className="text-xs font-semibold text-text-secondary mb-3">Vehicle Details</p>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
                         <span className="text-text-muted">Name</span>     <span className="font-medium text-text-primary">{detail.vehicle.vehicle_name}</span>
                         <span className="text-text-muted">Brand</span>    <span className="font-medium text-text-primary">{detail.vehicle.brand}</span>
@@ -785,7 +741,7 @@ export default function DriversPage() {
 
               {activeTab === 'history' && (
                 <div>
-                  <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Status History</p>
+                  <p className="text-xs font-semibold text-text-secondary mb-3">Status History</p>
                   {detail.status_history.length === 0 ? (
                     <p className="text-sm text-text-muted text-center py-8">No status changes recorded</p>
                   ) : detail.status_history.map((h, i) => (

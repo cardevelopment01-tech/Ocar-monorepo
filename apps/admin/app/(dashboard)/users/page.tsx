@@ -159,7 +159,6 @@ export default function UsersPage() {
               value: statusFilter,
               onChange: (v) => { setStatusFilter(v); setPage(1) },
             }]}
-            onExport={() => {}}
           />
         </div>
         {loading

@@ -46,11 +46,8 @@ export default function AdminTopBar({
 
   return (
     <header
-      className="sticky top-0 z-30 h-14 flex items-center px-6 gap-4"
+      className="sticky top-0 z-30 h-14 flex items-center px-6 gap-4 bg-surface"
       style={{
-        background: 'rgba(255,255,255,0.85)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
         borderBottom: '1px solid #E8EAFF',
         boxShadow: '0 1px 0 #E8EAFF, 0 4px 24px rgba(79,70,229,0.04)',
       }}
@@ -68,8 +65,7 @@ export default function AdminTopBar({
         {/* Search */}
         <button
           aria-label="Search"
-          className="w-8 h-8 rounded-xl hover:bg-surface-2 flex items-center justify-center transition-colors cursor-pointer"
-          style={{ color: '#94A3B8' }}
+          className="w-11 h-11 rounded-xl hover:bg-surface-2 flex items-center justify-center transition-colors cursor-pointer text-text-muted"
         >
           <Search size={14} />
         </button>
@@ -78,8 +74,8 @@ export default function AdminTopBar({
         <DropdownMenu.Root open={isPanelOpen} onOpenChange={setPanelOpen}>
           <DropdownMenu.Trigger asChild>
             <button
-              className="relative w-8 h-8 rounded-xl hover:bg-surface-2 flex items-center justify-center transition-colors cursor-pointer"
-              style={{ color: '#94A3B8' }}
+              aria-label="Notifications"
+              className="relative w-11 h-11 rounded-xl hover:bg-surface-2 flex items-center justify-center transition-colors cursor-pointer text-text-muted"
             >
               <Bell size={14} />
               {unreadCount > 0 && (
@@ -126,7 +122,7 @@ export default function AdminTopBar({
                 ) : items.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
                     <span className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center mb-2.5">
-                      <Bell size={17} strokeWidth={1.6} style={{ color: '#94A3B8' }} />
+                      <Bell size={17} strokeWidth={1.6} className="text-text-muted" />
                     </span>
                     <p className="text-xs font-semibold text-text-primary">You&apos;re all caught up</p>
                     <p className="text-[11px] text-text-muted mt-0.5">Ops alerts will show up here.</p>
@@ -146,7 +142,7 @@ export default function AdminTopBar({
                             className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
                             style={{ background: unread ? 'rgba(79,70,229,0.10)' : '#F1F5F9' }}
                           >
-                            <Icon size={13} strokeWidth={1.8} style={{ color: unread ? '#4F46E5' : '#94A3B8' }} />
+                            <Icon size={13} strokeWidth={1.8} className={unread ? 'text-primary' : 'text-text-muted'} />
                           </span>
                           <span className="flex-1 min-w-0">
                             <span className="flex items-center gap-1.5">
@@ -177,10 +173,7 @@ export default function AdminTopBar({
         <DropdownMenu.Root open={open} onOpenChange={setOpen}>
           <DropdownMenu.Trigger asChild>
             <button className="flex items-center gap-2 pl-1 pr-2.5 py-1.5 rounded-xl hover:bg-surface-2 transition-colors cursor-pointer">
-              <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}
-              >
+              <div className="w-7 h-7 rounded-lg bg-brand flex items-center justify-center flex-shrink-0">
                 <span className="text-white text-[11px] font-bold">{adminInitials}</span>
               </div>
               <span className="text-sm font-medium text-text-secondary hidden sm:block max-w-[80px] truncate">

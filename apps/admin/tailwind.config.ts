@@ -4,13 +4,16 @@ const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      backgroundImage: {
+        brand: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+      },
       colors: {
         // Sidebar (white/light, premium SaaS style)
         sidebar:               '#FFFFFF',
         'sidebar-hover':       '#F5F7FF',
         'sidebar-active':      '#4F46E5',
         'sidebar-border':      '#E8EAFF',
-        'sidebar-text':        '#94A3B8',
+        'sidebar-text':        '#5B6B85',
         'sidebar-active-text': '#FFFFFF',
         // Canvas & surfaces
         canvas:      '#F8FAFF',
@@ -38,7 +41,7 @@ const config: Config = {
         // Text
         'text-primary':   '#0F172A',
         'text-secondary': '#475569',
-        'text-muted':     '#94A3B8',
+        'text-muted':     '#5B6B85',
         'text-inverse':   '#FFFFFF',
         // Borders
         border:        '#E2E8F0',
@@ -63,12 +66,6 @@ const config: Config = {
         hover:        '0 8px 30px rgba(79,70,229,0.18)',
         sidebar:      '1px 0 0 #E8EAFF',
         topbar:       '0 1px 0 #E8EAFF, 0 4px 20px rgba(79,70,229,0.05)',
-        'stat-blue':  '0 8px 32px rgba(79,70,229,0.35)',
-        'stat-green': '0 8px 32px rgba(5,150,105,0.30)',
-        'stat-amber': '0 8px 32px rgba(245,158,11,0.30)',
-        'stat-purple':'0 8px 32px rgba(124,58,237,0.30)',
-        'stat-pink':  '0 8px 32px rgba(225,29,72,0.30)',
-        'stat-cyan':  '0 8px 32px rgba(8,145,178,0.30)',
       },
       keyframes: {
         'fade-in': {
