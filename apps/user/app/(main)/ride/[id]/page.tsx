@@ -17,6 +17,7 @@ import { decodePolyline } from '@/lib/polyline'
 import { openRidePaymentCheckout } from '@/lib/razorpay-checkout'
 import CancelSheet from './CancelSheet'
 import SOSButton from '@/components/ui/SOSButton'
+import AddStopSheet, { type PickedStop } from '@/components/route/AddStopSheet'
 
 const RideMapScene = dynamic(() => import('@/components/map/RideMapScene'), { ssr: false })
 
@@ -258,6 +259,7 @@ export default function RidePage() {
   const [startOtp,       setStartOtp]       = useState<string | null>(null)
   const [endOtp,         setEndOtp]         = useState<string | null>(null)
   const [showCancelSheet, setShowCancelSheet] = useState(false)
+  const [addStopOpen,    setAddStopOpen]    = useState(false)
   const [sheetExpanded,  setSheetExpanded]  = useState(false)
   const [fareDrift, setFareDrift] = useState<{ previousFare: number; currentFare: number } | null>(null)
   const [reportSending,  setReportSending]  = useState(false)
@@ -370,6 +372,17 @@ export default function RidePage() {
     })
   }
 
+  async function handleAddStop(stop: PickedStop) {
+    setAddStopOpen(false)
+    try {
+      const newStop = await rideApi.addStop(rideId, stop)
+      setRide(prev => prev ? { ...prev, stops: [...prev.stops, newStop] } : prev)
+    } catch {
+      // Best-effort — the driver-side socket/notification still lands even if
+      // this optimistic local update fails; a reload picks up the real state.
+    }
+  }
+
   useEffect(() => {
     if (!rideId) return
     void loadRide()
@@ -476,6 +489,11 @@ export default function RidePage() {
           : s),
       } : prev)
     }
+    const onStopAdded = (data: { stop: RideStop }) => {
+      setRide(prev => prev && !prev.stops.some(s => s.sequence === data.stop.sequence)
+        ? { ...prev, stops: [...prev.stops, data.stop] }
+        : prev)
+    }
 
     socket.on('connect',            onConnect)
     socket.on('disconnect',         onDisconnect)
@@ -485,6 +503,7 @@ export default function RidePage() {
     socket.on('driver:trail_segment', onTrailSegment)
     socket.on('ride:stuck_flagged', onStuckFlagged)
     socket.on('stop:updated',       onStopUpdated)
+    socket.on('stop:added',         onStopAdded)
 
     // Reconcile ride state when the tab resumes from background.
     // The poll and socket may have stalled while the screen was off.
@@ -505,6 +524,7 @@ export default function RidePage() {
       socket.off('driver:trail_segment', onTrailSegment)
       socket.off('ride:stuck_flagged', onStuckFlagged)
       socket.off('stop:updated',       onStopUpdated)
+      socket.off('stop:added',         onStopAdded)
       document.removeEventListener('visibilitychange', onVisible)
       clearTimeout(fallbackTimer)
       if (pollRef.current) clearInterval(pollRef.current)
@@ -699,6 +719,16 @@ export default function RidePage() {
           <div className="absolute top-4 right-4 z-20" style={{ marginTop: 'env(safe-area-inset-top)' }}>
             <SOSButton onSOS={handleSOS} />
           </div>
+        )}
+
+        {(rideStatus === 'accepted' || rideStatus === 'driver_arrived' || rideStatus === 'in_progress') && (
+          <button
+            onClick={() => setAddStopOpen(true)}
+            className="absolute top-16 right-4 z-20 px-3 py-2 rounded-full bg-white shadow-md text-xs font-semibold text-slate-700 active:scale-95 transition-transform"
+            style={{ marginTop: 'env(safe-area-inset-top)' }}
+          >
+            Add stop
+          </button>
         )}
       </div>
 
@@ -994,6 +1024,13 @@ export default function RidePage() {
         </AnimatePresence>
 
       </motion.div>
+
+      <AddStopSheet
+        open={addStopOpen}
+        onClose={() => setAddStopOpen(false)}
+        onSelect={handleAddStop}
+        title="Add a stop"
+      />
 
       {showCancelSheet && (
         <CancelSheet

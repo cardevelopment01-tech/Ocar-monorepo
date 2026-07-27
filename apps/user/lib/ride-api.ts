@@ -266,6 +266,11 @@ export const rideApi = {
     return res.data as RentalPackage[]
   },
 
+  addStop: async (rideId: string, stop: { lat: number; lng: number; address: string }): Promise<RideStop> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/stops`, stop)
+    return res.data
+  },
+
   cancelRide: async (rideId: string, reasonCode?: string, reason?: string): Promise<void> => {
     const body: Record<string, string> = {}
     if (reasonCode !== undefined) body['reasonCode'] = reasonCode
