@@ -306,6 +306,20 @@ export async function updateLocation(driverId: bigint, data: {
   }
 }
 
+// Strips the *other* party's raw phone number before a ride row leaves the
+// API — the rider must never see the driver's number and vice versa (admin
+// ops views are exempt). Applied at the route boundary, not the repository,
+// so the numbers are still available server-side for SMS/notification jobs.
+export function maskRideContacts<T extends {
+  user_phone?: string | null
+  rider_phone?: string | null
+  driver_phone?: string | null
+}>(ride: T, viewer: 'user' | 'driver' | 'admin'): T {
+  if (viewer === 'admin') return ride
+  if (viewer === 'user')  return { ...ride, driver_phone: null }
+  return { ...ride, user_phone: null, rider_phone: null }
+}
+
 // ── Ride booking ──────────────────────────────────────────────
 
 export async function createBooking(userId: bigint, data: BookingRequest) {
