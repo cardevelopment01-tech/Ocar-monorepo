@@ -36,6 +36,7 @@ export default function StandardConfirm() {
   const [goingOnline, setGoingOnline] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lowBalance, setLowBalance] = useState(false)
+  const [duesOwed, setDuesOwed] = useState<number | null>(null) // set when wallet balance is actually negative (cash dues), not just below minimum
   const [locationWarning, setLocationWarning] = useState(false)
   const [checked, setChecked] = useState<Record<string, boolean>>(
     () => Object.fromEntries(CHECKLIST.map(item => [item, true]))
@@ -56,6 +57,7 @@ export default function StandardConfirm() {
     setGoingOnline(true)
     setError(null)
     setLowBalance(false)
+    setDuesOwed(null)
 
     let lat = DEFAULT_LAT
     let lng = DEFAULT_LNG
@@ -82,7 +84,13 @@ export default function StandardConfirm() {
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { error?: string; code?: string } } }).response?.data
       setError(data?.error ?? 'Failed to go online. Please try again.')
-      setLowBalance(data?.code === 'LOW_WALLET_BALANCE') // WALLET_FROZEN isn't fixed by a top-up, so no CTA for it
+      const isLowBalance = data?.code === 'LOW_WALLET_BALANCE' // WALLET_FROZEN isn't fixed by a top-up, so no CTA for it
+      setLowBalance(isLowBalance)
+      if (isLowBalance) {
+        // Distinguish real cash dues (negative balance) from merely-below-minimum.
+        const balance = await driverRideApi.getWalletBalance().catch(() => null)
+        if (balance !== null && balance < 0) setDuesOwed(balance)
+      }
     } finally {
       setGoingOnline(false)
     }
@@ -251,9 +259,41 @@ export default function StandardConfirm() {
           )}
         </AnimatePresence>
 
+        {/* ── Cash dues: negative wallet balance from uncollected cash-ride
+             commission, distinct from a merely below-minimum balance. ── */}
+        <AnimatePresence>
+          {duesOwed !== null && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: EASE }}
+              className="rounded-2xl px-4 py-3.5 mb-3 overflow-hidden bg-red-50 border border-red-200"
+            >
+              <div className="flex items-start gap-3">
+                <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-text-primary text-sm font-bold">Clear your cash dues to go online</p>
+                  <p className="text-red-600 text-lg font-black mt-0.5">₹{Math.abs(duesOwed).toLocaleString('en-IN')}</p>
+                  <p className="text-text-secondary text-[12px] mt-1 leading-relaxed">
+                    Cash rides include the platform's commission — since you collected the cash directly, that
+                    commission is now owed. Digital rides net it off automatically, or you can top up now.
+                  </p>
+                  <button
+                    onClick={() => navigate('/wallet')}
+                    className="mt-2 text-sm font-bold text-[#0F172A] underline underline-offset-2"
+                  >
+                    Go to wallet
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* ── Error: restrained ── */}
         <AnimatePresence>
-          {error && (
+          {error && duesOwed === null && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}

@@ -205,6 +205,13 @@ export const driverRideApi = {
     return data.vehicle
   },
 
+  // Used to distinguish "cash dues owed" (negative balance) from a merely
+  // below-minimum-but-positive balance when goOnline rejects with LOW_WALLET_BALANCE.
+  getWalletBalance: async (): Promise<number> => {
+    const res = await api.get('/api/v1/payments/wallet/driver')
+    return parseFloat((res.data as { balance: string }).balance)
+  },
+
   getEarningsSummary: async (period: 'today' | 'week' | 'month'): Promise<EarningsSummary> => {
     const res = await api.get('/api/v1/rides/me/earnings-summary', { params: { period } })
     return res.data as EarningsSummary
