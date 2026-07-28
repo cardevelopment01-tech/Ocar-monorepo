@@ -11,6 +11,8 @@ function fmt(n: number) {
   return s.endsWith('.00') ? s.slice(0, -3) : s
 }
 
+const DEVIATION_CONFIRM_THRESHOLD = 0.2 // 20% off the quoted fare needs a second tap
+
 export default function CollectCash() {
   const navigate = useNavigate()
   const { activeRide } = useRideStore()
@@ -20,6 +22,7 @@ export default function CollectCash() {
   const [customAmount, setCustomAmount] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pendingConfirm, setPendingConfirm] = useState(false)
 
   async function submit(body: { collectedAmount?: number; notCollected?: boolean }) {
     if (!activeRide || submitting) return
@@ -37,6 +40,11 @@ export default function CollectCash() {
   function confirmCustomAmount() {
     const parsed = parseFloat(customAmount)
     if (!Number.isFinite(parsed) || parsed < 0) return
+    const deviates = fare > 0 && Math.abs(parsed - fare) / fare > DEVIATION_CONFIRM_THRESHOLD
+    if (deviates && !pendingConfirm) {
+      setPendingConfirm(true)
+      return
+    }
     void submit({ collectedAmount: parsed })
   }
 
@@ -88,7 +96,7 @@ export default function CollectCash() {
 
       <button
         type="button"
-        onClick={() => setSheetOpen(true)}
+        onClick={() => { setSheetOpen(true); setPendingConfirm(false) }}
         disabled={submitting}
         className="text-text-muted text-xs font-semibold text-center py-2 disabled:opacity-60"
       >
@@ -132,18 +140,27 @@ export default function CollectCash() {
                 inputMode="decimal"
                 min={0}
                 value={customAmount}
-                onChange={(e) => setCustomAmount(e.target.value)}
+                onChange={(e) => { setCustomAmount(e.target.value); setPendingConfirm(false) }}
                 placeholder={fmt(fare)}
                 className="w-full rounded-2xl border border-border bg-bg px-4 py-3 text-text-primary text-lg font-bold mb-3 focus:outline-none focus:ring-2 focus:ring-primary"
               />
 
+              {pendingConfirm && (
+                <p className="text-status-error text-xs text-center mb-2">
+                  That's well off the ₹{fmt(fare)} fare — tap again to confirm ₹{customAmount}.
+                </p>
+              )}
               <button
                 type="button"
                 onClick={confirmCustomAmount}
                 disabled={submitting || customAmount === ''}
                 className="w-full py-3 rounded-2xl bg-primary text-white text-sm font-semibold active:scale-95 transition-transform disabled:opacity-60 mb-3"
               >
-                {submitting ? 'Saving…' : `Confirm ₹${customAmount || '0'} collected`}
+                {submitting
+                  ? 'Saving…'
+                  : pendingConfirm
+                  ? `Yes, confirm ₹${customAmount || '0'}`
+                  : `Confirm ₹${customAmount || '0'} collected`}
               </button>
 
               <button
