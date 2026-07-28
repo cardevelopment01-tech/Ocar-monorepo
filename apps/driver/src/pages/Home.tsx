@@ -145,9 +145,9 @@ export default function Home() {
         .finally(() => setCheckingVerification(false))
     } else if (activeRide) {
       // A driver mid-fare shouldn't be able to exit the online session at all —
-      // resumeRoute's banner is already the priority action on this screen when
-      // activeRide is set, so this is a defensive guard for the edge case where
-      // the toggle is still reachable (e.g. a session-restore race).
+      // the toggle was never previously gated on this, so tapping it during an
+      // active ride would open the offline-confirm sheet unguarded. Route back
+      // into the ride instead, same destination as the resume-trip banner.
       navigate(resumeRoute ?? '/', { replace: true })
     } else {
       setShowOfflineConfirm(true)
