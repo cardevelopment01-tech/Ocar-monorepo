@@ -24,14 +24,14 @@ Status legend: ⬜ not started · 🟨 in progress · ✅ done
 ## P1 — next
 
 ### User side
-- ⬜ **`ride/[id]/page.tsx:751`** — Cancel is buried behind an expand step once a driver is assigned; no persistent cancel affordance in the collapsed peek row.
-  Fix: move a compact cancel/overflow icon into the always-visible peek row.
+- ✅ **`ride/[id]/page.tsx:751`** — Cancel is buried behind an expand step once a driver is assigned; no persistent cancel affordance in the collapsed peek row.
+  Fix: move a compact cancel/overflow icon into the always-visible peek row. Shipped as a circular icon button next to `DriverMiniRow` for `accepted`/`driver_arrived`; removed the now-redundant duplicate "Cancel ride" button from the expanded panel.
 - ⬜ **`ride/[id]/page.tsx:172-179`** — "Message driver" is a raw `tel:` link; real phone numbers exposed both directions, no masked/proxy calling.
   Fix: route through a masked-call API (Exotel/Knowlarity) instead of raw `tel:`.
-- ⬜ **`select-ride/page.tsx:310, 517-522`** — No-drivers-available (`allUnavailable`) is a dead end; no path to schedule-for-later or retry.
-  Fix: surface a "Schedule this ride" CTA (the `PickupTimeChip` flow already exists) directly from the no-drivers banner.
-- ⬜ **`search/page.tsx:596-613, 627-651`** — Heart (favorite) icons on autocomplete/popular-place rows have no `onClick` — decorative, reads as broken.
-  Fix: wire to a "save as favorite" action or remove the icon.
+- ✅ **`select-ride/page.tsx:310, 517-522`** — No-drivers-available (`allUnavailable`) is a dead end; no path to schedule-for-later or retry.
+  Fix: surface a "Schedule this ride" CTA (the `PickupTimeChip` flow already exists) directly from the no-drivers banner. Shipped as a "Schedule instead" link in the banner wired to the existing `schedulePickerOpen` state.
+- ✅ **`search/page.tsx:596-613, 627-651`** — Heart (favorite) icons on autocomplete/popular-place rows have no `onClick` — decorative, reads as broken.
+  Fix: wire to a "save as favorite" action or remove the icon. Removed — `saved-places/page.tsx` is a "Soon" stub with no favorites backend to wire to; revisit if that feature ships.
 
 ### Driver side
 - ⬜ **`TripRequestCard.tsx` / `App.tsx:196-235`** — Incoming request payload has no `pickupNote`/instructions field at all — a data-shape gap, not just UI. **Descoped 2026-07-28:** requires the rider to type a note in the user app; out of scope for a driver-only pass.

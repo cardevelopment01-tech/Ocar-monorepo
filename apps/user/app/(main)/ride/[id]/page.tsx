@@ -930,6 +930,16 @@ export default function RidePage() {
                     <p className="text-sm font-bold" style={{ color: '#0F172A' }}>{fare}</p>
                   </div>
                 )}
+                {(rideStatus === 'accepted' || rideStatus === 'driver_arrived') && (
+                  <button
+                    onClick={() => setShowCancelSheet(true)}
+                    aria-label="Cancel ride"
+                    className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center active:opacity-70 transition-opacity"
+                    style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.18)' }}
+                  >
+                    <X size={15} strokeWidth={2.5} className="text-red-600" />
+                  </button>
+                )}
                 {rideStatus === 'driver_arrived' && <OtpBadge otp={startOtp} phase="start" />}
                 {rideStatus === 'in_progress' && (
                   waitingStop
@@ -1010,17 +1020,6 @@ export default function RidePage() {
                             }))}
                           />
                         </div>
-                      )}
-
-                      {(rideStatus === 'accepted' || rideStatus === 'driver_arrived') && (
-                        <button
-                          onClick={() => setShowCancelSheet(true)}
-                          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm font-medium text-red-500 active:opacity-70 transition-opacity"
-                          style={{ background: 'rgba(220,38,38,0.05)', border: '1px solid rgba(220,38,38,0.12)' }}
-                        >
-                          <X size={14} strokeWidth={2} />
-                          Cancel ride
-                        </button>
                       )}
 
                       {rideStatus === 'in_progress' && (

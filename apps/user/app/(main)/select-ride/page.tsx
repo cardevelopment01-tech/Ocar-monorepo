@@ -517,7 +517,13 @@ function SelectRideContent() {
         {allUnavailable && (
           <div className="mx-4 mb-1 flex items-center gap-2 rounded-xl px-3 py-2 bg-amber-50 border border-amber-200">
             <Clock size={14} className="text-amber-600 flex-shrink-0" />
-            <p className="text-[12px] font-semibold text-amber-800">No drivers nearby. Try again in a few minutes.</p>
+            <p className="text-[12px] font-semibold text-amber-800 flex-1">No drivers nearby. Try again in a few minutes.</p>
+            <button
+              onClick={() => setSchedulePickerOpen(true)}
+              className="flex-shrink-0 text-[11px] font-bold text-amber-800 underline underline-offset-2"
+            >
+              Schedule instead
+            </button>
           </div>
         )}
 

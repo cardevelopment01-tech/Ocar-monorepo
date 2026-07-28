@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plane, Train, Building2, ShoppingBag,
   GraduationCap, X, Map,
-  ChevronDown, User, Clock, Heart, ArrowRightLeft,
+  ChevronDown, User, Clock, ArrowRightLeft,
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
@@ -609,7 +609,6 @@ function SearchContent() {
                           <span className="block text-[11px] text-text-muted truncate mt-0.5">{s.secondaryText}</span>
                         )}
                       </span>
-                      <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
                     </motion.button>
                     {i < suggestions.length - 1 && (
                       <div className="ml-12 border-t border-dashed border-border" />
@@ -641,7 +640,6 @@ function SearchContent() {
                     <span className="block text-[13px] font-medium text-text-primary">{d.label}</span>
                     <span className="block text-[11px] text-text-muted truncate mt-0.5">{d.address}</span>
                   </span>
-                  <Heart size={16} className="text-text-muted flex-shrink-0" strokeWidth={1.6} />
                 </motion.button>
                 {i < POPULAR.length - 1 && (
                   <div className="ml-12 border-t border-dashed border-border" />
