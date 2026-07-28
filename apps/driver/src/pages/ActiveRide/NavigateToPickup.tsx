@@ -534,20 +534,39 @@ export default function NavigateToPickup() {
               </div>
             )}
 
-            {/* Full rider row: call/open-in-maps actions */}
+            {/* Full rider row: identity glance + call/open-in-maps actions.
+                Name/rating always resolve to a real value — never a bare
+                "Rider" label with nothing underneath it. */}
             <div className="flex items-center justify-between mt-3 mb-4 -mx-2 px-3 py-2.5 rounded-2xl bg-surface-2">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <span className="text-primary font-bold text-base">{avatarLetter}</span>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-12 h-12 rounded-full bg-primary-subtle border border-border flex items-center justify-center flex-shrink-0">
+                  <span className="text-primary font-bold text-lg">{avatarLetter}</span>
                 </div>
-                <div>
-                  <p className="text-text-muted text-xs">Rider</p>
-                  {activeRide?.userPhone && (
-                    <p className="text-text-primary text-sm font-semibold">{activeRide.userPhone}</p>
+                <div className="min-w-0">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.p
+                      key={activeRide?.userName ?? 'rider'}
+                      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, filter: 'blur(3px)' }}
+                      animate={{ opacity: 1, filter: 'blur(0px)' }}
+                      transition={{ duration: reduceMotion ? 0.01 : 0.2, ease: EASE }}
+                      className="text-text-primary text-sm font-bold truncate"
+                    >
+                      {activeRide?.userName ?? 'Rider'}
+                    </motion.p>
+                  </AnimatePresence>
+                  {activeRide?.userPhone ? (
+                    <p className="text-text-secondary text-xs font-medium">{activeRide.userPhone}</p>
+                  ) : activeRide?.userRating != null && activeRide.userRating > 0 ? (
+                    <span className="flex items-center gap-0.5">
+                      <Star size={11} className="text-accent-amber fill-accent-amber" aria-hidden="true" />
+                      <span className="text-text-secondary text-xs font-semibold">{activeRide.userRating.toFixed(1)} rating</span>
+                    </span>
+                  ) : (
+                    <p className="text-text-muted text-xs font-medium">New rider</p>
                   )}
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-shrink-0">
                 {activeRide?.userPhone && (
                   <a
                     href={`tel:${activeRide.userPhone}`}
