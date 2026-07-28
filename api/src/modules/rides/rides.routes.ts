@@ -218,8 +218,12 @@ router.post('/:id/end-early', authenticate(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const body = req.body as { reasonCode?: string; actualDistanceKm?: number; actualDurationMin?: number }
-    if (!body.reasonCode || typeof body.actualDistanceKm !== 'number' || typeof body.actualDurationMin !== 'number') {
-      res.status(400).json({ error: 'reasonCode, actualDistanceKm, actualDurationMin are required' }); return
+    if (
+      !body.reasonCode ||
+      typeof body.actualDistanceKm !== 'number' || !Number.isFinite(body.actualDistanceKm) || body.actualDistanceKm < 0 ||
+      typeof body.actualDurationMin !== 'number' || !Number.isFinite(body.actualDurationMin) || body.actualDurationMin < 0
+    ) {
+      res.status(400).json({ error: 'reasonCode, actualDistanceKm, actualDurationMin (non-negative finite numbers) are required' }); return
     }
     const result = await service.endRideEarlyAsDriver(
       driverId, BigInt(req.params['id']!), body.reasonCode, body.actualDistanceKm, body.actualDurationMin

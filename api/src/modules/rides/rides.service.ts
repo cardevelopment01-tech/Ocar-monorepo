@@ -1093,9 +1093,11 @@ export async function endRideEarlyAsDriver(
     rate_per_min: string
     min_fare: string
     return_rate_per_km: string | null
+    total_estimated: string
   }>(
     `SELECT fs.surge_multiplier, fs.stop_fare, fs.is_return_cab,
-            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km
+            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km,
+            fs.total_estimated
      FROM fare_snapshots fs
      JOIN rate_cards rc ON rc.id = fs.rate_card_id
      WHERE fs.ride_id = $1`,
@@ -1123,6 +1125,12 @@ export async function endRideEarlyAsDriver(
     })
     const stopFare = parseFloat(snap.stop_fare ?? '0')
     finalFare = Math.round((recalc.total + stopFare) * 100) / 100
+
+    // Never charge more for an early-ended trip than the full originally-quoted
+    // trip would have cost — closes the client-supplied-distance overcharge exploit
+    // regardless of what actualDistanceKm/actualDurationMin the driver app sends.
+    const totalEstimated = parseFloat(snap.total_estimated)
+    finalFare = Math.min(finalFare, totalEstimated)
 
     await pool.query(
       `UPDATE fare_snapshots

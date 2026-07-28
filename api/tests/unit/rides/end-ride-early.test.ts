@@ -56,6 +56,7 @@ describe('endRideEarlyAsDriver', () => {
           rows: [{
             surge_multiplier: '1', stop_fare: '0', is_return_cab: false,
             rate_per_km: '12', rate_per_min: '1.5', min_fare: '60', return_rate_per_km: null,
+            total_estimated: '200',
           }],
           rowCount: 1,
         } as never
@@ -85,6 +86,28 @@ describe('endRideEarlyAsDriver', () => {
     expect(repo.logStatusHistory).toHaveBeenCalledWith(
       expect.objectContaining({ rideId: BigInt(202), fromStatus: 'in_progress', toStatus: 'completed', actor: 'driver' })
     )
+  })
+
+  it('caps the recalculated fare at the originally-quoted total_estimated', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(baseRide() as never)
+    vi.mocked(pool.query).mockImplementation((sql: unknown) => {
+      const s = sql as string
+      if (/FROM fare_snapshots fs\s+JOIN rate_cards/.test(s)) {
+        return {
+          rows: [{
+            surge_multiplier: '1', stop_fare: '0', is_return_cab: false,
+            rate_per_km: '12', rate_per_min: '1.5', min_fare: '60', return_rate_per_km: null,
+            total_estimated: '100',
+          }],
+          rowCount: 1,
+        } as never
+      }
+      return { rows: [], rowCount: 1 } as never
+    })
+    // uncapped: 999*12 + 10*1.5 = 12003, floored to min_fare — far above total_estimated=100
+    const result = await endRideEarlyAsDriver(BigInt(9), BigInt(202), 'vehicle_breakdown', 999, 10)
+    expect(result.success).toBe(true)
+    expect(result.finalFare).toBe(100)
   })
 
   it('rejects with 409 when the CAS status update loses the race (already ended)', async () => {
