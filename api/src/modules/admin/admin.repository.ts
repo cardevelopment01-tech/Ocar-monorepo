@@ -1279,12 +1279,18 @@ export async function getActiveDriverSessions(): Promise<ActiveDriverSession[]> 
       ST_Y(r.origin::geometry)             AS origin_lat,
       ST_X(r.origin::geometry)             AS origin_lng,
       ST_Y(r.destination::geometry)        AS dest_lat,
-      ST_X(r.destination::geometry)        AS dest_lng
+      ST_X(r.destination::geometry)        AS dest_lng,
+      vc.display_name                      AS vehicle_category,
+      dv.vehicle_name,
+      dv.number_plate
     FROM driver_sessions ds
     JOIN drivers d ON d.id = ds.driver_id
     LEFT JOIN driver_location_snapshots dls ON dls.driver_id = ds.driver_id
     LEFT JOIN rides r ON r.driver_id = ds.driver_id
       AND r.status IN ('accepted', 'driver_arrived', 'in_progress')
+    LEFT JOIN driver_vehicles dv ON dv.driver_id = ds.driver_id
+      AND dv.is_primary = true AND dv.status != 'blacklisted'
+    LEFT JOIN vehicle_categories vc ON vc.id = dv.category_id
     WHERE ds.status IN ('online', 'on_trip')
     ORDER BY ds.went_online_at DESC
   `)
@@ -1308,5 +1314,8 @@ export async function getActiveDriverSessions(): Promise<ActiveDriverSession[]> 
     origin_lng:          r.origin_lng != null ? parseFloat(r.origin_lng as string) : null,
     dest_lat:            r.dest_lat   != null ? parseFloat(r.dest_lat   as string) : null,
     dest_lng:            r.dest_lng   != null ? parseFloat(r.dest_lng   as string) : null,
+    vehicle_category:    r.vehicle_category as string | null,
+    vehicle_name:        r.vehicle_name as string | null,
+    number_plate:        r.number_plate as string | null,
   }))
 }

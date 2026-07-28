@@ -209,6 +209,9 @@ export interface ActiveDriverSession {
   origin_lng: number | null
   dest_lat: number | null
   dest_lng: number | null
+  vehicle_category: string | null
+  vehicle_name: string | null
+  number_plate: string | null
 }
 
 // ─── Rental packages ──────────────────────────────────────────────────────────

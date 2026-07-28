@@ -3,7 +3,7 @@ import type { VehicleCategory, VehicleBrand, VehicleModel } from './vehicles.typ
 
 export async function getCategories(): Promise<VehicleCategory[]> {
   return query<VehicleCategory>(
-    'SELECT id, slug, display_name, max_passengers, is_active FROM vehicle_categories WHERE is_active = true ORDER BY display_name'
+    'SELECT id::int, slug, display_name, max_passengers, is_active FROM vehicle_categories WHERE is_active = true ORDER BY display_name'
   )
 }
 

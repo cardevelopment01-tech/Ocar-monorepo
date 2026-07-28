@@ -289,6 +289,12 @@ export default function LiveMap() {
           }`}>
             {selected.session_status === 'on_trip' ? 'On Trip' : 'Online'}
           </span>
+          <p className="text-xs text-text-secondary">
+            {selected.vehicle_category ?? selected.vehicle_name
+              ? `${selected.vehicle_category ?? ''}${selected.vehicle_category && selected.vehicle_name ? ' · ' : ''}${selected.vehicle_name ?? ''}`
+              : 'No vehicle on file'}
+            {selected.number_plate ? ` · ${selected.number_plate}` : ''}
+          </p>
           {selected.ride_id && (
             <div className="mt-1 text-xs text-text-secondary space-y-0.5">
               <p className="truncate"><span className="font-medium">From:</span> {selected.origin_address ?? '—'}</p>
