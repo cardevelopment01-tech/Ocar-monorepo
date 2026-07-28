@@ -11,6 +11,8 @@
 
 **Tech Stack:** Express 4 + TypeScript (api), Vite + React 19 + Zustand + React Router v6 + Framer Motion (apps/driver), Vitest for backend unit tests.
 
+**Post-implementation note (added after final review, commit `6ac0e3b`):** Task 4/5's original design had the client (driver app) supply `actualDistanceKm`/`actualDurationMin` (via `POST /:id/end-early`) with no server-side bound — a final integration review caught this as a real overcharge exploit (a buggy or malicious driver client could inflate the numbers and the resulting fare would be auto-charged online/wallet, or shown as the cash-collection amount, before any dispute was possible). Fixed by capping the recalculated `finalFare` at the ride's original `fare_snapshots.total_estimated` (an early-ended trip can never cost more than the full quoted trip) plus input validation rejecting non-finite/negative values. Follow-up not done in this pass (tracked as a P2, not blocking): the admin rides page's "Flagged, possibly stuck" banner only renders for `status === 'in_progress'`, so `review_reason`/`review_flagged_at` set by an early-ended ride (`status = 'completed'`) currently has no admin-facing surface — ops can query it directly but there's no UI. Since the fare cap already removes the financial risk, this is now a monitoring/ops-visibility gap, not a security issue.
+
 ---
 
 ## Task 1: Backend — expose real commission on ride detail
