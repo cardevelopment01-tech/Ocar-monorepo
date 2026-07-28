@@ -34,20 +34,20 @@ Status legend: ⬜ not started · 🟨 in progress · ✅ done
   Fix: wire to a "save as favorite" action or remove the icon.
 
 ### Driver side
-- ⬜ **`TripRequestCard.tsx` / `App.tsx:196-235`** — Incoming request payload has no `pickupNote`/instructions field at all — a data-shape gap, not just UI.
+- ⬜ **`TripRequestCard.tsx` / `App.tsx:196-235`** — Incoming request payload has no `pickupNote`/instructions field at all — a data-shape gap, not just UI. **Descoped 2026-07-28:** requires the rider to type a note in the user app; out of scope for a driver-only pass.
   Fix: add `pickupNote`/`instructions` to the `ride:request` socket payload and render it in the card.
-- ⬜ **`CollectCash.tsx:37-41`** — `confirmCustomAmount` accepts any non-negative float with no sanity bound vs. the quoted fare (e.g. a fat-fingered ₹500000 goes straight to the server).
+- ✅ **`CollectCash.tsx:37-41`** — `confirmCustomAmount` accepts any non-negative float with no sanity bound vs. the quoted fare (e.g. a fat-fingered ₹500000 goes straight to the server).
   Fix: soft-confirm step when collected amount deviates from fare by >~20%.
-- ⬜ **`NavigateToPickup.tsx` / `TripInProgress.tsx`** — Cancel confirmation never shows the driver any consequence (rating/acceptance-rate impact) before they commit.
+- ⬜ **`NavigateToPickup.tsx` / `TripInProgress.tsx`** — Cancel confirmation never shows the driver any consequence (rating/acceptance-rate impact) before they commit. **Descoped 2026-07-28:** verified via full grep — no cancellation-rate/acceptance-rate tracking exists anywhere in the codebase. A UI disclosure with no real number behind it would be fabricated; needs a tracking feature first.
   Fix: surface cancellation-rate impact in the confirm sheet if tracked server-side.
-- ⬜ **`Home.tsx:136-149`** — `handleToggle`'s offline path doesn't check `activeRide` — a driver could go offline mid-trip via an edge-case double-tap/session-restore.
+- ✅ **`Home.tsx:136-149`** — `handleToggle`'s offline path doesn't check `activeRide` — a driver could go offline mid-trip via an edge-case double-tap/session-restore.
   Fix: block/warn the offline toggle whenever `activeRide` is non-null.
-- ⬜ **`SwipeToConfirm.tsx:38-53`** — On a failed confirm (network error), the handle silently reverts after 1800ms with zero error message.
+- ✅ **`SwipeToConfirm.tsx:38-53`** — On a failed confirm (network error), the handle silently reverts after 1800ms with zero error message.
   Fix: surface a toast/inline error on the reset-without-advance path.
-- ⬜ **`NotificationToast.tsx` + `TripRequestCard` overlay** — Toasts get z-index-occluded behind the full-screen incoming-request card with no queuing/pause — could be missed entirely.
+- ✅ **`NotificationToast.tsx` + `TripRequestCard` overlay** — Toasts get z-index-occluded behind the full-screen incoming-request card with no queuing/pause — could be missed entirely.
   Fix: suppress/delay toast auto-dismiss while `incomingRequest` is active, or queue it.
-- ⬜ **`NavigateToPickup.tsx:530`** — Rider phone shown unmasked before the trip has even started. **Verify with backend whether this is already proxied — could be P0 if raw and permanently retained.**
-- ⬜ **`TripInProgress.tsx`** — Driver has zero live fare visibility during the trip; only sees the number after swiping "Complete Trip."
+- ⬜ **`NavigateToPickup.tsx:530`** — Rider phone shown unmasked before the trip has even started. **Descoped 2026-07-28:** telephony masking service isn't provisioned yet — revisit once that infra exists. Verify with backend whether this is already proxied — could be P0 if raw and permanently retained.
+- ✅ **`TripInProgress.tsx`** — Driver has zero live fare visibility during the trip; only sees the number after swiping "Complete Trip." Shipped as: surfacing already-server-computed accrued wait charges (`+₹N wait so far`), not a full live running-fare reconstruction (that would require unaudited client GPS math or a new backend endpoint — bigger than a P1 UI fix).
   Fix: surface a live running-fare estimate in the trip-in-progress sheet.
 
 ---
