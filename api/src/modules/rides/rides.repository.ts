@@ -505,7 +505,8 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
        vb.name          AS vehicle_brand,
        ST_Y(dls.location::geometry) AS driver_current_lat,
        ST_X(dls.location::geometry) AS driver_current_lng,
-       p.status AS payment_status
+       p.status AS payment_status,
+       p.commission_percent, p.commission_amount, p.driver_earning
      FROM rides r
      LEFT JOIN users u             ON u.id = r.user_id
      LEFT JOIN drivers d           ON d.id = r.driver_id

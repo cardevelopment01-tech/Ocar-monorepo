@@ -315,9 +315,16 @@ export function maskRideContacts<T extends {
   user_phone?: string | null
   rider_phone?: string | null
   driver_phone?: string | null
+  commission_percent?: string | null
+  commission_amount?: string | null
+  driver_earning?: string | null
 }>(ride: T, viewer: 'user' | 'driver' | 'admin'): T {
   if (viewer === 'admin') return ride
-  if (viewer === 'user')  return { ...ride, driver_phone: null }
+  if (viewer === 'user') {
+    // Commission/earning are the driver's business, not the rider's — strip
+    // them here rather than gating in every route handler that calls this.
+    return { ...ride, driver_phone: null, commission_percent: null, commission_amount: null, driver_earning: null }
+  }
   return { ...ride, user_phone: null, rider_phone: null }
 }
 

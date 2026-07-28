@@ -45,6 +45,9 @@ export type RideDetail = {
   stops: RideStop[]
   payment_channel: 'cash' | 'online' | 'wallet'
   cash_collected_at: string | null
+  commission_percent: string | null
+  commission_amount: string | null
+  driver_earning: string | null
 }
 
 export type TripHistoryItem = {
