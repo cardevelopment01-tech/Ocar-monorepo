@@ -221,6 +221,16 @@ export const driverRideApi = {
     return res.data as { success: boolean }
   },
 
+  endRideEarly: async (
+    rideId: string,
+    reasonCode: string,
+    actualDistanceKm: number,
+    actualDurationMin: number,
+  ): Promise<{ success: boolean; rideId: string; finalFare?: number }> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/end-early`, { reasonCode, actualDistanceKm, actualDurationMin })
+    return res.data as { success: boolean; rideId: string; finalFare?: number }
+  },
+
   getRoute: async (
     originLat: number,
     originLng: number,

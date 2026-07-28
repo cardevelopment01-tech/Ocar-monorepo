@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, X, RotateCcw, Flag, CheckCircle2, Navigation, Locate, Check, LocateOff } from 'lucide-react'
+import { Clock, X, RotateCcw, Flag, CheckCircle2, Navigation, Locate, Check, LocateOff, AlertTriangle } from 'lucide-react'
 import {
   motion, AnimatePresence, useReducedMotion,
   useMotionValue, useTransform, useMotionValueEvent, animate,
@@ -78,6 +78,10 @@ export default function TripInProgress() {
   const [otp, setOtp]               = useState('')
   const [otpError, setOtpError]     = useState(false)
   const [stopActionPending, setStopActionPending] = useState<number | null>(null)
+  const [showEndEarlySheet, setShowEndEarlySheet] = useState(false)
+  const [endEarlyReason,    setEndEarlyReason]    = useState<string | null>(null)
+  const [endingEarly,       setEndingEarly]       = useState(false)
+  const [endEarlyError,     setEndEarlyError]     = useState<string | null>(null)
 
   // ── Collapsible bottom sheet (mirrors NavigateToPickup.tsx — see
   //    docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 8): "Complete Trip" sits
@@ -369,6 +373,33 @@ export default function TripInProgress() {
       setOtpError(true)
       setOtp('')
       throw new Error('otp-verify-failed')
+    }
+  }
+
+  const handleEndEarly = async () => {
+    if (!activeRide || !endEarlyReason || endingEarly) return
+    setEndingEarly(true)
+    setEndEarlyError(null)
+    try {
+      const [curLat, curLng] = position ?? [activeRide.pickupLat, activeRide.pickupLng]
+      const R = 6371
+      const dLat = (curLat - activeRide.pickupLat) * Math.PI / 180
+      const dLng = (curLng - activeRide.pickupLng) * Math.PI / 180
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(activeRide.pickupLat * Math.PI / 180) *
+        Math.cos(curLat * Math.PI / 180) *
+        Math.sin(dLng / 2) ** 2
+      const actualDistanceKm = Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 1.3 * 10) / 10
+      const [mm, ss] = elapsed.split(':').map(Number)
+      const actualDurationMin = Math.max(1, mm + Math.round((ss ?? 0) / 60))
+
+      const result = await driverRideApi.endRideEarly(activeRide.id, endEarlyReason, actualDistanceKm, actualDurationMin)
+      if (result.finalFare !== undefined) setFare(result.finalFare)
+      updateRideStatus('completed')
+      navigate(activeRide.paymentChannel === 'cash' ? '/ride/collect-cash' : '/ride/end', { replace: true })
+    } catch {
+      setEndEarlyError('Could not end the trip. Check your connection and try again.')
+      setEndingEarly(false)
     }
   }
 
@@ -703,6 +734,16 @@ export default function TripInProgress() {
               </div>
             )}
 
+            {!currentStop && (
+              <button
+                onClick={() => setShowEndEarlySheet(true)}
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium text-red-400 active:opacity-70 transition-opacity"
+              >
+                <AlertTriangle size={14} strokeWidth={2} />
+                End trip early
+              </button>
+            )}
+
             {/* Primary advance for the current stop — swipe, not tap (accident-proof while driving) */}
             {currentStop && !(isOneWay && currentStop.arrived_at != null) && (
               <div className="mt-3 mb-1">
@@ -779,6 +820,93 @@ export default function TripInProgress() {
               />
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showEndEarlySheet && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-20 flex items-end"
+          >
+            <div
+              className="absolute inset-0 bg-black/50"
+              onClick={() => { if (!endingEarly) setShowEndEarlySheet(false) }}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 350 }}
+              className="relative w-full rounded-t-3xl px-5 pt-5 bg-surface"
+              style={{ paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}
+            >
+              <div className="w-10 h-1 rounded-full bg-surface-3 mx-auto mb-4" />
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-black text-text-primary">End this trip early?</h3>
+                <button
+                  onClick={() => setShowEndEarlySheet(false)}
+                  disabled={endingEarly}
+                  className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center active:scale-95 transition-transform"
+                >
+                  <X size={15} className="text-text-secondary" />
+                </button>
+              </div>
+              <p className="text-text-muted text-xs mb-3">
+                The rider will be billed for the distance covered so far. Only end early for a genuine issue.
+              </p>
+              <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2.5">Why are you ending early?</p>
+              <div className="space-y-2 mb-5">
+                {[
+                  { code: 'vehicle_breakdown',  label: 'Vehicle breakdown' },
+                  { code: 'passenger_emergency', label: 'Passenger emergency' },
+                  { code: 'safety_concern',      label: 'Safety concern' },
+                  { code: 'other',               label: 'Other reason' },
+                ].map(r => (
+                  <button
+                    key={r.code}
+                    onClick={() => setEndEarlyReason(r.code)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left active:scale-[0.98] transition-transform ${
+                      endEarlyReason === r.code ? '' : 'bg-surface-2'
+                    }`}
+                    style={endEarlyReason === r.code
+                      ? { background: 'rgba(239,68,68,0.07)', border: '1.5px solid rgba(239,68,68,0.40)' }
+                      : { border: '1.5px solid #E2E8F0' }
+                    }
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={endEarlyReason === r.code
+                        ? { border: '5px solid #EF4444' }
+                        : { border: '2px solid #CBD5E1' }
+                      }
+                    />
+                    <span className={`text-sm font-medium ${endEarlyReason === r.code ? 'text-accent-red' : 'text-text-secondary'}`}>
+                      {r.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {endEarlyError && <p className="text-status-error text-xs text-center mb-3">{endEarlyError}</p>}
+              <button
+                onClick={() => void handleEndEarly()}
+                disabled={!endEarlyReason || endingEarly}
+                className="w-full py-3.5 rounded-2xl text-sm font-bold text-text-inverse mb-2.5 disabled:opacity-40 active:scale-[0.98] transition-transform"
+                style={{ background: '#EF4444' }}
+              >
+                {endingEarly ? 'Ending trip…' : 'End trip now'}
+              </button>
+              <button
+                onClick={() => setShowEndEarlySheet(false)}
+                disabled={endingEarly}
+                className="w-full py-3 rounded-2xl text-sm font-semibold text-text-secondary disabled:opacity-50 active:scale-[0.98] transition-transform bg-surface-2 border border-border"
+              >
+                Continue trip
+              </button>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
