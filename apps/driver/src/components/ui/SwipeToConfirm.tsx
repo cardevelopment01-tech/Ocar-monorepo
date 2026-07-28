@@ -91,7 +91,7 @@ export default function SwipeToConfirm({ label, onConfirm, disabled = false, col
         </motion.div>
       </div>
       {showError && (
-        <p className="text-status-error text-xs text-center mt-1.5" role="alert">
+        <p className="text-accent-red text-xs text-center mt-1.5" role="alert">
           Couldn't confirm — check your connection and try again.
         </p>
       )}

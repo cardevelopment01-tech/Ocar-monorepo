@@ -149,7 +149,7 @@ export default function CollectCash() {
               />
 
               {pendingConfirm && (
-                <p className="text-status-error text-xs text-center mb-2" role="alert">
+                <p className="text-accent-red text-xs text-center mb-2" role="alert">
                   That's well off the ₹{fmt(fare)} fare — tap again to confirm ₹{displayCustomAmount}.
                 </p>
               )}
