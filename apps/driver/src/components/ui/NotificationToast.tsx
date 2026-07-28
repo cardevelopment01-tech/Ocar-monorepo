@@ -3,19 +3,24 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Bell } from 'lucide-react'
 import { useNotificationsStore } from '@/store/useNotificationsStore'
+import { useRideStore } from '@/store/useRideStore'
 
 const AUTO_DISMISS_MS = 4000
 
 export default function NotificationToast() {
   const { toast, dismissToast, openSheet } = useNotificationsStore()
+  const incomingRequest = useRideStore(s => s.incomingRequest)
   const prefersReducedMotion = useReducedMotion()
   const navigate = useNavigate()
 
+  // Don't let the toast's countdown run out while it's hidden behind the
+  // full-screen incoming-request overlay — restart the dismiss window once
+  // the request clears, so the driver gets a real 4s to see it.
   useEffect(() => {
-    if (!toast) return
+    if (!toast || incomingRequest) return
     const t = setTimeout(dismissToast, AUTO_DISMISS_MS)
     return () => clearTimeout(t)
-  }, [toast, dismissToast])
+  }, [toast, incomingRequest, dismissToast])
 
   return (
     <AnimatePresence>
