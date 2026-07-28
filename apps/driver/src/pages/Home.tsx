@@ -143,6 +143,12 @@ export default function Home() {
         })
         .catch(() => navigate('/go-online/mode')) // status check failed — don't block going online on a network hiccup; goOnline() itself still enforces the gate server-side
         .finally(() => setCheckingVerification(false))
+    } else if (activeRide) {
+      // A driver mid-fare shouldn't be able to exit the online session at all —
+      // resumeRoute's banner is already the priority action on this screen when
+      // activeRide is set, so this is a defensive guard for the edge case where
+      // the toggle is still reachable (e.g. a session-restore race).
+      navigate(resumeRoute ?? '/', { replace: true })
     } else {
       setShowOfflineConfirm(true)
     }
