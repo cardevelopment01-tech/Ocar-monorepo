@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell, AlertTriangle } from 'lucide-react'
 import { motion, useReducedMotion, useMotionValue, useTransform, animate } from 'framer-motion'
