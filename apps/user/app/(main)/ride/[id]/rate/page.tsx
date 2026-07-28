@@ -16,6 +16,9 @@ export default function RateRidePage() {
 
   const [driverName,    setDriverName]    = useState<string | null>(null)
   const [driverId,      setDriverId]      = useState<string | null>(null)
+  const [origin,        setOrigin]        = useState<string | null>(null)
+  const [destination,   setDestination]   = useState<string | null>(null)
+  const [fare,          setFare]          = useState<string | null>(null)
   const [tags,          setTags]          = useState<RatingTag[]>([])
   const [rating,        setRating]        = useState(0)
   const [hovered,       setHovered]       = useState(0)
@@ -30,6 +33,9 @@ export default function RateRidePage() {
     void rideApi.getRide(rideId).then(ride => {
       setDriverName(ride.driver_name)
       setDriverId(ride.driver_id)
+      setOrigin(ride.origin_address)
+      setDestination(ride.destination_address)
+      setFare(ride.total_final ?? ride.total_estimated)
       if (ride.user_rating_given != null) setAlreadyRated(true)
     }).catch(() => {})
 
@@ -109,6 +115,16 @@ export default function RateRidePage() {
         <h1 className="text-xl font-bold text-text-primary mb-1">How was your ride?</h1>
         <p className="text-text-muted text-sm">{driverName ?? 'Your Driver'}</p>
       </div>
+
+      {(origin || destination || fare) && (
+        <div className="rounded-2xl border border-border bg-surface-2 px-4 py-3 mb-6 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            {origin && <p className="text-xs text-text-muted truncate">{origin}</p>}
+            {destination && <p className="text-xs text-text-muted truncate">→ {destination}</p>}
+          </div>
+          {fare && <p className="text-sm font-bold text-text-primary flex-shrink-0">₹{Math.round(Number(fare))}</p>}
+        </div>
+      )}
 
       {/* Stars */}
       <div className="flex justify-center gap-3 mb-8">

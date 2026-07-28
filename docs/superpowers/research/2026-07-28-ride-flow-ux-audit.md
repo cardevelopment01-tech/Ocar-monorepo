@@ -54,24 +54,40 @@ Status legend: ⬜ not started · 🟨 in progress · ✅ done
 
 ## P2 — polish backlog
 
-- ⬜ Surge multiplier badge (`select-ride/page.tsx:657-661`) has no explanation of *why* or fare-lock confirmation.
-- ⬜ `vehicle_color` exists in `RideDetail` but isn't rendered as a visual swatch/chip next to the plate.
-- ⬜ "Booking for" rider name (`search/page.tsx` BookingForSheet) disappears after search — not shown on select-ride, tracking, or receipt.
-- ⬜ "Change" payment button (`round-trip/page.tsx:339`, `rental/page.tsx:567`, `select-ride/page.tsx:763`) has no `onClick` at all — looks live, does nothing. At minimum wire a "Cash only for now" toast.
-- ⬜ Searching state (`SearchingDots`) copy never changes past ~60s even if search is still running.
-- ⬜ Rating screen (`rate/page.tsx:187-192`) shows no fare/ride recap before asking for stars.
-- ⬜ Receipt's "Need help with this trip?" (`receipt/page.tsx:312-320`) routes to generic `/help` with no `rideId` context passed.
-- ⬜ Wait-charge disclosure only shows for one-way detour stops (`select-ride/page.tsx:534-538`); round-trip and rental never show an equivalent policy line.
-- ⬜ Post-completion/cancellation auto-navigation timers (2s/3s) aren't dismissible or pausable.
-- ⬜ Trip-type comparison (one-way vs round-trip) shows price only, no time/effort trade-off guidance.
-- ⬜ Dead driver route `/ride/incoming` still registered in the router, redirects to Home with no ride-context recovery.
-- ⬜ External maps nav (`NavigateToPickup.tsx:543-550`, `TripInProgress.tsx:416-424`) hardcodes `maps.google.com`, no platform-detected deep link (`comgooglemaps://`, `waze://`) or fallback.
-- ⬜ Free-wait timer (`TripInProgress.tsx:592-606`) only warns after the free window elapses — no "2 min left" pre-warning.
-- ⬜ Cancellation reason codes (`NavigateToPickup.tsx:270-280`) lump most causes into `other` — missing `passenger_no_show`/`rider_requested`.
-- ⬜ `StatusBar.tsx` and `WalletGateCard` independently poll the same wallet endpoint — duplicated fetch, not wrong but wasteful.
-- ⬜ `TripRequestCard.tsx:64-80` `beep()` constructs a fresh `AudioContext` per request without ever closing it — minor leak risk on rapid repeat requests.
-- ⬜ Incoming-request countdown ring has no numeric seconds label — only arc angle communicates urgency.
-- ⬜ Multi-stop nav is one-leg-at-a-time with no compact "N stops left" summary chip in the instruction card.
+- ✅ Surge multiplier badge (`select-ride/page.tsx:657-661`) has no explanation of *why* or fare-lock confirmation.
+  Fix: added a `title` tooltip on the badge explaining high-demand pricing, and a note under the Surge breakdown line ("This fare is locked in once you book" — accurate per the fare-snapshot-at-booking pattern).
+- ✅ `vehicle_color` exists in `RideDetail` but isn't rendered as a visual swatch/chip next to the plate.
+  Fix: added a small circular swatch (native CSS color-name background) next to the color/model text on the receipt.
+- ✅ "Booking for" rider name (`search/page.tsx` BookingForSheet) disappears after search — not shown on select-ride, tracking, or receipt.
+  Fix: `rider_name`/`rider_phone` were already persisted server-side and returned by `getRideById` (`r.*`) but missing from the frontend `RideDetail` type — added the fields and render "Booking for X" on select-ride (from URL param), tracking, and receipt (from ride data).
+- ✅ "Change" payment button (`round-trip/page.tsx:339`, `rental/page.tsx:567`, `select-ride/page.tsx:763`) has no `onClick` at all — looks live, does nothing. At minimum wire a "Cash only for now" toast.
+  Fix: wired a local "Cash only for now" inline note (2s auto-clear) on all three pages, matching the existing inline-error-text pattern already used nearby.
+- ✅ Searching state (`SearchingDots`) copy never changes past ~60s even if search is still running.
+  Fix: `ride/[id]/page.tsx` now tracks elapsed search time via the existing `nowTick` ticker and swaps the sub-copy to "Still searching — this is taking longer than usual" past 60s.
+- ✅ Rating screen (`rate/page.tsx:187-192`) shows no fare/ride recap before asking for stars.
+  Fix: added a compact route + fare recap card, sourced from the same `getRide` call already made on that page (no new fetch).
+- ✅ Receipt's "Need help with this trip?" (`receipt/page.tsx:312-320`) routes to generic `/help` with no `rideId` context passed.
+  Fix: passes `?rideId=` through; help page reads it and includes it in the support mailto subject line.
+- ✅ Wait-charge disclosure only shows for one-way detour stops (`select-ride/page.tsx:534-538`); round-trip and rental never show an equivalent policy line.
+  Fix: added round-trip/rental-specific disclosure lines ("covered within your booked hours / rental package") reflecting how those ride types actually price overage.
+- ✅ Post-completion/cancellation auto-navigation timers (2s/3s) aren't dismissible or pausable.
+  Fix: added a "Stay" dismiss button on the tracking page's status row for the completed/cancelled/no_drivers auto-redirect states (the two longest timers, 2s/3s). Left the two sub-1.5s timers (post-rating redirect, no-drivers select-ride fallback) as-is — too brief to meaningfully interact with.
+- ⬜ Trip-type comparison (one-way vs round-trip) shows price only, no time/effort trade-off guidance. **Verified 2026-07-28: no such comparison UI exists anywhere in the codebase** (grepped for compare/tripType/co-occurring one_way+round_trip renders — no hits). This describes a feature that was never built, not a polish gap on an existing one; needs a scoping decision, not a quick fix.
+- ✅ Dead driver route `/ride/incoming` still registered in the router, redirects to Home with no ride-context recovery.
+  Fix: removed the route and the now-dead `IncomingRequest.tsx` import from `App.tsx` — nothing else referenced it (incoming requests are handled entirely via the `incomingRequest` store + Home overlay).
+- ✅ External maps nav (`NavigateToPickup.tsx:543-550`, `TripInProgress.tsx:416-424`) hardcodes `maps.google.com`, no platform-detected deep link (`comgooglemaps://`, `waze://`) or fallback.
+  Fix: added `openMapsNav()` in `lib/utils.ts` using Google's `maps/dir/?api=1` universal link, which opens the native app on iOS/Android if installed with web fallback — no scheme-sniffing needed.
+- ✅ Free-wait timer (`TripInProgress.tsx:592-606`) only warns after the free window elapses — no "2 min left" pre-warning.
+  Fix: added a third visual state (amber, same styling as the post-exhaustion warning) once ≤2 minutes of free wait remain, with "Only Xm left of free wait" copy.
+- ✅ Cancellation reason codes (`NavigateToPickup.tsx:270-280`) lump most causes into `other` — missing `passenger_no_show`/`rider_requested`.
+  Fix: added both codes to the picker (`reason_code` is a free-text VARCHAR column, no enum migration needed).
+- ✅ `StatusBar.tsx` and `WalletGateCard` independently poll the same wallet endpoint — duplicated fetch, not wrong but wasteful.
+  Fix: `StatusBar.tsx` now consumes the existing `useWalletGate()` hook instead of its own separate fetch — one call site instead of two.
+- ✅ `TripRequestCard.tsx:64-80` `beep()` constructs a fresh `AudioContext` per request without ever closing it — minor leak risk on rapid repeat requests.
+  Fix: closes the context ~600ms after the tones finish playing.
+- ✅ Incoming-request countdown ring has no numeric seconds label — only arc angle communicates urgency.
+  Fix: Accept button label now reads "Accept · ₹fare · Ns".
+- ✅ Multi-stop nav is one-leg-at-a-time with no compact "N stops left" summary chip in the instruction card. **Verified already shipped** — `TripInProgress.tsx:663-673` already renders a "Stop X of N" badge in the stop itinerary checklist (landed in an earlier pass; this audit item was stale).
 
 ---
 

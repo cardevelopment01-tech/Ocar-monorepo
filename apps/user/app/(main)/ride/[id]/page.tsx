@@ -543,7 +543,10 @@ export default function RidePage() {
     }
   }, [rideId, loadRide])
 
+  const [autoNavCancelled, setAutoNavCancelled] = useState(false)
+
   useEffect(() => {
+    if (autoNavCancelled) return
     if (rideStatus === 'completed') {
       const t = setTimeout(() => router.replace(`/ride/${rideId}/rate`), 2000)
       return () => clearTimeout(t)
@@ -552,7 +555,7 @@ export default function RidePage() {
       const t = setTimeout(() => router.replace('/home'), 3000)
       return () => clearTimeout(t)
     }
-  }, [rideStatus, rideId, router])
+  }, [rideStatus, rideId, router, autoNavCancelled])
 
   const pickupPos = useMemo<[number, number]>(
     () => ride ? [ride.origin_lat, ride.origin_lng] : [PICKUP.lat, PICKUP.lng],
@@ -686,8 +689,14 @@ export default function RidePage() {
   }, [liveEta, liveEtaAt, nowTick])
 
   const status    = (rideStatus as StatusKey) in STATUS_CONFIG ? (rideStatus as StatusKey) : 'requested'
+  const searchingSec = status === 'requested' && ride?.requested_at && nowTick > 0
+    ? Math.floor((nowTick - new Date(ride.requested_at).getTime()) / 1000)
+    : 0
   const cfg       = {
     ...STATUS_CONFIG[status],
+    ...(status === 'requested' && searchingSec > 60
+      ? { sub: 'Still searching — this is taking longer than usual' }
+      : {}),
     ...(status === 'in_progress' && ride?.ride_type === 'rental'
       ? { label: 'Rental in progress', sub: 'Flexible route active' }
       : {}),
@@ -771,6 +780,10 @@ export default function RidePage() {
           <div className="w-9 h-1 rounded-full bg-gray-200" />
         </button>
 
+        {ride?.rider_name && (
+          <p className="text-[11px] font-semibold text-violet-600 mx-4 mt-3">Booking for {ride.rider_name}</p>
+        )}
+
         {/* ── Status badge row ── */}
         <AnimatePresence mode="wait">
           <motion.div
@@ -810,6 +823,14 @@ export default function RidePage() {
               <p className="text-sm font-bold text-gray-900 leading-tight">{cfg.label}</p>
               {cfg.sub && <p className="text-xs text-gray-500 mt-0.5">{cfg.sub}</p>}
             </div>
+            {!autoNavCancelled && (status === 'completed' || status === 'cancelled' || status === 'no_drivers') && (
+              <button
+                onClick={() => setAutoNavCancelled(true)}
+                className="flex-shrink-0 text-[11px] font-semibold text-gray-400 px-2 py-1"
+              >
+                Stay
+              </button>
+            )}
 
             {status === 'requested' && <SearchingDots />}
             {displayEta && (

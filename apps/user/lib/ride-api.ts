@@ -49,6 +49,8 @@ export type RideDetail = {
   scheduled_for: string | null
   user_id: string
   driver_id: string | null
+  rider_name: string | null
+  rider_phone: string | null
   origin_address: string | null
   destination_address: string | null
   origin_lat: number

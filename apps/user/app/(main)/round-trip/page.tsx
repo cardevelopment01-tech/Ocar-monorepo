@@ -57,6 +57,7 @@ function RoundTripContent() {
   const stops = parseStops(sp)
 
   const [selectedHours, setSelectedHours] = useState<number | null>(null)
+  const [paymentNote, setPaymentNote] = useState<string | null>(null)
   const [scheduledFor, setScheduledFor] = useState<Date | null>(() => {
     const raw = sp.get('scheduledFor')
     return raw ? new Date(raw) : null
@@ -333,8 +334,15 @@ function RoundTripContent() {
             </div>
             <span className="text-sm font-semibold" style={{ color: '#475569' }}>Cash</span>
           </div>
-          <button className="text-xs font-bold" style={{ color: '#4F46E5' }}>Change</button>
+          <button
+            className="text-xs font-bold"
+            style={{ color: '#4F46E5' }}
+            onClick={() => { setPaymentNote('Cash only for now'); setTimeout(() => setPaymentNote(null), 2000) }}
+          >
+            Change
+          </button>
         </div>
+        {paymentNote && <p className="text-slate-500 text-xs text-center mb-2">{paymentNote}</p>}
 
         <button
           onClick={handleProceed}

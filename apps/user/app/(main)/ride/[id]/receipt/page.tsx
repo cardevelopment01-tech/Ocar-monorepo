@@ -210,6 +210,10 @@ export default function RideReceiptPage() {
           )}
         </div>
 
+        {ride.rider_name && (
+          <p className="text-xs font-semibold text-violet-600">Booked for {ride.rider_name}</p>
+        )}
+
         {/* Driver */}
         {ride.driver_name && (
           <div className="bg-surface rounded-2xl border border-border p-4 flex items-center gap-3">
@@ -235,8 +239,15 @@ export default function RideReceiptPage() {
                   </>
                 )}
                 {(ride.vehicle_model || ride.vehicle_name) && (
-                  <span className="text-xs text-text-muted">
+                  <span className="text-xs text-text-muted inline-flex items-center gap-1">
                     {ride.driver_rating && '· '}
+                    {ride.vehicle_color && (
+                      <span
+                        className="inline-block w-2.5 h-2.5 rounded-full border border-black/10 flex-shrink-0"
+                        style={{ background: ride.vehicle_color.toLowerCase() }}
+                        title={ride.vehicle_color}
+                      />
+                    )}
                     {[ride.vehicle_color, ride.vehicle_model ?? ride.vehicle_name].filter(Boolean).join(' ')}
                   </span>
                 )}
@@ -311,7 +322,7 @@ export default function RideReceiptPage() {
         )}
         <button
           type="button"
-          onClick={() => router.push('/help')}
+          onClick={() => router.push(`/help?rideId=${rideId}`)}
           className="w-full flex items-center justify-center gap-2 bg-surface-2 text-text-secondary text-sm font-semibold py-3.5 rounded-full active:scale-[0.98] transition-transform"
         >
           <LifeBuoy size={15} />

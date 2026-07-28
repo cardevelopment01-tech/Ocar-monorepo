@@ -92,6 +92,7 @@ function SelectRideContent() {
   const [isBooking,         setIsBooking]         = useState(false)
   const [etaReady,          setEtaReady]          = useState(false)
   const [bookError,         setBookError]         = useState<string | null>(null)
+  const [paymentNote,       setPaymentNote]       = useState<string | null>(null)
   const [nearbyDrivers,     setNearbyDrivers]     = useState<Array<{ driver_id: string; lat: number; lng: number; category_id: number }>>([])
   const [returnCabCategories, setReturnCabCategories] = useState<Set<number>>(new Set())
   const [returnCabEstimates,  setReturnCabEstimates]  = useState<Record<number, FareEstimate>>({})
@@ -273,6 +274,24 @@ function SelectRideContent() {
 
   useEffect(() => { void loadEstimates() }, [loadEstimates])
 
+  // Lightweight "what would the other trip type cost" line under the tabs —
+  // fetches only the currently-selected category, not the full category list.
+  const [otherTypeFare, setOtherTypeFare] = useState<number | null>(null)
+  useEffect(() => {
+    if (fromRoundTripPage) { setOtherTypeFare(null); return }
+    let cancelled = false
+    const otherType = rideType === 'one_way' ? 'round_trip' : 'one_way'
+    const estParams: Parameters<typeof rideApi.getEstimate>[0] = {
+      categoryId: selected, rideType: otherType,
+      distanceKm: effectiveDistanceKm, durationMin: effectiveDurationMin, originCityId,
+    }
+    if (otherType === 'round_trip') estParams.tripHours = tripHours ?? 8
+    rideApi.getEstimate(estParams)
+      .then(est => { if (!cancelled) setOtherTypeFare(Number(est.breakdown.total)) })
+      .catch(() => { if (!cancelled) setOtherTypeFare(null) })
+    return () => { cancelled = true }
+  }, [fromRoundTripPage, rideType, selected, effectiveDistanceKm, effectiveDurationMin, originCityId, tripHours])
+
   const handleBook = async () => {
     setIsBooking(true)
     setBookError(null)
@@ -435,6 +454,9 @@ function SelectRideContent() {
               {effectiveDistanceKm} km · {rideType === 'round_trip' ? 'round trip' : `${Math.round(effectiveDurationMin)} min`}
             </span>
           </div>
+          {riderName && (
+            <p className="text-[11px] font-semibold text-violet-600 mb-2">Booking for {riderName}</p>
+          )}
 
           {/* Pickup time, own row, above ride-type/car selection */}
           <div className="mb-2">
@@ -469,6 +491,28 @@ function SelectRideContent() {
                 </button>
               ))}
             </div>
+          )}
+
+          {/* Trade-off line — what the other trip type would cost, without switching tabs */}
+          {!fromRoundTripPage && otherTypeFare != null && (
+            <button
+              onClick={() => {
+                const t = rideType === 'one_way' ? 'round_trip' : 'one_way'
+                setRideType(t)
+                setIsReturnCab(false)
+                if (t === 'one_way') setInlineTripHours(null)
+              }}
+              className="w-full flex items-center justify-between px-1 mb-2 text-[11px]"
+            >
+              <span className="text-slate-400 font-medium">
+                {rideType === 'one_way'
+                  ? 'Round trip keeps the same driver all day — no re-booking the return leg'
+                  : "One way is cheaper per leg — you'll book the return separately"}
+              </span>
+              <span className="font-bold text-violet-600 flex-shrink-0 ml-2">
+                {rideType === 'one_way' ? 'Round trip' : 'One way'} ≈ ₹{Math.round(otherTypeFare)}
+              </span>
+            </button>
           )}
 
           {/* Round trip hours row */}
@@ -537,10 +581,15 @@ function SelectRideContent() {
             </div>
           )}
 
-          {/* Wait-charge disclosure — Bolt-style "shown before you confirm" (one-way) */}
+          {/* Wait-charge disclosure — Bolt-style "shown before you confirm" */}
           {detourPriced && (
             <p className="mx-4 mb-1 text-[11px] font-medium leading-relaxed" style={{ color: '#94A3B8' }}>
               Each stop includes <span className="font-semibold" style={{ color: '#475569' }}>10 min free wait</span>. Longer waits are billed per minute and added to your final fare.
+            </p>
+          )}
+          {rideType === 'round_trip' && (
+            <p className="mx-4 mb-1 text-[11px] font-medium leading-relaxed" style={{ color: '#94A3B8' }}>
+              Waiting time is <span className="font-semibold" style={{ color: '#475569' }}>covered within your booked hours</span>. Running over is billed as an hourly overage.
             </p>
           )}
 
@@ -661,7 +710,10 @@ function SelectRideContent() {
                         {cat.display_name}
                       </p>
                       {est?.surge_multiplier != null && est.surge_multiplier > 1 && (
-                        <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500">
+                        <span
+                          className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500"
+                          title="High demand right now — fares are temporarily higher. Booking locks in this fare."
+                        >
                           <Zap size={9} />{est.surge_multiplier}×
                         </span>
                       )}
@@ -740,10 +792,13 @@ function SelectRideContent() {
                 </div>
               )}
               {Number(estimates[selected]!.breakdown.surge_fare) > 0 && (
-                <div className="flex justify-between text-[11px]">
-                  <span style={{ color: '#F59E0B' }}>Surge ({estimates[selected]!.surge_multiplier}×)</span>
-                  <span className="font-semibold" style={{ color: '#0F172A' }}>₹{Math.round(Number(estimates[selected]!.breakdown.surge_fare))}</span>
-                </div>
+                <>
+                  <div className="flex justify-between text-[11px]">
+                    <span style={{ color: '#F59E0B' }}>Surge ({estimates[selected]!.surge_multiplier}×) — high demand</span>
+                    <span className="font-semibold" style={{ color: '#0F172A' }}>₹{Math.round(Number(estimates[selected]!.breakdown.surge_fare))}</span>
+                  </div>
+                  <p className="text-[10px] font-medium" style={{ color: '#94A3B8' }}>This fare is locked in once you book.</p>
+                </>
               )}
               <div className="h-px" style={{ background: '#C7D2FE' }} />
               <div className="flex justify-between items-baseline">
@@ -766,8 +821,14 @@ function SelectRideContent() {
               </div>
               <span className="text-sm font-semibold text-slate-700">Cash</span>
             </div>
-            <button className="text-xs font-bold text-violet-600">Change</button>
+            <button
+              className="text-xs font-bold text-violet-600"
+              onClick={() => { setPaymentNote('Cash only for now'); setTimeout(() => setPaymentNote(null), 2000) }}
+            >
+              Change
+            </button>
           </div>
+          {paymentNote && <p className="text-slate-500 text-xs text-center mb-2">{paymentNote}</p>}
           {bookError && <p className="text-red-500 text-sm text-center mb-2">{bookError}</p>}
           <button
             onClick={handleBook}

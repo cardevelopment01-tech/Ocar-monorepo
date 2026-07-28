@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, ChevronDown, Mail } from 'lucide-react'
 
 const FAQS = [
@@ -29,6 +29,8 @@ const FAQS = [
 
 export default function HelpPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const rideId = searchParams.get('rideId')
   const [open, setOpen] = useState<number | null>(null)
 
   return (
@@ -72,7 +74,7 @@ export default function HelpPage() {
 
         <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Contact</p>
         <a
-          href="mailto:support@ocar.in"
+          href={rideId ? `mailto:support@ocar.in?subject=${encodeURIComponent(`Help with ride #${rideId}`)}` : 'mailto:support@ocar.in'}
           className="flex items-center gap-3 bg-surface rounded-2xl border border-border px-4 py-3.5 shadow-card"
         >
           <span className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0">

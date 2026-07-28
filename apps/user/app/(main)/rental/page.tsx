@@ -161,6 +161,7 @@ function RentalContent() {
   const [estLoading,      setEstLoading]      = useState(false)
   const [isBooking,       setIsBooking]       = useState(false)
   const [bookError,       setBookError]       = useState<string | null>(null)
+  const [paymentNote,     setPaymentNote]     = useState<string | null>(null)
 
   // Fetch packages whenever category changes; auto-select first
   const loadPackages = useCallback(async (catId: number) => {
@@ -549,6 +550,10 @@ function RentalContent() {
             </motion.section>
           )}
         </div>
+
+        <p className="mx-4 mb-2 text-[11px] font-medium leading-relaxed text-slate-400">
+          Waiting time is <span className="font-semibold text-slate-600">covered within your rental package</span>. Running over is billed as an hourly overage.
+        </p>
       </div>
 
       {/* ── Book bar ────────────────────────────────────────────── */}
@@ -564,8 +569,14 @@ function RentalContent() {
             </div>
             <span className="text-sm font-semibold text-slate-700">Cash</span>
           </div>
-          <button className="text-xs font-bold text-violet-600">Change</button>
+          <button
+            className="text-xs font-bold text-violet-600"
+            onClick={() => { setPaymentNote('Cash only for now'); setTimeout(() => setPaymentNote(null), 2000) }}
+          >
+            Change
+          </button>
         </div>
+        {paymentNote && <p className="text-slate-500 text-xs text-center mb-2">{paymentNote}</p>}
 
         {bookError && (
           <p className="text-red-500 text-sm text-center mb-2">{bookError}</p>
