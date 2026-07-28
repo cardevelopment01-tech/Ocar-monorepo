@@ -37,6 +37,9 @@ export default function CollectCash() {
     }
   }
 
+  const parsedCustomAmount = parseFloat(customAmount)
+  const displayCustomAmount = Number.isFinite(parsedCustomAmount) ? fmt(parsedCustomAmount) : customAmount
+
   function confirmCustomAmount() {
     const parsed = parseFloat(customAmount)
     if (!Number.isFinite(parsed) || parsed < 0) return
@@ -146,21 +149,21 @@ export default function CollectCash() {
               />
 
               {pendingConfirm && (
-                <p className="text-status-error text-xs text-center mb-2">
-                  That's well off the ₹{fmt(fare)} fare — tap again to confirm ₹{customAmount}.
+                <p className="text-status-error text-xs text-center mb-2" role="alert">
+                  That's well off the ₹{fmt(fare)} fare — tap again to confirm ₹{displayCustomAmount}.
                 </p>
               )}
               <button
                 type="button"
                 onClick={confirmCustomAmount}
                 disabled={submitting || customAmount === ''}
-                className="w-full py-3 rounded-2xl bg-primary text-white text-sm font-semibold active:scale-95 transition-transform disabled:opacity-60 mb-3"
+                className={`w-full py-3 rounded-2xl text-white text-sm font-semibold active:scale-95 transition-transform disabled:opacity-60 mb-3 ${pendingConfirm ? 'bg-accent-red' : 'bg-primary'}`}
               >
                 {submitting
                   ? 'Saving…'
                   : pendingConfirm
-                  ? `Yes, confirm ₹${customAmount || '0'}`
-                  : `Confirm ₹${customAmount || '0'} collected`}
+                  ? `Yes, confirm ₹${displayCustomAmount || '0'}`
+                  : `Confirm ₹${displayCustomAmount || '0'} collected`}
               </button>
 
               <button
