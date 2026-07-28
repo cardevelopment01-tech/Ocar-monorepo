@@ -214,6 +214,20 @@ router.post('/:id/cancel-driver', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+router.post('/:id/end-early', authenticate(), async (req, res, next) => {
+  try {
+    const driverId = req.driver!.id
+    const body = req.body as { reasonCode?: string; currentLat?: number; currentLng?: number }
+    if (!body.reasonCode || typeof body.currentLat !== 'number' || typeof body.currentLng !== 'number') {
+      res.status(400).json({ error: 'reasonCode, currentLat, currentLng are required' }); return
+    }
+    const result = await service.endRideEarlyAsDriver(
+      driverId, BigInt(req.params['id']!), body.reasonCode, body.currentLat, body.currentLng
+    )
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
 // ── Driver ride actions ───────────────────────────────────────
 
 router.post('/:id/accept', authenticate(), async (req, res, next) => {

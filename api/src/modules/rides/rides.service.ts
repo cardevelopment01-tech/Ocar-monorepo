@@ -1055,6 +1055,124 @@ export async function cancelRideAsDriver(
   return { success: true }
 }
 
+// ── Mid-trip abort with partial-fare settlement ────────────────
+// Distinct from cancelRideAsDriver: that function only ever runs pre-pickup
+// (accepted/driver_arrived), where no fare is owed. Once in_progress, real
+// distance has been driven and must be billed — so this marks the ride
+// `completed` (not `cancelled`) and reuses the exact same partial-fare
+// recalculation the round-trip early-termination path already performs,
+// then falls through to the normal completion settlement pipeline.
+// ponytail: the "why it ended early" reason lives in rides.review_reason
+// (existing column) rather than a new ride_cancellations row — if ops needs
+// richer reporting on this later (rate, by-reason breakdown), promote it to
+// a dedicated table then.
+export async function endRideEarlyAsDriver(
+  driverId: bigint,
+  rideId: bigint,
+  reasonCode: string,
+  currentLat: number,
+  currentLng: number,
+) {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  }
+  if (ride.status !== 'in_progress') {
+    throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
+  }
+
+  const distRes = await pool.query<{ metres: string }>(
+    `SELECT ST_Distance(
+       ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography,
+       ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)::geography
+     ) AS metres`,
+    [currentLng, currentLat, ride.origin_lng, ride.origin_lat]
+  )
+  const actualDistanceKm = parseFloat(distRes.rows[0]?.metres ?? '0') / 1000
+  const actualDurationMin = Math.max(1, Math.round(
+    (Date.now() - Date.parse(ride.started_at ?? new Date().toISOString())) / 60_000
+  ))
+
+  const snapRes = await pool.query<{
+    surge_multiplier: string
+    stop_fare: string
+    is_return_cab: boolean
+    rate_per_km: string
+    rate_per_min: string
+    min_fare: string
+    return_rate_per_km: string | null
+  }>(
+    `SELECT fs.surge_multiplier, fs.stop_fare, fs.is_return_cab,
+            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km
+     FROM fare_snapshots fs
+     JOIN rate_cards rc ON rc.id = fs.rate_card_id
+     WHERE fs.ride_id = $1`,
+    [rideId]
+  )
+  const snap = snapRes.rows[0]
+
+  let finalFare: number | null = null
+  if (snap) {
+    const recalc = calculateFare({
+      rate_card: {
+        rate_per_km:        parseFloat(snap.rate_per_km),
+        rate_per_min:       parseFloat(snap.rate_per_min),
+        min_fare:           parseFloat(snap.min_fare),
+        return_rate_per_km: snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
+      },
+      ride_type:        'one_way', // no hour_surcharge on an aborted trip
+      is_return_cab:    snap.is_return_cab,
+      estimated_km:     actualDistanceKm,
+      estimated_min:    actualDurationMin,
+      stop_count:       0, // stop fares for reached stops are already baked into snap.stop_fare
+      charge_per_stop:  0,
+      trip_hours:       0,
+      surge_multiplier: parseFloat(snap.surge_multiplier),
+    })
+    const stopFare = parseFloat(snap.stop_fare ?? '0')
+    finalFare = Math.round((recalc.total + stopFare) * 100) / 100
+
+    await pool.query(
+      `UPDATE fare_snapshots
+       SET actual_km = $2, actual_min = $3, total_final = $4,
+           status = 'final', finalised_at = now()
+       WHERE ride_id = $1`,
+      [rideId, actualDistanceKm, actualDurationMin, finalFare]
+    )
+  }
+
+  const completedAt = new Date().toISOString()
+  await repo.updateRideStatus(rideId, 'completed', {
+    completed_at:      completedAt,
+    review_flagged_at: completedAt,
+    review_reason:     `Ended early by driver: ${reasonCode}`,
+  })
+  await repo.logStatusHistory({
+    rideId, fromStatus: 'in_progress', toStatus: 'completed', actor: 'driver',
+  })
+
+  await pool.query(
+    `UPDATE driver_sessions SET status = 'online', trips_completed = trips_completed + 1
+     WHERE driver_id = $1 AND status = 'on_trip'`,
+    [driverId]
+  )
+  await pool.query(
+    `UPDATE driver_location_snapshots SET is_available = true WHERE driver_id = $1`,
+    [driverId]
+  )
+
+  const statusPayload: Record<string, unknown> = { status: 'completed', completedAt, endedEarly: true }
+  if (finalFare !== null) statusPayload['finalFare'] = finalFare
+  socketEvents.sendRideStatusUpdate(rideId.toString(), statusPayload)
+
+  void settleRideCompletionPayment(rideId, driverId).catch((err: unknown) => {
+    console.error(`Payment post-processing failed for early-ended ride ${rideId}:`, err)
+  })
+
+  return { success: true, rideId: rideId.toString(), ...(finalFare !== null ? { finalFare } : {}) }
+}
+
 // ── Stuck ride resolution (sweeper timeout + admin override) ──
 
 export async function forceResolveRide(
