@@ -7,6 +7,7 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { fmtReturn } from '@/lib/constants'
 import { driverSafetyApi, type RatingTag } from '@/lib/safety-api'
+import { driverRideApi } from '@/lib/ride-api'
 
 function fmt(n: number) {
   const s = n.toFixed(2)
@@ -20,9 +21,37 @@ export default function TripEnd() {
   const { setOnline, sessionId, vehicleId, categoryId } = useSessionStore()
   const driver = useAuthStore(s => s.driver)
 
-  const fare        = activeRide?.fare ?? 0
-  const commission  = Math.round(fare * 0.15)
-  const net         = parseFloat((fare - commission).toFixed(2))
+  const fare = activeRide?.fare ?? 0
+  const [realCommission, setRealCommission] = useState<number | null>(null)
+  const [realEarning,    setRealEarning]    = useState<number | null>(null)
+
+  // settleRideCompletionPayment (which writes commission_amount) runs async,
+  // fired after verifyEndOTP already responded — poll briefly rather than
+  // block this screen on it. Falls back to the estimate below if it never lands.
+  useEffect(() => {
+    if (!activeRide?.id) return
+    let cancelled = false
+    let attempts = 0
+    const poll = async () => {
+      attempts += 1
+      try {
+        const ride = await driverRideApi.getRide(activeRide.id)
+        if (cancelled) return
+        if (ride.commission_amount != null) {
+          setRealCommission(parseFloat(ride.commission_amount))
+          setRealEarning(ride.driver_earning != null ? parseFloat(ride.driver_earning) : null)
+          return
+        }
+      } catch { /* keep polling, fall back to estimate on timeout */ }
+      if (attempts < 5 && !cancelled) setTimeout(poll, 1200)
+    }
+    void poll()
+    return () => { cancelled = true }
+  }, [activeRide?.id])
+
+  const commissionIsEstimate = realCommission === null
+  const commission = realCommission ?? Math.round(fare * 0.15)
+  const net         = realEarning ?? parseFloat((fare - commission).toFixed(2))
   const isRental    = activeRide?.rideType === 'rental'
   const isRoundTrip = activeRide?.rideType === 'round_trip'
   const isCash      = activeRide?.paymentChannel === 'cash'
@@ -165,7 +194,9 @@ export default function TripEnd() {
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-text-secondary">
-              {isCash ? 'Commission (deducted from wallet, est.)' : 'Platform commission (est.)'}
+              {isCash
+                ? `Commission (deducted from wallet${commissionIsEstimate ? ', est.' : ''})`
+                : `Platform commission${commissionIsEstimate ? ' (est.)' : ''}`}
             </span>
             <span className="text-accent-red font-semibold">-₹{commission}</span>
           </div>
