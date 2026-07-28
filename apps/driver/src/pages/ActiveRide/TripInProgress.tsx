@@ -734,15 +734,13 @@ export default function TripInProgress() {
               </div>
             )}
 
-            {!currentStop && (
-              <button
-                onClick={() => setShowEndEarlySheet(true)}
-                className="w-full flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium text-red-400 active:opacity-70 transition-opacity"
-              >
-                <AlertTriangle size={14} strokeWidth={2} />
-                End trip early
-              </button>
-            )}
+            <button
+              onClick={() => setShowEndEarlySheet(true)}
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium text-red-400 active:opacity-70 transition-opacity"
+            >
+              <AlertTriangle size={14} strokeWidth={2} />
+              End trip early
+            </button>
 
             {/* Primary advance for the current stop — swipe, not tap (accident-proof while driving) */}
             {currentStop && !(isOneWay && currentStop.arrived_at != null) && (
