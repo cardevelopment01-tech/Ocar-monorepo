@@ -217,12 +217,12 @@ router.post('/:id/cancel-driver', authenticate(), async (req, res, next) => {
 router.post('/:id/end-early', authenticate(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id
-    const body = req.body as { reasonCode?: string; currentLat?: number; currentLng?: number }
-    if (!body.reasonCode || typeof body.currentLat !== 'number' || typeof body.currentLng !== 'number') {
-      res.status(400).json({ error: 'reasonCode, currentLat, currentLng are required' }); return
+    const body = req.body as { reasonCode?: string; actualDistanceKm?: number; actualDurationMin?: number }
+    if (!body.reasonCode || typeof body.actualDistanceKm !== 'number' || typeof body.actualDurationMin !== 'number') {
+      res.status(400).json({ error: 'reasonCode, actualDistanceKm, actualDurationMin are required' }); return
     }
     const result = await service.endRideEarlyAsDriver(
-      driverId, BigInt(req.params['id']!), body.reasonCode, body.currentLat, body.currentLng
+      driverId, BigInt(req.params['id']!), body.reasonCode, body.actualDistanceKm, body.actualDurationMin
     )
     res.json(result)
   } catch (err) { next(err) }

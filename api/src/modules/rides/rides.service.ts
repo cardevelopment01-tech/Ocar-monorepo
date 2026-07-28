@@ -1066,12 +1066,15 @@ export async function cancelRideAsDriver(
 // (existing column) rather than a new ride_cancellations row — if ops needs
 // richer reporting on this later (rate, by-reason breakdown), promote it to
 // a dedicated table then.
+// actualDistanceKm/actualDurationMin are supplied by the driver client (haversine
+// pickup→current * 1.3 fudge factor), same trust contract as verifyEndOTP's
+// optional params for normal completion — not recomputed server-side.
 export async function endRideEarlyAsDriver(
   driverId: bigint,
   rideId: bigint,
   reasonCode: string,
-  currentLat: number,
-  currentLng: number,
+  actualDistanceKm: number,
+  actualDurationMin: number,
 ) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
@@ -1081,18 +1084,6 @@ export async function endRideEarlyAsDriver(
   if (ride.status !== 'in_progress') {
     throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
   }
-
-  const distRes = await pool.query<{ metres: string }>(
-    `SELECT ST_Distance(
-       ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography,
-       ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)::geography
-     ) AS metres`,
-    [currentLng, currentLat, ride.origin_lng, ride.origin_lat]
-  )
-  const actualDistanceKm = parseFloat(distRes.rows[0]?.metres ?? '0') / 1000
-  const actualDurationMin = Math.max(1, Math.round(
-    (Date.now() - Date.parse(ride.started_at ?? new Date().toISOString())) / 60_000
-  ))
 
   const snapRes = await pool.query<{
     surge_multiplier: string
@@ -1143,11 +1134,14 @@ export async function endRideEarlyAsDriver(
   }
 
   const completedAt = new Date().toISOString()
-  await repo.updateRideStatus(rideId, 'completed', {
+  const updated = await repo.updateRideStatusCAS(rideId, 'in_progress', 'completed', {
     completed_at:      completedAt,
     review_flagged_at: completedAt,
     review_reason:     `Ended early by driver: ${reasonCode}`,
   })
+  if (!updated) {
+    throw Object.assign(new Error('Ride already ended'), { httpStatus: 409 })
+  }
   await repo.logStatusHistory({
     rideId, fromStatus: 'in_progress', toStatus: 'completed', actor: 'driver',
   })
