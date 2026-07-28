@@ -192,6 +192,7 @@ export default function TripInProgress() {
   // deep links are flaky on Android. currentStop advances after each reached/skipped.
   const stops = activeRide?.stops ?? []
   const currentStop = stops.find(s => s.status === 'pending') ?? null
+  const accruedWaitCharge = stops.reduce((sum, s) => sum + parseFloat(s.wait_charge ?? '0'), 0)
 
   const dropPos: [number, number] = currentStop
     ? [currentStop.lat, currentStop.lng]
@@ -202,7 +203,7 @@ export default function TripInProgress() {
     setStopActionPending(sequence)
     try {
       const res = await driverRideApi.markStopStatus(activeRide.id, sequence, status)
-      updateStop(sequence, status, res.stop.reached_at)
+      updateStop(sequence, status, res.stop.reached_at, res.stop.wait_charge)
     } catch { /* stays pending, driver can retry */ } finally {
       setStopActionPending(null)
     }
@@ -221,7 +222,7 @@ export default function TripInProgress() {
     setStopActionPending(sequence)
     try {
       const res = await driverRideApi.markStopStatus(activeRide.id, sequence, 'arrived')
-      arriveStop(sequence, res.stop.arrived_at)
+      arriveStop(sequence, res.stop.arrived_at, res.stop.wait_charge)
     } catch { /* stays pending, driver can retry */ } finally {
       setStopActionPending(null)
     }
@@ -583,7 +584,14 @@ export default function TripInProgress() {
                 ? `Next: Stop ${currentStop.sequence}`
                 : activeRide?.rideType === 'rental' ? 'Flexible route' : (activeRide?.drop ?? 'Destination')}
             </p>
-            <p className="text-primary font-black text-base flex-shrink-0">₹{activeRide?.fare ?? 0}</p>
+            <div className="text-right flex-shrink-0">
+              <p className="text-primary font-black text-base">₹{activeRide?.fare ?? 0}</p>
+              {isOneWay && accruedWaitCharge > 0 && (
+                <p className="text-[10px] font-semibold text-accent-orange">
+                  +₹{accruedWaitCharge.toFixed(0)} wait so far
+                </p>
+              )}
+            </div>
           </div>
 
           <motion.button

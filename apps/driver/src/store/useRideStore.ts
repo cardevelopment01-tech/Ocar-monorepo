@@ -10,6 +10,8 @@ export interface RideStop {
   status: 'pending' | 'reached' | 'skipped'
   arrived_at: string | null
   reached_at: string | null
+  stop_charge_applied: string | null
+  wait_charge: string | null
 }
 
 export interface ActiveRide {
@@ -60,8 +62,8 @@ interface RideState {
   updateRideStatus:  (status: string) => void
   setFare:           (fare: number) => void
   setRideStartedAt:  (ts: string) => void
-  arriveStop:        (sequence: number, arrivedAt: string | null) => void
-  updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null) => void
+  arriveStop:        (sequence: number, arrivedAt: string | null, waitCharge?: string | null) => void
+  updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null, waitCharge?: string | null) => void
   addStop:           (stop: RideStop) => void
   clearRide:         () => void
   setIncomingRequest: (req: RideState['incomingRequest']) => void
@@ -90,22 +92,26 @@ export const useRideStore = create<RideState>()(
       setRideStartedAt: (ts) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, rideStartedAt: ts } : null })),
 
-      arriveStop: (sequence, arrivedAt) =>
+      arriveStop: (sequence, arrivedAt, waitCharge) =>
         set((s) => ({
           activeRide: s.activeRide ? {
             ...s.activeRide,
             stops: (s.activeRide.stops ?? []).map(stop =>
-              stop.sequence === sequence ? { ...stop, arrived_at: arrivedAt } : stop
+              stop.sequence === sequence
+                ? { ...stop, arrived_at: arrivedAt, ...(waitCharge !== undefined ? { wait_charge: waitCharge } : {}) }
+                : stop
             ),
           } : null,
         })),
 
-      updateStop: (sequence, status, reachedAt) =>
+      updateStop: (sequence, status, reachedAt, waitCharge) =>
         set((s) => ({
           activeRide: s.activeRide ? {
             ...s.activeRide,
             stops: (s.activeRide.stops ?? []).map(stop =>
-              stop.sequence === sequence ? { ...stop, status, reached_at: reachedAt } : stop
+              stop.sequence === sequence
+                ? { ...stop, status, reached_at: reachedAt, ...(waitCharge !== undefined ? { wait_charge: waitCharge } : {}) }
+                : stop
             ),
           } : null,
         })),

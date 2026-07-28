@@ -129,6 +129,7 @@ export default function App() {
         if (ride.stops.length > 0) activeRideInput.stops = ride.stops.map(s => ({
           id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
           address: s.address, status: s.status, arrived_at: s.arrived_at, reached_at: s.reached_at,
+          stop_charge_applied: s.stop_charge_applied, wait_charge: s.wait_charge,
         }))
         activeRideInput.paymentChannel = ride.payment_channel
         setActiveRide(activeRideInput)
@@ -334,6 +335,7 @@ export default function App() {
       if (ride.stops.length > 0) activeRideInput.stops = ride.stops.map(s => ({
         id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
         address: s.address, status: s.status, arrived_at: s.arrived_at, reached_at: s.reached_at,
+        stop_charge_applied: s.stop_charge_applied, wait_charge: s.wait_charge,
       }))
       activeRideInput.paymentChannel = ride.payment_channel
       setActiveRide(activeRideInput)
