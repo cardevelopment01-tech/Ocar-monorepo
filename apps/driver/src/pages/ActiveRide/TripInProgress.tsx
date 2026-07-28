@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, X, RotateCcw, Flag, CheckCircle2, Navigation, Locate, Check } from 'lucide-react'
+import { Clock, X, RotateCcw, Flag, CheckCircle2, Navigation, Locate, Check, LocateOff } from 'lucide-react'
 import {
   motion, AnimatePresence, useReducedMotion,
   useMotionValue, useTransform, useMotionValueEvent, animate,
@@ -236,7 +236,7 @@ export default function TripInProgress() {
     : 0
   const waitFreeLeftSec = Math.max(0, STOP_FREE_WAIT_SECONDS - waitElapsedSec)
 
-  const { position, heading: selfHeading, speedKmph } = useDriverLocation({
+  const { position, heading: selfHeading, speedKmph, error: gpsError } = useDriverLocation({
     highAccuracy: true,
     syncIntervalMs: 3_000,
     onSync: sessionId
@@ -498,6 +498,21 @@ export default function TripInProgress() {
             style={GLASS}
           />
         </div>
+
+        {/* GPS-loss warning — safety-critical here (mid-navigation), not just
+            informational like the Home screen's version of this banner. */}
+        {gpsError && (
+          <div className="flex items-center gap-2.5 rounded-2xl px-4 py-3 mt-3" style={GLASS}>
+            <LocateOff size={14} className="text-red-500 flex-shrink-0" />
+            <span className="text-red-600 text-[12px] font-semibold">
+              {gpsError.code === 1
+                ? 'Location access denied. Allow it in browser settings'
+                : gpsError.code === 2
+                ? 'GPS signal unavailable. Check device location settings'
+                : 'Location timed out. Ensure GPS is enabled'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Bottom sheet — draggable/tappable to collapse, revealing more map.
