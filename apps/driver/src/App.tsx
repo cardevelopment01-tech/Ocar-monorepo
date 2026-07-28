@@ -10,7 +10,6 @@ import Home from '@/pages/Home'
 import Earnings from '@/pages/Earnings'
 import Wallet from '@/pages/Wallet'
 import Profile from '@/pages/Profile'
-import IncomingRequest from '@/pages/ActiveRide/IncomingRequest'
 import NavigateToPickup from '@/pages/ActiveRide/NavigateToPickup'
 import OTPVerify from '@/pages/ActiveRide/OTPVerify'
 import TripInProgress from '@/pages/ActiveRide/TripInProgress'
@@ -413,9 +412,6 @@ export default function App() {
             } />
 
             {/* Active ride flow */}
-            <Route path="/ride/incoming" element={
-              <ProtectedRoute requireApproved><IncomingRequest /></ProtectedRoute>
-            } />
             <Route path="/ride/otp" element={
               <ProtectedRoute requireApproved>
                 <OTPVerify />

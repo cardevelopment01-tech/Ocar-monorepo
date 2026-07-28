@@ -76,6 +76,7 @@ function beep() {
       osc.stop(ctx.currentTime + start + dur)
     }
     play(880, 0, 0.12); play(1100, 0.18, 0.12); play(880, 0.36, 0.12)
+    setTimeout(() => ctx.close().catch(() => {}), 600)
   } catch (_) {}
 }
 
@@ -437,7 +438,7 @@ export default function TripRequestCard({
                       transition={{ duration: reduce ? 0.01 : 0.22, ease: [0.22, 1, 0.36, 1] }}
                       className="flex items-center gap-2"
                     >
-                      <Check size={16} strokeWidth={2.5} aria-hidden="true" /> Accept · ₹{fare}
+                      <Check size={16} strokeWidth={2.5} aria-hidden="true" /> Accept · ₹{fare} · {time}s
                     </motion.span>
                   )}
                 </AnimatePresence>

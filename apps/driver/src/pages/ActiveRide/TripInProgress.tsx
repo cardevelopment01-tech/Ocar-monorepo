@@ -16,6 +16,7 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { useNavPrefsStore } from '@/store/useNavPrefsStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { driverSafetyApi } from '@/lib/safety-api'
+import { openMapsNav } from '@/lib/utils'
 import { getDriverSocket } from '@/lib/socket'
 import { EASE, GLASS, fmtReturn } from '@/lib/constants'
 import { useDriverLocation } from '@/lib/useDriverLocation'
@@ -449,7 +450,7 @@ export default function TripInProgress() {
                 aria-label="Open in Google Maps"
                 style={{ position: 'absolute', left: 16, bottom: `calc(env(safe-area-inset-bottom) + ${occlusion + 64}px)`, zIndex: 5 }}
                 className="w-12 h-12 rounded-2xl bg-surface border border-border shadow-lg flex items-center justify-center active:scale-95 transition-transform"
-                onClick={() => window.open(`https://maps.google.com?q=${dropPos[0]},${dropPos[1]}`)}
+                onClick={() => openMapsNav(dropPos[0], dropPos[1])}
               >
                 <Navigation size={20} className="text-primary" />
               </button>
@@ -633,21 +634,23 @@ export default function TripInProgress() {
               <div
                 className="rounded-2xl mt-3 mb-3 px-4 py-3.5"
                 style={{
-                  background: waitFreeLeftSec > 0 ? 'rgba(16,185,129,0.10)' : 'rgba(245,158,11,0.12)',
-                  border: `1px solid ${waitFreeLeftSec > 0 ? 'rgba(16,185,129,0.30)' : 'rgba(245,158,11,0.30)'}`,
+                  background: waitFreeLeftSec <= 0 ? 'rgba(245,158,11,0.12)' : waitFreeLeftSec <= 120 ? 'rgba(245,158,11,0.10)' : 'rgba(16,185,129,0.10)',
+                  border: `1px solid ${waitFreeLeftSec <= 0 || waitFreeLeftSec <= 120 ? 'rgba(245,158,11,0.30)' : 'rgba(16,185,129,0.30)'}`,
                 }}
               >
                 <div className="min-w-0 mb-3">
-                  <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: waitFreeLeftSec > 0 ? '#059669' : '#D97706' }}>
+                  <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: waitFreeLeftSec <= 0 || waitFreeLeftSec <= 120 ? '#D97706' : '#059669' }}>
                     Waiting · Stop {waitingStop.sequence}
                   </p>
                   <p className="text-[26px] font-black tabular-nums leading-tight" style={{ color: 'var(--text-primary)' }}>
                     {fmtClock(waitElapsedSec)}
                   </p>
-                  <p className="text-[11px] font-medium mt-0.5" style={{ color: waitFreeLeftSec > 0 ? '#059669' : '#D97706' }}>
-                    {waitFreeLeftSec > 0
-                      ? `${fmtClock(waitFreeLeftSec)} of free wait left`
-                      : 'Free wait used — extra time is added to the rider’s fare'}
+                  <p className="text-[11px] font-medium mt-0.5" style={{ color: waitFreeLeftSec <= 0 || waitFreeLeftSec <= 120 ? '#D97706' : '#059669' }}>
+                    {waitFreeLeftSec <= 0
+                      ? 'Free wait used — extra time is added to the rider’s fare'
+                      : waitFreeLeftSec <= 120
+                      ? `Only ${fmtClock(waitFreeLeftSec)} of free wait left`
+                      : `${fmtClock(waitFreeLeftSec)} of free wait left`}
                   </p>
                 </div>
                 <SwipeToConfirm

@@ -16,6 +16,7 @@ import { useNavPrefsStore } from '@/store/useNavPrefsStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { driverSafetyApi } from '@/lib/safety-api'
 import { getDriverSocket } from '@/lib/socket'
+import { openMapsNav } from '@/lib/utils'
 import { EASE, GLASS, fmtReturn } from '@/lib/constants'
 import { useDriverLocation } from '@/lib/useDriverLocation'
 import { useTurnByTurn } from '@/lib/useTurnByTurn'
@@ -557,7 +558,7 @@ export default function NavigateToPickup() {
                 )}
                 <button
                   className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-95 transition-transform"
-                  onClick={() => window.open(`https://maps.google.com?q=${pickupPos[0]},${pickupPos[1]}`)}
+                  onClick={() => openMapsNav(pickupPos[0], pickupPos[1])}
                 >
                   <Navigation size={18} className="text-text-inverse" />
                 </button>
@@ -635,6 +636,8 @@ export default function NavigateToPickup() {
               <div className="space-y-2 mb-5">
                 {[
                   { code: 'passenger_not_found', label: 'Passenger not at pickup' },
+                  { code: 'passenger_no_show',   label: 'Passenger did not show up' },
+                  { code: 'rider_requested',     label: 'Rider asked me to cancel' },
                   { code: 'vehicle_breakdown',   label: 'Vehicle breakdown' },
                   { code: 'wrong_booking',        label: 'Wrong booking details' },
                   { code: 'emergency',            label: 'Emergency' },

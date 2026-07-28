@@ -1,13 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell, AlertTriangle } from 'lucide-react'
 import { motion, useReducedMotion, useMotionValue, useTransform, animate } from 'framer-motion'
 import OcarLogoMark from '@/components/ui/OcarLogoMark'
 import { useNotificationsStore } from '@/store/useNotificationsStore'
-import api from '@/lib/api'
+import { useWalletGate } from '@/lib/useWalletGate'
 import { GLASS } from '@/lib/constants'
-
-const MIN_WALLET_BALANCE = 500
 
 // One header, two skins. `solid` = flat fixed bar on content pages (Earnings/
 // Wallet/Profile). `floating` = transparent region with opaque chips over the
@@ -189,17 +187,8 @@ function NotificationBell({ surface }: { surface: Surface }) {
 
 export default function StatusBar({ isOnline, earningsToday, tripsToday = 0, surface = 'solid' }: StatusBarProps) {
   const navigate = useNavigate()
-  const [walletWarning, setWalletWarning] = useState<'low' | 'frozen' | null>(null)
-
-  useEffect(() => {
-    api.get<{ balance: string; is_frozen: boolean }>('/api/v1/payments/wallet/driver')
-      .then(res => {
-        if (res.data.is_frozen) setWalletWarning('frozen')
-        else if (parseFloat(res.data.balance) < MIN_WALLET_BALANCE) setWalletWarning('low')
-        else setWalletWarning(null)
-      })
-      .catch(() => {})
-  }, [])
+  const { isFrozen, isLow } = useWalletGate()
+  const walletWarning = isFrozen ? 'frozen' : isLow ? 'low' : null
 
   const floating = surface === 'floating'
 
