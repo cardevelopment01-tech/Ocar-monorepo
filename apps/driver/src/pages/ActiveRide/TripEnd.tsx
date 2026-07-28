@@ -14,6 +14,9 @@ function fmt(n: number) {
   return s.endsWith('.00') ? s.slice(0, -3) : s
 }
 
+const MAX_POLL_ATTEMPTS = 5
+const POLL_INTERVAL_MS = 1200
+
 export default function TripEnd() {
   const navigate = useNavigate()
   const confettiFired = useRef(false)
@@ -43,7 +46,7 @@ export default function TripEnd() {
           return
         }
       } catch { /* keep polling, fall back to estimate on timeout */ }
-      if (attempts < 5 && !cancelled) setTimeout(poll, 1200)
+      if (attempts < MAX_POLL_ATTEMPTS && !cancelled) setTimeout(poll, POLL_INTERVAL_MS)
     }
     void poll()
     return () => { cancelled = true }
@@ -198,7 +201,7 @@ export default function TripEnd() {
                 ? `Commission (deducted from wallet${commissionIsEstimate ? ', est.' : ''})`
                 : `Platform commission${commissionIsEstimate ? ' (est.)' : ''}`}
             </span>
-            <span className="text-accent-red font-semibold">-₹{commission}</span>
+            <span className="text-accent-red font-semibold">-₹{fmt(commission)}</span>
           </div>
           <div className="border-t border-border pt-2 flex justify-between text-sm">
             <span className="text-text-primary font-bold">{isCash ? 'You keep' : 'Net earnings'}</span>
