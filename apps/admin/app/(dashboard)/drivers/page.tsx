@@ -67,11 +67,12 @@ function SkeletonRows() {
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type SlideOverTab = 'overview' | 'documents' | 'vehicle' | 'history'
+type SlideOverTab = 'overview' | 'documents' | 'vehicle' | 'activity' | 'history'
 const TABS: { key: SlideOverTab; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'documents', label: 'Documents' },
   { key: 'vehicle', label: 'Vehicle' },
+  { key: 'activity', label: 'Activity' },
   { key: 'history', label: 'History' },
 ]
 
@@ -607,6 +608,11 @@ export default function DriversPage() {
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-xl font-bold text-text-primary">{detail.full_name ?? '—'}</h3>
                   <StatusPill status={detail.status} />
+                  {(detail.status === 'pending_docs' || detail.status === 'pending_approval') && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-surface-3 text-text-muted capitalize">
+                      {detail.onboarding_step.replace(/_/g, ' ')}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-text-muted font-mono">{detail.code}</p>
                 <p className="text-sm text-text-secondary">{detail.phone}</p>
@@ -614,8 +620,9 @@ export default function DriversPage() {
             </div>
 
             {/* Key stats */}
-            <div className="px-6 pt-5 grid grid-cols-3 gap-3">
+            <div className="px-6 pt-5 grid grid-cols-4 gap-3">
               {[
+                { label: 'Rating', value: detail.total_ratings > 0 ? `★ ${parseFloat(detail.rating_avg).toFixed(2)} (${detail.total_ratings})` : 'No ratings' },
                 { label: 'Documents', value: `${detail.documents.length + detail.vehicle_documents.length} uploaded` },
                 { label: 'Experience', value: detail.experience_years != null ? `${detail.experience_years} yr${detail.experience_years !== 1 ? 's' : ''}` : '—' },
                 { label: 'Joined', value: fmt(detail.created_at) },
@@ -664,6 +671,7 @@ export default function DriversPage() {
                       <span className="text-text-muted">DOB</span>        <span className="text-text-primary font-medium">{detail.date_of_birth ? fmt(detail.date_of_birth) : '—'}</span>
                       <span className="text-text-muted">Address</span>    <span className="text-text-primary font-medium">{detail.residential_address ?? '—'}</span>
                       <span className="text-text-muted">City/State</span> <span className="text-text-primary font-medium">{[detail.city, detail.state].filter(Boolean).join(', ') || '—'}</span>
+                      <span className="text-text-muted">Pincode</span>    <span className="text-text-primary font-medium">{detail.pincode ?? '—'}</span>
                       <span className="text-text-muted">Emergency</span>  <span className="text-text-primary font-medium">{detail.emergency_contact ?? '—'}</span>
                       <span className="text-text-muted">Languages</span>  <span className="text-text-primary font-medium">{detail.languages_known.join(', ') || '—'}</span>
                     </div>
@@ -732,10 +740,73 @@ export default function DriversPage() {
                         <span className="text-text-muted">Color</span>    <span className="font-medium text-text-primary capitalize">{detail.vehicle.color}</span>
                         <span className="text-text-muted">Fuel</span>     <span className="font-medium text-text-primary capitalize">{detail.vehicle.fuel_type}</span>
                         <span className="text-text-muted">Seats</span>    <span className="font-medium text-text-primary">{detail.vehicle.seating_capacity}</span>
+                        <span className="text-text-muted">Luggage</span>  <span className="font-medium text-text-primary">{detail.vehicle.luggage_capacity}</span>
                         <span className="text-text-muted">AC</span>       <span className="font-medium text-text-primary">{detail.vehicle.ac_availability ? 'Yes' : 'No'}</span>
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {activeTab === 'activity' && (
+                <div className="space-y-5">
+                  <div>
+                    <p className="text-xs font-semibold text-text-secondary mb-2">Warnings</p>
+                    {detail.warnings.length === 0 ? (
+                      <p className="text-sm text-text-muted text-center py-6">No warnings issued</p>
+                    ) : detail.warnings.map(w => (
+                      <div key={w.id} className="bg-surface-2 rounded-xl px-4 py-3 border border-border-light mb-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-danger/10 text-danger capitalize">{w.severity}</span>
+                          <span className="text-xs font-semibold text-text-primary capitalize">{w.category.replace(/_/g, ' ')}</span>
+                        </div>
+                        <p className="text-xs text-text-secondary">{w.description}</p>
+                        <p className="text-xs text-text-muted mt-1">
+                          {fmt(w.created_at)}{w.issued_by_email ? ` · ${w.issued_by_email}` : ''}{!w.acknowledged_at ? ' · Unacknowledged' : ''}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold text-text-secondary mb-2">Recent Ratings</p>
+                    {detail.ratings.length === 0 ? (
+                      <p className="text-sm text-text-muted text-center py-6">No ratings yet</p>
+                    ) : detail.ratings.map(rt => (
+                      <div key={rt.id} className="bg-surface-2 rounded-xl px-4 py-3 border border-border-light mb-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-bold text-text-primary">★ {rt.score}</span>
+                          <span className="text-xs text-text-muted">{fmt(rt.created_at)}</span>
+                        </div>
+                        {rt.comment && <p className="text-xs text-text-secondary mt-1">{rt.comment}</p>}
+                        {rt.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {rt.tags.map(t => (
+                              <span key={t} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-surface-3 text-text-muted">{t}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold text-text-secondary mb-2">Recent Rides</p>
+                    {detail.recent_rides.length === 0 ? (
+                      <p className="text-sm text-text-muted text-center py-6">No rides yet</p>
+                    ) : detail.recent_rides.map(rd => (
+                      <div key={rd.id} className="bg-surface-2 rounded-xl px-4 py-3 border border-border-light mb-2 flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-semibold text-text-primary capitalize">{rd.ride_type.replace(/_/g, ' ')} · {rd.user_name}</p>
+                          <p className="text-xs text-text-muted mt-0.5">{fmt(rd.requested_at)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-medium text-text-primary capitalize">{rd.status.replace(/_/g, ' ')}</p>
+                          {rd.fare && <p className="text-xs text-text-muted mt-0.5">₹{parseFloat(rd.fare).toLocaleString('en-IN')}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

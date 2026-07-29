@@ -58,6 +58,11 @@ export interface DriverDetail {
   vehicle_documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null }[]
   status_history: { from_status: string | null; to_status: string; reason: string | null; created_at: string }[]
   wallet: { balance: string; is_frozen: boolean } | null
+  rating_avg: string
+  total_ratings: number
+  ratings: { id: string; score: number; comment: string | null; created_at: string; ride_id: string; tags: string[] }[]
+  warnings: { id: string; category: string; severity: string; description: string; acknowledged_at: string | null; expires_at: string | null; created_at: string; issued_by_email: string | null }[]
+  recent_rides: { id: string; status: string; ride_type: string; requested_at: string; completed_at: string | null; fare: string | null; user_name: string }[]
 }
 
 export interface DriversResponse {

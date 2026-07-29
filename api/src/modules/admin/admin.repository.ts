@@ -139,7 +139,7 @@ export async function getDriverById(id: bigint): Promise<AdminDriverDetail | nul
   if (!driverRes.rows.length) return null
   const r = driverRes.rows[0]
 
-  const [docsRes, vehicleDocsRes, historyRes] = await Promise.all([
+  const [docsRes, vehicleDocsRes, historyRes, ratingsRes, warningsRes, recentRidesRes] = await Promise.all([
     pool.query(
       `SELECT id::text, doc_type, file_url, status, rejection_note FROM driver_documents WHERE driver_id = $1 ORDER BY doc_type`,
       [id]
@@ -157,6 +157,40 @@ export async function getDriverById(id: bigint): Promise<AdminDriverDetail | nul
        FROM driver_status_history
        WHERE driver_id = $1
        ORDER BY created_at DESC`,
+      [id]
+    ),
+    pool.query(
+      `SELECT rt.id::text, rt.score, rt.comment, rt.created_at, rt.ride_id::text,
+              COALESCE(array_agg(rtd.label) FILTER (WHERE rtd.label IS NOT NULL), '{}') AS tags
+       FROM ratings rt
+       LEFT JOIN rating_tags rtg ON rtg.rating_id = rt.id
+       LEFT JOIN rating_tag_definitions rtd ON rtd.id = rtg.tag_id
+       WHERE rt.to_driver_id = $1
+       GROUP BY rt.id
+       ORDER BY rt.created_at DESC
+       LIMIT 20`,
+      [id]
+    ),
+    pool.query(
+      `SELECT dw.id::text, dw.category, dw.severity, dw.description,
+              dw.acknowledged_at, dw.expires_at, dw.created_at,
+              a.email AS issued_by_email
+       FROM driver_warnings dw
+       LEFT JOIN admins a ON a.id = dw.issued_by
+       WHERE dw.driver_id = $1
+       ORDER BY dw.created_at DESC`,
+      [id]
+    ),
+    pool.query(
+      `SELECT r.id::text, r.status, r.ride_type, r.requested_at, r.completed_at,
+              COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
+              u.name AS user_name
+       FROM rides r
+       JOIN users u ON u.id = r.user_id
+       LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+       WHERE r.driver_id = $1
+       ORDER BY r.requested_at DESC
+       LIMIT 10`,
       [id]
     ),
   ])
@@ -201,6 +235,11 @@ export async function getDriverById(id: bigint): Promise<AdminDriverDetail | nul
     wallet: r.wallet_balance !== null
       ? { balance: r.wallet_balance as string, is_frozen: r.wallet_is_frozen as boolean }
       : null,
+    rating_avg: r.rating_avg as string,
+    total_ratings: r.total_ratings as number,
+    ratings: ratingsRes.rows as AdminDriverDetail['ratings'],
+    warnings: warningsRes.rows as AdminDriverDetail['warnings'],
+    recent_rides: recentRidesRes.rows as AdminDriverDetail['recent_rides'],
   }
 }
 

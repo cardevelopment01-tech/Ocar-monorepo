@@ -73,6 +73,35 @@ export interface AdminDriverDetail {
     created_at: string
   }[]
   wallet: { balance: string; is_frozen: boolean } | null
+  rating_avg: string
+  total_ratings: number
+  ratings: {
+    id: string
+    score: number
+    comment: string | null
+    created_at: string
+    ride_id: string
+    tags: string[]
+  }[]
+  warnings: {
+    id: string
+    category: string
+    severity: string
+    description: string
+    acknowledged_at: string | null
+    expires_at: string | null
+    created_at: string
+    issued_by_email: string | null
+  }[]
+  recent_rides: {
+    id: string
+    status: string
+    ride_type: string
+    requested_at: string
+    completed_at: string | null
+    fare: string | null
+    user_name: string
+  }[]
 }
 
 export interface UpdateDriverStatusPayload {
