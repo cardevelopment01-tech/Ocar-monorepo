@@ -126,14 +126,25 @@ export default function Login() {
         background: 'radial-gradient(ellipse at 50% -10%, rgba(15,23,42,0.05) 0%, #F5F8FF 55%)',
       }}
     >
+      <div className="fixed inset-0 pointer-events-none overflow-hidden flex items-start justify-center">
+        <div
+          style={{
+            width: 200, height: 200, marginTop: '18vh',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle at 50% 50%, rgba(10,159,176,0.40) 0%, rgba(220,62,147,0.28) 50%, transparent 75%)',
+            filter: 'blur(26px)',
+          }}
+        />
+      </div>
+
       {/* Brand */}
       <motion.div
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className="flex flex-col items-center mb-10"
+        className="relative flex flex-col items-center mb-10"
       >
-        <OcarLogoMark size="xl" className="mb-2" />
+        <OcarLogoMark size="xl" showWordmark className="mb-2 text-text-primary" />
         <p className="text-text-muted text-sm font-medium">Driver Partner</p>
       </motion.div>
 
@@ -166,7 +177,7 @@ export default function Login() {
                   Mobile Number
                 </label>
                 <div
-                  className="flex items-center gap-2 rounded-xl px-4 h-[56px] bg-surface-2 border border-border transition-all duration-200 focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(37,99,235,0.10)]"
+                  className="flex items-center gap-2 rounded-xl px-4 h-[56px] bg-surface-2 border border-border transition-all duration-200 focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(10,159,176,0.12)]"
                 >
                   <span className="text-text-secondary font-bold text-sm select-none">+91</span>
                   <div className="w-px h-5 bg-border" />

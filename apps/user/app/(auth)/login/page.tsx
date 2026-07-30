@@ -124,10 +124,11 @@ export default function LoginPage() {
       >
         <div
           style={{
-            width: 280, height: 280, marginTop: 40,
+            width: 300, height: 300, marginTop: 30,
             borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(10, 159, 176, 0.28) 0%, rgba(220, 62, 147, 0.18) 55%, transparent 75%)',
-            filter: 'blur(48px)',
+            background: 'radial-gradient(circle at 50% 45%, rgba(10,159,176,0.55) 0%, rgba(220,62,147,0.38) 50%, transparent 72%)',
+            filter: 'blur(44px)',
+            mixBlendMode: 'screen',
           }}
         />
       </div>
@@ -139,7 +140,7 @@ export default function LoginPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: EASE }}
       >
-        <OcarLogoMark size="xl" className="mb-4" />
+        <OcarLogoMark size="xl" showWordmark className="mb-4 text-white" />
         <p className="text-sm mt-1.5" style={{ color: 'rgba(255,255,255,0.45)' }}>
           Your ride, your city
         </p>

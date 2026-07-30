@@ -53,8 +53,9 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
               height: 320,
               borderRadius: '50%',
               background:
-                'radial-gradient(circle at 50% 50%, rgba(220, 62, 147, 0.35) 0%, rgba(10, 159, 176, 0.22) 40%, transparent 70%)',
-              filter: 'blur(12px)',
+                'radial-gradient(circle at 50% 50%, rgba(220,62,147,0.55) 0%, rgba(10,159,176,0.38) 45%, transparent 72%)',
+              filter: 'blur(40px)',
+              mixBlendMode: 'screen',
               pointerEvents: 'none',
             }}
           />
@@ -66,7 +67,7 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
             transition={reduce ? { duration: 0 } : { duration: 0.5, ease: EASE_OUT_EXPO }}
             style={{ position: 'relative' }}
           >
-            <OcarLogoMark size="xl" />
+            <OcarLogoMark size="xl" showWordmark className="text-white" />
           </motion.div>
         </motion.div>
       )}

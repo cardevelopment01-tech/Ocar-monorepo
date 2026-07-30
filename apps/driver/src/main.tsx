@@ -25,7 +25,7 @@ function Root() {
       <SplashScreen show={showSplash} onComplete={handleComplete} />
       <div className="min-h-[100dvh] bg-[#0a0a0a]">
         <motion.div
-          className="mx-auto max-w-[430px] min-h-[100dvh] bg-background relative overflow-x-hidden"
+          className="mx-auto max-w-[430px] min-h-[100dvh] bg-bg relative overflow-x-hidden"
           initial={false}
           animate={{ opacity: appVisible ? 1 : 0 }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
