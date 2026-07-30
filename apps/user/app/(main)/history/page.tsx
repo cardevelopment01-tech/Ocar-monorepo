@@ -426,7 +426,7 @@ function HistoryContent() {
             >
               <div
                 className="flex items-start gap-3 px-4 py-3 rounded-2xl"
-                style={{ background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.20)' }}
+                style={{ background: 'rgba(10, 159, 176,0.08)', border: '1px solid rgba(10, 159, 176,0.20)' }}
               >
                 <CheckCircle2 size={16} className="text-indigo-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">

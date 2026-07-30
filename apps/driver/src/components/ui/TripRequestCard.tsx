@@ -22,7 +22,7 @@ const C = {
   textMuted:    '#94A3B8',
   textFaint:    '#64748B',
   divider:      '#475569',
-  primary:      '#4F46E5',
+  primary:      '#0A9FB0',
   danger:       '#EF4444',
   warning:      '#F59E0B',
   warningText:  '#FDE68A',
@@ -236,7 +236,7 @@ export default function TripRequestCard({
             {!!stopCount && (
               <span
                 className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                style={{ background: 'rgba(124,58,237,0.18)', color: C.violet }}
+                style={{ background: 'rgba(220, 62, 147,0.18)', color: C.violet }}
               >
                 {stopCount} {stopCount === 1 ? 'stop' : 'stops'}
               </span>

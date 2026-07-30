@@ -30,8 +30,8 @@ export default function BottomNav() {
         background: 'rgba(255,255,255,0.97)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
-        borderTop: '1px solid rgba(79,70,229,0.08)',
-        boxShadow: '0 -4px 24px rgba(79,70,229,0.08)',
+        borderTop: '1px solid rgba(10, 159, 176,0.08)',
+        boxShadow: '0 -4px 24px rgba(10, 159, 176,0.08)',
         zIndex: 100,
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
@@ -53,8 +53,8 @@ export default function BottomNav() {
                   layoutId="nav-badge"
                   className="absolute inset-0 rounded-xl"
                   style={{
-                    background: 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)',
-                    boxShadow: '0 4px 12px rgba(79,70,229,0.35)',
+                    background: 'linear-gradient(135deg, #0A9FB0 0%, #22B8C9 100%)',
+                    boxShadow: '0 4px 12px rgba(10, 159, 176,0.35)',
                   }}
                   transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                 />
@@ -62,7 +62,7 @@ export default function BottomNav() {
               {active && prefersReducedMotion && (
                 <div
                   className="absolute inset-0 rounded-xl"
-                  style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)', boxShadow: '0 4px 12px rgba(79,70,229,0.35)' }}
+                  style={{ background: 'linear-gradient(135deg, #0A9FB0 0%, #22B8C9 100%)', boxShadow: '0 4px 12px rgba(10, 159, 176,0.35)' }}
                 />
               )}
               <Icon

@@ -187,9 +187,9 @@ function RoundTripContent() {
           onClick={() => router.back()}
           aria-label="Go back"
           className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 transition-opacity active:opacity-60"
-          style={{ background: '#EEF2FF' }}
+          style={{ background: '#E4F8FA' }}
         >
-          <ArrowLeft size={17} strokeWidth={2} style={{ color: '#4F46E5' }} />
+          <ArrowLeft size={17} strokeWidth={2} style={{ color: '#0A9FB0' }} />
         </button>
         <div className="flex-1 min-w-0">
           <p className="text-[15px] font-bold leading-tight" style={{ color: '#0F172A', letterSpacing: '-0.01em' }}>
@@ -201,9 +201,9 @@ function RoundTripContent() {
         </div>
         <div
           className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
-          style={{ background: '#EEF2FF' }}
+          style={{ background: '#E4F8FA' }}
         >
-          <RotateCcw size={16} strokeWidth={2} style={{ color: '#4F46E5' }} />
+          <RotateCcw size={16} strokeWidth={2} style={{ color: '#0A9FB0' }} />
         </div>
       </div>
 
@@ -216,19 +216,19 @@ function RoundTripContent() {
 
           {/* Route card */}
           <motion.div {...fadeUp(0)}>
-            <RouteTimeline nodes={timelineNodes} className="shadow-[0_2px_16px_rgba(79,70,229,0.07)]" />
+            <RouteTimeline nodes={timelineNodes} className="shadow-[0_2px_16px_rgba(10, 159, 176,0.07)]" />
 
             {/* Route meta */}
             {hasDestination && distanceKm !== null && durationMin !== null && (
               <motion.div {...fadeUp(0.05)} className="flex items-center gap-1.5 px-1 mt-2 flex-wrap">
                 <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>2 × {distanceKm} km = {distanceKm * 2} km total</span>
-                <span style={{ color: '#C7D2FE' }}>·</span>
+                <span style={{ color: '#B8E9EE' }}>·</span>
                 <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>{Math.round(durationMin)} min</span>
-                <span style={{ color: '#C7D2FE' }}>·</span>
-                <span className="text-[11px] font-bold" style={{ color: '#4F46E5' }}>both legs covered</span>
+                <span style={{ color: '#B8E9EE' }}>·</span>
+                <span className="text-[11px] font-bold" style={{ color: '#0A9FB0' }}>both legs covered</span>
                 {stops.length > 0 && (
                   <>
-                    <span style={{ color: '#C7D2FE' }}>·</span>
+                    <span style={{ color: '#B8E9EE' }}>·</span>
                     <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>
                       {stops.length} {stops.length === 1 ? 'stop' : 'stops'}
                     </span>
@@ -248,7 +248,7 @@ function RoundTripContent() {
             <motion.section {...fadeUp(0.06)}>
               <div
                 className="rounded-2xl bg-white overflow-hidden px-4 py-4"
-                style={{ border: '1px solid #E8EEFF', boxShadow: '0 2px 16px rgba(79,70,229,0.07)' }}
+                style={{ border: '1px solid #E8EEFF', boxShadow: '0 2px 16px rgba(10, 159, 176,0.07)' }}
               >
                 <p className="text-[12px] font-semibold mb-3" style={{ color: '#475569' }}>
                   How long do you need the driver?
@@ -263,9 +263,9 @@ function RoundTripContent() {
                         whileTap={{ scale: 0.93 }}
                         className="flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-all"
                         style={{
-                          background: active ? '#4F46E5' : '#EEF2FF',
-                          color:      active ? '#FFFFFF' : '#4F46E5',
-                          border:     active ? '1.5px solid #4F46E5' : '1.5px solid #C7D2FE',
+                          background: active ? '#0A9FB0' : '#E4F8FA',
+                          color:      active ? '#FFFFFF' : '#0A9FB0',
+                          border:     active ? '1.5px solid #0A9FB0' : '1.5px solid #B8E9EE',
                         }}
                       >
                         {h}h
@@ -297,7 +297,7 @@ function RoundTripContent() {
           <motion.section {...fadeUp(hasDestination ? 0.15 : 0.06)}>
             <div
               className="rounded-2xl px-4 py-4 space-y-2.5"
-              style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
+              style={{ background: '#E4F8FA', border: '1px solid #B8E9EE' }}
             >
               {[
                 'Same driver for both legs, no second booking needed',
@@ -308,9 +308,9 @@ function RoundTripContent() {
                 <div key={text} className="flex items-start gap-2.5">
                   <div
                     className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0"
-                    style={{ background: '#4F46E5' }}
+                    style={{ background: '#0A9FB0' }}
                   />
-                  <p className="text-[12px] font-medium leading-relaxed" style={{ color: '#4338CA' }}>{text}</p>
+                  <p className="text-[12px] font-medium leading-relaxed" style={{ color: '#087C89' }}>{text}</p>
                 </div>
               ))}
             </div>
@@ -336,7 +336,7 @@ function RoundTripContent() {
           </div>
           <button
             className="text-xs font-bold"
-            style={{ color: '#4F46E5' }}
+            style={{ color: '#0A9FB0' }}
             onClick={() => { setPaymentNote('Cash only for now'); setTimeout(() => setPaymentNote(null), 2000) }}
           >
             Change
@@ -349,8 +349,8 @@ function RoundTripContent() {
           disabled={!canProceed}
           className="w-full py-4 rounded-full text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
           style={{
-            background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-            boxShadow: canProceed ? '0 4px 20px rgba(79,70,229,0.40)' : 'none',
+            background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)',
+            boxShadow: canProceed ? '0 4px 20px rgba(10, 159, 176,0.40)' : 'none',
             minHeight: 52,
           }}
         >

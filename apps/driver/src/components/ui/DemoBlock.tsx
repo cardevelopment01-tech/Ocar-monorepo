@@ -12,7 +12,7 @@ export default function DemoBlock({ feature }: DemoBlockProps) {
     <div className="h-screen flex flex-col items-center justify-center px-8 bg-background">
       <div
         className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6 flex-shrink-0"
-        style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)' }}
       >
         <Lock size={26} color="white" strokeWidth={1.8} />
       </div>
@@ -21,7 +21,7 @@ export default function DemoBlock({ feature }: DemoBlockProps) {
 
       <p
         className="text-xs font-semibold uppercase tracking-widest mb-3 px-3 py-1 rounded-full"
-        style={{ background: '#EEF2FF', color: '#4F46E5' }}
+        style={{ background: '#E4F8FA', color: '#0A9FB0' }}
       >
         Coming Soon
       </p>

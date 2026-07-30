@@ -38,8 +38,8 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
         background: 'rgba(255,255,255,0.95)',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
-        borderTop: '1px solid rgba(79,70,229,0.08)',
-        boxShadow: '0 -1px 0 rgba(79,70,229,0.06)',
+        borderTop: '1px solid rgba(10, 159, 176,0.08)',
+        boxShadow: '0 -1px 0 rgba(10, 159, 176,0.06)',
       }}
     >
       <div className="mx-auto max-w-[430px]">

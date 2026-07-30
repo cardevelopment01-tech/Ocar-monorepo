@@ -40,7 +40,7 @@ export default function NotificationToast() {
             background: 'rgba(255,255,255,0.97)',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid rgba(79,70,229,0.10)',
+            border: '1px solid rgba(10, 159, 176,0.10)',
             boxShadow: '0 8px 32px rgba(15,23,42,0.16)',
           }}
           initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -16 }}
@@ -48,7 +48,7 @@ export default function NotificationToast() {
           exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -16 }}
           transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
         >
-          <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(79,70,229,0.10)' }}>
+          <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(10, 159, 176,0.10)' }}>
             <Bell size={15} strokeWidth={1.8} className="text-primary" />
           </span>
           <span className="flex-1 min-w-0">

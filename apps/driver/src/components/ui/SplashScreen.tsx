@@ -59,7 +59,7 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
               height: 320,
               borderRadius: '50%',
               background:
-                'radial-gradient(circle at 50% 50%, rgba(124,58,237,0.45) 0%, rgba(79,70,229,0.28) 35%, transparent 70%)',
+                'radial-gradient(circle at 50% 50%, rgba(220, 62, 147,0.45) 0%, rgba(10, 159, 176,0.28) 35%, transparent 70%)',
               filter: 'blur(12px)',
               pointerEvents: 'none',
             }}
@@ -96,8 +96,8 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
                   y2="100"
                   gradientUnits="userSpaceOnUse"
                 >
-                  <stop offset="0%" stopColor="#4F46E5" />
-                  <stop offset="100%" stopColor="#7C3AED" />
+                  <stop offset="0%" stopColor="#0A9FB0" />
+                  <stop offset="100%" stopColor="#DC3E93" />
                 </linearGradient>
                 <linearGradient
                   id={dotGradientId}
@@ -107,8 +107,8 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
                   y2="100"
                   gradientUnits="userSpaceOnUse"
                 >
-                  <stop offset="0%" stopColor="#4F46E5" />
-                  <stop offset="100%" stopColor="#7C3AED" />
+                  <stop offset="0%" stopColor="#0A9FB0" />
+                  <stop offset="100%" stopColor="#DC3E93" />
                 </linearGradient>
               </defs>
 

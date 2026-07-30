@@ -66,7 +66,7 @@ export default function OnboardingPage() {
           className="absolute rounded-full"
           style={{
             width: 180, height: 180, bottom: 160, left: -50,
-            background: 'radial-gradient(circle, rgba(124,58,237,0.28) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(220, 62, 147,0.28) 0%, transparent 70%)',
             filter: 'blur(44px)',
           }}
           animate={{ x: [0, -8, 12, 0], y: [0, 14, -6, 0] }}
@@ -100,8 +100,8 @@ export default function OnboardingPage() {
         <div
           className="w-16 h-16 rounded-[22px] flex items-center justify-center mb-4"
           style={{
-            background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-            boxShadow: '0 12px 40px rgba(79,70,229,0.45), inset 0 1px 0 rgba(255,255,255,0.20)',
+            background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)',
+            boxShadow: '0 12px 40px rgba(10, 159, 176,0.45), inset 0 1px 0 rgba(255,255,255,0.20)',
           }}
         >
           <Sparkles size={28} className="text-white" strokeWidth={1.6} />

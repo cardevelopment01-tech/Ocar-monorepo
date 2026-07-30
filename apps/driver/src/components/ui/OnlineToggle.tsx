@@ -37,7 +37,7 @@ export default function OnlineToggle({ isOnline, onToggle, disabled = false }: O
         } : {
           background: 'linear-gradient(145deg, #FFFFFF 0%, #F5F7FF 100%)',
           border: '1px solid #E8EEFF',
-          boxShadow: '0 4px 16px rgba(79,70,229,0.10), inset 0 1px 0 rgba(255,255,255,0.90)',
+          boxShadow: '0 4px 16px rgba(10, 159, 176,0.10), inset 0 1px 0 rgba(255,255,255,0.90)',
         }}
       >
         <Power

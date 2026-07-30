@@ -81,7 +81,7 @@ export default function Home() {
   const handleBg     = useTransform(
     handlePressed,
     [0, 1],
-    ['rgba(79,70,229,0.15)', 'rgba(79,70,229,0.48)'],
+    ['rgba(10, 159, 176,0.15)', 'rgba(10, 159, 176,0.48)'],
   )
   // Content below the greeting+toggle row fades out over the first 56px of
   // drag-down, well before the sheet's physical height reaches collapsedH —
@@ -335,7 +335,7 @@ export default function Home() {
           <button
             onClick={() => navigate(resumeRoute, { replace: true })}
             className="w-full flex items-center gap-3 rounded-2xl px-4 py-3 bg-primary active:scale-[0.98] transition-transform"
-            style={{ boxShadow: '0 4px 16px rgba(79,70,229,0.28)' }}
+            style={{ boxShadow: '0 4px 16px rgba(10, 159, 176,0.28)' }}
           >
             <span className="w-2 h-2 rounded-full bg-white flex-shrink-0 animate-pulse-soft" />
             <span className="flex-1 min-w-0 text-left text-white text-[13px] font-bold">
@@ -395,8 +395,8 @@ export default function Home() {
           height:     sheetH,
           zIndex:     10,
           background: '#FFFFFF',
-          borderTop:  '1px solid rgba(79,70,229,0.08)',
-          boxShadow:  '0 -8px 40px rgba(79,70,229,0.12)',
+          borderTop:  '1px solid rgba(10, 159, 176,0.08)',
+          boxShadow:  '0 -8px 40px rgba(10, 159, 176,0.12)',
         }}
         initial={prefersReducedMotion ? false : { y: 24, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -529,7 +529,7 @@ export default function Home() {
         >
           <div
             className="w-full rounded-3xl p-6"
-            style={{ background: '#FFFFFF', boxShadow: '0 -4px 32px rgba(79,70,229,0.14)' }}
+            style={{ background: '#FFFFFF', boxShadow: '0 -4px 32px rgba(10, 159, 176,0.14)' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="w-8 h-1 bg-border rounded-full mx-auto mb-5" />

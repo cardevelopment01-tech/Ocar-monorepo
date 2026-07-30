@@ -140,7 +140,7 @@ export default function LoginPage() {
           className="absolute rounded-full"
           style={{
             width: 200, height: 200, bottom: 120, left: -60,
-            background: 'radial-gradient(circle, rgba(124,58,237,0.30) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(220, 62, 147,0.30) 0%, transparent 70%)',
             filter: 'blur(44px)',
           }}
           animate={{ x: [0, -10, 14, 0], y: [0, 16, -8, 0] }}
@@ -176,8 +176,8 @@ export default function LoginPage() {
         <div
           className="w-16 h-16 rounded-[22px] flex items-center justify-center mb-4"
           style={{
-            background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-            boxShadow: '0 12px 40px rgba(79,70,229,0.45), inset 0 1px 0 rgba(255,255,255,0.20)',
+            background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)',
+            boxShadow: '0 12px 40px rgba(10, 159, 176,0.45), inset 0 1px 0 rgba(255,255,255,0.20)',
           }}
         >
           <span className="text-white font-black text-3xl">O</span>
@@ -215,7 +215,7 @@ export default function LoginPage() {
                   style={{
                     background: '#FAFBFF',
                     border: '1.5px solid #E8EEFF',
-                    boxShadow: '0 2px 8px rgba(79,70,229,0.06)',
+                    boxShadow: '0 2px 8px rgba(10, 159, 176,0.06)',
                   }}
                 >
                   <Phone size={15} className="text-primary flex-shrink-0" />

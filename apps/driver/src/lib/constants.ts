@@ -11,8 +11,8 @@ export const GLASS = {
   background:           'rgba(255,255,255,0.92)',
   backdropFilter:       'blur(16px)',
   WebkitBackdropFilter: 'blur(16px)',
-  border:               '1px solid rgba(79,70,229,0.10)',
-  boxShadow:            '0 2px 16px rgba(79,70,229,0.10)',
+  border:               '1px solid rgba(10, 159, 176,0.10)',
+  boxShadow:            '0 2px 16px rgba(10, 159, 176,0.10)',
 }
 
 export function fmtReturn(iso: string): string {

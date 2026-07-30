@@ -160,7 +160,7 @@ function NotificationBell({ surface }: { surface: Surface }) {
   const prefersReducedMotion = useReducedMotion()
   const chip = surface === 'floating'
     ? GLASS
-    : { background: 'rgba(79,70,229,0.05)', border: '1px solid rgba(79,70,229,0.08)' }
+    : { background: 'rgba(10, 159, 176,0.05)', border: '1px solid rgba(10, 159, 176,0.08)' }
 
   return (
     <button
@@ -203,8 +203,8 @@ export default function StatusBar({ isOnline, earningsToday, tripsToday = 0, sur
         background: 'rgba(255,255,255,0.97)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
-        borderBottom: '1px solid rgba(79,70,229,0.08)',
-        boxShadow: '0 1px 12px rgba(79,70,229,0.07)',
+        borderBottom: '1px solid rgba(10, 159, 176,0.08)',
+        boxShadow: '0 1px 12px rgba(10, 159, 176,0.07)',
       }
 
   return (

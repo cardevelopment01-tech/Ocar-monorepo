@@ -91,7 +91,7 @@ export default function InlineSelect({
         className="w-full flex items-center justify-between gap-2 px-4 py-3.5 rounded-xl border text-left transition-all duration-150"
         style={{
           minHeight: 52,
-          background: open ? '#EEF2FF' : '#FFFFFF',
+          background: open ? '#E4F8FA' : '#FFFFFF',
           borderColor: open ? '#3B82F6' : '#E2E8F0',
           boxShadow: open ? '0 0 0 3px rgba(59,130,246,0.12)' : '0 1px 2px rgba(0,0,0,0.04)',
           opacity: isDisabled ? 0.5 : 1,

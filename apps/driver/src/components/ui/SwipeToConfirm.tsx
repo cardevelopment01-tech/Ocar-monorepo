@@ -17,7 +17,7 @@ interface Props {
   color?: string
 }
 
-export default function SwipeToConfirm({ label, onConfirm, disabled = false, color = '#4F46E5' }: Props) {
+export default function SwipeToConfirm({ label, onConfirm, disabled = false, color = '#0A9FB0' }: Props) {
   const trackRef = useRef<HTMLDivElement>(null)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [maxX, setMaxX] = useState(0)
@@ -61,7 +61,7 @@ export default function SwipeToConfirm({ label, onConfirm, disabled = false, col
       <div
         ref={trackRef}
         className="relative w-full rounded-full overflow-hidden select-none"
-        style={{ height: HANDLE, background: '#EEF2FF', opacity: disabled ? 0.5 : 1, padding: PAD }}
+        style={{ height: HANDLE, background: '#E4F8FA', opacity: disabled ? 0.5 : 1, padding: PAD }}
       >
         <motion.div
           className="absolute inset-y-0 left-0 rounded-full"

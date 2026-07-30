@@ -34,8 +34,8 @@
     border-radius: 20px;
     padding: 20px;
     background: #FFFFFF;
-    border: 1px solid rgba(79,70,229,0.08);
-    box-shadow: 0 2px 16px rgba(79,70,229,0.07);
+    border: 1px solid rgba(10, 159, 176,0.08);
+    box-shadow: 0 2px 16px rgba(10, 159, 176,0.07);
   }
 
   /* ── Primary CTA ── */
@@ -43,11 +43,11 @@
     @apply w-full py-4 px-6 text-white font-bold text-base rounded-2xl cursor-pointer
       active:scale-[0.98] transition-[transform,box-shadow] duration-150
       disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
-    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
-    box-shadow: 0 4px 20px rgba(79,70,229,0.40);
+    background: linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%);
+    box-shadow: 0 4px 20px rgba(10, 159, 176,0.40);
   }
   .btn-primary:not(:disabled):hover {
-    box-shadow: 0 6px 28px rgba(79,70,229,0.50);
+    box-shadow: 0 6px 28px rgba(10, 159, 176,0.50);
   }
 
   /* Alias — preserves existing usage */
@@ -91,8 +91,8 @@
       focus:outline-none transition-all duration-200 bg-white border border-border;
   }
   .input-light:focus {
-    border-color: #4F46E5;
-    box-shadow: 0 0 0 3px rgba(79,70,229,0.10);
+    border-color: #0A9FB0;
+    box-shadow: 0 0 0 3px rgba(10, 159, 176,0.10);
   }
   .input-dark { @apply input-light; }
 

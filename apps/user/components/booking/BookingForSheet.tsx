@@ -56,7 +56,7 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
             className="absolute bottom-0 left-0 right-0 z-50 bg-white overflow-hidden"
             style={{
               borderRadius: '32px 32px 0 0',
-              boxShadow: '0 -6px 32px rgba(79,70,229,0.10)',
+              boxShadow: '0 -6px 32px rgba(10, 159, 176,0.10)',
               paddingBottom: 'max(32px, env(safe-area-inset-bottom, 0px))',
             }}
             initial={reduce ? { opacity: 0 } : { y: '100%' }}
@@ -65,7 +65,7 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
             transition={reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 380, damping: 40 }}
           >
             {/* Handle */}
-            <div className="w-9 h-1 rounded-full mx-auto mt-3 mb-5" style={{ background: 'rgba(79,70,229,0.15)' }} />
+            <div className="w-9 h-1 rounded-full mx-auto mt-3 mb-5" style={{ background: 'rgba(10, 159, 176,0.15)' }} />
 
             <div className="overflow-hidden">
               <AnimatePresence mode="wait" initial={false}>
@@ -92,24 +92,24 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
                       onClick={() => onClearToMyself()}
                       whileTap={{ scale: 0.985 }}
                       className="w-full flex items-center gap-3.5 px-6 py-3.5 text-left cursor-pointer active:bg-black/[0.02] transition-colors duration-150"
-                      style={{ background: bookingForOther ? 'transparent' : '#EEF2FF' }}
+                      style={{ background: bookingForOther ? 'transparent' : '#E4F8FA' }}
                     >
                       <span
                         className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                        style={{ background: '#4F46E5' }}
+                        style={{ background: '#0A9FB0' }}
                       >
                         <User size={16} color="white" strokeWidth={1.8} />
                       </span>
                       <span className="flex-1 min-w-0">
                         <span className="block text-[15px] font-semibold" style={{ color: '#0F172A' }}>Myself</span>
-                        <span className="block text-[12px] font-medium mt-0.5" style={{ color: '#6366F1' }}>My own trip</span>
+                        <span className="block text-[12px] font-medium mt-0.5" style={{ color: '#22B8C9' }}>My own trip</span>
                       </span>
                       {!bookingForOther && (
                         <span
                           className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0"
-                          style={{ borderColor: '#4F46E5' }}
+                          style={{ borderColor: '#0A9FB0' }}
                         >
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: '#4F46E5' }} />
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: '#0A9FB0' }} />
                         </span>
                       )}
                     </motion.button>
@@ -121,23 +121,23 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
                         onClick={() => { setNameDraft(riderName); setPhoneDraft(riderPhone.replace('+91', '')); goToForm() }}
                         whileTap={{ scale: 0.985 }}
                         className="w-full flex items-center gap-3.5 px-6 py-3.5 text-left cursor-pointer active:bg-black/[0.02] transition-colors duration-150"
-                        style={{ background: '#EEF2FF' }}
+                        style={{ background: '#E4F8FA' }}
                       >
                         <span
                           className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                          style={{ background: '#4F46E5' }}
+                          style={{ background: '#0A9FB0' }}
                         >
                           <User size={16} color="white" strokeWidth={1.8} />
                         </span>
                         <span className="flex-1 min-w-0">
                           <span className="block text-[15px] font-semibold truncate" style={{ color: '#0F172A' }}>{riderName}</span>
-                          <span className="block text-[12px] font-medium mt-0.5" style={{ color: '#6366F1' }}>{riderPhone}</span>
+                          <span className="block text-[12px] font-medium mt-0.5" style={{ color: '#22B8C9' }}>{riderPhone}</span>
                         </span>
                         <span
                           className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0"
-                          style={{ borderColor: '#4F46E5' }}
+                          style={{ borderColor: '#0A9FB0' }}
                         >
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: '#4F46E5' }} />
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: '#0A9FB0' }} />
                         </span>
                       </motion.button>
                     )}
@@ -154,7 +154,7 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
                         <UserPlus size={18} className="text-primary" strokeWidth={1.8} />
                       </span>
                       <span className="flex-1 text-left">
-                        <span className="block text-[15px] font-semibold" style={{ color: '#4F46E5' }}>Add new rider</span>
+                        <span className="block text-[15px] font-semibold" style={{ color: '#0A9FB0' }}>Add new rider</span>
                       </span>
                     </motion.button>
 
@@ -169,8 +169,8 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
                         onClick={onClose}
                         className="w-full py-4 rounded-full text-[15px] font-bold text-white active:scale-[0.98] transition-transform cursor-pointer"
                         style={{
-                          background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-                          boxShadow: '0 4px 20px rgba(79,70,229,0.40)',
+                          background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)',
+                          boxShadow: '0 4px 20px rgba(10, 159, 176,0.40)',
                           minHeight: 52,
                         }}
                       >
@@ -208,7 +208,7 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
                         placeholder="Rider's full name"
                         aria-label="Rider's full name"
                         maxLength={50}
-                        className="w-full px-4 rounded-2xl text-[15px] font-medium outline-none placeholder:text-[#475569] focus:ring-2 focus:ring-[#4F46E5]/40 transition-shadow duration-150"
+                        className="w-full px-4 rounded-2xl text-[15px] font-medium outline-none placeholder:text-[#475569] focus:ring-2 focus:ring-[#0A9FB0]/40 transition-shadow duration-150"
                         style={{ background: '#F5F7FF', color: '#0F172A', height: 52 }}
                       />
                       <input
@@ -218,7 +218,7 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
                         aria-label="Rider's 10-digit mobile number"
                         inputMode="numeric"
                         maxLength={10}
-                        className="w-full px-4 rounded-2xl text-[15px] font-medium outline-none placeholder:text-[#475569] focus:ring-2 focus:ring-[#4F46E5]/40 transition-shadow duration-150"
+                        className="w-full px-4 rounded-2xl text-[15px] font-medium outline-none placeholder:text-[#475569] focus:ring-2 focus:ring-[#0A9FB0]/40 transition-shadow duration-150"
                         style={{ background: '#F5F7FF', color: '#0F172A', height: 52 }}
                       />
                     </div>
@@ -235,8 +235,8 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
                         onClick={() => onCommit(nameDraft.trim(), `+91${phoneDraft}`)}
                         className="w-full py-4 rounded-full text-[15px] font-bold text-white active:scale-[0.98] transition-transform disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                         style={{
-                          background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-                          boxShadow: '0 4px 20px rgba(79,70,229,0.40)',
+                          background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)',
+                          boxShadow: '0 4px 20px rgba(10, 159, 176,0.40)',
                           minHeight: 52,
                         }}
                       >

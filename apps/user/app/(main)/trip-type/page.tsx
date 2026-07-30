@@ -15,7 +15,7 @@ const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
 const HERO_BG  = 'linear-gradient(160deg, #0F0F23 0%, #1E1B4B 100%)'
 const ICON_BG  = '#F1F0FE'
-const ICON_CLR = '#4F46E5'
+const ICON_CLR = '#0A9FB0'
 
 // Representative category for the headline estimate, actual vehicle is chosen on the next screen
 const ESTIMATE_CATEGORY_ID = 2
@@ -144,7 +144,7 @@ function TripTypeContent() {
             className="absolute rounded-full"
             style={{
               width: 180, height: 180, bottom: -60, left: -30,
-              background: 'radial-gradient(circle, rgba(124,58,237,0.40) 0%, transparent 68%)',
+              background: 'radial-gradient(circle, rgba(220, 62, 147,0.40) 0%, transparent 68%)',
               filter: 'blur(42px)',
             }}
             animate={{ x: [0, -12, 16, 0], y: [0, 10, -10, 0] }}

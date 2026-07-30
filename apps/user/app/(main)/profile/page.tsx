@@ -48,7 +48,7 @@ function normalizePhone(raw: string | null | undefined): string {
 }
 
 const ICON_BG  = '#F1F0FE'
-const ICON_CLR = '#4F46E5'
+const ICON_CLR = '#0A9FB0'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -120,7 +120,7 @@ export default function ProfilePage() {
           <div className="flex items-center gap-4">
             <div
               className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold text-white flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}
+              style={{ background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)' }}
             >
               {initial}
             </div>

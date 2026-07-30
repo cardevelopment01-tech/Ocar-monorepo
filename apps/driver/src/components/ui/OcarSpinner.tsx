@@ -19,9 +19,9 @@ export default function OcarSpinner({ size = 24, variant = 'color', className }:
   const reduce = useReducedMotion()
 
   const baseColor =
-    variant === 'white' ? '#FFFFFF' : variant === 'mono' ? '#334155' : '#4F46E5'
+    variant === 'white' ? '#FFFFFF' : variant === 'mono' ? '#334155' : '#0A9FB0'
   const headColor =
-    variant === 'white' ? '#FFFFFF' : variant === 'mono' ? '#334155' : '#7C3AED'
+    variant === 'white' ? '#FFFFFF' : variant === 'mono' ? '#334155' : '#DC3E93'
 
   return (
     <motion.svg

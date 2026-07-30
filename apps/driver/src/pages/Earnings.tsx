@@ -118,7 +118,7 @@ export default function Earnings() {
                 : <motion.div
                     layoutId="period-pill"
                     className="absolute inset-0 rounded-xl bg-white"
-                    style={{ boxShadow: '0 2px 16px rgba(79,70,229,0.07)' }}
+                    style={{ boxShadow: '0 2px 16px rgba(10, 159, 176,0.07)' }}
                     transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                   />
             )}

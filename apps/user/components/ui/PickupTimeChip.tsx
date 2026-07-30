@@ -9,8 +9,8 @@ import { MIN_ADVANCE_MINUTES, MAX_ADVANCE_DAYS } from '@/lib/advance-booking-lim
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
 // DESIGN.md: colors.primary-subtle / colors.primary
-const ICON_BG = '#EEF2FF'
-const ICON_CLR = '#4F46E5'
+const ICON_BG = '#E4F8FA'
+const ICON_CLR = '#0A9FB0'
 
 interface Props {
   value: Date | null

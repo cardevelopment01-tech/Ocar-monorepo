@@ -162,7 +162,7 @@ function ConfirmPickupContent() {
           >
             <div
               className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
-              style={{ background: '#4F46E5' }}
+              style={{ background: '#0A9FB0' }}
             >
               {geocoding
                 ? <OcarSpinner size={18} variant="white" />

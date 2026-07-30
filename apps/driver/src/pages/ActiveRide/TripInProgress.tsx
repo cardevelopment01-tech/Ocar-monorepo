@@ -106,7 +106,7 @@ export default function TripInProgress() {
 
   const snaps = useMemo(() => ({ collapsed: collapsedH, peek: maxContentH }), [collapsedH, maxContentH])
   const handleScaleX = useTransform(handlePressed, [0, 1], [1, 1.65])
-  const handleBg     = useTransform(handlePressed, [0, 1], ['rgba(79,70,229,0.15)', 'rgba(79,70,229,0.48)'])
+  const handleBg     = useTransform(handlePressed, [0, 1], ['rgba(10, 159, 176,0.15)', 'rgba(10, 159, 176,0.48)'])
   const belowFoldOpacity = useTransform(sheetH, [collapsedH, collapsedH + 56], [0, 1])
 
   useMotionValueEvent(sheetH, 'change', (h) => {
@@ -600,7 +600,7 @@ export default function TripInProgress() {
             animate={!currentStop && nearTarget ? { scale: [1, 1.03, 1] } : { scale: 1 }}
             transition={{ duration: 0.7, repeat: !currentStop && nearTarget ? Infinity : 0, ease: 'easeInOut' }}
             className="btn-go w-full active:scale-95 transition-transform"
-            style={{ minHeight: 52, boxShadow: !currentStop && nearTarget ? '0 0 0 3px rgba(79,70,229,0.35)' : undefined }}
+            style={{ minHeight: 52, boxShadow: !currentStop && nearTarget ? '0 0 0 3px rgba(10, 159, 176,0.35)' : undefined }}
           >
             Complete Trip
           </motion.button>
@@ -667,7 +667,7 @@ export default function TripInProgress() {
               <div className="rounded-2xl mt-3 mb-3 overflow-hidden border border-border">
                 {currentStop && (
                   <div className="flex items-center gap-2 px-3.5 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
-                    <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#4F46E5', color: '#fff' }}>
+                    <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#0A9FB0', color: '#fff' }}>
                       Stop {currentStop.sequence} of {stops.length}
                     </span>
                     <span className="text-[12px] font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
@@ -684,7 +684,7 @@ export default function TripInProgress() {
                       className="flex items-center gap-3 px-3.5 py-2.5"
                       style={{
                         borderTop: i > 0 ? '1px solid var(--border)' : undefined,
-                        background: isCurrent ? 'rgba(79,70,229,0.09)' : undefined,
+                        background: isCurrent ? 'rgba(10, 159, 176,0.09)' : undefined,
                       }}
                     >
                       {stop.status === 'reached' ? (
@@ -692,7 +692,7 @@ export default function TripInProgress() {
                       ) : stop.status === 'skipped' ? (
                         <X size={16} className="text-text-muted flex-shrink-0" />
                       ) : (
-                        <Flag size={16} style={{ color: isCurrent ? '#4F46E5' : 'var(--text-muted)' }} className="flex-shrink-0" />
+                        <Flag size={16} style={{ color: isCurrent ? '#0A9FB0' : 'var(--text-muted)' }} className="flex-shrink-0" />
                       )}
                       <span
                         className="flex-1 min-w-0 text-sm font-semibold truncate"
@@ -732,7 +732,7 @@ export default function TripInProgress() {
                               onClick={() => handleStopAction(stop.sequence, 'reached')}
                               disabled={isPending}
                               className="text-[11px] font-bold text-white rounded-full px-3 py-1.5 active:scale-95 transition-transform disabled:opacity-60"
-                              style={{ background: '#4F46E5' }}
+                              style={{ background: '#0A9FB0' }}
                             >
                               {isPending ? '…' : 'Reached'}
                             </button>

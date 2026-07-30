@@ -6,8 +6,8 @@ import { ChevronLeft, Check, X, Zap, Clock, Moon, Sunrise } from 'lucide-react'
 import { getQuickPicks, ceil15, type QuickPick } from '@/lib/schedule-quick-picks'
 import { formatPickupTime } from '@/lib/format-pickup-time'
 
-const ICON_BG = '#EEF2FF'
-const ICON_CLR = '#4F46E5'
+const ICON_BG = '#E4F8FA'
+const ICON_CLR = '#0A9FB0'
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
 const QUICK_PICK_ICON: Record<string, typeof Zap> = {
@@ -172,7 +172,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
             layout
             className="w-full rounded-t-[28px] bg-white overflow-hidden"
             style={{
-              boxShadow: '0 -8px 40px rgba(79,70,229,0.18)',
+              boxShadow: '0 -8px 40px rgba(10, 159, 176,0.18)',
               paddingBottom: 'max(env(safe-area-inset-bottom), 24px)',
             }}
             initial={{ y: '100%' }}
@@ -183,7 +183,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
           >
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1">
-              <div className="w-9 h-[3px] rounded-full" style={{ background: 'rgba(79,70,229,0.15)' }} />
+              <div className="w-9 h-[3px] rounded-full" style={{ background: 'rgba(10, 159, 176,0.15)' }} />
             </div>
 
             <AnimatePresence mode="popLayout" custom={direction}>
@@ -209,9 +209,9 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                       onClick={onClose}
                       aria-label="Close"
                       className="w-8 h-8 rounded-xl flex items-center justify-center transition-opacity active:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-                      style={{ background: '#EEF2FF' }}
+                      style={{ background: '#E4F8FA' }}
                     >
-                      <X size={14} style={{ color: '#4F46E5' }} />
+                      <X size={14} style={{ color: '#0A9FB0' }} />
                     </button>
                   </div>
 
@@ -283,9 +283,9 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                       onClick={goToStage1}
                       aria-label="Back to quick options"
                       className="w-11 h-11 -ml-2 rounded-xl flex items-center justify-center transition-opacity active:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-                      style={{ background: '#EEF2FF' }}
+                      style={{ background: '#E4F8FA' }}
                     >
-                      <ChevronLeft size={16} style={{ color: '#4F46E5' }} />
+                      <ChevronLeft size={16} style={{ color: '#0A9FB0' }} />
                     </button>
                     <p className="text-[15px] font-bold" style={{ color: '#0F172A' }}>Pickup time</p>
                   </div>
@@ -309,7 +309,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                             <motion.span
                               layoutId="day-pill"
                               className="absolute inset-0 rounded-xl"
-                              style={{ background: '#4F46E5' }}
+                              style={{ background: '#0A9FB0' }}
                               transition={reduce ? { duration: 0 } : SPRING}
                             />
                           )}
@@ -382,8 +382,8 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                       disabled={!selectedSlot}
                       className="w-full py-4 rounded-full text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                       style={{
-                        background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-                        boxShadow: '0 4px 20px rgba(79,70,229,0.40)',
+                        background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)',
+                        boxShadow: '0 4px 20px rgba(10, 159, 176,0.40)',
                         minHeight: 52,
                       }}
                     >

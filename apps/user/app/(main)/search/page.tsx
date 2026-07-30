@@ -42,7 +42,7 @@ const POPULAR = [
 ]
 
 const ICON_BG  = '#F1F0FE'
-const ICON_CLR = '#4F46E5'
+const ICON_CLR = '#0A9FB0'
 
 type EditMode = 'destination' | 'origin'
 
@@ -565,7 +565,7 @@ function SearchContent() {
                   className="absolute inset-y-0 rounded-full"
                   style={{
                     width: '40%',
-                    background: 'linear-gradient(90deg, transparent, #7C3AED 40%, #7C3AED 60%, transparent)',
+                    background: 'linear-gradient(90deg, transparent, #DC3E93 40%, #DC3E93 60%, transparent)',
                   }}
                   initial={{ left: '-40%' }}
                   animate={{ left: '100%' }}
@@ -677,8 +677,8 @@ function SearchContent() {
                 bottom: 'max(84px, calc(env(safe-area-inset-bottom, 0px) + 76px))',
                 x: '-50%',
                 maxWidth: 'calc(100vw - 32px)',
-                background: 'linear-gradient(135deg, #4F46E5 0%, #1E1B4B 100%)',
-                boxShadow: '0 8px 32px rgba(79,70,229,0.35), 0 2px 8px rgba(0,0,0,0.2)',
+                background: 'linear-gradient(135deg, #0A9FB0 0%, #1E1B4B 100%)',
+                boxShadow: '0 8px 32px rgba(10, 159, 176,0.35), 0 2px 8px rgba(0,0,0,0.2)',
               }}
             >
               <div className="flex items-center gap-2.5">

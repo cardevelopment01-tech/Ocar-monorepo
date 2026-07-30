@@ -27,7 +27,7 @@ function OriginGlyph() {
   return <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: '#10B981' }} />
 }
 function DestinationGlyph({ set }: { set: boolean }) {
-  return <span className="w-3 h-3 flex-shrink-0" style={{ background: set ? '#4F46E5' : '#CBD5E1', borderRadius: 3 }} />
+  return <span className="w-3 h-3 flex-shrink-0" style={{ background: set ? '#0A9FB0' : '#CBD5E1', borderRadius: 3 }} />
 }
 function StopGlyph({ n, state, current = false }: { n: number; state: StopState; current?: boolean }) {
   if (state === 'reached') {
@@ -48,9 +48,9 @@ function StopGlyph({ n, state, current = false }: { n: number; state: StopState;
     <span
       className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
       style={{
-        background: '#EDE9FE',
-        color: '#7C3AED',
-        ...(current ? { boxShadow: '0 0 0 3px rgba(124,58,237,0.25)' } : {}),
+        background: '#FBE0EE',
+        color: '#DC3E93',
+        ...(current ? { boxShadow: '0 0 0 3px rgba(220, 62, 147,0.25)' } : {}),
       }}
     >
       {n}
@@ -61,7 +61,7 @@ function StopGlyph({ n, state, current = false }: { n: number; state: StopState;
 // A row's left rail: the threaded line (halves hidden at the ends) + the glyph.
 // Segment colors carry live progress — green where the leg is already traversed.
 function Rail({
-  isFirst, isLast, aboveColor = '#C7D2FE', belowColor = '#C7D2FE', children,
+  isFirst, isLast, aboveColor = '#B8E9EE', belowColor = '#B8E9EE', children,
 }: {
   isFirst: boolean; isLast: boolean; aboveColor?: string; belowColor?: string; children: React.ReactNode
 }) {
@@ -123,20 +123,20 @@ export default function RouteTimeline({
                 <Rail isFirst={isFirst} isLast={isLast}>
                   <span
                     className="w-[22px] h-[22px] rounded-full flex items-center justify-center"
-                    style={{ border: '1.5px dashed #C7D2FE' }}
+                    style={{ border: '1.5px dashed #B8E9EE' }}
                   >
-                    <Plus size={12} strokeWidth={2.4} style={{ color: '#4F46E5' }} />
+                    <Plus size={12} strokeWidth={2.4} style={{ color: '#0A9FB0' }} />
                   </span>
                 </Rail>
-                <span className="text-[13px] font-semibold" style={{ color: '#4F46E5' }}>{node.label ?? 'Add a stop'}</span>
+                <span className="text-[13px] font-semibold" style={{ color: '#0A9FB0' }}>{node.label ?? 'Add a stop'}</span>
                 {node.hint && <span className="ml-auto text-[11px] font-medium" style={{ color: '#94A3B8' }}>{node.hint}</span>}
               </motion.button>
             )
           }
 
           const prevNode = numbered[i - 1]?.node
-          const aboveColor = (live && prevNode?.kind === 'stop' && prevNode.state === 'reached') ? '#10B981' : '#C7D2FE'
-          const belowColor = (live && node.kind === 'stop' && node.state === 'reached') ? '#10B981' : '#C7D2FE'
+          const aboveColor = (live && prevNode?.kind === 'stop' && prevNode.state === 'reached') ? '#10B981' : '#B8E9EE'
+          const belowColor = (live && node.kind === 'stop' && node.state === 'reached') ? '#10B981' : '#B8E9EE'
           const isCurrent = live && i === currentIdx
           const stopIdx = node.kind === 'stop' ? n - 1 : -1
           const isSelected = node.kind === 'stop' && activeIndex === stopIdx
@@ -154,7 +154,7 @@ export default function RouteTimeline({
 
           const skipped = node.kind === 'stop' && node.state === 'skipped'
           const body = (
-            <span className="flex items-center gap-3 px-4 py-3.5" style={{ background: isSelected ? '#E9E4FB' : isCurrent ? '#EEF2FF' : undefined, cursor: clickable ? 'pointer' : undefined }}>
+            <span className="flex items-center gap-3 px-4 py-3.5" style={{ background: isSelected ? '#E9E4FB' : isCurrent ? '#E4F8FA' : undefined, cursor: clickable ? 'pointer' : undefined }}>
               <Rail isFirst={isFirst} isLast={isLast} aboveColor={aboveColor} belowColor={belowColor}>
                 {/* Keyed by state so the glyph pops when a stop flips pending→reached (check-morph). */}
                 <motion.span
@@ -211,9 +211,9 @@ export default function RouteTimeline({
                 </span>
               )}
               {node.kind === 'destination' && node.onTap && (
-                <ArrowRight size={14} style={{ color: node.address ? '#C7D2FE' : '#4F46E5' }} className="flex-shrink-0" />
+                <ArrowRight size={14} style={{ color: node.address ? '#B8E9EE' : '#0A9FB0' }} className="flex-shrink-0" />
               )}
-              {node.kind === 'origin' && <MapPin size={13} style={{ color: '#C7D2FE' }} className="flex-shrink-0" />}
+              {node.kind === 'origin' && <MapPin size={13} style={{ color: '#B8E9EE' }} className="flex-shrink-0" />}
             </span>
           )
 

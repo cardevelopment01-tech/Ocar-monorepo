@@ -89,7 +89,7 @@ export default function NavigateToPickup() {
 
   const snaps = useMemo(() => ({ collapsed: collapsedH, peek: maxContentH }), [collapsedH, maxContentH])
   const handleScaleX = useTransform(handlePressed, [0, 1], [1, 1.65])
-  const handleBg     = useTransform(handlePressed, [0, 1], ['rgba(79,70,229,0.15)', 'rgba(79,70,229,0.48)'])
+  const handleBg     = useTransform(handlePressed, [0, 1], ['rgba(10, 159, 176,0.15)', 'rgba(10, 159, 176,0.48)'])
   // Rider details/banners/cancel-link (below the collapse anchor) fade out over
   // the first 56px of drag-down, well before the sheet reaches collapsedH.
   const belowFoldOpacity = useTransform(sheetH, [collapsedH, collapsedH + 56], [0, 1])
@@ -474,7 +474,7 @@ export default function NavigateToPickup() {
             animate={nearPickup && !arriving && !arrived ? { scale: [1, 1.03, 1] } : { scale: 1 }}
             transition={{ duration: 0.7, repeat: nearPickup && !arriving && !arrived ? Infinity : 0, ease: 'easeInOut' }}
             className="btn-go w-full flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:active:scale-100"
-            style={{ minHeight: 56, boxShadow: nearPickup ? '0 0 0 3px rgba(79,70,229,0.35)' : undefined }}
+            style={{ minHeight: 56, boxShadow: nearPickup ? '0 0 0 3px rgba(10, 159, 176,0.35)' : undefined }}
           >
             <AnimatePresence mode="wait" initial={false}>
               {arrived ? (

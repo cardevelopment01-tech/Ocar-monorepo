@@ -443,11 +443,11 @@ function SelectRideContent() {
       {/* ── Sheet ── */}
       <div
         className="flex-1 flex flex-col bg-white min-h-0"
-        style={{ boxShadow: '0 -6px 32px rgba(79,70,229,0.10)', borderRadius: '24px 24px 0 0', marginTop: -8, position: 'relative', zIndex: 2 }}
+        style={{ boxShadow: '0 -6px 32px rgba(10, 159, 176,0.10)', borderRadius: '24px 24px 0 0', marginTop: -8, position: 'relative', zIndex: 2 }}
       >
         {/* Handle + header */}
         <div className="flex-shrink-0 px-5 pt-2 pb-2">
-          <div className="w-9 h-1 rounded-full mx-auto mb-2.5" style={{ background: 'rgba(79,70,229,0.15)' }} />
+          <div className="w-9 h-1 rounded-full mx-auto mb-2.5" style={{ background: 'rgba(10, 159, 176,0.15)' }} />
           <div className="flex items-center justify-between mb-2">
             <p className="text-[15px] font-bold text-slate-900">Choose a ride</p>
             <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
@@ -521,10 +521,10 @@ function SelectRideContent() {
               // Arrived from /round-trip with hours already selected, show compact info
               <div
                 className="flex items-center gap-2 px-3 py-2 rounded-xl mb-1"
-                style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
+                style={{ background: '#E4F8FA', border: '1px solid #B8E9EE' }}
               >
-                <RotateCcw size={11} strokeWidth={2.5} className="flex-shrink-0" style={{ color: '#4F46E5' }} />
-                <span className="text-[12px] font-semibold" style={{ color: '#4338CA' }}>
+                <RotateCcw size={11} strokeWidth={2.5} className="flex-shrink-0" style={{ color: '#0A9FB0' }} />
+                <span className="text-[12px] font-semibold" style={{ color: '#087C89' }}>
                   Round Trip · {tripHoursFromUrl}h
                 </span>
                 <span className="text-[12px] text-indigo-300 ml-auto">Driver stays with you</span>
@@ -542,9 +542,9 @@ function SelectRideContent() {
                         onClick={() => setInlineTripHours(h)}
                         className="flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all"
                         style={{
-                          background: active ? '#4F46E5' : '#EEF2FF',
-                          color:      active ? '#FFFFFF' : '#4F46E5',
-                          border:     active ? '1.5px solid #4F46E5' : '1.5px solid #C7D2FE',
+                          background: active ? '#0A9FB0' : '#E4F8FA',
+                          color:      active ? '#FFFFFF' : '#0A9FB0',
+                          border:     active ? '1.5px solid #0A9FB0' : '1.5px solid #B8E9EE',
                         }}
                       >
                         {h}h
@@ -700,7 +700,7 @@ function SelectRideContent() {
                     <VehicleIcon
                       slug={cat.slug}
                       size={32}
-                      color={active ? '#4F46E5' : '#475569'}
+                      color={active ? '#0A9FB0' : '#475569'}
                     />
                   </div>
 
@@ -765,29 +765,29 @@ function SelectRideContent() {
           {rideType === 'round_trip' && estimates[selected] && tripHours !== undefined && (
             <div
               className="mx-4 mt-1 mb-2 rounded-2xl px-3 py-2.5 space-y-1"
-              style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
+              style={{ background: '#E4F8FA', border: '1px solid #B8E9EE' }}
             >
               <div className="flex justify-between text-[11px]">
-                <span style={{ color: '#6366F1' }}>Base fare</span>
+                <span style={{ color: '#22B8C9' }}>Base fare</span>
                 <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.base_fare))}</span>
               </div>
               <div className="flex justify-between text-[11px]">
-                <span style={{ color: '#6366F1' }}>Distance</span>
+                <span style={{ color: '#22B8C9' }}>Distance</span>
                 <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.distance_fare))}</span>
               </div>
               <div className="flex justify-between text-[11px]">
-                <span style={{ color: '#6366F1' }}>Travel time</span>
+                <span style={{ color: '#22B8C9' }}>Travel time</span>
                 <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.time_fare))}</span>
               </div>
               {stops.length > 0 && Number(estimates[selected]!.breakdown.stop_fare) > 0 && (
                 <div className="flex justify-between text-[11px]">
-                  <span style={{ color: '#6366F1' }}>Stops ({stops.length} × ₹{Math.round(Number(estimates[selected]!.breakdown.stop_fare) / stops.length)})</span>
+                  <span style={{ color: '#22B8C9' }}>Stops ({stops.length} × ₹{Math.round(Number(estimates[selected]!.breakdown.stop_fare) / stops.length)})</span>
                   <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.stop_fare))}</span>
                 </div>
               )}
               {Number(estimates[selected]!.breakdown.hour_surcharge) > 0 && (
                 <div className="flex justify-between text-[11px]">
-                  <span style={{ color: '#6366F1' }}>Waiting ({tripHours}h)</span>
+                  <span style={{ color: '#22B8C9' }}>Waiting ({tripHours}h)</span>
                   <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.hour_surcharge))}</span>
                 </div>
               )}
@@ -800,10 +800,10 @@ function SelectRideContent() {
                   <p className="text-[10px] font-medium" style={{ color: '#94A3B8' }}>This fare is locked in once you book.</p>
                 </>
               )}
-              <div className="h-px" style={{ background: '#C7D2FE' }} />
+              <div className="h-px" style={{ background: '#B8E9EE' }} />
               <div className="flex justify-between items-baseline">
                 <span className="text-[12px] font-bold" style={{ color: '#0F172A' }}>Total</span>
-                <span className="text-[15px] font-black tabular-nums" style={{ color: '#4F46E5' }}>₹{Math.round(Number(estimates[selected]!.breakdown.total))}</span>
+                <span className="text-[15px] font-black tabular-nums" style={{ color: '#0A9FB0' }}>₹{Math.round(Number(estimates[selected]!.breakdown.total))}</span>
               </div>
             </div>
           )}
@@ -839,7 +839,7 @@ function SelectRideContent() {
               (detourPriced && (routingStops || routedDistanceKm == null))
             }
             className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
-            style={{ background: isBooking ? '#6D28D9' : 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', minHeight: 52 }}
+            style={{ background: isBooking ? '#6D28D9' : 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)', minHeight: 52 }}
           >
             {isBooking
               ? 'Booking…'
@@ -872,8 +872,8 @@ function SelectRideContent() {
                 bottom: 'max(84px, calc(env(safe-area-inset-bottom, 0px) + 76px))',
                 x: '-50%',
                 maxWidth: 'calc(100vw - 32px)',
-                background: 'linear-gradient(135deg, #4F46E5 0%, #1E1B4B 100%)',
-                boxShadow: '0 8px 32px rgba(79,70,229,0.35), 0 2px 8px rgba(0,0,0,0.2)',
+                background: 'linear-gradient(135deg, #0A9FB0 0%, #1E1B4B 100%)',
+                boxShadow: '0 8px 32px rgba(10, 159, 176,0.35), 0 2px 8px rgba(0,0,0,0.2)',
               }}
             >
               <div className="flex items-center gap-2.5">

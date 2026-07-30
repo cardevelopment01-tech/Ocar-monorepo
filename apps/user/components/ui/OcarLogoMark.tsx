@@ -67,8 +67,8 @@ export default function OcarLogoMark({
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#4F46E5" />
-            <stop offset="100%" stopColor="#7C3AED" />
+            <stop offset="0%" stopColor="#0A9FB0" />
+            <stop offset="100%" stopColor="#DC3E93" />
           </linearGradient>
         </defs>
         <path

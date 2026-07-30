@@ -124,11 +124,11 @@ export default function Profile() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
         >
-          <div className="bg-white rounded-3xl p-5 border border-border" style={{ boxShadow: '0 2px 16px rgba(79,70,229,0.07)' }}>
+          <div className="bg-white rounded-3xl p-5 border border-border" style={{ boxShadow: '0 2px 16px rgba(10, 159, 176,0.07)' }}>
             <div className="flex items-center gap-4">
               <div
                 className="w-[60px] h-[60px] rounded-2xl flex items-center justify-center flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}
+                style={{ background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)' }}
                 aria-hidden="true"
               >
                 <span className="text-2xl font-black text-white">{initial}</span>
@@ -224,7 +224,7 @@ export default function Profile() {
         >
           <div
             className="w-full rounded-3xl p-6"
-            style={{ background: '#FFFFFF', boxShadow: '0 -4px 32px rgba(79,70,229,0.12)' }}
+            style={{ background: '#FFFFFF', boxShadow: '0 -4px 32px rgba(10, 159, 176,0.12)' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="w-8 h-1 bg-border rounded-full mx-auto mb-5" />
@@ -266,7 +266,7 @@ export default function Profile() {
           >
             <motion.div
               className="w-full rounded-3xl p-6"
-              style={{ background: '#FFFFFF', boxShadow: '0 -4px 32px rgba(79,70,229,0.12)' }}
+              style={{ background: '#FFFFFF', boxShadow: '0 -4px 32px rgba(10, 159, 176,0.12)' }}
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}

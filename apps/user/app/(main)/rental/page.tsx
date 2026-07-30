@@ -394,7 +394,7 @@ function RentalContent() {
                         : 'bg-slate-50 border-slate-100 active:bg-slate-100'
                     )}
                   >
-                    <VehicleIcon slug={cat.slug} size={26} color={active ? '#4F46E5' : '#94A3B8'} />
+                    <VehicleIcon slug={cat.slug} size={26} color={active ? '#0A9FB0' : '#94A3B8'} />
                     <span className={cn(
                       'text-[10px] font-semibold leading-none',
                       active ? 'text-violet-700' : 'text-slate-500'
@@ -587,7 +587,7 @@ function RentalContent() {
           disabled={!canBook}
           className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
           style={{
-            background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+            background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)',
             minHeight: 52,
           }}
         >

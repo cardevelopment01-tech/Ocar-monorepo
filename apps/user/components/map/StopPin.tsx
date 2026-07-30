@@ -23,10 +23,10 @@ function StopPin({ position, index, onClick, selected = false }: StopPinProps) {
           height: 26,
           marginBottom: -13, // anchor the circle's center on the point
           borderRadius: '50%',
-          background: '#7C3AED',
+          background: '#DC3E93',
           border: '2px solid white',
           boxShadow: selected
-            ? '0 0 0 3px rgba(124,58,237,0.40), 0 1px 4px rgba(0,0,0,0.3)'
+            ? '0 0 0 3px rgba(220, 62, 147,0.40), 0 1px 4px rgba(0,0,0,0.3)'
             : '0 1px 4px rgba(0,0,0,0.3)',
           transform: selected ? 'scale(1.22)' : 'scale(1)',
           transition: 'transform 160ms ease, box-shadow 160ms ease',

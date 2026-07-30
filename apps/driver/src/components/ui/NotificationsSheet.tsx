@@ -45,7 +45,7 @@ function NotificationRow({ item, onRead, onNavigate }: {
       <span
         className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
         style={{
-          background: unread ? 'rgba(79,70,229,0.10)' : 'var(--surface-2, #F1F5F9)',
+          background: unread ? 'rgba(10, 159, 176,0.10)' : 'var(--surface-2, #F1F5F9)',
         }}
       >
         <Icon size={15} strokeWidth={1.8} className={unread ? 'text-primary' : 'text-text-muted'} />

@@ -58,7 +58,7 @@ function haversineMetres(a: [number, number], b: [number, number]): number {
 type StatusKey = 'scheduled' | 'requested' | 'accepted' | 'driver_arrived' | 'in_progress' | 'completed' | 'cancelled' | 'no_drivers'
 
 const STATUS_CONFIG: Record<StatusKey, { label: string; sub?: string; dot: string; dotPulse: boolean }> = {
-  scheduled:      { label: 'Ride scheduled',               sub: 'We’ll find a driver closer to the time', dot: '#4F46E5', dotPulse: false },
+  scheduled:      { label: 'Ride scheduled',               sub: 'We’ll find a driver closer to the time', dot: '#0A9FB0', dotPulse: false },
   requested:      { label: 'Finding your driver',         sub: 'Usually ready in 15–60 seconds', dot: '#F59E0B', dotPulse: true  },
   accepted:       { label: 'Driver is on the way',                                                 dot: '#2563EB', dotPulse: false },
   driver_arrived: { label: 'Driver has arrived!',          sub: 'Head to your pickup point',       dot: '#16A34A', dotPulse: true  },
@@ -96,7 +96,7 @@ function RouteRow({ ride, fare }: { ride: RideDetail | null; fare: string | null
   return (
     <div className="flex items-center gap-3 px-4 py-3.5 rounded-2xl" style={{ background: '#F5F7FF', border: '1px solid #E8EEFF' }}>
       <div className="flex flex-col items-center gap-1 flex-shrink-0">
-        <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#4F46E5' }} />
+        <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#0A9FB0' }} />
         <div className="w-px flex-1" style={{ background: '#E8EEFF', height: 20 }} />
         <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#0F172A' }} />
       </div>
@@ -115,7 +115,7 @@ function RouteRow({ ride, fare }: { ride: RideDetail | null; fare: string | null
               : (ride?.destination_address ?? 'Destination')}
           </p>
           {ride?.ride_type === 'round_trip' && ride.return_at && (
-            <p className="text-[12px] font-medium mt-0.5" style={{ color: '#7C3AED' }}>Back by {formatReturnAt(ride.return_at)}</p>
+            <p className="text-[12px] font-medium mt-0.5" style={{ color: '#DC3E93' }}>Back by {formatReturnAt(ride.return_at)}</p>
           )}
         </div>
       </div>
@@ -144,7 +144,7 @@ function DriverMiniRow({ ride }: { ride: RideDetail | null }) {
       ) : (
         <div
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-[12px] font-bold"
-          style={{ background: 'linear-gradient(135deg, #4F46E5, #7C3AED)' }}
+          style={{ background: 'linear-gradient(135deg, #0A9FB0, #DC3E93)' }}
         >
           {ride?.driver_name ? getInitials(ride.driver_name) : '?'}
         </div>
@@ -172,10 +172,10 @@ function DriverMiniRow({ ride }: { ride: RideDetail | null }) {
         <a
           href={`tel:${ride.driver_phone}`}
           className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0"
-          style={{ background: '#EEF2FF' }}
+          style={{ background: '#E4F8FA' }}
           aria-label="Call driver"
         >
-          <Phone size={14} style={{ color: '#4F46E5' }} />
+          <Phone size={14} style={{ color: '#0A9FB0' }} />
         </a>
       )}
     </div>
@@ -186,8 +186,8 @@ function DriverMiniRow({ ride }: { ride: RideDetail | null }) {
 // phase). No copy affordance: this code is read aloud to the driver, never
 // shared or sent, so there's nothing to copy it into.
 function OtpBadge({ otp, phase }: { otp: string | null; phase: 'start' | 'end' }) {
-  const accent = phase === 'start' ? '#10B981' : '#7C3AED'
-  const bg     = phase === 'start' ? '#D1FAE5' : '#EDE9FE'
+  const accent = phase === 'start' ? '#10B981' : '#DC3E93'
+  const bg     = phase === 'start' ? '#D1FAE5' : '#FBE0EE'
   const label  = phase === 'start' ? 'Trip OTP' : 'End OTP'
 
   if (!otp) {
@@ -883,7 +883,7 @@ export default function RidePage() {
               {rideStatus === 'scheduled' && ride?.scheduled_for && (
                 <div
                   className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-3"
-                  style={{ background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.20)' }}
+                  style={{ background: 'rgba(10, 159, 176,0.08)', border: '1px solid rgba(10, 159, 176,0.20)' }}
                 >
                   <Clock size={13} className="text-indigo-500 flex-shrink-0" />
                   <div>
@@ -896,7 +896,7 @@ export default function RidePage() {
               {ride?.ride_type === 'round_trip' && ride.return_at && (
                 <div
                   className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-3"
-                  style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}
+                  style={{ background: '#E4F8FA', border: '1px solid #B8E9EE' }}
                 >
                   <RotateCcw size={13} className="text-violet-500 flex-shrink-0" />
                   <div>
@@ -1021,8 +1021,8 @@ export default function RidePage() {
                             if (pendingIdx === -1) return null
                             const cur = ride.stops[pendingIdx]!
                             return (
-                              <div className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}>
-                                <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#4F46E5', color: '#fff' }}>
+                              <div className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={{ background: '#E4F8FA', border: '1px solid #B8E9EE' }}>
+                                <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#0A9FB0', color: '#fff' }}>
                                   Stop {pendingIdx + 1} of {ride.stops.length}
                                 </span>
                                 <span className="text-[13px] font-semibold truncate" style={{ color: '#0F172A' }}>{cur.address ?? `Stop ${pendingIdx + 1}`}</span>

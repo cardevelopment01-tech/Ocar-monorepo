@@ -50,8 +50,8 @@ export default function OTPVerify() {
           transition={{ type: 'spring', duration: 0.5, bounce: 0.15, delay: 0.05 }}
           className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6"
           style={{
-            background: 'linear-gradient(145deg, #4F46E5 0%, #7C3AED 100%)',
-            boxShadow: '0 4px 20px rgba(79,70,229,0.35)',
+            background: 'linear-gradient(145deg, #0A9FB0 0%, #DC3E93 100%)',
+            boxShadow: '0 4px 20px rgba(10, 159, 176,0.35)',
           }}
         >
           <KeyRound size={34} className="text-white" strokeWidth={1.75} aria-hidden="true" />

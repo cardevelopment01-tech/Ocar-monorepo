@@ -103,14 +103,14 @@ export default function AddStopSheet({ open, onClose, onSelect, title = 'Add a s
             style={{
               height: '85%',
               borderRadius: '32px 32px 0 0',
-              boxShadow: '0 -6px 32px rgba(79,70,229,0.10)',
+              boxShadow: '0 -6px 32px rgba(10, 159, 176,0.10)',
             }}
             initial={reduce ? { opacity: 0 } : { y: '100%' }}
             animate={reduce ? { opacity: 1 } : { y: 0 }}
             exit={reduce ? { opacity: 0 } : { y: '100%' }}
             transition={reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 380, damping: 40 }}
           >
-            <div className="w-9 h-1 rounded-full mx-auto mt-3 mb-3 flex-shrink-0" style={{ background: 'rgba(79,70,229,0.15)' }} />
+            <div className="w-9 h-1 rounded-full mx-auto mt-3 mb-3 flex-shrink-0" style={{ background: 'rgba(10, 159, 176,0.15)' }} />
 
             <div className="flex items-center justify-between px-5 mb-3 flex-shrink-0">
               <p className="text-[18px] font-bold" style={{ color: '#0F172A', letterSpacing: '-0.01em' }}>{title}</p>
@@ -118,16 +118,16 @@ export default function AddStopSheet({ open, onClose, onSelect, title = 'Add a s
                 onClick={onClose}
                 aria-label="Close"
                 className="w-9 h-9 rounded-full flex items-center justify-center active:opacity-60 transition-opacity"
-                style={{ background: '#EEF2FF' }}
+                style={{ background: '#E4F8FA' }}
               >
-                <X size={16} strokeWidth={2} style={{ color: '#4F46E5' }} />
+                <X size={16} strokeWidth={2} style={{ color: '#0A9FB0' }} />
               </button>
             </div>
 
             {/* Search field */}
             <div className="px-5 mb-2 flex-shrink-0">
               <div className="flex items-center gap-2.5 px-4 rounded-2xl" style={{ background: '#F5F7FF', height: 52 }}>
-                <div className="w-2.5 h-2.5 flex-shrink-0" style={{ background: '#7C3AED', borderRadius: 3 }} />
+                <div className="w-2.5 h-2.5 flex-shrink-0" style={{ background: '#DC3E93', borderRadius: 3 }} />
                 <input
                   ref={inputRef}
                   value={query}

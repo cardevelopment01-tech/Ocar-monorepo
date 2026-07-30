@@ -43,7 +43,7 @@
 
   .sheet-handle {
     @apply mx-auto mt-3 mb-4 w-10 h-1 rounded-full;
-    background: rgba(79, 70, 229, 0.15);
+    background: rgba(10, 159, 176, 0.15);
   }
 
   .btn-primary {
@@ -82,7 +82,7 @@
 
   .place-icon-badge {
     @apply w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0;
-    background: rgba(79, 70, 229, 0.08);
+    background: rgba(10, 159, 176, 0.08);
   }
 }
 
