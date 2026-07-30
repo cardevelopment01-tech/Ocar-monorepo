@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Phone, ArrowLeft, ArrowRight } from 'lucide-react'
 import OtpInput from '@/components/ui/OtpInput'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import OcarLogoMark from '@/components/ui/OcarLogoMark'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { authApi, storeAuth, formatPhone, isValidIndianPhone } from '@/lib/auth'
@@ -14,13 +15,6 @@ const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
 type Step = 'phone' | 'otp'
-
-const PARTICLES = [
-  { top: '12%', left: '8%',  delay: 0,   dur: 2.8 },
-  { top: '22%', left: '78%', delay: 0.7, dur: 3.4 },
-  { top: '55%', left: '88%', delay: 1.2, dur: 2.6 },
-  { top: '68%', left: '6%',  delay: 0.4, dur: 3.1 },
-]
 
 export default function LoginPage() {
   const router = useRouter()
@@ -124,65 +118,28 @@ export default function LoginPage() {
       className="min-h-[100dvh] flex flex-col"
       style={{ background: 'linear-gradient(160deg, #0F0F23 0%, #1E1B4B 100%)' }}
     >
-      {/* ── Decorative orbs ── */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <motion.div
-          className="absolute rounded-full"
-          style={{
-            width: 260, height: 260, top: -80, right: -60,
-            background: 'radial-gradient(circle, rgba(99,102,241,0.40) 0%, transparent 70%)',
-            filter: 'blur(52px)',
-          }}
-          animate={{ x: [0, 16, -6, 0], y: [0, -12, 8, 0] }}
-          transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="absolute rounded-full"
-          style={{
-            width: 200, height: 200, bottom: 120, left: -60,
-            background: 'radial-gradient(circle, rgba(220, 62, 147,0.30) 0%, transparent 70%)',
-            filter: 'blur(44px)',
-          }}
-          animate={{ x: [0, -10, 14, 0], y: [0, 16, -8, 0] }}
-          transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
-        />
-        {/* Dot grid */}
+      {/* ── One static ambient glow, no orbs/particles/dot-grid ── */}
+      <div
+        className="fixed inset-0 pointer-events-none overflow-hidden flex items-start justify-center"
+      >
         <div
-          className="absolute inset-0 opacity-[0.07]"
           style={{
-            backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
+            width: 280, height: 280, marginTop: 40,
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(10, 159, 176, 0.28) 0%, rgba(220, 62, 147, 0.18) 55%, transparent 75%)',
+            filter: 'blur(48px)',
           }}
         />
-        {/* Twinkling particles */}
-        {PARTICLES.map((p, i) => (
-          <motion.div
-            key={i}
-            className="absolute w-1 h-1 rounded-full bg-white"
-            style={{ top: p.top, left: p.left }}
-            animate={{ opacity: [0.15, 0.7, 0.15], scale: [0.8, 1.3, 0.8] }}
-            transition={{ duration: p.dur, repeat: Infinity, ease: 'easeInOut', delay: p.delay }}
-          />
-        ))}
       </div>
 
       {/* ── Hero logo block ── */}
       <motion.div
-        className="flex flex-col items-center justify-center pt-20 pb-10 px-6"
+        className="relative flex flex-col items-center justify-center pt-20 pb-10 px-6"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: EASE }}
       >
-        <div
-          className="w-16 h-16 rounded-[22px] flex items-center justify-center mb-4"
-          style={{
-            background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)',
-            boxShadow: '0 12px 40px rgba(10, 159, 176,0.45), inset 0 1px 0 rgba(255,255,255,0.20)',
-          }}
-        >
-          <span className="text-white font-black text-3xl">O</span>
-        </div>
-        <p className="text-white font-black text-3xl tracking-tight">car</p>
+        <OcarLogoMark size="xl" className="mb-4" />
         <p className="text-sm mt-1.5" style={{ color: 'rgba(255,255,255,0.45)' }}>
           Your ride, your city
         </p>

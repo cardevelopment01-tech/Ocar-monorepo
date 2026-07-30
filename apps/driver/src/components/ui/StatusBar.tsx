@@ -217,7 +217,7 @@ export default function StatusBar({ isOnline, earningsToday, tripsToday = 0, sur
       {floating ? (
         <EarningsChip amount={earningsToday} trips={tripsToday} />
       ) : (
-        <OcarLogoMark size="md" variant="color" />
+        <OcarLogoMark size="md" />
       )}
 
       <div className="flex items-center gap-2.5">

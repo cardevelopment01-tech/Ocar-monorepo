@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
-import { ArrowRight, ChevronLeft, Car } from 'lucide-react'
+import { ArrowRight, ChevronLeft } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import OcarLogoMark from '@/components/ui/OcarLogoMark'
 import { motion, AnimatePresence } from 'framer-motion'
 import OtpInput from '@/components/ui/OtpInput'
 import api from '@/lib/api'
@@ -132,18 +133,7 @@ export default function Login() {
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         className="flex flex-col items-center mb-10"
       >
-        <div className="flex items-center gap-3 mb-2">
-          <div
-            className="w-12 h-12 rounded-2xl flex items-center justify-center"
-            style={{
-              background: 'linear-gradient(145deg, #1E293B 0%, #0F172A 100%)',
-              boxShadow: '0 4px 16px rgba(15,23,42,0.28)',
-            }}
-          >
-            <Car size={22} className="text-white" strokeWidth={2} />
-          </div>
-          <p className="font-display font-bold text-3xl text-text-primary tracking-tight">Ocar</p>
-        </div>
+        <OcarLogoMark size="xl" className="mb-2" />
         <p className="text-text-muted text-sm font-medium">Driver Partner</p>
       </motion.div>
 
