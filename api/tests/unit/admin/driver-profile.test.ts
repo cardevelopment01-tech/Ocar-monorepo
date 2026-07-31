@@ -37,6 +37,20 @@ describe('updateDriverProfile', () => {
     expect(repo.updateDriverProfile).not.toHaveBeenCalled()
   })
 
+  it('rejects a masked Aadhaar value (XXXX-XXXX-1234) instead of overwriting the real number', async () => {
+    await expect(updateDriverProfile(
+      DRIVER_ID, ADMIN_ID, { aadhaar_number: 'XXXX-XXXX-1234', reason: VALID_REASON }, null
+    )).rejects.toMatchObject({ httpStatus: 422 })
+    expect(repo.updateDriverProfile).not.toHaveBeenCalled()
+  })
+
+  it('accepts a real Aadhaar number that merely resembles the mask shape at a glance', async () => {
+    await updateDriverProfile(DRIVER_ID, ADMIN_ID, { aadhaar_number: '1234-5678-9012', reason: VALID_REASON }, null)
+    expect(repo.updateDriverProfile).toHaveBeenCalledWith(
+      DRIVER_ID, ADMIN_ID, { aadhaar_number: '1234-5678-9012' }, VALID_REASON, null
+    )
+  })
+
   it('passes only the field whitelist (never phone/status) through to the repository, and notifies the driver', async () => {
     await updateDriverProfile(DRIVER_ID, ADMIN_ID, { full_name: 'Correct Name', reason: VALID_REASON }, '1.2.3.4')
 

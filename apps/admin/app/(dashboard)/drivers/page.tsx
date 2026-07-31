@@ -178,7 +178,11 @@ export default function DriversPage() {
     if (!detail) return
     setIdentityForm({
       full_name: detail.full_name ?? '',
-      aadhaar_number: detail.aadhaar_number ?? '',
+      // aadhaar_number is masked by the API (XXXX-XXXX-1234) — left blank so
+      // saving without touching it can't overwrite the real number with the
+      // mask. Blank means "leave unchanged"; the masked value shows as a
+      // placeholder so the admin knows what's on file.
+      aadhaar_number: '',
       license_number: detail.license_number ?? '',
       reason: '',
     })
@@ -193,11 +197,12 @@ export default function DriversPage() {
     }
     setSavingIdentity(true); setIdentityError('')
     try {
-      await adminDriverApi.updateProfile(detail.id, {
+      const fields: Parameters<typeof adminDriverApi.updateProfile>[1] = {
         full_name: identityForm.full_name,
-        aadhaar_number: identityForm.aadhaar_number,
         license_number: identityForm.license_number,
-      }, identityForm.reason.trim())
+      }
+      if (identityForm.aadhaar_number.trim() !== '') fields.aadhaar_number = identityForm.aadhaar_number.trim()
+      await adminDriverApi.updateProfile(detail.id, fields, identityForm.reason.trim())
       const updated = await adminDriverApi.getById(detail.id)
       setDetail(updated)
       await fetchList()
@@ -417,7 +422,8 @@ export default function DriversPage() {
                   <input
                     value={identityForm.aadhaar_number}
                     onChange={e => setIdentityForm(f => ({ ...f, aadhaar_number: e.target.value }))}
-                    className="flex-1 min-w-0 text-xs font-mono text-text-secondary bg-surface border border-border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder={d.aadhaar_number ? `On file: ${d.aadhaar_number} — leave blank to keep` : 'Not provided'}
+                    className="flex-1 min-w-0 text-xs font-mono text-text-secondary bg-surface border border-border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-[10px] placeholder:text-text-muted"
                   />
                 </div>
                 <div className="flex gap-2 items-center">

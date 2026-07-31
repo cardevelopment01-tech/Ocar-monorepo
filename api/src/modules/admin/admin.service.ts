@@ -89,6 +89,14 @@ export async function updateDriverProfile(
     throw createHttpError(AppErrors.VALIDATION_ERROR)
   }
 
+  // getDriverById masks aadhaar_number as 'XXXX-XXXX-1234' before it ever
+  // reaches an admin — reject that shape outright so a client that echoes
+  // the masked value back (e.g. saving an edit form without touching the
+  // field) can never overwrite the real Aadhaar number with the mask.
+  if (fields.aadhaar_number !== undefined && /^X{4}-X{4}-\d{4}$/.test(fields.aadhaar_number)) {
+    throw httpError(422, 'Enter the full Aadhaar number, not the masked value', AppErrors.VALIDATION_ERROR.code)
+  }
+
   await repo.updateDriverProfile(driverId, adminId, fields, reason, ipAddress)
 
   await notifyOwner({
