@@ -202,7 +202,7 @@ export default function NotificationsPage() {
         )}
 
         <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest px-4 pt-6 pb-3">Preferences</p>
-        <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-card mx-4">
+        <div className="card-glossy p-0 overflow-hidden mx-4">
           {[
             { Icon: Bell,          label: 'Push notifications', sub: 'Ride updates, offers & alerts' },
             { Icon: MessageSquare, label: 'SMS alerts',         sub: 'OTP and booking confirmations' },

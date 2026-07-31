@@ -76,7 +76,7 @@ function RideCard({ ride, onOpen }: { ride: RideHistoryItem; onOpen: () => void 
       variants={cardVariant}
       whileTap={{ scale: 0.98 }}
       transition={SPRING}
-      className="w-full text-left bg-surface rounded-2xl border border-border p-4 shadow-card"
+      className="card-glossy gloss-sheen w-full text-left"
     >
       <div className="flex items-start justify-between mb-3">
         <StatusBadge status={ride.status} />
@@ -127,7 +127,7 @@ function UpcomingCard({
   return (
     <motion.div
       variants={cardVariant}
-      className="bg-surface rounded-2xl border border-border p-4 shadow-card"
+      className="card-glossy"
     >
       <div className="flex items-start justify-between mb-3">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-status-info/10 text-status-info">

@@ -24,7 +24,7 @@ export default function SavedPlacesPage() {
 
       <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-5 pb-28">
         <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Your places</p>
-        <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-card">
+        <div className="card-glossy p-0 overflow-hidden">
           {[
             { Icon: Home,      label: 'Home',  sub: 'Add your home address'   },
             { Icon: Briefcase, label: 'Work',  sub: 'Add your work address'   },

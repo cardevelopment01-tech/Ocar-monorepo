@@ -47,7 +47,6 @@ function normalizePhone(raw: string | null | undefined): string {
   return d.length === 10 ? d : d
 }
 
-const ICON_BG  = '#F1F0FE'
 const ICON_CLR = '#0A9FB0'
 
 export default function ProfilePage() {
@@ -111,7 +110,7 @@ export default function ProfilePage() {
       {/* ── Header ── */}
       <div className="flex-shrink-0 px-5 pt-safe-top pb-2">
         <motion.div
-          className="mt-4 rounded-3xl border border-border bg-surface p-5 shadow-card"
+          className="card-glossy mt-4 rounded-3xl p-5"
           initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, ease: EASE }}
@@ -175,16 +174,16 @@ export default function ProfilePage() {
         {/* Menu */}
         <motion.div variants={fadeUp}>
           <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Account</p>
-          <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-card">
+          <div className="card-glossy p-0 overflow-hidden">
             {MENU.map((item, i) => (
               <motion.button
                 key={item.label}
                 onClick={() => router.push(item.href)}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < MENU.length - 1 ? ' border-b border-border' : ''}`}
+                className={`gloss-sheen w-full flex items-center gap-3 px-4 py-3.5 text-left${i < MENU.length - 1 ? ' border-b border-border' : ''}`}
                 whileTap={{ backgroundColor: '#F8FAFF' }}
                 transition={SPRING}
               >
-                <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
+                <span className="icon-badge-gradient">
                   <item.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
                 </span>
                 <span className="flex-1 min-w-0">

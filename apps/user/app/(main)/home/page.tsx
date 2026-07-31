@@ -11,6 +11,7 @@ import {
   ChevronRight, ArrowRight, MapPin,
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import OcarLogoMark from '@/components/ui/OcarLogoMark'
 import { geoApi } from '@/lib/geo-api'
 import { rideApi, type RideHistoryItem } from '@/lib/ride-api'
 
@@ -20,7 +21,6 @@ const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
 const HERO_BG  = 'linear-gradient(160deg, #0F0F23 0%, #1E1B4B 100%)'
-const ICON_BG  = '#F1F0FE'
 const ICON_CLR = '#0A9FB0'
 const SHADOW   = '0 2px 12px rgba(15,15,35,0.07)'
 
@@ -279,14 +279,13 @@ export default function HomePage() {
 
         {/* Top bar */}
         <div className="flex items-center justify-between mb-4">
-          <motion.span
-            className="text-xl font-black tracking-tight text-white"
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.15, duration: 0.4 }}
           >
-            ocar
-          </motion.span>
+            <OcarLogoMark size="sm" />
+          </motion.div>
           <motion.div
             className="flex items-center gap-2"
             initial={{ opacity: 0 }}
@@ -408,7 +407,7 @@ export default function HomePage() {
           {resumeRideId && (
             <motion.button
               onClick={() => router.push(`/ride/${resumeRideId}`)}
-              className="w-full flex items-center gap-3 bg-primary rounded-2xl px-4 py-3.5"
+              className="gloss-sheen w-full flex items-center gap-3 bg-primary rounded-2xl px-4 py-3.5"
               style={{ boxShadow: SHADOW }}
               variants={section}
               whileTap={{ scale: 0.98 }}
@@ -433,13 +432,12 @@ export default function HomePage() {
                     s.id === 'roundtrip' ? toRoundTrip :
                     toOneWay
                   }
-                  className="flex flex-col items-center gap-2 py-4 bg-surface border border-border rounded-2xl"
-                  style={{ boxShadow: SHADOW }}
+                  className="card-glossy gloss-sheen flex flex-col items-center gap-2 py-4"
                   variants={cardV}
                   whileTap={{ scale: 0.93 }}
                   transition={SPRING}
                 >
-                  <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: ICON_BG }}>
+                  <span className="icon-badge-gradient w-10 h-10">
                     <s.Icon size={18} strokeWidth={1.6} style={{ color: ICON_CLR }} />
                   </span>
                   <span className="flex flex-col items-center gap-0.5 text-center">
@@ -454,20 +452,19 @@ export default function HomePage() {
           {/* Saved places */}
           <motion.div variants={section}>
             <motion.div
-              className="bg-surface rounded-2xl border border-border overflow-hidden"
-              style={{ boxShadow: SHADOW }}
+              className="card-glossy p-0 overflow-hidden"
               variants={sectionList} initial="hidden" animate="show"
             >
               {SAVED.map((p, i) => (
                 <motion.button
                   key={p.label}
                   onClick={() => toRide(p.sub, p.lat, p.lng)}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < SAVED.length - 1 ? ' border-b border-border' : ''}`}
+                  className={`gloss-sheen w-full flex items-center gap-3 px-4 py-3.5 text-left${i < SAVED.length - 1 ? ' border-b border-border' : ''}`}
                   variants={row}
                   whileTap={{ backgroundColor: '#F8FAFF' }}
                   transition={SPRING}
                 >
-                  <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
+                  <span className="icon-badge-gradient">
                     <p.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
                   </span>
                   <span className="flex-1 min-w-0">
@@ -484,8 +481,7 @@ export default function HomePage() {
           {recentTrips.length > 0 && (
             <motion.div variants={section}>
               <motion.div
-                className="bg-surface rounded-2xl border border-border overflow-hidden"
-                style={{ boxShadow: SHADOW }}
+                className="card-glossy p-0 overflow-hidden"
                 variants={sectionList} initial="hidden" animate="show"
               >
                 {recentTrips.map((r, i) => {
@@ -499,7 +495,7 @@ export default function HomePage() {
                       onClick={() => router.push(
                         `/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&destinationQuery=${encodeURIComponent(label)}`
                       )}
-                      className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < recentTrips.length - 1 ? ' border-b border-border' : ''}`}
+                      className={`gloss-sheen w-full flex items-center gap-3 px-4 py-3.5 text-left${i < recentTrips.length - 1 ? ' border-b border-border' : ''}`}
                       variants={row}
                       whileTap={{ backgroundColor: '#F8FAFF' }}
                       transition={SPRING}
@@ -527,7 +523,7 @@ export default function HomePage() {
                 <motion.button
                   key={`${r.from}-${r.to}`}
                   onClick={() => toRide(r.to, r.lat, r.lng)}
-                  className="flex-shrink-0 flex items-center gap-2 bg-surface border border-border rounded-full px-4 py-2.5"
+                  className="gloss-sheen flex-shrink-0 flex items-center gap-2 bg-surface border border-border rounded-full px-4 py-2.5"
                   style={{ boxShadow: SHADOW }}
                   initial={{ opacity: 0, x: 14 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -545,7 +541,7 @@ export default function HomePage() {
           {/* Promo */}
           <motion.div variants={section}>
             <motion.button
-              className="w-full text-left rounded-2xl px-5 py-5"
+              className="gloss-sheen w-full text-left rounded-2xl px-5 py-5"
               style={{ background: HERO_BG, boxShadow: '0 6px 24px rgba(15,15,35,0.22)' }}
               whileTap={{ scale: 0.985 }}
               transition={SPRING}

@@ -66,7 +66,11 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
                   {active && (
                     <motion.div
                       layoutId={reduce ? undefined : 'nav-active-pill'}
-                      className="absolute inset-0 rounded-full bg-primary/10"
+                      className="absolute inset-0 rounded-full"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(10,159,176,0.16) 0%, rgba(220,62,147,0.14) 100%)',
+                        boxShadow: '0 2px 10px rgba(10,159,176,0.25)',
+                      }}
                       transition={PILL_SPRING}
                     />
                   )}

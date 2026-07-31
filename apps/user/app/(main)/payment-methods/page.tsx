@@ -42,14 +42,14 @@ export default function PaymentMethodsPage() {
         <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">
           Choose how you pay
         </p>
-        <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-card">
+        <div className="card-glossy p-0 overflow-hidden">
           {OPTIONS.map((item, i, arr) => {
             const active = selected === item.id
             return (
               <button
                 key={item.id}
                 onClick={() => choose(item.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < arr.length - 1 ? ' border-b border-border' : ''}`}
+                className={`gloss-sheen w-full flex items-center gap-3 px-4 py-3.5 text-left${i < arr.length - 1 ? ' border-b border-border' : ''}`}
               >
                 <span className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0">
                   <item.Icon size={15} strokeWidth={1.6} className="text-text-primary" />
