@@ -3,11 +3,7 @@ import dynamic from 'next/dynamic'
 
 const LiveMap = dynamic(() => import('@/components/LiveMap'), {
   ssr: false,
-  loading: () => (
-    <div className="flex-1 flex items-center justify-center">
-      <p className="text-sm text-text-muted">Loading map…</p>
-    </div>
-  ),
+  loading: () => <div className="skeleton flex-1 rounded-none" />,
 })
 
 export default function LiveMapPage() {

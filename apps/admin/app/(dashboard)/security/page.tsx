@@ -94,7 +94,16 @@ export default function SecurityPage() {
   }
 
   if (view === 'loading') {
-    return <div className="admin-card p-10 text-center text-sm text-text-muted">Loading…</div>
+    return (
+      <div className="space-y-6 max-w-xl">
+        <div className="admin-card space-y-4">
+          <div className="skeleton h-5 w-40 rounded" />
+          <div className="skeleton h-4 w-full rounded" />
+          <div className="skeleton h-4 w-2/3 rounded" />
+          <div className="skeleton h-10 w-32 rounded-xl" />
+        </div>
+      </div>
+    )
   }
 
   return (

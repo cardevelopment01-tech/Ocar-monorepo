@@ -213,10 +213,10 @@ export default function DisputesPage() {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Open"          value={disputes.filter(d=>d.status==='open').length}         change="Needs action" changeType="neutral" icon={AlertTriangle} gradient="blue"   />
-        <StatCard title="Under Review"  value={disputes.filter(d=>d.status==='under_review').length} change="In progress"  changeType="neutral" icon={Clock}         gradient="amber"  />
-        <StatCard title="Resolved"      value={disputes.filter(d=>d.status==='resolved').length}     change="All time"     changeType="up"      icon={CheckCircle}   gradient="green"  />
-        <StatCard title="Total"         value={total}                                                 change="All time"     changeType="neutral" icon={Clock}         gradient="purple" />
+        <StatCard title="Open"          value={disputes.filter(d=>d.status==='open').length}         change="Needs action" changeType="neutral" icon={AlertTriangle} gradient="blue"   loading={loading} />
+        <StatCard title="Under Review"  value={disputes.filter(d=>d.status==='under_review').length} change="In progress"  changeType="neutral" icon={Clock}         gradient="amber"  loading={loading} />
+        <StatCard title="Resolved"      value={disputes.filter(d=>d.status==='resolved').length}     change="All time"     changeType="up"      icon={CheckCircle}   gradient="green"  loading={loading} />
+        <StatCard title="Total"         value={total}                                                 change="All time"     changeType="neutral" icon={Clock}         gradient="purple" loading={loading} />
       </div>
 
       <div className="admin-card">
@@ -240,18 +240,13 @@ export default function DisputesPage() {
             }]}
           />
         </div>
-        {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-          </div>
-        ) : (
-          <DataTable
-            columns={columns}
-            data={filtered as unknown as Record<string, unknown>[]}
-            onRowClick={row => setSelected(row as unknown as Dispute)}
-            emptyMessage="No disputes match your filters"
-          />
-        )}
+        <DataTable
+          columns={columns}
+          data={filtered as unknown as Record<string, unknown>[]}
+          onRowClick={row => setSelected(row as unknown as Dispute)}
+          isLoading={loading}
+          emptyMessage="No disputes match your filters"
+        />
       </div>
 
       <SlideOver isOpen={!!selected} onClose={() => { setSelected(null); setOutcome(''); setNotes(''); setRefundAmt('') }} title={`Dispute #${selected?.id ?? ''}`} width="lg">

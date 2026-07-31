@@ -22,9 +22,10 @@ interface StatCardProps {
   changeType: 'up' | 'down' | 'neutral'
   icon: LucideIcon
   gradient: keyof typeof VARIANTS
+  loading?: boolean
 }
 
-export default function StatCard({ title, value, change, changeType, icon: Icon, gradient }: StatCardProps) {
+export default function StatCard({ title, value, change, changeType, icon: Icon, gradient, loading = false }: StatCardProps) {
   const numericVal = typeof value === 'number' ? value : parseFloat(String(value).replace(/[^0-9.]/g, ''))
   const prefix = typeof value === 'string' ? value.replace(/[0-9,. ]+.*/, '') : ''
   const suffix = typeof value === 'string' ? value.replace(/^[^0-9]*[0-9,. ]+/, '') : ''
@@ -66,22 +67,28 @@ export default function StatCard({ title, value, change, changeType, icon: Icon,
         >
           <Icon size={20} style={{ color: v.color }} />
         </div>
-        <span className={cn(
-          'flex items-center gap-0.5 text-xs font-semibold px-2.5 py-1 rounded-full',
-          changeType === 'up'   ? 'bg-success-light text-success' :
-          changeType === 'down' ? 'bg-danger-light text-danger' :
-          'bg-surface-2 text-text-muted'
-        )}>
-          {changeType === 'up'      && <TrendingUp size={11} />}
-          {changeType === 'down'    && <TrendingDown size={11} />}
-          {changeType === 'neutral' && <Minus size={11} />}
-          {change}
-        </span>
+        {loading ? <div className="skeleton h-6 w-16 rounded-full" /> : (
+          <span className={cn(
+            'flex items-center gap-0.5 text-xs font-semibold px-2.5 py-1 rounded-full',
+            changeType === 'up'   ? 'bg-success-light text-success' :
+            changeType === 'down' ? 'bg-danger-light text-danger' :
+            'bg-surface-2 text-text-muted'
+          )}>
+            {changeType === 'up'      && <TrendingUp size={11} />}
+            {changeType === 'down'    && <TrendingDown size={11} />}
+            {changeType === 'neutral' && <Minus size={11} />}
+            {change}
+          </span>
+        )}
       </div>
 
-      <p className="text-[32px] font-bold text-text-primary leading-none mb-1.5 tracking-tight">
-        {displayVal}
-      </p>
+      {loading
+        ? <div className="skeleton h-8 w-16 rounded mb-1.5" />
+        : (
+          <p className="text-[32px] font-bold text-text-primary leading-none mb-1.5 tracking-tight">
+            {displayVal}
+          </p>
+        )}
       <p className="text-text-muted text-xs font-medium">{title}</p>
     </div>
   )

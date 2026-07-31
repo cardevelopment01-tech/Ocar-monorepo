@@ -218,8 +218,8 @@ function CategoriesTab() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <StatCard title="Total Categories" value={data.length} change="All types" changeType="neutral" icon={Tag} gradient="blue" />
-        <StatCard title="Active Categories" value={active} change="In use" changeType="up" icon={CheckCircle} gradient="green" />
+        <StatCard title="Total Categories" value={data.length} change="All types" changeType="neutral" icon={Tag} gradient="blue" loading={loading} />
+        <StatCard title="Active Categories" value={active} change="In use" changeType="up" icon={CheckCircle} gradient="green" loading={loading} />
       </div>
 
       <div className="admin-card">
@@ -605,9 +605,9 @@ function FleetTab() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard title="Total Vehicles" value={total} change="All time" changeType="neutral" icon={Car} gradient="blue" />
-        <StatCard title="Active" value={active} change="On road" changeType="up" icon={CheckCircle} gradient="green" />
-        <StatCard title="Blacklisted" value={blacklisted} change="Blocked" changeType="neutral" icon={XCircle} gradient="purple" />
+        <StatCard title="Total Vehicles" value={total} change="All time" changeType="neutral" icon={Car} gradient="blue" loading={loading} />
+        <StatCard title="Active" value={active} change="On road" changeType="up" icon={CheckCircle} gradient="green" loading={loading} />
+        <StatCard title="Blacklisted" value={blacklisted} change="Blocked" changeType="neutral" icon={XCircle} gradient="purple" loading={loading} />
       </div>
 
       <div className="admin-card">

@@ -72,17 +72,9 @@ export default function SOSPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-5">
-      {active.length > 0 && (
+      {!loading && active.length > 0 && (
         <div
           className="rounded-2xl px-5 py-4 border-2 border-danger flex items-center gap-4"
           style={{ background: 'rgba(239,68,68,0.08)', animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite' }}
@@ -100,13 +92,13 @@ export default function SOSPage() {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Active Now"     value={active.length}   change={active.length > 0 ? 'Needs action' : 'All clear'} changeType={active.length > 0 ? 'down' : 'neutral'} icon={Shield}        gradient="pink"   />
-        <StatCard title="Resolved"       value={resolved}        change="All time"   changeType="up"    icon={CheckCircle}   gradient="green"  />
-        <StatCard title="False Alarms"   value={falseAlarm}      change="All time"   changeType="neutral" icon={AlertTriangle} gradient="amber"  />
-        <StatCard title="Total Alerts"   value={alerts.length}   change="All time"   changeType="neutral" icon={Clock}         gradient="blue"   />
+        <StatCard title="Active Now"     value={active.length}   change={active.length > 0 ? 'Needs action' : 'All clear'} changeType={active.length > 0 ? 'down' : 'neutral'} icon={Shield}        gradient="pink"   loading={loading} />
+        <StatCard title="Resolved"       value={resolved}        change="All time"   changeType="up"    icon={CheckCircle}   gradient="green"  loading={loading} />
+        <StatCard title="False Alarms"   value={falseAlarm}      change="All time"   changeType="neutral" icon={AlertTriangle} gradient="amber"  loading={loading} />
+        <StatCard title="Total Alerts"   value={alerts.length}   change="All time"   changeType="neutral" icon={Clock}         gradient="blue"   loading={loading} />
       </div>
 
-      {active.length > 0 && (
+      {!loading && active.length > 0 && (
         <div>
           <h2 className="text-md font-bold text-text-primary mb-3">Active Alerts</h2>
           <div className="space-y-3">
@@ -178,7 +170,7 @@ export default function SOSPage() {
         </div>
       )}
 
-      {active.length === 0 && (
+      {!loading && active.length === 0 && (
         <div className="admin-card flex flex-col items-center justify-center py-12 text-center">
           <CheckCircle size={40} className="text-success mb-3" />
           <p className="font-bold text-text-primary">No active SOS alerts</p>
@@ -188,7 +180,13 @@ export default function SOSPage() {
 
       <div className="admin-card">
         <h2 className="text-md font-bold text-text-primary mb-4">All SOS Events</h2>
-        {alerts.length === 0 ? (
+        {loading ? (
+          <table className="data-table w-full"><tbody>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <tr key={i}><td colSpan={6} className="py-3"><div className="skeleton h-4 rounded w-full" /></td></tr>
+            ))}
+          </tbody></table>
+        ) : alerts.length === 0 ? (
           <p className="text-text-muted text-sm py-4 text-center">No SOS events recorded</p>
         ) : (
           <table className="data-table">

@@ -154,10 +154,10 @@ export default function DriversPage() {
     <div className="space-y-5">
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Drivers"    value={total}                                                 change="All time"        changeType="neutral" icon={Users}    gradient="blue"   />
-        <StatCard title="Active"           value={drivers.filter(d => d.status === 'active').length}      change="+3 this week"    changeType="up"      icon={UserCheck} gradient="green"  />
-        <StatCard title="Pending Approval" value={pending.length}                                         change="Needs attention" changeType="neutral" icon={Clock}    gradient="amber"  />
-        <StatCard title="Suspended"        value={drivers.filter(d => d.status === 'suspended').length}   change="Under review"    changeType="neutral" icon={ShieldOff} gradient="purple" />
+        <StatCard title="Total Drivers"    value={total}                                                 change="All time"        changeType="neutral" icon={Users}    gradient="blue"   loading={listLoading} />
+        <StatCard title="Active"           value={drivers.filter(d => d.status === 'active').length}      change="+3 this week"    changeType="up"      icon={UserCheck} gradient="green"  loading={listLoading} />
+        <StatCard title="Pending Approval" value={pending.length}                                         change="Needs attention" changeType="neutral" icon={Clock}    gradient="amber"  loading={listLoading} />
+        <StatCard title="Suspended"        value={drivers.filter(d => d.status === 'suspended').length}   change="Under review"    changeType="neutral" icon={ShieldOff} gradient="purple" loading={listLoading} />
       </div>
 
       {/* Pending approval banner */}
