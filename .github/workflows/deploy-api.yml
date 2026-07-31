@@ -77,9 +77,16 @@ jobs:
 
             export GITHUB_REPOSITORY_OWNER=cardevelopment01-tech
             export IMAGE_TAG=$IMAGE_TAG
+
             docker compose -f docker-compose.prod.yml pull api
+
+            echo "Running migrations (new image, old container still serving traffic)..."
+            docker run --rm --env-file .env.prod \
+              ghcr.io/$GITHUB_REPOSITORY_OWNER/ocar-api:$IMAGE_TAG \
+              node dist/db/migrate.js
+
+            echo "Migrations OK — cutting over to new image"
             docker compose -f docker-compose.prod.yml up -d --no-deps api
-            docker exec ocar_api node dist/db/migrate.js || true
             docker image prune -f
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
