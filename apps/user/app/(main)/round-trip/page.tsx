@@ -147,8 +147,8 @@ function RoundTripContent() {
     : selectedHours === null
     ? 'Choose how many hours'
     : scheduledFor
-    ? `Schedule your cab · ${selectedHours}h round trip`
-    : `Choose your cab · ${selectedHours}h round trip`
+    ? `Continue scheduling · ${selectedHours}h round trip`
+    : `Continue · ${selectedHours}h round trip`
 
   const timelineNodes: TimelineNode[] = [{ kind: 'origin', address: originAddress }]
   if (hasDestination) {
