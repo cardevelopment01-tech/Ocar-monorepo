@@ -128,7 +128,7 @@ export default function Earnings() {
       </div>
 
       {/* Total card */}
-      <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
+      <div className="card-glossy mx-5 rounded-3xl p-5 mb-4">
         <p className="text-text-muted text-[11px] font-semibold mb-1">
           {PERIODS.find(p => p.key === period)!.label}
         </p>

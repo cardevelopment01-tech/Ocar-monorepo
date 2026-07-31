@@ -212,7 +212,7 @@ export default function Wallet() {
       )}
 
       {/* Add money */}
-      <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
+      <div className="card-glossy mx-5 rounded-3xl p-5 mb-4">
         <p className="text-text-secondary text-sm font-semibold mb-3">Add Money</p>
         <div className="flex gap-2 mb-4 flex-wrap">
           {[500, 1000, 2000, 5000].map(amt => (
@@ -220,7 +220,7 @@ export default function Wallet() {
               key={amt}
               onClick={() => setSelectedAmount(amt)}
               className={cn(
-                'border rounded-2xl px-4 py-2 text-sm font-bold transition-colors cursor-pointer',
+                'gloss-sheen border rounded-2xl px-4 py-2 text-sm font-bold transition-colors cursor-pointer',
                 selectedAmount === amt
                   ? 'bg-primary text-white border-primary'
                   : 'bg-surface-2 border-border text-text-secondary hover:border-primary hover:text-primary hover:bg-primary/5'
@@ -246,7 +246,7 @@ export default function Wallet() {
       </div>
 
       {/* Transactions */}
-      <div className="mx-5 bg-white rounded-3xl p-5 border border-border">
+      <div className="card-glossy mx-5 rounded-3xl p-5">
         <p className="text-text-secondary text-sm font-semibold mb-4">Recent Transactions</p>
 
         {error && (

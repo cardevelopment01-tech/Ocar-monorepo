@@ -124,7 +124,7 @@ export default function Profile() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
         >
-          <div className="bg-white rounded-3xl p-5 border border-border" style={{ boxShadow: '0 2px 16px rgba(10, 159, 176,0.07)' }}>
+          <div className="card-glossy rounded-3xl p-5">
             <div className="flex items-center gap-4">
               <div
                 className="w-[60px] h-[60px] rounded-2xl flex items-center justify-center flex-shrink-0"
@@ -178,7 +178,7 @@ export default function Profile() {
         </motion.div>
 
         {/* Menu */}
-        <div className="mx-5 bg-white rounded-3xl border border-border overflow-hidden mb-4">
+        <div className="card-glossy mx-5 rounded-3xl p-0 overflow-hidden mb-4">
           {MENU_ITEMS.map((item, i) => (
             <motion.div
               key={item.label}
@@ -188,7 +188,7 @@ export default function Profile() {
             >
               <button
                 onClick={() => handleMenu(item.action)}
-                className={`w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors cursor-pointer ${
+                className={`gloss-sheen w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors cursor-pointer ${
                   i < MENU_ITEMS.length - 1 ? 'border-b border-border' : ''
                 }`}
               >
