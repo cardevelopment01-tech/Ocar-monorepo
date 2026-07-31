@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express'
 import * as service        from './admin.service'
 import * as sosService     from '@/modules/safety/sos.service'
 import * as disputeService from '@/modules/safety/disputes.service'
-import type { DriverStatus } from './admin.types'
+import type { DriverStatus, UpdateDriverProfilePayload } from './admin.types'
 import type { DisputeOutcome } from '@/modules/safety/safety.types'
 
 export async function getDrivers(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -37,6 +37,35 @@ export async function updateDriverStatus(req: Request, res: Response, next: Next
     if (req.body.reason !== undefined) payload.reason = String(req.body.reason)
     await service.updateDriverStatus(driverId, adminId, driver.status as DriverStatus, payload, req.ip ?? null)
     res.json({ success: true, status: req.body.status })
+  } catch (err) {
+    next(err)
+  }
+}
+
+const PROFILE_STRING_FIELDS = [
+  'full_name', 'email', 'gender', 'date_of_birth', 'residential_address',
+  'state', 'city', 'pincode', 'emergency_contact', 'aadhaar_number', 'license_number',
+] as const
+
+export async function updateDriverProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const driverId = BigInt(req.params['id']!)
+    const adminId  = req.admin!.id
+    const body = req.body as Record<string, unknown>
+
+    const payload: UpdateDriverProfilePayload = { reason: String(body['reason'] ?? '') }
+    for (const field of PROFILE_STRING_FIELDS) {
+      if (body[field] !== undefined) payload[field] = String(body[field])
+    }
+    if (body['experience_years'] !== undefined) {
+      const years = Number(body['experience_years'])
+      if (isNaN(years)) throw Object.assign(new Error('experience_years must be a number'), { httpStatus: 400 })
+      payload.experience_years = years
+    }
+    if (body['languages_known'] !== undefined) payload.languages_known = body['languages_known'] as string[]
+
+    await service.updateDriverProfile(driverId, adminId, payload, req.ip ?? null)
+    res.json({ success: true })
   } catch (err) {
     next(err)
   }

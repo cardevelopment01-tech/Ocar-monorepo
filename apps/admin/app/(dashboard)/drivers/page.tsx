@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Users, UserCheck, Clock, ShieldOff, X,
-  FileText, CheckCircle, XCircle, AlertCircle, Layers,
+  FileText, CheckCircle, XCircle, AlertCircle, Layers, Pencil,
 } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
 import StatusPill from '@/components/ui/StatusPill'
@@ -168,6 +168,44 @@ export default function DriversPage() {
   const [reviewInitIdx, setReviewInitIdx] = useState(0)
   const [bannerLoadingId, setBannerLoadingId] = useState<string | null>(null)
 
+  // Identity correction (name/Aadhaar/licence typos vs. the real documents)
+  const [editingIdentity, setEditingIdentity] = useState(false)
+  const [identityForm, setIdentityForm] = useState({ full_name: '', aadhaar_number: '', license_number: '', reason: '' })
+  const [savingIdentity, setSavingIdentity] = useState(false)
+  const [identityError, setIdentityError] = useState('')
+
+  function startEditIdentity() {
+    if (!detail) return
+    setIdentityForm({
+      full_name: detail.full_name ?? '',
+      aadhaar_number: detail.aadhaar_number ?? '',
+      license_number: detail.license_number ?? '',
+      reason: '',
+    })
+    setIdentityError('')
+    setEditingIdentity(true)
+  }
+  async function saveIdentity() {
+    if (!detail) return
+    if (identityForm.reason.trim().length < 10) {
+      setIdentityError('A reason (at least 10 characters) is required.')
+      return
+    }
+    setSavingIdentity(true); setIdentityError('')
+    try {
+      await adminDriverApi.updateProfile(detail.id, {
+        full_name: identityForm.full_name,
+        aadhaar_number: identityForm.aadhaar_number,
+        license_number: identityForm.license_number,
+      }, identityForm.reason.trim())
+      const updated = await adminDriverApi.getById(detail.id)
+      setDetail(updated)
+      await fetchList()
+      setEditingIdentity(false)
+    } catch { setIdentityError('Could not save changes. Please try again.') }
+    finally { setSavingIdentity(false) }
+  }
+
   // ── debounce search ────────────────────────────────────────────────────────
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -192,7 +230,7 @@ export default function DriversPage() {
   // ── fetch detail ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedId) { setDetail(null); setDetailError(false); return }
-    setDetailLoading(true); setDetailError(false); setActiveTab('overview')
+    setDetailLoading(true); setDetailError(false); setActiveTab('overview'); setEditingIdentity(false)
     adminDriverApi.getById(selectedId)
       .then(setDetail).catch(() => setDetailError(true)).finally(() => setDetailLoading(false))
   }, [selectedId, detailRetry])
@@ -366,21 +404,83 @@ export default function DriversPage() {
             )}
           </button>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-text-primary">{d.full_name ?? d.phone}</p>
-            <div className="mt-1 space-y-0.5 text-xs">
-              <div className="flex gap-2">
-                <span className="text-text-muted w-14">Aadhaar</span>
-                {d.aadhaar_number
-                  ? <span className="font-mono text-text-secondary">{d.aadhaar_number}</span>
-                  : <span className="text-danger font-medium">Not provided</span>}
+            {editingIdentity ? (
+              <div className="space-y-2">
+                <input
+                  value={identityForm.full_name}
+                  onChange={e => setIdentityForm(f => ({ ...f, full_name: e.target.value }))}
+                  placeholder="Full name"
+                  className="w-full text-sm font-bold text-text-primary bg-surface border border-border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <div className="flex gap-2 items-center">
+                  <span className="text-text-muted w-14 text-xs flex-shrink-0">Aadhaar</span>
+                  <input
+                    value={identityForm.aadhaar_number}
+                    onChange={e => setIdentityForm(f => ({ ...f, aadhaar_number: e.target.value }))}
+                    className="flex-1 min-w-0 text-xs font-mono text-text-secondary bg-surface border border-border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div className="flex gap-2 items-center">
+                  <span className="text-text-muted w-14 text-xs flex-shrink-0">Licence</span>
+                  <input
+                    value={identityForm.license_number}
+                    onChange={e => setIdentityForm(f => ({ ...f, license_number: e.target.value }))}
+                    className="flex-1 min-w-0 text-xs font-mono text-text-secondary bg-surface border border-border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <textarea
+                  value={identityForm.reason}
+                  onChange={e => setIdentityForm(f => ({ ...f, reason: e.target.value }))}
+                  placeholder="Reason for this correction (min 10 characters)…"
+                  rows={2}
+                  className="w-full text-xs text-text-primary bg-surface border border-border rounded-lg px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted"
+                />
+                {identityError && <p className="text-xs text-danger">{identityError}</p>}
+                <div className="flex gap-2 pt-0.5">
+                  <button
+                    onClick={saveIdentity}
+                    disabled={savingIdentity}
+                    className="px-3 py-1 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    {savingIdentity ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => setEditingIdentity(false)}
+                    disabled={savingIdentity}
+                    className="px-3 py-1 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <span className="text-text-muted w-14">Licence</span>
-                {d.license_number
-                  ? <span className="font-mono text-text-secondary">{d.license_number}</span>
-                  : <span className="text-danger font-medium">Not provided</span>}
-              </div>
-            </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold text-text-primary">{d.full_name ?? d.phone}</p>
+                  <button
+                    onClick={startEditIdentity}
+                    className="text-text-muted hover:text-primary transition-colors flex-shrink-0"
+                    aria-label="Edit name and document numbers"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                </div>
+                <div className="mt-1 space-y-0.5 text-xs">
+                  <div className="flex gap-2">
+                    <span className="text-text-muted w-14">Aadhaar</span>
+                    {d.aadhaar_number
+                      ? <span className="font-mono text-text-secondary">{d.aadhaar_number}</span>
+                      : <span className="text-danger font-medium">Not provided</span>}
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="text-text-muted w-14">Licence</span>
+                    {d.license_number
+                      ? <span className="font-mono text-text-secondary">{d.license_number}</span>
+                      : <span className="text-danger font-medium">Not provided</span>}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

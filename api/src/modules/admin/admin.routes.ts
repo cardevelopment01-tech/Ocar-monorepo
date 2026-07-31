@@ -22,6 +22,7 @@ router.get('/sessions/active', controller.getAdminActiveSessions)
 router.get('/drivers',               controller.getDrivers)
 router.get('/drivers/:id',           controller.getDriver)
 router.patch('/drivers/:id/status',  requireAdmin('super_admin', 'ops_admin'), controller.updateDriverStatus)
+router.patch('/drivers/:id/profile', requireAdmin('super_admin', 'ops_admin'), controller.updateDriverProfile)
 
 // ─── Vehicle categories ───────────────────────────────────────────────────────
 router.get('/vehicles/categories',       requireAdmin('super_admin', 'ops_admin'), controller.getCategories)

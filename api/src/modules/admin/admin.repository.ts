@@ -6,8 +6,16 @@ import type {
   AdminVehicleCategory, AdminVehicleBrand, AdminVehicleModel,
   FleetVehicle, PendingVehicleDoc, ExpiringVehicleDoc,
   AdminCity, AdminDashboardStats, ActiveDriverSession, AdminRentalPackage,
-  AdminAccountListItem,
+  AdminAccountListItem, UpdateDriverProfilePayload,
 } from './admin.types'
+
+// Hardcoded whitelist, never built from request keys — this is the only thing
+// standing between an admin body and a dynamic UPDATE (see CLAUDE.md SQL rules).
+const PROFILE_EDITABLE_COLUMNS = [
+  'full_name', 'email', 'gender', 'date_of_birth', 'residential_address',
+  'state', 'city', 'pincode', 'experience_years', 'emergency_contact',
+  'languages_known', 'aadhaar_number', 'license_number',
+] as const
 
 export async function listAdminAccounts(): Promise<AdminAccountListItem[]> {
   return pool.query<AdminAccountListItem>(
@@ -309,6 +317,65 @@ export async function updateDriverStatus(
     beforeState,
     afterState,
     ipAddress: ipAddress ?? null,
+  })
+}
+
+// Corrects driver personal/identity fields to match their real documents — a
+// trusted admin override, not a re-verification (see docs/... admin driver
+// correction plan). No status/onboarding_step change.
+export async function updateDriverProfile(
+  driverId: bigint,
+  adminId: bigint,
+  fields: Omit<UpdateDriverProfilePayload, 'reason'>,
+  reason: string,
+  ipAddress: string | null
+): Promise<void> {
+  const setClauses: string[] = []
+  const values: unknown[] = []
+  for (const col of PROFILE_EDITABLE_COLUMNS) {
+    if (fields[col] !== undefined) {
+      values.push(fields[col])
+      setClauses.push(`${col} = $${values.length}`)
+    }
+  }
+
+  const client = await pool.connect()
+  let beforeState: Record<string, unknown> | null = null
+  let afterState: Record<string, unknown> | null = null
+  try {
+    await client.query('BEGIN')
+
+    const beforeRes = await client.query('SELECT * FROM drivers WHERE id = $1 FOR UPDATE', [driverId])
+    beforeState = beforeRes.rows[0] ?? null
+
+    if (setClauses.length > 0) {
+      values.push(driverId)
+      await client.query(
+        `UPDATE drivers SET ${setClauses.join(', ')}, updated_at = now() WHERE id = $${values.length}`,
+        values
+      )
+    }
+
+    const afterRes = await client.query('SELECT * FROM drivers WHERE id = $1', [driverId])
+    afterState = afterRes.rows[0] ?? null
+
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+
+  await recordAuditLog({
+    adminId,
+    action: 'drivers.profile_correction',
+    targetTable: 'drivers',
+    targetId: driverId,
+    beforeState,
+    afterState,
+    reason,
+    ipAddress,
   })
 }
 

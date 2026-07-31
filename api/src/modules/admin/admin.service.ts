@@ -2,7 +2,7 @@ import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
-import type { DriverStatus, UpdateDriverStatusPayload } from './admin.types'
+import type { DriverStatus, UpdateDriverStatusPayload, UpdateDriverProfilePayload } from './admin.types'
 import { forceResolveRide as resolveStuckRide } from '@/modules/rides/rides.service'
 import { getRideStops } from '@/modules/rides/rides.repository'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
@@ -73,6 +73,32 @@ export async function updateDriverStatus(
   // When rejecting docs, reset onboarding_step so driver lands on the documents page
   const onboardingStep = payload.status === 'docs_rejected' ? 'documents' : undefined
   await repo.updateDriverStatus(driverId, adminId, currentStatus, payload.status, payload.reason, onboardingStep, ipAddress)
+}
+
+export async function updateDriverProfile(
+  driverId: bigint,
+  adminId: bigint,
+  payload: UpdateDriverProfilePayload,
+  ipAddress: string | null
+) {
+  if (!payload.reason || payload.reason.trim().length < 10) {
+    throw httpError(422, 'A reason (at least 10 characters) is required to correct driver details', AppErrors.VALIDATION_ERROR.code)
+  }
+  const { reason, ...fields } = payload
+  if (Object.keys(fields).length === 0) {
+    throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
+
+  await repo.updateDriverProfile(driverId, adminId, fields, reason, ipAddress)
+
+  await notifyOwner({
+    ownerType: 'driver',
+    ownerId: driverId,
+    type: 'profile_corrected',
+    title: 'Profile updated',
+    body: 'Your profile details were updated by Ocar support to match your documents.',
+    payload: { route: 'profile' },
+  })
 }
 
 // ─── Admin accounts ───────────────────────────────────────────────────────────

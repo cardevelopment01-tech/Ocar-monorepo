@@ -114,6 +114,19 @@ export const adminDriverApi = {
     await api.patch(`/api/v1/admin/drivers/documents/${docId}/reject`, { rejection_note: rejectionNote })
   },
 
+  updateProfile: async (
+    id: string,
+    fields: Partial<{
+      full_name: string; email: string; gender: string; date_of_birth: string
+      residential_address: string; state: string; city: string; pincode: string
+      experience_years: number; emergency_contact: string; languages_known: string[]
+      aadhaar_number: string; license_number: string
+    }>,
+    reason: string
+  ): Promise<void> => {
+    await api.patch(`/api/v1/admin/drivers/${id}/profile`, { ...fields, reason })
+  },
+
   approveVehicleDoc: async (docId: string): Promise<void> => {
     await api.patch(`/api/v1/admin/vehicles/documents/${docId}/approve`)
   },

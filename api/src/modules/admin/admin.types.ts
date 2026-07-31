@@ -109,6 +109,25 @@ export interface UpdateDriverStatusPayload {
   reason?: string
 }
 
+// Identity/KYC fields an admin can correct against the driver's uploaded documents.
+// phone/status/onboarding_step are deliberately excluded — those have their own gated flows.
+export interface UpdateDriverProfilePayload {
+  full_name?: string
+  email?: string
+  gender?: string
+  date_of_birth?: string
+  residential_address?: string
+  state?: string
+  city?: string
+  pincode?: string
+  experience_years?: number
+  emergency_contact?: string
+  languages_known?: string[]
+  aadhaar_number?: string
+  license_number?: string
+  reason: string
+}
+
 // ─── Vehicle management types ─────────────────────────────────────────────────
 
 export type VehicleState = 'pending' | 'active' | 'blacklisted' | 'inactive'

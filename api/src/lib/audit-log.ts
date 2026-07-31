@@ -8,6 +8,7 @@ export interface AuditLogJobData {
   beforeState: Record<string, unknown> | null
   afterState: Record<string, unknown> | null
   ipAddress: string | null
+  reason: string | null
 }
 
 // Builds the record synchronously (cheap, all context already in scope at the
@@ -21,6 +22,7 @@ export async function recordAuditLog(params: {
   beforeState?: Record<string, unknown> | null
   afterState?: Record<string, unknown> | null
   ipAddress?: string | null
+  reason?: string | null
 }): Promise<void> {
   const data: AuditLogJobData = {
     adminId: params.adminId?.toString() ?? null,
@@ -30,6 +32,7 @@ export async function recordAuditLog(params: {
     beforeState: params.beforeState ?? null,
     afterState: params.afterState ?? null,
     ipAddress: params.ipAddress ?? null,
+    reason: params.reason ?? null,
   }
   await auditQueue.add('record', data, { attempts: 3, backoff: { type: 'exponential', delay: 1000 } })
 }
