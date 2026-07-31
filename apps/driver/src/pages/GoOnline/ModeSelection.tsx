@@ -48,7 +48,7 @@ export default function ModeSelection() {
           animate="visible"
           whileTap={{ scale: 0.97 }}
           onClick={() => navigate('/go-online/standard')}
-          className="w-full driver-card text-left relative overflow-hidden"
+          className="w-full driver-card gloss-sheen text-left relative overflow-hidden"
         >
           <div className="flex items-start gap-4 relative">
             <div className="w-14 h-14 rounded-2xl bg-[#0F172A] flex items-center justify-center flex-shrink-0">
@@ -90,7 +90,7 @@ export default function ModeSelection() {
           animate="visible"
           whileTap={{ scale: 0.97 }}
           onClick={() => navigate('/go-online/return-cab')}
-          className="w-full driver-card text-left relative overflow-hidden"
+          className="w-full driver-card gloss-sheen text-left relative overflow-hidden"
         >
           <div className="flex items-start gap-4 relative">
             <div className="w-14 h-14 rounded-2xl bg-emerald-600 flex items-center justify-center flex-shrink-0">

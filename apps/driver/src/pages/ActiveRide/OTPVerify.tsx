@@ -89,10 +89,7 @@ export default function OTPVerify() {
         {!isRoundTrip && !isRental && <div className="mb-6" />}
 
         {/* Card */}
-        <div
-          className="bg-white rounded-3xl p-6 mb-4"
-          style={{ border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.07)' }}
-        >
+        <div className="card-glossy rounded-3xl p-6 mb-4">
           <OtpVerifyPanel
             otp={otp}
             onChange={v => { setOtp(v); setError(false) }}
