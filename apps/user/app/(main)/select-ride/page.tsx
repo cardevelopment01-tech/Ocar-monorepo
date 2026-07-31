@@ -385,7 +385,13 @@ function SelectRideContent() {
       ? {
           kind: 'add',
           onTap: () => setAddStopOpen(true),
-          hint: routingStops ? 'Updating fare…' : detourPriced ? 'Fare covers the detour' : `${stops.length} on the way`,
+          hint: routingStops
+            ? 'Updating fare…'
+            : detourPriced
+            ? 'Fare covers the detour'
+            : rideType === 'round_trip' && loading
+            ? 'Updating fare…'
+            : `${stops.length} on the way`,
         }
       : { kind: 'add', onTap: () => setAddStopOpen(true) })
   }
