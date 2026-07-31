@@ -65,7 +65,7 @@ export default function SplashScreen({ show, onComplete }: SplashScreenProps) {
             transition={reduce ? { duration: 0 } : { duration: 0.5, ease: EASE_OUT_EXPO }}
             style={{ position: 'relative' }}
           >
-            <OcarLogoMark size="xl" showWordmark className="text-white" />
+            <OcarLogoMark size="xl" />
           </motion.div>
         </motion.div>
       )}

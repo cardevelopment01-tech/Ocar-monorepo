@@ -144,7 +144,7 @@ export default function Login() {
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         className="relative flex flex-col items-center mb-10"
       >
-        <OcarLogoMark size="xl" showWordmark className="mb-2 text-text-primary" />
+        <OcarLogoMark size="xl" className="mb-2" />
         <p className="text-text-muted text-sm font-medium">Driver Partner</p>
       </motion.div>
 

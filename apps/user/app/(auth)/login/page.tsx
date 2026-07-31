@@ -140,7 +140,7 @@ export default function LoginPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: EASE }}
       >
-        <OcarLogoMark size="xl" showWordmark className="mb-4 text-white" />
+        <OcarLogoMark size="xl" className="mb-4" />
         <p className="text-sm mt-1.5" style={{ color: 'rgba(255,255,255,0.45)' }}>
           Your ride, your city
         </p>

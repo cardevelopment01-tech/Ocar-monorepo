@@ -5,52 +5,29 @@ export type LogoMarkSize = 'sm' | 'md' | 'lg' | 'xl'
 interface OcarLogoMarkProps {
   size?: LogoMarkSize
   className?: string
-  showWordmark?: boolean
 }
 
-const RING_PX: Record<LogoMarkSize, number> = {
-  sm: 20,
-  md: 28,
-  lg: 40,
-  xl: 64,
+// logo-mark.png is a wide mark (~2.4:1) — height drives the box, width follows the art's aspect ratio
+const LOGO_ASPECT = 640 / 267
+
+const HEIGHT_PX: Record<LogoMarkSize, number> = {
+  sm: 24,
+  md: 34,
+  lg: 52,
+  xl: 88,
 }
 
-const WORDMARK_PX: Record<LogoMarkSize, number> = {
-  sm: 13,
-  md: 17,
-  lg: 22,
-  xl: 26,
-}
-
-export default function OcarLogoMark({ size = 'md', className, showWordmark = false }: OcarLogoMarkProps) {
-  const px = RING_PX[size]
-  const img = (
+export default function OcarLogoMark({ size = 'md', className }: OcarLogoMarkProps) {
+  const h = HEIGHT_PX[size]
+  const w = Math.round(h * LOGO_ASPECT)
+  return (
     <img
       src="/logo-mark.png"
-      alt={showWordmark ? '' : 'Ocar'}
-      width={px}
-      height={px}
-      className={cn('inline-block object-contain', !showWordmark && className)}
-      style={{ width: px, height: px }}
+      alt="Ocar"
+      width={w}
+      height={h}
+      className={cn('inline-block object-contain', className)}
+      style={{ width: w, height: h }}
     />
-  )
-
-  if (!showWordmark) return img
-
-  return (
-    <span className={cn('inline-flex flex-col items-center', className)}>
-      {img}
-      <span
-        style={{
-          marginTop: 8,
-          fontWeight: 700,
-          fontSize: WORDMARK_PX[size],
-          letterSpacing: '-0.03em',
-          lineHeight: 1,
-        }}
-      >
-        Ocar
-      </span>
-    </span>
   )
 }
