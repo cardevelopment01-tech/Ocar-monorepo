@@ -334,7 +334,7 @@ export default function Home() {
         >
           <button
             onClick={() => navigate(resumeRoute, { replace: true })}
-            className="w-full flex items-center gap-3 rounded-2xl px-4 py-3 bg-primary active:scale-[0.98] transition-transform"
+            className="gloss-sheen w-full flex items-center gap-3 rounded-2xl px-4 py-3 bg-primary active:scale-[0.98] transition-transform"
             style={{ boxShadow: '0 4px 16px rgba(10, 159, 176,0.28)' }}
           >
             <span className="w-2 h-2 rounded-full bg-white flex-shrink-0 animate-pulse-soft" />
@@ -457,7 +457,7 @@ export default function Home() {
                    backgrounds) sitting on top of two full-width action rows.
                    Replaces three separately-floating pill blocks that had
                    uneven widths and gaps between them. ── */}
-              <div className="rounded-2xl border border-border overflow-hidden mb-3">
+              <div className="card-glossy p-0 overflow-hidden mb-3">
                 <div className="grid grid-cols-3 divide-x divide-border">
                   <div className="flex flex-col items-center justify-center gap-0.5 py-3.5">
                     <div className="flex items-center gap-1">
@@ -486,7 +486,7 @@ export default function Home() {
 
                 <button
                   onClick={() => navigate('/earnings')}
-                  className="w-full flex items-center justify-between px-4 py-3 border-t border-border active:bg-surface-2 transition-colors"
+                  className="gloss-sheen w-full flex items-center justify-between px-4 py-3 border-t border-border active:bg-surface-2 transition-colors"
                 >
                   <div className="flex items-center gap-2.5">
                     <TrendingUp size={15} className="text-primary" />
@@ -496,7 +496,7 @@ export default function Home() {
                 </button>
                 <button
                   onClick={() => navigate('/wallet')}
-                  className="w-full flex items-center justify-between px-4 py-3 border-t border-border active:bg-surface-2 transition-colors"
+                  className="gloss-sheen w-full flex items-center justify-between px-4 py-3 border-t border-border active:bg-surface-2 transition-colors"
                 >
                   <div className="flex items-center gap-2.5">
                     <Wallet size={15} className="text-primary" />
