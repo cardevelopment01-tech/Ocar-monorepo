@@ -383,6 +383,12 @@ cd api && npx tsc --noEmit
   ```
   No deploy needed — read live on every request. Delete this note once flipped on for good.
 
+- **Driver ₹500 minimum-wallet-balance recharge gate is temporarily disabled for client driver testing.** `system_config.driver_minimum_balance` should be `'0'` (was `'500'`) — this is read live by `goOnline()`, ride-broadcast driver filtering, and `/return-cab-available`, so it needs no deploy either way. The driver app also mirrors the threshold client-side in two hardcoded constants (`apps/driver/src/lib/useWalletGate.ts` and `apps/driver/src/pages/Wallet.tsx`, both currently `MIN_BALANCE = 0`, marked with `ponytail:` comments) — those need a driver-app redeploy to flip back. To re-enable once testing is done:
+  ```sql
+  UPDATE system_config SET value = '500' WHERE key = 'driver_minimum_balance';
+  ```
+  and revert `MIN_BALANCE` back to `500` in both driver-app files. Delete this note once flipped back on for good.
+
 - **Before the client DB load test, enable observability in the Neon dashboard (can't be done from code):**
   1. Enable the `pg_stat_statements` extension.
   2. Set `log_min_duration_statement = 500` (log queries slower than 500ms).

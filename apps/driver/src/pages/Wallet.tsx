@@ -6,7 +6,9 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 
-const MIN_BALANCE = 500
+// ponytail: temporarily 0 — client requested the recharge gate disabled for
+// driver testing. Restore to 500 to re-enable the low-balance banner.
+const MIN_BALANCE = 0
 
 interface LedgerEntry {
   id: string

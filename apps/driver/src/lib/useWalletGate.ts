@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
 
-// Mirror of the API's driver_minimum_balance system_config value (currently
-// ₹500) — same client-side-mirrored-constant convention as Wallet.tsx's
-// MIN_BALANCE. Server is authoritative on whether goOnline() actually blocks.
-const MIN_BALANCE = 500
+// Mirror of the API's driver_minimum_balance system_config value — same
+// client-side-mirrored-constant convention as Wallet.tsx's MIN_BALANCE.
+// Server is authoritative on whether goOnline() actually blocks.
+// ponytail: temporarily 0 — client requested the recharge gate disabled for
+// driver testing. Restore to 500 (and flip system_config.driver_minimum_balance
+// back to '500') to re-enable.
+const MIN_BALANCE = 0
 
 interface WalletGate {
   loading: boolean
