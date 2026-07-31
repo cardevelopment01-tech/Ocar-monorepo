@@ -58,14 +58,28 @@ real fare at CTA-time, `/round-trip` does not.
 
 ### 2. Stop-in-flight CTA gating on `/select-ride`
 
-- Extend the existing one-way pattern (disable Book while a stop-triggered
-  route/fare recompute is in flight) to round-trip's per-stop fee estimate.
-  Concretely: the disabled condition gains a round-trip branch analogous to
-  the current `detourPriced && (routingStops || routedDistanceKm == null)`
-  check, gating on round-trip's own stop-fee-recompute-in-flight signal
-  instead of `routingStops`.
+Closer read of `select-ride/page.tsx` during planning found the Book button's
+*disabled* state is already correct for round-trip: `loadEstimates`
+(`select-ride/page.tsx:229-273`) depends on `stops.length` and sets the
+shared `loading` flag around the fetch, and `loading` already appears in the
+disabled condition (`select-ride/page.tsx:836`). One-way needs its extra
+`detourPriced && (routingStops || routedDistanceKm == null)` clause only
+because its fare depends on a second, separate async route computation
+(`routedDistanceKm`) that can resolve *after* `loading` has already gone
+back to `false` with a stale straight-line estimate — round-trip's fare has
+no such second stage (it's a direct `stopCount`), so `loading` alone already
+gates it correctly. **No disabled-condition change is needed.**
+
+What *is* missing is messaging parity: the stop-row hint text at
+`select-ride/page.tsx:388` (`routingStops ? 'Updating fare…' : detourPriced
+? 'Fare covers the detour' : '${stops.length} on the way'`) only ever shows
+"Updating fare…" for one-way, because `routingStops`/`detourPriced` are both
+one-way-only signals. For round-trip, the hint stays on `'{n} on the way'`
+even while `loading` is true right after a stop add/remove. Fix: extend the
+hint's ternary so round-trip shows "Updating fare…" while `loading` is true
+too, giving the same in-flight feedback one-way already has.
 - Rental is untouched — its stops don't affect fare (see
-  `rental/page.tsx:367`), so there is nothing to gate on for it.
+  `rental/page.tsx:367`), so there is nothing to gate or message here.
 
 ### 3. `/search` pill copy
 
