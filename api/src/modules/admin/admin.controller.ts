@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express'
 import * as service        from './admin.service'
 import * as sosService     from '@/modules/safety/sos.service'
 import * as disputeService from '@/modules/safety/disputes.service'
+import * as adminAuditService from '@/modules/admin-audit/admin-audit.service'
 import type { DriverStatus, UpdateDriverProfilePayload } from './admin.types'
 import type { DisputeOutcome } from '@/modules/safety/safety.types'
 
@@ -66,6 +67,40 @@ export async function updateDriverProfile(req: Request, res: Response, next: Nex
 
     await service.updateDriverProfile(driverId, adminId, payload, req.ip ?? null)
     res.json({ success: true })
+  } catch (err) {
+    next(err)
+  }
+}
+
+function pageQuery(req: Request): { page?: number; limit?: number } {
+  const q: { page?: number; limit?: number } = {}
+  if (req.query['page'])  q.page  = parseInt(req.query['page']  as string, 10)
+  if (req.query['limit']) q.limit = parseInt(req.query['limit'] as string, 10)
+  return q
+}
+
+export async function getDriverRides(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await service.listDriverRides(BigInt(req.params['id']!), pageQuery(req))
+    res.json(result)
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function getDriverPayments(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await service.listDriverPayments(BigInt(req.params['id']!), pageQuery(req))
+    res.json(result)
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function getDriverAuditLog(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await adminAuditService.listAuditLogForTarget('drivers', BigInt(req.params['id']!), pageQuery(req))
+    res.json(result)
   } catch (err) {
     next(err)
   }

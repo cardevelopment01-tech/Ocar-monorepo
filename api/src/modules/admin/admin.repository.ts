@@ -320,6 +320,64 @@ export async function updateDriverStatus(
   })
 }
 
+// Full paginated ride history for the driver detail page's Rides tab — the
+// same query the detail payload's `recent_rides` snapshot uses, minus the
+// LIMIT 10, plus a count for pagination.
+export async function listDriverRides(
+  driverId: bigint,
+  limit: number,
+  offset: number
+): Promise<{ rows: AdminDriverDetail['recent_rides']; total: number }> {
+  const countRes = await pool.query('SELECT COUNT(*) FROM rides WHERE driver_id = $1', [driverId])
+  const total = parseInt(countRes.rows[0].count as string, 10)
+
+  const dataRes = await pool.query(
+    `SELECT r.id::text, r.status, r.ride_type, r.requested_at, r.completed_at,
+            COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
+            u.name AS user_name
+     FROM rides r
+     JOIN users u ON u.id = r.user_id
+     LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+     WHERE r.driver_id = $1
+     ORDER BY r.requested_at DESC
+     LIMIT $2 OFFSET $3`,
+    [driverId, limit, offset]
+  )
+
+  return { rows: dataRes.rows as AdminDriverDetail['recent_rides'], total }
+}
+
+// Driver-scoped transaction list for the Earnings tab — mirrors
+// listAdminPayments but pre-filtered to one driver and reachable by
+// ops_admin (the global /payments list is finance_admin-gated).
+export async function listDriverPayments(
+  driverId: bigint,
+  limit: number,
+  offset: number
+): Promise<{ rows: unknown[]; total: number }> {
+  const countRes = await pool.query(
+    `SELECT COUNT(*) FROM payments p JOIN rides r ON r.id = p.ride_id WHERE r.driver_id = $1`,
+    [driverId]
+  )
+  const total = parseInt(countRes.rows[0].count as string, 10)
+
+  const dataRes = await pool.query(
+    `SELECT p.id::text, p.status, p.channel, p.created_at,
+            p.amount::text, p.commission_amount::text, p.driver_earning::text,
+            r.id::text AS ride_id,
+            u.name AS user_name
+     FROM payments p
+     JOIN rides r ON r.id = p.ride_id
+     JOIN users u ON u.id = r.user_id
+     WHERE r.driver_id = $1
+     ORDER BY p.created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [driverId, limit, offset]
+  )
+
+  return { rows: dataRes.rows, total }
+}
+
 // Corrects driver personal/identity fields to match their real documents — a
 // trusted admin override, not a re-verification (see docs/... admin driver
 // correction plan). No status/onboarding_step change.

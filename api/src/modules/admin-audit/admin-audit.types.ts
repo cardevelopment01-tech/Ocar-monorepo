@@ -12,5 +12,6 @@ export interface AuditLogRow {
   before_state: Record<string, unknown> | null
   after_state: Record<string, unknown> | null
   ip_address: string | null
+  reason: string | null
   created_at: string
 }

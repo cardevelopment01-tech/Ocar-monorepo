@@ -53,6 +53,20 @@ export async function getDriver(id: bigint) {
   return { ...driver, documents: signedDocs, vehicle_documents: signedVehicleDocs }
 }
 
+export async function listDriverRides(driverId: bigint, query: { page?: number; limit?: number }) {
+  const limit = Math.min(query.limit ?? 20, 100)
+  const page = Math.max(query.page ?? 1, 1)
+  const { rows, total } = await repo.listDriverRides(driverId, limit, (page - 1) * limit)
+  return { rides: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
+}
+
+export async function listDriverPayments(driverId: bigint, query: { page?: number; limit?: number }) {
+  const limit = Math.min(query.limit ?? 20, 100)
+  const page = Math.max(query.page ?? 1, 1)
+  const { rows, total } = await repo.listDriverPayments(driverId, limit, (page - 1) * limit)
+  return { payments: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
+}
+
 export async function updateDriverStatus(
   driverId: bigint,
   adminId: bigint,

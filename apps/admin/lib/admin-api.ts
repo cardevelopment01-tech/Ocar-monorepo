@@ -70,6 +70,33 @@ export interface DriversResponse {
   pagination: { total: number; page: number; limit: number; pages: number }
 }
 
+export interface DriverPaymentRow {
+  id: string
+  status: string
+  channel: string
+  created_at: string
+  amount: string
+  commission_amount: string
+  driver_earning: string
+  ride_id: string
+  user_name: string
+}
+
+export interface DriverAuditLogEntry {
+  id: string
+  admin_id: string | null
+  admin_email: string | null
+  admin_role: string | null
+  action: string
+  target_table: string
+  target_id: string
+  before_state: Record<string, unknown> | null
+  after_state: Record<string, unknown> | null
+  ip_address: string | null
+  reason: string | null
+  created_at: string
+}
+
 export const adminDriverApi = {
   list: async (params: {
     status?: string
@@ -125,6 +152,21 @@ export const adminDriverApi = {
     reason: string
   ): Promise<void> => {
     await api.patch(`/api/v1/admin/drivers/${id}/profile`, { ...fields, reason })
+  },
+
+  rides: async (id: string, page = 1, limit = 20): Promise<{ rides: DriverDetail['recent_rides']; pagination: { total: number; page: number; limit: number; pages: number } }> => {
+    const res = await api.get(`/api/v1/admin/drivers/${id}/rides`, { params: { page, limit } })
+    return res.data as { rides: DriverDetail['recent_rides']; pagination: { total: number; page: number; limit: number; pages: number } }
+  },
+
+  payments: async (id: string, page = 1, limit = 20): Promise<{ payments: DriverPaymentRow[]; pagination: { total: number; page: number; limit: number; pages: number } }> => {
+    const res = await api.get(`/api/v1/admin/drivers/${id}/payments`, { params: { page, limit } })
+    return res.data as { payments: DriverPaymentRow[]; pagination: { total: number; page: number; limit: number; pages: number } }
+  },
+
+  auditLog: async (id: string, page = 1, limit = 20): Promise<{ entries: DriverAuditLogEntry[]; pagination: { total: number; page: number; limit: number; pages: number } }> => {
+    const res = await api.get(`/api/v1/admin/drivers/${id}/audit-log`, { params: { page, limit } })
+    return res.data as { entries: DriverAuditLogEntry[]; pagination: { total: number; page: number; limit: number; pages: number } }
   },
 
   approveVehicleDoc: async (docId: string): Promise<void> => {
