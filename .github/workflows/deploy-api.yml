@@ -82,8 +82,9 @@ jobs:
 
             echo "Running migrations (new image, old container still serving traffic)..."
             docker run --rm --env-file .env.prod \
+              --entrypoint node \
               ghcr.io/$GITHUB_REPOSITORY_OWNER/ocar-api:$IMAGE_TAG \
-              node dist/db/migrate.js
+              dist/db/migrate.js
 
             echo "Migrations OK — cutting over to new image"
             docker compose -f docker-compose.prod.yml up -d --no-deps api
