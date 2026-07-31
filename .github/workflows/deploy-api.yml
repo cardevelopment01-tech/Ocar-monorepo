@@ -78,6 +78,8 @@ jobs:
             export GITHUB_REPOSITORY_OWNER=cardevelopment01-tech
             export IMAGE_TAG=$IMAGE_TAG
 
+            PREVIOUS_TAG=$(docker inspect ocar_api --format '{{.Config.Image}}' 2>/dev/null | awk -F: '{print $NF}' || echo "")
+
             docker compose -f docker-compose.prod.yml pull api
 
             echo "Running migrations (new image, old container still serving traffic)..."
@@ -88,6 +90,29 @@ jobs:
 
             echo "Migrations OK — cutting over to new image"
             docker compose -f docker-compose.prod.yml up -d --no-deps api
+
+            echo "Health-checking new container..."
+            HEALTHY=false
+            for i in 1 2 3 4 5; do
+              if docker exec ocar_api wget -qO- http://localhost:4000/health; then
+                HEALTHY=true
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "$HEALTHY" != "true" ]; then
+              echo "New container failed health check after cutover."
+              if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$IMAGE_TAG" ]; then
+                echo "Rolling back container to previous image tag: $PREVIOUS_TAG"
+                IMAGE_TAG=$PREVIOUS_TAG docker compose -f docker-compose.prod.yml up -d --no-deps api
+                echo "Rolled back. NOTE: any migrations $IMAGE_TAG applied are NOT reverted (forward-only migrations) — if the migration itself is the problem, it must be fixed forward, not rolled back."
+              else
+                echo "No distinct previous tag found — nothing to roll back to. Manual intervention required."
+              fi
+              exit 1
+            fi
+
             docker image prune -f
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
