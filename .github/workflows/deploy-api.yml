@@ -82,6 +82,11 @@ jobs:
 
             docker compose -f docker-compose.prod.yml pull api
 
+            # api/entrypoint.sh also runs migrate.js on every container start (before
+            # exec'ing the server), so this ad-hoc run and the cutover container's own
+            # startup both invoke it — safe only because migrate.js is idempotent
+            # (skips already-applied files). This run exists solely to gate cutover on
+            # migrations succeeding; it is not the only place migrations run.
             echo "Running migrations (new image, old container still serving traffic)..."
             docker run --rm --env-file .env.prod \
               --entrypoint node \
