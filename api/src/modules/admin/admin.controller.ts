@@ -3,7 +3,7 @@ import * as service        from './admin.service'
 import * as sosService     from '@/modules/safety/sos.service'
 import * as disputeService from '@/modules/safety/disputes.service'
 import * as adminAuditService from '@/modules/admin-audit/admin-audit.service'
-import type { DriverStatus, UpdateDriverProfilePayload } from './admin.types'
+import type { DriverStatus, UpdateDriverProfilePayload, UpdateDriverVehiclePayload } from './admin.types'
 import type { DisputeOutcome } from '@/modules/safety/safety.types'
 
 export async function getDrivers(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -66,6 +66,39 @@ export async function updateDriverProfile(req: Request, res: Response, next: Nex
     if (body['languages_known'] !== undefined) payload.languages_known = body['languages_known'] as string[]
 
     await service.updateDriverProfile(driverId, adminId, payload, req.ip ?? null)
+    res.json({ success: true })
+  } catch (err) {
+    next(err)
+  }
+}
+
+const VEHICLE_STRING_FIELDS = ['category_id', 'brand_id', 'vehicle_name', 'number_plate', 'color', 'fuel_type'] as const
+const VEHICLE_NUMBER_FIELDS = ['model_year', 'seating_capacity', 'luggage_capacity'] as const
+
+export async function updateDriverVehicle(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const driverId = BigInt(req.params['id']!)
+    const adminId  = req.admin!.id
+    const driver = await service.getDriver(driverId)
+    if (!driver.vehicle) throw Object.assign(new Error('Driver has no vehicle registered'), { httpStatus: 404 })
+
+    const body = req.body as Record<string, unknown>
+    const payload: UpdateDriverVehiclePayload = { reason: String(body['reason'] ?? '') }
+
+    for (const field of VEHICLE_STRING_FIELDS) {
+      if (body[field] !== undefined) payload[field] = String(body[field])
+    }
+    for (const field of VEHICLE_NUMBER_FIELDS) {
+      if (body[field] !== undefined) {
+        const n = Number(body[field])
+        if (isNaN(n)) throw Object.assign(new Error(`${field} must be a number`), { httpStatus: 400 })
+        payload[field] = n
+      }
+    }
+    if (body['ac_availability'] !== undefined) payload.ac_availability = Boolean(body['ac_availability'])
+    if ('model_id' in body) payload.model_id = body['model_id'] ? String(body['model_id']) : null
+
+    await service.updateDriverVehicle(driverId, BigInt(driver.vehicle.id), adminId, payload, req.ip ?? null)
     res.json({ success: true })
   } catch (err) {
     next(err)

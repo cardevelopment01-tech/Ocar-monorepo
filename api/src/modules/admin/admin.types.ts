@@ -51,6 +51,9 @@ export interface AdminDriverDetail {
     ac_availability: boolean
     category: string
     brand: string
+    category_id: string | null
+    brand_id: string | null
+    model_id: string | null
   } | null
   documents: {
     id: string
@@ -125,6 +128,25 @@ export interface UpdateDriverProfilePayload {
   languages_known?: string[]
   aadhaar_number?: string
   license_number?: string
+  reason: string
+}
+
+// Vehicle spec fields an admin can correct after a driver mistake at
+// onboarding (wrong category, plate typo, etc). category_id/brand_id/model_id
+// are wire-format strings (bigint-as-string, like everywhere else in this
+// file) — the service layer converts them to bigint before the repo call.
+export interface UpdateDriverVehiclePayload {
+  category_id?: string
+  brand_id?: string
+  model_id?: string | null
+  vehicle_name?: string
+  number_plate?: string
+  model_year?: number
+  color?: string
+  fuel_type?: string
+  seating_capacity?: number
+  luggage_capacity?: number
+  ac_availability?: boolean
   reason: string
 }
 

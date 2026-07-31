@@ -2,7 +2,7 @@ import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
-import type { DriverStatus, UpdateDriverStatusPayload, UpdateDriverProfilePayload } from './admin.types'
+import type { DriverStatus, UpdateDriverStatusPayload, UpdateDriverProfilePayload, UpdateDriverVehiclePayload } from './admin.types'
 import { forceResolveRide as resolveStuckRide } from '@/modules/rides/rides.service'
 import { getRideStops } from '@/modules/rides/rides.repository'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
@@ -120,6 +120,48 @@ export async function updateDriverProfile(
     title: 'Profile updated',
     body: 'Your profile details were updated by Ocar support to match your documents.',
     payload: { route: 'profile' },
+  })
+}
+
+export async function updateDriverVehicle(
+  driverId: bigint,
+  vehicleId: bigint,
+  adminId: bigint,
+  payload: UpdateDriverVehiclePayload,
+  ipAddress: string | null
+) {
+  if (!payload.reason || payload.reason.trim().length < 10) {
+    throw httpError(422, 'A reason (at least 10 characters) is required to correct vehicle details', AppErrors.VALIDATION_ERROR.code)
+  }
+  const { reason, category_id, brand_id, model_id, ...rest } = payload
+
+  const fields: Parameters<typeof repo.updateDriverVehicle>[2] = { ...rest }
+  if (category_id !== undefined) {
+    if (!/^\d+$/.test(category_id)) throw httpError(422, 'category_id must be a valid id', AppErrors.VALIDATION_ERROR.code)
+    fields.category_id = BigInt(category_id)
+  }
+  if (brand_id !== undefined) {
+    if (!/^\d+$/.test(brand_id)) throw httpError(422, 'brand_id must be a valid id', AppErrors.VALIDATION_ERROR.code)
+    fields.brand_id = BigInt(brand_id)
+  }
+  if (model_id !== undefined) {
+    if (model_id && !/^\d+$/.test(model_id)) throw httpError(422, 'model_id must be a valid id', AppErrors.VALIDATION_ERROR.code)
+    fields.model_id = model_id ? BigInt(model_id) : null
+  }
+
+  if (Object.keys(fields).length === 0) {
+    throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
+
+  await repo.updateDriverVehicle(vehicleId, adminId, fields, reason, ipAddress)
+
+  await notifyOwner({
+    ownerType: 'driver',
+    ownerId: driverId,
+    type: 'vehicle_corrected',
+    title: 'Vehicle details updated',
+    body: 'Your vehicle details were updated by Ocar support to match your registration.',
+    payload: { route: 'vehicle' },
   })
 }
 

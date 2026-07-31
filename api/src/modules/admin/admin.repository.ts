@@ -17,6 +17,14 @@ const PROFILE_EDITABLE_COLUMNS = [
   'languages_known', 'aadhaar_number', 'license_number',
 ] as const
 
+// Hardcoded whitelist, never built from request keys — same rationale as
+// PROFILE_EDITABLE_COLUMNS above.
+const VEHICLE_EDITABLE_COLUMNS = [
+  'category_id', 'brand_id', 'model_id', 'vehicle_name', 'number_plate',
+  'model_year', 'color', 'fuel_type', 'seating_capacity', 'luggage_capacity',
+  'ac_availability',
+] as const
+
 export async function listAdminAccounts(): Promise<AdminAccountListItem[]> {
   return pool.query<AdminAccountListItem>(
     `SELECT id, code, email, role, admin_status, created_at
@@ -132,6 +140,7 @@ export async function getDriverById(id: bigint): Promise<AdminDriverDetail | nul
        d.*,
        v.id AS vehicle_id, v.number_plate, v.vehicle_name, v.model_year,
        v.color, v.fuel_type, v.seating_capacity, v.luggage_capacity, v.ac_availability,
+       v.category_id, v.brand_id, v.model_id,
        vc.display_name AS vehicle_category,
        vb.name AS vehicle_brand,
        dw.balance AS wallet_balance, dw.is_frozen AS wallet_is_frozen
@@ -234,6 +243,9 @@ export async function getDriverById(id: bigint): Promise<AdminDriverDetail | nul
       seating_capacity: r.seating_capacity as number,
       luggage_capacity: r.luggage_capacity as number,
       ac_availability: r.ac_availability as boolean,
+      category_id: r.category_id ? String(r.category_id) : null,
+      brand_id: r.brand_id ? String(r.brand_id) : null,
+      model_id: r.model_id ? String(r.model_id) : null,
       category: r.vehicle_category as string,
       brand: r.vehicle_brand as string,
     } : null,
@@ -430,6 +442,80 @@ export async function updateDriverProfile(
     action: 'drivers.profile_correction',
     targetTable: 'drivers',
     targetId: driverId,
+    beforeState,
+    afterState,
+    reason,
+    ipAddress,
+  })
+}
+
+// Corrects vehicle spec fields to match the real vehicle (wrong category
+// picked at onboarding, plate typo, etc) — a trusted admin override, same
+// shape as updateDriverProfile above. category_id/brand_id/model_id and
+// number_plate are DB-constrained (FK / UNIQUE) — invalid values surface as
+// a clean 409 via the existing global 23503/23505 handling in
+// error.middleware.ts, so no extra existence/uniqueness checks needed here.
+export async function updateDriverVehicle(
+  vehicleId: bigint,
+  adminId: bigint,
+  fields: {
+    category_id?: bigint
+    brand_id?: bigint
+    model_id?: bigint | null
+    vehicle_name?: string
+    number_plate?: string
+    model_year?: number
+    color?: string
+    fuel_type?: string
+    seating_capacity?: number
+    luggage_capacity?: number
+    ac_availability?: boolean
+  },
+  reason: string,
+  ipAddress: string | null
+): Promise<void> {
+  const setClauses: string[] = []
+  const values: unknown[] = []
+  for (const col of VEHICLE_EDITABLE_COLUMNS) {
+    if (fields[col] !== undefined) {
+      values.push(fields[col])
+      setClauses.push(`${col} = $${values.length}`)
+    }
+  }
+
+  const client = await pool.connect()
+  let beforeState: Record<string, unknown> | null = null
+  let afterState: Record<string, unknown> | null = null
+  try {
+    await client.query('BEGIN')
+
+    const beforeRes = await client.query('SELECT * FROM driver_vehicles WHERE id = $1 FOR UPDATE', [vehicleId])
+    beforeState = beforeRes.rows[0] ?? null
+
+    if (setClauses.length > 0) {
+      values.push(vehicleId)
+      await client.query(
+        `UPDATE driver_vehicles SET ${setClauses.join(', ')}, updated_at = now() WHERE id = $${values.length}`,
+        values
+      )
+    }
+
+    const afterRes = await client.query('SELECT * FROM driver_vehicles WHERE id = $1', [vehicleId])
+    afterState = afterRes.rows[0] ?? null
+
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+
+  await recordAuditLog({
+    adminId,
+    action: 'vehicles.profile_correction',
+    targetTable: 'driver_vehicles',
+    targetId: vehicleId,
     beforeState,
     afterState,
     reason,

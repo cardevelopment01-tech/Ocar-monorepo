@@ -9,6 +9,7 @@ import DocReviewModal from '@/components/ui/DocReviewModal'
 import {
   adminDriverApi, type DriverDetail, type DriverPaymentRow, type DriverAuditLogEntry,
 } from '@/lib/admin-api'
+import { vehicleCategoryApi, vehicleBrandApi, vehicleModelApi, type VehicleCategory, type VehicleBrand, type VehicleModel } from '@/lib/vehicle-api'
 import { payoutsApi } from '@/lib/payouts-api'
 import { cn } from '@/lib/utils'
 import {
@@ -103,6 +104,19 @@ export default function DriverDetailPage() {
   const [savingIdentity, setSavingIdentity] = useState(false)
   const [identityError, setIdentityError]   = useState('')
 
+  // Vehicle correction (wrong category/plate/etc. from onboarding)
+  const [editingVehicle, setEditingVehicle] = useState(false)
+  const [vehicleForm, setVehicleForm] = useState({
+    category_id: '', brand_id: '', model_id: '', vehicle_name: '', number_plate: '',
+    model_year: '', color: '', fuel_type: '', seating_capacity: '', luggage_capacity: '',
+    ac_availability: true, reason: '',
+  })
+  const [savingVehicle, setSavingVehicle] = useState(false)
+  const [vehicleError, setVehicleError]   = useState('')
+  const [vehicleCategories, setVehicleCategories] = useState<VehicleCategory[]>([])
+  const [vehicleBrands, setVehicleBrands]         = useState<VehicleBrand[]>([])
+  const [vehicleModels, setVehicleModels]         = useState<VehicleModel[]>([])
+
   // Rides tab (lazy, paginated)
   const [ridesPage, setRidesPage] = useState(1)
   const [rides, setRides] = useState<DriverDetail['recent_rides']>([])
@@ -194,6 +208,59 @@ export default function DriverDetailPage() {
       setEditingIdentity(false)
     } catch { setIdentityError('Could not save changes. Please try again.') }
     finally { setSavingIdentity(false) }
+  }
+
+  function startEditVehicle() {
+    if (!detail?.vehicle) return
+    const v = detail.vehicle
+    setVehicleForm({
+      category_id: v.category_id ?? '', brand_id: v.brand_id ?? '', model_id: v.model_id ?? '',
+      vehicle_name: v.vehicle_name, number_plate: v.number_plate, model_year: String(v.model_year),
+      color: v.color, fuel_type: v.fuel_type, seating_capacity: String(v.seating_capacity),
+      luggage_capacity: String(v.luggage_capacity), ac_availability: v.ac_availability, reason: '',
+    })
+    setVehicleError('')
+    setEditingVehicle(true)
+    if (vehicleCategories.length === 0) vehicleCategoryApi.list().then(setVehicleCategories).catch(() => setVehicleError('Could not load vehicle options. Try closing and reopening this form.'))
+    if (vehicleBrands.length === 0) vehicleBrandApi.list().then(setVehicleBrands).catch(() => setVehicleError('Could not load vehicle options. Try closing and reopening this form.'))
+    if (vehicleModels.length === 0) vehicleModelApi.list().then(setVehicleModels).catch(() => setVehicleError('Could not load vehicle options. Try closing and reopening this form.'))
+  }
+  async function saveVehicle() {
+    if (!detail) return
+    if (vehicleForm.reason.trim().length < 10) {
+      setVehicleError('A reason (at least 10 characters) is required.')
+      return
+    }
+    const modelYear = Number(vehicleForm.model_year)
+    const seatingCapacity = Number(vehicleForm.seating_capacity)
+    const luggageCapacity = Number(vehicleForm.luggage_capacity)
+    if (
+      vehicleForm.model_year.trim() === '' || !(modelYear > 0) ||
+      vehicleForm.seating_capacity.trim() === '' || !(seatingCapacity > 0) ||
+      vehicleForm.luggage_capacity.trim() === '' || !(luggageCapacity > 0)
+    ) {
+      setVehicleError('Year, seats, and luggage capacity must be positive numbers.')
+      return
+    }
+    setSavingVehicle(true); setVehicleError('')
+    try {
+      await adminDriverApi.updateVehicle(detail.id, {
+        category_id: vehicleForm.category_id || undefined,
+        brand_id: vehicleForm.brand_id || undefined,
+        model_id: vehicleForm.model_id || null,
+        vehicle_name: vehicleForm.vehicle_name,
+        number_plate: vehicleForm.number_plate,
+        model_year: modelYear,
+        color: vehicleForm.color,
+        fuel_type: vehicleForm.fuel_type,
+        seating_capacity: seatingCapacity,
+        luggage_capacity: luggageCapacity,
+        ac_availability: vehicleForm.ac_availability,
+      }, vehicleForm.reason.trim())
+      await fetchDetail()
+      setEditingVehicle(false)
+    } catch { setVehicleError('Could not save changes. Please try again.') }
+    finally { setSavingVehicle(false) }
   }
 
   function openAction(type: ActionType) { setPendingAction(type) }
@@ -536,19 +603,94 @@ export default function DriverDetailPage() {
                 <p className="text-sm text-text-muted text-center py-8">No vehicle registered yet</p>
               ) : (
                 <div className="bg-surface-2 rounded-xl p-4 border border-border-light">
-                  <p className="text-xs font-semibold text-text-secondary mb-3">Vehicle Details</p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                    <span className="text-text-muted">Name</span>     <span className="font-medium text-text-primary">{d.vehicle.vehicle_name}</span>
-                    <span className="text-text-muted">Brand</span>    <span className="font-medium text-text-primary">{d.vehicle.brand}</span>
-                    <span className="text-text-muted">Plate</span>    <span className="font-mono font-bold text-text-primary">{d.vehicle.number_plate}</span>
-                    <span className="text-text-muted">Category</span> <span className="font-medium text-text-primary">{d.vehicle.category}</span>
-                    <span className="text-text-muted">Year</span>     <span className="font-medium text-text-primary">{d.vehicle.model_year}</span>
-                    <span className="text-text-muted">Color</span>    <span className="font-medium text-text-primary capitalize">{d.vehicle.color}</span>
-                    <span className="text-text-muted">Fuel</span>     <span className="font-medium text-text-primary capitalize">{d.vehicle.fuel_type}</span>
-                    <span className="text-text-muted">Seats</span>    <span className="font-medium text-text-primary">{d.vehicle.seating_capacity}</span>
-                    <span className="text-text-muted">Luggage</span>  <span className="font-medium text-text-primary">{d.vehicle.luggage_capacity}</span>
-                    <span className="text-text-muted">AC</span>       <span className="font-medium text-text-primary">{d.vehicle.ac_availability ? 'Yes' : 'No'}</span>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-semibold text-text-secondary">Vehicle Details</p>
+                    {!editingVehicle && (
+                      <button onClick={startEditVehicle} className="text-text-muted hover:text-primary transition-colors" aria-label="Edit vehicle details">
+                        <Pencil size={12} />
+                      </button>
+                    )}
                   </div>
+
+                  {editingVehicle ? (
+                    <div className="space-y-2.5">
+                      <div className="grid grid-cols-2 gap-2">
+                        <select value={vehicleForm.category_id} onChange={e => setVehicleForm(f => ({ ...f, category_id: e.target.value }))}
+                          className="text-sm bg-surface border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                          <option value="">Category…</option>
+                          {vehicleCategories.map(c => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+                        </select>
+                        <select value={vehicleForm.brand_id} onChange={e => setVehicleForm(f => ({ ...f, brand_id: e.target.value }))}
+                          className="text-sm bg-surface border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                          <option value="">Brand…</option>
+                          {vehicleBrands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                      </div>
+                      <select value={vehicleForm.model_id} onChange={e => setVehicleForm(f => ({ ...f, model_id: e.target.value }))}
+                        className="w-full text-sm bg-surface border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                        <option value="">Model (optional)…</option>
+                        {vehicleModels.map(m => <option key={m.id} value={m.id}>{m.brand_name} · {m.name}</option>)}
+                      </select>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input value={vehicleForm.vehicle_name} onChange={e => setVehicleForm(f => ({ ...f, vehicle_name: e.target.value }))}
+                          placeholder="Vehicle name" className="text-sm bg-surface border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        <input value={vehicleForm.number_plate} onChange={e => setVehicleForm(f => ({ ...f, number_plate: e.target.value }))}
+                          placeholder="Plate number" className="text-sm font-mono bg-surface border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <input type="number" value={vehicleForm.model_year} onChange={e => setVehicleForm(f => ({ ...f, model_year: e.target.value }))}
+                          placeholder="Year" className="text-sm bg-surface border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        <input value={vehicleForm.color} onChange={e => setVehicleForm(f => ({ ...f, color: e.target.value }))}
+                          placeholder="Color" className="text-sm bg-surface border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        <select value={vehicleForm.fuel_type} onChange={e => setVehicleForm(f => ({ ...f, fuel_type: e.target.value }))}
+                          className="text-sm bg-surface border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                          <option value="petrol">Petrol</option>
+                          <option value="diesel">Diesel</option>
+                          <option value="cng">CNG</option>
+                          <option value="electric">EV</option>
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 items-center">
+                        <input type="number" value={vehicleForm.seating_capacity} onChange={e => setVehicleForm(f => ({ ...f, seating_capacity: e.target.value }))}
+                          placeholder="Seats" className="text-sm bg-surface border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        <input type="number" value={vehicleForm.luggage_capacity} onChange={e => setVehicleForm(f => ({ ...f, luggage_capacity: e.target.value }))}
+                          placeholder="Luggage" className="text-sm bg-surface border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        <label className="flex items-center gap-1.5 text-xs text-text-secondary">
+                          <input type="checkbox" checked={vehicleForm.ac_availability} onChange={e => setVehicleForm(f => ({ ...f, ac_availability: e.target.checked }))} />
+                          AC
+                        </label>
+                      </div>
+                      <textarea
+                        value={vehicleForm.reason}
+                        onChange={e => setVehicleForm(f => ({ ...f, reason: e.target.value }))}
+                        placeholder="Reason for this correction (min 10 characters)…"
+                        rows={2}
+                        className="w-full text-xs text-text-primary bg-surface border border-border rounded-lg px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted"
+                      />
+                      {vehicleError && <p className="text-xs text-danger">{vehicleError}</p>}
+                      <div className="flex gap-2 pt-0.5">
+                        <button onClick={saveVehicle} disabled={savingVehicle} className="px-3 py-1 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                          {savingVehicle ? 'Saving…' : 'Save'}
+                        </button>
+                        <button onClick={() => setEditingVehicle(false)} disabled={savingVehicle} className="px-3 py-1 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                      <span className="text-text-muted">Name</span>     <span className="font-medium text-text-primary">{d.vehicle.vehicle_name}</span>
+                      <span className="text-text-muted">Brand</span>    <span className="font-medium text-text-primary">{d.vehicle.brand}</span>
+                      <span className="text-text-muted">Plate</span>    <span className="font-mono font-bold text-text-primary">{d.vehicle.number_plate}</span>
+                      <span className="text-text-muted">Category</span> <span className="font-medium text-text-primary">{d.vehicle.category}</span>
+                      <span className="text-text-muted">Year</span>     <span className="font-medium text-text-primary">{d.vehicle.model_year}</span>
+                      <span className="text-text-muted">Color</span>    <span className="font-medium text-text-primary capitalize">{d.vehicle.color}</span>
+                      <span className="text-text-muted">Fuel</span>     <span className="font-medium text-text-primary capitalize">{d.vehicle.fuel_type}</span>
+                      <span className="text-text-muted">Seats</span>    <span className="font-medium text-text-primary">{d.vehicle.seating_capacity}</span>
+                      <span className="text-text-muted">Luggage</span>  <span className="font-medium text-text-primary">{d.vehicle.luggage_capacity}</span>
+                      <span className="text-text-muted">AC</span>       <span className="font-medium text-text-primary">{d.vehicle.ac_availability ? 'Yes' : 'No'}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

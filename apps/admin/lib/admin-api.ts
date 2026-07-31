@@ -53,6 +53,9 @@ export interface DriverDetail {
     ac_availability: boolean
     category: string
     brand: string
+    category_id: string | null
+    brand_id: string | null
+    model_id: string | null
   } | null
   documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null }[]
   vehicle_documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null }[]
@@ -152,6 +155,19 @@ export const adminDriverApi = {
     reason: string
   ): Promise<void> => {
     await api.patch(`/api/v1/admin/drivers/${id}/profile`, { ...fields, reason })
+  },
+
+  updateVehicle: async (
+    id: string,
+    fields: Partial<{
+      category_id: string; brand_id: string; model_id: string | null
+      vehicle_name: string; number_plate: string; model_year: number
+      color: string; fuel_type: string; seating_capacity: number
+      luggage_capacity: number; ac_availability: boolean
+    }>,
+    reason: string
+  ): Promise<void> => {
+    await api.patch(`/api/v1/admin/drivers/${id}/vehicle`, { ...fields, reason })
   },
 
   rides: async (id: string, page = 1, limit = 20): Promise<{ rides: DriverDetail['recent_rides']; pagination: { total: number; page: number; limit: number; pages: number } }> => {
