@@ -581,7 +581,7 @@ function SelectRideContent() {
         <div className="flex-1 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
 
           {/* ── Stops itinerary — up to 3 waypoints; one-way prices the detour, round trip a flat per-stop fee ── */}
-          {!isReturnCab && (stops.length > 0 || rideType === 'one_way' || !fromRoundTripPage) && (
+          {!isReturnCab && (
             <div className="mx-4 mt-2 mb-1">
               <RouteTimeline nodes={stopNodes} />
             </div>
