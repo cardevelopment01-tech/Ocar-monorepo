@@ -383,11 +383,15 @@ cd api && npx tsc --noEmit
   ```
   No deploy needed — read live on every request. Delete this note once flipped on for good.
 
-- **Driver ₹500 minimum-wallet-balance recharge gate is temporarily disabled for client driver testing.** `system_config.driver_minimum_balance` should be `'0'` (was `'500'`) — this is read live by `goOnline()`, ride-broadcast driver filtering, and `/return-cab-available`, so it needs no deploy either way. The driver app also mirrors the threshold client-side in two hardcoded constants (`apps/driver/src/lib/useWalletGate.ts` and `apps/driver/src/pages/Wallet.tsx`, both currently `MIN_BALANCE = 0`, marked with `ponytail:` comments) — those need a driver-app redeploy to flip back. To re-enable once testing is done:
+- **Driver ₹500 minimum-wallet-balance recharge gate — including the negative-balance (cash-dues) block — is temporarily disabled for client driver testing.** `system_config.driver_minimum_balance` should be `'-999999'` (was `'500'`, briefly `'0'`) — this is read live by `goOnline()`, ride-broadcast driver filtering, and `/return-cab-available`, so it needs no deploy either way. **Apply this SQL manually** — it was not run as part of this change (no local DB connection at the time):
+  ```sql
+  UPDATE system_config SET value = '-999999' WHERE key = 'driver_minimum_balance';
+  ```
+  `apps/driver/src/lib/useWalletGate.ts`'s `MIN_BALANCE` mirror (gates the "Go Online" button client-side) is already updated to `-999999` — needs a driver-app redeploy to take effect. `apps/driver/src/pages/Wallet.tsx`'s `MIN_BALANCE` was deliberately left at `0` — it only drives the cosmetic "Low Balance" banner (not a gate), so it still correctly warns drivers about dues owed without blocking them. To re-enable once testing is done:
   ```sql
   UPDATE system_config SET value = '500' WHERE key = 'driver_minimum_balance';
   ```
-  and revert `MIN_BALANCE` back to `500` in both driver-app files. Delete this note once flipped back on for good.
+  and revert `MIN_BALANCE` back to `500` in `useWalletGate.ts`. Delete this note once flipped back on for good.
 
 - **Before the client DB load test, enable observability in the Neon dashboard (can't be done from code):**
   1. Enable the `pg_stat_statements` extension.

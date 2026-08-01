@@ -4,10 +4,11 @@ import api from '@/lib/api'
 // Mirror of the API's driver_minimum_balance system_config value — same
 // client-side-mirrored-constant convention as Wallet.tsx's MIN_BALANCE.
 // Server is authoritative on whether goOnline() actually blocks.
-// ponytail: temporarily 0 — client requested the recharge gate disabled for
-// driver testing. Restore to 500 (and flip system_config.driver_minimum_balance
-// back to '500') to re-enable.
-const MIN_BALANCE = 0
+// ponytail: temporarily -999999 — client requested the recharge gate disabled
+// for driver testing, including drivers carrying a negative (cash-dues) balance.
+// Restore to 500 (and flip system_config.driver_minimum_balance back to '500')
+// to re-enable both the low-balance gate and the negative-balance block.
+const MIN_BALANCE = -999999
 
 interface WalletGate {
   loading: boolean
