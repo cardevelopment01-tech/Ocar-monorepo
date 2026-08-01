@@ -885,7 +885,7 @@ export default function DriverDetailPage() {
                             <span className="text-xs text-text-muted">{fmt(a.created_at)}</span>
                           </div>
                           <p className="text-xs text-text-muted mt-0.5">{a.admin_email ?? 'system'}</p>
-                          {a.reason && <p className="text-xs text-text-secondary mt-1">"{a.reason}"</p>}
+                          {a.reason && <p className="text-xs text-text-secondary mt-1">&quot;{a.reason}&quot;</p>}
                           {diffs.length > 0 && (
                             <div className="mt-1.5 space-y-0.5">
                               {diffs.map(diff => (

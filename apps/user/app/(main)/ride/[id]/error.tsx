@@ -10,7 +10,7 @@ export default function RideError({ reset }: { error: Error & { digest?: string 
       <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center text-3xl mb-5">
         ⚠️
       </div>
-      <h2 className="text-[17px] font-bold text-gray-900 mb-2">Couldn't load your ride</h2>
+      <h2 className="text-[17px] font-bold text-gray-900 mb-2">Couldn&apos;t load your ride</h2>
       <p className="text-sm text-gray-500 mb-8 max-w-[260px]">
         Something went wrong. Your ride is still active. Tap retry to reconnect.
       </p>

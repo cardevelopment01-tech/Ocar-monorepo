@@ -8,7 +8,7 @@ const LIMIT = 50 // trigger = 55 (limit + 5 margin); sustain 5s; cooldown 45s
 const t0 = 2_000_000 // large base so the initial lastAlertAt:0 always reads as cooled
 
 // 1. A single over-limit spike that drops back must NOT alert.
-let s: SpeedAlertState = { overSince: null, lastAlertAt: 0 }
+const s: SpeedAlertState = { overSince: null, lastAlertAt: 0 }
 let r = stepSpeedAlert(s, 80, LIMIT, t0)
 console.assert(!r.alert, 'FAIL: first over-sample should not alert (not yet sustained)')
 r = stepSpeedAlert(r.state, 40, LIMIT, t0 + 1_000)
