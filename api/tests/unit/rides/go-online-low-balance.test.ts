@@ -41,6 +41,7 @@ vi.mock('@/db/client', () => ({
 import * as repo from '@/modules/rides/rides.repository'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { getDriverWallet, getMinWalletBalance } from '@/modules/payments/payments.service'
+import { pool } from '@/db/client'
 import { goOnline } from '@/modules/rides/rides.service'
 
 const DRIVER_ID = BigInt(42)
@@ -96,5 +97,18 @@ describe('goOnline — wallet balance gate', () => {
       appCode: 'WALLET_FROZEN',
     })
     expect(repo.createSession).not.toHaveBeenCalled()
+  })
+
+  it('reconnecting with an existing session deactivates its return_cab_routes, not just ends it', async () => {
+    vi.mocked(getDriverWallet).mockResolvedValue({ balance: '500.00' } as never)
+    vi.mocked(repo.getActiveSession).mockResolvedValue({ id: 7, status: 'online' } as never)
+
+    await goOnline(DRIVER_ID, BASE_PARAMS)
+
+    expect(repo.endSession).toHaveBeenCalledWith(BigInt(7), 'reconnected')
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE return_cab_routes'),
+      [BigInt(7)]
+    )
   })
 })

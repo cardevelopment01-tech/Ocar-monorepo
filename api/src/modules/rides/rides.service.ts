@@ -109,6 +109,16 @@ function validateStops(data: BookingRequest): void {
 
 // ── Driver session management ─────────────────────────────────
 
+async function deactivateReturnCabRoutes(sessionId: bigint) {
+  await pool.query(
+    `UPDATE return_cab_routes
+     SET is_active = false, deactivated_at = now(),
+         deactivation_reason = 'session_ended'
+     WHERE session_id = $1 AND is_active = true`,
+    [sessionId]
+  )
+}
+
 export async function goOnline(driverId: bigint, data: {
   mode: 'standard' | 'return_cab'
   vehicleId: bigint
@@ -137,6 +147,7 @@ export async function goOnline(driverId: bigint, data: {
       throw Object.assign(new Error('Driver has an active ride in progress'), { httpStatus: 409 })
     }
     await repo.endSession(BigInt(existing.id), 'reconnected')
+    await deactivateReturnCabRoutes(BigInt(existing.id))
   }
 
   const session = await repo.createSession({
@@ -201,14 +212,7 @@ export async function goOffline(driverId: bigint, reason = 'driver_choice') {
   if (!session) return null
 
   await repo.endSession(BigInt(session.id), reason)
-
-  await pool.query(
-    `UPDATE return_cab_routes
-     SET is_active = false, deactivated_at = now(),
-         deactivation_reason = 'session_ended'
-     WHERE session_id = $1 AND is_active = true`,
-    [session.id]
-  )
+  await deactivateReturnCabRoutes(BigInt(session.id))
 
   await pool.query(
     `UPDATE driver_location_snapshots
