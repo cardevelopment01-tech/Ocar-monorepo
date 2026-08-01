@@ -424,11 +424,12 @@ function SelectRideContent() {
         <div className="absolute top-4 left-4 right-4 z-10 flex items-center gap-2">
           <button
             onClick={() => router.back()}
-            className="w-10 h-10 bg-white rounded-2xl shadow-md flex items-center justify-center flex-shrink-0"
+            className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center flex-shrink-0"
+            style={{ boxShadow: '0 4px 16px rgba(10, 159, 176, 0.15)' }}
           >
             <ArrowLeft size={17} strokeWidth={2} className="text-slate-800" />
           </button>
-          <div className="flex-1 h-10 bg-white rounded-2xl shadow-md flex items-center overflow-hidden">
+          <div className="flex-1 h-10 bg-white rounded-2xl flex items-center overflow-hidden" style={{ boxShadow: '0 4px 16px rgba(10, 159, 176, 0.15)' }}>
             <button
               onClick={() => goBackToSearch('origin')}
               className="flex-1 min-w-0 h-full flex items-center pl-3 pr-1"
@@ -452,7 +453,7 @@ function SelectRideContent() {
         style={{ boxShadow: '0 -6px 32px rgba(10, 159, 176,0.10)', borderRadius: '24px 24px 0 0', marginTop: -8, position: 'relative', zIndex: 2 }}
       >
         {/* Handle + header */}
-        <div className="flex-shrink-0 px-5 pt-2 pb-2">
+        <div className="flex-shrink-0 px-4 pt-2 pb-2">
           <div className="w-9 h-1 rounded-full mx-auto mb-2.5" style={{ background: 'rgba(10, 159, 176,0.15)' }} />
           <div className="flex items-center justify-between mb-2">
             <p className="text-[15px] font-bold text-slate-900">Choose a ride</p>
@@ -526,8 +527,8 @@ function SelectRideContent() {
             fromRoundTripPage && tripHoursFromUrl ? (
               // Arrived from /round-trip with hours already selected, show compact info
               <div
-                className="flex items-center gap-2 px-3 py-2 rounded-xl mb-1"
-                style={{ background: '#E4F8FA', border: '1px solid #B8E9EE' }}
+                className="flex items-center gap-2 px-3 py-2 rounded-2xl mb-2"
+                style={{ background: '#E4F8FA', border: '1px solid #B8E9EE', boxShadow: '0 2px 8px rgba(10, 159, 176, 0.08)' }}
               >
                 <RotateCcw size={11} strokeWidth={2.5} className="flex-shrink-0" style={{ color: '#0A9FB0' }} />
                 <span className="text-[12px] font-semibold" style={{ color: '#087C89' }}>
@@ -582,7 +583,10 @@ function SelectRideContent() {
 
           {/* ── Stops itinerary — up to 3 waypoints; one-way prices the detour, round trip a flat per-stop fee ── */}
           {!isReturnCab && (
-            <div className="mx-4 mt-2 mb-1">
+            <div className="mx-4 mt-0 mb-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#94A3B8' }}>
+                Your route
+              </p>
               <RouteTimeline nodes={stopNodes} />
             </div>
           )}
@@ -620,13 +624,13 @@ function SelectRideContent() {
                       key={`rc-${cat.id}`}
                       onClick={() => { setSelected(cat.id); setIsReturnCab(true) }}
                       className={cn(
-                        'w-full flex items-center gap-3 px-4 py-3 transition-colors duration-150 text-left',
-                        isSel ? 'bg-emerald-50' : 'active:bg-slate-50 cursor-pointer'
+                        'w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 text-left border-l-2',
+                        isSel ? 'bg-emerald-50 border-emerald-500 active:scale-[0.99]' : 'border-transparent active:bg-slate-50 active:scale-[0.99] cursor-pointer'
                       )}
                     >
                       <div className={cn(
-                        'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0',
-                        isSel ? 'bg-emerald-100' : 'bg-emerald-50'
+                        'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 transition-colors duration-200',
+                        isSel ? 'bg-gradient-to-br from-emerald-100 to-emerald-50' : 'bg-emerald-50'
                       )}>
                         <VehicleIcon slug={cat.slug} size={32} color="#059669" />
                       </div>
@@ -693,15 +697,15 @@ function SelectRideContent() {
                   onClick={() => { if (!noCars) { setSelected(cat.id); setIsReturnCab(false) } }}
                   disabled={noCars}
                   className={cn(
-                    'w-full flex items-center gap-3 px-4 py-3 transition-colors duration-150 text-left',
-                    noCars  ? 'opacity-35 cursor-not-allowed' :
-                    active  ? 'bg-violet-50' :
-                              'active:bg-slate-50 cursor-pointer'
+                    'w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 text-left border-l-2',
+                    noCars  ? 'opacity-35 cursor-not-allowed border-transparent' :
+                    active  ? 'bg-violet-50 border-violet-500 active:scale-[0.99]' :
+                              'border-transparent active:bg-slate-50 active:scale-[0.99] cursor-pointer'
                   )}
                 >
                   <div className={cn(
-                    'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0',
-                    active ? 'bg-violet-100' : 'bg-slate-100'
+                    'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 transition-colors duration-200',
+                    active ? 'bg-gradient-to-br from-violet-100 to-violet-50' : 'bg-slate-100'
                   )}>
                     <VehicleIcon
                       slug={cat.slug}
@@ -771,7 +775,7 @@ function SelectRideContent() {
           {rideType === 'round_trip' && estimates[selected] && tripHours !== undefined && (
             <div
               className="mx-4 mt-1 mb-2 rounded-2xl px-3 py-2.5 space-y-1"
-              style={{ background: '#E4F8FA', border: '1px solid #B8E9EE' }}
+              style={{ background: '#E4F8FA', border: '1px solid #B8E9EE', boxShadow: '0 2px 8px rgba(10, 159, 176, 0.08)' }}
             >
               <div className="flex justify-between text-[11px]">
                 <span style={{ color: '#22B8C9' }}>Base fare</span>
