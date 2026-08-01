@@ -595,15 +595,22 @@ export default function TripInProgress() {
             </div>
           </div>
 
-          <motion.button
-            onClick={() => setShowEndOtp(true)}
+          {/* Slide, not tap — accident-proof like the stop-advance controls below;
+              hidden while the end-OTP sheet is open so its own retry timer doesn't
+              fire a false "couldn't confirm" (that sheet is the real completion, not this). */}
+          <motion.div
             animate={!currentStop && nearTarget ? { scale: [1, 1.03, 1] } : { scale: 1 }}
             transition={{ duration: 0.7, repeat: !currentStop && nearTarget ? Infinity : 0, ease: 'easeInOut' }}
-            className="btn-go w-full active:scale-95 transition-transform"
-            style={{ minHeight: 52, boxShadow: !currentStop && nearTarget ? '0 0 0 3px rgba(10, 159, 176,0.35)' : undefined }}
+            style={{ borderRadius: 9999, boxShadow: !currentStop && nearTarget ? '0 0 0 3px rgba(10, 159, 176,0.35)' : undefined }}
           >
-            Complete Trip
-          </motion.button>
+            {!showEndOtp && (
+              <SwipeToConfirm
+                key="complete-trip"
+                label="Slide to complete trip"
+                onConfirm={() => setShowEndOtp(true)}
+              />
+            )}
+          </motion.div>
 
           {/* Collapse anchor: everything above stays put at any sheet height;
               everything below fades away as the sheet is dragged/tapped down. */}
