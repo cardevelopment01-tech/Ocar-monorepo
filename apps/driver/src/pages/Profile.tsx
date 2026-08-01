@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
-import { Star, Car, ChevronRight, LogOut, Pencil, X, Check } from 'lucide-react'
+import { Star, Car, ChevronRight, ExternalLink, LogOut, Pencil, X, Check } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import StatusBar from '@/components/ui/StatusBar'
 import OcarSpinner from '@/components/ui/OcarSpinner'
@@ -10,18 +10,48 @@ import { driverRideApi } from '@/lib/ride-api'
 import api from '@/lib/api'
 import { unregisterPush } from '@/lib/push'
 
-const MENU_ITEMS: { label: string; sub: string; action: 'vehicle' | 'documents' | 'emergency' | 'email' | 'terms' }[] = [
-  { label: 'Vehicle Details',    sub: 'Registered vehicle',  action: 'vehicle'   },
-  { label: 'Documents',          sub: 'Verified documents',  action: 'documents' },
-  { label: 'Emergency Contacts', sub: 'Safety contact info', action: 'emergency' },
-  { label: 'Help & Support',     sub: 'FAQs, chat support',  action: 'email'     },
-  { label: 'Terms & Privacy',    sub: '',                    action: 'terms'     },
+type MenuAction = 'vehicle' | 'documents' | 'personal' | 'email' | 'terms'
+
+interface MenuItem {
+  label: string
+  sub: string
+  action: MenuAction
+  external?: boolean
+}
+
+// Grouped so related settings sit together and external actions (mailto,
+// external link) are visually distinct from in-app navigation.
+const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
+  {
+    title: 'Vehicle & documents',
+    items: [
+      { label: 'Vehicle Details', sub: 'Registered vehicle',  action: 'vehicle'   },
+      { label: 'Documents',       sub: 'Verified documents',  action: 'documents' },
+    ],
+  },
+  {
+    title: 'Account',
+    items: [
+      { label: 'Personal & Emergency Info', sub: 'Address, ID & emergency contact', action: 'personal' },
+    ],
+  },
+  {
+    title: 'Support & legal',
+    items: [
+      { label: 'Help & Support',  sub: 'Email our support team', action: 'email', external: true },
+      { label: 'Terms & Privacy', sub: '',                        action: 'terms', external: true },
+    ],
+  },
 ]
 
 interface DriverStats {
   total_rides: number
   rating_avg: number | null
   top_tags: { label: string; count: number }[]
+}
+
+interface DriverOnboarding {
+  missing_documents: string[]
 }
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
@@ -40,6 +70,7 @@ export default function Profile() {
 
   const [earningsToday, setEarningsToday] = useState(0)
   const [stats,         setStats]         = useState<DriverStats | null>(null)
+  const [onboarding,    setOnboarding]    = useState<DriverOnboarding | null>(null)
 
   const [editing,  setEditing]  = useState(false)
   const [editName, setEditName] = useState('')
@@ -54,16 +85,19 @@ export default function Profile() {
   }, [])
 
   useEffect(() => {
-    void api.get<{ stats: DriverStats }>('/api/v1/drivers/me')
-      .then(res => setStats(res.data.stats))
+    void api.get<{ stats: DriverStats; onboarding: DriverOnboarding }>('/api/v1/drivers/me')
+      .then(res => {
+        setStats(res.data.stats)
+        setOnboarding(res.data.onboarding)
+      })
       .catch(() => {})
   }, [])
 
-  function handleMenu(action: (typeof MENU_ITEMS)[number]['action']) {
-    if (action === 'vehicle')   { navigate('/onboarding/vehicle');   return }
-    if (action === 'documents') { navigate('/onboarding/documents'); return }
-    if (action === 'emergency') { navigate('/onboarding/personal');  return }
-    if (action === 'email')     { window.open('mailto:support@ocar.in'); return }
+  function handleMenu(action: MenuAction) {
+    if (action === 'vehicle')   { navigate('/profile/vehicle');   return }
+    if (action === 'documents') { navigate('/profile/documents'); return }
+    if (action === 'personal')  { navigate('/profile/personal');  return }
+    if (action === 'email')     { window.open(`mailto:support@ocar.in?subject=${encodeURIComponent(`Driver ${driver?.code ?? ''} — Support`)}`); return }
     if (action === 'terms')     { window.open('https://ocar.in/terms'); return }
   }
 
@@ -177,30 +211,49 @@ export default function Profile() {
           </div>
         </motion.div>
 
-        {/* Menu */}
-        <div className="card-glossy mx-5 rounded-3xl p-0 overflow-hidden mb-4">
-          {MENU_ITEMS.map((item, i) => (
-            <motion.div
-              key={item.label}
-              initial={prefersReducedMotion ? false : { opacity: 0, x: -12 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.24, delay: i * 0.04, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <button
-                onClick={() => handleMenu(item.action)}
-                className={`gloss-sheen w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors cursor-pointer ${
-                  i < MENU_ITEMS.length - 1 ? 'border-b border-border' : ''
-                }`}
-              >
-                <div className="text-left">
-                  <p className="text-text-primary font-semibold text-sm">{item.label}</p>
-                  {item.sub && <p className="text-text-muted text-xs mt-0.5">{item.sub}</p>}
-                </div>
-                <ChevronRight size={15} className="text-text-muted" aria-hidden="true" />
-              </button>
-            </motion.div>
-          ))}
-        </div>
+        {/* Menu: grouped sections, chunked so no group holds more than a
+            couple of related items — flat 5-row lists read as one wall
+            of undifferentiated options */}
+        {MENU_SECTIONS.map((section, si) => (
+          <motion.div
+            key={section.title}
+            className="mx-5 mb-4"
+            initial={prefersReducedMotion ? false : { opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.24, delay: si * 0.06, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <p className="text-text-muted text-xs font-medium px-1 mb-2">{section.title}</p>
+            <div className="card-glossy rounded-3xl p-0 overflow-hidden">
+              {section.items.map((item, i) => {
+                const pendingCount = item.action === 'documents' ? onboarding?.missing_documents.length ?? 0 : 0
+                return (
+                  <button
+                    key={item.label}
+                    onClick={() => handleMenu(item.action)}
+                    className={`gloss-sheen w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors cursor-pointer ${
+                      i < section.items.length - 1 ? 'border-b border-border' : ''
+                    }`}
+                  >
+                    <div className="text-left">
+                      <p className="text-text-primary font-semibold text-sm">{item.label}</p>
+                      {item.sub && <p className="text-text-muted text-xs mt-0.5">{item.sub}</p>}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {pendingCount > 0 && (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600">
+                          {pendingCount} pending
+                        </span>
+                      )}
+                      {item.external
+                        ? <ExternalLink size={14} className="text-text-muted" aria-hidden="true" />
+                        : <ChevronRight size={15} className="text-text-muted" aria-hidden="true" />}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </motion.div>
+        ))}
 
         {/* Sign out */}
         <div className="mx-5">

@@ -25,6 +25,9 @@ import VehicleRegistration from '@/pages/Onboarding/VehicleRegistration'
 import VehicleDocuments from '@/pages/Onboarding/VehicleDocuments'
 import ReferenceSelfie from '@/pages/Onboarding/ReferenceSelfie'
 import PendingReview from '@/pages/Onboarding/PendingReview'
+import VehicleDetails from '@/pages/Settings/VehicleDetails'
+import DriverDocuments from '@/pages/Settings/DriverDocuments'
+import PersonalInfo from '@/pages/Settings/PersonalInfo'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useRideStore } from '@/store/useRideStore'
@@ -394,6 +397,15 @@ export default function App() {
             } />
             <Route path="/profile" element={
               <ProtectedRoute requireApproved><Profile /></ProtectedRoute>
+            } />
+            <Route path="/profile/vehicle" element={
+              <ProtectedRoute requireApproved><VehicleDetails /></ProtectedRoute>
+            } />
+            <Route path="/profile/documents" element={
+              <ProtectedRoute requireApproved><DriverDocuments /></ProtectedRoute>
+            } />
+            <Route path="/profile/personal" element={
+              <ProtectedRoute requireApproved><PersonalInfo /></ProtectedRoute>
             } />
 
             <Route path="/daily-verification" element={
