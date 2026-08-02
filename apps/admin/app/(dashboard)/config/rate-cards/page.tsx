@@ -58,14 +58,16 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
-    return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '', notes: '',
+    return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '',
+    km_per_day: card.km_per_day ?? '', driver_allowance_per_day: card.driver_allowance_per_day ?? '', notes: '',
   })
 
   useEffect(() => {
     if (open) {
       setForm({
         rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
-        return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '', notes: '',
+        return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '',
+        km_per_day: card.km_per_day ?? '', driver_allowance_per_day: card.driver_allowance_per_day ?? '', notes: '',
       })
       setError('')
     }
@@ -82,6 +84,8 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
         min_fare: parseFloat(form.min_fare),
         return_rate_per_km: form.return_rate_per_km ? parseFloat(form.return_rate_per_km) : null,
         hour_rate: form.hour_rate ? parseFloat(form.hour_rate) : null,
+        km_per_day: form.km_per_day ? parseFloat(form.km_per_day) : null,
+        driver_allowance_per_day: form.driver_allowance_per_day ? parseFloat(form.driver_allowance_per_day) : null,
         notes: form.notes,
       })
       setOpen(false); onUpdated()
@@ -137,13 +141,21 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
               </div>
             )}
             {card.ride_type === 'round_trip' && (
-              <div>
-                <label className={labelCls}>Hour Rate (₹)</label>
-                <input type="number" step="0.01" value={form.hour_rate}
-                  onChange={e => setForm(f => ({ ...f, hour_rate: e.target.value }))}
-                  className="w-40 border border-border rounded-xl px-3 py-2 text-sm text-text-primary bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted"
-                  placeholder="optional" />
-                <p className="text-xs text-text-muted mt-1">was {fmt(card.hour_rate)}</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Package KM/day</label>
+                  <input type="number" step="1" value={form.km_per_day}
+                    onChange={e => setForm(f => ({ ...f, km_per_day: e.target.value }))}
+                    className={inputCls} placeholder="e.g. 250" />
+                  <p className="text-xs text-text-muted mt-1">was {card.km_per_day ?? '—'}</p>
+                </div>
+                <div>
+                  <label className={labelCls}>Driver Allowance/day (₹)</label>
+                  <input type="number" step="0.01" value={form.driver_allowance_per_day}
+                    onChange={e => setForm(f => ({ ...f, driver_allowance_per_day: e.target.value }))}
+                    className={inputCls} placeholder="e.g. 300" />
+                  <p className="text-xs text-text-muted mt-1">was {fmt(card.driver_allowance_per_day)}</p>
+                </div>
               </div>
             )}
             <div>
@@ -732,7 +744,7 @@ export default function RateCardsPage() {
             </div>
           ) : loading ? (
             <div className="admin-card !p-0 overflow-hidden">
-              <table className="data-table"><tbody><SkeletonRows cols={7} n={6} /></tbody></table>
+              <table className="data-table"><tbody><SkeletonRows cols={8} n={6} /></tbody></table>
             </div>
           ) : (
             CATEGORY_ORDER_ITEMS.map(slug => {
@@ -753,7 +765,8 @@ export default function RateCardsPage() {
                         <th className="!text-right">Per Min</th>
                         <th className="!text-right">Min Fare</th>
                         <th className="!text-right">Return Rate</th>
-                        <th className="!text-right">Hour Rate</th>
+                        <th className="!text-right">KM/day</th>
+                        <th className="!text-right">Driver Allowance/day</th>
                         <th className="!text-right">Actions</th>
                       </tr>
                     </thead>
@@ -765,7 +778,8 @@ export default function RateCardsPage() {
                           <td className="!text-right font-mono">{fmt(card.rate_per_min)}</td>
                           <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.min_fare)}</td>
                           <td className="!text-right font-mono text-text-muted">{fmt(card.return_rate_per_km)}</td>
-                          <td className="!text-right font-mono text-text-muted">{fmt(card.hour_rate)}</td>
+                          <td className="!text-right font-mono text-text-muted">{card.km_per_day ?? '—'}</td>
+                          <td className="!text-right font-mono text-text-muted">{fmt(card.driver_allowance_per_day)}</td>
                           <td className="!text-right">
                             <UpdateRateDialog card={card} onUpdated={fetchAll} />
                           </td>
