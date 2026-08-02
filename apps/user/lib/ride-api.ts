@@ -27,6 +27,7 @@ export type FareEstimate = {
     stop_fare: number
     hour_surcharge: number
     overage_fare: number
+    overage_km?: number
     surge_fare: number
     total: number
   }
