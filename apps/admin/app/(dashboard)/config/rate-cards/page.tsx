@@ -85,7 +85,7 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
         return_rate_per_km: form.return_rate_per_km ? parseFloat(form.return_rate_per_km) : null,
         hour_rate: form.hour_rate ? parseFloat(form.hour_rate) : null,
         km_per_day: form.km_per_day ? parseFloat(form.km_per_day) : null,
-        driver_allowance_per_day: form.driver_allowance_per_day ? parseFloat(form.driver_allowance_per_day) : null,
+        driver_allowance_per_day: form.driver_allowance_per_day !== '' ? parseFloat(form.driver_allowance_per_day) : null,
         notes: form.notes,
       })
       setOpen(false); onUpdated()
