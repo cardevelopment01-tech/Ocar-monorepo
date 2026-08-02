@@ -1190,6 +1190,29 @@ export async function getDriverEarningsSummary(
   }
 }
 
+// ── GPS-derived actual distance ─────────────────────────────────
+
+/**
+ * Actual distance driven during a ride, computed from GPS breadcrumbs
+ * (gps_tracks), not client-reported values. Returns null if fewer than
+ * 2 points were recorded (insufficient to form a path — e.g. GPS outage,
+ * a very short-lived test ride) so callers can fall back appropriately.
+ */
+export async function getGpsTrackedDistanceKm(rideId: bigint): Promise<number | null> {
+  const res = await pool.query<{ km: string | null }>(
+    `SELECT
+       CASE WHEN count(*) >= 2
+         THEN ST_Length(ST_MakeLine(location::geometry ORDER BY recorded_at)::geography) / 1000
+         ELSE NULL
+       END AS km
+     FROM gps_tracks
+     WHERE ride_id = $1`,
+    [rideId]
+  )
+  const km = res.rows[0]?.km
+  return km != null ? parseFloat(km) : null
+}
+
 // ── ETA accuracy instrumentation ────────────────────────────────
 // Logs the routing engine's predicted ETA at the start of a leg, for later
 // comparison against the actual elapsed time (already available from
