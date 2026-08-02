@@ -1337,6 +1337,16 @@ export async function verifyEndOTP(
 
   const completedAt = new Date().toISOString()
 
+  // GPS-breadcrumb-derived distance/duration for round_trip fare reconciliation
+  // (see calculateFare call below) — falls back to the client-reported values
+  // when there isn't enough GPS data (see getGpsTrackedDistanceKm).
+  const gpsDistanceKm = ride.ride_type === 'round_trip' && ride.started_at != null
+    ? await repo.getGpsTrackedDistanceKm(rideId, new Date(ride.started_at))
+    : null
+  const gpsDurationMin = ride.started_at != null
+    ? (new Date(completedAt).getTime() - new Date(ride.started_at).getTime()) / 60000
+    : null
+
   await repo.updateRideStatus(rideId, 'completed', {
     completed_at:        completedAt,
     actual_distance_km:  actualDistanceKm  ?? null,
@@ -1456,16 +1466,34 @@ export async function verifyEndOTP(
           },
           ride_type:        'round_trip',
           is_return_cab:    snap.is_return_cab,
-          estimated_km:     actualDistanceKm,
-          estimated_min:    actualDurationMin,
+          // Prefer GPS-breadcrumb-derived distance/duration over the
+          // client-reported values — the driver app currently sends a
+          // one-way straight-line estimate to the destination, not the
+          // actual round-trip distance driven, so trusting it directly
+          // would keep the same under-billing bug this branch exists to fix.
+          estimated_km:     gpsDistanceKm ?? actualDistanceKm,
+          estimated_min:    gpsDurationMin ?? actualDurationMin,
           stop_count:       0, // stop fares already baked into snap.stop_fare
           charge_per_stop:  0,
-          trip_hours:       actualDurationMin / 60,
+          trip_hours:       (gpsDurationMin ?? actualDurationMin) / 60,
           surge_multiplier: parseFloat(snap.surge_multiplier),
         })
 
         const stopFare = parseFloat(snap.stop_fare ?? '0')
         totalFinal = Math.round((recalc.total + stopFare) * 100) / 100
+        // Keep the stored actual_km/actual_min consistent with whatever was
+        // actually used to compute the fare above.
+        billedKm  = gpsDistanceKm  ?? actualDistanceKm
+        billedMin = gpsDurationMin ?? actualDurationMin
+
+        // Flag for ops review: GPS breadcrumb data was insufficient, so this
+        // fare had to fall back to the unreliable client-reported distance.
+        if (gpsDistanceKm == null) {
+          await repo.flagRideForReview(
+            rideId,
+            'Round-trip fare reconciled against client-reported distance — GPS breadcrumb data unavailable'
+          )
+        }
       }
     }
 
