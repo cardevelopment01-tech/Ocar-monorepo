@@ -104,10 +104,11 @@ export function calculateFare(input: FareInput): FareBreakdown {
   if (ride_type === 'round_trip') {
     const days      = Math.max(1, Math.ceil(trip_hours / 24))
     const packageKm = round2(days * (rate_card.km_per_day ?? 0))
-    const overageKm = round2(Math.max(0, estimated_km - packageKm))
+    const overageKmRaw = Math.max(0, estimated_km - packageKm)
+    const overageKm     = round2(overageKmRaw)
 
     const distance_fare  = round2(packageKm * per_km)
-    const overage_fare   = round2(overageKm * per_km)
+    const overage_fare   = round2(overageKmRaw * per_km)
     const stop_fare      = round2(stop_count * charge_per_stop)
     const driver_allowance = round2(days * (rate_card.driver_allowance_per_day ?? 0))
 

@@ -216,4 +216,21 @@ describe('calculateFare', () => {
     // 2500 (package) + 0 (overage) + 50 (stops) + 300 (allowance) = 2850
     expect(result.total).toBe(2850.00)
   })
+
+  it('round_trip: overage_fare is computed from the unrounded overage km, not the displayed rounded value', () => {
+    const result = calculateFare({
+      rate_card: sedanCard, ride_type: 'round_trip', is_return_cab: false,
+      estimated_km: 257.505, estimated_min: 400,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 4, surge_multiplier: 1.0,
+    })
+    // packageKm = 250. Raw overage = 257.505 - 250 = 7.505 (actually 7.5049999999999955 in
+    // float64) × ₹10/km = 75.049999... → rounds to 75.05.
+    // A two-pass implementation would round the km first (7.5049999... → 7.5 for display,
+    // since it's below the .005 halfway point in float64) then multiply: 7.5 × 10 = 75.00 —
+    // a cent off from the correct 75.05. This pins that overage_fare is derived from
+    // estimated_km directly, not from the pre-rounded overage_km.
+    expect(result.overage_km).toBe(7.5) // rounded for display
+    expect(result.overage_fare).toBe(75.05) // from raw 7.5049999...km, not rounded 7.5km
+    expect(result.total).toBe(2875.05) // 2500 + 75.05 + 300 allowance
+  })
 })
