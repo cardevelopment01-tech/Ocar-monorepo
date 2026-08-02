@@ -1361,73 +1361,111 @@ export async function verifyEndOTP(
     let billedKm  = actualDistanceKm
     let billedMin = actualDurationMin
 
-    // Early termination check: only for round_trip when we have end coordinates
-    if (
-      ride.ride_type === 'round_trip' &&
-      actualEndLat != null && actualEndLng != null
-    ) {
-      const distRes = await pool.query<{ metres: string }>(
-        `SELECT ST_Distance(
-           ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography,
-           ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)::geography
-         ) AS metres`,
-        [actualEndLng, actualEndLat, ride.origin_lng, ride.origin_lat]
-      )
-      const metres = parseFloat(distRes.rows[0]?.metres ?? '0')
-
-      if (metres > 500) {
-        // Load fare snapshot + rate card for recalculation
-        const snapRes = await pool.query<{
-          surge_multiplier: string
-          stop_fare:        string
-          is_return_cab:    boolean
-          rate_per_km:      string
-          rate_per_min:     string
-          min_fare:         string
-          return_rate_per_km: string | null
-        }>(
-          `SELECT fs.surge_multiplier, fs.stop_fare, fs.is_return_cab,
-                  rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km
-           FROM fare_snapshots fs
-           JOIN rate_cards rc ON rc.id = fs.rate_card_id
-           WHERE fs.ride_id = $1`,
-          [rideId]
+    // Round trip: reconcile against ACTUAL km/duration, not just the estimate.
+    // Two cases:
+    //   - Driver ended >500m from origin → the return leg wasn't actually
+    //     driven; treat it as an early termination (existing logic below,
+    //     unchanged: bills what was driven + a straight-line estimate of the
+    //     remaining return distance, at one_way rates, no driver allowance).
+    //   - Otherwise (normal completion, or no end-coordinates supplied) →
+    //     recalculate with the real round_trip package formula against
+    //     actualDistanceKm/actualDurationMin, so overage km and extra days
+    //     actually get billed instead of silently falling back to the estimate.
+    if (ride.ride_type === 'round_trip') {
+      let metres = 0
+      let hasEndCoords = false
+      if (actualEndLat != null && actualEndLng != null) {
+        hasEndCoords = true
+        const distRes = await pool.query<{ metres: string }>(
+          `SELECT ST_Distance(
+             ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography,
+             ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)::geography
+           ) AS metres`,
+          [actualEndLng, actualEndLat, ride.origin_lng, ride.origin_lat]
         )
-        const snap = snapRes.rows[0]
+        metres = parseFloat(distRes.rows[0]?.metres ?? '0')
+      }
 
-        if (snap) {
-          const returnKm  = metres / 1000
-          const returnMin = returnKm / 0.5  // assume 30 km/h for return leg
+      const isEarlyTermination = hasEndCoords && metres > 500
 
-          // Use PostGIS distance as the driven km — actualDistanceKm points at the
-          // booked destination, not the actual early-stop location, so it would overcharge.
-          const drivenKm = metres / 1000
-          billedKm  = drivenKm + returnKm
-          billedMin = actualDurationMin + returnMin
+      const snapRes = await pool.query<{
+        surge_multiplier: string
+        stop_fare:        string
+        is_return_cab:    boolean
+        rate_per_km:      string
+        rate_per_min:      string
+        min_fare:          string
+        return_rate_per_km: string | null
+        km_per_day:               string | null
+        driver_allowance_per_day: string | null
+      }>(
+        `SELECT fs.surge_multiplier, fs.stop_fare, fs.is_return_cab,
+                rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km,
+                rc.km_per_day, rc.driver_allowance_per_day
+         FROM fare_snapshots fs
+         JOIN rate_cards rc ON rc.id = fs.rate_card_id
+         WHERE fs.ride_id = $1`,
+        [rideId]
+      )
+      const snap = snapRes.rows[0]
 
-          const recalc = calculateFare({
-            rate_card: {
-              rate_per_km:         parseFloat(snap.rate_per_km),
-              rate_per_min:        parseFloat(snap.rate_per_min),
-              min_fare:            parseFloat(snap.min_fare),
-              return_rate_per_km:  snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
-            },
-            ride_type:        'one_way',  // no hour_surcharge on early termination
-            is_return_cab:    snap.is_return_cab,
-            estimated_km:     billedKm,
-            estimated_min:    billedMin,
-            stop_count:       0,
-            charge_per_stop:  0,
-            trip_hours:       0,
-            surge_multiplier: parseFloat(snap.surge_multiplier),
-          })
+      if (snap && isEarlyTermination) {
+        const returnKm  = metres / 1000
+        const returnMin = returnKm / 0.5  // assume 30 km/h for return leg
 
-          // Stops were already driven — add the pre-computed stop_fare unchanged
-          const stopFare = parseFloat(snap.stop_fare ?? '0')
-          totalFinal     = Math.round((recalc.total + stopFare) * 100) / 100
-          earlyTermKm    = Math.round(returnKm  * 100) / 100
-          earlyTermMin   = Math.round(returnMin * 100) / 100
-        }
+        // Use PostGIS distance as the driven km — actualDistanceKm points at the
+        // booked destination, not the actual early-stop location, so it would overcharge.
+        const drivenKm = metres / 1000
+        billedKm  = drivenKm + returnKm
+        billedMin = actualDurationMin + returnMin
+
+        const recalc = calculateFare({
+          rate_card: {
+            rate_per_km:         parseFloat(snap.rate_per_km),
+            rate_per_min:        parseFloat(snap.rate_per_min),
+            min_fare:            parseFloat(snap.min_fare),
+            return_rate_per_km:  snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
+          },
+          ride_type:        'one_way',  // no driver allowance on early termination
+          is_return_cab:    snap.is_return_cab,
+          estimated_km:     billedKm,
+          estimated_min:    billedMin,
+          stop_count:       0,
+          charge_per_stop:  0,
+          trip_hours:       0,
+          surge_multiplier: parseFloat(snap.surge_multiplier),
+        })
+
+        // Stops were already driven — add the pre-computed stop_fare unchanged
+        const stopFare = parseFloat(snap.stop_fare ?? '0')
+        totalFinal     = Math.round((recalc.total + stopFare) * 100) / 100
+        earlyTermKm    = Math.round(returnKm  * 100) / 100
+        earlyTermMin   = Math.round(returnMin * 100) / 100
+      } else if (snap) {
+        // Normal completion: recalculate the real round_trip package fare
+        // against what was actually driven, instead of defaulting to the
+        // booking-time estimate.
+        const recalc = calculateFare({
+          rate_card: {
+            rate_per_km:  parseFloat(snap.rate_per_km),
+            rate_per_min: parseFloat(snap.rate_per_min),
+            min_fare:     parseFloat(snap.min_fare),
+            return_rate_per_km:       snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
+            km_per_day:               snap.km_per_day != null ? parseFloat(snap.km_per_day) : null,
+            driver_allowance_per_day: snap.driver_allowance_per_day != null ? parseFloat(snap.driver_allowance_per_day) : null,
+          },
+          ride_type:        'round_trip',
+          is_return_cab:    snap.is_return_cab,
+          estimated_km:     actualDistanceKm,
+          estimated_min:    actualDurationMin,
+          stop_count:       0, // stop fares already baked into snap.stop_fare
+          charge_per_stop:  0,
+          trip_hours:       actualDurationMin / 60,
+          surge_multiplier: parseFloat(snap.surge_multiplier),
+        })
+
+        const stopFare = parseFloat(snap.stop_fare ?? '0')
+        totalFinal = Math.round((recalc.total + stopFare) * 100) / 100
       }
     }
 

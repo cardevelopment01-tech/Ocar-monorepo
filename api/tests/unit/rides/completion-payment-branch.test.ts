@@ -135,4 +135,44 @@ describe('verifyEndOTP — payment channel branch', () => {
 
     expect(result).toEqual({ success: true, rideId: '101' })
   })
+
+  it('round_trip normal completion (no early termination): reconciles total_final against actual km/duration instead of leaving it null (bug fix)', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({
+      id: BigInt(101), user_id: 42, driver_id: 9, status: 'in_progress',
+      ride_type: 'round_trip', end_otp_hash: 'h', payment_channel: 'cash',
+      origin_lat: 20.3, origin_lng: 85.8, user_phone: null,
+    } as never)
+    vi.mocked(repo.getStopWaitTotal).mockResolvedValueOnce(0)
+
+    let capturedUpdateParams: unknown[] | undefined
+    vi.mocked(pool.query).mockImplementation(((sql: string, params?: unknown[]) => {
+      if (/FROM fare_snapshots fs\s+JOIN rate_cards/.test(sql)) {
+        return Promise.resolve({
+          rows: [{
+            surge_multiplier: '1', stop_fare: '0', is_return_cab: false,
+            rate_per_km: '12', rate_per_min: '1.5', min_fare: '500',
+            return_rate_per_km: null, km_per_day: '250', driver_allowance_per_day: '300',
+          }],
+          rowCount: 1,
+        })
+      }
+      if (/UPDATE fare_snapshots/.test(sql) && /total_final\s*=\s*COALESCE/.test(sql)) {
+        capturedUpdateParams = params
+        return Promise.resolve({ rows: [], rowCount: 1 })
+      }
+      return Promise.resolve({ rows: [{ amount: '500.00' }], rowCount: 1 })
+    }) as never)
+
+    // No end coordinates passed → old code never recalculated (early-termination
+    // branch requires actualEndLat/Lng). New code must still reconcile.
+    // Booked as ~1 day, actually took 30h (2 days by ceil), driven 400km.
+    // days=2, packageKm=2*250=500 (>400 driven, no overage), driver_allowance=2*300=600
+    // distance_fare=500*12=6000 → subtotal=6600, no surge → total_final=6600
+    await verifyEndOTP(BigInt(9), BigInt(101), '1234', 400, 30 * 60)
+    await flush()
+
+    expect(capturedUpdateParams).toBeDefined()
+    const totalFinal = capturedUpdateParams![3] as number
+    expect(totalFinal).toBe(6600)
+  })
 })
