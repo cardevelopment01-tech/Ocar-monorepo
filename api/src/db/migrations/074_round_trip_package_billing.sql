@@ -33,6 +33,12 @@ ALTER TABLE rate_card_history
 -- pricing doesn't silently zero out post-migration. These are placeholder
 -- defaults (250 km/day, ₹300/day) — an admin must tune them per category via
 -- the rate-cards page (Task 6) before this goes live for real bookings.
+--
+-- One-time schema-bootstrap exception to the "never UPDATE rate_cards" rule
+-- (006_m4_pricing.sql): these two columns are brand new (were NULL, not a
+-- prior versioned value), so there is no rate_card_history entry to preserve.
+-- Do NOT copy this UPDATE pattern for actual pricing changes — those must go
+-- through createRateCard's expire-old-row + INSERT new-row cycle.
 UPDATE rate_cards
 SET km_per_day = 250, driver_allowance_per_day = 300
 WHERE ride_type = 'round_trip' AND effective_to IS NULL;
