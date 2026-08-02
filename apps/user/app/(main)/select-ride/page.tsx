@@ -599,7 +599,7 @@ function SelectRideContent() {
           )}
           {rideType === 'round_trip' && (
             <p className="mx-4 mb-1 text-[11px] font-medium leading-relaxed" style={{ color: '#94A3B8' }}>
-              Waiting time is <span className="font-semibold" style={{ color: '#475569' }}>covered within your booked hours</span>. Running over is billed as an hourly overage.
+              Your package includes a <span className="font-semibold" style={{ color: '#475569' }}>guaranteed daily km allowance</span>. Extra km or an extra day are billed at completion.
             </p>
           )}
 
@@ -797,8 +797,14 @@ function SelectRideContent() {
               )}
               {Number(estimates[selected]!.breakdown.hour_surcharge) > 0 && (
                 <div className="flex justify-between text-[11px]">
-                  <span style={{ color: '#22B8C9' }}>Waiting ({tripHours}h)</span>
+                  <span style={{ color: '#22B8C9' }}>Driver allowance</span>
                   <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.hour_surcharge))}</span>
+                </div>
+              )}
+              {Number(estimates[selected]!.breakdown.overage_km ?? 0) > 0 && (
+                <div className="flex justify-between text-[11px]">
+                  <span style={{ color: '#F59E0B' }}>Extra km ({estimates[selected]!.breakdown.overage_km} km)</span>
+                  <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.overage_fare))}</span>
                 </div>
               )}
               {Number(estimates[selected]!.breakdown.surge_fare) > 0 && (
