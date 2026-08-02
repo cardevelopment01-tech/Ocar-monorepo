@@ -175,4 +175,56 @@ describe('verifyEndOTP — payment channel branch', () => {
     const totalFinal = capturedUpdateParams![3] as number
     expect(totalFinal).toBe(6600)
   })
+
+  it('round_trip early termination (ends >500m from origin): bills one_way (driven + return estimate), no driver allowance, early_termination_km/min set', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({
+      id: BigInt(101), user_id: 42, driver_id: 9, status: 'in_progress',
+      ride_type: 'round_trip', end_otp_hash: 'h', payment_channel: 'cash',
+      origin_lat: 20.3, origin_lng: 85.8, user_phone: null,
+    } as never)
+    vi.mocked(repo.getStopWaitTotal).mockResolvedValueOnce(0)
+
+    let capturedUpdateParams: unknown[] | undefined
+    vi.mocked(pool.query).mockImplementation(((sql: string, params?: unknown[]) => {
+      // Driver ended 5km (5000m) from origin → PostGIS says the return leg
+      // wasn't actually driven.
+      if (/ST_Distance/.test(sql)) {
+        return Promise.resolve({ rows: [{ metres: '5000' }], rowCount: 1 })
+      }
+      if (/FROM fare_snapshots fs\s+JOIN rate_cards/.test(sql)) {
+        return Promise.resolve({
+          rows: [{
+            surge_multiplier: '1', stop_fare: '0', is_return_cab: false,
+            rate_per_km: '12', rate_per_min: '1.5', min_fare: '500',
+            return_rate_per_km: null, km_per_day: '250', driver_allowance_per_day: '300',
+          }],
+          rowCount: 1,
+        })
+      }
+      if (/UPDATE fare_snapshots/.test(sql) && /total_final\s*=\s*COALESCE/.test(sql)) {
+        capturedUpdateParams = params
+        return Promise.resolve({ rows: [], rowCount: 1 })
+      }
+      return Promise.resolve({ rows: [{ amount: '500.00' }], rowCount: 1 })
+    }) as never)
+
+    // drivenKm = returnKm = 5 (both derived from the same PostGIS straight-
+    // line distance to origin); returnMin = 5 / 0.5 = 10min at assumed 30km/h.
+    // billedKm = 5+5 = 10, billedMin = 40 (actual driven duration) + 10 = 50.
+    // Billed at one_way rates (no km_per_day/driver_allowance_per_day at all):
+    // distance_fare=10*12=120, time_fare=50*1.5=75, metered=195,
+    // floored at min_fare=500, no surge → total_final=500.
+    await verifyEndOTP(BigInt(9), BigInt(101), '1234', 5, 40, 20.34, 85.84)
+    await flush()
+
+    expect(capturedUpdateParams).toBeDefined()
+    const [, billedKm, billedMin, totalFinal, earlyTermKm, earlyTermMin] = capturedUpdateParams!
+    expect(totalFinal).toBe(500)
+    expect(billedKm).toBe(10)
+    expect(billedMin).toBe(50)
+    // Unlike the normal-completion case (early_termination_km/min = null),
+    // these must be populated here.
+    expect(earlyTermKm).toBe(5)
+    expect(earlyTermMin).toBe(10)
+  })
 })
