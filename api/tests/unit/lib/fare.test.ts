@@ -7,6 +7,8 @@ const sedanCard = {
   min_fare: 80.00,
   return_rate_per_km: 8.00,
   hour_rate: 18.00,
+  km_per_day: 250,
+  driver_allowance_per_day: 300,
 }
 
 describe('calculateFare', () => {
@@ -131,61 +133,87 @@ describe('calculateFare', () => {
     expect(result.overage_fare).toBe(0)
   })
 
-  it('round_trip: hour_rate applied', () => {
+  it('round_trip: actual km under package allowance still bills the guaranteed minimum (GMB)', () => {
     const result = calculateFare({
       rate_card: sedanCard, ride_type: 'round_trip', is_return_cab: false,
-      estimated_km: 15, estimated_min: 28,
-      stop_count: 0, charge_per_stop: 25, trip_hours: 4, surge_multiplier: 1.0,
+      estimated_km: 180, estimated_min: 300,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 4, surge_multiplier: 1.0,
     })
-    // effective_km=30: 30×10 + 28×1.2 = 333.6; hour_surcharge = 4×18 = 72; total = 405.6
-    expect(result.hour_surcharge).toBe(72.00)
-    expect(result.total).toBe(405.60)
+    // days = ceil(4/24) = 1, packageKm = 250. 180 < 250 → billed at packageKm.
+    expect(result.distance_fare).toBe(2500.00)
+    expect(result.overage_km).toBe(0)
+    expect(result.overage_fare).toBe(0)
+    expect(result.hour_surcharge).toBe(300.00)
+    expect(result.total).toBe(2800.00)
   })
 
-  it('round_trip: trip_hours=0 produces no hour_surcharge (clamp is service responsibility)', () => {
+  it('round_trip: km beyond the package allowance is billed as overage', () => {
     const result = calculateFare({
       rate_card: sedanCard, ride_type: 'round_trip', is_return_cab: false,
-      estimated_km: 15, estimated_min: 28,
-      stop_count: 0, charge_per_stop: 0, trip_hours: 0, surge_multiplier: 1.0,
+      estimated_km: 300, estimated_min: 400,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 4, surge_multiplier: 1.0,
     })
-    // calculateFare is pure — it does not clamp; clampTripHours in pricing.service does
-    // effective_km=30: 30×10 + 28×1.2 = 333.6; no hour_surcharge
+    // packageKm = 250, overage = 300-250 = 50km × ₹10
+    expect(result.distance_fare).toBe(2500.00)
+    expect(result.overage_km).toBe(50)
+    expect(result.overage_fare).toBe(500.00)
+    expect(result.total).toBe(3300.00)
+  })
+
+  it('round_trip: multi-day trip scales package km and driver allowance by day count', () => {
+    const result = calculateFare({
+      rate_card: sedanCard, ride_type: 'round_trip', is_return_cab: false,
+      estimated_km: 400, estimated_min: 600,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 30, surge_multiplier: 1.0,
+    })
+    // days = ceil(30/24) = 2, packageKm = 500 (400 < 500, no overage)
+    expect(result.distance_fare).toBe(5000.00)
+    expect(result.hour_surcharge).toBe(600.00)
+    expect(result.total).toBe(5600.00)
+  })
+
+  it('round_trip: card with no km_per_day/driver_allowance_per_day configured falls back to plain per-km billing', () => {
+    const cardNoPackage = { ...sedanCard, km_per_day: null, driver_allowance_per_day: null }
+    const result = calculateFare({
+      rate_card: cardNoPackage, ride_type: 'round_trip', is_return_cab: false,
+      estimated_km: 30, estimated_min: 40,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 4, surge_multiplier: 1.0,
+    })
+    expect(result.distance_fare).toBe(0)
+    expect(result.overage_km).toBe(30)
+    expect(result.overage_fare).toBe(300.00)
     expect(result.hour_surcharge).toBe(0)
-    expect(result.total).toBe(333.60)
+    expect(result.total).toBe(300.00)
   })
 
-  it('round_trip: fractional trip_hours used as-is (no rounding in calculateFare)', () => {
+  it('round_trip: min_fare floor still applies when package is unconfigured and distance is small', () => {
+    const cardNoPackage = { ...sedanCard, km_per_day: null, driver_allowance_per_day: null }
     const result = calculateFare({
-      rate_card: sedanCard, ride_type: 'round_trip', is_return_cab: false,
-      estimated_km: 15, estimated_min: 28,
-      stop_count: 0, charge_per_stop: 0, trip_hours: 5.5, surge_multiplier: 1.0,
+      rate_card: cardNoPackage, ride_type: 'round_trip', is_return_cab: false,
+      estimated_km: 2, estimated_min: 10,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 4, surge_multiplier: 1.0,
     })
-    // effective_km=30: 333.6 + 5.5×18 = 333.6+99 = 432.6
-    expect(result.hour_surcharge).toBe(99.00)
-    expect(result.total).toBe(432.60)
+    expect(result.total).toBe(80.00)
   })
 
-  it('round_trip: hour_surcharge + surge applied in correct order', () => {
+  it('round_trip: surge multiplier applies to the full subtotal including driver allowance', () => {
     const result = calculateFare({
       rate_card: sedanCard, ride_type: 'round_trip', is_return_cab: false,
-      estimated_km: 15, estimated_min: 28,
+      estimated_km: 180, estimated_min: 300,
       stop_count: 0, charge_per_stop: 0, trip_hours: 6, surge_multiplier: 1.5,
     })
-    // effective_km=30: subtotal = 333.6 + 6×18 = 441.6; surge = 441.6×0.5 = 220.8; total = 662.4
-    expect(result.hour_surcharge).toBe(108.00)
-    expect(result.surge_fare).toBe(220.80)
-    expect(result.total).toBe(662.40)
+    expect(result.subtotal).toBe(2800.00)
+    expect(result.surge_fare).toBe(1400.00)
+    expect(result.total).toBe(4200.00)
   })
 
-  it('round_trip: card without hour_rate produces no hour_surcharge', () => {
-    const cardNoHourRate = { ...sedanCard, hour_rate: null }
+  it('round_trip: stop charges are added on top of the package fare', () => {
     const result = calculateFare({
-      rate_card: cardNoHourRate, ride_type: 'round_trip', is_return_cab: false,
-      estimated_km: 15, estimated_min: 28,
-      stop_count: 0, charge_per_stop: 0, trip_hours: 8, surge_multiplier: 1.0,
+      rate_card: sedanCard, ride_type: 'round_trip', is_return_cab: false,
+      estimated_km: 180, estimated_min: 300,
+      stop_count: 2, charge_per_stop: 25, trip_hours: 4, surge_multiplier: 1.0,
     })
-    // effective_km=30: 30×10 + 28×1.2 = 333.6; no hour_surcharge
-    expect(result.hour_surcharge).toBe(0)
-    expect(result.total).toBe(333.60)
+    // 2500 (package) + 0 (overage) + 50 (stops) + 300 (allowance) = 2850
+    expect(result.total).toBe(2850.00)
   })
 })
