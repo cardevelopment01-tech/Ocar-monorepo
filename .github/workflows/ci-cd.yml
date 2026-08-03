@@ -6,14 +6,13 @@ on:
   pull_request:
     branches: [main]
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    concurrency:
+      group: ci-lint-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -27,6 +26,9 @@ jobs:
   typecheck-api:
     name: Typecheck API
     runs-on: ubuntu-latest
+    concurrency:
+      group: ci-typecheck-api-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -40,6 +42,9 @@ jobs:
   test-api:
     name: Test API
     runs-on: ubuntu-latest
+    concurrency:
+      group: ci-test-api-${{ github.ref }}
+      cancel-in-progress: true
     services:
       postgres:
         image: postgis/postgis:17-3.5
@@ -115,6 +120,9 @@ jobs:
   typecheck-user:
     name: Typecheck User App
     runs-on: ubuntu-latest
+    concurrency:
+      group: ci-typecheck-user-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -128,6 +136,9 @@ jobs:
   typecheck-driver:
     name: Typecheck Driver App
     runs-on: ubuntu-latest
+    concurrency:
+      group: ci-typecheck-driver-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -141,6 +152,9 @@ jobs:
   typecheck-admin:
     name: Typecheck Admin App
     runs-on: ubuntu-latest
+    concurrency:
+      group: ci-typecheck-admin-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -155,6 +169,9 @@ jobs:
     name: Detect Deploy-Relevant Changes
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-api
+      cancel-in-progress: false
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
     steps:
@@ -245,6 +262,18 @@ jobs:
 
             PREVIOUS_TAG=$(docker inspect ocar_api --format '{{.Config.Image}}' 2>/dev/null | awk -F: '{print $NF}' || echo "")
 
+            rollback() {
+              local reason="$1"
+              echo "$reason"
+              if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$IMAGE_TAG" ]; then
+                echo "Rolling back container to previous image tag: $PREVIOUS_TAG"
+                IMAGE_TAG=$PREVIOUS_TAG docker compose -f docker-compose.prod.yml up -d --no-deps api
+                echo "Rolled back. NOTE: any migrations \$IMAGE_TAG applied are NOT reverted (forward-only migrations) — if the migration itself is the problem, it must be fixed forward, not rolled back."
+              else
+                echo "No distinct previous tag found — nothing to roll back to. Manual intervention required."
+              fi
+            }
+
             docker compose -f docker-compose.prod.yml pull api
 
             # api/entrypoint.sh also runs migrate.js on every container start (before
@@ -272,21 +301,15 @@ jobs:
             done
 
             if [ "$HEALTHY" != "true" ]; then
-              echo "New container failed health check after cutover."
-              if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$IMAGE_TAG" ]; then
-                echo "Rolling back container to previous image tag: $PREVIOUS_TAG"
-                IMAGE_TAG=$PREVIOUS_TAG docker compose -f docker-compose.prod.yml up -d --no-deps api
-                echo "Rolled back. NOTE: any migrations $IMAGE_TAG applied are NOT reverted (forward-only migrations) — if the migration itself is the problem, it must be fixed forward, not rolled back."
-              else
-                echo "No distinct previous tag found — nothing to roll back to. Manual intervention required."
-              fi
+              rollback "New container failed health check after cutover."
               exit 1
             fi
 
             echo "Smoke-testing a real DB-backed route..."
             SMOKE_OK=false
             for i in 1 2 3; do
-              if docker exec ocar_api wget -qO- http://localhost:4000/api/v1/geo/cities | grep -q '"success":true'; then
+              if docker exec ocar_api wget -q --spider http://localhost:4000/api/v1/geo/cities && \
+                 docker exec ocar_api wget -qO- http://localhost:4000/api/v1/geo/cities | grep -q '"slug"'; then
                 SMOKE_OK=true
                 break
               fi
@@ -294,14 +317,7 @@ jobs:
             done
 
             if [ "$SMOKE_OK" != "true" ]; then
-              echo "Smoke test failed on /api/v1/geo/cities after cutover."
-              if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$IMAGE_TAG" ]; then
-                echo "Rolling back container to previous image tag: $PREVIOUS_TAG"
-                IMAGE_TAG=$PREVIOUS_TAG docker compose -f docker-compose.prod.yml up -d --no-deps api
-                echo "Rolled back. NOTE: any migrations $IMAGE_TAG applied are NOT reverted (forward-only migrations)."
-              else
-                echo "No distinct previous tag found — nothing to roll back to. Manual intervention required."
-              fi
+              rollback "Smoke test failed on /api/v1/geo/cities after cutover."
               exit 1
             fi
 
