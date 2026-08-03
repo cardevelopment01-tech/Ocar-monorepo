@@ -83,7 +83,6 @@ export default function TripInProgress() {
   const [endEarlyReason,    setEndEarlyReason]    = useState<string | null>(null)
   const [endingEarly,       setEndingEarly]       = useState(false)
   const [endEarlyError,     setEndEarlyError]     = useState<string | null>(null)
-  const [error,             setError]             = useState<string | null>(null)
   const [startingReturn,    setStartingReturn]    = useState(false)
 
   // ── Collapsible bottom sheet (mirrors NavigateToPickup.tsx — see
@@ -387,7 +386,8 @@ export default function TripInProgress() {
       await driverRideApi.startReturn(activeRide.id)
       updateRideStatus('returning')
     } catch {
-      setError('Failed to start return. Please try again.')
+      // SwipeToConfirm shows its own "couldn't confirm" message when it's
+      // still mounted after its own retry window — no need to duplicate that here.
     } finally {
       setStartingReturn(false)
     }
@@ -635,7 +635,6 @@ export default function TripInProgress() {
               )
             )}
           </motion.div>
-          {error && <p className="text-accent-red text-xs text-center mt-2">{error}</p>}
 
           {/* Collapse anchor: everything above stays put at any sheet height;
               everything below fades away as the sheet is dragged/tapped down. */}
