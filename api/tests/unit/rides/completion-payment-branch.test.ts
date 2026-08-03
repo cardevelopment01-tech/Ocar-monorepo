@@ -14,6 +14,7 @@ vi.mock('@/jobs/queues', () => ({
 }))
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideById:              vi.fn(),
+  getRideStops:             vi.fn().mockResolvedValue([]),
   updateRideStatus:         vi.fn(),
   logStatusHistory:         vi.fn(),
   getStopWaitTotal:         vi.fn().mockResolvedValue(0),

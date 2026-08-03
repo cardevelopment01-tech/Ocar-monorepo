@@ -1322,6 +1322,11 @@ export async function verifyEndOTP(
     throw Object.assign(new Error('Ride not in progress'), { httpStatus: 409 })
   }
 
+  const stops = await repo.getRideStops(rideId)
+  if (stops.some(s => s.status === 'pending')) {
+    throw Object.assign(new Error('Ride has pending stops'), { httpStatus: 409 })
+  }
+
   const valid = ride.end_otp_hash != null && hashOtp(otp) === ride.end_otp_hash
 
   await pool.query(
