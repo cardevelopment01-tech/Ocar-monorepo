@@ -268,7 +268,7 @@ jobs:
               if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$IMAGE_TAG" ]; then
                 echo "Rolling back container to previous image tag: $PREVIOUS_TAG"
                 IMAGE_TAG=$PREVIOUS_TAG docker compose -f docker-compose.prod.yml up -d --no-deps api
-                echo "Rolled back. NOTE: any migrations \$IMAGE_TAG applied are NOT reverted (forward-only migrations) — if the migration itself is the problem, it must be fixed forward, not rolled back."
+                echo "Rolled back. NOTE: any migrations $IMAGE_TAG applied are NOT reverted (forward-only migrations) — if the migration itself is the problem, it must be fixed forward, not rolled back."
               else
                 echo "No distinct previous tag found — nothing to roll back to. Manual intervention required."
               fi
