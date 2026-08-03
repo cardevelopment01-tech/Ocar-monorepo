@@ -1473,7 +1473,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
          WHERE created_at >= $1 AND created_at < $2
         )::int                                                              AS new_driver_signups,
         (SELECT COUNT(*) FROM rides
-         WHERE status IN ('accepted', 'driver_arrived', 'in_progress')
+         WHERE status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
         )::int                                                              AS active_trips
       `, [dayStart, dayEnd]),
       dashboardQuery(client, `
@@ -1544,7 +1544,7 @@ export async function getActiveDriverSessions(): Promise<ActiveDriverSession[]> 
     JOIN drivers d ON d.id = ds.driver_id
     LEFT JOIN driver_location_snapshots dls ON dls.driver_id = ds.driver_id
     LEFT JOIN rides r ON r.driver_id = ds.driver_id
-      AND r.status IN ('accepted', 'driver_arrived', 'in_progress')
+      AND r.status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
     LEFT JOIN driver_vehicles dv ON dv.driver_id = ds.driver_id
       AND dv.is_primary = true AND dv.status != 'blacklisted'
     LEFT JOIN vehicle_categories vc ON vc.id = dv.category_id
