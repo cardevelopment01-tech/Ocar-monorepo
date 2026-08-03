@@ -434,7 +434,8 @@ export async function getActiveRideIdForUser(userId: bigint): Promise<string | n
          (status = 'requested'      AND updated_at > now() - ($2 || ' minutes')::interval) OR
          (status = 'accepted'       AND updated_at > now() - ($3 || ' hours')::interval)    OR
          (status = 'driver_arrived' AND updated_at > now() - ($4 || ' hours')::interval)    OR
-         (status = 'in_progress'    AND updated_at > now() - ($5 || ' hours')::interval)
+         (status = 'in_progress'    AND updated_at > now() - ($5 || ' hours')::interval)    OR
+         (status = 'returning'      AND updated_at > now() - ($5 || ' hours')::interval)
        )
      ORDER BY requested_at DESC
      LIMIT 1`,
@@ -468,7 +469,7 @@ export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | n
      LEFT JOIN drivers d         ON d.id = r.driver_id
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
      WHERE r.driver_id = $1
-       AND r.status IN ('accepted', 'driver_arrived', 'in_progress')
+       AND r.status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
      ORDER BY r.accepted_at DESC
      LIMIT 1`,
     [driverId]
@@ -695,7 +696,7 @@ export async function findStaleInProgressRides(staleSeconds: number): Promise<St
     `SELECT r.id, r.driver_id, r.review_flagged_at
      FROM rides r
      JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
-     WHERE r.status = 'in_progress'
+     WHERE r.status IN ('in_progress', 'returning')
        AND now() - dls.recorded_at > ($1 || ' seconds')::interval`,
     [staleSeconds]
   )

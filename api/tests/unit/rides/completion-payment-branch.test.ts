@@ -15,6 +15,7 @@ vi.mock('@/jobs/queues', () => ({
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideById:              vi.fn(),
   updateRideStatus:         vi.fn(),
+  updateRideStatusCAS:      vi.fn(),
   logStatusHistory:         vi.fn(),
   getStopWaitTotal:         vi.fn().mockResolvedValue(0),
   getGpsTrackedDistanceKm:  vi.fn().mockResolvedValue(null),
@@ -35,7 +36,7 @@ import * as pay  from '@/modules/payments/payments.service'
 import { pool }  from '@/db/client'
 import { socketEvents } from '@/websocket/socket.server'
 import { getConfigValue } from '@/lib/system-config'
-import { verifyEndOTP } from '@/modules/rides/rides.service'
+import { verifyEndOTP, startReturn } from '@/modules/rides/rides.service'
 
 const flush = () => new Promise(r => setTimeout(r, 0)) // let the non-blocking void chain settle
 
@@ -130,6 +131,20 @@ describe('verifyEndOTP — payment channel branch', () => {
 
   it('no wait charge / no early termination: finalFare omitted from response (client falls back to estimate, which equals final)', async () => {
     vi.mocked(repo.getRideById).mockResolvedValue(baseRide('cash') as never)
+    vi.mocked(repo.getStopWaitTotal).mockResolvedValueOnce(0)
+
+    const result = await verifyEndOTP(BigInt(9), BigInt(101), '1234')
+    await flush()
+
+    expect(result).toEqual({ success: true, rideId: '101' })
+  })
+
+  it('ride in returning status (round_trip return leg started via startReturn) can still complete via verifyEndOTP (bug fix: startReturn no longer dead-ends the ride)', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({
+      id: BigInt(101), user_id: 42, driver_id: 9, status: 'returning',
+      ride_type: 'one_way', end_otp_hash: 'h', payment_channel: 'cash',
+      origin_lat: 20.3, origin_lng: 85.8, user_phone: null,
+    } as never)
     vi.mocked(repo.getStopWaitTotal).mockResolvedValueOnce(0)
 
     const result = await verifyEndOTP(BigInt(9), BigInt(101), '1234')
@@ -325,5 +340,57 @@ describe('verifyEndOTP — payment channel branch', () => {
     // these must be populated here.
     expect(earlyTermKm).toBe(5)
     expect(earlyTermMin).toBe(10)
+  })
+})
+
+describe('startReturn', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('transitions in_progress -> returning and logs history + emits socket event', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({
+      id: BigInt(101), user_id: 42, driver_id: 9, status: 'in_progress',
+      ride_type: 'round_trip', payment_channel: 'cash',
+      origin_lat: 20.3, origin_lng: 85.8, user_phone: null,
+    } as never)
+    vi.mocked(repo.updateRideStatusCAS).mockResolvedValue({ id: BigInt(101) } as never)
+    vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
+
+    const result = await startReturn(BigInt(9), BigInt(101))
+
+    expect(repo.updateRideStatusCAS).toHaveBeenCalledWith(
+      BigInt(101), 'in_progress', 'returning', { return_started_at: expect.any(String) }
+    )
+    expect(repo.logStatusHistory).toHaveBeenCalledWith({
+      rideId: BigInt(101), fromStatus: 'in_progress', toStatus: 'returning',
+      actor: 'driver', actorId: BigInt(9),
+    })
+    expect(socketEvents.sendRideStatusUpdate).toHaveBeenCalledWith('101', { status: 'returning' })
+    expect(result).toEqual({ success: true })
+  })
+
+  it('rejects a non-round_trip ride with 422', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({
+      id: BigInt(101), user_id: 42, driver_id: 9, status: 'in_progress',
+      ride_type: 'one_way', payment_channel: 'cash',
+      origin_lat: 20.3, origin_lng: 85.8, user_phone: null,
+    } as never)
+
+    await expect(startReturn(BigInt(9), BigInt(101))).rejects.toMatchObject({ httpStatus: 422 })
+    expect(repo.updateRideStatusCAS).not.toHaveBeenCalled()
+  })
+
+  it('rejects when the ride is not currently in_progress (lost the CAS race)', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({
+      id: BigInt(101), user_id: 42, driver_id: 9, status: 'in_progress',
+      ride_type: 'round_trip', payment_channel: 'cash',
+      origin_lat: 20.3, origin_lng: 85.8, user_phone: null,
+    } as never)
+    vi.mocked(repo.updateRideStatusCAS).mockResolvedValue(null as never)
+
+    await expect(startReturn(BigInt(9), BigInt(101))).rejects.toMatchObject({ httpStatus: 409 })
+    expect(repo.logStatusHistory).not.toHaveBeenCalled()
+    expect(socketEvents.sendRideStatusUpdate).not.toHaveBeenCalled()
   })
 })

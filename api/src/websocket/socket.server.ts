@@ -64,7 +64,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
       void pool.query<{ id: string }>(
         `SELECT id::text FROM rides
          WHERE driver_id = $1
-           AND status IN ('accepted', 'driver_arrived', 'in_progress')
+           AND status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
          ORDER BY accepted_at DESC NULLS LAST LIMIT 1`,
         [BigInt(user.sub)]
       ).then((res) => {
