@@ -405,6 +405,29 @@ export default function TripInProgress() {
     }
   }
 
+  // Single primary swipe for the whole screen — label/action depend on where
+  // the driver actually is in the trip; never two live swipes shown at once
+  // (see docs/superpowers/specs/2026-08-04-driver-trip-single-primary-cta-design.md).
+  const primaryAction = currentStop
+    ? (isOneWay && currentStop.arrived_at != null
+        ? {
+            key: `wait-${currentStop.sequence}`,
+            label: 'Slide to start next leg',
+            onConfirm: () => handleStopAction(currentStop.sequence, 'reached'),
+          }
+        : {
+            key: `stop-${currentStop.sequence}`,
+            label: isOneWay ? 'Slide to start wait clock' : `Slide to confirm stop ${currentStop.sequence}`,
+            onConfirm: () => (isOneWay
+              ? handleStopArrived(currentStop.sequence)
+              : handleStopAction(currentStop.sequence, 'reached')),
+          })
+    : {
+        key: 'complete-trip',
+        label: 'Slide to complete trip',
+        onConfirm: () => setShowEndOtp(true),
+      }
+
   return (
     <div className="relative w-full h-[100dvh] bg-bg overflow-hidden">
 
@@ -599,15 +622,16 @@ export default function TripInProgress() {
               hidden while the end-OTP sheet is open so its own retry timer doesn't
               fire a false "couldn't confirm" (that sheet is the real completion, not this). */}
           <motion.div
-            animate={!currentStop && nearTarget ? { scale: [1, 1.03, 1] } : { scale: 1 }}
-            transition={{ duration: 0.7, repeat: !currentStop && nearTarget ? Infinity : 0, ease: 'easeInOut' }}
-            style={{ borderRadius: 9999, boxShadow: !currentStop && nearTarget ? '0 0 0 3px rgba(10, 159, 176,0.35)' : undefined }}
+            animate={nearTarget ? { scale: [1, 1.03, 1] } : { scale: 1 }}
+            transition={{ duration: 0.7, repeat: nearTarget ? Infinity : 0, ease: 'easeInOut' }}
+            style={{ borderRadius: 9999, boxShadow: nearTarget ? '0 0 0 3px rgba(10, 159, 176,0.35)' : undefined }}
           >
             {!showEndOtp && (
               <SwipeToConfirm
-                key="complete-trip"
-                label="Slide to complete trip"
-                onConfirm={() => setShowEndOtp(true)}
+                key={primaryAction.key}
+                label={primaryAction.label}
+                onConfirm={primaryAction.onConfirm}
+                disabled={stopActionPending === currentStop?.sequence}
               />
             )}
           </motion.div>
@@ -645,7 +669,7 @@ export default function TripInProgress() {
                   border: `1px solid ${waitFreeLeftSec <= 0 || waitFreeLeftSec <= 120 ? 'rgba(245,158,11,0.30)' : 'rgba(16,185,129,0.30)'}`,
                 }}
               >
-                <div className="min-w-0 mb-3">
+                <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: waitFreeLeftSec <= 0 || waitFreeLeftSec <= 120 ? '#D97706' : '#059669' }}>
                     Waiting · Stop {waitingStop.sequence}
                   </p>
@@ -660,12 +684,6 @@ export default function TripInProgress() {
                       : `${fmtClock(waitFreeLeftSec)} of free wait left`}
                   </p>
                 </div>
-                <SwipeToConfirm
-                  key={`wait-${waitingStop.sequence}`}
-                  label="Slide to start next leg"
-                  onConfirm={() => handleStopAction(waitingStop.sequence, 'reached')}
-                  disabled={stopActionPending === waitingStop.sequence}
-                />
               </div>
             )}
 
@@ -759,20 +777,6 @@ export default function TripInProgress() {
               <AlertTriangle size={14} strokeWidth={2} />
               End trip early
             </button>
-
-            {/* Primary advance for the current stop — swipe, not tap (accident-proof while driving) */}
-            {currentStop && !(isOneWay && currentStop.arrived_at != null) && (
-              <div className="mt-3 mb-1">
-                <SwipeToConfirm
-                  key={`cur-${currentStop.sequence}`}
-                  label={isOneWay ? 'Slide to start wait clock' : 'Slide to confirm stop'}
-                  onConfirm={() => (isOneWay
-                    ? handleStopArrived(currentStop.sequence)
-                    : handleStopAction(currentStop.sequence, 'reached'))}
-                  disabled={stopActionPending === currentStop.sequence}
-                />
-              </div>
-            )}
 
             <div className="-mx-2 px-3 py-2.5 rounded-2xl bg-surface-2">
               <p className="text-text-muted text-xs mb-0.5">
