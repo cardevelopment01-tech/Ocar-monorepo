@@ -37,10 +37,11 @@ function fmtClock(totalSec: number) {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-type RouteMode = 'pickup-dest' | 'driver-pickup' | 'driver-dest' | 'recap'
+type RouteMode = 'pickup-dest' | 'driver-pickup' | 'driver-dest' | 'returning' | 'recap'
 
 function routeModeFor(status: string): RouteMode {
   if (status === 'accepted' || status === 'driver_arrived') return 'driver-pickup'
+  if (status === 'returning') return 'returning'
   if (status === 'in_progress') return 'driver-dest'
   if (status === 'completed' || status === 'cancelled') return 'recap'
   return 'pickup-dest'
@@ -92,7 +93,7 @@ function SearchingDots() {
 // instead of two near-duplicate 45-line blocks. Colors/spacing per DESIGN.md
 // (Surface 2, Border, Ink tokens; no tracked-uppercase field labels — see
 // the "No Eyebrow Rule").
-function RouteRow({ ride, fare }: { ride: RideDetail | null; fare: string | null }) {
+function RouteRow({ ride, fare, status }: { ride: RideDetail | null; fare: string | null; status?: string }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3.5 rounded-2xl" style={{ background: '#F5F7FF', border: '1px solid #E8EEFF' }}>
       <div className="flex flex-col items-center gap-1 flex-shrink-0">
@@ -115,7 +116,9 @@ function RouteRow({ ride, fare }: { ride: RideDetail | null; fare: string | null
               : (ride?.destination_address ?? 'Destination')}
           </p>
           {ride?.ride_type === 'round_trip' && ride.return_at && (
-            <p className="text-[12px] font-medium mt-0.5" style={{ color: '#DC3E93' }}>Back by {formatReturnAt(ride.return_at)}</p>
+            <p className="text-[12px] font-medium mt-0.5" style={{ color: '#DC3E93' }}>
+              {status === 'returning' ? 'Driver is heading back · ' : ''}Back by {formatReturnAt(ride.return_at)}
+            </p>
           )}
         </div>
       </div>
@@ -580,6 +583,12 @@ export default function RidePage() {
       if (!driverPos) return
       origin = driverPos
       dest   = userPos ?? pickupPos
+    } else if (routeMode === 'returning') {
+      // Driver is heading from the destination back to the origin — same
+      // shape as the pickup leg (driver -> pickupPos), just later in the trip.
+      if (!driverPos) return
+      origin = driverPos
+      dest   = pickupPos
     } else if (routeMode === 'driver-dest') {
       if (!driverPos || !hd) return
       origin = driverPos
@@ -610,11 +619,12 @@ export default function RidePage() {
 
     // Live ETA only makes sense once a driver is actually en route (pickup or dest leg) —
     // meaningless during the pre-assignment search phase or the post-trip recap.
-    const wantsEta = routeMode === 'driver-pickup' || routeMode === 'driver-dest'
+    const wantsEta = routeMode === 'driver-pickup' || routeMode === 'driver-dest' || routeMode === 'returning'
 
     // Route through the still-pending stops so the line detours to them. Not on the
-    // pickup leg — stops sit between pickup and drop, not before pickup.
-    const waypoints: [number, number][] = routeMode === 'driver-pickup'
+    // pickup or return leg — stops sit between pickup and drop, not before pickup
+    // or on the drive back to origin.
+    const waypoints: [number, number][] = (routeMode === 'driver-pickup' || routeMode === 'returning')
       ? []
       : ride.stops.filter(s => s.status === 'pending').map(s => [s.lat, s.lng])
 
@@ -856,7 +866,7 @@ export default function RidePage() {
               className="px-4 pb-6"
             >
               <div className="mb-4">
-                <RouteRow ride={ride} fare={fare} />
+                <RouteRow ride={ride} fare={fare} status={rideStatus} />
               </div>
 
               {fareDrift && (
@@ -1011,7 +1021,7 @@ export default function RidePage() {
                     style={{ overflow: 'hidden' }}
                   >
                     <div className="pb-4 space-y-3">
-                      <RouteRow ride={ride} fare={rideStatus === 'accepted' ? null : fare} />
+                      <RouteRow ride={ride} fare={rideStatus === 'accepted' ? null : fare} status={rideStatus} />
 
                       {/* Stop itinerary — mirrors driver state via the stop:updated socket event */}
                       {ride && ride.stops.length > 0 && (
