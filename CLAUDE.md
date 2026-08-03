@@ -437,16 +437,16 @@ below for the exact commands to close both gaps once repo admin access is availa
 - **No branch protection on `main`.** Nothing currently stops a direct push to `main` (bypassing a PR) from landing bad code — the CI `needs:` gate stops that code from being *deployed*, but not from being *merged/pushed*. Skipped for the same admin-rights reason as above (branch protection is also an admin-only `gh api` call). Whoever has admin rights should run:
   ```bash
   gh api --method PUT repos/:owner/:repo/branches/main/protection \
-    -f "required_status_checks[strict]=true" \
+    -F "required_status_checks[strict]=true" \
     -f "required_status_checks[contexts][]=Lint" \
     -f "required_status_checks[contexts][]=Typecheck API" \
     -f "required_status_checks[contexts][]=Test API" \
     -f "required_status_checks[contexts][]=Typecheck User App" \
     -f "required_status_checks[contexts][]=Typecheck Driver App" \
     -f "required_status_checks[contexts][]=Typecheck Admin App" \
-    -f "enforce_admins=true" \
-    -f "required_pull_request_reviews[required_approving_review_count]=1" \
-    -f "restrictions="
+    -F "enforce_admins=true" \
+    -F "required_pull_request_reviews[required_approving_review_count]=1" \
+    -F "restrictions=null"
   ```
   Verify in `Settings → Branches → main` that "Require status checks to pass before merging" (all six jobs listed) and "Require a pull request before merging" are both checked. Delete this note once done.
 
