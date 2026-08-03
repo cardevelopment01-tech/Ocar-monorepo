@@ -139,6 +139,20 @@ describe('verifyEndOTP — payment channel branch', () => {
     expect(result).toEqual({ success: true, rideId: '101' })
   })
 
+  it('ride in returning status (round_trip return leg started via startReturn) can still complete via verifyEndOTP (bug fix: startReturn no longer dead-ends the ride)', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({
+      id: BigInt(101), user_id: 42, driver_id: 9, status: 'returning',
+      ride_type: 'one_way', end_otp_hash: 'h', payment_channel: 'cash',
+      origin_lat: 20.3, origin_lng: 85.8, user_phone: null,
+    } as never)
+    vi.mocked(repo.getStopWaitTotal).mockResolvedValueOnce(0)
+
+    const result = await verifyEndOTP(BigInt(9), BigInt(101), '1234')
+    await flush()
+
+    expect(result).toEqual({ success: true, rideId: '101' })
+  })
+
   it('round_trip normal completion (no early termination): reconciles total_final against actual km/duration instead of leaving it null (bug fix)', async () => {
     vi.mocked(repo.getRideById).mockResolvedValue({
       id: BigInt(101), user_id: 42, driver_id: 9, status: 'in_progress',
