@@ -680,6 +680,40 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
   return { success: true }
 }
 
+// Driver-triggered transition into the return leg of a round_trip ride. Uses
+// the CAS variant (unlike markArrived's plain update) so a double-tap/retry
+// of the "start return" control is a clean 409 no-op instead of double-
+// logging history or double-emitting the socket event.
+export async function startReturn(driverId: bigint, rideId: bigint) {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  }
+  if (ride.ride_type !== 'round_trip') {
+    throw Object.assign(new Error('Only round_trip rides have a return leg'), { httpStatus: 422 })
+  }
+
+  const updated = await repo.updateRideStatusCAS(rideId, 'in_progress', 'returning', {
+    return_started_at: new Date().toISOString(),
+  })
+  if (!updated) {
+    throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
+  }
+
+  await repo.logStatusHistory({
+    rideId,
+    fromStatus: 'in_progress',
+    toStatus:   'returning',
+    actor:      'driver',
+    actorId:    driverId,
+  })
+
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'returning' })
+
+  return { success: true }
+}
+
 export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: string) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
