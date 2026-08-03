@@ -1189,7 +1189,7 @@ export async function endRideEarlyAsDriver(
     throw Object.assign(new Error('Ride already ended'), { httpStatus: 409 })
   }
   await repo.logStatusHistory({
-    rideId, fromStatus: 'in_progress', toStatus: 'completed', actor: 'driver',
+    rideId, fromStatus: ride.status, toStatus: 'completed', actor: 'driver',
   })
 
   await pool.query(
