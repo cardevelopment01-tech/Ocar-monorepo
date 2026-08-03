@@ -51,6 +51,8 @@ export function useDriverLocation({
 
   useEffect(() => {
     let watchId: number
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    let cancelled = false
 
     const handlePosition = (pos: GeolocationPosition) => {
       // Always accept the first fix so position never stays null permanently
@@ -112,14 +114,28 @@ export function useDriverLocation({
       }
     }
 
-    const handleError = (err: GeolocationPositionError) => setError(err)
-
     const startWatch = () => {
       watchId = navigator.geolocation.watchPosition(handlePosition, handleError, {
         enableHighAccuracy: highAccuracy,
         timeout:     10_000,
         maximumAge:  3_000,
       })
+    }
+
+    // TIMEOUT/POSITION_UNAVAILABLE: watchPosition can silently stop delivering
+    // fixes after firing one of these (a known cross-browser/WebView quirk,
+    // especially right after switching to enableHighAccuracy on navigation —
+    // the OS has to acquire a fresh, slower GPS lock). Without this, the error
+    // banner stuck around until the driver refreshed the whole page — refresh
+    // "fixed" it only because it re-registered a brand-new watch. Do that
+    // ourselves instead. PERMISSION_DENIED isn't retried — that needs the
+    // user to act in settings, retrying it endlessly won't help.
+    function handleError(err: GeolocationPositionError) {
+      setError(err)
+      if (err.code !== err.PERMISSION_DENIED) {
+        navigator.geolocation.clearWatch(watchId)
+        retryTimer = setTimeout(() => { if (!cancelled) startWatch() }, 2_000)
+      }
     }
 
     startWatch()
@@ -133,6 +149,8 @@ export function useDriverLocation({
     document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
+      cancelled = true
+      if (retryTimer) clearTimeout(retryTimer)
       navigator.geolocation.clearWatch(watchId)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
