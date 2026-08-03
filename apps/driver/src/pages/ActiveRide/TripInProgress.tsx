@@ -83,6 +83,8 @@ export default function TripInProgress() {
   const [endEarlyReason,    setEndEarlyReason]    = useState<string | null>(null)
   const [endingEarly,       setEndingEarly]       = useState(false)
   const [endEarlyError,     setEndEarlyError]     = useState<string | null>(null)
+  const [error,             setError]             = useState<string | null>(null)
+  const [startingReturn,    setStartingReturn]    = useState(false)
 
   // ── Collapsible bottom sheet (mirrors NavigateToPickup.tsx — see
   //    docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 8): "Complete Trip" sits
@@ -378,6 +380,19 @@ export default function TripInProgress() {
     }
   }
 
+  const handleStartReturn = async () => {
+    if (!activeRide) return
+    setStartingReturn(true)
+    try {
+      await driverRideApi.startReturn(activeRide.id)
+      updateRideStatus('returning')
+    } catch {
+      setError('Failed to start return. Please try again.')
+    } finally {
+      setStartingReturn(false)
+    }
+  }
+
   const handleEndEarly = async () => {
     if (!activeRide || !endEarlyReason || endingEarly) return
     setEndingEarly(true)
@@ -604,13 +619,23 @@ export default function TripInProgress() {
             style={{ borderRadius: 9999, boxShadow: !currentStop && nearTarget ? '0 0 0 3px rgba(10, 159, 176,0.35)' : undefined }}
           >
             {!showEndOtp && (
-              <SwipeToConfirm
-                key="complete-trip"
-                label="Slide to complete trip"
-                onConfirm={() => setShowEndOtp(true)}
-              />
+              activeRide?.rideType === 'round_trip' && activeRide.status !== 'returning' ? (
+                <SwipeToConfirm
+                  key="start-return"
+                  label="Slide to start return"
+                  onConfirm={() => void handleStartReturn()}
+                  disabled={startingReturn}
+                />
+              ) : (
+                <SwipeToConfirm
+                  key="complete-trip"
+                  label="Slide to complete trip"
+                  onConfirm={() => setShowEndOtp(true)}
+                />
+              )
             )}
           </motion.div>
+          {error && <p className="text-accent-red text-xs text-center mt-2">{error}</p>}
 
           {/* Collapse anchor: everything above stays put at any sheet height;
               everything below fades away as the sheet is dragged/tapped down. */}
@@ -623,7 +648,7 @@ export default function TripInProgress() {
               <div className="flex items-center gap-2 mt-3 mb-3 px-3 py-2 rounded-xl" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)' }}>
                 <RotateCcw size={11} style={{ color: '#D97706' }} className="flex-shrink-0" />
                 <p className="text-xs font-semibold" style={{ color: '#D97706' }}>
-                  Return by {fmtReturn(activeRide.returnAt)}
+                  {activeRide.status === 'returning' ? 'Heading back — ' : ''}Return by {fmtReturn(activeRide.returnAt)}
                 </p>
               </div>
             )}
