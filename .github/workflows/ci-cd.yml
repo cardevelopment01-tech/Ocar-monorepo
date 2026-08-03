@@ -151,10 +151,28 @@ jobs:
       - run: pnpm install --frozen-lockfile --filter @ocar/admin
       - run: pnpm --filter @ocar/admin exec tsc --noEmit
 
+  changes:
+    name: Detect Deploy-Relevant Changes
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - 'api/**'
+              - 'docker-compose.prod.yml'
+              - 'infra/**'
+              - '.github/workflows/ci-cd.yml'
+
   build-push:
     name: Build & Push Docker Image
-    needs: [lint, typecheck-api, test-api, typecheck-user, typecheck-driver, typecheck-admin]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, lint, typecheck-api, test-api, typecheck-user, typecheck-driver, typecheck-admin]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-api
@@ -229,6 +247,11 @@ jobs:
 
             docker compose -f docker-compose.prod.yml pull api
 
+            # api/entrypoint.sh also runs migrate.js on every container start (before
+            # exec'ing the server), so this ad-hoc run and the cutover container's own
+            # startup both invoke it — safe only because migrate.js is idempotent
+            # (skips already-applied files). This run exists solely to gate cutover on
+            # migrations succeeding; it is not the only place migrations run.
             echo "Running migrations (new image, old container still serving traffic)..."
             docker run --rm --env-file .env.prod \
               --entrypoint node \
