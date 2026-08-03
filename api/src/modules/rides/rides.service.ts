@@ -269,7 +269,7 @@ export async function updateLocation(driverId: bigint, data: {
   let rideId = await redis.get(activeRideCacheKey)
   if (rideId === null) {
     const activeRideRes = await pool.query<{ id: string }>(
-      `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress') LIMIT 1`,
+      `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress','returning') LIMIT 1`,
       [driverId]
     )
     rideId = activeRideRes.rows[0]?.id ?? ''
@@ -1391,7 +1391,7 @@ export async function verifyEndOTP(
 
   await repo.logStatusHistory({
     rideId,
-    fromStatus: 'in_progress',
+    fromStatus: ride.status,
     toStatus:   'completed',
     actor:      'ride_completion',
   })
