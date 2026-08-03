@@ -104,7 +104,7 @@ export default function RideMapScene({
           : (showDrop && <FitBounds positions={[pickupPos, ...stops, dropPos]} paddingBottom={40} />)
       }
       <LocationPin position={pickupPos} variant="pickup" />
-      {(isPickupLeg || isReturning) && userPos && <LocationPin position={userPos} variant="user" />}
+      {isPickupLeg && userPos && <LocationPin position={userPos} variant="user" />}
       {stops.map((p, i) => (
         <StopPin
           key={`${p[0]}-${p[1]}`}
@@ -123,7 +123,7 @@ export default function RideMapScene({
       <RoutePolyline
         encoded={(remainingPath || routeOverride) ? undefined : encodedPolyline}
         positions={remainingPath ?? routeOverride}
-        variant={isPickupLeg ? 'pickup-leg' : 'default'}
+        variant={(isPickupLeg || isReturning) ? 'pickup-leg' : 'default'}
       />
       {driverPos && !isRecap && (
         <CarMarker position={driverPos} heading={driverHeading} headingKnown={driverHeadingKnown} />

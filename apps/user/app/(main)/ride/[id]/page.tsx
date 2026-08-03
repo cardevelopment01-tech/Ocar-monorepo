@@ -56,7 +56,7 @@ function haversineMetres(a: [number, number], b: [number, number]): number {
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
 }
 
-type StatusKey = 'scheduled' | 'requested' | 'accepted' | 'driver_arrived' | 'in_progress' | 'completed' | 'cancelled' | 'no_drivers'
+type StatusKey = 'scheduled' | 'requested' | 'accepted' | 'driver_arrived' | 'in_progress' | 'returning' | 'completed' | 'cancelled' | 'no_drivers'
 
 const STATUS_CONFIG: Record<StatusKey, { label: string; sub?: string; dot: string; dotPulse: boolean }> = {
   scheduled:      { label: 'Ride scheduled',               sub: 'We’ll find a driver closer to the time', dot: '#0A9FB0', dotPulse: false },
@@ -64,6 +64,7 @@ const STATUS_CONFIG: Record<StatusKey, { label: string; sub?: string; dot: strin
   accepted:       { label: 'Driver is on the way',                                                 dot: '#2563EB', dotPulse: false },
   driver_arrived: { label: 'Driver has arrived!',          sub: 'Head to your pickup point',       dot: '#16A34A', dotPulse: true  },
   in_progress:    { label: 'On the way to destination',                                             dot: '#2563EB', dotPulse: false },
+  returning:      { label: 'Driver is heading back',       sub: 'Returning to pickup point',       dot: '#2563EB', dotPulse: false },
   completed:      { label: 'You have arrived!',                                                     dot: '#16A34A', dotPulse: false },
   cancelled:      { label: 'Ride cancelled',               sub: 'Returning to home…',              dot: '#DC2626', dotPulse: false },
   no_drivers:     { label: 'No drivers available',         sub: 'Please try again in a moment',    dot: '#DC2626', dotPulse: false },
@@ -972,7 +973,7 @@ export default function RidePage() {
                   </button>
                 )}
                 {rideStatus === 'driver_arrived' && <OtpBadge otp={startOtp} phase="start" />}
-                {rideStatus === 'in_progress' && (
+                {(rideStatus === 'in_progress' || rideStatus === 'returning') && (
                   waitingStop
                     ? <StopWaitBadge stop={waitingStop} nowMs={waitNowMs} />
                     : <OtpBadge otp={endOtp} phase="end" />
