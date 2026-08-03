@@ -11,6 +11,8 @@ export interface RateCard {
   min_fare: string
   return_rate_per_km: string | null
   hour_rate: string | null
+  km_per_day: string | null
+  driver_allowance_per_day: string | null
   effective_from: string
   created_at: string
 }
@@ -56,6 +58,8 @@ export const pricingApi = {
     min_fare: number
     return_rate_per_km?: number | null
     hour_rate?: number | null
+    km_per_day?: number | null
+    driver_allowance_per_day?: number | null
     notes?: string
   }) => api.post('/api/v1/admin/pricing/rate-cards', data).then(r => r.data as RateCard),
 

@@ -55,10 +55,16 @@ export async function getFareEstimate(
         ? parseFloat(rateCard.return_rate_per_km) : null,
       hour_rate: rateCard.hour_rate != null
         ? parseFloat(rateCard.hour_rate) : null,
+      km_per_day: rateCard.km_per_day != null
+        ? parseFloat(rateCard.km_per_day) : null,
+      driver_allowance_per_day: rateCard.driver_allowance_per_day != null
+        ? parseFloat(rateCard.driver_allowance_per_day) : null,
     },
     ride_type:        req.ride_type,
     is_return_cab:    req.is_return_cab ?? false,
-    distance_km:      req.distance_km,
+    // round_trip: req.distance_km is the one-way leg from the route lookup;
+    // calculateFare now expects the total to-and-fro km directly.
+    distance_km:      req.ride_type === 'round_trip' ? req.distance_km * 2 : req.distance_km,
     duration_min:     req.duration_min,
     stop_count:       req.stop_count  ?? 0,
     charge_per_stop:  chargePerStop,

@@ -9,6 +9,8 @@ export interface RateCard {
   min_fare: number
   return_rate_per_km: number | null
   hour_rate: number | null
+  km_per_day: number | null
+  driver_allowance_per_day: number | null
   effective_from: string
   created_at: string
 }
@@ -23,6 +25,8 @@ export interface RateCardHistoryRow {
   min_fare: number
   return_rate_per_km: number | null
   hour_rate: number | null
+  km_per_day: number | null
+  driver_allowance_per_day: number | null
   changed_by: number
   change_reason: string | null
   created_at: string
@@ -77,6 +81,7 @@ export interface FareEstimateResponse {
     stop_fare: number
     hour_surcharge: number
     overage_fare: number
+    overage_km?: number
     surge_fare: number
     total: number
   }

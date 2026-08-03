@@ -1355,6 +1355,8 @@ export async function createAdminRateCard(data: {
   minFare: number
   returnRatePerKm?: number | null
   hourRate?: number | null
+  kmPerDay?: number | null
+  driverAllowancePerDay?: number | null
   notes?: string | null
   adminId: bigint
 }) {
@@ -1375,11 +1377,13 @@ export async function createAdminRateCard(data: {
       await client.query(
         `INSERT INTO rate_card_history
            (rate_card_id, rate_per_km, rate_per_min, min_fare,
-            return_rate_per_km, hour_rate, changed_by, change_reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
+            changed_by, change_reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [
           old.id, old.rate_per_km, old.rate_per_min, old.min_fare,
           old.return_rate_per_km, old.hour_rate,
+          old.km_per_day, old.driver_allowance_per_day,
           data.adminId, data.notes ?? null,
         ]
       )
@@ -1388,14 +1392,17 @@ export async function createAdminRateCard(data: {
     const res = await client.query(
       `INSERT INTO rate_cards
          (category_id, ride_type, rate_per_km, rate_per_min,
-          min_fare, return_rate_per_km, hour_rate, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          min_fare, return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
+          notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING *`,
       [
         data.categoryId, data.rideType,
         data.ratePerKm, data.ratePerMin, data.minFare,
         data.returnRatePerKm ?? null,
         data.hourRate ?? null,
+        data.kmPerDay ?? null,
+        data.driverAllowancePerDay ?? null,
         data.notes ?? null,
         data.adminId,
       ]

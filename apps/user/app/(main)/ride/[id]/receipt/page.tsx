@@ -29,7 +29,7 @@ const FARE_LINES: { key: 'base_fare' | 'distance_fare' | 'time_fare' | 'stop_far
   { key: 'distance_fare',  label: 'Distance' },
   { key: 'time_fare',      label: 'Time' },
   { key: 'stop_fare',      label: 'Stops' },
-  { key: 'hour_surcharge', label: 'Hour surcharge' },
+  { key: 'hour_surcharge', label: 'Driver allowance' },
   { key: 'surge_fare',     label: 'Surge' },
   { key: 'overage_fare',   label: 'Overage' },
 ]
