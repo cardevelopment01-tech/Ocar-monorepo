@@ -260,24 +260,46 @@ export default function App() {
   useEffect(() => {
     if (!activeRide) return
     const socket = getDriverSocket()
-    const onStatusUpdate = (data: { status: string; resolvedBy?: string }) => {
-      // resolvedBy is only set by the stuck-ride sweeper/admin force-resolve,
-      // normal driver-initiated completion (verifyEndOtp) never sets it, so
-      // this doesn't interfere with the driver's own end-of-trip navigation.
-      const isForceResolved = data.status === 'completed' && !!data.resolvedBy
-      if (data.status !== 'cancelled' && !isForceResolved) return
+    // Shared by the live socket event AND the reconnect resync below — a ride
+    // resolved server-side while this driver's socket was disconnected (e.g.
+    // the same network gap that caused a stale-GPS auto-cancel) never fires
+    // the live event, since Socket.io doesn't replay missed events on
+    // reconnect. Without this being called from both places, the driver's
+    // screen would stay stuck showing the trip as active forever.
+    const resolveRideExternally = (status: string, resolvedBy?: string) => {
+      const isForceResolved = status === 'completed' && !!resolvedBy
+      if (status !== 'cancelled' && !isForceResolved) return
       socket.emit('leave:ride', activeRide.id)
       clearRide()
-      if (data.resolvedBy === 'timeout') {
+      if (resolvedBy === 'timeout') {
         setForceEndedMessage('This trip was automatically ended due to inactivity')
-      } else if (data.resolvedBy === 'admin') {
+      } else if (resolvedBy === 'admin') {
         setForceEndedMessage('This trip was ended by support')
       } else {
         setRideCancelled(true)
       }
       navigate('/', { replace: true })
     }
-    const onConnect = () => { socket.emit('join:ride', activeRide.id) }
+    const onStatusUpdate = (data: { status: string; resolvedBy?: string }) => {
+      // resolvedBy is only set by the stuck-ride sweeper/admin force-resolve,
+      // normal driver-initiated completion (verifyEndOtp) never sets it, so
+      // this doesn't interfere with the driver's own end-of-trip navigation.
+      resolveRideExternally(data.status, data.resolvedBy)
+    }
+    // Re-checks truth from the server on every (re)connect instead of trusting
+    // only the live push event — closes the gap above. RideDetail doesn't
+    // expose resolvedBy, so this only recognizes plain 'cancelled'; that's
+    // the scenario the stale-GPS sweeper actually produces.
+    const resyncRideStatus = async () => {
+      try {
+        const ride = await driverRideApi.getRide(activeRide.id)
+        resolveRideExternally(ride.status)
+      } catch { /* transient — next reconnect or live event will catch it */ }
+    }
+    const onConnect = () => {
+      socket.emit('join:ride', activeRide.id)
+      void resyncRideStatus()
+    }
     const onStopUpdated = (data: { sequence: number; status: 'reached' | 'skipped'; reachedAt: string | null }) => {
       updateStop(data.sequence, data.status, data.reachedAt)
     }
@@ -290,7 +312,10 @@ export default function App() {
     socket.on('stop:added', onStopAdded)
     // Session-restore path: socket may already be connected before this effect
     // mounts, so the 'connect' event never fires. Emit join:ride immediately.
-    if (socket.connected) socket.emit('join:ride', activeRide.id)
+    if (socket.connected) {
+      socket.emit('join:ride', activeRide.id)
+      void resyncRideStatus()
+    }
     return () => {
       socket.off('ride:status_update', onStatusUpdate)
       socket.off('connect', onConnect)

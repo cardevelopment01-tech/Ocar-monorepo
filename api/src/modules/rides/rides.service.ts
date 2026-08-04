@@ -1351,14 +1351,14 @@ export async function verifyEndOTP(
   actualEndLng?: number
 ) {
   const ride = await repo.getRideById(rideId)
-  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (!ride) throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
   if (ride.status !== 'in_progress' && ride.status !== 'returning') {
-    throw Object.assign(new Error('Ride not in progress'), { httpStatus: 409 })
+    throw httpError(409, 'Ride not in progress', 'RIDE_NOT_IN_PROGRESS')
   }
 
   const stops = await repo.getRideStops(rideId)
   if (stops.some(s => s.status === 'pending')) {
-    throw Object.assign(new Error('Ride has pending stops'), { httpStatus: 409 })
+    throw httpError(409, 'Ride has pending stops', 'RIDE_HAS_PENDING_STOPS')
   }
 
   const valid = ride.end_otp_hash != null && hashOtp(otp) === ride.end_otp_hash
@@ -1370,7 +1370,7 @@ export async function verifyEndOTP(
     [rideId, valid ? 'verified' : 'failed']
   )
 
-  if (!valid) throw Object.assign(new Error('Invalid OTP'), { httpStatus: 422 })
+  if (!valid) throw httpError(422, 'Invalid OTP', 'INVALID_OTP')
 
   await redis.del(endOtpKey(rideId.toString()))
 
