@@ -203,6 +203,160 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
   )
 }
 
+// ── Create city rate-card dialog ──────────────────────────────────────────────
+
+function CreateRateCardDialog({
+  cities, categories, onCreated,
+}: {
+  cities: AdminCity[]
+  categories: { id: number; slug: string; display_name: string }[]
+  onCreated: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({
+    city_id: '', category_id: '', ride_type: 'one_way',
+    rate_per_km: '', rate_per_min: '', min_fare: '',
+    return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', notes: '',
+  })
+
+  useEffect(() => {
+    if (open) {
+      setForm({
+        city_id: '', category_id: '', ride_type: 'one_way',
+        rate_per_km: '', rate_per_min: '', min_fare: '',
+        return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', notes: '',
+      })
+      setError('')
+    }
+  }, [open])
+
+  function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.city_id || !form.category_id) { setError('City and category are required'); return }
+    if (!form.notes.trim()) { setError('Change reason is required'); return }
+    setLoading(true); setError('')
+    try {
+      await pricingApi.createRateCard({
+        category_id: parseInt(form.category_id, 10), ride_type: form.ride_type,
+        city_id: parseInt(form.city_id, 10),
+        rate_per_km: parseFloat(form.rate_per_km), rate_per_min: parseFloat(form.rate_per_min),
+        min_fare: parseFloat(form.min_fare),
+        return_rate_per_km: form.return_rate_per_km ? parseFloat(form.return_rate_per_km) : null,
+        hour_rate: form.hour_rate ? parseFloat(form.hour_rate) : null,
+        km_per_day: form.km_per_day ? parseFloat(form.km_per_day) : null,
+        driver_allowance_per_day: form.driver_allowance_per_day ? parseFloat(form.driver_allowance_per_day) : null,
+        notes: form.notes,
+      })
+      setOpen(false); onCreated()
+    } catch { setError('Failed to create rate card.') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-light border border-primary/20 text-primary text-sm font-semibold hover:bg-primary/10 transition-all duration-150">
+          <Plus size={14} />Add City Rate
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[480px] max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-hover p-6 z-[60]">
+          <Dialog.Title className="text-lg font-bold text-text-primary mb-1">Add City Rate Override</Dialog.Title>
+          <p className="text-xs text-text-muted mb-5">
+            Creates a city-specific rate that takes priority over the global default for that city only.
+          </p>
+          <form onSubmit={submit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>City *</label>
+                <select value={form.city_id} onChange={e => set('city_id', e.target.value)} required className={inputCls}>
+                  <option value="">Select city…</option>
+                  {cities.filter(c => c.status === 'active').map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Category *</label>
+                <select value={form.category_id} onChange={e => set('category_id', e.target.value)} required className={inputCls}>
+                  <option value="">Select…</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>Ride Type *</label>
+              <select value={form.ride_type} onChange={e => set('ride_type', e.target.value)} className={inputCls}>
+                <option value="one_way">One Way</option>
+                <option value="round_trip">Round Trip</option>
+                <option value="rental">Rental</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={labelCls}>Per KM (₹) *</label>
+                <input type="number" step="0.01" min="0.01" required value={form.rate_per_km}
+                  onChange={e => set('rate_per_km', e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Per Min (₹) *</label>
+                <input type="number" step="0.01" min="0" required value={form.rate_per_min}
+                  onChange={e => set('rate_per_min', e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Min Fare (₹) *</label>
+                <input type="number" step="0.01" min="0.01" required value={form.min_fare}
+                  onChange={e => set('min_fare', e.target.value)} className={inputCls} />
+              </div>
+            </div>
+            {form.ride_type === 'one_way' && (
+              <div>
+                <label className={labelCls}>Return Cab Rate /km (₹)</label>
+                <input type="number" step="0.01" value={form.return_rate_per_km}
+                  onChange={e => set('return_rate_per_km', e.target.value)} className={inputCls} placeholder="optional" />
+              </div>
+            )}
+            {form.ride_type === 'round_trip' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Package KM/day</label>
+                  <input type="number" step="1" value={form.km_per_day}
+                    onChange={e => set('km_per_day', e.target.value)} className={inputCls} placeholder="e.g. 250" />
+                </div>
+                <div>
+                  <label className={labelCls}>Driver Allowance/day (₹)</label>
+                  <input type="number" step="0.01" value={form.driver_allowance_per_day}
+                    onChange={e => set('driver_allowance_per_day', e.target.value)} className={inputCls} placeholder="e.g. 300" />
+                </div>
+              </div>
+            )}
+            <div>
+              <label className={labelCls}>Change Reason *</label>
+              <textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)}
+                className={`${inputCls} resize-none`} placeholder="e.g. Puri festival-season pricing" />
+            </div>
+            {error && <p className="text-xs text-danger font-semibold">{error}</p>}
+            <div className="flex gap-3 pt-2">
+              <Dialog.Close asChild>
+                <button type="button" className="btn-secondary flex-1 justify-center">Cancel</button>
+              </Dialog.Close>
+              <button type="submit" disabled={loading}
+                className="btn-primary flex-1 justify-center disabled:opacity-50 disabled:pointer-events-none">
+                {loading ? 'Creating…' : 'Create Override'}
+              </button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+}
+
 // ── Surge dialog ───────────────────────────────────────────────────────────────
 
 function CreateSurgeDialog({
@@ -701,6 +855,9 @@ export default function RateCardsPage() {
             <p className="page-subtitle">Rate cards, surge events, and rental packages</p>
           </div>
         </div>
+        {activeTab === 'rate_cards' && (
+          <CreateRateCardDialog cities={cities} categories={categoryOptions} onCreated={fetchAll} />
+        )}
         {activeTab === 'surge' && (
           <CreateSurgeDialog cities={cities} categories={categoryOptions} onCreated={fetchAll} />
         )}
