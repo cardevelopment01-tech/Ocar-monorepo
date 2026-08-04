@@ -9,7 +9,7 @@ type Stage = 'camera' | 'preview'
 
 const STEP_CONFIG: Record<Step, { title: string; instruction: string; facingMode: 'user' | 'environment' }> = {
   selfie: { title: "Take today's selfie", instruction: 'Look straight at the camera', facingMode: 'user' },
-  plate:  { title: 'Photograph your number plate', instruction: 'Make sure the plate is clearly readable', facingMode: 'environment' },
+  plate:  { title: "Photograph your vehicle's number plate", instruction: 'Make sure the number plate is clearly readable', facingMode: 'environment' },
 }
 
 export default function DailyVerification() {
@@ -238,7 +238,7 @@ export default function DailyVerification() {
             >
               {submitting
                 ? <span className="flex items-center justify-center gap-2"><OcarSpinner size={16} variant="white" />Submitting…</span>
-                : step === 'selfie' ? 'Next: Plate Photo' : 'Submit & Go Online'}
+                : step === 'selfie' ? 'Next: Vehicle Number Plate' : 'Submit & Go Online'}
             </button>
             <button
               onClick={retake}
