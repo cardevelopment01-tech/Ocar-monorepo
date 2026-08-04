@@ -985,10 +985,12 @@ export async function listAdminRateCardHistory() {
     `SELECT rch.*,
             vc.display_name AS category_name,
             rc.ride_type,
-            rc.category_id
+            rc.category_id,
+            c.name AS city_name
      FROM rate_card_history rch
      JOIN rate_cards rc ON rc.id = rch.rate_card_id
      JOIN vehicle_categories vc ON vc.id = rc.category_id
+     LEFT JOIN cities c ON c.id = rch.city_id
      ORDER BY rch.created_at DESC
      LIMIT 100`
   )

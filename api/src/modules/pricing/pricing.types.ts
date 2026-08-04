@@ -29,6 +29,8 @@ export interface RateCardHistoryRow {
   hour_rate: number | null
   km_per_day: number | null
   driver_allowance_per_day: number | null
+  city_id: number | null
+  city_name: string | null
   changed_by: number
   change_reason: string | null
   created_at: string
