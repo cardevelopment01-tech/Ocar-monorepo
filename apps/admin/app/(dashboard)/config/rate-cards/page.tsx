@@ -52,11 +52,12 @@ const labelCls = 'block text-xs font-semibold text-text-muted mb-1.5'
 
 // ── Rate card dialog ───────────────────────────────────────────────────────────
 
-function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () => void }) {
+function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities: AdminCity[]; onUpdated: () => void }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
+    city_id: card.city_id !== null ? String(card.city_id) : '',
     rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
     return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '',
     km_per_day: card.km_per_day ?? '', driver_allowance_per_day: card.driver_allowance_per_day ?? '', notes: '',
@@ -65,6 +66,7 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
   useEffect(() => {
     if (open) {
       setForm({
+        city_id: card.city_id !== null ? String(card.city_id) : '',
         rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
         return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '',
         km_per_day: card.km_per_day ?? '', driver_allowance_per_day: card.driver_allowance_per_day ?? '', notes: '',
@@ -80,6 +82,7 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
     try {
       await pricingApi.createRateCard({
         category_id: card.category_id, ride_type: card.ride_type,
+        city_id: form.city_id ? parseInt(form.city_id, 10) : null,
         rate_per_km: parseFloat(form.rate_per_km), rate_per_min: parseFloat(form.rate_per_min),
         min_fare: parseFloat(form.min_fare),
         return_rate_per_km: form.return_rate_per_km ? parseFloat(form.return_rate_per_km) : null,
@@ -92,6 +95,11 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
     } catch { setError('Failed to update rate card.') }
     finally { setLoading(false) }
   }
+
+  const originalCityId = card.city_id !== null ? String(card.city_id) : ''
+  const cityChanged = form.city_id !== originalCityId
+  const originalCityName = card.city_name ?? 'Global'
+  const selectedCityName = form.city_id ? (cities.find(c => String(c.id) === form.city_id)?.name ?? 'the selected city') : 'the global default'
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -107,9 +115,23 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
             Update {card.category_name} · {RIDE_TYPE_LABEL[card.ride_type]}
           </Dialog.Title>
           <p className="text-xs text-warning bg-warning-light border border-warning/20 rounded-xl px-3 py-2 mb-5">
-            Creates a new rate card and expires the current one. All future rides use the new rate.
+            {cityChanged
+              ? `You're creating/updating ${selectedCityName}'s rate. ${originalCityName}'s current rate for this row is unaffected.`
+              : 'Creates a new rate card and expires the current one. All future rides use the new rate.'}
           </p>
           <form onSubmit={submit} className="space-y-3">
+            <div>
+              <label className={labelCls}>City</label>
+              <select value={form.city_id} onChange={e => setForm(f => ({ ...f, city_id: e.target.value }))} className={inputCls}>
+                <option value="">All Cities (Global Default)</option>
+                {cities.filter(c => c.status === 'active').map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-text-muted mt-1">
+                {form.city_id ? 'Creates/updates an override for this city only.' : 'Applies to any city without its own override.'}
+              </p>
+            </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className={labelCls}>Per KM (₹)</label>
@@ -171,7 +193,7 @@ function UpdateRateDialog({ card, onUpdated }: { card: RateCard; onUpdated: () =
               </Dialog.Close>
               <button type="submit" disabled={loading}
                 className="btn-primary flex-1 justify-center disabled:opacity-50 disabled:pointer-events-none">
-                {loading ? 'Updating…' : 'Update Rate'}
+                {loading ? 'Saving…' : cityChanged ? `Save to ${selectedCityName}` : 'Update Rate'}
               </button>
             </div>
           </form>
@@ -561,6 +583,7 @@ export default function RateCardsPage() {
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
   const [retry,   setRetry]   = useState(0)
+  const [cityFilter,     setCityFilter]     = useState('') // '' = all, 'global' = global default only, else city id
   const [historyOpen,    setHistoryOpen]    = useState(false)
   const [history,        setHistory]        = useState<{ id: number; category_name: string; ride_type: string; rate_per_km: string; change_reason: string | null; created_at: string }[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -635,10 +658,18 @@ export default function RateCardsPage() {
 
   // Derived data
   const CATEGORY_ORDER_ITEMS = ['hatchback', 'sedan', 'suv', 'luxury', 'van']
+  const RIDE_TYPE_ORDER = ['one_way', 'round_trip', 'rental']
+
+  const filteredCards = cityFilter === '' ? cards
+    : cityFilter === 'global' ? cards.filter(c => c.city_id === null)
+    : cards.filter(c => c.city_id === parseInt(cityFilter, 10))
 
   const grouped = CATEGORY_ORDER_ITEMS.reduce<Record<string, RateCard[]>>((acc, slug) => {
-    acc[slug] = cards.filter(c => c.category_slug === slug)
-      .sort((a, b) => (['one_way', 'round_trip', 'rental'] as string[]).indexOf(a.ride_type) - (['one_way', 'round_trip', 'rental'] as string[]).indexOf(b.ride_type))
+    acc[slug] = filteredCards.filter(c => c.category_slug === slug)
+      // global default rows first (city_name NULLS FIRST, mirroring the backend ordering), then by city name, then ride type
+      .sort((a, b) =>
+        (a.city_name ?? '').localeCompare(b.city_name ?? '')
+          || RIDE_TYPE_ORDER.indexOf(a.ride_type) - RIDE_TYPE_ORDER.indexOf(b.ride_type))
     return acc
   }, {})
 
@@ -737,6 +768,19 @@ export default function RateCardsPage() {
             </div>
           </div>
 
+          {/* City filter */}
+          <div className="flex items-center gap-2.5">
+            <label className="text-xs font-semibold text-text-muted">City</label>
+            <select value={cityFilter} onChange={e => setCityFilter(e.target.value)}
+              className="border border-border rounded-xl px-3 py-1.5 text-sm text-text-primary bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30">
+              <option value="">All Cities</option>
+              <option value="global">Global Default Only</option>
+              {cities.filter(c => c.status === 'active').map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
           {error ? (
             <div className="admin-card text-center py-8">
               <p className="text-text-muted mb-3">{error}</p>
@@ -744,7 +788,11 @@ export default function RateCardsPage() {
             </div>
           ) : loading ? (
             <div className="admin-card !p-0 overflow-hidden">
-              <table className="data-table"><tbody><SkeletonRows cols={8} n={6} /></tbody></table>
+              <table className="data-table"><tbody><SkeletonRows cols={9} n={6} /></tbody></table>
+            </div>
+          ) : filteredCards.length === 0 ? (
+            <div className="admin-card text-center py-8 text-text-muted text-sm">
+              No rate cards for this city filter.
             </div>
           ) : (
             CATEGORY_ORDER_ITEMS.map(slug => {
@@ -760,6 +808,7 @@ export default function RateCardsPage() {
                   <table className="data-table">
                     <thead>
                       <tr>
+                        <th>City</th>
                         <th>Ride Type</th>
                         <th className="!text-right">Per KM</th>
                         <th className="!text-right">Per Min</th>
@@ -773,6 +822,11 @@ export default function RateCardsPage() {
                     <tbody>
                       {rows.map(card => (
                         <tr key={card.id} className="cursor-default">
+                          <td>
+                            {card.city_name
+                              ? <span className="pill-info">{card.city_name}</span>
+                              : <span className="pill-muted">Global</span>}
+                          </td>
                           <td><StatusPillRideType type={card.ride_type} /></td>
                           <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.rate_per_km)}</td>
                           <td className="!text-right font-mono">{fmt(card.rate_per_min)}</td>
@@ -781,7 +835,7 @@ export default function RateCardsPage() {
                           <td className="!text-right font-mono text-text-muted">{card.km_per_day ?? '—'}</td>
                           <td className="!text-right font-mono text-text-muted">{fmt(card.driver_allowance_per_day)}</td>
                           <td className="!text-right">
-                            <UpdateRateDialog card={card} onUpdated={fetchAll} />
+                            <UpdateRateDialog card={card} cities={cities} onUpdated={fetchAll} />
                           </td>
                         </tr>
                       ))}

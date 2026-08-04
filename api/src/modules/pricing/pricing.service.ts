@@ -18,7 +18,7 @@ export async function getFareEstimate(
   // These four lookups are independent of each other — run them concurrently
   // instead of paying 4 sequential round trips.
   const [rateCard, chargePerStop, surgeEvent, pkg] = await Promise.all([
-    repo.getCurrentRateCard(req.category_id, req.ride_type),
+    repo.getCurrentRateCard(req.category_id, req.ride_type, req.city_id ?? null),
     repo.getStopCharge(req.category_id),
     req.city_id ? repo.getActiveSurge(req.city_id, req.category_id) : Promise.resolve(null),
     req.ride_type === 'rental' && req.rental_package_id

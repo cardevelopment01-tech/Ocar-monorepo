@@ -6,6 +6,8 @@ export interface RateCard {
   category_name: string
   category_slug: string
   ride_type: 'one_way' | 'round_trip' | 'rental'
+  city_id: number | null
+  city_name: string | null
   rate_per_km: string
   rate_per_min: string
   min_fare: string
@@ -22,6 +24,8 @@ export interface RateCardHistoryRow {
   rate_card_id: number
   category_name: string
   ride_type: string
+  city_id: number | null
+  city_name: string | null
   rate_per_km: string
   rate_per_min: string
   min_fare: string
@@ -53,6 +57,7 @@ export const pricingApi = {
   createRateCard: (data: {
     category_id: number
     ride_type: string
+    city_id?: number | null
     rate_per_km: number
     rate_per_min: number
     min_fare: number
