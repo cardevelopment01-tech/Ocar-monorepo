@@ -375,6 +375,31 @@ cd api && npx tsc --noEmit
 
 ---
 
+## CI/CD
+
+Single workflow: `.github/workflows/ci-cd.yml` (consolidated from the old, independent `ci.yml` +
+`deploy-api.yml` — those two are deleted). Six check jobs run on every push/PR: `lint`,
+`typecheck-api`, `test-api`, `typecheck-user`, `typecheck-driver`, `typecheck-admin`.
+
+`build-push` and `deploy` declare `needs:` on all six check jobs — this is the core fix a red CI
+run now structurally blocks build/deploy, which the old two-workflow setup did not do. A `changes`
+job (`dorny/paths-filter@v3`) additionally gates `build-push`/`deploy` so they only run on a push to
+`main` that touches `api/**`, `docker-compose.prod.yml`, `infra/**`, or the workflow file itself.
+
+Deploy does: pull new image → run migrations (gates cutover on migrations succeeding) → cut over
+container → `/health` check (8 retries) → smoke-test `GET /api/v1/geo/cities` (real HTTP 200 + a
+`"slug"` field in the body) → auto-rollback to the previous image tag if either check fails.
+Rollback does NOT revert migrations (forward-only) — a bad migration must be fixed forward, not
+rolled back.
+
+The `deploy` job's YAML references `environment: production`, but no GitHub Environment protection
+rule is configured, so this is currently inert for gating — it only tags the deploy for GitHub's
+Environments/deployment-history UI. Deploys to `main` run automatically once all checks pass; there
+is no human-approval pause yet, and no branch protection on `main` either. See "Pending Ops Actions"
+below for the exact commands to close both gaps once repo admin access is available.
+
+---
+
 ## Pending Ops Actions
 
 - **Driver instant cash-out is behind a kill switch, `system_config.driver_payouts_enabled` (default `'false'`).** The driver app hides the "Cash Out Now" button and the API rejects the endpoint while it's off — this is intentional until RazorpayX payouts are confirmed working end-to-end in an environment (real `RAZORPAYX_ACCOUNT_NUMBER` set, webhook events `payout.processed`/`payout.failed`/`payout.reversed` enabled in the Razorpay dashboard, a real payout tested and confirmed to land). Once verified, flip it on:
@@ -399,10 +424,35 @@ cd api && npx tsc --noEmit
   3. Confirm the app's `DATABASE_URL` uses the `-pooler` host (see `api/.env.example`).
   After the test, run `api/scripts/index-usage-audit.sql` to find unused indexes, dead-tuple pressure, and the slowest query shapes — that data decides whether to build keyset pagination and `ride_status_history` partitioning (both deliberately deferred until proven necessary — see `docs/superpowers/specs/2026-07-26-db-loadtest-readiness-design.md`).
 
+- **No `production` GitHub Environment / required-reviewer approval gate on deploy.** The `deploy` job already references `environment: production` in `.github/workflows/ci-cd.yml`, but the environment itself was never created, so it's currently inert (deploys run immediately once checks pass, no human approval pause). Skipped because the `gh` account used to build this pipeline has `push`/`triage` on the repo but not `admin` (confirmed via `gh api repos/cardevelopment01-tech/Ocar-monorepo --jq '.permissions'` → `{"admin":false,...}`), and creating an environment protection rule requires admin. Whoever has admin rights should run:
+  ```bash
+  gh api --method PUT repos/:owner/:repo/environments/production
+  REVIEWER_ID=$(gh api users/<your-github-username> --jq .id)
+  gh api --method PUT repos/:owner/:repo/environments/production \
+    -f "reviewers[][type]=User" \
+    -F "reviewers[][id]=$REVIEWER_ID"
+  ```
+  Replace `<your-github-username>` with the GitHub login that should approve production deploys. Verify in `Settings → Environments → production` that "Required reviewers" is checked. Delete this note once done.
+
+- **No branch protection on `main`.** Nothing currently stops a direct push to `main` (bypassing a PR) from landing bad code — the CI `needs:` gate stops that code from being *deployed*, but not from being *merged/pushed*. Skipped for the same admin-rights reason as above (branch protection is also an admin-only `gh api` call). Whoever has admin rights should run:
+  ```bash
+  gh api --method PUT repos/:owner/:repo/branches/main/protection \
+    -F "required_status_checks[strict]=true" \
+    -f "required_status_checks[contexts][]=Lint" \
+    -f "required_status_checks[contexts][]=Typecheck API" \
+    -f "required_status_checks[contexts][]=Test API" \
+    -f "required_status_checks[contexts][]=Typecheck User App" \
+    -f "required_status_checks[contexts][]=Typecheck Driver App" \
+    -f "required_status_checks[contexts][]=Typecheck Admin App" \
+    -F "enforce_admins=true" \
+    -F "required_pull_request_reviews[required_approving_review_count]=1" \
+    -F "restrictions=null"
+  ```
+  Verify in `Settings → Branches → main` that "Require status checks to pass before merging" (all six jobs listed) and "Require a pull request before merging" are both checked. Delete this note once done.
+
 - **Round-trip package defaults are placeholders, not real per-category pricing.** The `074_round_trip_package_billing.sql` migration backfilled `km_per_day=250`/`driver_allowance_per_day=300` for ALL 5 vehicle categories identically (a compact hatchback and a premium SUV doing the same outstation route should almost certainly have different values) — an admin must tune these per category via the rate-cards page before real customers are billed against them. Do it at `/config/rate-cards`, the "Package KM/day" and "Driver Allowance/day" fields for round_trip rows.
 
 - **Round-trip overage billing's driver-telemetry gap is mostly closed — one narrower risk remains.** `verifyEndOTP` (`api/src/modules/rides/rides.service.ts`) now prefers a GPS-breadcrumb-derived distance/duration (`getGpsTrackedDistanceKm`, computed from the `gps_tracks` table) over the client-reported `actualDistanceKm`/`actualDurationMin` for round_trip fare reconciliation, falling back to the client estimate only when fewer than 2 GPS points were recorded during the ride. The driver app already pings location every ~3s during any active ride, so no driver-app changes were needed — the fallback path (still a one-way straight-line estimate from `TripInProgress.tsx`'s `handleCompleteTrip`) should now be rare in production, assuming GPS tracking is functioning for a given ride. Remaining known gaps: (1) the GPS-fallback case itself — if GPS tracking breaks or is sparse for a ride, billing still falls back to the unreliable client estimate; (2) the GPS-derived distance has no sanity ceiling — a noisy/jumpy breadcrumb trail from a GPS glitch could in theory inflate the computed distance, since nothing currently compares it against a maximum-plausible-speed or booked-distance bound. Neither needs preemptive fixing; add a ceiling/clamp on `getGpsTrackedDistanceKm` if a real mispricing incident ever traces back to it. Delete this note once per-category rate-card tuning is also done.
-
 ## Security Rules (non-negotiable)
 
 - No `error.message` in production API responses — only codes/safe messages
