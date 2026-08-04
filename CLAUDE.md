@@ -89,7 +89,12 @@ ST_MakePoint takes **(lng, lat)** — longitude first.
 
 ### Rate card versioning
 Never UPDATE rate_cards. Always INSERT new row + set `effective_to` on old row.
-Current rate = `WHERE effective_to IS NULL`.
+Rate cards are city-scoped as of migration 078: `city_id IS NULL` = global default
+(applies to any city without its own override), same NULL-fallback convention as
+`surge_events.category_id IS NULL`. Current rate for a city =
+`WHERE effective_to IS NULL AND (city_id = $cityId OR city_id IS NULL) ORDER BY city_id NULLS LAST LIMIT 1`.
+Uniqueness for "current row" is per `(COALESCE(city_id, 0), category_id, ride_type)`,
+not just `(category_id, ride_type)` — a city override and the global row can coexist.
 
 ### `exactOptionalPropertyTypes: true`
 Cannot pass `field: value | undefined` where `field?: value` is expected.
