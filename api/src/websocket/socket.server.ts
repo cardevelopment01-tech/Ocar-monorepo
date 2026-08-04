@@ -24,6 +24,15 @@ export function initSocketServer(httpServer: HttpServer): Server {
     },
     pingTimeout: 60000,
     pingInterval: 25000,
+    // Buffers packets emitted to a room during a short disconnect (phone
+    // backgrounded, OS suspends idle WebSocket, tab freeze) and replays them
+    // + restores room membership automatically on reconnect within the window.
+    // Built-in Socket.io v4 feature — no custom replay logic needed.
+    // https://socket.io/docs/v4/connection-state-recovery
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000,
+      skipMiddlewares: true,
+    },
   })
 
   // Without this, io.to(room).emit(...) only reaches sockets connected to THIS
