@@ -8,6 +8,11 @@ export interface PushMessage {
   title: string
   body: string
   data?: Record<string, string>
+  // Set together, only by the ride-request fallback push (ack-check.processor.ts) —
+  // `tag` collapses repeat pushes for the same ride into one notification via
+  // the browser's native tag/renotify behavior instead of stacking popups.
+  tag?: string
+  ttlSeconds?: number
 }
 
 export interface SendPushResult {
@@ -57,6 +62,15 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
       notification: { title: msg.title, body: msg.body },
     }
     if (msg.data) message.data = msg.data
+    if (msg.tag) {
+      message.android = { priority: 'high' }
+      const headers: Record<string, string> = { Urgency: 'high' }
+      if (msg.ttlSeconds !== undefined) headers['TTL'] = String(msg.ttlSeconds)
+      message.webpush = {
+        headers,
+        notification: { tag: msg.tag, renotify: true },
+      }
+    }
 
     const response = await getMessaging(fbApp).sendEachForMulticast(message)
 
