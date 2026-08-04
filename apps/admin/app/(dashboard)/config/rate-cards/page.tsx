@@ -96,6 +96,11 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
     finally { setLoading(false) }
   }
 
+  const originalCityId = card.city_id !== null ? String(card.city_id) : ''
+  const cityChanged = form.city_id !== originalCityId
+  const originalCityName = card.city_name ?? 'Global'
+  const selectedCityName = form.city_id ? (cities.find(c => String(c.id) === form.city_id)?.name ?? 'the selected city') : 'the global default'
+
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
@@ -110,7 +115,9 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
             Update {card.category_name} · {RIDE_TYPE_LABEL[card.ride_type]}
           </Dialog.Title>
           <p className="text-xs text-warning bg-warning-light border border-warning/20 rounded-xl px-3 py-2 mb-5">
-            Creates a new rate card and expires the current one. All future rides use the new rate.
+            {cityChanged
+              ? `You're creating/updating ${selectedCityName}'s rate. ${originalCityName}'s current rate for this row is unaffected.`
+              : 'Creates a new rate card and expires the current one. All future rides use the new rate.'}
           </p>
           <form onSubmit={submit} className="space-y-3">
             <div>
@@ -186,7 +193,7 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
               </Dialog.Close>
               <button type="submit" disabled={loading}
                 className="btn-primary flex-1 justify-center disabled:opacity-50 disabled:pointer-events-none">
-                {loading ? 'Updating…' : 'Update Rate'}
+                {loading ? 'Saving…' : cityChanged ? `Save to ${selectedCityName}` : 'Update Rate'}
               </button>
             </div>
           </form>
