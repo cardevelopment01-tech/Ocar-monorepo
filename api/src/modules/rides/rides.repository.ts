@@ -803,7 +803,8 @@ export async function createRideAssignment(data: {
 
 export async function acceptAssignment(
   rideId: bigint,
-  driverId: bigint
+  driverId: bigint,
+  billingMode: 'commission' | 'package'
 ): Promise<string[] | false> {
   const client = await pool.connect()
   try {
@@ -813,10 +814,11 @@ export async function acceptAssignment(
       `UPDATE rides
        SET status = 'accepted',
            driver_id = $2,
-           accepted_at = now()
+           accepted_at = now(),
+           billing_mode_snapshot = $3
        WHERE id = $1 AND status = 'requested'
        RETURNING id`,
-      [rideId, driverId]
+      [rideId, driverId, billingMode]
     )
 
     if (!rideRes.rows.length) {

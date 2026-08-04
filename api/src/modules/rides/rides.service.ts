@@ -598,7 +598,16 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
 // ── Driver ride actions ───────────────────────────────────────
 
 export async function acceptRide(driverId: bigint, rideId: bigint) {
-  const cancelledDriverIds = await repo.acceptAssignment(rideId, driverId)
+  const cityRes = await pool.query<{ billing_mode: 'commission' | 'package' }>(
+    `SELECT c.billing_mode FROM cities c, rides r
+     WHERE r.id = $1 AND c.status = 'active'
+     ORDER BY ST_Distance(c.centroid, r.origin) ASC
+     LIMIT 1`,
+    [rideId]
+  )
+  const billingMode = cityRes.rows[0]?.billing_mode ?? 'commission'
+
+  const cancelledDriverIds = await repo.acceptAssignment(rideId, driverId, billingMode)
   if (cancelledDriverIds === false) {
     throw Object.assign(new Error('Ride no longer available'), { httpStatus: 409 })
   }
