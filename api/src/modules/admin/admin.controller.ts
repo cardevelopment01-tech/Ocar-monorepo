@@ -322,11 +322,12 @@ export async function getAdminRateCardHistory(req: Request, res: Response, next:
 
 export async function postAdminRateCard(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const data: { returnRatePerKm?: number | null; hourRate?: number | null; kmPerDay?: number | null; driverAllowancePerDay?: number | null; notes?: string | null } = {}
+    const data: { returnRatePerKm?: number | null; hourRate?: number | null; kmPerDay?: number | null; driverAllowancePerDay?: number | null; cityId?: number | null; notes?: string | null } = {}
     if (req.body.return_rate_per_km !== undefined) data.returnRatePerKm = req.body.return_rate_per_km != null ? Number(req.body.return_rate_per_km) : null
     if (req.body.hour_rate !== undefined)          data.hourRate        = req.body.hour_rate != null ? Number(req.body.hour_rate) : null
     if (req.body.km_per_day !== undefined)                data.kmPerDay              = req.body.km_per_day != null ? Number(req.body.km_per_day) : null
     if (req.body.driver_allowance_per_day !== undefined)  data.driverAllowancePerDay = req.body.driver_allowance_per_day != null ? Number(req.body.driver_allowance_per_day) : null
+    if (req.body.city_id !== undefined) data.cityId = req.body.city_id != null ? Number(req.body.city_id) : null
     if (req.body.notes !== undefined)              data.notes           = String(req.body.notes)
     const card = await service.createAdminRateCard({
       categoryId:  Number(req.body.category_id),

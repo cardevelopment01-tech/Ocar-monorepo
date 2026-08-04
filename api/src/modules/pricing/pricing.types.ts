@@ -11,6 +11,8 @@ export interface RateCard {
   hour_rate: number | null
   km_per_day: number | null
   driver_allowance_per_day: number | null
+  city_id: number | null
+  city_name: string | null
   effective_from: string
   created_at: string
 }

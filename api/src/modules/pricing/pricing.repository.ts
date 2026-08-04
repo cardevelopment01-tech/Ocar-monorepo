@@ -1,6 +1,6 @@
 import { pool } from '@/db/client'
 
-export async function getCurrentRateCard(categoryId: number, rideType: string) {
+export async function getCurrentRateCard(categoryId: number, rideType: string, cityId: number | null) {
   const res = await pool.query(
     `SELECT rc.*,
             vc.display_name AS category_name,
@@ -9,8 +9,11 @@ export async function getCurrentRateCard(categoryId: number, rideType: string) {
      JOIN vehicle_categories vc ON vc.id = rc.category_id
      WHERE rc.category_id = $1
        AND rc.ride_type = $2
-       AND rc.effective_to IS NULL`,
-    [categoryId, rideType]
+       AND rc.effective_to IS NULL
+       AND (rc.city_id = $3 OR rc.city_id IS NULL)
+     ORDER BY rc.city_id NULLS LAST
+     LIMIT 1`,
+    [categoryId, rideType, cityId]
   )
   return res.rows[0] ?? null
 }
@@ -19,11 +22,13 @@ export async function getAllCurrentRateCards() {
   const res = await pool.query(
     `SELECT rc.*,
             vc.display_name AS category_name,
-            vc.slug AS category_slug
+            vc.slug AS category_slug,
+            c.name AS city_name
      FROM rate_cards rc
      JOIN vehicle_categories vc ON vc.id = rc.category_id
+     LEFT JOIN cities c ON c.id = rc.city_id
      WHERE rc.effective_to IS NULL
-     ORDER BY vc.display_name, rc.ride_type`
+     ORDER BY c.name NULLS FIRST, vc.display_name, rc.ride_type`
   )
   return res.rows
 }
@@ -148,6 +153,7 @@ export async function createRateCard(data: {
   hourRate?: number | null
   kmPerDay?: number | null
   driverAllowancePerDay?: number | null
+  cityId?: number | null
   notes?: string | null
   adminId: number
 }) {
@@ -158,9 +164,11 @@ export async function createRateCard(data: {
     const expired = await client.query(
       `UPDATE rate_cards
        SET effective_to = now()
-       WHERE category_id = $1 AND ride_type = $2 AND effective_to IS NULL
+       WHERE category_id = $1 AND ride_type = $2
+         AND COALESCE(city_id, 0) = COALESCE($3::bigint, 0)
+         AND effective_to IS NULL
        RETURNING *`,
-      [data.categoryId, data.rideType]
+      [data.categoryId, data.rideType, data.cityId ?? null]
     )
 
     if (expired.rows.length > 0) {
@@ -169,12 +177,12 @@ export async function createRateCard(data: {
         `INSERT INTO rate_card_history
            (rate_card_id, rate_per_km, rate_per_min, min_fare,
             return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-            changed_by, change_reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            city_id, changed_by, change_reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [
           old.id, old.rate_per_km, old.rate_per_min, old.min_fare,
           old.return_rate_per_km, old.hour_rate, old.km_per_day, old.driver_allowance_per_day,
-          data.adminId, data.notes ?? null,
+          old.city_id, data.adminId, data.notes ?? null,
         ]
       )
     }
@@ -183,8 +191,8 @@ export async function createRateCard(data: {
       `INSERT INTO rate_cards
          (category_id, ride_type, rate_per_km, rate_per_min,
           min_fare, return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-          notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          city_id, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
       [
         data.categoryId, data.rideType,
@@ -193,6 +201,7 @@ export async function createRateCard(data: {
         data.hourRate ?? null,
         data.kmPerDay ?? null,
         data.driverAllowancePerDay ?? null,
+        data.cityId ?? null,
         data.notes ?? null,
         data.adminId,
       ]
