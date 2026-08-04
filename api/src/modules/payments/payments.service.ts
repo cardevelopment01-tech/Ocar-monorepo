@@ -5,6 +5,8 @@ import { ridePaymentOrderKey } from '@/constants/redis-keys'
 import { notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
 import { accrueDriverEarning } from '@/modules/payments/submodules/settlements/settlements.service'
 import { getConfigValue } from '@/lib/system-config'
+import { consumePackageBalance } from '@/modules/packages/packages.service'
+import type { BillingMode } from '@/modules/rides/rides.types'
 
 // ── Config helpers ─────────────────────────────────────────────
 
@@ -251,7 +253,20 @@ export async function confirmRidePayment(
   if ((res.rowCount ?? 0) === 0) return false
 
   const row = res.rows[0]
-  await deductCommission(rideId, BigInt(row.driver_id))
+  // billing_mode_snapshot is frozen on the ride at accept time (see acceptAssignment in
+  // rides.repository.ts), so a later admin change to a city's billing_mode doesn't
+  // retroactively change how an in-flight/already-accepted ride settles.
+  const rideRes = await pool.query<{ billing_mode_snapshot: BillingMode | null }>(
+    `SELECT billing_mode_snapshot FROM rides WHERE id = $1`,
+    [rideId]
+  )
+  const billingMode = rideRes.rows[0]?.billing_mode_snapshot ?? 'commission'
+
+  if (billingMode === 'package') {
+    await consumePackageBalance(rideId, BigInt(row.driver_id), parseFloat(row.amount))
+  } else {
+    await deductCommission(rideId, BigInt(row.driver_id))
+  }
   await accrueDriverEarning(rideId, BigInt(row.driver_id))
   await creditCashback(rideId, BigInt(row.user_id), parseFloat(row.amount))
   return true

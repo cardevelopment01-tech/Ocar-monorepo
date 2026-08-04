@@ -1,5 +1,5 @@
 import { pool } from '@/db/client'
-import type { DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
+import type { BillingMode, DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
 import {
   STALE_REQUESTED_MINUTES,
   STALE_ACCEPTED_HOURS,
@@ -804,7 +804,7 @@ export async function createRideAssignment(data: {
 export async function acceptAssignment(
   rideId: bigint,
   driverId: bigint,
-  billingMode: 'commission' | 'package'
+  billingMode: BillingMode
 ): Promise<string[] | false> {
   const client = await pool.connect()
   try {

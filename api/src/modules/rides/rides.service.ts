@@ -21,7 +21,7 @@ import {
   IN_CITY_MAX_TRIP_DISTANCE_METRES,
 } from '@/constants/limits'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
-import type { BookingRequest, StopInput } from './rides.types'
+import type { BillingMode, BookingRequest, StopInput } from './rides.types'
 import {
   createPaymentRecord,
   deductCommission,
@@ -33,6 +33,7 @@ import {
   getMinWalletBalance,
 } from '@/modules/payments/payments.service'
 import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner } from '@/modules/notifications/notifications.service'
+import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { calculateFare } from '@/lib/fare'
 import { classifyTrip, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
@@ -132,7 +133,7 @@ export async function goOnline(driverId: bigint, data: {
     throw httpError(428, "Today's selfie and plate verification is required before going online", 'DAILY_CHECK_REQUIRED')
   }
 
-  const cityRes = await pool.query<{ billing_mode: 'commission' | 'package' }>(
+  const cityRes = await pool.query<{ billing_mode: BillingMode }>(
     `SELECT billing_mode FROM cities
      WHERE status = 'active'
      ORDER BY ST_Distance(centroid, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography) ASC
@@ -598,7 +599,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
 // ── Driver ride actions ───────────────────────────────────────
 
 export async function acceptRide(driverId: bigint, rideId: bigint) {
-  const cityRes = await pool.query<{ billing_mode: 'commission' | 'package' }>(
+  const cityRes = await pool.query<{ billing_mode: BillingMode }>(
     `SELECT c.billing_mode FROM cities c, rides r
      WHERE r.id = $1 AND c.status = 'active'
      ORDER BY ST_Distance(c.centroid, r.origin) ASC
@@ -1702,7 +1703,11 @@ export async function settleRideCompletionPayment(
     return
   }
   await createPaymentRecord(rideId, 'cash_direct')
-  await deductCommission(rideId, driverId)
+  if (rideData?.billing_mode_snapshot === 'package') {
+    await consumePackageBalance(rideId, driverId, fareAmount)
+  } else {
+    await deductCommission(rideId, driverId)
+  }
   // Stamp the same claim collectCash uses, so a client still on the
   // cash-collection screen (kill switch flipped after it loaded) sees
   // cash_collected_at already set and no-ops instead of double-settling.
@@ -1767,7 +1772,11 @@ export async function collectCash(
   // ponytail: settlement helpers aren't in one txn; a mid-settlement crash won't auto-retry
   // (matches legacy settleRideCompletionPayment). Reconciliation is future work.
   await createPaymentRecord(rideId, 'cash_direct')
-  await deductCommission(rideId, driverId)
+  if (ride.billing_mode_snapshot === 'package') {
+    await consumePackageBalance(rideId, driverId, fare)
+  } else {
+    await deductCommission(rideId, driverId)
+  }
   if (ride.user_id != null && fare > 0) await creditCashback(rideId, BigInt(ride.user_id), fare)
 
   if (discrepancy) {
