@@ -132,14 +132,27 @@ export async function goOnline(driverId: bigint, data: {
     throw httpError(428, "Today's selfie and plate verification is required before going online", 'DAILY_CHECK_REQUIRED')
   }
 
-  const [minBalance, wallet] = await Promise.all([getMinWalletBalance(), getDriverWallet(driverId)])
-  if (wallet?.is_frozen) {
-    throw createHttpError(AppErrors.WALLET_FROZEN)
+  const cityRes = await pool.query<{ billing_mode: 'commission' | 'package' }>(
+    `SELECT billing_mode FROM cities
+     WHERE status = 'active'
+     ORDER BY ST_Distance(centroid, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography) ASC
+     LIMIT 1`,
+    [data.lat, data.lng]
+  )
+  const billingMode = cityRes.rows[0]?.billing_mode ?? 'commission'
+
+  if (billingMode === 'commission') {
+    const [minBalance, wallet] = await Promise.all([getMinWalletBalance(), getDriverWallet(driverId)])
+    if (wallet?.is_frozen) {
+      throw createHttpError(AppErrors.WALLET_FROZEN)
+    }
+    const balance = wallet ? parseFloat(wallet.balance) : 0
+    if (balance < minBalance) {
+      throw createHttpError(AppErrors.LOW_WALLET_BALANCE)
+    }
   }
-  const balance = wallet ? parseFloat(wallet.balance) : 0
-  if (balance < minBalance) {
-    throw createHttpError(AppErrors.LOW_WALLET_BALANCE)
-  }
+  // package-mode: no gate here — a zero/negative package balance only blocks
+  // new ride offers (see findNearbyDrivers/findReturnCabDrivers), not going online.
 
   const existing = await repo.getActiveSession(driverId)
   if (existing) {
