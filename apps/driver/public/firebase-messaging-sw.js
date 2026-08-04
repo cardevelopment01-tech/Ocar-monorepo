@@ -21,10 +21,32 @@ const messaging = firebase.messaging()
 
 messaging.onBackgroundMessage((payload) => {
   const title = payload.notification?.title || 'Ocar'
+  // firebase-admin's MulticastMessage.webpush.notification.tag (set server-side
+  // in push.provider.ts) arrives here on payload.notification.tag per the FCM
+  // web payload shape — verify this empirically against a real FCM payload
+  // during Task D's manual check; fall back to fcmOptions if the field differs.
+  const tag = payload.notification?.tag || payload.fcmOptions?.tag
   const options = {
     body: payload.notification?.body || '',
     icon: '/icon-192.png',
     data: payload.data || {},
+    ...(tag ? { tag, renotify: true } : {}),
   }
   self.registration.showNotification(title, options)
+})
+
+// Tapping the notification should focus the driver's already-open tab instead
+// of opening a duplicate one — standard MDN service-worker pattern.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          return client.focus()
+        }
+      }
+      return clients.openWindow('/')
+    })
+  )
 })

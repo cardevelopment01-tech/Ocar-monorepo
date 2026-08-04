@@ -2,7 +2,10 @@ import { client as redis } from '@/db/redis'
 import { socketEvents } from '@/websocket/socket.server'
 import * as repo from '@/modules/rides/rides.repository'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
-import { rideAckKey } from '@/constants/redis-keys'
+import { rideAckKey, ridePushSentKey } from '@/constants/redis-keys'
+import { BROADCAST_WINDOW_SECONDS } from '@/constants/limits'
+import { pushToTokens } from '@/modules/notifications/notifications.service'
+import { getTokensForOwner } from '@/modules/notifications/notifications.repository'
 
 const ACK_RETRY_MS = 4_000
 
@@ -54,6 +57,30 @@ export async function processAckCheck(data: AckCheckJobData): Promise<void> {
   if (data.destinationLng !== undefined) payload['destinationLng'] = data.destinationLng
 
   socketEvents.sendRideRequest(data.driverId, payload)
+
+  // Fire at most ONE fallback push per ride+driver, only on the first time this
+  // loop runs (~4s after the initial broadcast). A driver whose socket is alive
+  // acks within that window and this never fires for them — it only reaches
+  // drivers whose socket genuinely never delivered the room emit. Guarded with
+  // SET NX so the 4s retry loop never sends a second popup for the same ride.
+  const firstFire = await redis.set(
+    ridePushSentKey(data.rideId, data.driverId), '1',
+    'EX', BROADCAST_WINDOW_SECONDS + 30, 'NX'
+  )
+  if (firstFire === 'OK') {
+    try {
+      const tokens = await getTokensForOwner('driver', BigInt(data.driverId))
+      await pushToTokens(tokens, {
+        title: 'New ride request',
+        body: `${data.pickup} → ${data.drop}`,
+        tag: `ride-${data.rideId}`,
+        ttlSeconds: Math.min(timeoutSeconds, 30),
+        data: { type: 'ride_request', rideId: data.rideId },
+      })
+    } catch (err) {
+      console.error('[ACK-CHECK] fallback push failed:', err instanceof Error ? err.message : 'unknown error')
+    }
+  }
 
   if (expiresMs - Date.now() > ACK_RETRY_MS) {
     await queues[QUEUE_NAMES.DISPATCH].add(
