@@ -28,7 +28,7 @@ interface RideMapSceneProps {
   driverPos?: [number, number]
   driverHeading?: number
   driverHeadingKnown?: boolean
-  routeMode: 'pickup-dest' | 'driver-pickup' | 'driver-dest' | 'recap'
+  routeMode: 'pickup-dest' | 'driver-pickup' | 'driver-dest' | 'returning' | 'recap'
   showDrop?: boolean
   breadcrumb?: [number, number][]
   userPos?: [number, number]
@@ -69,9 +69,10 @@ export default function RideMapScene({
 }: RideMapSceneProps) {
   const isRecap      = routeMode === 'recap'
   const isPickupLeg  = routeMode === 'driver-pickup'
+  const isReturning  = routeMode === 'returning'
   const isInProgress = routeMode === 'driver-dest'
   const isSearching  = routeMode === 'pickup-dest'
-  const legTarget    = isPickupLeg ? pickupPos : dropPos
+  const legTarget    = (isPickupLeg || isReturning) ? pickupPos : dropPos
 
   // Re-arm the overview beat whenever the leg changes or a driver position
   // first becomes available for this leg.
@@ -122,7 +123,7 @@ export default function RideMapScene({
       <RoutePolyline
         encoded={(remainingPath || routeOverride) ? undefined : encodedPolyline}
         positions={remainingPath ?? routeOverride}
-        variant={isPickupLeg ? 'pickup-leg' : 'default'}
+        variant={(isPickupLeg || isReturning) ? 'pickup-leg' : 'default'}
       />
       {driverPos && !isRecap && (
         <CarMarker position={driverPos} heading={driverHeading} headingKnown={driverHeadingKnown} />

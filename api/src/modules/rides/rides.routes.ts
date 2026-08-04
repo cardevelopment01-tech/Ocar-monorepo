@@ -250,6 +250,14 @@ router.post('/:id/arrived', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+router.post('/:id/start-return', authenticate(), async (req, res, next) => {
+  try {
+    const driverId = req.driver!.id
+    const result = await service.startReturn(driverId, BigInt(req.params['id']!))
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
 router.post('/:id/start-otp', authenticate(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id

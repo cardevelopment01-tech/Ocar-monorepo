@@ -269,7 +269,7 @@ export async function updateLocation(driverId: bigint, data: {
   let rideId = await redis.get(activeRideCacheKey)
   if (rideId === null) {
     const activeRideRes = await pool.query<{ id: string }>(
-      `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress') LIMIT 1`,
+      `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress','returning') LIMIT 1`,
       [driverId]
     )
     rideId = activeRideRes.rows[0]?.id ?? ''
@@ -680,6 +680,40 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
   return { success: true }
 }
 
+// Driver-triggered transition into the return leg of a round_trip ride. Uses
+// the CAS variant (unlike markArrived's plain update) so a double-tap/retry
+// of the "start return" control is a clean 409 no-op instead of double-
+// logging history or double-emitting the socket event.
+export async function startReturn(driverId: bigint, rideId: bigint) {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  }
+  if (ride.ride_type !== 'round_trip') {
+    throw Object.assign(new Error('Only round_trip rides have a return leg'), { httpStatus: 422 })
+  }
+
+  const updated = await repo.updateRideStatusCAS(rideId, 'in_progress', 'returning', {
+    return_started_at: new Date().toISOString(),
+  })
+  if (!updated) {
+    throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
+  }
+
+  await repo.logStatusHistory({
+    rideId,
+    fromStatus: 'in_progress',
+    toStatus:   'returning',
+    actor:      'driver',
+    actorId:    driverId,
+  })
+
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'returning' })
+
+  return { success: true }
+}
+
 export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: string) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
@@ -1085,7 +1119,7 @@ export async function endRideEarlyAsDriver(
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
   }
-  if (ride.status !== 'in_progress') {
+  if (ride.status !== 'in_progress' && ride.status !== 'returning') {
     throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
   }
 
@@ -1146,7 +1180,7 @@ export async function endRideEarlyAsDriver(
   }
 
   const completedAt = new Date().toISOString()
-  const updated = await repo.updateRideStatusCAS(rideId, 'in_progress', 'completed', {
+  const updated = await repo.updateRideStatusCAS(rideId, ride.status, 'completed', {
     completed_at:      completedAt,
     review_flagged_at: completedAt,
     review_reason:     `Ended early by driver: ${reasonCode}`,
@@ -1155,7 +1189,7 @@ export async function endRideEarlyAsDriver(
     throw Object.assign(new Error('Ride already ended'), { httpStatus: 409 })
   }
   await repo.logStatusHistory({
-    rideId, fromStatus: 'in_progress', toStatus: 'completed', actor: 'driver',
+    rideId, fromStatus: ride.status, toStatus: 'completed', actor: 'driver',
   })
 
   await pool.query(
@@ -1190,7 +1224,7 @@ export async function forceResolveRide(
 ) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
-  if (ride.status !== 'in_progress') {
+  if (ride.status !== 'in_progress' && ride.status !== 'returning') {
     throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
   }
 
@@ -1202,8 +1236,8 @@ export async function forceResolveRide(
 
     const upd = await client.query(
       `UPDATE rides SET status = $2, ${timestampField} = now(), review_flagged_at = NULL, updated_at = now()
-       WHERE id = $1 AND status = 'in_progress'`,
-      [rideId, outcome]
+       WHERE id = $1 AND status = $3`,
+      [rideId, outcome, ride.status]
     )
     if ((upd.rowCount ?? 0) === 0) {
       throw Object.assign(new Error('Ride status changed — please refresh'), { httpStatus: 409 })
@@ -1211,8 +1245,8 @@ export async function forceResolveRide(
 
     await client.query(
       `INSERT INTO ride_status_history (ride_id, from_status, to_status, actor, actor_id, note)
-       VALUES ($1, 'in_progress', $2, $3, $4, $5)`,
-      [rideId, outcome, actor, actorId ?? null, note ?? null]
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [rideId, ride.status, outcome, actor, actorId ?? null, note ?? null]
     )
 
     if (ride.driver_id) {
@@ -1318,7 +1352,7 @@ export async function verifyEndOTP(
 ) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
-  if (ride.status !== 'in_progress') {
+  if (ride.status !== 'in_progress' && ride.status !== 'returning') {
     throw Object.assign(new Error('Ride not in progress'), { httpStatus: 409 })
   }
 
@@ -1362,7 +1396,7 @@ export async function verifyEndOTP(
 
   await repo.logStatusHistory({
     rideId,
-    fromStatus: 'in_progress',
+    fromStatus: ride.status,
     toStatus:   'completed',
     actor:      'ride_completion',
   })
