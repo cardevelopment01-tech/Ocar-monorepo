@@ -9,7 +9,7 @@ export async function triggerSos(input: TriggerSosInput) {
   if (!ride) {
     throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   }
-  if (ride.status !== 'in_progress' && ride.status !== 'driver_arrived') {
+  if (ride.status !== 'in_progress' && ride.status !== 'driver_arrived' && ride.status !== 'returning') {
     throw Object.assign(new Error('SOS can only be triggered during an active ride'), {
       httpStatus: 400, code: 'RIDE_NOT_ACTIVE',
     })

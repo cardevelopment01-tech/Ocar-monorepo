@@ -434,7 +434,8 @@ export async function getActiveRideIdForUser(userId: bigint): Promise<string | n
          (status = 'requested'      AND updated_at > now() - ($2 || ' minutes')::interval) OR
          (status = 'accepted'       AND updated_at > now() - ($3 || ' hours')::interval)    OR
          (status = 'driver_arrived' AND updated_at > now() - ($4 || ' hours')::interval)    OR
-         (status = 'in_progress'    AND updated_at > now() - ($5 || ' hours')::interval)
+         (status = 'in_progress'    AND updated_at > now() - ($5 || ' hours')::interval)    OR
+         (status = 'returning'      AND updated_at > now() - ($5 || ' hours')::interval)
        )
      ORDER BY requested_at DESC
      LIMIT 1`,
@@ -468,7 +469,7 @@ export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | n
      LEFT JOIN drivers d         ON d.id = r.driver_id
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
      WHERE r.driver_id = $1
-       AND r.status IN ('accepted', 'driver_arrived', 'in_progress')
+       AND r.status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
      ORDER BY r.accepted_at DESC
      LIMIT 1`,
     [driverId]
@@ -695,7 +696,7 @@ export async function findStaleInProgressRides(staleSeconds: number): Promise<St
     `SELECT r.id, r.driver_id, r.review_flagged_at
      FROM rides r
      JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
-     WHERE r.status = 'in_progress'
+     WHERE r.status IN ('in_progress', 'returning')
        AND now() - dls.recorded_at > ($1 || ' seconds')::interval`,
     [staleSeconds]
   )
@@ -1188,6 +1189,35 @@ export async function getDriverEarningsSummary(
       platform_fee: Math.max(0, Math.round((totalFare - totalEarnings) * 100) / 100),
     },
   }
+}
+
+// ── GPS-derived actual distance ─────────────────────────────────
+
+/**
+ * Actual distance driven during a ride, computed from GPS breadcrumbs
+ * (gps_tracks), not client-reported values. Returns null if fewer than
+ * 2 points were recorded (insufficient to form a path — e.g. GPS outage,
+ * a very short-lived test ride) so callers can fall back appropriately.
+ *
+ * `since` (pass the ride's started_at) is not just a filter — gps_tracks is
+ * monthly range-partitioned on recorded_at, and without a recorded_at
+ * predicate Postgres can't prune partitions, so it'd probe every partition
+ * that has ever existed. No upper bound is needed: ride_id already scopes
+ * this to one ride.
+ */
+export async function getGpsTrackedDistanceKm(rideId: bigint, since: Date): Promise<number | null> {
+  const res = await pool.query<{ km: string | null }>(
+    `SELECT
+       CASE WHEN count(*) >= 2
+         THEN ST_Length(ST_MakeLine(location::geometry ORDER BY recorded_at)::geography) / 1000
+         ELSE NULL
+       END AS km
+     FROM gps_tracks
+     WHERE ride_id = $1 AND recorded_at >= $2`,
+    [rideId, since]
+  )
+  const km = res.rows[0]?.km
+  return km != null ? parseFloat(km) : null
 }
 
 // ── ETA accuracy instrumentation ────────────────────────────────

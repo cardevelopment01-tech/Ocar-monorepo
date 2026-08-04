@@ -269,7 +269,7 @@ export async function updateLocation(driverId: bigint, data: {
   let rideId = await redis.get(activeRideCacheKey)
   if (rideId === null) {
     const activeRideRes = await pool.query<{ id: string }>(
-      `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress') LIMIT 1`,
+      `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress','returning') LIMIT 1`,
       [driverId]
     )
     rideId = activeRideRes.rows[0]?.id ?? ''
@@ -680,6 +680,40 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
   return { success: true }
 }
 
+// Driver-triggered transition into the return leg of a round_trip ride. Uses
+// the CAS variant (unlike markArrived's plain update) so a double-tap/retry
+// of the "start return" control is a clean 409 no-op instead of double-
+// logging history or double-emitting the socket event.
+export async function startReturn(driverId: bigint, rideId: bigint) {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  }
+  if (ride.ride_type !== 'round_trip') {
+    throw Object.assign(new Error('Only round_trip rides have a return leg'), { httpStatus: 422 })
+  }
+
+  const updated = await repo.updateRideStatusCAS(rideId, 'in_progress', 'returning', {
+    return_started_at: new Date().toISOString(),
+  })
+  if (!updated) {
+    throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
+  }
+
+  await repo.logStatusHistory({
+    rideId,
+    fromStatus: 'in_progress',
+    toStatus:   'returning',
+    actor:      'driver',
+    actorId:    driverId,
+  })
+
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'returning' })
+
+  return { success: true }
+}
+
 export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: string) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
@@ -1085,7 +1119,7 @@ export async function endRideEarlyAsDriver(
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
   }
-  if (ride.status !== 'in_progress') {
+  if (ride.status !== 'in_progress' && ride.status !== 'returning') {
     throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
   }
 
@@ -1146,7 +1180,7 @@ export async function endRideEarlyAsDriver(
   }
 
   const completedAt = new Date().toISOString()
-  const updated = await repo.updateRideStatusCAS(rideId, 'in_progress', 'completed', {
+  const updated = await repo.updateRideStatusCAS(rideId, ride.status, 'completed', {
     completed_at:      completedAt,
     review_flagged_at: completedAt,
     review_reason:     `Ended early by driver: ${reasonCode}`,
@@ -1155,7 +1189,7 @@ export async function endRideEarlyAsDriver(
     throw Object.assign(new Error('Ride already ended'), { httpStatus: 409 })
   }
   await repo.logStatusHistory({
-    rideId, fromStatus: 'in_progress', toStatus: 'completed', actor: 'driver',
+    rideId, fromStatus: ride.status, toStatus: 'completed', actor: 'driver',
   })
 
   await pool.query(
@@ -1190,7 +1224,7 @@ export async function forceResolveRide(
 ) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
-  if (ride.status !== 'in_progress') {
+  if (ride.status !== 'in_progress' && ride.status !== 'returning') {
     throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
   }
 
@@ -1202,8 +1236,8 @@ export async function forceResolveRide(
 
     const upd = await client.query(
       `UPDATE rides SET status = $2, ${timestampField} = now(), review_flagged_at = NULL, updated_at = now()
-       WHERE id = $1 AND status = 'in_progress'`,
-      [rideId, outcome]
+       WHERE id = $1 AND status = $3`,
+      [rideId, outcome, ride.status]
     )
     if ((upd.rowCount ?? 0) === 0) {
       throw Object.assign(new Error('Ride status changed — please refresh'), { httpStatus: 409 })
@@ -1211,8 +1245,8 @@ export async function forceResolveRide(
 
     await client.query(
       `INSERT INTO ride_status_history (ride_id, from_status, to_status, actor, actor_id, note)
-       VALUES ($1, 'in_progress', $2, $3, $4, $5)`,
-      [rideId, outcome, actor, actorId ?? null, note ?? null]
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [rideId, ride.status, outcome, actor, actorId ?? null, note ?? null]
     )
 
     if (ride.driver_id) {
@@ -1318,8 +1352,13 @@ export async function verifyEndOTP(
 ) {
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
-  if (ride.status !== 'in_progress') {
+  if (ride.status !== 'in_progress' && ride.status !== 'returning') {
     throw Object.assign(new Error('Ride not in progress'), { httpStatus: 409 })
+  }
+
+  const stops = await repo.getRideStops(rideId)
+  if (stops.some(s => s.status === 'pending')) {
+    throw Object.assign(new Error('Ride has pending stops'), { httpStatus: 409 })
   }
 
   const valid = ride.end_otp_hash != null && hashOtp(otp) === ride.end_otp_hash
@@ -1337,6 +1376,16 @@ export async function verifyEndOTP(
 
   const completedAt = new Date().toISOString()
 
+  // GPS-breadcrumb-derived distance/duration for round_trip fare reconciliation
+  // (see calculateFare call below) — falls back to the client-reported values
+  // when there isn't enough GPS data (see getGpsTrackedDistanceKm).
+  const gpsDistanceKm = ride.ride_type === 'round_trip' && ride.started_at != null
+    ? await repo.getGpsTrackedDistanceKm(rideId, new Date(ride.started_at))
+    : null
+  const gpsDurationMin = ride.started_at != null
+    ? (new Date(completedAt).getTime() - new Date(ride.started_at).getTime()) / 60000
+    : null
+
   await repo.updateRideStatus(rideId, 'completed', {
     completed_at:        completedAt,
     actual_distance_km:  actualDistanceKm  ?? null,
@@ -1347,7 +1396,7 @@ export async function verifyEndOTP(
 
   await repo.logStatusHistory({
     rideId,
-    fromStatus: 'in_progress',
+    fromStatus: ride.status,
     toStatus:   'completed',
     actor:      'ride_completion',
   })
@@ -1361,72 +1410,128 @@ export async function verifyEndOTP(
     let billedKm  = actualDistanceKm
     let billedMin = actualDurationMin
 
-    // Early termination check: only for round_trip when we have end coordinates
-    if (
-      ride.ride_type === 'round_trip' &&
-      actualEndLat != null && actualEndLng != null
-    ) {
-      const distRes = await pool.query<{ metres: string }>(
-        `SELECT ST_Distance(
-           ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography,
-           ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)::geography
-         ) AS metres`,
-        [actualEndLng, actualEndLat, ride.origin_lng, ride.origin_lat]
-      )
-      const metres = parseFloat(distRes.rows[0]?.metres ?? '0')
-
-      if (metres > 500) {
-        // Load fare snapshot + rate card for recalculation
-        const snapRes = await pool.query<{
-          surge_multiplier: string
-          stop_fare:        string
-          is_return_cab:    boolean
-          rate_per_km:      string
-          rate_per_min:     string
-          min_fare:         string
-          return_rate_per_km: string | null
-        }>(
-          `SELECT fs.surge_multiplier, fs.stop_fare, fs.is_return_cab,
-                  rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km
-           FROM fare_snapshots fs
-           JOIN rate_cards rc ON rc.id = fs.rate_card_id
-           WHERE fs.ride_id = $1`,
-          [rideId]
+    // Round trip: reconcile against ACTUAL km/duration, not just the estimate.
+    // Two cases:
+    //   - Driver ended >500m from origin → the return leg wasn't actually
+    //     driven; treat it as an early termination (existing logic below,
+    //     unchanged: bills what was driven + a straight-line estimate of the
+    //     remaining return distance, at one_way rates, no driver allowance).
+    //   - Otherwise (normal completion, or no end-coordinates supplied) →
+    //     recalculate with the real round_trip package formula against
+    //     actualDistanceKm/actualDurationMin, so overage km and extra days
+    //     actually get billed instead of silently falling back to the estimate.
+    if (ride.ride_type === 'round_trip') {
+      let metres = 0
+      let hasEndCoords = false
+      if (actualEndLat != null && actualEndLng != null) {
+        hasEndCoords = true
+        const distRes = await pool.query<{ metres: string }>(
+          `SELECT ST_Distance(
+             ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography,
+             ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)::geography
+           ) AS metres`,
+          [actualEndLng, actualEndLat, ride.origin_lng, ride.origin_lat]
         )
-        const snap = snapRes.rows[0]
+        metres = parseFloat(distRes.rows[0]?.metres ?? '0')
+      }
 
-        if (snap) {
-          const returnKm  = metres / 1000
-          const returnMin = returnKm / 0.5  // assume 30 km/h for return leg
+      const isEarlyTermination = hasEndCoords && metres > 500
 
-          // Use PostGIS distance as the driven km — actualDistanceKm points at the
-          // booked destination, not the actual early-stop location, so it would overcharge.
-          const drivenKm = metres / 1000
-          billedKm  = drivenKm + returnKm
-          billedMin = actualDurationMin + returnMin
+      const snapRes = await pool.query<{
+        surge_multiplier: string
+        stop_fare:        string
+        is_return_cab:    boolean
+        rate_per_km:      string
+        rate_per_min:      string
+        min_fare:          string
+        return_rate_per_km: string | null
+        km_per_day:               string | null
+        driver_allowance_per_day: string | null
+      }>(
+        `SELECT fs.surge_multiplier, fs.stop_fare, fs.is_return_cab,
+                rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km,
+                rc.km_per_day, rc.driver_allowance_per_day
+         FROM fare_snapshots fs
+         JOIN rate_cards rc ON rc.id = fs.rate_card_id
+         WHERE fs.ride_id = $1`,
+        [rideId]
+      )
+      const snap = snapRes.rows[0]
 
-          const recalc = calculateFare({
-            rate_card: {
-              rate_per_km:         parseFloat(snap.rate_per_km),
-              rate_per_min:        parseFloat(snap.rate_per_min),
-              min_fare:            parseFloat(snap.min_fare),
-              return_rate_per_km:  snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
-            },
-            ride_type:        'one_way',  // no hour_surcharge on early termination
-            is_return_cab:    snap.is_return_cab,
-            estimated_km:     billedKm,
-            estimated_min:    billedMin,
-            stop_count:       0,
-            charge_per_stop:  0,
-            trip_hours:       0,
-            surge_multiplier: parseFloat(snap.surge_multiplier),
-          })
+      if (snap && isEarlyTermination) {
+        const returnKm  = metres / 1000
+        const returnMin = returnKm / 0.5  // assume 30 km/h for return leg
 
-          // Stops were already driven — add the pre-computed stop_fare unchanged
-          const stopFare = parseFloat(snap.stop_fare ?? '0')
-          totalFinal     = Math.round((recalc.total + stopFare) * 100) / 100
-          earlyTermKm    = Math.round(returnKm  * 100) / 100
-          earlyTermMin   = Math.round(returnMin * 100) / 100
+        // Use PostGIS distance as the driven km — actualDistanceKm points at the
+        // booked destination, not the actual early-stop location, so it would overcharge.
+        const drivenKm = metres / 1000
+        billedKm  = drivenKm + returnKm
+        billedMin = actualDurationMin + returnMin
+
+        const recalc = calculateFare({
+          rate_card: {
+            rate_per_km:         parseFloat(snap.rate_per_km),
+            rate_per_min:        parseFloat(snap.rate_per_min),
+            min_fare:            parseFloat(snap.min_fare),
+            return_rate_per_km:  snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
+          },
+          ride_type:        'one_way',  // no driver allowance on early termination
+          is_return_cab:    snap.is_return_cab,
+          estimated_km:     billedKm,
+          estimated_min:    billedMin,
+          stop_count:       0,
+          charge_per_stop:  0,
+          trip_hours:       0,
+          surge_multiplier: parseFloat(snap.surge_multiplier),
+        })
+
+        // Stops were already driven — add the pre-computed stop_fare unchanged
+        const stopFare = parseFloat(snap.stop_fare ?? '0')
+        totalFinal     = Math.round((recalc.total + stopFare) * 100) / 100
+        earlyTermKm    = Math.round(returnKm  * 100) / 100
+        earlyTermMin   = Math.round(returnMin * 100) / 100
+      } else if (snap) {
+        // Normal completion: recalculate the real round_trip package fare
+        // against what was actually driven, instead of defaulting to the
+        // booking-time estimate.
+        const recalc = calculateFare({
+          rate_card: {
+            rate_per_km:  parseFloat(snap.rate_per_km),
+            rate_per_min: parseFloat(snap.rate_per_min),
+            min_fare:     parseFloat(snap.min_fare),
+            return_rate_per_km:       snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
+            km_per_day:               snap.km_per_day != null ? parseFloat(snap.km_per_day) : null,
+            driver_allowance_per_day: snap.driver_allowance_per_day != null ? parseFloat(snap.driver_allowance_per_day) : null,
+          },
+          ride_type:        'round_trip',
+          is_return_cab:    snap.is_return_cab,
+          // Prefer GPS-breadcrumb-derived distance/duration over the
+          // client-reported values — the driver app currently sends a
+          // one-way straight-line estimate to the destination, not the
+          // actual round-trip distance driven, so trusting it directly
+          // would keep the same under-billing bug this branch exists to fix.
+          estimated_km:     gpsDistanceKm ?? actualDistanceKm,
+          estimated_min:    gpsDurationMin ?? actualDurationMin,
+          stop_count:       0, // stop fares already baked into snap.stop_fare
+          charge_per_stop:  0,
+          trip_hours:       (gpsDurationMin ?? actualDurationMin) / 60,
+          surge_multiplier: parseFloat(snap.surge_multiplier),
+        })
+
+        const stopFare = parseFloat(snap.stop_fare ?? '0')
+        totalFinal = Math.round((recalc.total + stopFare) * 100) / 100
+        // Keep the stored actual_km/actual_min consistent with whatever was
+        // actually used to compute the fare above.
+        billedKm  = gpsDistanceKm  ?? actualDistanceKm
+        billedMin = gpsDurationMin ?? actualDurationMin
+
+        // Flag for ops review: GPS breadcrumb data was insufficient, so this
+        // fare had to fall back to the unreliable client-reported distance.
+        if (gpsDistanceKm == null) {
+          await repo.flagRideForReview(
+            rideId,
+            'Round-trip fare reconciled against client-reported distance — GPS breadcrumb data unavailable'
+          )
         }
       }
     }

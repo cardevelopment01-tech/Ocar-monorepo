@@ -140,6 +140,11 @@ export const driverRideApi = {
     return res.data as { success: boolean }
   },
 
+  startReturn: async (rideId: string): Promise<{ success: boolean }> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/start-return`)
+    return res.data as { success: boolean }
+  },
+
   verifyStartOtp: async (rideId: string, otp: string): Promise<{ success: boolean }> => {
     const res = await api.post(`/api/v1/rides/${rideId}/start-otp`, { otp })
     return res.data as { success: boolean }
