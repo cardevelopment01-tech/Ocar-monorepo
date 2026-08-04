@@ -70,7 +70,7 @@ function useElapsed(startedAt?: string) {
 
 export default function TripInProgress() {
   const navigate = useNavigate()
-  const { activeRide, updateRideStatus, updateStop, arriveStop, setFare } = useRideStore()
+  const { activeRide, updateRideStatus, updateStop, arriveStop, setFare, clearRide } = useRideStore()
   const elapsed = useElapsed(activeRide?.rideStartedAt)
   const { sessionId } = useSessionStore()
 
@@ -78,6 +78,7 @@ export default function TripInProgress() {
   const [showEndOtp, setShowEndOtp] = useState(false)
   const [otp, setOtp]               = useState('')
   const [otpError, setOtpError]     = useState(false)
+  const [otpErrorMessage, setOtpErrorMessage] = useState('Wrong OTP, try again')
   const [stopActionPending, setStopActionPending] = useState<number | null>(null)
   const [showEndEarlySheet, setShowEndEarlySheet] = useState(false)
   const [endEarlyReason,    setEndEarlyReason]    = useState<string | null>(null)
@@ -372,7 +373,25 @@ export default function TripInProgress() {
       const result = await driverRideApi.verifyEndOtp(activeRide.id, otp, actualDistanceKm, actualDurationMin || undefined, position?.[0], position?.[1])
       if (result.finalFare !== undefined) setFare(result.finalFare)
       updateRideStatus('completed')
-    } catch {
+    } catch (err) {
+      const data = (err as { response?: { data?: { code?: string; error?: string } } })?.response?.data
+      if (data?.code === 'RIDE_NOT_IN_PROGRESS' || data?.code === 'RIDE_NOT_FOUND') {
+        // The ride was already resolved server-side (e.g. the stale-GPS
+        // auto-cancel sweeper) while this screen was still showing it as
+        // active — this isn't an OTP problem, don't tell the driver their
+        // correct code is wrong. Show the real reason, then exit the trip.
+        setOtpErrorMessage(data.error ?? 'This ride was already ended')
+        setOtpError(true)
+        setTimeout(() => {
+          setShowEndOtp(false)
+          clearRide()
+          navigate('/', { replace: true })
+        }, 1800)
+        throw new Error('otp-verify-failed')
+      }
+      setOtpErrorMessage(data?.code === 'RIDE_HAS_PENDING_STOPS'
+        ? (data.error ?? 'Resolve the pending stop before completing the trip')
+        : 'Wrong OTP, try again')
       setOtpError(true)
       setOtp('')
       throw new Error('otp-verify-failed')
@@ -854,7 +873,7 @@ export default function TripInProgress() {
                 otp={otp}
                 onChange={v => { setOtp(v); setOtpError(false) }}
                 error={otpError}
-                errorMessage="Wrong OTP, try again"
+                errorMessage={otpErrorMessage}
                 submitLabel="Complete Trip"
                 verifiedLabel="Trip completed"
                 onSubmit={handleCompleteTrip}
