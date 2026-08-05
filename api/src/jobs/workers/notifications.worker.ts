@@ -6,6 +6,9 @@ import { sendEmail } from '@/lib/email'
 import * as notifService from '@/modules/notifications/notifications.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { workerPool as pool } from '@/db/client'
+import { createWorkerLogger } from '@/lib/worker-logger'
+
+const log = createWorkerLogger(undefined, 'notifications')
 
 type LogParams = Parameters<typeof notifService.logNotification>[0]
 
@@ -44,7 +47,7 @@ export const notificationsWorker = new Worker(
           payload: { driverId: data.driverId },
         })
       } catch (err) {
-        console.error('[Worker] notify failed for driver_submitted_for_review:', err)
+        log.error({ err }, 'notify failed for driver_submitted_for_review')
       }
 
     } else if (job.name === 'otp_sms') {
@@ -104,7 +107,7 @@ export const notificationsWorker = new Worker(
           rideId: BigInt(data.rideId),
         })
       } catch (err) {
-        console.error('[Worker] notify failed for sos_alert:', err)
+        log.error({ err }, 'notify failed for sos_alert')
       }
     } else if (job.name === 'ride_accepted') {
       const data = job.data as {
@@ -139,7 +142,7 @@ export const notificationsWorker = new Worker(
           rideId: BigInt(data.rideId),
         })
       } catch (err) {
-        console.error('[Worker] notify failed for ride_accepted:', err)
+        log.error({ err }, 'notify failed for ride_accepted')
       }
 
     } else if (job.name === 'ride_completed') {
@@ -179,7 +182,7 @@ export const notificationsWorker = new Worker(
           rideId: BigInt(data.rideId),
         })
       } catch (err) {
-        console.error('[Worker] notify failed for ride_completed:', err)
+        log.error({ err }, 'notify failed for ride_completed')
       }
 
     } else if (job.name === 'admin_invite_email') {
@@ -209,9 +212,9 @@ export const notificationsWorker = new Worker(
 )
 
 notificationsWorker.on('failed', (job, err) => {
-  console.error(`[Worker] Job failed: ${job?.name ?? 'unknown'} id=${job?.id}`, err)
+  log.error({ err, jobId: job?.id, jobName: job?.name }, 'notifications job failed')
 })
 
 notificationsWorker.on('error', (err) => {
-  console.error('[Worker] Notifications worker error:', err)
+  log.error({ err }, 'notifications worker error')
 })

@@ -1,6 +1,9 @@
 import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import { reconcilePendingRidePayments } from '@/modules/payments/payments.service'
+import { createWorkerLogger } from '@/lib/worker-logger'
+
+const log = createWorkerLogger(undefined, 'payment-reconcile')
 
 export const paymentReconcileWorker = new Worker(
   QUEUE_NAMES.PAYMENTS,
@@ -11,5 +14,5 @@ export const paymentReconcileWorker = new Worker(
 )
 
 paymentReconcileWorker.on('failed', (job, err) => {
-  console.error(`[payment-reconcile] job ${job?.id} failed:`, err)
+  log.error({ err, jobId: job?.id }, 'payment-reconcile job failed')
 })

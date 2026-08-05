@@ -12,6 +12,9 @@ import {
   STALE_ACCEPTED_HOURS,
   STALE_DRIVER_ARRIVED_HOURS,
 } from '@/constants/limits'
+import { createWorkerLogger } from '@/lib/worker-logger'
+
+const log = createWorkerLogger(undefined, 'cleanup')
 
 // Ride stuck in_progress with no driver heartbeat (driver_location_snapshots.recorded_at):
 //  - past FLAG_AFTER_SECONDS  -> flag for review, notify rider + admin ops
@@ -53,5 +56,5 @@ export const cleanupWorker = new Worker(
 )
 
 cleanupWorker.on('failed', (job, err) => {
-  console.error(`[cleanup] job ${job?.id} failed:`, err)
+  log.error({ err, jobId: job?.id }, 'cleanup job failed')
 })

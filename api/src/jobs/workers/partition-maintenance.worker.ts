@@ -2,6 +2,9 @@ import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import { processCreateNextPartition } from '@/jobs/processors/partition-creator.processor'
 import { processPurgeOldPartitions } from '@/jobs/processors/partition-purge.processor'
+import { createWorkerLogger } from '@/lib/worker-logger'
+
+const log = createWorkerLogger(undefined, 'partition-maintenance')
 
 // Two job types share this queue, both scheduled monthly from server.ts:
 //  - 'create_next_partition' — pre-creates next month's gps_tracks partition
@@ -21,5 +24,5 @@ export const partitionMaintenanceWorker = new Worker(
 )
 
 partitionMaintenanceWorker.on('failed', (job, err) => {
-  console.error(`[partition-maintenance] job ${job?.id} (${job?.name}) failed:`, err)
+  log.error({ err, jobId: job?.id, jobName: job?.name }, 'partition-maintenance job failed')
 })

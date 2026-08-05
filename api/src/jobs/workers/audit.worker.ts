@@ -2,6 +2,9 @@ import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import { pool } from '@/db/client'
 import type { AuditLogJobData } from '@/lib/audit-log'
+import { createWorkerLogger } from '@/lib/worker-logger'
+
+const log = createWorkerLogger(undefined, 'audit')
 
 export const auditWorker = new Worker(
   QUEUE_NAMES.AUDIT,
@@ -27,5 +30,5 @@ export const auditWorker = new Worker(
 )
 
 auditWorker.on('failed', (job, err) => {
-  console.error(`[audit] job ${job?.id} failed:`, err)
+  log.error({ err, jobId: job?.id }, 'audit job failed')
 })
