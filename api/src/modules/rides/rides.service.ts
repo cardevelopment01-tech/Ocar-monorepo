@@ -38,6 +38,9 @@ import { calculateFare } from '@/lib/fare'
 import { classifyTrip, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
 import { MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES } from '@/constants/limits'
+import { logger } from '@/lib/logger'
+
+const log = logger.child({ module: 'rides-service' })
 
 // Logs the routing engine's predicted ETA at the start of a leg (see
 // docs/PRODUCTION_NAVIGATION_SYSTEM_PLAN.md Phase 4) — instrumentation only,
@@ -916,7 +919,7 @@ export async function addRideStop(
         rideId,
       })
     } catch (err) {
-      console.error('[NOTIFY] stop_added notification failed:', err instanceof Error ? err.message : 'unknown error')
+      log.error({ err }, 'stop_added notification failed')
     }
   }
 
@@ -1207,7 +1210,7 @@ export async function endRideEarlyAsDriver(
   socketEvents.sendRideStatusUpdate(rideId.toString(), statusPayload)
 
   void settleRideCompletionPayment(rideId, driverId).catch((err: unknown) => {
-    console.error(`Payment post-processing failed for early-ended ride ${rideId}:`, err)
+    log.error({ err, rideId }, 'payment post-processing failed for early-ended ride')
   })
 
   return { success: true, rideId: rideId.toString(), ...(finalFare !== null ? { finalFare } : {}) }
@@ -1606,7 +1609,7 @@ export async function verifyEndOTP(
 
   // Payment + wallet post-processing (non-blocking — ride is already completed)
   void settleRideCompletionPayment(rideId, driverId).catch((err: unknown) => {
-    console.error(`Payment post-processing failed for ride ${rideId}:`, err)
+    log.error({ err, rideId }, 'payment post-processing failed for ride')
   })
 
   return {

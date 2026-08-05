@@ -3,7 +3,10 @@ import { config } from '@/config'
 
 // Exported separately from the singleton so the redaction/level logic is
 // unit-testable without booting the full app config.
-export function buildLoggerOptions(level: string): pino.LoggerOptions {
+// Defaults to 'info' when level is undefined — some unit tests mock '@/config'
+// with a partial object that omits LOG_LEVEL; this keeps every module that
+// transitively imports the shared logger from crashing pino's level check.
+export function buildLoggerOptions(level: string = 'info'): pino.LoggerOptions {
   const options: pino.LoggerOptions = {
     level,
     redact: {
