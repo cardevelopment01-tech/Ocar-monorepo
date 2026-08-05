@@ -60,7 +60,7 @@ export default function PersonalDetails() {
 
   useEffect(() => {
     onboardingApi.getCities()
-      .then(cities => setOdishaCities(cities.filter(c => c.state === 'Odisha').map(c => c.name)))
+      .then(cities => setOdishaCities(cities.filter(c => c.state.toLowerCase() === 'odisha').map(c => c.name)))
       .catch(() => {})
   }, [])
 
