@@ -6,6 +6,9 @@ import { client as redis } from '@/db/redis'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
 import { getMinWalletBalance } from '@/modules/payments/payments.service'
 import type { AckCheckJobData } from './ack-check.processor'
+import { logger } from '@/lib/logger'
+
+const log = logger.child({ module: 'broadcast-processor' })
 
 const MAX_DRIVERS = BROADCAST_MAX_DRIVERS
 
@@ -33,7 +36,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
 
   const ride = await repo.getRideById(rideId)
   if (!ride || ride.status !== 'requested') {
-    console.log(`Broadcast skipped: ride ${data.rideId} no longer active`)
+    log.info({ rideId: data.rideId }, 'broadcast skipped: ride no longer active')
     return
   }
 
@@ -100,7 +103,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
         actor:      'system',
         note:       'No drivers available after 3 broadcast rounds',
       })
-      console.log(`Ride ${data.rideId}: no_drivers`)
+      log.info({ rideId: data.rideId }, 'no drivers available after max broadcast rounds')
     }
     return
   }
@@ -174,7 +177,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     socketEvents.sendRideRequest(driver.driver_id.toString(), requestPayload)
   }
 
-  console.log(
-    `Broadcast round ${data.broadcastRound}: sent to ${drivers.length} drivers for ride ${data.rideId}`
+  log.info(
+    { rideId: data.rideId, broadcastRound: data.broadcastRound, driverCount: drivers.length },
+    'broadcast round sent'
   )
 }

@@ -6,6 +6,9 @@ import { rideAckKey, ridePushSentKey } from '@/constants/redis-keys'
 import { BROADCAST_WINDOW_SECONDS } from '@/constants/limits'
 import { pushToTokens } from '@/modules/notifications/notifications.service'
 import { getTokensForOwner } from '@/modules/notifications/notifications.repository'
+import { logger } from '@/lib/logger'
+
+const log = logger.child({ module: 'ack-check-processor' })
 
 const ACK_RETRY_MS = 4_000
 
@@ -78,7 +81,7 @@ export async function processAckCheck(data: AckCheckJobData): Promise<void> {
         data: { type: 'ride_request', rideId: data.rideId },
       })
     } catch (err) {
-      console.error('[ACK-CHECK] fallback push failed:', err instanceof Error ? err.message : 'unknown error')
+      log.error({ err }, 'fallback push failed')
     }
   }
 
