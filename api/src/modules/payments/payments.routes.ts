@@ -4,6 +4,8 @@ import { config } from '@/config'
 import { client as redis } from '@/db/redis'
 import { walletTopupOrderKey } from '@/constants/redis-keys'
 import * as service from './payments.service'
+import * as packagesService from '@/modules/packages/packages.service'
+import * as packagesRepo from '@/modules/packages/packages.repository'
 
 const router: IRouter = Router()
 
@@ -98,6 +100,32 @@ router.post('/wallet/driver/topup/verify', authenticate(), async (req, res, next
     await service.topUpDriverWallet(driverId, amount, paymentId)
     await redis.del(walletTopupOrderKey(orderId))
     res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
+// Driver: list active package tiers
+router.get('/packages/tiers', authenticate(), async (_req, res, next) => {
+  try {
+    res.json(await packagesRepo.listActiveTiers())
+  } catch (err) { next(err) }
+})
+
+// Driver: get own package wallet
+router.get('/packages/wallet', authenticate(), async (req, res, next) => {
+  try {
+    const wallet = await packagesRepo.getPackageWallet(req.driver!.id)
+    res.json(wallet ?? { balance: '0.00', is_frozen: false })
+  } catch (err) { next(err) }
+})
+
+// Driver: create a package purchase order (or direct credit in dev)
+router.post('/packages/purchase/order', authenticate(), async (req, res, next) => {
+  try {
+    const result = await packagesService.createPackagePurchaseOrder(
+      req.driver!.id,
+      BigInt(req.body.tierId)
+    )
+    res.json(result)
   } catch (err) { next(err) }
 })
 

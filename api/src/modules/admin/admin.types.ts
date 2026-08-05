@@ -255,6 +255,7 @@ export interface AdminCity {
   status: 'draft' | 'active' | 'inactive'
   is_rental_enabled: boolean
   is_return_cab_enabled: boolean
+  billing_mode: 'commission' | 'package'
   created_at: string
 }
 

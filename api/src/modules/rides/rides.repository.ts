@@ -1,5 +1,5 @@
 import { pool } from '@/db/client'
-import type { DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
+import type { BillingMode, DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
 import {
   STALE_REQUESTED_MINUTES,
   STALE_ACCEPTED_HOURS,
@@ -120,12 +120,29 @@ export async function findNearbyDrivers(params: {
      FROM driver_location_snapshots dls
      JOIN driver_sessions ds ON ds.id = dls.session_id
      LEFT JOIN driver_wallets dw ON dw.driver_id = ds.driver_id
+     LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = ds.driver_id
+     LEFT JOIN LATERAL (
+       SELECT c.billing_mode
+       FROM cities c
+       WHERE c.status = 'active'
+       ORDER BY ST_Distance(c.centroid, dls.location) ASC
+       LIMIT 1
+     ) nc ON true
      WHERE dls.is_available = true
        AND ds.status = 'online'
        AND ds.mode = 'standard'
        AND ds.category_id = $3
-       AND COALESCE(dw.balance, 0) >= $6
-       AND NOT COALESCE(dw.is_frozen, false)
+       AND (
+         (nc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
+         OR
+         (nc.billing_mode = 'package' AND COALESCE(dpw.balance, 0) > 0 AND NOT COALESCE(dpw.is_frozen, false))
+         OR
+         -- nc.billing_mode IS NULL is only reachable if zero active cities exist system-wide
+         -- (not a per-driver distance edge case — the LATERAL subquery has no distance bound,
+         -- it always returns the single nearest active city). Falls back to the commission-style
+         -- check in that case; unreachable in production since cities are always seeded.
+         nc.billing_mode IS NULL
+       )
        AND ST_DWithin(
          dls.location,
          ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography,
@@ -188,11 +205,28 @@ export async function findReturnCabDrivers(params: {
      JOIN driver_sessions ds ON ds.id = rcr.session_id
      JOIN driver_location_snapshots dls ON dls.driver_id = rcr.driver_id
      LEFT JOIN driver_wallets dw ON dw.driver_id = rcr.driver_id
+     LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = rcr.driver_id
+     LEFT JOIN LATERAL (
+       SELECT c.billing_mode
+       FROM cities c
+       WHERE c.status = 'active'
+       ORDER BY ST_Distance(c.centroid, dls.location) ASC
+       LIMIT 1
+     ) nc ON true
      WHERE rcr.is_active = true
        AND ds.status = 'online'
        AND ds.category_id = $5
-       AND COALESCE(dw.balance, 0) >= $6
-       AND NOT COALESCE(dw.is_frozen, false)
+       AND (
+         (nc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
+         OR
+         (nc.billing_mode = 'package' AND COALESCE(dpw.balance, 0) > 0 AND NOT COALESCE(dpw.is_frozen, false))
+         OR
+         -- nc.billing_mode IS NULL is only reachable if zero active cities exist system-wide
+         -- (not a per-driver distance edge case — the LATERAL subquery has no distance bound,
+         -- it always returns the single nearest active city). Falls back to the commission-style
+         -- check in that case; unreachable in production since cities are always seeded.
+         nc.billing_mode IS NULL
+       )
        AND ST_DWithin(
          rcr.corridor,
          ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography,
@@ -769,7 +803,8 @@ export async function createRideAssignment(data: {
 
 export async function acceptAssignment(
   rideId: bigint,
-  driverId: bigint
+  driverId: bigint,
+  billingMode: BillingMode
 ): Promise<string[] | false> {
   const client = await pool.connect()
   try {
@@ -779,10 +814,11 @@ export async function acceptAssignment(
       `UPDATE rides
        SET status = 'accepted',
            driver_id = $2,
-           accepted_at = now()
+           accepted_at = now(),
+           billing_mode_snapshot = $3
        WHERE id = $1 AND status = 'requested'
        RETURNING id`,
-      [rideId, driverId]
+      [rideId, driverId, billingMode]
     )
 
     if (!rideRes.rows.length) {

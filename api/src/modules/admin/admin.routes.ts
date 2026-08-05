@@ -75,6 +75,14 @@ router.get('/geo/cities',       requireAdmin('super_admin', 'ops_admin'), contro
 router.post('/geo/cities',      requireAdmin('super_admin', 'ops_admin'), controller.postAdminCity)
 router.patch('/geo/cities/:id', requireAdmin('super_admin', 'ops_admin'), controller.patchAdminCity)
 
+// ─── Package tiers / driver package wallet (city billing_mode = 'package') ──
+router.get('/package-tiers',       requireAdmin('super_admin', 'ops_admin'), controller.getPackageTiers)
+router.post('/package-tiers',      requireAdmin('super_admin', 'ops_admin'), controller.postPackageTier)
+router.patch('/package-tiers/:id', requireAdmin('super_admin', 'ops_admin'), controller.patchPackageTier)
+router.get('/drivers/:id/package',           requireAdmin('super_admin', 'ops_admin'), controller.getDriverPackageDetail)
+// Money-moving — super_admin only, unlike the ops_admin-reachable read/CRUD above.
+router.patch('/drivers/:id/package/balance', requireAdmin('super_admin'), controller.patchDriverPackageBalance)
+
 // ─── Safety — SOS ─────────────────────────────────────────────────────────────
 router.get('/safety/sos',                    controller.getAdminSosAlerts)
 router.patch('/safety/sos/:id/acknowledge',  requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.acknowledgeAdminSos)

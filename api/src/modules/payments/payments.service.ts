@@ -5,6 +5,9 @@ import { ridePaymentOrderKey } from '@/constants/redis-keys'
 import { notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
 import { accrueDriverEarning } from '@/modules/payments/submodules/settlements/settlements.service'
 import { getConfigValue } from '@/lib/system-config'
+import * as packagesService from '@/modules/packages/packages.service'
+import * as packagesRepo from '@/modules/packages/packages.repository'
+import type { BillingMode } from '@/modules/rides/rides.types'
 
 // ── Config helpers ─────────────────────────────────────────────
 
@@ -251,7 +254,20 @@ export async function confirmRidePayment(
   if ((res.rowCount ?? 0) === 0) return false
 
   const row = res.rows[0]
-  await deductCommission(rideId, BigInt(row.driver_id))
+  // billing_mode_snapshot is frozen on the ride at accept time (see acceptAssignment in
+  // rides.repository.ts), so a later admin change to a city's billing_mode doesn't
+  // retroactively change how an in-flight/already-accepted ride settles.
+  const rideRes = await pool.query<{ billing_mode_snapshot: BillingMode | null }>(
+    `SELECT billing_mode_snapshot FROM rides WHERE id = $1`,
+    [rideId]
+  )
+  const billingMode = rideRes.rows[0]?.billing_mode_snapshot ?? 'commission'
+
+  if (billingMode === 'package') {
+    await packagesService.consumePackageBalance(rideId, BigInt(row.driver_id), parseFloat(row.amount))
+  } else {
+    await deductCommission(rideId, BigInt(row.driver_id))
+  }
   await accrueDriverEarning(rideId, BigInt(row.driver_id))
   await creditCashback(rideId, BigInt(row.user_id), parseFloat(row.amount))
   return true
@@ -703,13 +719,36 @@ export async function handleWebhookEvent(
   }
 
   if (event === 'payment.captured' && (entity as { order_id?: string })?.order_id) {
+    const orderId = (entity as { order_id?: string }).order_id!
+
     const pendingRes = await pool.query(
       `SELECT ride_id FROM payments WHERE razorpay_order_id = $1 AND status = 'pending'`,
-      [(entity as { order_id?: string }).order_id]
+      [orderId]
     )
     const pending = pendingRes.rows[0]
     if (pending) {
       await confirmRidePayment(BigInt(pending.ride_id), eventId)
+      return
+    }
+
+    // Same order_id namespace also covers package-purchase orders (Task 9).
+    // eventId doubles as the Razorpay payment id here (see entity?.id above).
+    // findPendingPurchaseByOrderId is just a cheap existence check to skip the
+    // UPDATE below for unmatched orders — its result is NOT trusted for the
+    // actual credit values. markPurchaseCompleted does the real atomic
+    // claim-and-check (WHERE status='pending' inside the UPDATE itself), so
+    // concurrent webhook deliveries for the same order can only have one
+    // winner; only the winner's RETURNING row is used to credit the wallet.
+    const packagePurchase = await packagesRepo.findPendingPurchaseByOrderId(orderId)
+    if (packagePurchase) {
+      const claimed = await packagesRepo.markPurchaseCompleted(packagePurchase.id, eventId)
+      if (claimed) {
+        await packagesService.creditPackageBalance(
+          BigInt(claimed.driver_id),
+          parseFloat(claimed.threshold_value),
+          eventId
+        )
+      }
     }
   }
 }

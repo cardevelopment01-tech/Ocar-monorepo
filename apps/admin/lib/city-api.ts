@@ -11,6 +11,7 @@ export interface AdminCity {
   status: 'draft' | 'active' | 'inactive'
   is_rental_enabled: boolean
   is_return_cab_enabled: boolean
+  billing_mode: 'commission' | 'package'
   created_at: string
 }
 
@@ -37,6 +38,7 @@ export const cityApi = {
     status?: string
     is_rental_enabled?: boolean
     is_return_cab_enabled?: boolean
+    billing_mode?: 'commission' | 'package'
   }) =>
     api.patch(`/api/v1/admin/geo/cities/${id}`, data).then(r => r.data as AdminCity),
 }
