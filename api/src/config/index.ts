@@ -81,6 +81,10 @@ const envSchema = z.object({
 
   // Demo — set DEMO_MODE=true on staging/demo VPS to unlock demo-force endpoints
   DEMO_MODE: z.enum(['true', 'false']).default('false'),
+
+  // Logging — 'info' in prod keeps GPS-ping-path debug logs compiled out;
+  // bump to 'debug' locally when tracing socket/queue correlation.
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 })
 
 function loadConfig() {
