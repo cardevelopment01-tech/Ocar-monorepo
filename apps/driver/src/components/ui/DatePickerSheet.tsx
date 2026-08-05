@@ -118,7 +118,7 @@ export default function DatePickerSheet({
   const minP = parseISO(minDate)
   const maxP = parseISO(maxDate)
   const minY = minP?.y ?? (now.getFullYear() - 70)
-  const maxY = maxP?.y ?? (now.getFullYear() + 15)
+  const maxY = maxP?.y ?? (now.getFullYear() + 20)
 
   const [draft, setDraft] = useState(() => {
     const p = parseISO(value)
