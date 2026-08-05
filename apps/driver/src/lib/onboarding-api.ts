@@ -148,4 +148,9 @@ export const onboardingApi = {
     const res = await api.get(`/api/v1/vehicles/brands/${brandId}/models`)
     return res.data as VehicleModel[]
   },
+
+  getCities: async () => {
+    const res = await api.get('/api/v1/geo/cities')
+    return res.data as { name: string; state: string }[]
+  },
 }

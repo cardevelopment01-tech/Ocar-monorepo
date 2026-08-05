@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Check, ChevronDown, Minus, Plus, User, MapPin, Car } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import { onboardingApi, type PersonalInfoPayload } from '@/lib/onboarding-api'
-import { STATE_CITY } from '@/lib/india-geo'
+import { INDIA_STATES } from '@/lib/india-geo'
 import SelectSheet from '@/components/ui/SelectSheet'
 import DatePickerSheet from '@/components/ui/DatePickerSheet'
 import SettingsHeader from '@/components/settings/SettingsHeader'
@@ -54,6 +54,13 @@ export default function PersonalInfo() {
   const [emergency, setEmergency] = useState('')
   const [languages, setLanguages] = useState<string[]>([])
   const [showMoreLangs, setShowMoreLangs] = useState(false)
+  const [odishaCities, setOdishaCities] = useState<string[]>([])
+
+  useEffect(() => {
+    onboardingApi.getCities()
+      .then(cities => setOdishaCities(cities.filter(c => c.state === 'Odisha').map(c => c.name)))
+      .catch(() => {})
+  }, [])
 
   const [dobError, setDobError] = useState('')
   const [pincodeError, setPincodeError] = useState('')
@@ -152,7 +159,6 @@ export default function PersonalInfo() {
   }
 
   // City options from selected state
-  const cityOptions = STATE_CITY[state] ?? []
 
   // Language display: always surface selected ones even if they're in the "hidden" set
   const firstSix = INDIAN_LANGUAGES.slice(0, VISIBLE_LANGS)
@@ -254,7 +260,7 @@ export default function PersonalInfo() {
                   <SelectSheet
                     label="Select State"
                     value={state}
-                    options={Object.keys(STATE_CITY)}
+                    options={INDIA_STATES}
                     onChange={v => { setState(v); setCity('') }}
                     placeholder="Select state"
                     searchable
@@ -274,19 +280,20 @@ export default function PersonalInfo() {
                     <span className="text-text-muted font-normal">Select state first</span>
                     <ChevronDown size={18} className="text-text-muted flex-shrink-0" />
                   </button>
-                ) : cityOptions.length >= 2 ? (
+                ) : state === 'Odisha' && odishaCities.length > 0 ? (
                   <SelectSheet
                     label="Select City"
                     value={city}
-                    options={cityOptions}
+                    options={odishaCities}
                     onChange={setCity}
                     placeholder="Select city"
+                    searchable
                   />
                 ) : (
                   <input
                     id="city"
                     className="input-dark w-full"
-                    placeholder={cityOptions[0] ?? 'Enter city'}
+                    placeholder="Enter city"
                     value={city}
                     onChange={e => setCity(e.target.value)}
                   />
