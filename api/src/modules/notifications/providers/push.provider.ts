@@ -3,6 +3,9 @@
 import { initializeApp, cert, getApps, getApp, type App, type ServiceAccount } from 'firebase-admin/app'
 import { getMessaging, type MulticastMessage } from 'firebase-admin/messaging'
 import { config } from '@/config'
+import { logger } from '@/lib/logger'
+
+const log = logger.child({ module: 'push-provider' })
 
 export interface PushMessage {
   title: string
@@ -35,7 +38,7 @@ function getFirebaseApp(): App | null {
     firebaseApp = getApps().length ? getApp() : initializeApp({ credential: cert(serviceAccount) })
     return firebaseApp
   } catch (err) {
-    console.error('[PUSH] Failed to initialize FCM — push disabled:', err instanceof Error ? err.message : 'unknown error')
+    log.error({ err }, 'failed to initialize FCM — push disabled')
     firebaseApp = null
     return null
   }
@@ -87,7 +90,7 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
 
     return { invalidTokens }
   } catch (err) {
-    console.error('[PUSH] sendEachForMulticast failed:', err instanceof Error ? err.message : 'unknown error')
+    log.error({ err }, 'sendEachForMulticast failed')
     return { invalidTokens: [] }
   }
 }

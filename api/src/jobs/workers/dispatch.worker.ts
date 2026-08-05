@@ -2,6 +2,9 @@ import { Worker } from 'bullmq'
 import { QUEUE_NAMES, redisConnection } from '@/jobs/queues'
 import { processBroadcast, type BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import { processAckCheck, type AckCheckJobData } from '@/jobs/processors/ack-check.processor'
+import { createWorkerLogger } from '@/lib/worker-logger'
+
+const log = createWorkerLogger('dispatch')
 
 export const dispatchWorker = new Worker(
   QUEUE_NAMES.DISPATCH,
@@ -20,5 +23,5 @@ export const dispatchWorker = new Worker(
 )
 
 dispatchWorker.on('failed', (job, err) => {
-  console.error(`[Worker] Dispatch job failed: ${job?.name ?? 'unknown'} id=${job?.id}`, err)
+  log.error({ err, jobId: job?.id, jobName: job?.name }, 'dispatch job failed')
 })

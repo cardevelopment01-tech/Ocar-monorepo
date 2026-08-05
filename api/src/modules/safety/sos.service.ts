@@ -3,6 +3,9 @@ import { getIO } from '@/websocket/socket.server'
 import { pool } from '@/db/client'
 import { notificationsQueue } from '@/jobs/queues'
 import type { TriggerSosInput } from './safety.types'
+import { logger } from '@/lib/logger'
+
+const log = logger.child({ module: 'sos-service' })
 
 export async function triggerSos(input: TriggerSosInput) {
   const ride = await repo.getRideBasic(input.rideId)
@@ -45,7 +48,7 @@ export async function triggerSos(input: TriggerSosInput) {
     lng:         input.lng  ?? 0,
     triggeredAt: new Date().toISOString(),
   }).catch((err: unknown) => {
-    console.error('Failed to enqueue sos_alert job:', err)
+    log.error({ err }, 'failed to enqueue sos_alert job')
   })
 
   try {

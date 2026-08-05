@@ -5,9 +5,12 @@ import { ridePaymentOrderKey } from '@/constants/redis-keys'
 import { notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
 import { accrueDriverEarning } from '@/modules/payments/submodules/settlements/settlements.service'
 import { getConfigValue } from '@/lib/system-config'
+import { logger } from '@/lib/logger'
 import * as packagesService from '@/modules/packages/packages.service'
 import * as packagesRepo from '@/modules/packages/packages.repository'
 import type { BillingMode } from '@/modules/rides/rides.types'
+
+const log = logger.child({ module: 'payments-service' })
 
 // ── Config helpers ─────────────────────────────────────────────
 
@@ -153,7 +156,7 @@ export async function deductCommission(
       try {
         await notifyDriverLowWalletBalance(driverId, newBalance, minBalance)
       } catch (err) {
-        console.error('[WALLET] low-balance notify failed:', err instanceof Error ? err.message : 'unknown error')
+        log.error({ err }, 'low-balance notify failed')
       }
     }
   } catch (err) {
@@ -800,7 +803,7 @@ export async function reconcilePendingRidePayments(): Promise<void> {
         }
       }
     } catch (err) {
-      console.error(`[reconcile] ride ${row.ride_id} failed:`, err)
+      log.error({ err, rideId: row.ride_id }, 'payment reconcile failed')
     }
   }
 }

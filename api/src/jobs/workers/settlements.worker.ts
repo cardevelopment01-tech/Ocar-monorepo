@@ -1,6 +1,9 @@
 import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import { clearAvailableEarnings, runScheduledSettlementBatch, submitProcessingSettlements } from '@/modules/payments/submodules/settlements/settlements.service'
+import { createWorkerLogger } from '@/lib/worker-logger'
+
+const log = createWorkerLogger('settlements')
 
 // Three job types share this queue, all scheduled from server.ts:
 //  - 'clear_available_earnings' — every 15 min, flips pending->cleared
@@ -25,5 +28,5 @@ export const settlementsWorker = new Worker(
 )
 
 settlementsWorker.on('failed', (job, err) => {
-  console.error(`[settlements] job ${job?.id} (${job?.name}) failed:`, err)
+  log.error({ err, jobId: job?.id, jobName: job?.name }, 'settlements job failed')
 })

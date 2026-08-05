@@ -1,5 +1,6 @@
 import { Pool, PoolClient, types } from 'pg'
 import { config } from '@/config'
+import { logger } from '@/lib/logger'
 
 // DATE columns (oid 1082 — date_of_birth, valid_until, license_expiry, verified_for,
 // etc.) have no time component, but pg's default parser builds a JS Date at LOCAL
@@ -47,7 +48,7 @@ export async function query<T extends object>(
     const result = await pool.query<T>(text, params)
     const duration = Date.now() - start
     if (duration > 1000) {
-      console.warn(`Slow query (${duration}ms): ${text}`)
+      logger.warn({ durationMs: duration, query: text }, 'slow query')
     }
     return result.rows
   } catch (err) {

@@ -1,6 +1,8 @@
 import express, { Application, Router } from 'express'
 import helmet from 'helmet'
 import cors from 'cors'
+import pinoHttp from 'pino-http'
+import { logger } from '@/lib/logger'
 import { config } from '@/config'
 import { testConnection } from '@/db/client'
 import { testConnection as testRedis } from '@/db/redis'
@@ -34,6 +36,18 @@ export function createApp(): Application {
     req.requestId = crypto.randomUUID()
     next()
   })
+
+  // 1b. Structured request/response logging — reuses requestId (not a second
+  // genReqId) so error responses and log lines correlate on the same field.
+  app.use(pinoHttp({
+    logger,
+    genReqId: (req) => (req as import('express').Request).requestId,
+    customLogLevel: (_req, res, err) => {
+      if (res.statusCode >= 500 || err) return 'error'
+      if (res.statusCode >= 400) return 'warn'
+      return 'info'
+    },
+  }))
 
   // 2. Security headers
   app.use(helmet())

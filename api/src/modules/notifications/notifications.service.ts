@@ -3,6 +3,9 @@ import { sendPush, type PushMessage } from './providers/push.provider'
 import { socketEvents } from '@/websocket/socket.server'
 import type { NotifOwnerType } from './notifications.repository'
 import { renderTemplate } from './templates.service'
+import { logger } from '@/lib/logger'
+
+const log = logger.child({ module: 'notifications-service' })
 
 // Re-exported unchanged so existing callers (e.g. the notifications worker,
 // which uses `Parameters<typeof notifService.logNotification>[0]`) keep working.
@@ -18,7 +21,7 @@ export async function pushToTokens(tokens: string[], msg: PushMessage): Promise<
       await repo.deleteDeviceTokens(invalidTokens)
     }
   } catch (err) {
-    console.error('[PUSH] pushToTokens failed:', err instanceof Error ? err.message : 'unknown error')
+    log.error({ err }, 'pushToTokens failed')
   }
 }
 
@@ -45,13 +48,13 @@ export async function notifyOwner(params: {
       data: { type: params.type, ...(params.rideId !== undefined ? { rideId: params.rideId.toString() } : {}) },
     })
   } catch (err) {
-    console.error('[NOTIFY] push leg failed:', err instanceof Error ? err.message : 'unknown error')
+    log.error({ err }, 'notify push leg failed')
   }
 
   try {
     socketEvents.sendNotification(params.ownerType, params.ownerId.toString(), item)
   } catch (err) {
-    console.error('[NOTIFY] socket leg failed:', err instanceof Error ? err.message : 'unknown error')
+    log.error({ err }, 'notify socket leg failed')
   }
 }
 
@@ -76,7 +79,7 @@ export async function notifyAllAdmins(params: {
       data: { type: params.type, ...(params.rideId !== undefined ? { rideId: params.rideId.toString() } : {}) },
     })
   } catch (err) {
-    console.error('[NOTIFY] admin push leg failed:', err instanceof Error ? err.message : 'unknown error')
+    log.error({ err }, 'notify admin push leg failed')
   }
 
   try {
@@ -88,7 +91,7 @@ export async function notifyAllAdmins(params: {
       createdAt: new Date().toISOString(),
     })
   } catch (err) {
-    console.error('[NOTIFY] admin socket leg failed:', err instanceof Error ? err.message : 'unknown error')
+    log.error({ err }, 'notify admin socket leg failed')
   }
 }
 

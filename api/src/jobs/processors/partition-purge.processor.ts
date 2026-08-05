@@ -1,4 +1,7 @@
 import { GPS_TRAIL_RETENTION_DAYS } from '@/constants/limits'
+import { logger } from '@/lib/logger'
+
+const log = logger.child({ module: 'partition-purge-processor' })
 
 const PARTITION_NAME_RE = /^gps_tracks_(\d{4})_(\d{2})$/
 
@@ -47,6 +50,6 @@ export async function processPurgeOldPartitions(): Promise<void> {
     // system catalog query, not user input.
     if (!PARTITION_NAME_RE.test(name)) continue
     await pool.query(`DROP TABLE IF EXISTS ${name}`)
-    console.log(`[gps-partition-purge] dropped ${name} (older than ${GPS_TRAIL_RETENTION_DAYS} days)`)
+    log.info({ partition: name, retentionDays: GPS_TRAIL_RETENTION_DAYS }, 'dropped gps partition')
   }
 }

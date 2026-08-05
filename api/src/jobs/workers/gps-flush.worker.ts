@@ -1,6 +1,9 @@
 import { Worker } from 'bullmq'
 import { workerPool as pool } from '@/db/client'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
+import { createWorkerLogger } from '@/lib/worker-logger'
+
+const log = createWorkerLogger('gps-flush')
 
 interface GpsTrackJob {
   rideId: string
@@ -45,5 +48,5 @@ export const gpsFlushWorker = new Worker<GpsTrackJob>(
 )
 
 gpsFlushWorker.on('failed', (job, err) => {
-  console.error(`[gps-flush] job ${job?.id} failed:`, err)
+  log.error({ err, jobId: job?.id }, 'gps-flush job failed')
 })

@@ -3,9 +3,12 @@ import { authenticate } from '@/middleware/auth.middleware'
 import { requireAdmin } from '@/middleware/role.middleware'
 import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
+import { logger } from '@/lib/logger'
 import * as service from './settlements.service'
 import * as bankAccounts from './bank-accounts.service'
 import { verifyDriverPan } from './tax-profile.service'
+
+const log = logger.child({ module: 'settlements-admin-routes' })
 
 const router: IRouter = Router()
 
@@ -85,7 +88,7 @@ router.patch('/bank-accounts/:id/status', async (req, res, next) => {
     if (!result.ok) {
       // result.error may contain raw gateway response text — log it server-side
       // only, never forward it to the client (no error.message leakage rule).
-      console.error(`[settlements] bank account ${req.params['id']} verification gateway step failed:`, result.error)
+      log.error({ err: result.error, bankAccountId: req.params['id'] }, 'bank account verification gateway step failed')
       throw httpError(502, 'Could not verify bank account with the payout gateway', AppErrors.VALIDATION_ERROR.code)
     }
     res.json({ success: true })

@@ -5,6 +5,9 @@ import {
   processDispatchScheduled,
   type DispatchScheduledJobData,
 } from '@/jobs/processors/dispatch-scheduled.processor'
+import { createWorkerLogger } from '@/lib/worker-logger'
+
+const log = createWorkerLogger('scheduler')
 
 // Two job types share this queue:
 //  - 'dispatch_scheduled_ride' — one-shot delayed job set at booking time, fires
@@ -30,5 +33,5 @@ export const schedulerWorker = new Worker(
 )
 
 schedulerWorker.on('failed', (job, err) => {
-  console.error(`[scheduler] job ${job?.id} (${job?.name}) failed:`, err)
+  log.error({ err, jobId: job?.id, jobName: job?.name }, 'scheduler job failed')
 })

@@ -3,6 +3,9 @@ import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
 import { httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
+import { logger } from '@/lib/logger'
+
+const log = logger.child({ module: 'settlements-service' })
 
 function currentFyQuarter(now: Date): { fy: string; quarter: number } {
   // Indian FY: Apr 1 - Mar 31. Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar.
@@ -367,7 +370,7 @@ async function submitSettlementRow(row: ProcessingSettlementRow, devMode: boolea
       [row.id, payout.id]
     )
   } catch (err) {
-    console.error(`[settlements] payout submit failed for settlement ${row.id}:`, err)
+    log.error({ err, settlementId: row.id }, 'payout submit failed')
     await pool.query(
       `UPDATE settlements
          SET status = 'failed', failed_at = now(), failure_reason = $2, razorpay_payout_id = NULL
