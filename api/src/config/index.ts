@@ -91,6 +91,8 @@ function loadConfig() {
   try {
     return envSchema.parse(process.env)
   } catch (err) {
+    // console here (not logger) — this fires before config exists, and the
+    // logger needs config.LOG_LEVEL to construct. Fatal boot-time failure; process exits right after.
     if (err instanceof ZodError) {
       console.error('Missing or invalid environment variables:')
       for (const issue of err.issues) {
