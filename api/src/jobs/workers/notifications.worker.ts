@@ -8,7 +8,7 @@ import { renderTemplate } from '@/modules/notifications/templates.service'
 import { workerPool as pool } from '@/db/client'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
-const log = createWorkerLogger(undefined, 'notifications')
+const log = createWorkerLogger('notifications')
 
 type LogParams = Parameters<typeof notifService.logNotification>[0]
 

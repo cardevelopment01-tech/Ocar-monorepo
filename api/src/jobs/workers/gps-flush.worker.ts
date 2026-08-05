@@ -3,7 +3,7 @@ import { workerPool as pool } from '@/db/client'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
-const log = createWorkerLogger(undefined, 'gps-flush')
+const log = createWorkerLogger('gps-flush')
 
 interface GpsTrackJob {
   rideId: string

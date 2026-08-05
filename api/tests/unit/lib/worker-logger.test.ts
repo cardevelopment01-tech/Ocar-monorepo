@@ -8,7 +8,7 @@ describe('createWorkerLogger', () => {
     const lines: string[] = []
     const stream = { write: (line: string) => { lines.push(line) } }
     const base = pino(buildLoggerOptions('info'), stream)
-    const log = createWorkerLogger(base, 'gps-flush')
+    const log = createWorkerLogger('gps-flush', base)
 
     log.error({ err: new Error('boom'), jobId: '42' }, 'job failed')
 

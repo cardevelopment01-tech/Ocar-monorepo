@@ -3,7 +3,7 @@ import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import { reconcilePendingRidePayments } from '@/modules/payments/payments.service'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
-const log = createWorkerLogger(undefined, 'payment-reconcile')
+const log = createWorkerLogger('payment-reconcile')
 
 export const paymentReconcileWorker = new Worker(
   QUEUE_NAMES.PAYMENTS,

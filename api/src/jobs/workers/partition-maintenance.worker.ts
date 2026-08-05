@@ -4,7 +4,7 @@ import { processCreateNextPartition } from '@/jobs/processors/partition-creator.
 import { processPurgeOldPartitions } from '@/jobs/processors/partition-purge.processor'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
-const log = createWorkerLogger(undefined, 'partition-maintenance')
+const log = createWorkerLogger('partition-maintenance')
 
 // Two job types share this queue, both scheduled monthly from server.ts:
 //  - 'create_next_partition' — pre-creates next month's gps_tracks partition

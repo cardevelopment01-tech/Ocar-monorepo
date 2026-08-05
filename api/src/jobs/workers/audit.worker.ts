@@ -4,7 +4,7 @@ import { pool } from '@/db/client'
 import type { AuditLogJobData } from '@/lib/audit-log'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
-const log = createWorkerLogger(undefined, 'audit')
+const log = createWorkerLogger('audit')
 
 export const auditWorker = new Worker(
   QUEUE_NAMES.AUDIT,

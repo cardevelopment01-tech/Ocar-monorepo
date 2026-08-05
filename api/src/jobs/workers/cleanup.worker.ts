@@ -14,7 +14,7 @@ import {
 } from '@/constants/limits'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
-const log = createWorkerLogger(undefined, 'cleanup')
+const log = createWorkerLogger('cleanup')
 
 // Ride stuck in_progress with no driver heartbeat (driver_location_snapshots.recorded_at):
 //  - past FLAG_AFTER_SECONDS  -> flag for review, notify rider + admin ops

@@ -4,7 +4,7 @@ import { processBroadcast, type BroadcastJobData } from '@/jobs/processors/broad
 import { processAckCheck, type AckCheckJobData } from '@/jobs/processors/ack-check.processor'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
-const log = createWorkerLogger(undefined, 'dispatch')
+const log = createWorkerLogger('dispatch')
 
 export const dispatchWorker = new Worker(
   QUEUE_NAMES.DISPATCH,

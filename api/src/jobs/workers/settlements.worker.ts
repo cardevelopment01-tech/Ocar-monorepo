@@ -3,7 +3,7 @@ import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import { clearAvailableEarnings, runScheduledSettlementBatch, submitProcessingSettlements } from '@/modules/payments/submodules/settlements/settlements.service'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
-const log = createWorkerLogger(undefined, 'settlements')
+const log = createWorkerLogger('settlements')
 
 // Three job types share this queue, all scheduled from server.ts:
 //  - 'clear_available_earnings' — every 15 min, flips pending->cleared

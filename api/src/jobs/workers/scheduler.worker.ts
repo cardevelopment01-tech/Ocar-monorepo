@@ -7,7 +7,7 @@ import {
 } from '@/jobs/processors/dispatch-scheduled.processor'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
-const log = createWorkerLogger(undefined, 'scheduler')
+const log = createWorkerLogger('scheduler')
 
 // Two job types share this queue:
 //  - 'dispatch_scheduled_ride' — one-shot delayed job set at booking time, fires
