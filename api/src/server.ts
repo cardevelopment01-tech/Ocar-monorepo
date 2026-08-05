@@ -1,4 +1,5 @@
 import http from 'http'
+import { logger } from '@/lib/logger'
 import { config } from './config'
 import { createApp } from './app'
 import { testConnection, pool } from './db/client'
@@ -18,14 +19,14 @@ import { cleanupQueue, schedulerQueue, partitionMaintenanceQueue, paymentsQueue,
 async function start(): Promise<void> {
   const dbOk = await testConnection()
   if (!dbOk) {
-    console.error('ERROR: Could not connect to database. Exiting.')
+    logger.error('could not connect to database, exiting')
     process.exit(1)
   }
-  console.log('Database connected')
+  logger.info('database connected')
 
   const redisOk = await testRedis()
   if (!redisOk) {
-    console.error('ERROR: Could not connect to Redis. Exiting.')
+    logger.error('could not connect to redis, exiting')
     process.exit(1)
   }
 
@@ -35,15 +36,15 @@ async function start(): Promise<void> {
   initSocketServer(httpServer)
 
   void notificationsWorker
-  console.log('[Worker] Notifications worker started')
+  logger.info('notifications worker started')
   void dispatchWorker
-  console.log('[Worker] Dispatch worker started')
+  logger.info('dispatch worker started')
   void gpsFlushWorker
-  console.log('[Worker] GPS flush worker started')
+  logger.info('gps flush worker started')
   void cleanupWorker
-  console.log('[Worker] Cleanup worker started')
+  logger.info('cleanup worker started')
   void auditWorker
-  console.log('[Worker] Audit worker started')
+  logger.info('audit worker started')
   await cleanupQueue.add(
     'sweep_stuck_rides',
     {},
@@ -51,7 +52,7 @@ async function start(): Promise<void> {
   )
 
   void schedulerWorker
-  console.log('[Worker] Scheduler worker started')
+  logger.info('scheduler worker started')
   await schedulerQueue.add(
     'sweep_scheduled_rides',
     {},
@@ -59,7 +60,7 @@ async function start(): Promise<void> {
   )
 
   void partitionMaintenanceWorker
-  console.log('[Worker] Partition maintenance worker started')
+  logger.info('partition maintenance worker started')
   // Runs on the 25th of each month (same convention ADR-003 specified),
   // ahead of month-end so next month's partition exists before it's needed.
   await partitionMaintenanceQueue.add(
@@ -77,7 +78,7 @@ async function start(): Promise<void> {
   )
 
   void paymentReconcileWorker
-  console.log('[Worker] Payment reconciliation worker started')
+  logger.info('payment reconciliation worker started')
   await paymentsQueue.add(
     'reconcile_pending_payments',
     {},
@@ -85,7 +86,7 @@ async function start(): Promise<void> {
   )
 
   void settlementsWorker
-  console.log('[Worker] Settlements worker started')
+  logger.info('settlements worker started')
   await settlementsQueue.add(
     'clear_available_earnings',
     {},
@@ -103,13 +104,11 @@ async function start(): Promise<void> {
   )
 
   httpServer.listen(config.API_PORT, () => {
-    console.log(
-      `Server running on port ${config.API_PORT} [${config.NODE_ENV}]`
-    )
+    logger.info({ port: config.API_PORT, env: config.NODE_ENV }, 'server running')
   })
 
   async function shutdown(): Promise<void> {
-    console.log('Shutting down gracefully...')
+    logger.info('shutting down gracefully')
     httpServer.close(async () => {
       await pool.end()
       redisClient.disconnect()
@@ -122,6 +121,6 @@ async function start(): Promise<void> {
 }
 
 start().catch((err) => {
-  console.error(err)
+  logger.fatal({ err }, 'server startup failed')
   process.exit(1)
 })

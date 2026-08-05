@@ -1,5 +1,6 @@
 import Redis, { type RedisOptions } from 'ioredis'
 import { config } from '@/config'
+import { logger } from '@/lib/logger'
 
 function makeRedisOptions(): RedisOptions {
   const url = new URL(config.REDIS_URL)
@@ -21,11 +22,11 @@ function makeRedisOptions(): RedisOptions {
 export const client = new Redis(makeRedisOptions())
 
 client.on('error', (err) => {
-  console.error('Redis error:', err)
+  logger.error({ err }, 'redis error')
 })
 
 client.on('connect', () => {
-  console.log('Redis connected')
+  logger.info('redis connected')
 })
 
 export async function setWithTTL(
