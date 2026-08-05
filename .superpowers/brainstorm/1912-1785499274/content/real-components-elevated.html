@@ -1,0 +1,156 @@
+<h2>Elevated version of your ACTUAL components</h2>
+<p class="subtitle">Same admin-card / StatCard / sidebar nav-item / revenue chart you already have &mdash; same indigo, same layout &mdash; just refined: gradient icon badges, smoother count-up, glow accents, one glass moment on the dropdown only</p>
+
+<style>
+  .demo-shell { display:flex; height:520px; border-radius:16px; overflow:hidden; font-family:'DM Sans',sans-serif; position:relative; background:#F8FAFF; }
+  .demo-sidebar { width:160px; flex-shrink:0; padding:16px 12px; display:flex; flex-direction:column; gap:4px; background:#FFFFFF; border-right:1px solid #E8EAFF; }
+  .demo-logo { font-weight:900; font-size:15px; margin:0 6px 18px; color:#4F46E5; }
+  .demo-nav-item { padding:9px 12px; border-radius:12px; font-size:12px; font-weight:600; color:#5B6B85; }
+  .demo-nav-item.active {
+    background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
+    color:#fff; box-shadow: 0 4px 14px rgba(79,70,229,0.32);
+  }
+  .demo-main { flex:1; padding:20px; position:relative; overflow:auto; }
+  .demo-topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+  .demo-title { font-weight:800; font-size:16px; color:#0F172A; }
+  .demo-avatar-btn { width:32px; height:32px; border-radius:10px; background:#F5F7FF; border:1px solid #EEF0FF; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#4F46E5; cursor:pointer; }
+
+  .demo-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px; }
+  .stat-card {
+    background:#fff; border-radius:16px; padding:16px; position:relative; overflow:hidden;
+    box-shadow: 0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(79,70,229,0.07);
+    transition: transform 220ms cubic-bezier(.16,1,.3,1), box-shadow 220ms cubic-bezier(.16,1,.3,1);
+  }
+  .stat-card:hover { transform: translateY(-3px); box-shadow: 0 4px 16px rgba(15,23,42,0.08), 0 16px 40px rgba(79,70,229,0.14); }
+  .stat-card::before { content:''; position:absolute; top:0; left:16px; right:16px; height:2px; border-radius:2px;
+    background:linear-gradient(90deg, transparent, rgba(79,70,229,0.5), transparent); opacity:0; transition:opacity 220ms; }
+  .stat-card:hover::before { opacity:1; }
+  .stat-icon { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-bottom:12px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6); }
+  .stat-icon.blue   { background: linear-gradient(135deg, rgba(79,70,229,0.16), rgba(99,102,241,0.10)); }
+  .stat-icon.green  { background: linear-gradient(135deg, rgba(16,185,129,0.18), rgba(16,185,129,0.08)); }
+  .stat-icon.amber  { background: linear-gradient(135deg, rgba(245,158,11,0.18), rgba(245,158,11,0.08)); }
+  .stat-val { font-size:26px; font-weight:800; color:#0F172A; line-height:1; letter-spacing:-0.02em; margin-bottom:4px; }
+  .stat-label { font-size:11px; color:#94A3B8; font-weight:500; }
+  .stat-trend { position:absolute; top:16px; right:16px; font-size:10px; font-weight:700; padding:3px 8px; border-radius:99px; background:#D1FAE5; color:#10B981; }
+
+  .demo-grid { display:grid; grid-template-columns:3fr 2fr; gap:14px; }
+  .panel { background:#fff; border-radius:16px; padding:18px;
+    box-shadow: 0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(79,70,229,0.07); }
+  .panel h3 { font-size:13px; font-weight:700; color:#0F172A; margin-bottom:2px; }
+  .panel .sub { font-size:10px; color:#94A3B8; margin-bottom:12px; }
+
+  table.dt { width:100%; font-size:11px; border-collapse:collapse; }
+  table.dt th { text-align:left; padding:8px 10px; color:#94A3B8; font-weight:600; text-transform:uppercase; font-size:9px; letter-spacing:0.04em; border-bottom:1px solid #EEF0FF; }
+  table.dt td { padding:9px 10px; border-bottom:1px solid #F5F7FF; color:#475569; }
+  table.dt tr { transition: background 150ms; }
+  table.dt tr:hover td { background:#F8FAFF; }
+
+  .live-dot { width:6px; height:6px; border-radius:50%; background:#10B981; display:inline-block; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* one deliberate glass moment: floating menu */
+  .demo-dropdown {
+    position:absolute; top:56px; right:20px; width:180px;
+    background: rgba(255,255,255,0.72); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border:1px solid rgba(255,255,255,0.9); border-radius:14px; padding:8px;
+    box-shadow: 0 12px 32px rgba(79,70,229,0.18), inset 0 1px 0 rgba(255,255,255,0.8);
+  }
+  .demo-dropdown .item { padding:8px 10px; border-radius:8px; font-size:11px; font-weight:600; color:#334155; }
+  .demo-dropdown .item.hot { color:#4F46E5; background:rgba(79,70,229,0.08); }
+</style>
+
+<div class="mockup">
+  <div class="mockup-header">Overview — elevated, still recognizably your admin</div>
+  <div class="mockup-body" style="padding:0;">
+    <div class="demo-shell">
+      <div class="demo-sidebar">
+        <div class="demo-logo">ocar</div>
+        <div class="demo-nav-item active">Overview</div>
+        <div class="demo-nav-item">Drivers</div>
+        <div class="demo-nav-item">Vehicles</div>
+        <div class="demo-nav-item">Rides</div>
+        <div class="demo-nav-item">Live Map</div>
+        <div class="demo-nav-item">Analytics</div>
+        <div class="demo-nav-item">Payments</div>
+      </div>
+      <div class="demo-main">
+        <div class="demo-topbar">
+          <span class="demo-title">Overview</span>
+          <div class="demo-avatar-btn">SG</div>
+        </div>
+
+        <div class="demo-stats">
+          <div class="stat-card">
+            <div class="stat-icon blue">🚗</div>
+            <div class="stat-val">1,204</div>
+            <div class="stat-label">Total Rides Today</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon green">👤</div>
+            <div class="stat-val">312</div>
+            <div class="stat-label">Active Drivers Online</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon amber">₹</div>
+            <div class="stat-val">₹48.2K</div>
+            <div class="stat-label">Revenue Today</div>
+            <span class="stat-trend">↑ 12%</span>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon blue">⚠</div>
+            <div class="stat-val">2</div>
+            <div class="stat-label">Open Disputes</div>
+          </div>
+        </div>
+
+        <div class="demo-grid">
+          <div class="panel">
+            <h3>Recent Rides</h3>
+            <p class="sub">Auto-refreshes every 30s</p>
+            <table class="dt">
+              <thead><tr><th>Time</th><th>User</th><th>Route</th><th>Fare</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>10:42 AM</td><td>Priya S.</td><td>BBSR → Puri</td><td>₹640</td><td>Completed</td></tr>
+                <tr><td>10:38 AM</td><td>Rahul K.</td><td>Cuttack → BBSR</td><td>₹280</td><td>In progress</td></tr>
+                <tr><td>10:31 AM</td><td>Anita M.</td><td>BBSR → BBSR</td><td>₹120</td><td>Completed</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <h3>Live Stats <span class="live-dot"></span></h3>
+            <p class="sub">Rides / last 12h</p>
+            <svg viewBox="0 0 300 100" style="width:100%;height:90px;">
+              <defs>
+                <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#4F46E5" stop-opacity="0.25"/>
+                  <stop offset="100%" stop-color="#4F46E5" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <polygon points="10,70 50,50 90,60 130,30 170,40 210,20 250,35 290,15 290,100 10,100" fill="url(#g1)"/>
+              <polyline points="10,70 50,50 90,60 130,30 170,40 210,20 250,35 290,15" fill="none" stroke="#4F46E5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="290" cy="15" r="4" fill="#4F46E5" style="filter:drop-shadow(0 0 6px rgba(79,70,229,0.6))"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="demo-dropdown">
+          <div class="item hot">Profile settings</div>
+          <div class="item">Notification prefs</div>
+          <div class="item">Log out</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="good" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content"><h3>This is the direction</h3><p>Same structure, elevated polish, glass only on the dropdown</p></div>
+  </div>
+  <div class="option" data-choice="adjust" onclick="toggleSelect(this)">
+    <div class="letter">✎</div>
+    <div class="content"><h3>Close, needs tweaks</h3><p>I'll describe what to change</p></div>
+  </div>
+</div>

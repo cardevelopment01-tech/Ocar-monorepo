@@ -1,0 +1,90 @@
+<h2>Restrained take — indigo, light, barely-there glass</h2>
+<p class="subtitle">Solid clean surfaces everywhere; blur reserved only for floating things (dropdown shown on the right)</p>
+
+<style>
+  .demo-shell { display:flex; height:440px; border-radius:16px; overflow:hidden; font-family:'DM Sans',sans-serif; position:relative; background:#F8FAFF; }
+  .demo-sidebar { width:150px; flex-shrink:0; padding:16px 12px; display:flex; flex-direction:column; gap:5px; background:#FFFFFF; border-right:1px solid #EEF0FF; }
+  .demo-logo { font-weight:900; font-size:15px; margin-bottom:16px; padding:0 6px; color:#4F46E5; }
+  .demo-nav-item { padding:8px 10px; border-radius:10px; font-size:11px; font-weight:600; color:#64748B; }
+  .demo-nav-item.active { background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%); color:#fff; box-shadow: 0 4px 14px rgba(79,70,229,0.30); }
+  .demo-main { flex:1; padding:18px; position:relative; }
+  .demo-topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .demo-title { font-weight:800; font-size:15px; color:#0F172A; }
+  .demo-cards { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .demo-card {
+    border-radius:16px; padding:14px; background:#FFFFFF;
+    border:1px solid #EEF0FF;
+    box-shadow: 0 2px 4px rgba(79,70,229,0.04), 0 8px 24px rgba(79,70,229,0.08);
+    position:relative; overflow:hidden;
+  }
+  .demo-card::before {
+    content:''; position:absolute; inset:0 0 auto 0; height:1px;
+    background:linear-gradient(90deg, transparent, rgba(79,70,229,0.35), transparent);
+  }
+  .demo-card .k { font-size:10px; color:#94A3B8; margin-bottom:4px; }
+  .demo-card .v { font-size:20px; font-weight:900; color:#0F172A; }
+  .demo-card .v.brand { color:#4F46E5; }
+
+  .demo-avatar-btn { width:30px; height:30px; border-radius:10px; background:#F5F7FF; border:1px solid #EEF0FF; display:flex; align-items:center; justify-content:center; font-size:12px; cursor:pointer; }
+
+  /* The ONE glass moment: a floating dropdown/menu */
+  .demo-dropdown {
+    position:absolute; top:52px; right:18px; width:170px;
+    background: rgba(255,255,255,0.72);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border:1px solid rgba(255,255,255,0.9);
+    border-radius:14px; padding:8px;
+    box-shadow: 0 12px 32px rgba(79,70,229,0.18), inset 0 1px 0 rgba(255,255,255,0.8);
+  }
+  .demo-dropdown .item { padding:8px 10px; border-radius:8px; font-size:11px; font-weight:600; color:#334155; }
+  .demo-dropdown .item.hot { color:#4F46E5; background:rgba(79,70,229,0.08); }
+</style>
+
+<div class="mockup">
+  <div class="mockup-header">Indigo · Light · Restrained glass (only on the floating menu)</div>
+  <div class="mockup-body" style="padding:0;">
+    <div class="demo-shell">
+      <div class="demo-sidebar">
+        <div class="demo-logo">ocar</div>
+        <div class="demo-nav-item active">Overview</div>
+        <div class="demo-nav-item">Drivers</div>
+        <div class="demo-nav-item">Vehicles</div>
+        <div class="demo-nav-item">Rides</div>
+        <div class="demo-nav-item">Live Map</div>
+        <div class="demo-nav-item">Payments</div>
+      </div>
+      <div class="demo-main">
+        <div class="demo-topbar">
+          <span class="demo-title">Overview</span>
+          <div class="demo-avatar-btn">SG</div>
+        </div>
+        <div class="demo-cards">
+          <div class="demo-card"><div class="k">Revenue today</div><div class="v brand">₹48.2K</div></div>
+          <div class="demo-card"><div class="k">Active drivers</div><div class="v">312</div></div>
+          <div class="demo-card"><div class="k">Rides today</div><div class="v">1,204</div></div>
+        </div>
+
+        <div class="demo-dropdown">
+          <div class="item hot">Profile settings</div>
+          <div class="item">Notification prefs</div>
+          <div class="item">Log out</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="good" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content"><h3>This direction works</h3><p>Indigo, light, solid cards, glass only on the floating menu</p></div>
+  </div>
+  <div class="option" data-choice="more-glass" onclick="toggleSelect(this)">
+    <div class="letter">+</div>
+    <div class="content"><h3>A touch more glass</h3><p>Extend the subtle blur to cards/sidebar too, still light and soft</p></div>
+  </div>
+  <div class="option" data-choice="less" onclick="toggleSelect(this)">
+    <div class="letter">−</div>
+    <div class="content"><h3>Even flatter</h3><p>Drop glass entirely, just clean solid premium indigo</p></div>
+  </div>
+</div>

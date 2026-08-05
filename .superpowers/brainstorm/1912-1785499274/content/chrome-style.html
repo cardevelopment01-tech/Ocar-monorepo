@@ -1,0 +1,105 @@
+<h2>Which glass direction feels right for the admin shell?</h2>
+<p class="subtitle">Sidebar + topbar + overview cards, teal/pink brand, both fully glassmorphic — just light vs dark chrome</p>
+
+<style>
+  .demo-shell { display:flex; height:420px; border-radius:16px; overflow:hidden; font-family:'DM Sans',sans-serif; position:relative; }
+  .demo-sidebar { width:150px; flex-shrink:0; padding:16px 12px; display:flex; flex-direction:column; gap:6px; }
+  .demo-logo { font-weight:900; font-size:15px; margin-bottom:16px; padding:0 6px; }
+  .demo-nav-item { padding:8px 10px; border-radius:10px; font-size:11px; font-weight:600; }
+  .demo-main { flex:1; padding:18px; }
+  .demo-topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .demo-title { font-weight:800; font-size:15px; }
+  .demo-cards { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .demo-card { border-radius:14px; padding:14px; }
+  .demo-card .k { font-size:10px; opacity:0.6; margin-bottom:4px; }
+  .demo-card .v { font-size:20px; font-weight:900; }
+
+  /* LIGHT GLASS */
+  .light-shell { background: linear-gradient(160deg, #EAF7F8 0%, #FCEEF5 100%); }
+  .light-shell .demo-sidebar { background: rgba(255,255,255,0.55); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-right: 1px solid rgba(255,255,255,0.6); }
+  .light-shell .demo-logo { color:#0A9FB0; }
+  .light-shell .demo-nav-item { color:#475569; }
+  .light-shell .demo-nav-item.active { background: linear-gradient(135deg, rgba(10,159,176,0.16), rgba(220,62,147,0.14)); color:#0A9FB0; box-shadow: 0 2px 10px rgba(10,159,176,0.18); }
+  .light-shell .demo-title { color:#0F172A; }
+  .light-shell .demo-card { background: rgba(255,255,255,0.6); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border:1px solid rgba(255,255,255,0.7); box-shadow: 0 8px 24px rgba(10,159,176,0.10); }
+  .light-shell .demo-card .v { color:#0F172A; }
+  .light-shell .demo-card.accent .v { background: linear-gradient(135deg,#0A9FB0,#DC3E93); -webkit-background-clip:text; background-clip:text; color:transparent; }
+
+  /* DARK GLASS */
+  .dark-shell { background: radial-gradient(circle at 30% 20%, #1a1830 0%, #0F0D1A 60%); }
+  .dark-shell .demo-sidebar { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-right: 1px solid rgba(255,255,255,0.08); }
+  .dark-shell .demo-logo { color:#fff; }
+  .dark-shell .demo-nav-item { color:rgba(255,255,255,0.55); }
+  .dark-shell .demo-nav-item.active { background: linear-gradient(135deg, rgba(10,159,176,0.25), rgba(220,62,147,0.20)); color:#fff; box-shadow: 0 2px 14px rgba(10,159,176,0.3); }
+  .dark-shell .demo-title { color:#fff; }
+  .dark-shell .demo-card { background: rgba(255,255,255,0.05); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border:1px solid rgba(255,255,255,0.10); box-shadow: 0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06); }
+  .dark-shell .demo-card .k { color:rgba(255,255,255,0.5); }
+  .dark-shell .demo-card .v { color:#fff; }
+  .dark-shell .demo-card.accent .v { background: linear-gradient(135deg,#22D3E9,#F472B6); -webkit-background-clip:text; background-clip:text; color:transparent; }
+</style>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Option A — Light Glass</div>
+    <div class="mockup-body" style="padding:0;">
+      <div class="demo-shell light-shell">
+        <div class="demo-sidebar">
+          <div class="demo-logo">ocar</div>
+          <div class="demo-nav-item active">Overview</div>
+          <div class="demo-nav-item">Drivers</div>
+          <div class="demo-nav-item">Vehicles</div>
+          <div class="demo-nav-item">Rides</div>
+          <div class="demo-nav-item">Live Map</div>
+          <div class="demo-nav-item">Payments</div>
+        </div>
+        <div class="demo-main">
+          <div class="demo-topbar">
+            <span class="demo-title">Overview</span>
+          </div>
+          <div class="demo-cards">
+            <div class="demo-card accent"><div class="k">Revenue today</div><div class="v">₹48.2K</div></div>
+            <div class="demo-card"><div class="k">Active drivers</div><div class="v">312</div></div>
+            <div class="demo-card"><div class="k">Rides today</div><div class="v">1,204</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">Option B — Dark Glass</div>
+    <div class="mockup-body" style="padding:0;">
+      <div class="demo-shell dark-shell">
+        <div class="demo-sidebar">
+          <div class="demo-logo">ocar</div>
+          <div class="demo-nav-item active">Overview</div>
+          <div class="demo-nav-item">Drivers</div>
+          <div class="demo-nav-item">Vehicles</div>
+          <div class="demo-nav-item">Rides</div>
+          <div class="demo-nav-item">Live Map</div>
+          <div class="demo-nav-item">Payments</div>
+        </div>
+        <div class="demo-main">
+          <div class="demo-topbar">
+            <span class="demo-title">Overview</span>
+          </div>
+          <div class="demo-cards">
+            <div class="demo-card accent"><div class="k">Revenue today</div><div class="v">₹48.2K</div></div>
+            <div class="demo-card"><div class="k">Active drivers</div><div class="v">312</div></div>
+            <div class="demo-card"><div class="k">Rides today</div><div class="v">1,204</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="light" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>Light Glass</h3><p>Frosted white-on-pastel, matches user/driver apps' daytime feel</p></div>
+  </div>
+  <div class="option" data-choice="dark" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>Dark Glass</h3><p>Frosted charcoal/navy, matches the splash screens' premium night feel</p></div>
+  </div>
+</div>

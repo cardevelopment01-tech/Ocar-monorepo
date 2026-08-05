@@ -12,6 +12,11 @@ services:
       timeout: 10s
       start_period: 40s
       retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   nginx:
     image: nginx:1.27-alpine
@@ -29,6 +34,11 @@ services:
       - api
     networks:
       - ocar_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   certbot_webroot:
