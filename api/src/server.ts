@@ -16,18 +16,28 @@ import { paymentReconcileWorker } from './jobs/workers/payment-reconcile.worker'
 import { settlementsWorker } from './jobs/workers/settlements.worker'
 import { cleanupQueue, schedulerQueue, partitionMaintenanceQueue, paymentsQueue, settlementsQueue } from './jobs/queues'
 
+// Pino writes asynchronously (batched) — process.exit() right after a log
+// call can kill the process before that line is flushed to stdout. Since
+// these are exactly the "why did the server just die" diagnostics, exit
+// only after flush() confirms the write completed.
+function exitAfterFlush(code: number): void {
+  logger.flush(() => process.exit(code))
+}
+
 async function start(): Promise<void> {
   const dbOk = await testConnection()
   if (!dbOk) {
     logger.error('could not connect to database, exiting')
-    process.exit(1)
+    exitAfterFlush(1)
+    return
   }
   logger.info('database connected')
 
   const redisOk = await testRedis()
   if (!redisOk) {
     logger.error('could not connect to redis, exiting')
-    process.exit(1)
+    exitAfterFlush(1)
+    return
   }
 
   const app = createApp()
@@ -122,5 +132,5 @@ async function start(): Promise<void> {
 
 start().catch((err) => {
   logger.fatal({ err }, 'server startup failed')
-  process.exit(1)
+  exitAfterFlush(1)
 })
