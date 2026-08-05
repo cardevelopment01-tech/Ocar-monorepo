@@ -15,6 +15,9 @@ vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 vi.mock('@/db/redis', () => ({ client: { duplicate: vi.fn(() => ({})) } }))
 vi.mock('@/modules/rides/rides.repository', () => ({ getPendingAssignmentsForDriver: vi.fn() }))
 vi.mock('@/modules/rides/rides.service', () => ({ updateLocation: vi.fn() }))
+vi.mock('@/lib/logger', () => ({
+  logger: { child: vi.fn(() => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() })), warn: vi.fn() },
+}))
 
 import { initSocketServer } from '@/websocket/socket.server'
 

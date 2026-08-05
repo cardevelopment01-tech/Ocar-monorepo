@@ -8,6 +8,7 @@ import { client as redis } from '@/db/redis'
 import { rideAckKey } from '@/constants/redis-keys'
 import { getPendingAssignmentsForDriver } from '@/modules/rides/rides.repository'
 import { updateLocation } from '@/modules/rides/rides.service'
+import { logger } from '@/lib/logger'
 
 // Room naming conventions:
 //   ride:{rideId}   user + driver tracking a ride
@@ -62,7 +63,8 @@ export function initSocketServer(httpServer: HttpServer): Server {
 
   io.on('connection', (socket) => {
     const user = socket.data.user as { sub: string; role: string } | undefined
-    console.log(`Socket connected: ${user?.sub} (${user?.role})`)
+    const log = logger.child({ socketId: socket.id, userId: user?.sub, role: user?.role })
+    log.info('socket connected')
 
     if (user?.role === 'driver') {
       void socket.join(`driver:${user.sub}`)
@@ -105,7 +107,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
         if (data.heading !== undefined) input.heading = data.heading
         if (data.speed   !== undefined) input.speed   = data.speed
         updateLocation(BigInt(user.sub), input).catch((err: unknown) => {
-          console.error(`location:update failed for driver ${user.sub}:`, err)
+          log.error({ err, sessionId: data.sessionId }, 'location:update failed')
         })
       })
 
@@ -140,7 +142,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
           }
         })
         .catch((err: unknown) => {
-          console.error(`Reconnect sync failed for driver ${user.sub}:`, err)
+          log.error({ err }, 'reconnect sync failed')
         })
     }
 
@@ -178,7 +180,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
     })
 
     socket.on('disconnect', () => {
-      console.log(`Socket disconnected: ${user?.sub} (${user?.role})`)
+      log.info('socket disconnected')
     })
   })
 
@@ -196,7 +198,7 @@ const NOOP_IO = { to: () => ({ emit: () => {} }) } as unknown as Server
 
 export function getIO(): Server {
   if (!io) {
-    console.warn('Socket.io not initialised — dropping real-time emit')
+    logger.warn('socket.io not initialised — dropping real-time emit')
     return NOOP_IO
   }
   return io
