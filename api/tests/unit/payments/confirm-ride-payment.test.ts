@@ -23,6 +23,7 @@ describe('confirmRidePayment', () => {
   it('pending → completed: returns true and records razorpay_payment_id when provided', async () => {
     vi.mocked(pool.query)
       .mockResolvedValueOnce({ rows: [{ driver_id: 9, user_id: 42, amount: '500.00' }], rowCount: 1 } as never) // guarded UPDATE wins
+      .mockResolvedValueOnce({ rows: [{ billing_mode_snapshot: null }], rowCount: 1 } as never) // ride's billing mode lookup (null → commission)
       .mockResolvedValueOnce({ rows: [{ commission_amount: '50.00' }], rowCount: 1 } as never) // deductCommission's own payments SELECT
       .mockResolvedValue({ rows: [], rowCount: 0 } as never) // subsequent config lookups (defaults apply)
     const result = await confirmRidePayment(BigInt(101), 'pay_abc123')

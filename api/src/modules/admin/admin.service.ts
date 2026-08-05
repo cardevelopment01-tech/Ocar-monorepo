@@ -534,11 +534,49 @@ export async function updateAdminCity(
     status?: string
     is_rental_enabled?: boolean
     is_return_cab_enabled?: boolean
+    billing_mode?: 'commission' | 'package'
   }
 ) {
   const updated = await repo.updateAdminCity(id, data)
   if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
   return updated
+}
+
+// ─── Package tiers / driver package wallet ────────────────────────────────────
+
+export async function listPackageTiers() {
+  return repo.listPackageTiers()
+}
+
+export async function createPackageTier(data: { label: string; price: number; thresholdValue: number; createdBy: bigint }) {
+  if (!data.label) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (isNaN(data.price) || data.price <= 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (isNaN(data.thresholdValue) || data.thresholdValue <= 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  return repo.createPackageTier(data)
+}
+
+export async function updatePackageTier(id: bigint, data: { label?: string; price?: number; thresholdValue?: number; isActive?: boolean }) {
+  if (data.price !== undefined && (isNaN(data.price) || data.price <= 0)) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (data.thresholdValue !== undefined && (isNaN(data.thresholdValue) || data.thresholdValue <= 0)) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  const updated = await repo.updatePackageTier(id, data)
+  if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
+  return updated
+}
+
+export async function getDriverPackageDetail(driverId: bigint) {
+  const [wallet, ledger] = await Promise.all([
+    repo.getDriverPackageWallet(driverId),
+    repo.getDriverPackageLedger(driverId),
+  ])
+  return { wallet, ledger }
+}
+
+export async function adjustDriverPackageBalance(driverId: bigint, amount: number, reason: string, adminId: bigint) {
+  if (!reason || !reason.trim()) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (isNaN(amount) || amount === 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  const { adjustPackageBalance } = await import('@/modules/packages/packages.service')
+  await adjustPackageBalance(driverId, amount, reason, adminId)
+  return repo.getDriverPackageWallet(driverId)
 }
 
 export async function getDashboardStats() {

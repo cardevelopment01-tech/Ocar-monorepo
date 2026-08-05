@@ -11,6 +11,7 @@ import {
 } from '@/lib/admin-api'
 import { vehicleCategoryApi, vehicleBrandApi, vehicleModelApi, type VehicleCategory, type VehicleBrand, type VehicleModel } from '@/lib/vehicle-api'
 import { payoutsApi } from '@/lib/payouts-api'
+import { packageApi, type DriverPackageDetail } from '@/lib/package-api'
 import { cn } from '@/lib/utils'
 import {
   InitialsAvatar, fmt, docLabel, REQUIRED_DRIVER_DOCS, REQUIRED_VEHICLE_DOCS, DocCheckItem,
@@ -135,6 +136,15 @@ export default function DriverDetailPage() {
   const [adjustmentAmount, setAdjustmentAmount] = useState('')
   const [adjustmentReason, setAdjustmentReason] = useState('')
 
+  // Package wallet (billing-mode alternative to the commission wallet above)
+  const [pkg, setPkg] = useState<DriverPackageDetail | null>(null)
+  const [pkgLoading, setPkgLoading] = useState(false)
+  const [pkgLoadError, setPkgLoadError] = useState(false)
+  const [pkgAdjustAmount, setPkgAdjustAmount] = useState('')
+  const [pkgAdjustReason, setPkgAdjustReason] = useState('')
+  const [pkgAdjustLoading, setPkgAdjustLoading] = useState(false)
+  const [pkgError, setPkgError] = useState('')
+
   // History tab (lazy, paginated audit trail)
   const [auditPage, setAuditPage] = useState(1)
   const [auditEntries, setAuditEntries] = useState<DriverAuditLogEntry[]>([])
@@ -166,6 +176,16 @@ export default function DriverDetailPage() {
       .then(res => { setPayments(res.payments); setPaymentsPagination(res.pagination) })
       .finally(() => setPaymentsLoading(false))
   }, [activeTab, driverId, paymentsPage])
+
+  useEffect(() => {
+    if (activeTab !== 'earnings') return
+    setPkgLoading(true)
+    setPkgLoadError(false)
+    packageApi.getDriverDetail(Number(driverId))
+      .then(setPkg)
+      .catch(() => { setPkg(null); setPkgLoadError(true) })
+      .finally(() => setPkgLoading(false))
+  }, [activeTab, driverId])
 
   useEffect(() => {
     if (activeTab !== 'history') return
@@ -324,6 +344,20 @@ export default function DriverDetailPage() {
       setAdjustmentAmount(''); setAdjustmentReason('')
     } catch { setPayoutError('Could not create adjustment. Please try again.') }
     finally { setPayoutActionLoading(false) }
+  }
+  async function submitPkgAdjustment() {
+    const amount = parseFloat(pkgAdjustAmount)
+    if (isNaN(amount) || amount === 0 || pkgAdjustReason.trim().length < 10) {
+      setPkgError('Enter a non-zero amount and a reason (at least 10 characters).')
+      return
+    }
+    setPkgAdjustLoading(true); setPkgError('')
+    try {
+      await packageApi.adjustDriverBalance(Number(driverId), amount, pkgAdjustReason.trim())
+      setPkgAdjustAmount(''); setPkgAdjustReason('')
+      setPkg(await packageApi.getDriverDetail(Number(driverId)))
+    } catch { setPkgError('Could not create adjustment. Please try again.') }
+    finally { setPkgAdjustLoading(false) }
   }
 
   if (loading) {
@@ -812,6 +846,62 @@ export default function DriverDetailPage() {
                     {payoutActionLoading ? 'Submitting…' : 'Add Adjustment'}
                   </button>
                 </div>
+              </div>
+
+              <div className="bg-surface-2 rounded-xl p-4 border border-border-light space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-text-secondary">Package Balance</p>
+                  {pkg?.wallet?.is_frozen && <span className="text-[10px] font-bold text-danger bg-danger/10 rounded-full px-2 py-0.5">Frozen</span>}
+                </div>
+                {pkgLoading ? (
+                  <div className="h-6 bg-surface-3 rounded animate-pulse" />
+                ) : pkg?.wallet ? (
+                  <p className={cn('text-lg font-bold', parseFloat(pkg.wallet.balance) < 0 ? 'text-warning' : 'text-text-primary')}>
+                    ₹{parseFloat(pkg.wallet.balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </p>
+                ) : pkgLoadError ? (
+                  <p className="text-sm text-danger">Couldn&apos;t load package balance. Try again.</p>
+                ) : (
+                  <p className="text-sm text-text-muted">No package wallet yet (driver hasn&apos;t purchased a package).</p>
+                )}
+
+                <div className="pt-2 border-t border-border-light space-y-2">
+                  <p className="text-xs font-semibold text-text-secondary">Manual Adjustment</p>
+                  <div className="flex gap-2">
+                    <input
+                      value={pkgAdjustAmount}
+                      onChange={e => setPkgAdjustAmount(e.target.value)}
+                      placeholder="Amount (₹, negative to deduct)"
+                      className="flex-1 text-xs bg-surface border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+                  <textarea
+                    value={pkgAdjustReason}
+                    onChange={e => setPkgAdjustReason(e.target.value)}
+                    placeholder="Reason (min 10 characters)…"
+                    rows={2}
+                    className="w-full text-xs bg-surface border border-border rounded-lg px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  {pkgError && <p className="text-xs text-danger">{pkgError}</p>}
+                  <button onClick={submitPkgAdjustment} disabled={pkgAdjustLoading} className="px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                    {pkgAdjustLoading ? 'Submitting…' : 'Add Adjustment'}
+                  </button>
+                </div>
+
+                {pkg && pkg.ledger.length > 0 && (
+                  <div className="pt-2 border-t border-border-light">
+                    <p className="text-xs font-semibold text-text-secondary mb-1.5">Recent Ledger</p>
+                    <ul className="space-y-1 max-h-40 overflow-y-auto">
+                      {pkg.ledger.map(e => (
+                        <li key={e.id} className="text-xs text-text-muted">
+                          {fmt(e.created_at)} · <span className="capitalize">{e.entry_type.replace(/_/g, ' ')}</span>{' '}
+                          {e.direction === 'credit' ? '+' : '-'}₹{parseFloat(e.amount).toLocaleString('en-IN')} (bal ₹{parseFloat(e.balance_after).toLocaleString('en-IN')})
+                          {e.note ? ` — ${e.note}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
 
               <div>

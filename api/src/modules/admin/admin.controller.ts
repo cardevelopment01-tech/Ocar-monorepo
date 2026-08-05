@@ -393,6 +393,7 @@ export async function patchAdminCity(req: Request, res: Response, next: NextFunc
     const data: {
       name?: string; state?: string; default_speed_limit_kmph?: number
       status?: string; is_rental_enabled?: boolean; is_return_cab_enabled?: boolean
+      billing_mode?: 'commission' | 'package'
     } = {}
     if (req.body.name !== undefined)                    data.name = String(req.body.name)
     if (req.body.state !== undefined)                   data.state = String(req.body.state)
@@ -400,7 +401,50 @@ export async function patchAdminCity(req: Request, res: Response, next: NextFunc
     if (req.body.status !== undefined)                  data.status = String(req.body.status)
     if (req.body.is_rental_enabled !== undefined)       data.is_rental_enabled = Boolean(req.body.is_rental_enabled)
     if (req.body.is_return_cab_enabled !== undefined)   data.is_return_cab_enabled = Boolean(req.body.is_return_cab_enabled)
+    if (req.body.billing_mode !== undefined) data.billing_mode = String(req.body.billing_mode) as 'commission' | 'package'
     res.json(await service.updateAdminCity(BigInt(req.params['id']!), data))
+  } catch (err) { next(err) }
+}
+
+// ─── Package tiers / driver package wallet ────────────────────────────────────
+
+export async function getPackageTiers(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json(await service.listPackageTiers()) } catch (err) { next(err) }
+}
+
+export async function postPackageTier(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const tier = await service.createPackageTier({
+      label: String(req.body.label ?? ''),
+      price: Number(req.body.price),
+      thresholdValue: Number(req.body.thresholdValue),
+      createdBy: req.admin!.id,
+    })
+    res.status(201).json(tier)
+  } catch (err) { next(err) }
+}
+
+export async function patchPackageTier(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const data: { label?: string; price?: number; thresholdValue?: number; isActive?: boolean } = {}
+    if (req.body.label !== undefined) data.label = String(req.body.label)
+    if (req.body.price !== undefined) data.price = Number(req.body.price)
+    if (req.body.thresholdValue !== undefined) data.thresholdValue = Number(req.body.thresholdValue)
+    if (req.body.isActive !== undefined) data.isActive = Boolean(req.body.isActive)
+    res.json(await service.updatePackageTier(BigInt(req.params['id']!), data))
+  } catch (err) { next(err) }
+}
+
+export async function getDriverPackageDetail(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json(await service.getDriverPackageDetail(BigInt(req.params['id']!))) } catch (err) { next(err) }
+}
+
+export async function patchDriverPackageBalance(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const wallet = await service.adjustDriverPackageBalance(
+      BigInt(req.params['id']!), Number(req.body.amount), String(req.body.reason ?? ''), req.admin!.id
+    )
+    res.json(wallet)
   } catch (err) { next(err) }
 }
 

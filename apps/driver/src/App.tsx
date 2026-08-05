@@ -9,6 +9,7 @@ import Login from '@/pages/Login'
 import Home from '@/pages/Home'
 import Earnings from '@/pages/Earnings'
 import Wallet from '@/pages/Wallet'
+import RechargePackage from '@/pages/RechargePackage'
 import Profile from '@/pages/Profile'
 import NavigateToPickup from '@/pages/ActiveRide/NavigateToPickup'
 import OTPVerify from '@/pages/ActiveRide/OTPVerify'
@@ -418,6 +419,11 @@ export default function App() {
             <Route path="/wallet" element={
               <ProtectedRoute requireApproved>
                 <Wallet />
+              </ProtectedRoute>
+            } />
+            <Route path="/recharge-package" element={
+              <ProtectedRoute requireApproved>
+                <RechargePackage />
               </ProtectedRoute>
             } />
             <Route path="/profile" element={

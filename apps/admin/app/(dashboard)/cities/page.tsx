@@ -169,6 +169,7 @@ function EditCityDialog({ city, onUpdated }: { city: AdminCity; onUpdated: () =>
     status: city.status,
     is_rental_enabled: city.is_rental_enabled,
     is_return_cab_enabled: city.is_return_cab_enabled,
+    billing_mode: city.billing_mode,
   })
 
   useEffect(() => {
@@ -179,6 +180,7 @@ function EditCityDialog({ city, onUpdated }: { city: AdminCity; onUpdated: () =>
         status: city.status,
         is_rental_enabled: city.is_rental_enabled,
         is_return_cab_enabled: city.is_return_cab_enabled,
+        billing_mode: city.billing_mode,
       })
       setError('')
     }
@@ -200,6 +202,7 @@ function EditCityDialog({ city, onUpdated }: { city: AdminCity; onUpdated: () =>
         status: form.status,
         is_rental_enabled: form.is_rental_enabled,
         is_return_cab_enabled: form.is_return_cab_enabled,
+        billing_mode: form.billing_mode,
       })
       setOpen(false)
       onUpdated()
@@ -242,6 +245,13 @@ function EditCityDialog({ city, onUpdated }: { city: AdminCity; onUpdated: () =>
                 <option value="draft">Draft</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Billing Mode</label>
+              <select value={form.billing_mode} onChange={e => set('billing_mode', e.target.value)} className={inputCls}>
+                <option value="commission">Commission (flat % per ride)</option>
+                <option value="package">Package (prepaid ride-value threshold)</option>
               </select>
             </div>
             <div className="space-y-3 pt-1 border-t border-border-light">
