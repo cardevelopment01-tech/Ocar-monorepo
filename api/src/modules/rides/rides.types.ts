@@ -1,3 +1,5 @@
+export type BillingMode = 'commission' | 'package'
+
 export interface DriverSession {
   id: bigint
   driver_id: bigint
@@ -84,6 +86,7 @@ export interface Ride {
   driver_current_lat: number | null
   driver_current_lng: number | null
   payment_status: string | null
+  billing_mode_snapshot: BillingMode | null
 }
 
 export interface StopInput {

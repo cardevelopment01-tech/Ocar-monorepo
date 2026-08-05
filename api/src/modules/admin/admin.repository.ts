@@ -8,6 +8,7 @@ import type {
   AdminCity, AdminDashboardStats, ActiveDriverSession, AdminRentalPackage,
   AdminAccountListItem, UpdateDriverProfilePayload,
 } from './admin.types'
+import type { PackageTier, DriverPackageWallet, DriverPackageLedgerEntry } from '@/modules/packages/packages.types'
 
 // Hardcoded whitelist, never built from request keys — this is the only thing
 // standing between an admin body and a dynamic UPDATE (see CLAUDE.md SQL rules).
@@ -883,6 +884,7 @@ const ADMIN_CITY_COLS = `
   status,
   is_rental_enabled,
   is_return_cab_enabled,
+  billing_mode,
   created_at
 `
 
@@ -937,6 +939,7 @@ export async function updateAdminCity(
     status?: string
     is_rental_enabled?: boolean
     is_return_cab_enabled?: boolean
+    billing_mode?: 'commission' | 'package'
   }
 ): Promise<AdminCity | null> {
   const sets: string[] = []
@@ -949,6 +952,7 @@ export async function updateAdminCity(
   if (data.status !== undefined)                  { sets.push(`status = $${p++}`);                   values.push(data.status) }
   if (data.is_rental_enabled !== undefined)       { sets.push(`is_rental_enabled = $${p++}`);        values.push(data.is_rental_enabled) }
   if (data.is_return_cab_enabled !== undefined)   { sets.push(`is_return_cab_enabled = $${p++}`);    values.push(data.is_return_cab_enabled) }
+  if (data.billing_mode !== undefined)            { sets.push(`billing_mode = $${p++}`);              values.push(data.billing_mode) }
 
   if (!sets.length) {
     const res = await pool.query(`SELECT ${ADMIN_CITY_COLS} FROM cities WHERE id = $1`, [id])
@@ -1575,4 +1579,69 @@ export async function getActiveDriverSessions(): Promise<ActiveDriverSession[]> 
     vehicle_name:        r.vehicle_name as string | null,
     number_plate:        r.number_plate as string | null,
   }))
+}
+
+// ─── Package tiers (city billing_mode = 'package') ────────────────────────────
+
+export async function listPackageTiers(): Promise<PackageTier[]> {
+  const res = await pool.query<PackageTier>(
+    `SELECT id, label, price::text, threshold_value::text, is_active, created_at, updated_at
+     FROM package_tiers ORDER BY price ASC`
+  )
+  return res.rows
+}
+
+export async function createPackageTier(data: {
+  label: string; price: number; thresholdValue: number; createdBy: bigint
+}): Promise<PackageTier> {
+  const res = await pool.query<PackageTier>(
+    `INSERT INTO package_tiers (label, price, threshold_value, created_by)
+     VALUES ($1,$2,$3,$4)
+     RETURNING id, label, price::text, threshold_value::text, is_active, created_at, updated_at`,
+    [data.label, data.price, data.thresholdValue, data.createdBy]
+  )
+  return res.rows[0]!
+}
+
+export async function updatePackageTier(
+  id: bigint,
+  data: { label?: string; price?: number; thresholdValue?: number; isActive?: boolean }
+): Promise<PackageTier | null> {
+  const sets: string[] = []
+  const values: unknown[] = []
+  let p = 1
+  if (data.label !== undefined)          { sets.push(`label = $${p++}`);           values.push(data.label) }
+  if (data.price !== undefined)          { sets.push(`price = $${p++}`);           values.push(data.price) }
+  if (data.thresholdValue !== undefined) { sets.push(`threshold_value = $${p++}`); values.push(data.thresholdValue) }
+  if (data.isActive !== undefined)       { sets.push(`is_active = $${p++}`);       values.push(data.isActive) }
+  if (!sets.length) return null
+  values.push(id)
+  const res = await pool.query<PackageTier>(
+    `UPDATE package_tiers SET ${sets.join(', ')} WHERE id = $${p}
+     RETURNING id, label, price::text, threshold_value::text, is_active, created_at, updated_at`,
+    values
+  )
+  return res.rows[0] ?? null
+}
+
+// ─── Driver package wallet / ledger (admin view) ──────────────────────────────
+
+export async function getDriverPackageWallet(driverId: bigint): Promise<DriverPackageWallet | null> {
+  const res = await pool.query<DriverPackageWallet>(
+    `SELECT id, driver_id, balance::text, is_frozen, frozen_reason,
+            lifetime_topup::text, lifetime_consumed::text
+     FROM driver_package_wallets WHERE driver_id = $1`,
+    [driverId]
+  )
+  return res.rows[0] ?? null
+}
+
+export async function getDriverPackageLedger(driverId: bigint, limit = 50): Promise<DriverPackageLedgerEntry[]> {
+  const res = await pool.query<DriverPackageLedgerEntry>(
+    `SELECT id, entry_type, amount::text, direction, balance_after::text,
+            ride_id, reference_id, note, created_at
+     FROM driver_package_ledger WHERE driver_id = $1 ORDER BY created_at DESC LIMIT $2`,
+    [driverId, limit]
+  )
+  return res.rows
 }
