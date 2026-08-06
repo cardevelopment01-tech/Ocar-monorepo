@@ -69,7 +69,13 @@ describe('Driver daily verification', () => {
     accessToken = login.accessToken
     driverId = login.driverId
 
-    await pool.query(`UPDATE drivers SET status = 'active' WHERE id = $1`, [driverId])
+    // goOnline() (TC-DV-002/004) now requires drivers.city_id to be set — no
+    // GPS fallback — so assign one directly since this test never runs the
+    // personal-info onboarding step that normally sets it.
+    await pool.query(
+      `UPDATE drivers SET status = 'active', city_id = (SELECT id FROM cities WHERE slug = 'bhubaneswar') WHERE id = $1`,
+      [driverId]
+    )
 
     await pool.query(
       `INSERT INTO driver_vehicles (driver_id, category_id, brand_id, model_id, number_plate, status, is_primary)

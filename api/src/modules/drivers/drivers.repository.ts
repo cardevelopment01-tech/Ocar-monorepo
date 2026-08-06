@@ -74,7 +74,7 @@ export async function updatePersonalInfo(
        experience_years    = $10,
        emergency_contact   = $11,
        languages_known     = $12,
-       city_id             = COALESCE($13, (SELECT id FROM cities WHERE lower(name) = lower($8) LIMIT 1)),
+       city_id             = COALESCE($13, (SELECT id FROM cities WHERE lower(name) = lower($8::varchar) LIMIT 1)),
        onboarding_step     = CASE
                                WHEN onboarding_step = 'personal_info' THEN 'vehicle_info'
                                ELSE onboarding_step
