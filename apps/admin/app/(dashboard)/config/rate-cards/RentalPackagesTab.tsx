@@ -323,10 +323,10 @@ function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
         <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
         <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[420px] bg-surface rounded-2xl shadow-hover p-6 z-[60]">
           <Dialog.Title className="text-lg font-bold text-text-primary mb-1">
-            Override for {cityName}
+            {pkg.category_name} · {formatDuration(pkg.duration_minutes)} / {pkg.km_limit} km
           </Dialog.Title>
           <p className="text-xs text-text-muted mb-5">
-            {pkg.category_name} · {formatDuration(pkg.duration_minutes)} / {pkg.km_limit} km — pre-filled with today&rsquo;s global price. Saving creates a {cityName}-only price for this tier; the global default is unaffected.
+            Override for <span className="font-semibold text-text-secondary">{cityName}</span> — pre-filled with today&rsquo;s global price. Saving creates a {cityName}-only price for this tier; the global default is unaffected.
           </p>
           <form onSubmit={submit} className="space-y-4">
             <div>
@@ -593,7 +593,7 @@ export default function RentalPackagesTab({
                         </td>
                         <td className="!text-right">
                           <div className="inline-flex items-center justify-end gap-1.5">
-                            {isInherited && rentalCityId !== null && selectedCity ? (
+                            {isInherited && selectedCity ? (
                               <AddOverrideDialog pkg={pkg} cityId={rentalCityId} cityName={selectedCity.name} onCreated={fetchRental} />
                             ) : (
                               <>
