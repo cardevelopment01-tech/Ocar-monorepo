@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
-import { PackageCheck, RefreshCw, TrendingDown, TrendingUp, Wallet as WalletIcon, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Check, TrendingDown, TrendingUp, Wallet as WalletIcon, AlertTriangle } from 'lucide-react'
 import StatusBar from '@/components/ui/StatusBar'
 import { useSessionStore } from '@/store/useSessionStore'
 import { cn } from '@/lib/utils'
@@ -19,6 +20,13 @@ interface PackageWallet {
   lifetime_topup: string
   lifetime_consumed: string
 }
+
+const TERMS = [
+  'Credit is added to your ride balance instantly',
+  "Used automatically to settle each ride's fare",
+  'Credit never expires',
+  'Purchases are non-refundable',
+]
 
 function Stat({ icon: Icon, label, value, tone }: {
   icon: typeof WalletIcon
@@ -40,12 +48,14 @@ function Stat({ icon: Icon, label, value, tone }: {
 }
 
 export default function RechargePackage() {
+  const navigate = useNavigate()
   const { isOnline } = useSessionStore()
   const [tiers, setTiers] = useState<PackageTier[]>([])
   const [wallet, setWallet] = useState<PackageWallet | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  const [buyingId, setBuyingId] = useState<number | null>(null)
+  const [buying, setBuying] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const prefersReducedMotion = useReducedMotion()
 
@@ -59,6 +69,7 @@ export default function RechargePackage() {
       ])
       setTiers(tiersRes.data)
       setWallet(walletRes.data)
+      setSelectedId(prev => prev ?? tiersRes.data[0]?.id ?? null)
     } catch {
       setError(true)
     } finally {
@@ -68,16 +79,19 @@ export default function RechargePackage() {
 
   useEffect(() => { void load() }, [])
 
-  const handleBuy = async (tier: PackageTier) => {
-    setBuyingId(tier.id)
+  const selectedTier = tiers.find(t => t.id === selectedId) ?? null
+
+  const handleBuy = async () => {
+    if (!selectedTier) return
+    setBuying(true)
     setMsg(null)
     try {
       const res = await api.post<{ dev?: boolean; credited?: number; orderId?: string; amount?: number; key?: string }>(
         '/api/v1/payments/packages/purchase/order',
-        { tierId: tier.id }
+        { tierId: selectedTier.id }
       )
       if (res.data.dev) {
-        setMsg(`₹${tier.threshold_value} ride credit added!`)
+        setMsg(`₹${selectedTier.threshold_value} ride credit added!`)
         void load()
         return
       }
@@ -98,7 +112,7 @@ export default function RechargePackage() {
         amount: (res.data.amount ?? 0) * 100,
         currency: 'INR',
         name: 'Ocar',
-        description: `Package: ${tier.label}`,
+        description: `Package: ${selectedTier.label}`,
         // Crediting happens server-side off the Razorpay webhook, not here —
         // there's no /packages/purchase/verify endpoint. Refetch after a
         // short delay to give the webhook time to land, but don't claim
@@ -112,7 +126,7 @@ export default function RechargePackage() {
     } catch {
       setMsg('Payment failed. Please try again.')
     } finally {
-      setBuyingId(null)
+      setBuying(false)
     }
   }
 
@@ -127,28 +141,28 @@ export default function RechargePackage() {
   const isEmpty = purchased === 0
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary pb-24">
+    // No BottomNav on this route — it's a sub-page reached from Wallet, not a
+    // primary tab. The sticky pay bar below owns the bottom of the screen.
+    <div className="min-h-screen bg-bg text-text-primary pb-40">
       <StatusBar isOnline={isOnline} earningsToday={0} />
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-[64px] pb-2">
+      {/* Header — back arrow is the only way out of this sub-page */}
+      <div className="flex items-center gap-3 px-5 pt-[64px] pb-3">
+        <button
+          onClick={() => navigate(-1)}
+          className="w-10 h-10 rounded-full bg-white border border-border flex items-center justify-center cursor-pointer hover:bg-surface-2 transition-colors flex-shrink-0"
+          aria-label="Go back"
+        >
+          <ArrowLeft size={18} className="text-text-primary" aria-hidden="true" />
+        </button>
         <div>
-          <h1 className="font-display font-bold text-2xl text-text-primary">Ride Credit</h1>
-          <p className="text-text-muted text-sm mt-0.5">Prepaid package balance</p>
+          <h1 className="font-display font-bold text-xl text-text-primary">Ride Credit</h1>
+          <p className="text-text-muted text-xs mt-0.5">Prepaid balance for rides</p>
         </div>
-        {!loading && (
-          <button
-            onClick={() => void load()}
-            className="w-10 h-10 rounded-full bg-white border border-border flex items-center justify-center cursor-pointer hover:bg-surface-2 transition-colors"
-            aria-label="Refresh package balance"
-          >
-            <RefreshCw size={15} className="text-text-secondary" aria-hidden="true" />
-          </button>
-        )}
       </div>
 
       {loading ? (
-        <div className="mx-5 rounded-3xl h-52 mb-4 skeleton" />
+        <div className="mx-5 rounded-3xl h-44 mb-4 skeleton" />
       ) : (
         <>
           {/* Balance card + threshold bar */}
@@ -158,7 +172,7 @@ export default function RechargePackage() {
             transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
           >
             <div
-              className="mx-5 rounded-3xl p-6 mb-4"
+              className="mx-5 rounded-3xl p-5 mb-4"
               style={{
                 background: isLow || wallet?.is_frozen
                   ? 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)'
@@ -177,14 +191,14 @@ export default function RechargePackage() {
                   </span>
                 )}
               </div>
-              <p className="text-white font-black text-[44px] leading-none tabular-nums">
+              <p className="text-white font-black text-[38px] leading-none tabular-nums">
                 ₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </p>
 
               {/* Threshold bar: remaining vs. total ever purchased */}
-              <div className="mt-5">
+              <div className="mt-4">
                 {isEmpty ? (
-                  <p className="text-white/70 text-xs">Buy a package below to start riding on credit</p>
+                  <p className="text-white/70 text-xs">Choose a package below to start riding on credit</p>
                 ) : (
                   <>
                     <div className="h-2.5 rounded-full bg-white/20 overflow-hidden">
@@ -211,7 +225,7 @@ export default function RechargePackage() {
 
           {/* Stat separation: purchased / used / available, at a glance */}
           <motion.div
-            className="mx-5 flex gap-2.5 mb-4"
+            className="mx-5 flex gap-2.5 mb-5"
             initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.28, delay: 0.06, ease: [0.16, 1, 0.3, 1] }}
@@ -223,9 +237,9 @@ export default function RechargePackage() {
         </>
       )}
 
-      {/* Buy a package */}
-      <div className="card-glossy mx-5 rounded-3xl p-5">
-        <p className="text-text-secondary text-sm font-semibold mb-3">Buy a package</p>
+      {/* Plan selection */}
+      <div className="px-5 mb-5">
+        <p className="text-text-secondary text-sm font-semibold mb-3">Choose a package</p>
 
         {error && (
           <p className="text-text-muted text-sm text-center py-4">
@@ -249,37 +263,78 @@ export default function RechargePackage() {
             const price = parseFloat(t.price)
             const threshold = parseFloat(t.threshold_value)
             const multiplier = price > 0 ? threshold / price : 0
+            const selected = t.id === selectedId
             return (
               <motion.button
                 key={t.id}
-                onClick={() => void handleBuy(t)}
-                disabled={buyingId === t.id}
-                className="w-full flex items-center gap-3.5 rounded-2xl px-4 py-3.5 text-left bg-surface-2 border border-transparent hover:border-primary/30 hover:bg-primary-subtle transition-colors cursor-pointer disabled:opacity-60"
+                onClick={() => setSelectedId(t.id)}
+                className={cn(
+                  'w-full flex items-center gap-3.5 rounded-2xl px-4 py-3.5 text-left border-2 transition-colors cursor-pointer',
+                  selected ? 'border-primary bg-primary-subtle' : 'border-border-light bg-white hover:border-primary/30'
+                )}
                 initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.22, delay: i * 0.04, ease: [0.16, 1, 0.3, 1] }}
+                aria-pressed={selected}
               >
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <PackageCheck size={17} className="text-primary" aria-hidden="true" />
+                <div className={cn(
+                  'w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+                  selected ? 'border-primary bg-primary' : 'border-border'
+                )}>
+                  {selected && <Check size={12} className="text-white" strokeWidth={3} aria-hidden="true" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-text-primary font-semibold text-sm">{t.label}</p>
-                  <p className="text-text-muted text-xs mt-0.5">
-                    ₹{t.price} · {multiplier >= 1.05 ? `${multiplier.toFixed(1)}× ride credit` : 'ride credit'}
+                  <p className="text-text-primary font-bold text-base tabular-nums">
+                    ₹{t.threshold_value} <span className="text-text-muted font-medium text-xs">ride credit</span>
                   </p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  {buyingId === t.id ? (
-                    <span className="text-text-muted text-xs font-semibold">Processing…</span>
-                  ) : (
-                    <span className="text-text-primary font-bold text-sm tabular-nums">₹{t.threshold_value}</span>
-                  )}
+                  <p className="text-text-muted text-xs mt-0.5">
+                    Pay ₹{t.price}{multiplier >= 1.05 ? ` · ${multiplier.toFixed(1)}× value` : ''}
+                  </p>
                 </div>
               </motion.button>
             )
           })}
         </div>
       </div>
+
+      {/* Terms */}
+      {!loading && tiers.length > 0 && (
+        <div className="px-5 mb-6">
+          <p className="text-text-secondary text-sm font-semibold mb-2">Terms</p>
+          <ul className="space-y-1.5">
+            {TERMS.map(term => (
+              <li key={term} className="flex gap-2 text-text-muted text-xs leading-relaxed">
+                <span aria-hidden="true">•</span>
+                {term}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Sticky pay bar */}
+      {!loading && tiers.length > 0 && (
+        <div
+          className="fixed bottom-0 left-0 right-0 bg-white border-t border-border px-5 pt-3"
+          style={{
+            paddingBottom: 'calc(16px + env(safe-area-inset-bottom))',
+            boxShadow: '0 -4px 24px rgba(10,159,176,0.10)',
+          }}
+        >
+          <div className="flex items-center justify-between mb-2.5">
+            <p className="text-text-muted text-xs font-medium">You pay</p>
+            <p className="text-text-primary font-bold text-lg tabular-nums">₹{selectedTier?.price ?? '0'}</p>
+          </div>
+          <button
+            onClick={() => void handleBuy()}
+            disabled={!selectedTier || buying}
+            className="btn-go w-full"
+            style={{ minHeight: 52 }}
+          >
+            {buying ? 'Processing…' : `Recharge ₹${selectedTier?.threshold_value ?? '0'} Credit`}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
