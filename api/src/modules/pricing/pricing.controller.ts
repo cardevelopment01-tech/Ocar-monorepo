@@ -16,6 +16,8 @@ export async function getRateCards(req: Request, res: Response, next: NextFuncti
 export async function getRentalPackages(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const categoryId = parseInt(req.params['categoryId']!, 10)
-    res.json(await service.getRentalPackages(categoryId))
+    const cityIdRaw = req.query['city_id']
+    const cityId = typeof cityIdRaw === 'string' && cityIdRaw !== '' ? parseInt(cityIdRaw, 10) : null
+    res.json(await service.getRentalPackages(categoryId, cityId))
   } catch (err) { next(err) }
 }
