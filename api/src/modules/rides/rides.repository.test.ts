@@ -5,7 +5,7 @@ vi.mock('@/db/client', () => ({
   pool: { query: (...args: unknown[]) => mockQuery(...args) },
 }))
 
-import { getEligibleDriverCategoryIds, findNearbyDrivers, findReturnCabDrivers } from './rides.repository'
+import { getEligibleDriverCategoryIds, findNearbyDrivers, findReturnCabDrivers, getCategoryDisplayName } from './rides.repository'
 
 describe('findNearbyDrivers', () => {
   beforeEach(() => { mockQuery.mockReset() })
@@ -68,5 +68,21 @@ describe('getEligibleDriverCategoryIds', () => {
     const result = await getEligibleDriverCategoryIds(5n)
 
     expect(result).toEqual([5n])
+  })
+})
+
+describe('getCategoryDisplayName', () => {
+  beforeEach(() => { mockQuery.mockReset() })
+
+  it('returns the display_name for a known category', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ display_name: 'Sedan' }] })
+    const result = await getCategoryDisplayName(2n)
+    expect(result).toBe('Sedan')
+  })
+
+  it('returns null when the category does not exist', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+    const result = await getCategoryDisplayName(999n)
+    expect(result).toBeNull()
   })
 })

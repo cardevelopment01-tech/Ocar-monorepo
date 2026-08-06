@@ -32,6 +32,14 @@ export async function getEligibleDriverCategoryIds(rideCategoryId: bigint): Prom
   return [rideCategoryId, ...res.rows.map(r => BigInt(r.category_id))]
 }
 
+export async function getCategoryDisplayName(categoryId: bigint): Promise<string | null> {
+  const res = await pool.query<{ display_name: string }>(
+    `SELECT display_name FROM vehicle_categories WHERE id = $1`,
+    [categoryId]
+  )
+  return res.rows[0]?.display_name ?? null
+}
+
 export async function createSession(data: {
   driverId: bigint
   vehicleId: bigint
