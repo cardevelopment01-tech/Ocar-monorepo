@@ -5,6 +5,7 @@ const mockGetRideStops = vi.fn()
 const mockFindNearbyDrivers = vi.fn()
 const mockFindReturnCabDrivers = vi.fn()
 const mockGetEligibleDriverCategoryIds = vi.fn()
+const mockGetCategoryDisplayName = vi.fn()
 const mockCreateRideAssignment = vi.fn()
 const mockUpdateRideStatus = vi.fn()
 const mockLogStatusHistory = vi.fn()
@@ -15,6 +16,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   findNearbyDrivers: (...a: unknown[]) => mockFindNearbyDrivers(...a),
   findReturnCabDrivers: (...a: unknown[]) => mockFindReturnCabDrivers(...a),
   getEligibleDriverCategoryIds: (...a: unknown[]) => mockGetEligibleDriverCategoryIds(...a),
+  getCategoryDisplayName: (...a: unknown[]) => mockGetCategoryDisplayName(...a),
   createRideAssignment: (...a: unknown[]) => mockCreateRideAssignment(...a),
   updateRideStatus: (...a: unknown[]) => mockUpdateRideStatus(...a),
   logStatusHistory: (...a: unknown[]) => mockLogStatusHistory(...a),
@@ -42,6 +44,7 @@ describe('processBroadcast category eligibility per round', () => {
     mockGetRideStops.mockResolvedValue([])
     mockFindNearbyDrivers.mockResolvedValue([])
     mockFindReturnCabDrivers.mockResolvedValue([])
+    mockGetCategoryDisplayName.mockResolvedValue('Sedan')
   })
 
   it('round 1 queries only the ride\'s exact category, without calling the eligibility helper', async () => {
