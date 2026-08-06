@@ -110,7 +110,7 @@ export async function upsertDriverLocation(data: {
 export async function findNearbyDrivers(params: {
   lat: number
   lng: number
-  categoryId: bigint
+  categoryIds: bigint[]
   radiusMetres?: number
   maxDrivers?: number
   minWalletBalance: number
@@ -142,7 +142,7 @@ export async function findNearbyDrivers(params: {
      WHERE dls.is_available = true
        AND ds.status = 'online'
        AND ds.mode = 'standard'
-       AND ds.category_id = $3
+       AND ds.category_id = ANY($3::bigint[])
        AND (
          (nc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
          OR
@@ -161,7 +161,7 @@ export async function findNearbyDrivers(params: {
        )
      ORDER BY distance_metres ASC
      LIMIT $5`,
-    [params.lat, params.lng, params.categoryId, radius, max, params.minWalletBalance]
+    [params.lat, params.lng, params.categoryIds, radius, max, params.minWalletBalance]
   )
   return res.rows
 }
