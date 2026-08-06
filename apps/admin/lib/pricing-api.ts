@@ -102,8 +102,10 @@ export interface RentalPackageAdmin {
 }
 
 export const rentalPackageApi = {
-  list: (): Promise<RentalPackageAdmin[]> =>
-    api.get('/api/v1/admin/pricing/rental-packages').then(r => r.data as RentalPackageAdmin[]),
+  list: (cityId?: number | null): Promise<RentalPackageAdmin[]> =>
+    api.get('/api/v1/admin/pricing/rental-packages', {
+      params: cityId != null ? { city_id: cityId } : {},
+    }).then(r => r.data as RentalPackageAdmin[]),
 
   update: (id: number, data: {
     package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
