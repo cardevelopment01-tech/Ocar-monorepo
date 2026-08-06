@@ -439,6 +439,8 @@ export async function updateAdminRentalPackage(
     throw Object.assign(new Error('duration_minutes must be between 1 and 1440'), { httpStatus: 400 })
   if (body.km_limit         !== undefined && (isNaN(body.km_limit)         || body.km_limit         <= 0 || body.km_limit         > 1000))
     throw Object.assign(new Error('km_limit must be between 1 and 1000'), { httpStatus: 400 })
+  if (body.city_id !== undefined && body.city_id !== null && (isNaN(body.city_id) || body.city_id <= 0))
+    throw Object.assign(new Error('city_id must be a positive integer'), { httpStatus: 400 })
 
   try {
     const pkg = await repo.updateAdminRentalPackage(id, body, adminId)
@@ -486,6 +488,8 @@ export async function createAdminRentalPackage(
     throw Object.assign(new Error('extra_per_km must be > 0'), { httpStatus: 400 })
   if (isNaN(body.extra_per_min) || body.extra_per_min < 0)
     throw Object.assign(new Error('extra_per_min must be >= 0'), { httpStatus: 400 })
+  if (body.city_id !== undefined && body.city_id !== null && (isNaN(body.city_id) || body.city_id <= 0))
+    throw Object.assign(new Error('city_id must be a positive integer'), { httpStatus: 400 })
 
   try {
     return await repo.createAdminRentalPackage(body, adminId)
