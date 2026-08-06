@@ -57,7 +57,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       pickupLng: data.originLng,
       dropLat:   data.destinationLat,
       dropLng:   data.destinationLng,
-      categoryId,
+      categoryIds: [categoryId],
       minWalletBalance,
     })
     drivers = returnDrivers.map(d => ({

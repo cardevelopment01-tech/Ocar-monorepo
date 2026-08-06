@@ -142,7 +142,7 @@ router.get('/return-cab-available', async (req, res, next) => {
       res.status(400).json({ error: 'pickupLat, pickupLng, dropLat, dropLng required' }); return
     }
     const minWalletBalance = await paymentsService.getMinWalletBalance()
-    const drivers = await repo.findReturnCabDrivers({ pickupLat, pickupLng, dropLat, dropLng, categoryId, minWalletBalance })
+    const drivers = await repo.findReturnCabDrivers({ pickupLat, pickupLng, dropLat, dropLng, categoryIds: [categoryId], minWalletBalance })
     res.json({ drivers, count: drivers.length })
   } catch (err) { next(err) }
 })
