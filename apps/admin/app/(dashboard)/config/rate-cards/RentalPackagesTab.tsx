@@ -140,27 +140,32 @@ function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackag
 }
 
 function CreateRentalPackageDialog({
-  categories, cities,
+  categories, cities, defaultCityId,
   onCreated,
 }: {
   categories: { id: number; display_name: string }[]
   cities: AdminCity[]
+  defaultCityId: number | null
   onCreated: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
-    city_id: '', category_id: '', duration_minutes: '', km_limit: '', display_order: '',
+    city_id: defaultCityId !== null ? String(defaultCityId) : '',
+    category_id: '', duration_minutes: '', km_limit: '', display_order: '',
     package_fare: '', extra_per_km: '', extra_per_min: '0',
   })
 
   useEffect(() => {
     if (open) {
-      setForm({ city_id: '', category_id: '', duration_minutes: '', km_limit: '', display_order: '', package_fare: '', extra_per_km: '', extra_per_min: '0' })
+      setForm({
+        city_id: defaultCityId !== null ? String(defaultCityId) : '',
+        category_id: '', duration_minutes: '', km_limit: '', display_order: '', package_fare: '', extra_per_km: '', extra_per_min: '0',
+      })
       setError('')
     }
-  }, [open])
+  }, [open, defaultCityId])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setLoading(true); setError('')
@@ -478,7 +483,7 @@ export default function RentalPackagesTab({
             </p>
           )}
         </div>
-        <CreateRentalPackageDialog categories={rentalCategories} cities={cities} onCreated={fetchRental} />
+        <CreateRentalPackageDialog categories={rentalCategories} cities={cities} onCreated={fetchRental} defaultCityId={rentalCityId} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
