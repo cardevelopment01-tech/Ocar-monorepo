@@ -96,6 +96,8 @@ export interface RentalPackageAdmin {
   extra_per_km: string
   extra_per_min: string
   is_active: boolean
+  city_id: number | null
+  city_name: string | null
   updated_at: string
 }
 
@@ -105,13 +107,14 @@ export const rentalPackageApi = {
 
   update: (id: number, data: {
     package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
-    duration_minutes?: number; km_limit?: number; display_order?: number
+    duration_minutes?: number; km_limit?: number; display_order?: number; city_id?: number | null
   }): Promise<RentalPackageAdmin> =>
     api.patch(`/api/v1/admin/pricing/rental-packages/${id}`, data).then(r => r.data as RentalPackageAdmin),
 
   create: (data: {
     category_id: number; duration_minutes: number; km_limit: number
     package_fare: number; extra_per_km: number; extra_per_min: number; display_order?: number
+    city_id?: number | null
   }): Promise<RentalPackageAdmin> =>
     api.post('/api/v1/admin/pricing/rental-packages', data).then(r => r.data as RentalPackageAdmin),
 
