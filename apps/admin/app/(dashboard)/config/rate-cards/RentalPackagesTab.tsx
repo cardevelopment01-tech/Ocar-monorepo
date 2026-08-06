@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 import { Pencil, Package, Plus, Trash2, ChevronDown, Globe } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -387,6 +388,7 @@ export default function RentalPackagesTab({
   const [deleteTarget,  setDeleteTarget]  = useState<RentalPackageAdmin | null>(null)
   const [rentalCityId, setRentalCityId]  = useState<number | null>(null) // null = Global Defaults
   const [switcherOpen,  setSwitcherOpen]  = useState(false)
+  const prefersReducedMotion = useReducedMotion()
 
   const fetchRental = useCallback(async () => {
     setRentalLoading(true); setRentalError('')
@@ -539,7 +541,8 @@ export default function RentalPackagesTab({
           <p className="text-sm text-text-muted">Create the first package using the button above.</p>
         </div>
       ) : (
-        CATEGORY_ORDER.map(slug => {
+        <div key={rentalCityId ?? 'global'} className="space-y-5">
+        {CATEGORY_ORDER.map(slug => {
           const rows = rentalGrouped[slug]
           if (!rows?.length) return null
           const catName = rows[0]?.category_name ?? slug
@@ -566,11 +569,17 @@ export default function RentalPackagesTab({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map(pkg => {
+                  {rows.map((pkg, i) => {
                     const isInherited = rentalCityId !== null && pkg.city_id === null
                     const isOverride  = rentalCityId !== null && pkg.city_id !== null
                     return (
-                      <tr key={pkg.id} className={`cursor-default ${!pkg.is_active ? 'opacity-50' : ''}`}>
+                      <motion.tr
+                        key={pkg.id}
+                        initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.24, delay: prefersReducedMotion ? 0 : Math.min(i * 0.02, 0.2), ease: [0.16, 1, 0.3, 1] }}
+                        className={`cursor-default ${!pkg.is_active ? 'opacity-50' : ''}`}
+                      >
                         <td className="font-semibold text-text-primary">
                           {formatDuration(pkg.duration_minutes)}
                         </td>
@@ -616,14 +625,15 @@ export default function RentalPackagesTab({
                             )}
                           </div>
                         </td>
-                      </tr>
+                      </motion.tr>
                     )
                   })}
                 </tbody>
               </table>
             </div>
           )
-        })
+        })}
+        </div>
       )}
 
       <ConfirmDialog
