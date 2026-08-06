@@ -16,6 +16,20 @@ export async function findDriverById(id: bigint): Promise<Driver | null> {
   return rows[0] ?? null
 }
 
+// Drives which wallet UI the driver app shows (Wallet.tsx vs RechargePackage.tsx)
+// — mirrors the same drivers.city_id -> cities.billing_mode resolution used at
+// go-online/accept-ride, no GPS fallback. NULL if the driver has no assigned
+// city (matches the CITY_NOT_ASSIGNED gate on going online).
+export async function getDriverBillingMode(id: bigint): Promise<'commission' | 'package' | null> {
+  const rows = await query<{ billing_mode: 'commission' | 'package' }>(
+    `SELECT c.billing_mode FROM drivers d
+     JOIN cities c ON c.id = d.city_id AND c.status = 'active'
+     WHERE d.id = $1`,
+    [id.toString()]
+  )
+  return rows[0]?.billing_mode ?? null
+}
+
 export async function countCompletedRides(driverId: bigint): Promise<number> {
   const rows = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM rides WHERE driver_id = $1 AND status = 'completed'`,

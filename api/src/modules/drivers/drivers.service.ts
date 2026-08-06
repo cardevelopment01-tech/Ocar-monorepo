@@ -76,14 +76,16 @@ export async function getMe(driverId: bigint): Promise<{
   driver: Driver
   onboarding: OnboardingStatus
   stats: { total_rides: number; rating_avg: number | null; top_tags: { label: string; count: number }[] }
+  billing_mode: 'commission' | 'package' | null
 }> {
   const driver = await repo.findDriverById(driverId)
   if (!driver) throw createHttpError(AppErrors.NOT_FOUND)
 
-  const [onboarding, totalRides, topTags] = await Promise.all([
+  const [onboarding, totalRides, topTags, billingMode] = await Promise.all([
     getOnboardingStatus(driverId),
     repo.countCompletedRides(driverId),
     safetyRepo.getTopDriverTags(driverId),
+    repo.getDriverBillingMode(driverId),
   ])
 
   const ratingAvg = Number(driver.rating_avg)
@@ -91,6 +93,7 @@ export async function getMe(driverId: bigint): Promise<{
     driver,
     onboarding,
     stats: { total_rides: totalRides, rating_avg: ratingAvg > 0 ? ratingAvg : null, top_tags: topTags },
+    billing_mode: billingMode,
   }
 }
 
