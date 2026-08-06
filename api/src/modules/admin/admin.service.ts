@@ -425,7 +425,7 @@ export async function updateAdminRentalPackage(
   id: bigint,
   body: {
     package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
-    duration_minutes?: number; km_limit?: number; display_order?: number
+    duration_minutes?: number; km_limit?: number; display_order?: number; city_id?: number | null
   },
   adminId: bigint,
 ) {
@@ -439,6 +439,8 @@ export async function updateAdminRentalPackage(
     throw Object.assign(new Error('duration_minutes must be between 1 and 1440'), { httpStatus: 400 })
   if (body.km_limit         !== undefined && (isNaN(body.km_limit)         || body.km_limit         <= 0 || body.km_limit         > 1000))
     throw Object.assign(new Error('km_limit must be between 1 and 1000'), { httpStatus: 400 })
+  if (body.city_id !== undefined && body.city_id !== null && (isNaN(body.city_id) || body.city_id <= 0))
+    throw Object.assign(new Error('city_id must be a positive integer'), { httpStatus: 400 })
 
   try {
     const pkg = await repo.updateAdminRentalPackage(id, body, adminId)
@@ -469,7 +471,8 @@ export async function deleteAdminRentalPackage(id: bigint) {
 export async function createAdminRentalPackage(
   body: {
     category_id: number; duration_minutes: number; km_limit: number
-    package_fare: number; extra_per_km: number; extra_per_min: number; display_order?: number
+    package_fare: number; extra_per_km: number; extra_per_min: number
+    display_order?: number; city_id?: number | null
   },
   adminId: bigint,
 ) {
@@ -485,6 +488,8 @@ export async function createAdminRentalPackage(
     throw Object.assign(new Error('extra_per_km must be > 0'), { httpStatus: 400 })
   if (isNaN(body.extra_per_min) || body.extra_per_min < 0)
     throw Object.assign(new Error('extra_per_min must be >= 0'), { httpStatus: 400 })
+  if (body.city_id !== undefined && body.city_id !== null && (isNaN(body.city_id) || body.city_id <= 0))
+    throw Object.assign(new Error('city_id must be a positive integer'), { httpStatus: 400 })
 
   try {
     return await repo.createAdminRentalPackage(body, adminId)

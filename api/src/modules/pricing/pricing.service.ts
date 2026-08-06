@@ -93,8 +93,8 @@ export async function getRateCardHistory() {
   return repo.getRateCardHistory()
 }
 
-export async function getRentalPackages(categoryId: number) {
-  return repo.getRentalPackagesByCategory(categoryId)
+export async function getRentalPackages(categoryId: number, cityId: number | null) {
+  return repo.getRentalPackagesByCategory(categoryId, cityId)
 }
 
 export async function createRateCard(data: Parameters<typeof repo.createRateCard>[0]) {

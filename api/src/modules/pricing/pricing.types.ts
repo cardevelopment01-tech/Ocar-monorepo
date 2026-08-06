@@ -60,6 +60,8 @@ export interface RentalPackage {
   extra_per_km: number
   extra_per_min: number
   is_active: boolean
+  city_id: number | null
+  city_name: string | null
 }
 
 export interface FareEstimateRequest {

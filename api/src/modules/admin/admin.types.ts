@@ -303,6 +303,8 @@ export interface AdminRentalPackage {
   extra_per_km: string
   extra_per_min: string
   is_active: boolean
+  city_id: number | null
+  city_name?: string | null
   updated_by: number | null
   created_at: string
   updated_at: string

@@ -468,11 +468,12 @@ function CreateSurgeDialog({
 
 // ── Rental package dialogs ─────────────────────────────────────────────────────
 
-function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; onUpdated: () => void }) {
+function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackageAdmin; cities: AdminCity[]; onUpdated: () => void }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
+    city_id: pkg.city_id !== null ? String(pkg.city_id) : '',
     duration_minutes: String(pkg.duration_minutes),
     km_limit:      String(pkg.km_limit),
     display_order: String(pkg.display_order),
@@ -484,6 +485,7 @@ function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; 
   useEffect(() => {
     if (open) {
       setForm({
+        city_id: pkg.city_id !== null ? String(pkg.city_id) : '',
         duration_minutes: String(pkg.duration_minutes),
         km_limit:      String(pkg.km_limit),
         display_order: String(pkg.display_order),
@@ -497,6 +499,7 @@ function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; 
     e.preventDefault(); setLoading(true); setError('')
     try {
       await rentalPackageApi.update(pkg.id, {
+        city_id: form.city_id ? parseInt(form.city_id, 10) : null,
         duration_minutes: parseInt(form.duration_minutes, 10),
         km_limit:      parseInt(form.km_limit, 10),
         display_order: parseInt(form.display_order, 10),
@@ -526,6 +529,18 @@ function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; 
           </Dialog.Title>
           <p className="text-xs text-text-muted mb-5">Updates take effect on the next booking.</p>
           <form onSubmit={submit} className="space-y-4">
+            <div>
+              <label className={labelCls}>City</label>
+              <select value={form.city_id} onChange={e => setForm(f => ({ ...f, city_id: e.target.value }))} className={inputCls}>
+                <option value="">All Cities (Global Default)</option>
+                {cities.filter(c => c.status === 'active').map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-text-muted mt-1">
+                {form.city_id ? 'Overrides this tier for the selected city only.' : 'Applies to any city without its own override for this tier.'}
+              </p>
+            </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className={labelCls}>Duration (min) *</label>
@@ -584,23 +599,24 @@ function EditRentalPackageDialog({ pkg, onUpdated }: { pkg: RentalPackageAdmin; 
 }
 
 function CreateRentalPackageDialog({
-  categories,
+  categories, cities,
   onCreated,
 }: {
   categories: { id: number; display_name: string }[]
+  cities: AdminCity[]
   onCreated: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
-    category_id: '', duration_minutes: '', km_limit: '', display_order: '',
+    city_id: '', category_id: '', duration_minutes: '', km_limit: '', display_order: '',
     package_fare: '', extra_per_km: '', extra_per_min: '0',
   })
 
   useEffect(() => {
     if (open) {
-      setForm({ category_id: '', duration_minutes: '', km_limit: '', display_order: '', package_fare: '', extra_per_km: '', extra_per_min: '0' })
+      setForm({ city_id: '', category_id: '', duration_minutes: '', km_limit: '', display_order: '', package_fare: '', extra_per_km: '', extra_per_min: '0' })
       setError('')
     }
   }, [open])
@@ -609,18 +625,19 @@ function CreateRentalPackageDialog({
     e.preventDefault(); setLoading(true); setError('')
     try {
       await rentalPackageApi.create({
-        category_id:      parseInt(form.category_id, 10),
-        duration_minutes: parseInt(form.duration_minutes, 10),
-        km_limit:         parseInt(form.km_limit, 10),
-        package_fare:     parseFloat(form.package_fare),
-        extra_per_km:     parseFloat(form.extra_per_km),
-        extra_per_min:    parseFloat(form.extra_per_min),
+        city_id:           form.city_id ? parseInt(form.city_id, 10) : null,
+        category_id:       parseInt(form.category_id, 10),
+        duration_minutes:  parseInt(form.duration_minutes, 10),
+        km_limit:          parseInt(form.km_limit, 10),
+        package_fare:      parseFloat(form.package_fare),
+        extra_per_km:      parseFloat(form.extra_per_km),
+        extra_per_min:     parseFloat(form.extra_per_min),
         ...(form.display_order ? { display_order: parseInt(form.display_order, 10) } : {}),
       })
       setOpen(false); onCreated()
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Failed to create package. A package with this duration and km limit may already exist for this category.')
+      setError(msg ?? 'Failed to create package. A package with this duration, km limit, and city may already exist for this category.')
     } finally { setLoading(false) }
   }
 
@@ -639,6 +656,15 @@ function CreateRentalPackageDialog({
             Set duration and km limit freely; they no longer have to follow a fixed ratio.
           </p>
           <form onSubmit={submit} className="space-y-4">
+            <div>
+              <label className={labelCls}>City</label>
+              <select value={form.city_id} onChange={e => setForm(f => ({ ...f, city_id: e.target.value }))} className={inputCls}>
+                <option value="">All Cities (Global Default)</option>
+                {cities.filter(c => c.status === 'active').map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className={labelCls}>Category *</label>
               <select required value={form.category_id}
@@ -864,6 +890,7 @@ export default function RateCardsPage() {
         {activeTab === 'rental' && (
           <CreateRentalPackageDialog
             categories={rentalCategories}
+            cities={cities}
             onCreated={fetchRental}
           />
         )}
@@ -1147,7 +1174,7 @@ export default function RateCardsPage() {
             </div>
           ) : rentalLoading ? (
             <div className="admin-card !p-0 overflow-hidden">
-              <table className="data-table"><tbody><SkeletonRows cols={8} n={8} /></tbody></table>
+              <table className="data-table"><tbody><SkeletonRows cols={9} n={8} /></tbody></table>
             </div>
           ) : rentalPkgs.length === 0 ? (
             <div className="admin-card text-center py-12">
@@ -1173,6 +1200,7 @@ export default function RateCardsPage() {
                     <thead>
                       <tr>
                         <th>Duration</th>
+                        <th>City</th>
                         <th>KM Limit</th>
                         <th className="!text-right">Package Fare</th>
                         <th className="!text-right">Extra/km</th>
@@ -1188,6 +1216,11 @@ export default function RateCardsPage() {
                           <td className="font-semibold text-text-primary">
                             {formatDuration(pkg.duration_minutes)}
                           </td>
+                          <td>
+                            {pkg.city_name
+                              ? <span className="pill-info">{pkg.city_name}</span>
+                              : <span className="pill-muted">Global</span>}
+                          </td>
                           <td className="text-text-secondary">{pkg.km_limit} km</td>
                           <td className="!text-right font-mono font-bold text-text-primary">{numFmt(pkg.package_fare)}</td>
                           <td className="!text-right font-mono text-text-secondary">{numFmt(pkg.extra_per_km)}</td>
@@ -1200,7 +1233,7 @@ export default function RateCardsPage() {
                             />
                           </td>
                           <td className="!text-right">
-                            <EditRentalPackageDialog pkg={pkg} onUpdated={fetchRental} />
+                            <EditRentalPackageDialog pkg={pkg} cities={cities} onUpdated={fetchRental} />
                           </td>
                           <td className="!text-right">
                             <button

@@ -66,12 +66,21 @@ export async function getRentalPackage(packageId: number) {
   return res.rows[0] ?? null
 }
 
-export async function getRentalPackagesByCategory(categoryId: number) {
+export async function getRentalPackagesByCategory(categoryId: number, cityId: number | null) {
   const res = await pool.query(
-    `SELECT * FROM rental_packages
-     WHERE category_id = $1 AND is_active = true
-     ORDER BY display_order, duration_minutes`,
-    [categoryId]
+    `SELECT * FROM (
+       SELECT DISTINCT ON (rp.duration_minutes, rp.km_limit)
+              rp.*, vc.display_name AS category_name, c.name AS city_name
+       FROM rental_packages rp
+       JOIN vehicle_categories vc ON vc.id = rp.category_id
+       LEFT JOIN cities c ON c.id = rp.city_id
+       WHERE rp.category_id = $1
+         AND rp.is_active = true
+         AND (rp.city_id = $2 OR rp.city_id IS NULL)
+       ORDER BY rp.duration_minutes, rp.km_limit, rp.city_id NULLS LAST
+     ) t
+     ORDER BY t.display_order, t.duration_minutes`,
+    [categoryId, cityId]
   )
   return res.rows
 }

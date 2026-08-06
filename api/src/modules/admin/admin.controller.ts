@@ -580,10 +580,10 @@ export async function getAdminRentalPackages(_req: Request, res: Response, next:
 
 export async function patchAdminRentalPackage(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { package_fare, extra_per_km, extra_per_min, is_active, duration_minutes, km_limit, display_order } = req.body as Record<string, unknown>
+    const { package_fare, extra_per_km, extra_per_min, is_active, duration_minutes, km_limit, display_order, city_id } = req.body as Record<string, unknown>
     const fields: {
       package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
-      duration_minutes?: number; km_limit?: number; display_order?: number
+      duration_minutes?: number; km_limit?: number; display_order?: number; city_id?: number | null
     } = {}
     if (package_fare     !== undefined) fields.package_fare     = Number(package_fare)
     if (extra_per_km     !== undefined) fields.extra_per_km     = Number(extra_per_km)
@@ -592,6 +592,7 @@ export async function patchAdminRentalPackage(req: Request, res: Response, next:
     if (duration_minutes !== undefined) fields.duration_minutes = Number(duration_minutes)
     if (km_limit         !== undefined) fields.km_limit         = Number(km_limit)
     if (display_order    !== undefined) fields.display_order    = Number(display_order)
+    if (city_id          !== undefined) fields.city_id          = city_id === null ? null : Number(city_id)
     res.json(await service.updateAdminRentalPackage(BigInt(req.params['id']!), fields, req.admin!.id))
   } catch (err) { next(err) }
 }
@@ -605,7 +606,7 @@ export async function deleteAdminRentalPackage(req: Request, res: Response, next
 
 export async function postAdminRentalPackage(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { category_id, duration_minutes, km_limit, package_fare, extra_per_km, extra_per_min, display_order } = req.body as Record<string, unknown>
+    const { category_id, duration_minutes, km_limit, package_fare, extra_per_km, extra_per_min, display_order, city_id } = req.body as Record<string, unknown>
     const pkg = await service.createAdminRentalPackage({
       category_id:      Number(category_id),
       duration_minutes: Number(duration_minutes),
@@ -614,6 +615,7 @@ export async function postAdminRentalPackage(req: Request, res: Response, next: 
       extra_per_km:     Number(extra_per_km),
       extra_per_min:    Number(extra_per_min),
       ...(display_order !== undefined ? { display_order: Number(display_order) } : {}),
+      ...(city_id !== undefined ? { city_id: city_id === null ? null : Number(city_id) } : {}),
     }, req.admin!.id)
     res.status(201).json(pkg)
   } catch (err) { next(err) }
