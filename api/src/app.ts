@@ -15,6 +15,7 @@ import adminRouter from '@/modules/admin/admin.routes'
 import geoRouter from '@/modules/geo/geo.routes'
 import pricingRouter from '@/modules/pricing/pricing.routes'
 import ridesRouter from '@/modules/rides/rides.routes'
+import rideChatRouter from '@/modules/ride-chat/ride-chat.routes'
 import paymentsRouter from '@/modules/payments/payments.routes'
 import safetyRouter     from '@/modules/safety/safety.routes'
 import usersRouter      from '@/modules/users/users.routes'
@@ -96,6 +97,7 @@ export function createApp(): Application {
   apiRouter.use('/geo', geoRouter)
   apiRouter.use('/pricing', pricingRouter)
   apiRouter.use('/rides', ridesRouter)
+  apiRouter.use('/rides', rideChatRouter)   // ride-chat: POST/GET/PATCH /rides/:id/messages
   apiRouter.use('/payments', paymentsRouter)
 apiRouter.use('/payments/settlements', settlementsRouter)
   apiRouter.use('/safety',    safetyRouter)

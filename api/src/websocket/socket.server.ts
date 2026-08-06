@@ -260,4 +260,11 @@ export const socketEvents = {
     const room = ownerType === 'admin' ? 'admin:ops' : `${ownerType}:${ownerId}`
     getIO().to(room).emit('notification:new', data)
   },
+
+  emitChatMessage: (rideId: string, data: object) => {
+    getIO().to(`ride:${rideId}`).emit('chat:message', data)
+  },
+  emitChatRead: (rideId: string, data: object) => {
+    getIO().to(`ride:${rideId}`).emit('chat:read', data)
+  },
 }

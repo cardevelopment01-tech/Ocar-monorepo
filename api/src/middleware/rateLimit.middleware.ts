@@ -48,3 +48,18 @@ export const authLimiter = rateLimit({
   skip: skipInTest,
   message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
 })
+
+// Per (principal, ride) chat-send throttle. express-rate-limit is a fixed-window
+// counter, so this caps ~5 sends/second/ride rather than a true "burst 5 then
+// 1/sec" token bucket — close enough, and it reuses the existing middleware
+// stack. ponytail: fixed-window approximation; swap for a Redis token-bucket
+// (see the OTP rate limiter pattern in lib/otp.ts) only if abuse proves this too coarse.
+export const chatMessageLimiter = rateLimit({
+  windowMs: 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: skipInTest,
+  keyGenerator: (req) => `chat:${principalKey(req)}:${req.params['id'] ?? ''}`,
+  message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
+})
