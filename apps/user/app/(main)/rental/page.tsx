@@ -164,13 +164,13 @@ function RentalContent() {
   const [paymentNote,     setPaymentNote]     = useState<string | null>(null)
 
   // Fetch packages whenever category changes; auto-select first
-  const loadPackages = useCallback(async (catId: number) => {
+  const loadPackages = useCallback(async (catId: number, cityId: number) => {
     setPkgsLoading(true)
     setPackages([])
     setSelectedPkgId(null)
     setEstimate(null)
     try {
-      const pkgs = await rideApi.getRentalPackages(catId)
+      const pkgs = await rideApi.getRentalPackages(catId, cityId)
       setPackages(pkgs)
       if (pkgs[0]) setSelectedPkgId(pkgs[0].id)
     } catch {
@@ -180,7 +180,7 @@ function RentalContent() {
     }
   }, [])
 
-  useEffect(() => { void loadPackages(selectedCatId) }, [selectedCatId, loadPackages])
+  useEffect(() => { void loadPackages(selectedCatId, originCityId) }, [selectedCatId, originCityId, loadPackages])
 
   useEffect(() => {
     if (!hasOrigin) router.replace('/home')
