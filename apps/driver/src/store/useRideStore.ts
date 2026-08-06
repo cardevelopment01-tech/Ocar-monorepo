@@ -55,6 +55,7 @@ interface RideState {
     tripHours?: number
     returnAt?: string
     stopCount?: number
+    rideCategoryName?: string
   } | null
 
   setActiveRide:     (ride: ActiveRide) => void

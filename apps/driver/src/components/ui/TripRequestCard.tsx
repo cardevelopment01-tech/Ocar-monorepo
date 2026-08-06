@@ -42,6 +42,7 @@ interface TripRequestCardProps {
   fare: number
   timeRemaining: number
   rideType: string
+  rideCategoryName?: string
   tripHours?: number
   returnAt?: string
   stopCount?: number
@@ -82,7 +83,7 @@ function beep() {
 
 export default function TripRequestCard({
   pickup, drop, pickupDistance, tripDistance, fare,
-  timeRemaining: initialTime, rideType, tripHours, returnAt, stopCount,
+  timeRemaining: initialTime, rideType, rideCategoryName, tripHours, returnAt, stopCount,
   pickupLat, pickupLng, isAccepting, accepted, failed, onAccept, onDecline,
 }: TripRequestCardProps) {
   const [time, setTime] = useState(initialTime)
@@ -230,6 +231,14 @@ export default function TripRequestCard({
                   style={{ background: RIDE_TYPE_BADGE[rideType]!.bg, color: RIDE_TYPE_BADGE[rideType]!.color }}
                 >
                   {RIDE_TYPE_BADGE[rideType]!.label}
+                </span>
+              )}
+              {rideCategoryName && (
+                <span
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{ background: 'rgba(10,159,176,0.18)', color: C.primary }}
+                >
+                  {rideCategoryName} ride
                 </span>
               )}
             </div>
