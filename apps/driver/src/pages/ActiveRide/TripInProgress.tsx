@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, X, RotateCcw, Flag, CheckCircle2, Navigation, Locate, Check, LocateOff, AlertTriangle } from 'lucide-react'
+import { Clock, X, RotateCcw, Flag, CheckCircle2, Navigation, Locate, Check, LocateOff, AlertTriangle, Phone, MessageCircle } from 'lucide-react'
 import {
   motion, AnimatePresence, useReducedMotion,
   useMotionValue, useTransform, useMotionValueEvent, animate,
@@ -685,6 +685,35 @@ export default function TripInProgress() {
           <div ref={collapseRef} />
 
           <motion.div style={{ opacity: belowFoldOpacity }}>
+
+            {/* Rider contact row — no equivalent existed on this screen before;
+                NavigateToPickup.tsx has the same call/message pattern. */}
+            {activeRide?.userName && (
+              <div className="-mx-2 px-3 py-2.5 rounded-2xl bg-surface-2 flex items-center justify-between mt-3">
+                <div className="min-w-0">
+                  <p className="text-text-muted text-xs mb-0.5">Rider</p>
+                  <p className="text-text-primary text-sm font-medium truncate">{activeRide.userName}</p>
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  {activeRide?.userPhone && (
+                    <a
+                      href={`tel:${activeRide.userPhone}`}
+                      className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform"
+                      aria-label="Call rider"
+                    >
+                      <Phone size={18} className="text-text-secondary" />
+                    </a>
+                  )}
+                  <button
+                    className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-95 transition-transform"
+                    onClick={() => navigate('/ride/chat')}
+                    aria-label="Message rider"
+                  >
+                    <MessageCircle size={18} className="text-text-inverse" />
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Context banners */}
             {activeRide?.rideType === 'round_trip' && activeRide.returnAt && (

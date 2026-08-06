@@ -14,6 +14,7 @@ import Profile from '@/pages/Profile'
 import NavigateToPickup from '@/pages/ActiveRide/NavigateToPickup'
 import OTPVerify from '@/pages/ActiveRide/OTPVerify'
 import TripInProgress from '@/pages/ActiveRide/TripInProgress'
+import RideChat from '@/pages/ActiveRide/RideChat'
 import TripEnd from '@/pages/ActiveRide/TripEnd'
 import CollectCash from '@/pages/ActiveRide/CollectCash'
 import ModeSelection from '@/pages/GoOnline/ModeSelection'
@@ -458,6 +459,11 @@ export default function App() {
             <Route path="/ride/otp" element={
               <ProtectedRoute requireApproved>
                 <OTPVerify />
+              </ProtectedRoute>
+            } />
+            <Route path="/ride/chat" element={
+              <ProtectedRoute requireApproved>
+                <RideChat />
               </ProtectedRoute>
             } />
             <Route path="/ride/end" element={
