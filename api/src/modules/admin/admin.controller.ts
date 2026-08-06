@@ -577,11 +577,11 @@ export async function getAdminRentalPackages(req: Request, res: Response, next: 
     const cityIdRaw = req.query['city_id']
     let cityId: number | null = null
     if (typeof cityIdRaw === 'string' && cityIdRaw !== '') {
-      cityId = parseInt(cityIdRaw, 10)
-      if (isNaN(cityId)) {
+      if (!/^\d+$/.test(cityIdRaw)) {
         res.status(400).json({ error: 'Invalid city_id', code: 'VALIDATION_ERROR' })
         return
       }
+      cityId = parseInt(cityIdRaw, 10)
     }
     res.json(await service.listAdminRentalPackages(cityId))
   } catch (err) { next(err) }

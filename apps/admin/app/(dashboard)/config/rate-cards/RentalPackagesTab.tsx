@@ -399,6 +399,10 @@ export default function RentalPackagesTab({
 
   useEffect(() => { void fetchRental() }, [fetchRental, rentalRetry])
 
+  useEffect(() => {
+    if (rentalCityId !== null && !cities.some(c => c.id === rentalCityId)) setRentalCityId(null)
+  }, [cities, rentalCityId])
+
   async function toggleRentalPackage(pkg: RentalPackageAdmin) {
     setToggling(pkg.id)
     try {
