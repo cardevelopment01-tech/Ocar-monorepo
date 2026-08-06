@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { AlertTriangle, ArrowDownLeft, ArrowUpRight, RefreshCw } from 'lucide-react'
 import StatusBar from '@/components/ui/StatusBar'
@@ -48,6 +49,7 @@ function formatDate(iso: string): string {
 }
 
 export default function Wallet() {
+  const navigate = useNavigate()
   const { isOnline } = useSessionStore()
   const [wallet,         setWallet]         = useState<DriverWallet | null>(null)
   const [loading,        setLoading]        = useState(true)
@@ -61,6 +63,15 @@ export default function Wallet() {
     setLoading(true)
     setError(false)
     try {
+      // Wallet.tsx is the commission-mode UI — a driver whose operating city
+      // is billing_mode='package' gets a prepaid ride-credit balance instead
+      // (RechargePackage.tsx), not this deposit wallet. Redirect before
+      // fetching commission-wallet data that wouldn't exist for them.
+      const meRes = await api.get<{ billing_mode: 'commission' | 'package' | null }>('/api/v1/drivers/me')
+      if (meRes.data.billing_mode === 'package') {
+        navigate('/recharge-package', { replace: true })
+        return
+      }
       const res = await api.get<DriverWallet>('/api/v1/payments/wallet/driver')
       setWallet(res.data)
     } catch {
