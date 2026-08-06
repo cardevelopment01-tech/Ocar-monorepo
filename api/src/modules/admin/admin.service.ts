@@ -425,7 +425,7 @@ export async function updateAdminRentalPackage(
   id: bigint,
   body: {
     package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
-    duration_minutes?: number; km_limit?: number; display_order?: number
+    duration_minutes?: number; km_limit?: number; display_order?: number; city_id?: number | null
   },
   adminId: bigint,
 ) {
@@ -469,7 +469,8 @@ export async function deleteAdminRentalPackage(id: bigint) {
 export async function createAdminRentalPackage(
   body: {
     category_id: number; duration_minutes: number; km_limit: number
-    package_fare: number; extra_per_km: number; extra_per_min: number; display_order?: number
+    package_fare: number; extra_per_km: number; extra_per_min: number
+    display_order?: number; city_id?: number | null
   },
   adminId: bigint,
 ) {
