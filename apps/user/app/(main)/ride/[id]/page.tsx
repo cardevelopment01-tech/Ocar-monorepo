@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Phone, X, ChevronDown, RotateCcw, CheckCircle, Shield, Clock } from 'lucide-react'
+import { Phone, X, ChevronDown, RotateCcw, CheckCircle, Shield, Clock, MessageCircle } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import axios from 'axios'
@@ -135,7 +135,7 @@ function RouteRow({ ride, fare, status }: { ride: RideDetail | null; fare: strin
 
 // Compact driver identity row for the sheet's peek state — avatar, name,
 // rating/plate, call. Replaces the always-expanded 64-line driver card.
-function DriverMiniRow({ ride }: { ride: RideDetail | null }) {
+function DriverMiniRow({ ride, rideId, router }: { ride: RideDetail | null; rideId: string; router: ReturnType<typeof useRouter> }) {
   return (
     <div className="flex items-center gap-2.5 flex-1 min-w-0 px-3 py-2 rounded-2xl" style={{ background: '#F5F7FF', border: '1px solid #E8EEFF' }}>
       {ride?.driver_photo ? (
@@ -181,6 +181,16 @@ function DriverMiniRow({ ride }: { ride: RideDetail | null }) {
         >
           <Phone size={14} style={{ color: '#0A9FB0' }} />
         </a>
+      )}
+      {ride?.driver_phone && (
+        <button
+          onClick={() => router.push(`/ride/${rideId}/chat`)}
+          className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0"
+          style={{ background: '#E4F8FA' }}
+          aria-label="Message driver"
+        >
+          <MessageCircle size={14} style={{ color: '#0A9FB0' }} />
+        </button>
       )}
     </div>
   )
@@ -955,7 +965,7 @@ export default function RidePage() {
             >
               {/* Peek row: driver identity + call, plus whatever the rider needs to act on right now */}
               <div className="flex items-center gap-2 mb-2">
-                <DriverMiniRow ride={ride} />
+                <DriverMiniRow ride={ride} rideId={rideId} router={router} />
                 {rideStatus === 'accepted' && fare && (
                   <div className="flex-shrink-0 text-right px-1">
                     <p className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>Fare</p>
