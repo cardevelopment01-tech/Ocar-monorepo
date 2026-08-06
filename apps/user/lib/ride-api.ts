@@ -134,6 +134,8 @@ export type RentalPackage = {
   extra_per_km: number
   extra_per_min: number
   is_active: boolean
+  city_id: number | null
+  city_name: string | null
 }
 
 export type RetryPaymentResult =
@@ -264,8 +266,10 @@ export const rideApi = {
     return res.data as { count: number }
   },
 
-  getRentalPackages: async (categoryId: number): Promise<RentalPackage[]> => {
-    const res = await api.get(`/api/v1/pricing/rental-packages/${categoryId}`)
+  getRentalPackages: async (categoryId: number, cityId?: number): Promise<RentalPackage[]> => {
+    const res = await api.get(`/api/v1/pricing/rental-packages/${categoryId}`, {
+      params: cityId !== undefined ? { city_id: cityId } : {},
+    })
     return res.data as RentalPackage[]
   },
 
