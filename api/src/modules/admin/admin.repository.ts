@@ -1167,17 +1167,39 @@ export async function getAdminRideById(rideId: bigint) {
 
 // ─── Rental Packages (admin CRUD) ────────────────────────────────────────────
 
-export async function listAdminRentalPackages() {
+export async function listAdminRentalPackages(cityId: number | null) {
+  if (cityId === null) {
+    const res = await pool.query(
+      `SELECT rp.id, rp.category_id, vc.display_name AS category_name, vc.slug AS category_slug,
+              rp.duration_minutes, rp.km_limit, rp.display_order,
+              rp.package_fare::text, rp.extra_per_km::text, rp.extra_per_min::text,
+              rp.is_active, rp.city_id, c.name AS city_name,
+              rp.updated_by, rp.created_at, rp.updated_at
+       FROM rental_packages rp
+       JOIN vehicle_categories vc ON vc.id = rp.category_id
+       LEFT JOIN cities c ON c.id = rp.city_id
+       WHERE rp.city_id IS NULL
+       ORDER BY vc.display_name, rp.display_order, rp.duration_minutes`
+    )
+    return res.rows as AdminRentalPackage[]
+  }
+
   const res = await pool.query(
-    `SELECT rp.id, rp.category_id, vc.display_name AS category_name, vc.slug AS category_slug,
-            rp.duration_minutes, rp.km_limit, rp.display_order,
-            rp.package_fare::text, rp.extra_per_km::text, rp.extra_per_min::text,
-            rp.is_active, rp.city_id, c.name AS city_name,
-            rp.updated_by, rp.created_at, rp.updated_at
-     FROM rental_packages rp
-     JOIN vehicle_categories vc ON vc.id = rp.category_id
-     LEFT JOIN cities c ON c.id = rp.city_id
-     ORDER BY c.name NULLS FIRST, vc.display_name, rp.display_order, rp.duration_minutes`
+    `SELECT * FROM (
+       SELECT DISTINCT ON (rp.category_id, rp.duration_minutes, rp.km_limit)
+              rp.id, rp.category_id, vc.display_name AS category_name, vc.slug AS category_slug,
+              rp.duration_minutes, rp.km_limit, rp.display_order,
+              rp.package_fare::text, rp.extra_per_km::text, rp.extra_per_min::text,
+              rp.is_active, rp.city_id, c.name AS city_name,
+              rp.updated_by, rp.created_at, rp.updated_at
+       FROM rental_packages rp
+       JOIN vehicle_categories vc ON vc.id = rp.category_id
+       LEFT JOIN cities c ON c.id = rp.city_id
+       WHERE (rp.city_id = $1 OR rp.city_id IS NULL)
+       ORDER BY rp.category_id, rp.duration_minutes, rp.km_limit, rp.city_id NULLS LAST
+     ) t
+     ORDER BY t.category_name, t.display_order, t.duration_minutes`,
+    [cityId]
   )
   return res.rows as AdminRentalPackage[]
 }
