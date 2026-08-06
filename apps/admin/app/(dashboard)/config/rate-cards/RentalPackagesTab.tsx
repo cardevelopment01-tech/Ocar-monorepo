@@ -1,7 +1,8 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Pencil, Package, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Package, Plus, Trash2, ChevronDown, Globe } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import Toggle from '@/components/ui/Toggle'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { rentalPackageApi, type RentalPackageAdmin } from '@/lib/pricing-api'
@@ -288,13 +289,15 @@ export default function RentalPackagesTab({
   const [deleting,      setDeleting]      = useState<number | null>(null)
   const [deleteError,   setDeleteError]   = useState('')
   const [deleteTarget,  setDeleteTarget]  = useState<RentalPackageAdmin | null>(null)
+  const [rentalCityId, setRentalCityId]  = useState<number | null>(null) // null = Global Defaults
+  const [switcherOpen,  setSwitcherOpen]  = useState(false)
 
   const fetchRental = useCallback(async () => {
     setRentalLoading(true); setRentalError('')
-    try { setRentalPkgs(await rentalPackageApi.list()) }
+    try { setRentalPkgs(await rentalPackageApi.list(rentalCityId)) }
     catch { setRentalError('Failed to load rental packages.') }
     finally { setRentalLoading(false) }
-  }, [])
+  }, [rentalCityId])
 
   useEffect(() => { void fetchRental() }, [fetchRental, rentalRetry])
 
@@ -334,10 +337,56 @@ export default function RentalPackagesTab({
     .concat(categoryOptions.filter(c => !rentalPkgs.some(p => p.category_id === c.id)).map(c => ({ id: c.id, display_name: c.display_name })))
   const activeRentalCount  = rentalPkgs.filter(p => p.is_active).length
   const inactiveRentalCount = rentalPkgs.filter(p => !p.is_active).length
+  const selectedCity = cities.find(c => c.id === rentalCityId) ?? null
+  const overriddenCount = rentalCityId !== null ? rentalPkgs.filter(p => p.city_id === rentalCityId).length : 0
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <DropdownMenu.Root open={switcherOpen} onOpenChange={setSwitcherOpen}>
+            <DropdownMenu.Trigger asChild>
+              <button className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-border bg-surface hover:bg-surface-2 transition-colors text-sm font-semibold text-text-primary">
+                <Globe size={14} className="text-primary" />
+                {selectedCity ? selectedCity.name : 'Global Defaults'}
+                <ChevronDown size={14} className={`text-text-muted transition-transform ${switcherOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="start"
+                sideOffset={8}
+                className="z-50 bg-surface border border-border rounded-xl py-1 min-w-[220px] max-h-[320px] overflow-y-auto animate-fade-in"
+              >
+                <DropdownMenu.Item
+                  onSelect={() => setRentalCityId(null)}
+                  className={`px-3 py-2 text-sm font-medium cursor-pointer outline-none transition-colors rounded-lg mx-1 ${
+                    rentalCityId === null ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'
+                  }`}
+                >
+                  Global Defaults
+                </DropdownMenu.Item>
+                <div className="h-px bg-border-light my-1" />
+                {cities.filter(c => c.status === 'active').map(c => (
+                  <DropdownMenu.Item
+                    key={c.id}
+                    onSelect={() => setRentalCityId(c.id)}
+                    className={`px-3 py-2 text-sm font-medium cursor-pointer outline-none transition-colors rounded-lg mx-1 ${
+                      rentalCityId === c.id ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'
+                    }`}
+                  >
+                    {c.name}
+                  </DropdownMenu.Item>
+                ))}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+          {rentalCityId !== null && !rentalLoading && (
+            <p className="text-xs text-text-muted mt-1.5 ml-1">
+              {overriddenCount} of {rentalPkgs.length} tier{rentalPkgs.length === 1 ? '' : 's'} overridden for {selectedCity?.name}
+            </p>
+          )}
+        </div>
         <CreateRentalPackageDialog categories={rentalCategories} cities={cities} onCreated={fetchRental} />
       </div>
 
