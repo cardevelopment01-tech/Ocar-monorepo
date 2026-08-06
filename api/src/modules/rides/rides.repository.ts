@@ -213,6 +213,20 @@ export async function findReturnCabDrivers(params: {
        ORDER BY ST_Distance(c.centroid, dls.location) ASC
        LIMIT 1
      ) nc ON true
+     -- nearest active city to the DROP-OFF point (its own lateral — nc above is
+     -- nearest-city-to-driver for billing_mode, a different point). Standard
+     -- nearest-centroid city classification, same pattern used at go-online and
+     -- in findNearbyDrivers.
+     LEFT JOIN LATERAL (
+       SELECT c.id AS city_id
+       FROM cities c
+       WHERE c.status = 'active'
+       ORDER BY ST_Distance(
+         c.centroid,
+         ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography
+       ) ASC
+       LIMIT 1
+     ) drop_city ON true
      WHERE rcr.is_active = true
        AND ds.status = 'online'
        AND ds.category_id = $5
@@ -227,16 +241,20 @@ export async function findReturnCabDrivers(params: {
          -- check in that case; unreachable in production since cities are always seeded.
          nc.billing_mode IS NULL
        )
+       -- Pickup: within match_radius_metres (3km) of the driver's return-trip
+       -- START point, not the corridor line — a pickup near the destination end
+       -- must NOT pass the pickup check. ponytail: no index on origin point;
+       -- return_cab_routes is tiny (online return drivers only, partial-indexed
+       -- by is_active) so a seq scan is fine — add a functional GiST index only
+       -- if this table ever grows.
        AND ST_DWithin(
-         rcr.corridor,
+         ST_SetSRID(ST_MakePoint(rcr.origin_lng::float8, rcr.origin_lat::float8), 4326)::geography,
          ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography,
          rcr.match_radius_metres
        )
-       AND ST_DWithin(
-         rcr.corridor,
-         ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography,
-         rcr.match_radius_metres
-       )
+       -- Drop-off: anywhere in the destination city — its nearest active city
+       -- centroid must be the route's chosen destination city.
+       AND drop_city.city_id = rcr.destination_city_id
      ORDER BY distance_metres ASC
      LIMIT 3`,
     [params.pickupLat, params.pickupLng, params.dropLat, params.dropLng, params.categoryId, params.minWalletBalance]
