@@ -81,6 +81,17 @@ export type TrafficInterval = {
   speed: 'NORMAL' | 'SLOW' | 'TRAFFIC_JAM'
 }
 
+export interface ChatMessage {
+  id: string
+  rideId: string
+  senderType: 'user' | 'driver'
+  senderId: string
+  body: string
+  clientMsgId: string
+  readAt: string | null
+  createdAt: string
+}
+
 export const driverRideApi = {
   goOnline: async (params: {
     mode: 'standard' | 'return_cab'
@@ -179,6 +190,23 @@ export const driverRideApi = {
   getRide: async (rideId: string): Promise<RideDetail> => {
     const res = await api.get(`/api/v1/rides/${rideId}`)
     return res.data as RideDetail
+  },
+
+  getMessages: async (rideId: string, after?: string): Promise<ChatMessage[]> => {
+    const res = await api.get(`/api/v1/rides/${rideId}/messages`, {
+      params: after ? { after } : undefined,
+    })
+    return (res.data as { messages: ChatMessage[] }).messages
+  },
+
+  sendMessage: async (rideId: string, body: string, clientMsgId: string): Promise<ChatMessage> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/messages`, { body, clientMsgId })
+    return res.data as ChatMessage
+  },
+
+  markChatRead: async (rideId: string): Promise<{ count: number }> => {
+    const res = await api.patch(`/api/v1/rides/${rideId}/messages/read`)
+    return res.data as { count: number }
   },
 
   collectCash: async (
