@@ -417,8 +417,8 @@ function rethrowIfDuplicatePackage(err: unknown): never {
   throw err
 }
 
-export async function listAdminRentalPackages() {
-  return repo.listAdminRentalPackages()
+export async function listAdminRentalPackages(cityId: number | null) {
+  return repo.listAdminRentalPackages(cityId)
 }
 
 export async function updateAdminRentalPackage(

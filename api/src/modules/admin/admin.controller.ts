@@ -572,9 +572,18 @@ export async function forceResolveAdminRide(req: Request, res: Response, next: N
 
 // ─── Admin Rental Packages ────────────────────────────────────────────────────
 
-export async function getAdminRentalPackages(_req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function getAdminRentalPackages(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    res.json(await service.listAdminRentalPackages())
+    const cityIdRaw = req.query['city_id']
+    let cityId: number | null = null
+    if (typeof cityIdRaw === 'string' && cityIdRaw !== '') {
+      cityId = parseInt(cityIdRaw, 10)
+      if (isNaN(cityId)) {
+        res.status(400).json({ error: 'Invalid city_id', code: 'VALIDATION_ERROR' })
+        return
+      }
+    }
+    res.json(await service.listAdminRentalPackages(cityId))
   } catch (err) { next(err) }
 }
 
