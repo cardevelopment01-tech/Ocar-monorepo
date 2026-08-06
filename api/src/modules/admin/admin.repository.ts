@@ -1172,10 +1172,12 @@ export async function listAdminRentalPackages() {
     `SELECT rp.id, rp.category_id, vc.display_name AS category_name, vc.slug AS category_slug,
             rp.duration_minutes, rp.km_limit, rp.display_order,
             rp.package_fare::text, rp.extra_per_km::text, rp.extra_per_min::text,
-            rp.is_active, rp.updated_by, rp.created_at, rp.updated_at
+            rp.is_active, rp.city_id, c.name AS city_name,
+            rp.updated_by, rp.created_at, rp.updated_at
      FROM rental_packages rp
      JOIN vehicle_categories vc ON vc.id = rp.category_id
-     ORDER BY vc.display_name, rp.display_order, rp.duration_minutes`
+     LEFT JOIN cities c ON c.id = rp.city_id
+     ORDER BY c.name NULLS FIRST, vc.display_name, rp.display_order, rp.duration_minutes`
   )
   return res.rows as AdminRentalPackage[]
 }
@@ -1184,7 +1186,7 @@ export async function updateAdminRentalPackage(
   id: bigint,
   fields: {
     package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
-    duration_minutes?: number; km_limit?: number; display_order?: number
+    duration_minutes?: number; km_limit?: number; display_order?: number; city_id?: number | null
   },
   adminId: bigint,
 ) {
@@ -1199,6 +1201,7 @@ export async function updateAdminRentalPackage(
   if (fields.duration_minutes !== undefined) { sets.push(`duration_minutes = $${p++}`); params.push(fields.duration_minutes) }
   if (fields.km_limit         !== undefined) { sets.push(`km_limit         = $${p++}`); params.push(fields.km_limit) }
   if (fields.display_order    !== undefined) { sets.push(`display_order    = $${p++}`); params.push(fields.display_order) }
+  if (fields.city_id          !== undefined) { sets.push(`city_id          = $${p++}`); params.push(fields.city_id) }
 
   sets.push(`updated_by = $${p++}`)
   params.push(adminId)
@@ -1208,7 +1211,7 @@ export async function updateAdminRentalPackage(
     `UPDATE rental_packages SET ${sets.join(', ')} WHERE id = $${p} RETURNING
        id, category_id, duration_minutes, km_limit, display_order,
        package_fare::text, extra_per_km::text, extra_per_min::text,
-       is_active, updated_by, created_at, updated_at`,
+       is_active, city_id, updated_by, created_at, updated_at`,
     params,
   )
   return res.rows[0] as AdminRentalPackage | undefined
@@ -1228,20 +1231,21 @@ export async function createAdminRentalPackage(
     extra_per_km: number
     extra_per_min: number
     display_order?: number
+    city_id?: number | null
   },
   adminId: bigint,
 ) {
   const res = await pool.query(
     `INSERT INTO rental_packages
-       (category_id, duration_minutes, km_limit, package_fare, extra_per_km, extra_per_min, display_order, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 100), $8)
+       (category_id, duration_minutes, km_limit, package_fare, extra_per_km, extra_per_min, display_order, city_id, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 100), $8, $9)
      RETURNING
        id, category_id, duration_minutes, km_limit, display_order,
        package_fare::text, extra_per_km::text, extra_per_min::text,
-       is_active, updated_by, created_at, updated_at`,
+       is_active, city_id, updated_by, created_at, updated_at`,
     [fields.category_id, fields.duration_minutes, fields.km_limit,
      fields.package_fare, fields.extra_per_km, fields.extra_per_min,
-     fields.display_order ?? null, adminId],
+     fields.display_order ?? null, fields.city_id ?? null, adminId],
   )
   return res.rows[0] as AdminRentalPackage
 }
