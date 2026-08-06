@@ -36,6 +36,7 @@ vi.mock('@/jobs/queues', () => ({
 }))
 
 import { processBroadcast } from './broadcast.processor'
+import { socketEvents } from '@/websocket/socket.server'
 
 describe('processBroadcast category eligibility per round', () => {
   beforeEach(() => {
@@ -84,6 +85,23 @@ describe('processBroadcast category eligibility per round', () => {
 
     expect(mockFindReturnCabDrivers).toHaveBeenCalledWith(
       expect.objectContaining({ categoryIds: [3n, 2n] })
+    )
+  })
+
+  it('includes the booked category name in the socket payload sent to each driver', async () => {
+    mockFindNearbyDrivers.mockResolvedValue([
+      { driver_id: 10n, session_id: 20n, lat: 20.29, lng: 85.82, distance_metres: 500 },
+    ])
+    mockGetCategoryDisplayName.mockResolvedValue('Sedan')
+
+    await processBroadcast({
+      rideId: '1', categoryId: '2', originLat: 20.29, originLng: 85.82,
+      rideType: 'one_way', isReturnCab: false, broadcastRound: 1,
+    })
+
+    expect(socketEvents.sendRideRequest).toHaveBeenCalledWith(
+      '10',
+      expect.objectContaining({ rideCategoryName: 'Sedan' })
     )
   })
 })
