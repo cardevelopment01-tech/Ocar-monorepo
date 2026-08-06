@@ -26,11 +26,3 @@ export interface ChatCaller {
   userId?: bigint
   driverId?: bigint
 }
-
-export const CANNED_REPLIES = [
-  'On my way',
-  "I'm at the pickup point",
-  'Running a few min late',
-  "Can't find you, please call",
-  'Here',
-] as const

@@ -179,7 +179,6 @@ export default function RideChat() {
           <p className="font-bold text-[15px] leading-tight text-text-primary truncate">
             {activeRide?.userName ?? 'Rider'}
           </p>
-          <p className="text-[12px] font-medium text-text-muted">Messages are visible to support if needed</p>
         </div>
       </div>
 

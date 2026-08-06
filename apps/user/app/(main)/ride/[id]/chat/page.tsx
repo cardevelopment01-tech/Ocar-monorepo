@@ -172,7 +172,6 @@ export default function RideChatPage() {
         </button>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-[15px] leading-tight" style={{ color: '#0F172A' }}>Chat with driver</p>
-          <p className="text-[12px] font-medium" style={{ color: '#94A3B8' }}>Messages are visible to support if needed</p>
         </div>
       </div>
 
