@@ -138,29 +138,21 @@ export async function findNearbyDrivers(params: {
        ) AS distance_metres
      FROM driver_location_snapshots dls
      JOIN driver_sessions ds ON ds.id = dls.session_id
+     JOIN drivers d ON d.id = ds.driver_id
+     -- INNER join: a driver with no assigned operating city (or an inactive
+     -- one) can't have gone online (see goOnline's city gate), so they're
+     -- correctly excluded from matching here too — no GPS-based fallback.
+     JOIN cities dc ON dc.id = d.city_id AND dc.status = 'active'
      LEFT JOIN driver_wallets dw ON dw.driver_id = ds.driver_id
      LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = ds.driver_id
-     LEFT JOIN LATERAL (
-       SELECT c.billing_mode
-       FROM cities c
-       WHERE c.status = 'active'
-       ORDER BY ST_Distance(c.centroid, dls.location) ASC
-       LIMIT 1
-     ) nc ON true
      WHERE dls.is_available = true
        AND ds.status = 'online'
        AND ds.mode = 'standard'
        AND ds.category_id = ANY($3::bigint[])
        AND (
-         (nc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
+         (dc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
          OR
-         (nc.billing_mode = 'package' AND COALESCE(dpw.balance, 0) > 0 AND NOT COALESCE(dpw.is_frozen, false))
-         OR
-         -- nc.billing_mode IS NULL is only reachable if zero active cities exist system-wide
-         -- (not a per-driver distance edge case — the LATERAL subquery has no distance bound,
-         -- it always returns the single nearest active city). Falls back to the commission-style
-         -- check in that case; unreachable in production since cities are always seeded.
-         nc.billing_mode IS NULL
+         (dc.billing_mode = 'package' AND COALESCE(dpw.balance, 0) > 0 AND NOT COALESCE(dpw.is_frozen, false))
        )
        AND ST_DWithin(
          dls.location,
@@ -223,28 +215,19 @@ export async function findReturnCabDrivers(params: {
      FROM return_cab_routes rcr
      JOIN driver_sessions ds ON ds.id = rcr.session_id
      JOIN driver_location_snapshots dls ON dls.driver_id = rcr.driver_id
+     JOIN drivers d ON d.id = rcr.driver_id
+     -- INNER join: see findNearbyDrivers above — no assigned active city means
+     -- the driver couldn't have gone online, so they're excluded here too.
+     JOIN cities dc ON dc.id = d.city_id AND dc.status = 'active'
      LEFT JOIN driver_wallets dw ON dw.driver_id = rcr.driver_id
      LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = rcr.driver_id
-     LEFT JOIN LATERAL (
-       SELECT c.billing_mode
-       FROM cities c
-       WHERE c.status = 'active'
-       ORDER BY ST_Distance(c.centroid, dls.location) ASC
-       LIMIT 1
-     ) nc ON true
      WHERE rcr.is_active = true
        AND ds.status = 'online'
        AND ds.category_id = ANY($5::bigint[])
        AND (
-         (nc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
+         (dc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
          OR
-         (nc.billing_mode = 'package' AND COALESCE(dpw.balance, 0) > 0 AND NOT COALESCE(dpw.is_frozen, false))
-         OR
-         -- nc.billing_mode IS NULL is only reachable if zero active cities exist system-wide
-         -- (not a per-driver distance edge case — the LATERAL subquery has no distance bound,
-         -- it always returns the single nearest active city). Falls back to the commission-style
-         -- check in that case; unreachable in production since cities are always seeded.
-         nc.billing_mode IS NULL
+         (dc.billing_mode = 'package' AND COALESCE(dpw.balance, 0) > 0 AND NOT COALESCE(dpw.is_frozen, false))
        )
        AND ST_DWithin(
          rcr.corridor,

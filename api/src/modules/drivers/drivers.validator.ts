@@ -28,6 +28,7 @@ export const personalInfoSchema = z.object({
   residential_address: z.string().min(10).max(300),
   state: z.string().min(2).max(80),
   city: z.string().min(2).max(80),
+  city_id: z.number().int().positive().optional(),
   pincode: z.string().regex(/^\d{6}$/, 'Pincode must be exactly 6 digits'),
   experience_years: z.number().int().min(0).max(50),
   emergency_contact: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Emergency contact must be E.164 format'),

@@ -46,6 +46,7 @@ export async function updateDriverStatus(req: Request, res: Response, next: Next
 const PROFILE_STRING_FIELDS = [
   'full_name', 'email', 'gender', 'date_of_birth', 'residential_address',
   'state', 'city', 'pincode', 'emergency_contact', 'aadhaar_number', 'license_number',
+  'city_id',
 ] as const
 
 export async function updateDriverProfile(req: Request, res: Response, next: NextFunction): Promise<void> {

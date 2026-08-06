@@ -10,6 +10,7 @@ import {
   adminDriverApi, type DriverDetail, type DriverPaymentRow, type DriverAuditLogEntry,
 } from '@/lib/admin-api'
 import { vehicleCategoryApi, vehicleBrandApi, vehicleModelApi, type VehicleCategory, type VehicleBrand, type VehicleModel } from '@/lib/vehicle-api'
+import { cityApi, type AdminCity } from '@/lib/city-api'
 import { payoutsApi } from '@/lib/payouts-api'
 import { packageApi, type DriverPackageDetail } from '@/lib/package-api'
 import { cn } from '@/lib/utils'
@@ -118,6 +119,13 @@ export default function DriverDetailPage() {
   const [vehicleBrands, setVehicleBrands]         = useState<VehicleBrand[]>([])
   const [vehicleModels, setVehicleModels]         = useState<VehicleModel[]>([])
 
+  // Operating city assignment (drives commission vs package billing mode)
+  const [cities, setCities] = useState<AdminCity[]>([])
+  const [editingCity, setEditingCity] = useState(false)
+  const [cityForm, setCityForm] = useState({ city_id: '', reason: '' })
+  const [savingCity, setSavingCity] = useState(false)
+  const [cityError, setCityError] = useState('')
+
   // Rides tab (lazy, paginated)
   const [ridesPage, setRidesPage] = useState(1)
   const [rides, setRides] = useState<DriverDetail['recent_rides']>([])
@@ -160,6 +168,7 @@ export default function DriverDetailPage() {
   }, [driverId])
 
   useEffect(() => { fetchDetail() }, [fetchDetail])
+  useEffect(() => { cityApi.list().then(setCities).catch(() => {}) }, [])
 
   useEffect(() => {
     if (activeTab !== 'rides') return
@@ -228,6 +237,31 @@ export default function DriverDetailPage() {
       setEditingIdentity(false)
     } catch { setIdentityError('Could not save changes. Please try again.') }
     finally { setSavingIdentity(false) }
+  }
+
+  function startEditCity() {
+    if (!detail) return
+    setCityForm({ city_id: detail.city_id ?? '', reason: '' })
+    setCityError('')
+    setEditingCity(true)
+  }
+  async function saveCity() {
+    if (!detail) return
+    if (cityForm.city_id === '') {
+      setCityError('Select a city.')
+      return
+    }
+    if (cityForm.reason.trim().length < 10) {
+      setCityError('A reason (at least 10 characters) is required.')
+      return
+    }
+    setSavingCity(true); setCityError('')
+    try {
+      await adminDriverApi.updateProfile(detail.id, { city_id: cityForm.city_id }, cityForm.reason.trim())
+      await fetchDetail()
+      setEditingCity(false)
+    } catch { setCityError('Could not save changes. Please try again.') }
+    finally { setSavingCity(false) }
   }
 
   function startEditVehicle() {
@@ -495,6 +529,53 @@ export default function DriverDetailPage() {
                   <span className="text-text-muted">Aadhaar</span> <span className="font-mono text-text-primary">{d.aadhaar_number ?? '—'}</span>
                   <span className="text-text-muted">Licence</span> <span className="font-mono text-text-primary">{d.license_number ?? '—'}</span>
                 </div>
+              </div>
+              <div className="bg-surface-2 rounded-xl p-4 border border-border-light">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-text-secondary">Operating City & Billing Mode</p>
+                  {!editingCity && (
+                    <button onClick={startEditCity} className="text-text-muted hover:text-primary transition-colors" aria-label="Assign operating city">
+                      <Pencil size={12} />
+                    </button>
+                  )}
+                </div>
+                {editingCity ? (
+                  <div className="space-y-2">
+                    <select
+                      value={cityForm.city_id}
+                      onChange={e => setCityForm(f => ({ ...f, city_id: e.target.value }))}
+                      className="w-full text-sm text-text-primary bg-surface border border-border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value="">Select a city…</option>
+                      {cities.map(c => (
+                        <option key={c.id} value={c.id}>{c.name} ({c.billing_mode})</option>
+                      ))}
+                    </select>
+                    <textarea
+                      value={cityForm.reason}
+                      onChange={e => setCityForm(f => ({ ...f, reason: e.target.value }))}
+                      placeholder="Reason for this assignment (min 10 characters)…"
+                      rows={2}
+                      className="w-full text-xs text-text-primary bg-surface border border-border rounded-lg px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted"
+                    />
+                    {cityError && <p className="text-xs text-danger">{cityError}</p>}
+                    <div className="flex gap-2 pt-0.5">
+                      <button onClick={saveCity} disabled={savingCity} className="px-3 py-1 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                        {savingCity ? 'Saving…' : 'Save'}
+                      </button>
+                      <button onClick={() => setEditingCity(false)} disabled={savingCity} className="px-3 py-1 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    <span className="text-text-muted">City</span>
+                    <span className={d.assigned_city_name ? 'text-text-primary font-medium' : 'text-danger font-medium'}>{d.assigned_city_name ?? 'Not assigned — driver cannot go online'}</span>
+                    <span className="text-text-muted">Billing mode</span>
+                    <span className="text-text-primary font-medium capitalize">{d.assigned_city_billing_mode ?? '—'}</span>
+                  </div>
+                )}
               </div>
             </>
           )}

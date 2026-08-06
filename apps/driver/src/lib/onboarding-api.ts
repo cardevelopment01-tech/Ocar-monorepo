@@ -11,6 +11,7 @@ export interface PersonalInfoPayload {
   residential_address: string
   state: string
   city: string
+  city_id?: number
   pincode: string
   experience_years: number
   emergency_contact: string    // E.164: +919876543211
@@ -151,6 +152,6 @@ export const onboardingApi = {
 
   getCities: async () => {
     const res = await api.get('/api/v1/geo/cities')
-    return res.data as { name: string; state: string }[]
+    return res.data as { id: number; name: string; state: string }[]
   },
 }

@@ -49,12 +49,18 @@ export async function updatePersonalInfo(
     residential_address: string
     state: string
     city: string
+    city_id?: number
     pincode: string
     experience_years: number
     emergency_contact: string
     languages_known: string[]
   }
 ): Promise<Driver> {
+  // city_id comes straight from the frontend's city dropdown (sourced from
+  // the `cities` table, see PersonalDetails.tsx) — no name-matching. Only
+  // falls back to a name lookup for older clients that haven't picked up the
+  // city_id field yet; NULL for a free-text entry outside the fixed city list
+  // (non-Odisha state), which is caught at go-online time.
   const rows = await query<Driver>(
     `UPDATE drivers SET
        full_name           = $2,
@@ -68,6 +74,7 @@ export async function updatePersonalInfo(
        experience_years    = $10,
        emergency_contact   = $11,
        languages_known     = $12,
+       city_id             = COALESCE($13, (SELECT id FROM cities WHERE lower(name) = lower($8) LIMIT 1)),
        onboarding_step     = CASE
                                WHEN onboarding_step = 'personal_info' THEN 'vehicle_info'
                                ELSE onboarding_step
@@ -88,6 +95,7 @@ export async function updatePersonalInfo(
       data.experience_years,
       data.emergency_contact,
       data.languages_known,
+      data.city_id ?? null,
     ]
   )
   return rows[0]!

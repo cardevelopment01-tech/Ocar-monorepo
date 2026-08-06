@@ -37,6 +37,9 @@ export interface DriverDetail {
   languages_known: string[]
   aadhaar_number: string | null
   license_number: string | null
+  city_id: string | null
+  assigned_city_name: string | null
+  assigned_city_billing_mode: 'commission' | 'package' | null
   status: DriverStatus
   onboarding_step: string
   created_at: string
@@ -150,7 +153,7 @@ export const adminDriverApi = {
       full_name: string; email: string; gender: string; date_of_birth: string
       residential_address: string; state: string; city: string; pincode: string
       experience_years: number; emergency_contact: string; languages_known: string[]
-      aadhaar_number: string; license_number: string
+      aadhaar_number: string; license_number: string; city_id: string
     }>,
     reason: string
   ): Promise<void> => {

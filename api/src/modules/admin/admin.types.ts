@@ -35,6 +35,9 @@ export interface AdminDriverDetail {
   languages_known: string[]
   aadhaar_number: string | null
   license_number: string | null
+  city_id: string | null
+  assigned_city_name: string | null
+  assigned_city_billing_mode: 'commission' | 'package' | null
   status: DriverStatus
   onboarding_step: string
   created_at: string
@@ -128,6 +131,7 @@ export interface UpdateDriverProfilePayload {
   languages_known?: string[]
   aadhaar_number?: string
   license_number?: string
+  city_id?: string
   reason: string
 }
 
