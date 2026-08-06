@@ -275,6 +275,97 @@ function CreateRentalPackageDialog({
   )
 }
 
+function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
+  pkg: RentalPackageAdmin; cityId: number; cityName: string; onCreated: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({
+    package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min,
+  })
+
+  useEffect(() => {
+    if (open) {
+      setForm({ package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min })
+      setError('')
+    }
+  }, [open, pkg])
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setLoading(true); setError('')
+    try {
+      await rentalPackageApi.create({
+        city_id: cityId,
+        category_id: pkg.category_id,
+        duration_minutes: pkg.duration_minutes,
+        km_limit: pkg.km_limit,
+        display_order: pkg.display_order,
+        package_fare: parseFloat(form.package_fare),
+        extra_per_km: parseFloat(form.extra_per_km),
+        extra_per_min: parseFloat(form.extra_per_min),
+      })
+      setOpen(false); onCreated()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setError(msg ?? 'Failed to create override.')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <button className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-success-light text-success text-xs font-semibold hover:bg-success/10 transition-colors">
+          <Plus size={12} />Add override
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[420px] bg-surface rounded-2xl shadow-hover p-6 z-[60]">
+          <Dialog.Title className="text-lg font-bold text-text-primary mb-1">
+            Override for {cityName}
+          </Dialog.Title>
+          <p className="text-xs text-text-muted mb-5">
+            {pkg.category_name} · {formatDuration(pkg.duration_minutes)} / {pkg.km_limit} km — pre-filled with today&rsquo;s global price. Saving creates a {cityName}-only price for this tier; the global default is unaffected.
+          </p>
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <label className={labelCls}>Package Fare (₹) *</label>
+              <input type="number" step="0.01" min="0.01" required value={form.package_fare}
+                onChange={e => setForm(f => ({ ...f, package_fare: e.target.value }))} className={inputCls} />
+              <p className="text-xs text-text-muted mt-1">global is {numFmt(pkg.package_fare)}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Extra per KM (₹) *</label>
+                <input type="number" step="0.01" min="0.01" required value={form.extra_per_km}
+                  onChange={e => setForm(f => ({ ...f, extra_per_km: e.target.value }))} className={inputCls} />
+                <p className="text-xs text-text-muted mt-1">global is {numFmt(pkg.extra_per_km)}</p>
+              </div>
+              <div>
+                <label className={labelCls}>Extra per Min (₹)</label>
+                <input type="number" step="0.01" min="0" value={form.extra_per_min}
+                  onChange={e => setForm(f => ({ ...f, extra_per_min: e.target.value }))} className={inputCls} />
+                <p className="text-xs text-text-muted mt-1">global is {numFmt(pkg.extra_per_min)}</p>
+              </div>
+            </div>
+            {error && <p className="text-xs text-danger font-semibold">{error}</p>}
+            <div className="flex gap-3 pt-2">
+              <Dialog.Close asChild>
+                <button type="button" className="btn-secondary flex-1 justify-center">Cancel</button>
+              </Dialog.Close>
+              <button type="submit" disabled={loading}
+                className="flex-1 justify-center inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-success text-white text-sm font-semibold hover:bg-emerald-600 disabled:opacity-50 disabled:pointer-events-none transition-all duration-150">
+                {loading ? 'Saving…' : `Save for ${cityName}`}
+              </button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+}
+
 export default function RentalPackagesTab({
   cities, categoryOptions,
 }: {
@@ -434,7 +525,7 @@ export default function RentalPackagesTab({
         </div>
       ) : rentalLoading ? (
         <div className="admin-card !p-0 overflow-hidden">
-          <table className="data-table"><tbody><SkeletonRows cols={9} n={8} /></tbody></table>
+          <table className="data-table"><tbody><SkeletonRows cols={rentalCityId !== null ? 8 : 7} n={8} /></tbody></table>
         </div>
       ) : rentalPkgs.length === 0 ? (
         <div className="admin-card text-center py-12">
@@ -460,54 +551,69 @@ export default function RentalPackagesTab({
                 <thead>
                   <tr>
                     <th>Duration</th>
-                    <th>City</th>
+                    {rentalCityId !== null && <th>Status</th>}
                     <th>KM Limit</th>
                     <th className="!text-right">Package Fare</th>
                     <th className="!text-right">Extra/km</th>
                     <th className="!text-right">Extra/min</th>
                     <th className="!text-center">Active</th>
-                    <th className="!text-right">Edit</th>
-                    <th className="!text-right">Delete</th>
+                    <th className="!text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map(pkg => (
-                    <tr key={pkg.id} className={`cursor-default ${!pkg.is_active ? 'opacity-50' : ''}`}>
-                      <td className="font-semibold text-text-primary">
-                        {formatDuration(pkg.duration_minutes)}
-                      </td>
-                      <td>
-                        {pkg.city_name
-                          ? <span className="pill-info">{pkg.city_name}</span>
-                          : <span className="pill-muted">Global</span>}
-                      </td>
-                      <td className="text-text-secondary">{pkg.km_limit} km</td>
-                      <td className="!text-right font-mono font-bold text-text-primary">{numFmt(pkg.package_fare)}</td>
-                      <td className="!text-right font-mono text-text-secondary">{numFmt(pkg.extra_per_km)}</td>
-                      <td className="!text-right font-mono text-text-muted">{numFmt(pkg.extra_per_min)}</td>
-                      <td className="text-center">
-                        <Toggle
-                          checked={pkg.is_active}
-                          onChange={() => void toggleRentalPackage(pkg)}
-                          disabled={toggling === pkg.id}
-                        />
-                      </td>
-                      <td className="!text-right">
-                        <EditRentalPackageDialog pkg={pkg} cities={cities} onUpdated={fetchRental} />
-                      </td>
-                      <td className="!text-right">
-                        <button
-                          onClick={() => setDeleteTarget(pkg)}
-                          disabled={deleting === pkg.id}
-                          className="p-1.5 rounded-lg text-danger hover:bg-danger-light disabled:opacity-50 transition-colors"
-                          title="Delete package"
-                          aria-label="Delete package"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map(pkg => {
+                    const isInherited = rentalCityId !== null && pkg.city_id === null
+                    const isOverride  = rentalCityId !== null && pkg.city_id !== null
+                    return (
+                      <tr key={pkg.id} className={`cursor-default ${!pkg.is_active ? 'opacity-50' : ''}`}>
+                        <td className="font-semibold text-text-primary">
+                          {formatDuration(pkg.duration_minutes)}
+                        </td>
+                        {rentalCityId !== null && (
+                          <td>
+                            {isOverride
+                              ? <span className="pill-info">{selectedCity?.name ?? 'City'} override</span>
+                              : <span className="pill-muted">Inherited</span>}
+                          </td>
+                        )}
+                        <td className="text-text-secondary">{pkg.km_limit} km</td>
+                        <td className="!text-right font-mono font-bold text-text-primary">{numFmt(pkg.package_fare)}</td>
+                        <td className="!text-right font-mono text-text-secondary">{numFmt(pkg.extra_per_km)}</td>
+                        <td className="!text-right font-mono text-text-muted">{numFmt(pkg.extra_per_min)}</td>
+                        <td className="text-center">
+                          {isInherited ? (
+                            <span className="text-text-muted text-xs">—</span>
+                          ) : (
+                            <Toggle
+                              checked={pkg.is_active}
+                              onChange={() => void toggleRentalPackage(pkg)}
+                              disabled={toggling === pkg.id}
+                            />
+                          )}
+                        </td>
+                        <td className="!text-right">
+                          <div className="inline-flex items-center justify-end gap-1.5">
+                            {isInherited && rentalCityId !== null && selectedCity ? (
+                              <AddOverrideDialog pkg={pkg} cityId={rentalCityId} cityName={selectedCity.name} onCreated={fetchRental} />
+                            ) : (
+                              <>
+                                <EditRentalPackageDialog pkg={pkg} cities={cities} onUpdated={fetchRental} />
+                                <button
+                                  onClick={() => setDeleteTarget(pkg)}
+                                  disabled={deleting === pkg.id}
+                                  className="p-1.5 rounded-lg text-danger hover:bg-danger-light disabled:opacity-50 transition-colors"
+                                  title="Delete package"
+                                  aria-label="Delete package"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
