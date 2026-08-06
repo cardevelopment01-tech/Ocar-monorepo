@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import SelectSheet from '@/components/ui/SelectSheet'
 import DatePickerSheet from '@/components/ui/DatePickerSheet'
 import OnboardingShell from '@/components/onboarding/OnboardingShell'
+import FieldError, { ShakeWrap, useShake } from '@/components/ui/FieldError'
 
 const INDIAN_LANGUAGES = [
   'Hindi', 'English', 'Odia', 'Bengali', 'Tamil', 'Telugu',
@@ -76,8 +77,13 @@ export default function PersonalDetails() {
   }, [state, city, odishaCities, cityId])
 
   const [dobError, setDobError] = useState('')
+  const [addressError, setAddressError] = useState('')
   const [pincodeError, setPincodeError] = useState('')
   const [emergencyError, setEmergencyError] = useState('')
+
+  const addressShake = useShake()
+  const pincodeShake = useShake()
+  const emergencyShake = useShake()
 
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(true)
@@ -128,7 +134,7 @@ export default function PersonalDetails() {
     !!fullName.trim() &&
     !!gender &&
     !!dob && dob <= dobMax && dob >= dobMin &&
-    !!address.trim() &&
+    address.trim().length >= 10 &&
     !!state &&
     !!city &&
     /^\d{6}$/.test(pincode) &&
@@ -195,7 +201,7 @@ export default function PersonalDetails() {
             : !gender ? 'Select your gender to continue'
             : !dob ? 'Enter your date of birth to continue'
             : !!dob && (dob > dobMax || dob < dobMin) ? 'Driver must be 18–70 years old'
-            : !address.trim() ? 'Enter your residential address'
+            : address.trim().length < 10 ? 'Enter your full residential address (min 10 characters)'
             : !state ? 'Select your state'
             : !city ? 'Select your city'
             : !/^\d{6}$/.test(pincode) ? 'Enter a valid 6-digit pincode'
@@ -284,14 +290,25 @@ export default function PersonalDetails() {
             <div className="space-y-4">
               {/* Residential Address */}
               <Field label="Residential Address" id="address">
-                <textarea
-                  id="address"
-                  className="input-dark w-full resize-none"
-                  rows={2}
-                  placeholder="House No, Street, Locality"
-                  value={address}
-                  onChange={e => setAddress(e.target.value)}
-                />
+                <ShakeWrap controls={addressShake.controls}>
+                  <textarea
+                    id="address"
+                    className="input-dark w-full resize-none"
+                    rows={2}
+                    placeholder="House No, Street, Locality"
+                    value={address}
+                    onChange={e => { setAddress(e.target.value); setAddressError('') }}
+                    onBlur={() => {
+                      if (address.trim() && address.trim().length < 10) {
+                        setAddressError('Address must be at least 10 characters')
+                        addressShake.shake()
+                      } else {
+                        setAddressError('')
+                      }
+                    }}
+                  />
+                </ShakeWrap>
+                <FieldError message={addressError} />
               </Field>
 
               {/* State */}
@@ -342,26 +359,29 @@ export default function PersonalDetails() {
 
               {/* Pincode */}
               <Field label="Pincode" id="pincode">
-                <input
-                  id="pincode"
-                  className="input-dark w-full"
-                  placeholder="751001"
-                  maxLength={6}
-                  inputMode="numeric"
-                  value={pincode}
-                  onChange={e => {
-                    setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))
-                    setPincodeError('')
-                  }}
-                  onBlur={() => {
-                    if (pincode && !/^\d{6}$/.test(pincode)) {
-                      setPincodeError('Enter a valid 6-digit pincode')
-                    } else {
+                <ShakeWrap controls={pincodeShake.controls}>
+                  <input
+                    id="pincode"
+                    className="input-dark w-full"
+                    placeholder="751001"
+                    maxLength={6}
+                    inputMode="numeric"
+                    value={pincode}
+                    onChange={e => {
+                      setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))
                       setPincodeError('')
-                    }
-                  }}
-                />
-                {pincodeError && <p className="text-accent-red text-xs mt-1">{pincodeError}</p>}
+                    }}
+                    onBlur={() => {
+                      if (pincode && !/^\d{6}$/.test(pincode)) {
+                        setPincodeError('Enter a valid 6-digit pincode')
+                        pincodeShake.shake()
+                      } else {
+                        setPincodeError('')
+                      }
+                    }}
+                  />
+                </ShakeWrap>
+                <FieldError message={pincodeError} />
               </Field>
             </div>
           </div>
@@ -441,32 +461,35 @@ export default function PersonalDetails() {
 
               {/* Emergency Contact */}
               <Field label="Emergency Contact" id="emergency">
-                <div className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-4 h-[52px] focus-within:border-primary transition-colors">
-                  <span className="text-text-secondary font-semibold text-sm flex-shrink-0">+91</span>
-                  <div className="w-px h-5 bg-border" />
-                  <input
-                    id="emergency"
-                    className="flex-1 bg-transparent text-text-primary font-semibold text-sm outline-none placeholder:text-text-muted"
-                    type="tel"
-                    inputMode="numeric"
-                    maxLength={10}
-                    placeholder="Family member's number"
-                    value={emergency}
-                    onChange={e => {
-                      setEmergency(e.target.value.replace(/\D/g, '').slice(0, 10))
-                      setEmergencyError('')
-                    }}
-                    onBlur={() => {
-                      if (emergency && !/^[6-9]\d{9}$/.test(emergency)) {
-                        setEmergencyError('Enter a valid 10-digit Indian mobile number')
-                      } else {
+                <ShakeWrap controls={emergencyShake.controls}>
+                  <div className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-4 h-[52px] focus-within:border-primary transition-colors">
+                    <span className="text-text-secondary font-semibold text-sm flex-shrink-0">+91</span>
+                    <div className="w-px h-5 bg-border" />
+                    <input
+                      id="emergency"
+                      className="flex-1 bg-transparent text-text-primary font-semibold text-sm outline-none placeholder:text-text-muted"
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength={10}
+                      placeholder="Family member's number"
+                      value={emergency}
+                      onChange={e => {
+                        setEmergency(e.target.value.replace(/\D/g, '').slice(0, 10))
                         setEmergencyError('')
-                      }
-                    }}
-                  />
-                </div>
+                      }}
+                      onBlur={() => {
+                        if (emergency && !/^[6-9]\d{9}$/.test(emergency)) {
+                          setEmergencyError('Enter a valid 10-digit Indian mobile number')
+                          emergencyShake.shake()
+                        } else {
+                          setEmergencyError('')
+                        }
+                      }}
+                    />
+                  </div>
+                </ShakeWrap>
                 {emergencyError
-                  ? <p className="text-accent-red text-xs mt-1">{emergencyError}</p>
+                  ? <FieldError message={emergencyError} />
                   : <p className="text-text-muted text-xs mt-1.5">Only contacted in a safety emergency · never shared with riders</p>
                 }
               </Field>
