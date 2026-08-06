@@ -74,7 +74,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     const standardDrivers = await repo.findNearbyDrivers({
       lat: data.originLat,
       lng: data.originLng,
-      categoryId,
+      categoryIds: [categoryId],
       maxDrivers: MAX_DRIVERS - drivers.length,
       radiusMetres,
       minWalletBalance,
