@@ -21,6 +21,17 @@ export async function getActiveSession(driverId: bigint): Promise<DriverSession 
   return res.rows[0] ?? null
 }
 
+// Which driver categories are eligible to serve a ride booked at rideCategoryId:
+// the ride's own category, plus any category that lists it as an accepted
+// fallback tier (category_fallback_rules.accepts_category_id = rideCategoryId).
+export async function getEligibleDriverCategoryIds(rideCategoryId: bigint): Promise<bigint[]> {
+  const res = await pool.query<{ category_id: string }>(
+    `SELECT category_id FROM category_fallback_rules WHERE accepts_category_id = $1`,
+    [rideCategoryId]
+  )
+  return [rideCategoryId, ...res.rows.map(r => BigInt(r.category_id))]
+}
+
 export async function createSession(data: {
   driverId: bigint
   vehicleId: bigint
