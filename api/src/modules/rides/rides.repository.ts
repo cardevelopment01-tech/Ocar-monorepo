@@ -21,6 +21,25 @@ export async function getActiveSession(driverId: bigint): Promise<DriverSession 
   return res.rows[0] ?? null
 }
 
+// Which driver categories are eligible to serve a ride booked at rideCategoryId:
+// the ride's own category, plus any category that lists it as an accepted
+// fallback tier (category_fallback_rules.accepts_category_id = rideCategoryId).
+export async function getEligibleDriverCategoryIds(rideCategoryId: bigint): Promise<bigint[]> {
+  const res = await pool.query<{ category_id: string }>(
+    `SELECT category_id FROM category_fallback_rules WHERE accepts_category_id = $1`,
+    [rideCategoryId]
+  )
+  return [rideCategoryId, ...res.rows.map(r => BigInt(r.category_id))]
+}
+
+export async function getCategoryDisplayName(categoryId: bigint): Promise<string | null> {
+  const res = await pool.query<{ display_name: string }>(
+    `SELECT display_name FROM vehicle_categories WHERE id = $1`,
+    [categoryId]
+  )
+  return res.rows[0]?.display_name ?? null
+}
+
 export async function createSession(data: {
   driverId: bigint
   vehicleId: bigint
@@ -99,7 +118,7 @@ export async function upsertDriverLocation(data: {
 export async function findNearbyDrivers(params: {
   lat: number
   lng: number
-  categoryId: bigint
+  categoryIds: bigint[]
   radiusMetres?: number
   maxDrivers?: number
   minWalletBalance: number
@@ -131,7 +150,7 @@ export async function findNearbyDrivers(params: {
      WHERE dls.is_available = true
        AND ds.status = 'online'
        AND ds.mode = 'standard'
-       AND ds.category_id = $3
+       AND ds.category_id = ANY($3::bigint[])
        AND (
          (nc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
          OR
@@ -150,7 +169,7 @@ export async function findNearbyDrivers(params: {
        )
      ORDER BY distance_metres ASC
      LIMIT $5`,
-    [params.lat, params.lng, params.categoryId, radius, max, params.minWalletBalance]
+    [params.lat, params.lng, params.categoryIds, radius, max, params.minWalletBalance]
   )
   return res.rows
 }
@@ -187,7 +206,7 @@ export async function findReturnCabDrivers(params: {
   pickupLng: number
   dropLat: number
   dropLng: number
-  categoryId: bigint
+  categoryIds: bigint[]
   minWalletBalance: number
 }): Promise<NearbyDriver[]> {
   const res = await pool.query<NearbyDriver>(
@@ -215,7 +234,7 @@ export async function findReturnCabDrivers(params: {
      ) nc ON true
      WHERE rcr.is_active = true
        AND ds.status = 'online'
-       AND ds.category_id = $5
+       AND ds.category_id = ANY($5::bigint[])
        AND (
          (nc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
          OR
@@ -239,7 +258,7 @@ export async function findReturnCabDrivers(params: {
        )
      ORDER BY distance_metres ASC
      LIMIT 3`,
-    [params.pickupLat, params.pickupLng, params.dropLat, params.dropLng, params.categoryId, params.minWalletBalance]
+    [params.pickupLat, params.pickupLng, params.dropLat, params.dropLng, params.categoryIds, params.minWalletBalance]
   )
   return res.rows
 }
