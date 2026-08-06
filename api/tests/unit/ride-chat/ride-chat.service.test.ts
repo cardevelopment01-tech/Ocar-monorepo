@@ -24,7 +24,7 @@ import * as ridesRepo from '@/modules/rides/rides.repository'
 import * as chatRepo from '@/modules/ride-chat/ride-chat.repository'
 import { socketEvents } from '@/websocket/socket.server'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
-import { sendMessage, ChatForbiddenError } from '@/modules/ride-chat/ride-chat.service'
+import { sendMessage } from '@/modules/ride-chat/ride-chat.service'
 
 const RIDE = { id: 1n, user_id: '5', driver_id: '9', status: 'in_progress' }
 const NEW_ROW = {
@@ -39,10 +39,10 @@ describe('sendMessage', () => {
     vi.mocked(chatRepo.insertMessageIdempotent).mockResolvedValue(NEW_ROW as never)
   })
 
-  it('rejects a non-participant caller with ChatForbiddenError', async () => {
+  it('rejects a non-participant caller with AUTH_FORBIDDEN', async () => {
     await expect(
       sendMessage(1n, { userId: 999n }, { body: 'hi', clientMsgId: 'c1' }),
-    ).rejects.toThrow(ChatForbiddenError)
+    ).rejects.toMatchObject({ httpStatus: 403, appCode: 'AUTH_FORBIDDEN' })
     expect(chatRepo.insertMessageIdempotent).not.toHaveBeenCalled()
   })
 

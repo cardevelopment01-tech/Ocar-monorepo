@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express'
 import * as service from './ride-chat.service'
-import { ChatForbiddenError, ChatRideNotFoundError } from './ride-chat.service'
 import type { ChatCaller } from './ride-chat.types'
 
 function caller(req: Request): ChatCaller {
@@ -8,12 +7,6 @@ function caller(req: Request): ChatCaller {
   if (req.user?.id !== undefined) c.userId = req.user.id
   if (req.driver?.id !== undefined) c.driverId = req.driver.id
   return c
-}
-
-function handleErr(err: unknown, res: Response, next: NextFunction): void {
-  if (err instanceof ChatForbiddenError) { res.status(403).json({ error: 'Forbidden', code: 'AUTH_FORBIDDEN' }); return }
-  if (err instanceof ChatRideNotFoundError) { res.status(404).json({ error: 'Ride not found' }); return }
-  next(err as Error)
 }
 
 // ── POST /rides/:id/messages ────────────────────────────────────────
@@ -32,7 +25,7 @@ export async function postMessage(req: Request, res: Response, next: NextFunctio
       clientMsgId: body.clientMsgId,
     })
     res.status(201).json(msg)
-  } catch (err) { handleErr(err, res, next) }
+  } catch (err) { next(err) }
 }
 
 // ── GET /rides/:id/messages ─────────────────────────────────────────
@@ -43,7 +36,7 @@ export async function getMessages(req: Request, res: Response, next: NextFunctio
     const after = typeof afterRaw === 'string' && afterRaw !== '' ? BigInt(afterRaw) : undefined
     const messages = await service.getHistory(rideId, caller(req), after)
     res.json({ messages })
-  } catch (err) { handleErr(err, res, next) }
+  } catch (err) { next(err) }
 }
 
 // ── PATCH /rides/:id/messages/read ──────────────────────────────────
@@ -52,5 +45,5 @@ export async function markRead(req: Request, res: Response, next: NextFunction):
     const rideId = BigInt(req.params['id']!)
     const result = await service.markRead(rideId, caller(req))
     res.json(result)
-  } catch (err) { handleErr(err, res, next) }
+  } catch (err) { next(err) }
 }

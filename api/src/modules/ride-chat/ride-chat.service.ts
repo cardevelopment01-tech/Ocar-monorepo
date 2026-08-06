@@ -2,15 +2,10 @@ import { getRideById } from '@/modules/rides/rides.repository'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { socketEvents } from '@/websocket/socket.server'
+import { createHttpError } from '@/lib/errors'
+import { AppErrors } from '@/constants/errors'
 import * as repo from './ride-chat.repository'
 import type { ChatCaller, RideMessageDTO, RideParticipantType } from './ride-chat.types'
-
-export class ChatForbiddenError extends Error {
-  constructor() { super('Forbidden'); this.name = 'ChatForbiddenError' }
-}
-export class ChatRideNotFoundError extends Error {
-  constructor() { super('Ride not found'); this.name = 'ChatRideNotFoundError' }
-}
 
 interface ResolvedParticipant {
   senderType: RideParticipantType
@@ -24,7 +19,7 @@ interface ResolvedParticipant {
 // Returns who the caller is (sender) and who the other party is (recipient).
 async function resolveParticipant(rideId: bigint, caller: ChatCaller): Promise<ResolvedParticipant> {
   const ride = await getRideById(rideId)
-  if (!ride) throw new ChatRideNotFoundError()
+  if (!ride) throw createHttpError(AppErrors.RIDE_NOT_FOUND)
 
   if (caller.userId !== undefined && String(ride.user_id) === String(caller.userId)) {
     return {
@@ -38,7 +33,7 @@ async function resolveParticipant(rideId: bigint, caller: ChatCaller): Promise<R
       recipientType: 'user', recipientId: BigInt(ride.user_id),
     }
   }
-  throw new ChatForbiddenError()
+  throw createHttpError(AppErrors.AUTH_FORBIDDEN)
 }
 
 export async function sendMessage(
