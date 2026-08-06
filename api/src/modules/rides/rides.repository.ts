@@ -198,7 +198,7 @@ export async function findReturnCabDrivers(params: {
   pickupLng: number
   dropLat: number
   dropLng: number
-  categoryId: bigint
+  categoryIds: bigint[]
   minWalletBalance: number
 }): Promise<NearbyDriver[]> {
   const res = await pool.query<NearbyDriver>(
@@ -226,7 +226,7 @@ export async function findReturnCabDrivers(params: {
      ) nc ON true
      WHERE rcr.is_active = true
        AND ds.status = 'online'
-       AND ds.category_id = $5
+       AND ds.category_id = ANY($5::bigint[])
        AND (
          (nc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
          OR
@@ -250,7 +250,7 @@ export async function findReturnCabDrivers(params: {
        )
      ORDER BY distance_metres ASC
      LIMIT 3`,
-    [params.pickupLat, params.pickupLng, params.dropLat, params.dropLng, params.categoryId, params.minWalletBalance]
+    [params.pickupLat, params.pickupLng, params.dropLat, params.dropLng, params.categoryIds, params.minWalletBalance]
   )
   return res.rows
 }

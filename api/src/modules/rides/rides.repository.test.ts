@@ -5,7 +5,7 @@ vi.mock('@/db/client', () => ({
   pool: { query: (...args: unknown[]) => mockQuery(...args) },
 }))
 
-import { getEligibleDriverCategoryIds, findNearbyDrivers } from './rides.repository'
+import { getEligibleDriverCategoryIds, findNearbyDrivers, findReturnCabDrivers } from './rides.repository'
 
 describe('findNearbyDrivers', () => {
   beforeEach(() => { mockQuery.mockReset() })
@@ -23,6 +23,27 @@ describe('findNearbyDrivers', () => {
     const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]]
     expect(sql).toContain('ds.category_id = ANY($3::bigint[])')
     expect(params[2]).toEqual([2n, 1n])
+  })
+})
+
+describe('findReturnCabDrivers', () => {
+  beforeEach(() => { mockQuery.mockReset() })
+
+  it('filters drivers with category_id = ANY(categoryIds)', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+
+    await findReturnCabDrivers({
+      pickupLat: 20.29,
+      pickupLng: 85.82,
+      dropLat: 20.46,
+      dropLng: 85.88,
+      categoryIds: [3n, 2n],
+      minWalletBalance: 100,
+    })
+
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('ds.category_id = ANY($5::bigint[])')
+    expect(params[4]).toEqual([3n, 2n])
   })
 })
 
