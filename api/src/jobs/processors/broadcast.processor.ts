@@ -43,6 +43,13 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   const stops = await repo.getRideStops(rideId)
   const minWalletBalance = await getMinWalletBalance()
 
+  // Round 1 stays exact-category only, so native-tier drivers get first crack
+  // at their own tier's fare. Rounds 2+ widen to fallback-tier drivers
+  // (category_fallback_rules) once the ride has gone unaccepted past round 1.
+  const categoryIds = data.broadcastRound === 1
+    ? [categoryId]
+    : await repo.getEligibleDriverCategoryIds(categoryId)
+
   let drivers: Array<{
     driver_id: bigint
     session_id: bigint
@@ -57,7 +64,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       pickupLng: data.originLng,
       dropLat:   data.destinationLat,
       dropLng:   data.destinationLng,
-      categoryIds: [categoryId],
+      categoryIds,
       minWalletBalance,
     })
     drivers = returnDrivers.map(d => ({
@@ -74,7 +81,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     const standardDrivers = await repo.findNearbyDrivers({
       lat: data.originLat,
       lng: data.originLng,
-      categoryIds: [categoryId],
+      categoryIds,
       maxDrivers: MAX_DRIVERS - drivers.length,
       radiusMetres,
       minWalletBalance,
