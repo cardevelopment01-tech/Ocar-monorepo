@@ -36,6 +36,7 @@ export default function RideChatPage() {
   const [input, setInput] = useState('')
   const listEndRef = useRef<HTMLDivElement>(null)
   const lastSeenIdRef = useRef<string | undefined>(undefined)
+  const mountedRef = useRef(true)
 
   const scrollToBottom = useCallback((smooth = true) => {
     listEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' })
@@ -61,6 +62,7 @@ export default function RideChatPage() {
     joinRideRoom(rideId)
 
     let mounted = true
+    mountedRef.current = true
     rideApi.getMessages(rideId).then(history => {
       if (!mounted) return
       setMessages(history.map(m => ({ ...m, localStatus: 'sent' })))
@@ -69,17 +71,20 @@ export default function RideChatPage() {
     }).catch(() => {}).finally(() => setLoading(false))
 
     function onChatMessage(msg: ChatMessage) {
+      if (msg.rideId !== rideId) return
       upsertMessage(msg)
       if (msg.senderType === 'driver') void rideApi.markChatRead(rideId).catch(() => {})
     }
 
-    function onChatRead({ readerType }: { readerType: 'user' | 'driver' }) {
+    function onChatRead({ rideId: msgRideId, readerType }: { rideId: string; readerType: 'user' | 'driver' }) {
+      if (msgRideId !== rideId) return
       if (readerType !== 'driver') return
       setMessages(prev => prev.map(m => (m.senderType === 'user' ? { ...m, readAt: m.readAt ?? new Date().toISOString() } : m)))
     }
 
     function onReconnect() {
       rideApi.getMessages(rideId, lastSeenIdRef.current).then(caughtUp => {
+        if (!mounted) return
         if (!caughtUp.length) return
         setMessages(prev => {
           const known = new Set(prev.map(m => m.clientMsgId))
@@ -87,6 +92,7 @@ export default function RideChatPage() {
           return fresh.length ? [...prev, ...fresh] : prev
         })
         lastSeenIdRef.current = caughtUp[caughtUp.length - 1]!.id
+        if (caughtUp.some(m => m.senderType === 'driver')) void rideApi.markChatRead(rideId).catch(() => {})
       }).catch(() => {})
     }
 
@@ -96,6 +102,7 @@ export default function RideChatPage() {
 
     return () => {
       mounted = false
+      mountedRef.current = false
       socket.off('chat:message', onChatMessage)
       socket.off('chat:read', onChatRead)
       socket.off('connect', onReconnect)
@@ -126,8 +133,10 @@ export default function RideChatPage() {
 
     try {
       const sent = await rideApi.sendMessage(rideId, trimmed, clientMsgId)
+      if (!mountedRef.current) return
       upsertMessage(sent)
     } catch {
+      if (!mountedRef.current) return
       setMessages(prev => prev.map(m => (m.clientMsgId === clientMsgId ? { ...m, localStatus: 'failed' } : m)))
     }
   }
@@ -136,8 +145,10 @@ export default function RideChatPage() {
     setMessages(prev => prev.map(m => (m.clientMsgId === msg.clientMsgId ? { ...m, localStatus: 'sending' } : m)))
     try {
       const sent = await rideApi.sendMessage(rideId, msg.body, msg.clientMsgId)
+      if (!mountedRef.current) return
       upsertMessage(sent)
     } catch {
+      if (!mountedRef.current) return
       setMessages(prev => prev.map(m => (m.clientMsgId === msg.clientMsgId ? { ...m, localStatus: 'failed' } : m)))
     }
   }
@@ -233,7 +244,6 @@ function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
 
   return (
     <motion.div
-      layout
       initial={{ opacity: 0, y: 8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0 }}

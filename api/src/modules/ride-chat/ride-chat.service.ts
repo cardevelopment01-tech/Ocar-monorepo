@@ -81,6 +81,6 @@ export async function getHistory(
 export async function markRead(rideId: bigint, caller: ChatCaller): Promise<{ count: number }> {
   const p = await resolveParticipant(rideId, caller)
   const count = await repo.markMessagesRead(rideId, p.senderType)
-  if (count > 0) socketEvents.emitChatRead(String(rideId), { readerType: p.senderType })
+  if (count > 0) socketEvents.emitChatRead(String(rideId), { rideId: String(rideId), readerType: p.senderType })
   return { count }
 }
