@@ -136,14 +136,19 @@ export async function goOnline(driverId: bigint, data: {
     throw httpError(428, "Today's selfie and plate verification is required before going online", 'DAILY_CHECK_REQUIRED')
   }
 
+  // Billing mode is fixed to the driver's assigned operating city
+  // (drivers.city_id, set at onboarding — see updatePersonalInfo) — no GPS
+  // fallback, so it never flips based on where the driver happens to be.
   const cityRes = await pool.query<{ billing_mode: BillingMode }>(
-    `SELECT billing_mode FROM cities
-     WHERE status = 'active'
-     ORDER BY ST_Distance(centroid, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography) ASC
-     LIMIT 1`,
-    [data.lat, data.lng]
+    `SELECT c.billing_mode FROM drivers d
+     JOIN cities c ON c.id = d.city_id AND c.status = 'active'
+     WHERE d.id = $1`,
+    [driverId]
   )
-  const billingMode = cityRes.rows[0]?.billing_mode ?? 'commission'
+  if (!cityRes.rows[0]) {
+    throw httpError(422, 'Your operating city is not set. Contact support to get it assigned before going online.', 'CITY_NOT_ASSIGNED')
+  }
+  const billingMode = cityRes.rows[0].billing_mode
 
   if (billingMode === 'commission') {
     const [minBalance, wallet] = await Promise.all([getMinWalletBalance(), getDriverWallet(driverId)])
@@ -602,14 +607,22 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
 // ── Driver ride actions ───────────────────────────────────────
 
 export async function acceptRide(driverId: bigint, rideId: bigint) {
+  // Same driver-city resolution as goOnline above — no GPS fallback. A driver
+  // reaching this point already passed the goOnline city gate, so this should
+  // always resolve; erroring instead of defaulting surfaces a data problem
+  // rather than silently mis-billing the ride. Deliberately independent of
+  // rideId — whether the ride still exists/is acceptable is repo.acceptAssignment's
+  // job below (its own UPDATE ... WHERE status = 'requested' check), not this one's.
   const cityRes = await pool.query<{ billing_mode: BillingMode }>(
-    `SELECT c.billing_mode FROM cities c, rides r
-     WHERE r.id = $1 AND c.status = 'active'
-     ORDER BY ST_Distance(c.centroid, r.origin) ASC
-     LIMIT 1`,
-    [rideId]
+    `SELECT c.billing_mode FROM drivers d
+     JOIN cities c ON c.id = d.city_id AND c.status = 'active'
+     WHERE d.id = $1`,
+    [driverId]
   )
-  const billingMode = cityRes.rows[0]?.billing_mode ?? 'commission'
+  if (!cityRes.rows[0]) {
+    throw httpError(422, 'Driver operating city is not set', 'CITY_NOT_ASSIGNED')
+  }
+  const billingMode = cityRes.rows[0].billing_mode
 
   const cancelledDriverIds = await repo.acceptAssignment(rideId, driverId, billingMode)
   if (cancelledDriverIds === false) {

@@ -51,18 +51,29 @@ export default function PersonalDetails() {
   const [address, setAddress] = useState('')
   const [state, setState] = useState('')
   const [city, setCity] = useState('')
+  const [cityId, setCityId] = useState<number | undefined>(undefined)
   const [pincode, setPincode] = useState('')
   const [experience, setExperience] = useState<number | null>(null)
   const [emergency, setEmergency] = useState('')
   const [languages, setLanguages] = useState<string[]>([])
   const [showMoreLangs, setShowMoreLangs] = useState(false)
-  const [odishaCities, setOdishaCities] = useState<string[]>([])
+  const [odishaCities, setOdishaCities] = useState<{ id: number; name: string }[]>([])
 
   useEffect(() => {
     onboardingApi.getCities()
-      .then(cities => setOdishaCities(cities.filter(c => c.state.toLowerCase() === 'odisha').map(c => c.name)))
+      .then(cities => setOdishaCities(cities.filter(c => c.state.toLowerCase() === 'odisha').map(c => ({ id: c.id, name: c.name }))))
       .catch(() => {})
   }, [])
+
+  // Re-resolve cityId once the city list arrives, for a previously-saved city
+  // loaded from getPersonalInfo() below (which only returns the name).
+  // Only applies to Odisha — that's the only state whose city field is ever
+  // backed by this list; a free-typed city for another state must never be
+  // matched against it, even if the text happens to collide with a name here.
+  useEffect(() => {
+    if (state !== 'Odisha' || cityId !== undefined || !city || odishaCities.length === 0) return
+    setCityId(odishaCities.find(c => c.name === city)?.id)
+  }, [state, city, odishaCities, cityId])
 
   const [dobError, setDobError] = useState('')
   const [pincodeError, setPincodeError] = useState('')
@@ -143,6 +154,7 @@ export default function PersonalDetails() {
         languages_known: languages,
       }
       if (email.trim()) payload.email = email.trim()
+      if (cityId !== undefined) payload.city_id = cityId
       const result = await onboardingApi.savePersonalInfo(payload)
       updateDriver({ onboarding_step: result.next_step })
       navigate('/onboarding/vehicle')
@@ -289,7 +301,7 @@ export default function PersonalDetails() {
                     label="Select State"
                     value={state}
                     options={INDIA_STATES}
-                    onChange={v => { setState(v); setCity('') }}
+                    onChange={v => { setState(v); setCity(''); setCityId(undefined) }}
                     placeholder="Select state"
                     searchable
                   />
@@ -312,8 +324,8 @@ export default function PersonalDetails() {
                   <SelectSheet
                     label="Select City"
                     value={city}
-                    options={odishaCities}
-                    onChange={setCity}
+                    options={odishaCities.map(c => c.name)}
+                    onChange={name => { setCity(name); setCityId(odishaCities.find(c => c.name === name)?.id) }}
                     placeholder="Select city"
                     searchable
                   />
@@ -323,7 +335,7 @@ export default function PersonalDetails() {
                     className="input-dark w-full"
                     placeholder="Enter city"
                     value={city}
-                    onChange={e => setCity(e.target.value)}
+                    onChange={e => { setCity(e.target.value); setCityId(undefined) }}
                   />
                 )}
               </Field>

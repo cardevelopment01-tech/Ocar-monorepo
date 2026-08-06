@@ -15,7 +15,7 @@ import type { PackageTier, DriverPackageWallet, DriverPackageLedgerEntry } from 
 const PROFILE_EDITABLE_COLUMNS = [
   'full_name', 'email', 'gender', 'date_of_birth', 'residential_address',
   'state', 'city', 'pincode', 'experience_years', 'emergency_contact',
-  'languages_known', 'aadhaar_number', 'license_number',
+  'languages_known', 'aadhaar_number', 'license_number', 'city_id',
 ] as const
 
 // Hardcoded whitelist, never built from request keys — same rationale as
@@ -144,12 +144,14 @@ export async function getDriverById(id: bigint): Promise<AdminDriverDetail | nul
        v.category_id, v.brand_id, v.model_id,
        vc.display_name AS vehicle_category,
        vb.name AS vehicle_brand,
-       dw.balance AS wallet_balance, dw.is_frozen AS wallet_is_frozen
+       dw.balance AS wallet_balance, dw.is_frozen AS wallet_is_frozen,
+       ac.name AS assigned_city_name, ac.billing_mode AS assigned_city_billing_mode
      FROM drivers d
      LEFT JOIN driver_vehicles v ON v.driver_id = d.id
      LEFT JOIN vehicle_categories vc ON vc.id = v.category_id
      LEFT JOIN vehicle_brands vb ON vb.id = v.brand_id
      LEFT JOIN driver_wallets dw ON dw.driver_id = d.id
+     LEFT JOIN cities ac ON ac.id = d.city_id
      WHERE d.id = $1`,
     [id]
   )
@@ -230,6 +232,9 @@ export async function getDriverById(id: bigint): Promise<AdminDriverDetail | nul
     languages_known: (r.languages_known as string[]) ?? [],
     aadhaar_number: r.aadhaar_number ? 'XXXX-XXXX-' + (r.aadhaar_number as string).slice(-4) : null,
     license_number: r.license_number as string | null,
+    city_id: r.city_id ? String(r.city_id) : null,
+    assigned_city_name: r.assigned_city_name as string | null,
+    assigned_city_billing_mode: r.assigned_city_billing_mode as 'commission' | 'package' | null,
     status: r.status as DriverStatus,
     onboarding_step: r.onboarding_step as string,
     created_at: r.created_at as string,

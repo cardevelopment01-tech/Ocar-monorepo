@@ -120,6 +120,7 @@ export async function savePersonalInfo(
     residential_address: string
     state: string
     city: string
+    city_id?: number
     pincode: string
     experience_years: number
     emergency_contact: string
