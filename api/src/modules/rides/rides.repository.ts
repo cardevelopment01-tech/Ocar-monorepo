@@ -221,6 +221,19 @@ export async function findReturnCabDrivers(params: {
      JOIN cities dc ON dc.id = d.city_id AND dc.status = 'active'
      LEFT JOIN driver_wallets dw ON dw.driver_id = rcr.driver_id
      LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = rcr.driver_id
+     -- nearest active city to the DROP-OFF point (unrelated to dc above, which
+     -- is the driver's fixed billing-mode city). Standard nearest-centroid
+     -- city classification, same pattern used at go-online.
+     LEFT JOIN LATERAL (
+       SELECT c.id AS city_id
+       FROM cities c
+       WHERE c.status = 'active'
+       ORDER BY ST_Distance(
+         c.centroid,
+         ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography
+       ) ASC
+       LIMIT 1
+     ) drop_city ON true
      WHERE rcr.is_active = true
        AND ds.status = 'online'
        AND ds.category_id = ANY($5::bigint[])
@@ -229,16 +242,20 @@ export async function findReturnCabDrivers(params: {
          OR
          (dc.billing_mode = 'package' AND COALESCE(dpw.balance, 0) > 0 AND NOT COALESCE(dpw.is_frozen, false))
        )
+       -- Pickup: within match_radius_metres (3km) of the driver's return-trip
+       -- START point, not the corridor line — a pickup near the destination end
+       -- must NOT pass the pickup check. ponytail: no index on origin point;
+       -- return_cab_routes is tiny (online return drivers only, partial-indexed
+       -- by is_active) so a seq scan is fine — add a functional GiST index only
+       -- if this table ever grows.
        AND ST_DWithin(
-         rcr.corridor,
+         ST_SetSRID(ST_MakePoint(rcr.origin_lng::float8, rcr.origin_lat::float8), 4326)::geography,
          ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography,
          rcr.match_radius_metres
        )
-       AND ST_DWithin(
-         rcr.corridor,
-         ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography,
-         rcr.match_radius_metres
-       )
+       -- Drop-off: anywhere in the destination city — its nearest active city
+       -- centroid must be the route's chosen destination city.
+       AND drop_city.city_id = rcr.destination_city_id
      ORDER BY distance_metres ASC
      LIMIT 3`,
     [params.pickupLat, params.pickupLng, params.dropLat, params.dropLng, params.categoryIds, params.minWalletBalance]

@@ -194,17 +194,17 @@ export async function goOnline(driverId: bigint, data: {
     if (cityRow) {
       await pool.query(
         `INSERT INTO return_cab_routes
-           (session_id, driver_id,
+           (session_id, driver_id, destination_city_id,
             origin_lat, origin_lng,
             destination_lat, destination_lng,
             corridor)
-         VALUES ($1,$2,$3::float8,$4::float8,$5::float8,$6::float8,
+         VALUES ($1,$2,$3,$4::float8,$5::float8,$6::float8,$7::float8,
            ST_MakeLine(
-             ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326),
-             ST_SetSRID(ST_MakePoint($6::float8, $5::float8), 4326)
+             ST_SetSRID(ST_MakePoint($5::float8, $4::float8), 4326),
+             ST_SetSRID(ST_MakePoint($7::float8, $6::float8), 4326)
            )::geography
          )`,
-        [session.id, driverId, data.lat, data.lng, cityRow.dest_lat, cityRow.dest_lng]
+        [session.id, driverId, data.destinationCityId, data.lat, data.lng, cityRow.dest_lat, cityRow.dest_lng]
       )
     }
   }

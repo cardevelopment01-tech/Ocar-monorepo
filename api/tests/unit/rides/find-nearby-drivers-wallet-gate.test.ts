@@ -35,4 +35,19 @@ describe('driver-matching queries — wallet balance gate', () => {
     expect(sql).toContain('NOT COALESCE(dw.is_frozen, false)')
     expect(params).toContain(500)
   })
+
+  it('findReturnCabDrivers matches drop-off by nearest-city identity, pickup within 3km', async () => {
+    await findReturnCabDrivers({
+      pickupLat: 20.255981, pickupLng: 85.866363,
+      dropLat: 19.8014, dropLng: 85.8142,
+      categoryId: BigInt(2), minWalletBalance: 500,
+    })
+    const [sql] = poolQuery.mock.calls[0] as [string, unknown[]]
+    // drop-off is classified to nearest city, compared to the route's destination city
+    expect(sql).toContain('rcr.destination_city_id')
+    // pickup check is against the driver's origin point at the route radius (now 3km)
+    expect(sql).toContain('rcr.match_radius_metres')
+    // the old double-corridor drop-radius clause is gone
+    expect(sql).not.toMatch(/ST_DWithin\(\s*rcr\.corridor[\s\S]*ST_DWithin\(\s*rcr\.corridor/)
+  })
 })
