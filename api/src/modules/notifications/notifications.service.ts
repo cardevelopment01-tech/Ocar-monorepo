@@ -37,6 +37,10 @@ export async function notifyOwner(params: {
   body: string
   payload?: Record<string, unknown>
   rideId?: bigint
+  // Collapses repeat pushes sharing the same tag into one OS notification
+  // (webpush tag/renotify — see push.provider.ts) instead of stacking one per
+  // event. Optional: most callers are one-shot events that don't need it.
+  tag?: string
 }): Promise<void> {
   const item = await repo.createInAppNotification(params)
 
@@ -46,6 +50,7 @@ export async function notifyOwner(params: {
       title: params.title,
       body: params.body,
       data: { type: params.type, ...(params.rideId !== undefined ? { rideId: params.rideId.toString() } : {}) },
+      ...(params.tag !== undefined ? { tag: params.tag } : {}),
     })
   } catch (err) {
     log.error({ err }, 'notify push leg failed')
