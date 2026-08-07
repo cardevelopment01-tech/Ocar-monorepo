@@ -60,7 +60,7 @@ export default function App() {
   const navigate = useNavigate()
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
   const { isOnline, setOnline, setOffline } = useSessionStore()
-  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, setRestoreChecked, clearRide, activeRide, updateStop, addStop } = useRideStore()
+  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, setRestoreChecked, clearRide, activeRide, updateStop, addStop, setUnreadChatCount, incrementUnreadChatCount } = useRideStore()
   const { fetchUnreadCount, addLive } = useNotificationsStore()
   const [accepting, setAccepting] = useState(false)
   const [acceptedBeat, setAcceptedBeat] = useState(false)
@@ -309,10 +309,15 @@ export default function App() {
     const onStopAdded = (data: { stop: RideStop }) => {
       addStop({ ...data.stop, id: String(data.stop.id) })
     }
+    const onChatMessage = (data: { senderType: 'user' | 'driver' }) => {
+      if (data.senderType === 'user') incrementUnreadChatCount()
+    }
     socket.on('ride:status_update', onStatusUpdate)
     socket.on('connect', onConnect)
     socket.on('stop:updated', onStopUpdated)
     socket.on('stop:added', onStopAdded)
+    socket.on('chat:message', onChatMessage)
+    void driverRideApi.getUnreadChatCount(activeRide.id).then(setUnreadChatCount).catch(() => {})
     // Session-restore path: socket may already be connected before this effect
     // mounts, so the 'connect' event never fires. Emit join:ride immediately.
     if (socket.connected) {
@@ -324,6 +329,7 @@ export default function App() {
       socket.off('connect', onConnect)
       socket.off('stop:updated', onStopUpdated)
       socket.off('stop:added', onStopAdded)
+      socket.off('chat:message', onChatMessage)
     }
   }, [activeRide?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
