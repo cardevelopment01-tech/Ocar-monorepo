@@ -95,3 +95,9 @@ export async function markRead(rideId: bigint, caller: ChatCaller): Promise<{ co
   if (count > 0) socketEvents.emitChatRead(String(rideId), { rideId: String(rideId), readerType: p.senderType })
   return { count }
 }
+
+export async function getUnreadCount(rideId: bigint, caller: ChatCaller): Promise<{ count: number }> {
+  const p = await resolveParticipant(rideId, caller)
+  const count = await repo.getUnreadMessageCount(rideId, p.senderType)
+  return { count }
+}

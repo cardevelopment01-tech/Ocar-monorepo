@@ -8,6 +8,7 @@ vi.mock('@/modules/ride-chat/ride-chat.repository', () => ({
   insertMessageIdempotent: vi.fn(),
   listMessages: vi.fn(),
   markMessagesRead: vi.fn(),
+  getUnreadMessageCount: vi.fn(),
 }))
 vi.mock('@/websocket/socket.server', () => ({
   socketEvents: { emitChatMessage: vi.fn(), emitChatRead: vi.fn() },
@@ -29,7 +30,7 @@ import * as chatRepo from '@/modules/ride-chat/ride-chat.repository'
 import { socketEvents, isChatOpen } from '@/websocket/socket.server'
 import { pushToTokens } from '@/modules/notifications/notifications.service'
 import { getTokensForOwner } from '@/modules/notifications/notifications.repository'
-import { sendMessage } from '@/modules/ride-chat/ride-chat.service'
+import { sendMessage, getUnreadCount } from '@/modules/ride-chat/ride-chat.service'
 
 const RIDE = { id: 1n, user_id: '5', driver_id: '9', status: 'in_progress' }
 const NEW_ROW = {
@@ -82,5 +83,26 @@ describe('sendMessage', () => {
     expect(isChatOpen).toHaveBeenCalledWith('driver', '9', '1')
     expect(socketEvents.emitChatMessage).toHaveBeenCalled()
     expect(pushToTokens).not.toHaveBeenCalled()
+  })
+})
+
+describe('getUnreadCount', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(ridesRepo.getRideById).mockResolvedValue(RIDE as never)
+  })
+
+  it('returns the unread count for the resolved participant', async () => {
+    vi.mocked(chatRepo.getUnreadMessageCount).mockResolvedValue(3)
+
+    const result = await getUnreadCount(1n, { userId: 5n })
+
+    expect(result).toEqual({ count: 3 })
+    // caller is the user -> reader type passed to the repo is 'user'
+    expect(chatRepo.getUnreadMessageCount).toHaveBeenCalledWith(1n, 'user')
+  })
+
+  it('rejects a non-participant caller', async () => {
+    await expect(getUnreadCount(1n, { userId: 999n })).rejects.toMatchObject({ httpStatus: 403 })
   })
 })
