@@ -232,7 +232,7 @@ describe('listAdminRentalPackages', () => {
   it('returns repo result directly', async () => {
     const rows = [{ id: 1, duration_minutes: 240, is_active: true }]
     vi.mocked(repo.listAdminRentalPackages).mockResolvedValue(rows as never)
-    const result = await listAdminRentalPackages()
+    const result = await listAdminRentalPackages(null)
     expect(result).toBe(rows)
     expect(repo.listAdminRentalPackages).toHaveBeenCalledOnce()
   })

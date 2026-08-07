@@ -28,6 +28,7 @@ graphify-out/
 # Local tool caches (RTK token-tracking state, agent tooling scratch)
 .tokensave/
 .agents/
+.superpowers/
 
 # Git worktrees for isolated feature work
 .worktrees/
