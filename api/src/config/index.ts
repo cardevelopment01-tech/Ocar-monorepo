@@ -39,6 +39,14 @@ const envSchema = z.object({
   // (NOT the API key id — see RazorpayX dashboard > Accounts)
   RAZORPAYX_ACCOUNT_NUMBER: z.string().default(''),
 
+  // Exotel (call masking)
+  EXOTEL_SID: z.string().default(''),
+  EXOTEL_API_KEY: z.string().default(''),
+  EXOTEL_API_TOKEN: z.string().default(''),
+  EXOTEL_SUBDOMAIN: z.string().default('api.exotel.com'),
+  EXOTEL_STATUS_CALLBACK_URL: z.string().default(''),
+  EXOTEL_WAIT_AUDIO_URL: z.string().default(''),
+
   // SMS
   MSG91_AUTH_KEY: z.string().default(''),
   MSG91_SENDER_ID: z.string().default(''),
