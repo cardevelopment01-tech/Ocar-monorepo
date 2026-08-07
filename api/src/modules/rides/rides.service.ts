@@ -953,6 +953,9 @@ export async function addRideStop(
         title: subject ?? 'New stop added',
         body,
         rideId,
+        // Several stops can be added to the same ride in quick succession —
+        // collapse repeat pushes into one OS notification instead of stacking.
+        tag: `stop:${rideId}`,
       })
     } catch (err) {
       log.error({ err }, 'stop_added notification failed')
