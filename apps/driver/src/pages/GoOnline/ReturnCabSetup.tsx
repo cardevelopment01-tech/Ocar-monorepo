@@ -9,6 +9,7 @@ import { connectDriverSocket } from '@/lib/socket'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useWalletGate } from '@/lib/useWalletGate'
 import api from '@/lib/api'
+import { unlockRideSound } from '@/lib/rideSound'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
@@ -55,6 +56,7 @@ export default function ReturnCabSetup() {
   const selectedCity = cities.find(c => c.id === selectedCityId)
 
   const handleGoOnline = async () => {
+    unlockRideSound()
     if (!vehicle)       { setError('No active vehicle found.'); return }
     if (!selectedCityId) { setError('Select a destination city first.'); return }
     setGoingOnline(true)

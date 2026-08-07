@@ -39,6 +39,7 @@ import api from '@/lib/api'
 import type { DriverProfile } from '@/store/useAuthStore'
 import type { NotificationItem } from '@/lib/notifications-api'
 import { driverRideApi } from '@/lib/ride-api'
+import { playRideSound, stopRideSound, unlockRideSound } from '@/lib/rideSound'
 import { connectDriverSocket, disconnectDriverSocket, getDriverSocket } from '@/lib/socket'
 import NotificationsSheet from '@/components/ui/NotificationsSheet'
 import NotificationToast from '@/components/ui/NotificationToast'
@@ -82,6 +83,19 @@ export default function App() {
         if (status === 401) clearAuth()
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Unlock ringtone playback on the very first tap anywhere in the app, not
+  // just the Go Online buttons - covers session-restore-while-online and
+  // auto-re-online-after-trip paths, which reach an online state without
+  // ever going through the Go Online tap that normally does this.
+  useEffect(() => {
+    const unlock = () => {
+      unlockRideSound()
+      document.removeEventListener('pointerdown', unlock)
+    }
+    document.addEventListener('pointerdown', unlock)
+    return () => document.removeEventListener('pointerdown', unlock)
+  }, [])
 
   // Reconcile persisted isOnline with DB reality on every auth session start.
   // Moved here from Home so it runs regardless of which page the driver lands on.
@@ -255,6 +269,32 @@ export default function App() {
     socket.on('ride:request_expired', onRequestExpired)
     return () => { socket.off('ride:request_expired', onRequestExpired) }
   }, [isOnline, clearIncomingRequest])
+
+  // Ringtone follows incomingRequest as the single source of truth: it starts
+  // the instant a request is set and stops on every path that clears it
+  // (accept, decline, expire, server-side expiry) without duplicating the
+  // stop call at each of those call sites.
+  useEffect(() => {
+    if (incomingRequest) playRideSound()
+    else stopRideSound()
+  }, [incomingRequest])
+
+  // Best-effort: keep the screen from sleeping while online, since a sleeping
+  // screen is the one case where a backgrounded tab's audio can actually get
+  // suspended by the OS. Silently no-ops on browsers without the API
+  // (cast to unknown avoids depending on lib.dom's WakeLock typings being
+  // present in every TS target this repo might build with).
+  useEffect(() => {
+    if (!isOnline) return
+    const nav = navigator as unknown as { wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> } }
+    let cancelled = false
+    let sentinel: { release: () => Promise<void> } | null = null
+    nav.wakeLock?.request('screen').then(s => {
+      if (cancelled) { s.release().catch(() => {}); return }
+      sentinel = s
+    }).catch(() => {})
+    return () => { cancelled = true; sentinel?.release().catch(() => {}) }
+  }, [isOnline])
 
   // Listen for user-initiated cancellation while a ride is active.
   // Scoped to activeRide.id so it attaches/detaches with the ride lifecycle.
