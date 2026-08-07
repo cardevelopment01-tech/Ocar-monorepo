@@ -7,6 +7,7 @@ import {
   insertMessageIdempotent,
   listMessages,
   markMessagesRead,
+  getUnreadMessageCount,
 } from '@/modules/ride-chat/ride-chat.repository'
 
 const ROW = {
@@ -79,5 +80,27 @@ describe('markMessagesRead', () => {
     // reader = driver -> mark messages whose sender_type <> 'driver'
     expect(vi.mocked(pool.query).mock.calls[0]![1]).toEqual([1n, 'driver'])
     expect(String(vi.mocked(pool.query).mock.calls[0]![0])).toContain('sender_type <> $2')
+  })
+})
+
+describe('getUnreadMessageCount', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('counts unread messages from the OTHER participant', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ count: '4' }], rowCount: 1 } as never)
+
+    const count = await getUnreadMessageCount(1n, 'driver') // driver is the reader
+
+    expect(count).toBe(4)
+    expect(vi.mocked(pool.query).mock.calls[0]![1]).toEqual([1n, 'driver'])
+    expect(String(vi.mocked(pool.query).mock.calls[0]![0])).toContain('sender_type <> $2')
+  })
+
+  it('returns 0 when there are no unread messages', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ count: '0' }], rowCount: 1 } as never)
+
+    const count = await getUnreadMessageCount(1n, 'user')
+
+    expect(count).toBe(0)
   })
 })

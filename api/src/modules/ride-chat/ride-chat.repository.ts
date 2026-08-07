@@ -79,3 +79,16 @@ export async function markMessagesRead(rideId: bigint, readerType: RideParticipa
   )
   return res.rowCount ?? 0
 }
+
+// Count of messages from the OTHER participant that readerType hasn't read
+// yet — backs the unread badge on the chat entry button. Named distinctly
+// from notifications.repository.ts's getUnreadCount (the shared bell-feed
+// counter) since both could plausibly be imported in the same file.
+export async function getUnreadMessageCount(rideId: bigint, readerType: RideParticipantType): Promise<number> {
+  const res = await pool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM ride_messages
+     WHERE ride_id = $1 AND sender_type <> $2 AND read_at IS NULL`,
+    [rideId, readerType],
+  )
+  return Number(res.rows[0]?.count ?? 0)
+}
