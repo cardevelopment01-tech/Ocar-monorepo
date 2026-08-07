@@ -45,7 +45,7 @@ const ARRIVAL_RADIUS_METRES = 75
 
 export default function NavigateToPickup() {
   const navigate = useNavigate()
-  const { activeRide, restoreChecked, updateRideStatus, clearRide } = useRideStore()
+  const { activeRide, restoreChecked, updateRideStatus, clearRide, unreadChatCount } = useRideStore()
   const { sessionId } = useSessionStore()
   const [arriving, setArriving]   = useState(false)
   const [arrived, setArrived]     = useState(false)
@@ -577,11 +577,16 @@ export default function NavigateToPickup() {
                   </a>
                 )}
                 <button
-                  className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform"
+                  className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform relative"
                   onClick={() => navigate('/ride/chat')}
                   aria-label="Message rider"
                 >
                   <MessageCircle size={18} className="text-text-secondary" />
+                  {unreadChatCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 flex items-center justify-center text-[10px] font-bold text-white">
+                      {unreadChatCount > 9 ? '9+' : unreadChatCount}
+                    </span>
+                  )}
                 </button>
                 <button
                   className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-95 transition-transform"

@@ -70,7 +70,7 @@ function useElapsed(startedAt?: string) {
 
 export default function TripInProgress() {
   const navigate = useNavigate()
-  const { activeRide, updateRideStatus, updateStop, arriveStop, setFare, clearRide } = useRideStore()
+  const { activeRide, updateRideStatus, updateStop, arriveStop, setFare, clearRide, unreadChatCount } = useRideStore()
   const elapsed = useElapsed(activeRide?.rideStartedAt)
   const { sessionId } = useSessionStore()
 
@@ -705,11 +705,16 @@ export default function TripInProgress() {
                     </a>
                   )}
                   <button
-                    className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-95 transition-transform"
+                    className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-95 transition-transform relative"
                     onClick={() => navigate('/ride/chat')}
                     aria-label="Message rider"
                   >
                     <MessageCircle size={18} className="text-text-inverse" />
+                    {unreadChatCount > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 flex items-center justify-center text-[10px] font-bold text-white">
+                        {unreadChatCount > 9 ? '9+' : unreadChatCount}
+                      </span>
+                    )}
                   </button>
                 </div>
               </div>
