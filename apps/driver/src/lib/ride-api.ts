@@ -209,6 +209,11 @@ export const driverRideApi = {
     return res.data as { count: number }
   },
 
+  getUnreadChatCount: async (rideId: string): Promise<number> => {
+    const res = await api.get(`/api/v1/rides/${rideId}/messages/unread-count`)
+    return (res.data as { count: number }).count
+  },
+
   collectCash: async (
     rideId: string,
     body: { collectedAmount?: number; notCollected?: boolean; note?: string }

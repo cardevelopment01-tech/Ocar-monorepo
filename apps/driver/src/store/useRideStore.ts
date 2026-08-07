@@ -57,6 +57,7 @@ interface RideState {
     stopCount?: number
     rideCategoryName?: string
   } | null
+  unreadChatCount: number
 
   setActiveRide:     (ride: ActiveRide) => void
   setRestoreChecked: () => void
@@ -69,6 +70,8 @@ interface RideState {
   clearRide:         () => void
   setIncomingRequest: (req: RideState['incomingRequest']) => void
   clearIncomingRequest: () => void
+  setUnreadChatCount: (count: number) => void
+  incrementUnreadChatCount: () => void
 }
 
 export const useRideStore = create<RideState>()(
@@ -77,6 +80,7 @@ export const useRideStore = create<RideState>()(
       activeRide:       null,
       restoreChecked:   false,
       incomingRequest:  null,
+      unreadChatCount:  0,
 
       setActiveRide: (ride) =>
         set({ activeRide: ride }),
@@ -126,13 +130,19 @@ export const useRideStore = create<RideState>()(
         })),
 
       clearRide: () =>
-        set({ activeRide: null, incomingRequest: null }),
+        set({ activeRide: null, incomingRequest: null, unreadChatCount: 0 }),
 
       setIncomingRequest: (req) =>
         set({ incomingRequest: req }),
 
       clearIncomingRequest: () =>
         set({ incomingRequest: null }),
+
+      setUnreadChatCount: (count) =>
+        set({ unreadChatCount: count }),
+
+      incrementUnreadChatCount: () =>
+        set((s) => ({ unreadChatCount: s.unreadChatCount + 1 })),
     }),
     {
       name: 'ocar_driver_ride',
