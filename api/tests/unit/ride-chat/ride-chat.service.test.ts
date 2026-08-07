@@ -30,9 +30,10 @@ import * as chatRepo from '@/modules/ride-chat/ride-chat.repository'
 import { socketEvents, isChatOpen } from '@/websocket/socket.server'
 import { pushToTokens } from '@/modules/notifications/notifications.service'
 import { getTokensForOwner } from '@/modules/notifications/notifications.repository'
-import { sendMessage, getUnreadCount } from '@/modules/ride-chat/ride-chat.service'
+import { sendMessage, getUnreadCount, getHistory } from '@/modules/ride-chat/ride-chat.service'
 
 const RIDE = { id: 1n, user_id: '5', driver_id: '9', status: 'in_progress' }
+const CLOSED_RIDE = { id: 1n, user_id: '5', driver_id: '9', status: 'completed' }
 const NEW_ROW = {
   message: { id: '10', rideId: '1', senderType: 'user', senderId: '5', body: 'hi', clientMsgId: 'c1', readAt: null, createdAt: '2026-08-06T00:00:00.000Z' },
   inserted: true,
@@ -84,6 +85,15 @@ describe('sendMessage', () => {
     expect(socketEvents.emitChatMessage).toHaveBeenCalled()
     expect(pushToTokens).not.toHaveBeenCalled()
   })
+
+  it('rejects sending on a ride that has ended', async () => {
+    vi.mocked(ridesRepo.getRideById).mockResolvedValue(CLOSED_RIDE as never)
+
+    await expect(
+      sendMessage(1n, { userId: 5n }, { body: 'hi', clientMsgId: 'c1' }),
+    ).rejects.toMatchObject({ httpStatus: 422, appCode: 'RIDE_INVALID_STATUS' })
+    expect(chatRepo.insertMessageIdempotent).not.toHaveBeenCalled()
+  })
 })
 
 describe('getUnreadCount', () => {
@@ -104,5 +114,19 @@ describe('getUnreadCount', () => {
 
   it('rejects a non-participant caller', async () => {
     await expect(getUnreadCount(1n, { userId: 999n })).rejects.toMatchObject({ httpStatus: 403 })
+  })
+})
+
+describe('getHistory on a closed ride', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(ridesRepo.getRideById).mockResolvedValue(CLOSED_RIDE as never)
+  })
+
+  it('still returns message history after the ride has ended', async () => {
+    vi.mocked(chatRepo.listMessages).mockResolvedValue([])
+
+    await expect(getHistory(1n, { userId: 5n }, undefined)).resolves.toEqual([])
+    expect(chatRepo.listMessages).toHaveBeenCalledWith(1n, undefined)
   })
 })

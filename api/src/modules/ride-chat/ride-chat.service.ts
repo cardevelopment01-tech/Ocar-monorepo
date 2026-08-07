@@ -8,11 +8,16 @@ import { AppErrors } from '@/constants/errors'
 import * as repo from './ride-chat.repository'
 import type { ChatCaller, RideMessageDTO, RideParticipantType } from './ride-chat.types'
 
+// Once a ride reaches one of these, chat becomes read-only: history stays
+// visible (getHistory/markRead still work), but no new messages can be sent.
+const CHAT_CLOSED_STATUSES = ['completed', 'cancelled', 'no_drivers']
+
 interface ResolvedParticipant {
   senderType: RideParticipantType
   senderId: bigint
   recipientType: RideParticipantType
   recipientId: bigint | null
+  status: string
 }
 
 // Reuses rides.repository.getRideById + the same String(...) === comparison the
@@ -26,12 +31,14 @@ async function resolveParticipant(rideId: bigint, caller: ChatCaller): Promise<R
     return {
       senderType: 'user', senderId: caller.userId,
       recipientType: 'driver', recipientId: ride.driver_id === null ? null : BigInt(ride.driver_id),
+      status: ride.status,
     }
   }
   if (caller.driverId !== undefined && ride.driver_id !== null && String(ride.driver_id) === String(caller.driverId)) {
     return {
       senderType: 'driver', senderId: caller.driverId,
       recipientType: 'user', recipientId: BigInt(ride.user_id),
+      status: ride.status,
     }
   }
   throw createHttpError(AppErrors.AUTH_FORBIDDEN)
@@ -43,6 +50,9 @@ export async function sendMessage(
   input: { body: string; clientMsgId: string },
 ): Promise<RideMessageDTO> {
   const p = await resolveParticipant(rideId, caller)
+  if (CHAT_CLOSED_STATUSES.includes(p.status)) {
+    throw createHttpError(AppErrors.RIDE_INVALID_STATUS)
+  }
 
   const { message, inserted } = await repo.insertMessageIdempotent({
     rideId, senderType: p.senderType, senderId: p.senderId,
