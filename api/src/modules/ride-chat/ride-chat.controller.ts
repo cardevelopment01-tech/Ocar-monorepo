@@ -48,6 +48,15 @@ export async function getMessages(req: Request, res: Response, next: NextFunctio
   } catch (err) { next(err) }
 }
 
+// ── GET /rides/:id/messages/unread-count ────────────────────────────
+export async function getUnreadCount(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const rideId = BigInt(req.params['id']!)
+    const result = await service.getUnreadCount(rideId, caller(req))
+    res.json(result)
+  } catch (err) { next(err) }
+}
+
 // ── PATCH /rides/:id/messages/read ──────────────────────────────────
 export async function markRead(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {

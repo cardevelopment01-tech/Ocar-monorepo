@@ -7,6 +7,7 @@ const router: IRouter = Router()
 
 router.post('/:id/messages', authenticate(), chatMessageLimiter, controller.postMessage)
 router.get('/:id/messages', authenticate(), controller.getMessages)
+router.get('/:id/messages/unread-count', authenticate(), controller.getUnreadCount)
 router.patch('/:id/messages/read', authenticate(), controller.markRead)
 
 export default router
