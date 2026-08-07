@@ -63,3 +63,15 @@ export const chatMessageLimiter = rateLimit({
   keyGenerator: (req) => `chat:${principalKey(req)}:${req.params['id'] ?? ''}`,
   message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
 })
+
+// Per (principal, ride) masked-call throttle — real phone calls cost real
+// money per minute, so this is intentionally tighter than chat.
+export const maskedCallLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: skipInTest,
+  keyGenerator: (req) => `call:${principalKey(req)}:${req.params['id'] ?? ''}`,
+  message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
+})

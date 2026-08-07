@@ -40,6 +40,7 @@ import { classifyTrip, getRoute, snapTrailToRoads } from '@/modules/geo/geo.serv
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
 import { MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES } from '@/constants/limits'
 import { logger } from '@/lib/logger'
+import * as callMasking from '@/modules/call-masking/call-masking.service'
 
 const log = logger.child({ module: 'rides-service' })
 
@@ -671,6 +672,17 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
     vehicleNumberPlate: ride?.vehicle_number_plate ?? null,
   })
 
+  const riderPhoneForMasking = ride?.rider_phone ?? ride?.user_phone
+  if (ride?.driver_phone && riderPhoneForMasking) {
+    void callMasking.allocateForRide({
+      rideId,
+      driverPhone: ride.driver_phone,
+      riderPhone:  riderPhoneForMasking,
+    }).catch((err: unknown) => {
+      log.error({ err, rideId }, 'call-masking allocation failed')
+    })
+  }
+
   if (ride?.user_phone) {
     void queues[QUEUE_NAMES.NOTIFICATIONS].add('ride_accepted', {
       rideId:      rideId.toString(),
@@ -1046,6 +1058,10 @@ export async function cancelRide(
     client.release()
   }
 
+  void callMasking.releaseForRide(rideId).catch((err: unknown) => {
+    log.error({ err, rideId }, 'call-masking release failed')
+  })
+
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status: 'cancelled',
     cancelledBy: 'user',
@@ -1126,6 +1142,10 @@ export async function cancelRideAsDriver(
   } finally {
     client.release()
   }
+
+  void callMasking.releaseForRide(rideId).catch((err: unknown) => {
+    log.error({ err, rideId }, 'call-masking release failed')
+  })
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status: 'cancelled',
@@ -1234,6 +1254,10 @@ export async function endRideEarlyAsDriver(
     rideId, fromStatus: ride.status, toStatus: 'completed', actor: 'driver',
   })
 
+  void callMasking.releaseForRide(rideId).catch((err: unknown) => {
+    log.error({ err, rideId }, 'call-masking release failed')
+  })
+
   await pool.query(
     `UPDATE driver_sessions SET status = 'online', trips_completed = trips_completed + 1
      WHERE driver_id = $1 AND status = 'on_trip'`,
@@ -1312,6 +1336,10 @@ export async function forceResolveRide(
     client.release()
   }
 
+  void callMasking.releaseForRide(rideId).catch((err: unknown) => {
+    log.error({ err, rideId }, 'call-masking release failed')
+  })
+
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: outcome, resolvedBy: actor })
   return { success: true }
 }
@@ -1380,6 +1408,10 @@ export async function expireStaleAcceptedOrArrivedRide(
     client.release()
   }
 
+  void callMasking.releaseForRide(rideId).catch((err: unknown) => {
+    log.error({ err, rideId }, 'call-masking release failed')
+  })
+
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'cancelled', cancelledBy: 'system' })
 }
 
@@ -1441,6 +1473,10 @@ export async function verifyEndOTP(
     fromStatus: ride.status,
     toStatus:   'completed',
     actor:      'ride_completion',
+  })
+
+  void callMasking.releaseForRide(rideId).catch((err: unknown) => {
+    log.error({ err, rideId }, 'call-masking release failed')
   })
 
   let finalFare: number | null = null

@@ -6,6 +6,7 @@ import {
   useMotionValue, useTransform, useMotionValueEvent, animate,
 } from 'framer-motion'
 import SOSButton from '@/components/ui/SOSButton'
+import OcarSpinner from '@/components/ui/OcarSpinner'
 import OtpVerifyPanel from '@/components/ui/OtpVerifyPanel'
 import VoiceToggleButton from '@/components/ui/VoiceToggleButton'
 import HindiVoiceHint from '@/components/ui/HindiVoiceHint'
@@ -85,6 +86,8 @@ export default function TripInProgress() {
   const [endingEarly,       setEndingEarly]       = useState(false)
   const [endEarlyError,     setEndEarlyError]     = useState<string | null>(null)
   const [startingReturn,    setStartingReturn]    = useState(false)
+  const [calling,           setCalling]           = useState(false)
+  const [callError,         setCallError]         = useState(false)
 
   // ── Collapsible bottom sheet (mirrors NavigateToPickup.tsx — see
   //    docs/DRIVER_USER_MAP_UX_FIX_PLAN.md Phase 8): "Complete Trip" sits
@@ -398,6 +401,19 @@ export default function TripInProgress() {
     }
   }
 
+  const handleCallRider = async () => {
+    if (!activeRide || calling) return
+    setCalling(true)
+    try {
+      await driverRideApi.triggerMaskedCall(activeRide.id)
+    } catch {
+      setCallError(true)
+      setTimeout(() => setCallError(false), 3000)
+    } finally {
+      setCalling(false)
+    }
+  }
+
   const handleStartReturn = async () => {
     if (!activeRide) return
     setStartingReturn(true)
@@ -695,14 +711,18 @@ export default function TripInProgress() {
                   <p className="text-text-primary text-sm font-medium truncate">{activeRide.userName}</p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
-                  {activeRide?.userPhone && (
-                    <a
-                      href={`tel:${activeRide.userPhone}`}
-                      className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform"
+                  {/* Gated on ride status, not the now-always-null userPhone (numbers
+                      are masked server-side) — reachable for the whole live trip,
+                      including the outbound leg of a round-trip return. */}
+                  {(activeRide?.status === 'in_progress' || activeRide?.status === 'returning') && (
+                    <button
+                      onClick={() => void handleCallRider()}
+                      disabled={calling}
+                      className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform disabled:opacity-60"
                       aria-label="Call rider"
                     >
-                      <Phone size={18} className="text-text-secondary" />
-                    </a>
+                      {calling ? <OcarSpinner size={16} /> : <Phone size={18} className="text-text-secondary" />}
+                    </button>
                   )}
                   <button
                     className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-95 transition-transform relative"
@@ -719,6 +739,8 @@ export default function TripInProgress() {
                 </div>
               </div>
             )}
+
+            {callError && <p className="text-accent-red text-xs mt-2 text-center">Couldn't connect the call. Try again.</p>}
 
             {/* Context banners */}
             {activeRide?.rideType === 'round_trip' && activeRide.returnAt && (

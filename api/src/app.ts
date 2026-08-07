@@ -27,6 +27,7 @@ import adminAuditRouter from '@/modules/admin-audit/admin-audit.routes'
 import adminTotpRouter from '@/modules/admin-totp/admin-totp.routes'
 import settlementsRouter from '@/modules/payments/submodules/settlements/settlements.routes'
 import settlementsAdminRouter from '@/modules/payments/submodules/settlements/settlements.admin.routes'
+import callMaskingRouter from '@/modules/call-masking/call-masking.routes'
 
 export function createApp(): Application {
   const app = express()
@@ -107,6 +108,8 @@ apiRouter.use('/payments/settlements', settlementsRouter)
   apiRouter.use('/admin/payouts', settlementsAdminRouter)
   apiRouter.use('/admin/audit-log', adminAuditRouter)
   apiRouter.use('/notifications', notificationsRouter)
+  // Defines its own two prefixes internally (/rides/:id/call, /webhooks/exotel/status)
+  apiRouter.use(callMaskingRouter)
   app.use('/api/v1', apiRouter)
 
   // 7. 404 handler

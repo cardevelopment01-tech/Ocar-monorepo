@@ -329,4 +329,9 @@ export const rideApi = {
     const res = await api.get(`/api/v1/rides/${rideId}/messages/unread-count`)
     return (res.data as { count: number }).count
   },
+
+  triggerMaskedCall: async (rideId: string): Promise<{ status: string; sid: string }> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/call`)
+    return res.data as { status: string; sid: string }
+  },
 }
