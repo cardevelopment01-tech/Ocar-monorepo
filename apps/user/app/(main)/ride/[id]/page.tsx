@@ -135,9 +135,36 @@ function RouteRow({ ride, fare, status }: { ride: RideDetail | null; fare: strin
 
 // Compact driver identity row for the sheet's peek state — avatar, name,
 // rating/plate, call. Replaces the always-expanded 64-line driver card.
-function DriverMiniRow({ ride, rideId, router, unreadChatCount }: { ride: RideDetail | null; rideId: string; router: ReturnType<typeof useRouter>; unreadChatCount: number }) {
+function DriverMiniRow({ ride, rideId, router, unreadChatCount, rideStatus }: { ride: RideDetail | null; rideId: string; router: ReturnType<typeof useRouter>; unreadChatCount: number; rideStatus: string }) {
+  const [calling, setCalling] = useState(false)
+  const [callError, setCallError] = useState<string | null>(null)
+  // hasDriver (this row's render gate, in the parent) also covers cancelled/no_drivers/
+  // completed during the brief window before their auto-redirect fires — narrower here
+  // to the actual states where a driver is assigned and reachable by phone.
+  const canCall = rideStatus === 'accepted' || rideStatus === 'driver_arrived' || rideStatus === 'in_progress'
+
+  const handleCall = async () => {
+    if (calling || !canCall) return
+    setCalling(true)
+    setCallError(null)
+    try {
+      await rideApi.triggerMaskedCall(rideId)
+    } catch (err) {
+      const msg = (axios.isAxiosError(err) && (err.response?.data as { error?: string } | undefined)?.error) || 'Could not connect the call'
+      setCallError(msg)
+      setTimeout(() => setCallError(null), 4000)
+    } finally {
+      setCalling(false)
+    }
+  }
+
   return (
-    <div className="flex items-center gap-2.5 flex-1 min-w-0 px-3 py-2 rounded-2xl" style={{ background: '#F5F7FF', border: '1px solid #E8EEFF' }}>
+    <div className="flex items-center gap-2.5 flex-1 min-w-0 px-3 py-2 rounded-2xl relative" style={{ background: '#F5F7FF', border: '1px solid #E8EEFF' }}>
+      {callError && (
+        <span className="absolute -top-7 right-0 px-2.5 py-1 rounded-lg bg-red-50 text-[11px] font-medium text-red-600 shadow-sm whitespace-nowrap">
+          {callError}
+        </span>
+      )}
       {ride?.driver_photo ? (
         <img
           src={ride.driver_photo}
@@ -172,15 +199,21 @@ function DriverMiniRow({ ride, rideId, router, unreadChatCount }: { ride: RideDe
           )}
         </div>
       </div>
-      {ride?.driver_phone && (
-        <a
-          href={`tel:${ride.driver_phone}`}
-          className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0"
+      {/* Rider's phone never sees the driver's raw number — masking is server-side
+          (maskRideContacts nulls driver_phone), so this triggers an Exotel-bridged
+          call instead of a tel: link. Gated on canCall, not just hasDriver: hasDriver
+          also stays true during cancelled/no_drivers/completed's brief pre-redirect
+          window, where there's no live mask to call into. */}
+      {canCall && (
+        <button
+          onClick={handleCall}
+          disabled={calling}
+          className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 disabled:opacity-50"
           style={{ background: '#E4F8FA' }}
           aria-label="Call driver"
         >
           <Phone size={14} style={{ color: '#0A9FB0' }} />
-        </a>
+        </button>
       )}
       {/* Chat doesn't need the driver's raw phone number (maskRideContacts nulls
           it for the rider), only that a driver is assigned — this component is
@@ -982,7 +1015,7 @@ export default function RidePage() {
             >
               {/* Peek row: driver identity + call, plus whatever the rider needs to act on right now */}
               <div className="flex items-center gap-2 mb-2">
-                <DriverMiniRow ride={ride} rideId={rideId} router={router} unreadChatCount={unreadChatCount} />
+                <DriverMiniRow ride={ride} rideId={rideId} router={router} unreadChatCount={unreadChatCount} rideStatus={rideStatus} />
                 {rideStatus === 'accepted' && fare && (
                   <div className="flex-shrink-0 text-right px-1">
                     <p className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>Fare</p>
