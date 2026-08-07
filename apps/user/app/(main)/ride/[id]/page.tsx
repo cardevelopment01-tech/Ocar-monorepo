@@ -182,16 +182,17 @@ function DriverMiniRow({ ride, rideId, router }: { ride: RideDetail | null; ride
           <Phone size={14} style={{ color: '#0A9FB0' }} />
         </a>
       )}
-      {ride?.driver_phone && (
-        <button
-          onClick={() => router.push(`/ride/${rideId}/chat`)}
-          className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0"
-          style={{ background: '#E4F8FA' }}
-          aria-label="Message driver"
-        >
-          <MessageCircle size={14} style={{ color: '#0A9FB0' }} />
-        </button>
-      )}
+      {/* Chat doesn't need the driver's raw phone number (maskRideContacts nulls
+          it for the rider), only that a driver is assigned — this component is
+          only rendered once hasDriver is true, so no extra gate needed here. */}
+      <button
+        onClick={() => router.push(`/ride/${rideId}/chat`)}
+        className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0"
+        style={{ background: '#E4F8FA' }}
+        aria-label="Message driver"
+      >
+        <MessageCircle size={14} style={{ color: '#0A9FB0' }} />
+      </button>
     </div>
   )
 }
