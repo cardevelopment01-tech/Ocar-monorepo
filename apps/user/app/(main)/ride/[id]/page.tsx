@@ -208,7 +208,7 @@ function DriverMiniRow({ ride, rideId, router, unreadChatCount, rideStatus }: { 
         <button
           onClick={handleCall}
           disabled={calling}
-          className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 disabled:opacity-50"
+          className="relative w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 disabled:opacity-50 before:absolute before:-inset-1 before:content-['']"
           style={{ background: '#E4F8FA' }}
           aria-label="Call driver"
         >
@@ -220,7 +220,7 @@ function DriverMiniRow({ ride, rideId, router, unreadChatCount, rideStatus }: { 
           only rendered once hasDriver is true, so no extra gate needed here. */}
       <button
         onClick={() => router.push(`/ride/${rideId}/chat`)}
-        className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 relative"
+        className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 relative before:absolute before:-inset-1 before:content-['']"
         style={{ background: '#E4F8FA' }}
         aria-label="Message driver"
       >
@@ -1013,30 +1013,37 @@ export default function RidePage() {
               transition={{ duration: 0.25, ease: EASE }}
               className="px-4"
             >
-              {/* Peek row: driver identity + call, plus whatever the rider needs to act on right now */}
-              <div className="flex items-center gap-2 mb-2">
+              {/* Peek: driver identity+contact on its own row (a tight, related
+                  group), status/OTP+cancel on a second row below (a distinct
+                  concern) — was one 5-item row fighting for space; splitting
+                  by concern instead of cramming everything into one line. */}
+              <div className="flex flex-col gap-2.5 mb-2">
                 <DriverMiniRow ride={ride} rideId={rideId} router={router} unreadChatCount={unreadChatCount} rideStatus={rideStatus} />
-                {rideStatus === 'accepted' && fare && (
-                  <div className="flex-shrink-0 text-right px-1">
-                    <p className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>Fare</p>
-                    <p className="text-sm font-bold" style={{ color: '#0F172A' }}>{fare}</p>
+                {(fare || rideStatus === 'driver_arrived' || rideStatus === 'in_progress' || rideStatus === 'returning') && (
+                  <div className="flex items-center justify-between gap-2">
+                    {rideStatus === 'accepted' && fare && (
+                      <div className="px-1">
+                        <p className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>Fare</p>
+                        <p className="text-sm font-bold" style={{ color: '#0F172A' }}>{fare}</p>
+                      </div>
+                    )}
+                    {rideStatus === 'driver_arrived' && <OtpBadge otp={startOtp} phase="start" />}
+                    {(rideStatus === 'in_progress' || rideStatus === 'returning') && (
+                      waitingStop
+                        ? <StopWaitBadge stop={waitingStop} nowMs={waitNowMs} />
+                        : <OtpBadge otp={endOtp} phase="end" />
+                    )}
+                    {(rideStatus === 'accepted' || rideStatus === 'driver_arrived') && (
+                      <button
+                        onClick={() => setShowCancelSheet(true)}
+                        aria-label="Cancel ride"
+                        className="relative flex-shrink-0 ml-auto w-9 h-9 rounded-full flex items-center justify-center active:opacity-70 transition-opacity before:absolute before:-inset-1 before:content-['']"
+                        style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.18)' }}
+                      >
+                        <X size={15} strokeWidth={2.5} className="text-red-600" />
+                      </button>
+                    )}
                   </div>
-                )}
-                {(rideStatus === 'accepted' || rideStatus === 'driver_arrived') && (
-                  <button
-                    onClick={() => setShowCancelSheet(true)}
-                    aria-label="Cancel ride"
-                    className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center active:opacity-70 transition-opacity"
-                    style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.18)' }}
-                  >
-                    <X size={15} strokeWidth={2.5} className="text-red-600" />
-                  </button>
-                )}
-                {rideStatus === 'driver_arrived' && <OtpBadge otp={startOtp} phase="start" />}
-                {(rideStatus === 'in_progress' || rideStatus === 'returning') && (
-                  waitingStop
-                    ? <StopWaitBadge stop={waitingStop} nowMs={waitNowMs} />
-                    : <OtpBadge otp={endOtp} phase="end" />
                 )}
               </div>
 
