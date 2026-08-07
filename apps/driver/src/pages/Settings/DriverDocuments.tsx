@@ -8,6 +8,7 @@ import DocPreviewModal from '@/components/documents/DocPreviewModal'
 import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
 import type { SlotDef, SlotState } from '@/components/documents/types'
 import { DRIVER_GROUPS, VEHICLE_GROUPS, initSlotState } from '@/components/documents/groups'
+import FieldError, { ShakeWrap, useShake } from '@/components/ui/FieldError'
 
 // Flat settings screen for an already-approved driver's documents.
 // Every upload and the identity-number fields already save themselves
@@ -18,6 +19,10 @@ export default function DriverDocuments() {
   const [aadhaarNumber, setAadhaarNumber] = useState('')
   const [identitySaved, setIdentitySaved] = useState(false)
   const [identityError, setIdentityError] = useState('')
+  const [licenseError, setLicenseError] = useState('')
+  const [aadhaarError, setAadhaarError] = useState('')
+  const licenseShake = useShake()
+  const aadhaarShake = useShake()
 
   const [slotState, setSlotState] = useState<Record<string, SlotState>>(initSlotState)
   const [validUntil, setValidUntil] = useState<Record<string, string>>({})
@@ -64,6 +69,26 @@ export default function DriverDocuments() {
     } catch {
       setSlot(slot.key, { state: 'error', error: 'Upload failed. Tap to retry.' })
     }
+  }
+
+  const handleLicenseBlur = () => {
+    if (licenseNumber && !/^[A-Z]{2}[A-Z0-9]{13,14}$/.test(licenseNumber)) {
+      setLicenseError('Enter a valid licence number (e.g. OD0519910012345)')
+      licenseShake.shake()
+    } else {
+      setLicenseError('')
+    }
+    void handleIdentityBlur()
+  }
+
+  const handleAadhaarBlur = () => {
+    if (aadhaarNumber && aadhaarNumber.length !== 12) {
+      setAadhaarError('Aadhaar number must be exactly 12 digits')
+      aadhaarShake.shake()
+    } else {
+      setAadhaarError('')
+    }
+    void handleIdentityBlur()
   }
 
   const handleIdentityBlur = async () => {
@@ -113,29 +138,35 @@ export default function DriverDocuments() {
                   <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1.5 block">
                     Driving Licence Number <span className="text-accent-red">*</span>
                   </label>
-                  <input
-                    className="input-dark w-full font-mono uppercase"
-                    placeholder="OD0519910012345"
-                    maxLength={16}
-                    value={licenseNumber}
-                    onChange={e => { setLicenseNumber(e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 16)); setIdentitySaved(false) }}
-                    onBlur={() => void handleIdentityBlur()}
-                  />
+                  <ShakeWrap controls={licenseShake.controls}>
+                    <input
+                      className="input-dark w-full font-mono uppercase"
+                      placeholder="OD0519910012345"
+                      maxLength={16}
+                      value={licenseNumber}
+                      onChange={e => { setLicenseNumber(e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 16)); setIdentitySaved(false); setLicenseError('') }}
+                      onBlur={handleLicenseBlur}
+                    />
+                  </ShakeWrap>
+                  <FieldError message={licenseError} />
                 </div>
                 <div>
                   <label className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1.5 block">
                     Aadhaar Number <span className="text-accent-red">*</span>
                   </label>
                   <p className="text-text-muted text-xs mb-1.5">12-digit number on your Aadhaar card</p>
-                  <input
-                    className="input-dark w-full font-mono tracking-widest"
-                    placeholder="XXXXXXXXXXXX"
-                    inputMode="numeric"
-                    maxLength={12}
-                    value={aadhaarNumber}
-                    onChange={e => { setAadhaarNumber(e.target.value.replace(/\D/g, '').slice(0, 12)); setIdentitySaved(false) }}
-                    onBlur={() => void handleIdentityBlur()}
-                  />
+                  <ShakeWrap controls={aadhaarShake.controls}>
+                    <input
+                      className="input-dark w-full font-mono tracking-widest"
+                      placeholder="XXXXXXXXXXXX"
+                      inputMode="numeric"
+                      maxLength={12}
+                      value={aadhaarNumber}
+                      onChange={e => { setAadhaarNumber(e.target.value.replace(/\D/g, '').slice(0, 12)); setIdentitySaved(false); setAadhaarError('') }}
+                      onBlur={handleAadhaarBlur}
+                    />
+                  </ShakeWrap>
+                  <FieldError message={aadhaarError} />
                 </div>
                 {identityError && (
                   <div className="flex items-center gap-2 bg-accent-red/10 border border-accent-red/20 rounded-xl px-3 py-2.5">

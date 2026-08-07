@@ -5,8 +5,11 @@ import DatePickerSheet from '@/components/ui/DatePickerSheet'
 import SettingsHeader from '@/components/settings/SettingsHeader'
 import { onboardingApi, type VehicleInfoPayload, type VehicleCategory, type VehicleBrand, type VehicleModel } from '@/lib/onboarding-api'
 import InlineSelect from '@/components/ui/InlineSelect'
+import FieldError, { ShakeWrap, useShake } from '@/components/ui/FieldError'
 
 const TODAY_ISO = new Date().toISOString().slice(0, 10)
+const MIN_MODEL_YEAR = 1990
+const MAX_MODEL_YEAR = new Date().getFullYear() + 1
 
 const COLORS = ['White', 'Black', 'Silver', 'Grey', 'Red', 'Blue', 'Brown', 'Green', 'Yellow', 'Orange', 'Other'] as const
 const FUEL_TYPES = [
@@ -37,6 +40,9 @@ export default function VehicleDetails() {
   const [ac, setAc] = useState(true)
 
   const [plateError, setPlateError] = useState('')
+  const [yearError, setYearError] = useState('')
+  const plateShake = useShake()
+  const yearShake = useShake()
   const [isSaving, setIsSaving] = useState(false)
   const [isFetching, setIsFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -98,10 +104,13 @@ export default function VehicleDetails() {
   }
 
   const isValidPlate = (p: string) =>
-    /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/.test(p.replace(/\s/g, '').toUpperCase())
+    /^[A-Z]{2}\d{2}[A-Z]{1,2}\d{4}$/.test(p.replace(/\s/g, '').toUpperCase())
+
+  const isValidYear = (y: string) =>
+    y.length === 4 && Number(y) >= MIN_MODEL_YEAR && Number(y) <= MAX_MODEL_YEAR
 
   const selectedModel = models.find(m => Number(m.id) === modelId)
-  const isValid = categoryId && brandId && modelId && selectedModel && modelYear && plate && isValidPlate(plate) && color && fuelType
+  const isValid = categoryId && brandId && modelId && selectedModel && modelYear && isValidYear(modelYear) && plate && isValidPlate(plate) && color && fuelType
 
   const handleSave = async () => {
     if (!isValid) return
@@ -205,24 +214,37 @@ export default function VehicleDetails() {
 
           {/* Number plate */}
           <Field label="Registration Number">
-            <input className="input-dark w-full font-mono uppercase" placeholder="OD05AB1234"
-              maxLength={11}
-              value={plate}
-              onChange={e => {
-                setPlate(e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 11))
-                setPlateError('')
-              }} />
-            {plateError
-              ? <p className="text-accent-red text-xs mt-1">{plateError}</p>
-              : plate && !isValidPlate(plate)
-                ? <p className="text-accent-red text-xs mt-1">Enter valid plate number (e.g. OD05AB1234)</p>
-                : null}
+            <ShakeWrap controls={plateShake.controls}>
+              <input className="input-dark w-full font-mono uppercase" placeholder="OD05AB1234"
+                maxLength={11}
+                value={plate}
+                onChange={e => {
+                  setPlate(e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 11))
+                  setPlateError('')
+                }}
+                onBlur={() => { if (plate && !isValidPlate(plate)) plateShake.shake() }} />
+            </ShakeWrap>
+            <FieldError message={
+              plateError || (plate && !isValidPlate(plate) ? 'Enter valid plate number (e.g. OD05AB1234)' : null)
+            } />
           </Field>
 
           {/* Year */}
           <Field label="Year of Manufacture">
-            <input className="input-dark w-full" placeholder="2022" inputMode="numeric" maxLength={4}
-              value={modelYear} onChange={e => setModelYear(e.target.value.replace(/\D/g, '').slice(0, 4))} />
+            <ShakeWrap controls={yearShake.controls}>
+              <input className="input-dark w-full" placeholder="2022" inputMode="numeric" maxLength={4}
+                value={modelYear}
+                onChange={e => { setModelYear(e.target.value.replace(/\D/g, '').slice(0, 4)); setYearError('') }}
+                onBlur={() => {
+                  if (modelYear && !isValidYear(modelYear)) {
+                    setYearError(`Year must be between ${MIN_MODEL_YEAR} and ${MAX_MODEL_YEAR}`)
+                    yearShake.shake()
+                  } else {
+                    setYearError('')
+                  }
+                }} />
+            </ShakeWrap>
+            <FieldError message={yearError} />
           </Field>
 
           {/* Registration Date */}
