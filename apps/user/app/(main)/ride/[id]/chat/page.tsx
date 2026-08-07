@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useParams, useRouter } from 'next/navigation'
 import { ChevronLeft, Check, CheckCheck, Send } from 'lucide-react'
 import { rideApi, type ChatMessage } from '@/lib/ride-api'
@@ -26,6 +26,19 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
 }
 
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase())
+    .join('')
+}
+
+const CLOSED_STATUSES = new Set(['completed', 'cancelled', 'no_drivers'])
+
+type DriverInfo = { name: string | null; photo: string | null; rating: string | null }
+
 export default function RideChatPage() {
   const params = useParams<{ id: string }>()
   const rideId = params?.id ?? ''
@@ -34,9 +47,12 @@ export default function RideChatPage() {
   const [messages, setMessages] = useState<LocalMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [input, setInput] = useState('')
+  const [driver, setDriver] = useState<DriverInfo>({ name: null, photo: null, rating: null })
+  const [rideStatus, setRideStatus] = useState<string | null>(null)
   const listEndRef = useRef<HTMLDivElement>(null)
   const lastSeenIdRef = useRef<string | undefined>(undefined)
   const mountedRef = useRef(true)
+  const isClosed = rideStatus !== null && CLOSED_STATUSES.has(rideStatus)
 
   const scrollToBottom = useCallback((smooth = true) => {
     listEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' })
@@ -73,6 +89,18 @@ export default function RideChatPage() {
       void rideApi.markChatRead(rideId).catch(() => {})
     }).catch(() => {}).finally(() => setLoading(false))
 
+    rideApi.getRide(rideId).then(ride => {
+      if (!mounted) return
+      setDriver({ name: ride.driver_name, photo: ride.driver_photo, rating: ride.driver_rating })
+      setRideStatus(ride.status)
+    }).catch(() => {})
+
+    function onStatusUpdate(data: { status?: string }) {
+      if (data.status && CLOSED_STATUSES.has(data.status)) {
+        setRideStatus(data.status)
+      }
+    }
+
     function onChatMessage(msg: ChatMessage) {
       if (msg.rideId !== rideId) return
       upsertMessage(msg)
@@ -102,6 +130,7 @@ export default function RideChatPage() {
     socket.on('chat:message', onChatMessage)
     socket.on('chat:read', onChatRead)
     socket.on('connect', onReconnect)
+    socket.on('ride:status_update', onStatusUpdate)
 
     return () => {
       mounted = false
@@ -110,6 +139,7 @@ export default function RideChatPage() {
       socket.off('chat:message', onChatMessage)
       socket.off('chat:read', onChatRead)
       socket.off('connect', onReconnect)
+      socket.off('ride:status_update', onStatusUpdate)
     }
   }, [rideId, upsertMessage])
 
@@ -163,19 +193,39 @@ export default function RideChatPage() {
   }
 
   return (
-    <div className="h-[100dvh] flex flex-col" style={{ background: '#FAFBFF' }}>
+    <div className="h-[100dvh] flex flex-col bg-background">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ borderBottom: '1px solid #E8EEFF', background: '#FFFFFF' }}>
+      <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0 bg-surface border-b border-border">
         <button
           onClick={() => router.back()}
           aria-label="Back"
-          className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0"
-          style={{ background: '#F5F7FF' }}
+          className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 bg-background"
         >
-          <ChevronLeft size={18} style={{ color: '#0F172A' }} />
+          <ChevronLeft size={18} className="text-text-primary" />
         </button>
+        {driver.photo ? (
+          <img
+            src={driver.photo}
+            alt={driver.name ?? 'Driver'}
+            className="w-9 h-9 rounded-xl object-cover flex-shrink-0"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+          />
+        ) : (
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-[12px] font-bold"
+            style={{ background: 'linear-gradient(135deg, #0A9FB0, #DC3E93)' }}
+          >
+            {driver.name ? getInitials(driver.name) : '?'}
+          </div>
+        )}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[15px] leading-tight" style={{ color: '#0F172A' }}>Chat with driver</p>
+          <p className="font-semibold text-[15px] leading-tight truncate text-text-primary">{driver.name ?? 'Your driver'}</p>
+          {driver.rating && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <span className="text-amber-400 text-[11px]">★</span>
+              <span className="text-[12px] font-medium text-text-secondary">{Number(driver.rating).toFixed(1)}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -183,11 +233,11 @@ export default function RideChatPage() {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2.5">
         {loading ? (
           <div className="h-full flex items-center justify-center">
-            <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: '#E8EEFF', borderTopColor: '#0A9FB0' }} />
+            <div className="w-6 h-6 rounded-full border-2 animate-spin border-border border-t-primary" />
           </div>
         ) : messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center px-8">
-            <p className="text-sm font-medium" style={{ color: '#94A3B8' }}>No messages yet. Send a quick update below.</p>
+            <p className="text-sm font-medium text-text-muted">No messages yet. Send a quick update below.</p>
           </div>
         ) : (
           <AnimatePresence initial={false}>
@@ -199,84 +249,109 @@ export default function RideChatPage() {
         <div ref={listEndRef} />
       </div>
 
-      {/* Canned replies */}
-      <div className="flex gap-2 px-4 pb-2 overflow-x-auto flex-shrink-0" style={{ scrollbarWidth: 'none' }}>
-        {CANNED_REPLIES.map(reply => (
-          <button
-            key={reply}
-            onClick={() => void send(reply)}
-            className="flex-shrink-0 px-3.5 py-2 rounded-full text-[12.5px] font-medium whitespace-nowrap active:scale-95 transition-transform"
-            style={{ background: '#F5F7FF', border: '1px solid #E8EEFF', color: '#475569' }}
-          >
-            {reply}
-          </button>
-        ))}
-      </div>
+      {isClosed ? (
+        <ReadOnlyBanner />
+      ) : (
+        <>
+          {/* Canned replies */}
+          <div className="flex gap-2 px-4 pb-2 overflow-x-auto flex-shrink-0" style={{ scrollbarWidth: 'none' }}>
+            {CANNED_REPLIES.map(reply => (
+              <button
+                key={reply}
+                onClick={() => void send(reply)}
+                className="flex-shrink-0 px-3.5 py-2 rounded-full text-[12.5px] font-medium whitespace-nowrap active:scale-95 transition-transform bg-background border border-border text-text-secondary"
+              >
+                {reply}
+              </button>
+            ))}
+          </div>
 
-      {/* Input bar */}
-      <form
-        onSubmit={handleSubmit}
-        className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
-        style={{ borderTop: '1px solid #E8EEFF', background: '#FFFFFF', paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
-      >
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="Type a message"
-          className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none"
-          style={{ background: '#F5F7FF', border: '1px solid #E8EEFF', color: '#0F172A' }}
-        />
-        <motion.button
-          type="submit"
-          disabled={!input.trim()}
-          whileTap={{ scale: 0.9 }}
-          aria-label="Send message"
-          className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-40"
-          style={{ background: '#0A9FB0' }}
-        >
-          <Send size={16} style={{ color: '#FFFFFF' }} />
-        </motion.button>
-      </form>
+          {/* Input bar */}
+          <form
+            onSubmit={handleSubmit}
+            className="flex items-center gap-2 px-4 py-3 flex-shrink-0 bg-surface border-t border-border"
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          >
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              placeholder="Type a message"
+              className="flex-1 rounded-xl px-4 py-2.5 text-sm outline-none bg-surface-2 border border-border text-text-primary"
+            />
+            <motion.button
+              type="submit"
+              disabled={!input.trim()}
+              whileTap={{ scale: 0.9 }}
+              aria-label="Send message"
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-40"
+              style={{ background: 'linear-gradient(135deg, #0A9FB0 0%, #22B8C9 55%, #DC3E93 100%)' }}
+            >
+              <Send size={16} className="text-white" />
+            </motion.button>
+          </form>
+        </>
+      )}
     </div>
+  )
+}
+
+function ReadOnlyBanner() {
+  const prefersReducedMotion = useReducedMotion()
+  return (
+    <motion.div
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: EASE }}
+      className="flex items-center justify-center px-4 flex-shrink-0"
+      style={{ paddingTop: '0.75rem', paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+    >
+      <span
+        className="px-4 py-2 rounded-full text-[12.5px] font-medium text-center"
+        style={{ background: '#E0F2FE', color: '#0EA5E9' }}
+      >
+        This ride has ended · Chat is read-only
+      </span>
+    </motion.div>
   )
 }
 
 function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
   const mine = msg.senderType === 'user'
   const failed = msg.localStatus === 'failed'
+  const prefersReducedMotion = useReducedMotion()
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 6, scale: 0.99 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.22, ease: EASE }}
+      transition={{ duration: 0.18, ease: EASE }}
       className={`flex ${mine ? 'justify-end' : 'justify-start'}`}
     >
       <div className="flex flex-col max-w-[78%]" style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
         <div
-          className="px-3.5 py-2.5 text-sm leading-snug"
+          className={`px-3.5 py-2.5 text-sm leading-snug ${mine ? 'bg-primary text-white' : 'bg-surface-2 border border-border text-text-primary'}`}
           style={
             mine
-              ? { background: '#0A9FB0', color: '#FFFFFF', borderRadius: '16px 16px 4px 16px', opacity: msg.localStatus === 'sending' ? 0.7 : 1 }
-              : { background: '#F5F7FF', border: '1px solid #E8EEFF', color: '#0F172A', borderRadius: '16px 16px 16px 4px' }
+              ? { borderRadius: '16px 16px 4px 16px', opacity: msg.localStatus === 'sending' ? 0.7 : 1 }
+              : { borderRadius: '16px 16px 16px 4px' }
           }
         >
           {msg.body}
         </div>
         <div className="flex items-center gap-1 mt-1 px-1">
-          <span className="text-[10.5px] font-medium" style={{ color: '#94A3B8' }}>{fmtTime(msg.createdAt)}</span>
+          <span className="text-[10.5px] font-medium text-text-muted">{fmtTime(msg.createdAt)}</span>
           {mine && !failed && (
             msg.localStatus === 'sending' ? (
-              <span className="text-[10.5px]" style={{ color: '#94A3B8' }}>Sending…</span>
+              <span className="text-[10.5px] text-text-muted">Sending…</span>
             ) : msg.readAt ? (
-              <CheckCheck size={12} style={{ color: '#0A9FB0' }} />
+              <CheckCheck size={12} className="text-accent" />
             ) : (
-              <Check size={12} style={{ color: '#94A3B8' }} />
+              <Check size={12} className="text-primary" />
             )
           )}
           {mine && failed && (
-            <button onClick={onRetry} className="text-[10.5px] font-semibold" style={{ color: '#DC2626' }}>
+            <button onClick={onRetry} className="text-[10.5px] font-semibold text-status-error">
               Failed · Tap to retry
             </button>
           )}
