@@ -26,7 +26,7 @@ function fmtTime(iso: string) {
 
 export default function RideChat() {
   const navigate = useNavigate()
-  const { activeRide, restoreChecked } = useRideStore()
+  const { activeRide, restoreChecked, setUnreadChatCount } = useRideStore()
   const rideId = activeRide?.id ?? ''
 
   const [messages, setMessages] = useState<LocalMessage[]>([])
@@ -67,6 +67,7 @@ export default function RideChat() {
     // Tells the server this screen is watching this ride's chat live, so a
     // new message doesn't also trigger a redundant push/in-app notification.
     socket.emit('chat:open', { rideId })
+    setUnreadChatCount(0)
 
     let mounted = true
     mountedRef.current = true
