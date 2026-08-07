@@ -9,13 +9,13 @@ export async function getCategories(): Promise<VehicleCategory[]> {
 
 export async function getBrands(): Promise<VehicleBrand[]> {
   return query<VehicleBrand>(
-    'SELECT id, name, logo_url, is_active FROM vehicle_brands WHERE is_active = true ORDER BY name'
+    'SELECT id::int, name, logo_url, is_active FROM vehicle_brands WHERE is_active = true ORDER BY name'
   )
 }
 
 export async function getModelsByBrand(brandId: number): Promise<VehicleModel[]> {
   return query<VehicleModel>(
-    'SELECT id, brand_id, name, typical_category_id, is_active FROM vehicle_models WHERE brand_id = $1 AND is_active = true ORDER BY name',
+    'SELECT id::int, brand_id::int, name, typical_category_id::int, is_active FROM vehicle_models WHERE brand_id = $1 AND is_active = true ORDER BY name',
     [brandId]
   )
 }
