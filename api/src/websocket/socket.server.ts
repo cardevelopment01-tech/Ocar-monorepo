@@ -179,12 +179,38 @@ export function initSocketServer(httpServer: HttpServer): Server {
       void socket.leave(`ride:${rideId}`)
     })
 
+    // Chat-screen presence: the chat page emits open/close as it mounts/unmounts.
+    // sendMessage() checks this before pushing/feeding a notification for a new
+    // message — no point notifying someone already watching the message arrive
+    // live over the socket. Stored on socket.data so it's per-connection and
+    // vanishes automatically on disconnect (no explicit cleanup needed).
+    socket.on('chat:open', ({ rideId }: { rideId: string }) => {
+      socket.data.openChatRideId = rideId
+    })
+    socket.on('chat:close', () => {
+      socket.data.openChatRideId = undefined
+    })
+
     socket.on('disconnect', () => {
       log.info('socket disconnected')
     })
   })
 
   return io
+}
+
+// True if any of the owner's connected sockets currently has this ride's chat
+// screen open (see 'chat:open'/'chat:close' above). Checks the owner's private
+// room (driver:{id} / user:{id}) rather than ride:{rideId} because both parties
+// share that room for tracking — this needs the CHAT screen specifically open,
+// not just the ride being tracked.
+export async function isChatOpen(
+  ownerType: 'user' | 'driver',
+  ownerId: string,
+  rideId: string,
+): Promise<boolean> {
+  const sockets = await getIO().in(`${ownerType}:${ownerId}`).fetchSockets()
+  return sockets.some((s) => s.data['openChatRideId'] === rideId)
 }
 
 // Real-time emits are best-effort side effects of whatever DB action triggered them
@@ -194,7 +220,10 @@ export function initSocketServer(httpServer: HttpServer): Server {
 // contexts that never call listen() at all, i.e. integration tests driving `createApp()`
 // directly through supertest. Throwing here turned that test gap into 500s with rows
 // left committed behind a "failed" response — return a no-op stub instead.
-const NOOP_IO = { to: () => ({ emit: () => {} }) } as unknown as Server
+const NOOP_IO = {
+  to: () => ({ emit: () => {} }),
+  in:  () => ({ emit: () => {}, fetchSockets: async () => [] }),
+} as unknown as Server
 
 export function getIO(): Server {
   if (!io) {

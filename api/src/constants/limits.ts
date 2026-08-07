@@ -30,6 +30,10 @@ export const REFERRAL_REFEREE_BONUS = 50
 export const REFERRAL_UNLOCK_AFTER_RIDES = 1
 
 export const GEOCODE_CACHE_TTL_DAYS = 90
+// notification_logs retention — read items are no longer actionable quickly,
+// unread ones are kept longer in case the owner hasn't opened the app yet.
+export const NOTIFICATION_READ_RETENTION_DAYS = 30
+export const NOTIFICATION_UNREAD_RETENTION_DAYS = 90
 // Backstop under whatever cadence callers refetch at (e.g. driver nav polling) —
 // see docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md Phase 1 item 3 cost math.
 export const ROUTE_CACHE_TTL_SECONDS = 90

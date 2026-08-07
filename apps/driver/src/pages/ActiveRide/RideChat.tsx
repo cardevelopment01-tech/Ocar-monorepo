@@ -64,6 +64,9 @@ export default function RideChat() {
   useEffect(() => {
     if (!rideId) return
     const socket = getDriverSocket()
+    // Tells the server this screen is watching this ride's chat live, so a
+    // new message doesn't also trigger a redundant push/in-app notification.
+    socket.emit('chat:open', { rideId })
 
     let mounted = true
     mountedRef.current = true
@@ -109,6 +112,7 @@ export default function RideChat() {
     return () => {
       mounted = false
       mountedRef.current = false
+      socket.emit('chat:close', { rideId })
       socket.off('chat:message', onChatMessage)
       socket.off('chat:read', onChatRead)
       socket.off('connect', onReconnect)

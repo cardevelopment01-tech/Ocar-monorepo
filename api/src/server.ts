@@ -86,6 +86,13 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '30 3 25 * *' }, removeOnComplete: true, removeOnFail: true }
   )
+  // Notification volume is much higher than GPS partitions (one row per chat
+  // message, ride event, etc.), so this runs daily rather than monthly.
+  await partitionMaintenanceQueue.add(
+    'purge_old_notifications',
+    {},
+    { repeat: { pattern: '0 4 * * *' }, removeOnComplete: true, removeOnFail: true } // daily at 4 AM
+  )
 
   void paymentReconcileWorker
   logger.info('payment reconciliation worker started')

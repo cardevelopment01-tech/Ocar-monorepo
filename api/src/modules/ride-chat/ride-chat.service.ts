@@ -1,7 +1,8 @@
 import { getRideById } from '@/modules/rides/rides.repository'
 import { renderTemplate } from '@/modules/notifications/templates.service'
-import { notifyOwner } from '@/modules/notifications/notifications.service'
-import { socketEvents } from '@/websocket/socket.server'
+import { pushToTokens } from '@/modules/notifications/notifications.service'
+import { getTokensForOwner } from '@/modules/notifications/notifications.repository'
+import { socketEvents, isChatOpen } from '@/websocket/socket.server'
 import { createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import * as repo from './ride-chat.repository'
@@ -53,17 +54,27 @@ export async function sendMessage(
   if (inserted) {
     socketEvents.emitChatMessage(String(rideId), message)
     if (p.recipientId !== null) {
-      const preview = input.body.length > 80 ? input.body.slice(0, 77) + '…' : input.body
-      const { subject, body } = await renderTemplate('ride_chat_message', 'push', { preview })
-      await notifyOwner({
-        ownerType: p.recipientType,
-        ownerId: p.recipientId,
-        type: 'ride_chat_message',
-        title: subject ?? 'New message',
-        body,
-        rideId,
-        payload: { rideId: String(rideId), messageId: message.id },
-      })
+      // Skip the notification entirely if the recipient already has this
+      // ride's chat screen open — they're watching the message arrive live
+      // over the socket, a notification would just be spam.
+      const recipientWatching = await isChatOpen(p.recipientType, String(p.recipientId), String(rideId))
+      if (!recipientWatching) {
+        // Deliberately bypasses notifyOwner()/notification_logs: chat has its
+        // own unread state (ride_messages.read_at, markMessagesRead) and its
+        // own screen — it doesn't belong in the shared notification tab, and
+        // shouldn't leave a permanent row there. `tag` collapses repeat
+        // messages from the same ride into one OS notification instead of
+        // stacking one per message.
+        const preview = input.body.length > 80 ? input.body.slice(0, 77) + '…' : input.body
+        const { subject, body } = await renderTemplate('ride_chat_message', 'push', { preview })
+        const tokens = await getTokensForOwner(p.recipientType, p.recipientId)
+        await pushToTokens(tokens, {
+          title: subject ?? 'New message',
+          body,
+          data: { type: 'ride_chat_message', rideId: String(rideId) },
+          tag: `chat:${rideId}`,
+        })
+      }
     }
   }
   return message
