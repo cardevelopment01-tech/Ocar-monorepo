@@ -274,9 +274,13 @@ export default function App() {
   useEffect(() => {
     if (!isOnline) return
     const nav = navigator as unknown as { wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> } }
+    let cancelled = false
     let sentinel: { release: () => Promise<void> } | null = null
-    nav.wakeLock?.request('screen').then(s => { sentinel = s }).catch(() => {})
-    return () => { sentinel?.release().catch(() => {}) }
+    nav.wakeLock?.request('screen').then(s => {
+      if (cancelled) { s.release().catch(() => {}); return }
+      sentinel = s
+    }).catch(() => {})
+    return () => { cancelled = true; sentinel?.release().catch(() => {}) }
   }, [isOnline])
 
   // Listen for user-initiated cancellation while a ride is active.
