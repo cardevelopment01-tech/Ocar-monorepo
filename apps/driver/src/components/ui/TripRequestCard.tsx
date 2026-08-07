@@ -62,25 +62,6 @@ const RIDE_TYPE_BADGE: Record<string, { label: string; bg: string; color: string
   rental:     { label: 'Rental',  bg: 'rgba(14,165,233,0.15)',  color: C.info },
 }
 
-function beep() {
-  try {
-    const ctx = new AudioContext()
-    const play = (freq: number, start: number, dur: number) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.frequency.value = freq
-      gain.gain.setValueAtTime(0.25, ctx.currentTime + start)
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur)
-      osc.start(ctx.currentTime + start)
-      osc.stop(ctx.currentTime + start + dur)
-    }
-    play(880, 0, 0.12); play(1100, 0.18, 0.12); play(880, 0.36, 0.12)
-    setTimeout(() => ctx.close().catch(() => {}), 600)
-  } catch (_) {}
-}
-
 export default function TripRequestCard({
   pickup, drop, pickupDistance, tripDistance, fare,
   timeRemaining: initialTime, rideType, rideCategoryName, tripHours, returnAt, stopCount,
@@ -97,7 +78,6 @@ export default function TripRequestCard({
   }, [onDecline])
 
   useEffect(() => {
-    beep()
     try { navigator.vibrate([180, 80, 180]) } catch (_) {}
     const id = setInterval(() => {
       setTime(t => {
