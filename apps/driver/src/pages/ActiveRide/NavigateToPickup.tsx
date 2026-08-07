@@ -54,6 +54,8 @@ export default function NavigateToPickup() {
   const [showCancelSheet,  setShowCancelSheet]  = useState(false)
   const [cancelReason,     setCancelReason]     = useState<string | null>(null)
   const [cancellingRide,   setCancellingRide]   = useState(false)
+  const [calling,          setCalling]          = useState(false)
+  const [callError,        setCallError]        = useState(false)
 
   // Map mode system (see docs/DRIVER_TRIP_UX_REDESIGN_PLAN.md §1/§3): starts in
   // OVERVIEW for the "here's your job" beat, dives into NAVIGATION shortly after.
@@ -265,6 +267,19 @@ export default function NavigateToPickup() {
     } catch {
       setError('Failed to mark arrival. Please try again.')
       setArriving(false)
+    }
+  }
+
+  const handleCallRider = async () => {
+    if (!activeRide || calling) return
+    setCalling(true)
+    try {
+      await driverRideApi.triggerMaskedCall(activeRide.id)
+    } catch {
+      setCallError(true)
+      setTimeout(() => setCallError(false), 3000)
+    } finally {
+      setCalling(false)
     }
   }
 
@@ -567,14 +582,19 @@ export default function NavigateToPickup() {
                 </div>
               </div>
               <div className="flex gap-2 flex-shrink-0">
-                {activeRide?.userPhone && (
-                  <a
-                    href={`tel:${activeRide.userPhone}`}
-                    className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform"
+                {/* Gated on ride status, not the now-always-null userPhone (numbers
+                    are masked server-side) — reachable while en route to pickup
+                    (accepted) or in the brief arrived-but-not-yet-navigated window
+                    (driver_arrived), same as the actual masking call's own lifetime. */}
+                {(activeRide?.status === 'accepted' || activeRide?.status === 'driver_arrived') && (
+                  <button
+                    onClick={() => void handleCallRider()}
+                    disabled={calling}
+                    className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform disabled:opacity-60"
                     aria-label="Call rider"
                   >
-                    <Phone size={18} className="text-text-secondary" />
-                  </a>
+                    {calling ? <OcarSpinner size={16} /> : <Phone size={18} className="text-text-secondary" />}
+                  </button>
                 )}
                 <button
                   className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform relative"
@@ -596,6 +616,8 @@ export default function NavigateToPickup() {
                 </button>
               </div>
             </div>
+
+            {callError && <p className="text-accent-red text-xs mb-2 text-center">Couldn't connect the call. Try again.</p>}
 
             <button
               onClick={() => setShowCancelSheet(true)}
