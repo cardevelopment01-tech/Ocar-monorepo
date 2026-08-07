@@ -1,11 +1,16 @@
 import { config } from '@/config'
+import { pool } from '@/db/client'
 import { getConfigValue } from '@/lib/system-config'
 import { getRideById } from '@/modules/rides/rides.repository'
 import { createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import * as repo from '@/modules/call-masking/call-masking.repository'
 import * as exotel from '@/modules/call-masking/call-masking.exotel-client'
+import { notifyAllAdmins } from '@/modules/notifications/notifications.service'
 import { CallMaskingError, type CallerRole } from '@/modules/call-masking/call-masking.types'
+import { createWorkerLogger } from '@/lib/worker-logger'
+
+const log = createWorkerLogger('call-masking')
 
 export async function allocateForRide(params: {
   rideId: bigint
@@ -81,4 +86,32 @@ export async function triggerCall(params: {
 
   await repo.incrementCallCount(mask.id)
   return { sid: call.sid }
+}
+
+// Safety-net sweep for masks that outlived their ride (see repo comment).
+export async function sweepExpiredMasks(): Promise<void> {
+  const released = await repo.releaseExpiredMasks()
+  if (released > 0) log.info({ released }, 'released expired call masks')
+}
+
+// Auto-disables masking once today's Exotel spend crosses the budget. The
+// UPDATE's WHERE clause only matches while the switch is still on, so a
+// later tick (switch already off) updates 0 rows and skips the notify —
+// this is what keeps admins from getting paged every 15 minutes all day.
+export async function checkDailySpend(): Promise<void> {
+  const spend = await repo.getTodaySpendInr()
+  const budget = Number(await getConfigValue('exotel_daily_budget_inr', '500'))
+  if (spend < budget) return
+
+  const { rowCount } = await pool.query(
+    `UPDATE system_config SET value = 'false', updated_at = now()
+     WHERE key = 'exotel_masking_enabled' AND value = 'true'`
+  )
+  if (!rowCount) return
+
+  await notifyAllAdmins({
+    type: 'exotel_budget_exceeded',
+    title: 'Masked calling auto-disabled',
+    body: `Today's Exotel spend (₹${spend.toFixed(2)}) hit the ₹${budget} daily budget — masking has been switched off. Re-enable exotel_masking_enabled once reviewed.`,
+  })
 }

@@ -14,7 +14,8 @@ import { auditWorker } from './jobs/workers/audit.worker'
 import { partitionMaintenanceWorker } from './jobs/workers/partition-maintenance.worker'
 import { paymentReconcileWorker } from './jobs/workers/payment-reconcile.worker'
 import { settlementsWorker } from './jobs/workers/settlements.worker'
-import { cleanupQueue, schedulerQueue, partitionMaintenanceQueue, paymentsQueue, settlementsQueue } from './jobs/queues'
+import { callMaskingWorker } from './jobs/workers/call-masking.worker'
+import { cleanupQueue, schedulerQueue, partitionMaintenanceQueue, paymentsQueue, settlementsQueue, callMaskingQueue } from './jobs/queues'
 
 // Pino writes asynchronously (batched) — process.exit() right after a log
 // call can kill the process before that line is flushed to stdout. Since
@@ -118,6 +119,19 @@ async function start(): Promise<void> {
     'submit_processing_settlements',
     {},
     { repeat: { every: 300_000 }, removeOnComplete: true, removeOnFail: true } // every 5 min
+  )
+
+  void callMaskingWorker
+  logger.info('call masking worker started')
+  await callMaskingQueue.add(
+    'sweep_expired_masks',
+    {},
+    { repeat: { every: 5 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
+  )
+  await callMaskingQueue.add(
+    'check_daily_spend',
+    {},
+    { repeat: { every: 15 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
   )
 
   httpServer.listen(config.API_PORT, () => {

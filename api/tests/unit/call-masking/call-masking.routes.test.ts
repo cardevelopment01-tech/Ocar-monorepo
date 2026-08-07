@@ -8,6 +8,15 @@ import request from 'supertest'
 vi.mock('@/config', () => ({ config: { EXOTEL_WEBHOOK_SECRET: 'sekret', EXOTEL_WAIT_AUDIO_URL: '', EXOTEL_STATUS_CALLBACK_URL: '' } }))
 vi.mock('@/modules/call-masking/call-masking.repository')
 vi.mock('@/modules/call-masking/call-masking.service')
+// call-masking.service now pulls in @/db/client and the notifications
+// service (for the sweep/budget jobs). Automocking either one with a bare
+// vi.mock() still imports the real module first to introspect its exports —
+// notifications.service transitively reaches @/websocket/socket.server ->
+// @/db/redis, which builds a Redis client from config.REDIS_URL at import
+// time, and that's not in the minimal @/config mock above. Factory mocks
+// skip loading the real modules entirely, so nothing here needs a real DB/Redis.
+vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
+vi.mock('@/modules/notifications/notifications.service', () => ({ notifyAllAdmins: vi.fn() }))
 vi.mock('@/middleware/auth.middleware', () => ({ authenticate: () => (_req: unknown, _res: unknown, next: () => void) => next() }))
 vi.mock('@/middleware/rateLimit.middleware', () => ({ maskedCallLimiter: (_req: unknown, _res: unknown, next: () => void) => next() }))
 

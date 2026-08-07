@@ -12,6 +12,7 @@ export const QUEUE_NAMES = {
   AUDIT: 'audit',
   PARTITION_MAINTENANCE: 'partition-maintenance',
   PAYMENTS: 'payments',
+  CALL_MASKING: 'call-masking',
 } as const
 
 // Shared ioredis instance (not a plain options object) so BullMQ reuses one
@@ -36,6 +37,7 @@ export const cleanupQueue = new Queue(QUEUE_NAMES.CLEANUP, { connection })
 export const auditQueue = new Queue(QUEUE_NAMES.AUDIT, { connection })
 export const partitionMaintenanceQueue = new Queue(QUEUE_NAMES.PARTITION_MAINTENANCE, { connection })
 export const paymentsQueue = new Queue(QUEUE_NAMES.PAYMENTS, { connection })
+export const callMaskingQueue = new Queue(QUEUE_NAMES.CALL_MASKING, { connection })
 
 export const queues = {
   [QUEUE_NAMES.NOTIFICATIONS]: notificationsQueue,
@@ -48,4 +50,5 @@ export const queues = {
   [QUEUE_NAMES.AUDIT]: auditQueue,
   [QUEUE_NAMES.PARTITION_MAINTENANCE]: partitionMaintenanceQueue,
   [QUEUE_NAMES.PAYMENTS]: paymentsQueue,
+  [QUEUE_NAMES.CALL_MASKING]: callMaskingQueue,
 } as const

@@ -4,11 +4,15 @@ vi.mock('@/modules/call-masking/call-masking.repository')
 vi.mock('@/lib/system-config')
 vi.mock('@/modules/call-masking/call-masking.exotel-client')
 vi.mock('@/modules/rides/rides.repository')
+vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
+vi.mock('@/modules/notifications/notifications.service', () => ({ notifyAllAdmins: vi.fn() }))
 
 import * as repo from '@/modules/call-masking/call-masking.repository'
 import * as sysConfig from '@/lib/system-config'
 import * as exotel from '@/modules/call-masking/call-masking.exotel-client'
 import * as ridesRepo from '@/modules/rides/rides.repository'
+import { pool } from '@/db/client'
+import { notifyAllAdmins } from '@/modules/notifications/notifications.service'
 import * as service from '@/modules/call-masking/call-masking.service'
 
 // Minimal ride shape — triggerCall only reads user_id/driver_id off it.
@@ -114,5 +118,50 @@ describe('call-masking service — triggerCall', () => {
       })
     )
     expect(repo.incrementCallCount).toHaveBeenCalledWith(1n)
+  })
+})
+
+describe('call-masking service — checkDailySpend', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(sysConfig.getConfigValue).mockResolvedValue('500')
+    vi.mocked(repo.getTodaySpendInr).mockResolvedValue(600)
+  })
+
+  it('flips the kill switch and notifies admins on the first tick that crosses budget', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rowCount: 1 } as never)
+
+    await service.checkDailySpend()
+
+    expect(pool.query).toHaveBeenCalledTimes(1)
+    expect(notifyAllAdmins).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not re-notify on a later tick once the switch is already off', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rowCount: 0 } as never)
+
+    await service.checkDailySpend()
+
+    expect(pool.query).toHaveBeenCalledTimes(1)
+    expect(notifyAllAdmins).not.toHaveBeenCalled()
+  })
+
+  it('does nothing when spend is under budget', async () => {
+    vi.mocked(repo.getTodaySpendInr).mockResolvedValue(100)
+
+    await service.checkDailySpend()
+
+    expect(pool.query).not.toHaveBeenCalled()
+    expect(notifyAllAdmins).not.toHaveBeenCalled()
+  })
+})
+
+describe('call-masking service — sweepExpiredMasks', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('delegates to the repository sweep', async () => {
+    vi.mocked(repo.releaseExpiredMasks).mockResolvedValue(3)
+    await service.sweepExpiredMasks()
+    expect(repo.releaseExpiredMasks).toHaveBeenCalledTimes(1)
   })
 })
