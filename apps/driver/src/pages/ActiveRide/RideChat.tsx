@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { ChevronLeft, Check, CheckCheck, Send } from 'lucide-react'
 import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi, type ChatMessage } from '@/lib/ride-api'
@@ -175,6 +175,15 @@ export default function RideChat() {
     void send(input)
   }
 
+  const riderName = activeRide?.userName ?? 'Rider'
+  const initials = riderName
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase())
+    .join('') || 'R'
+  const readOnly = activeRide?.status === 'completed' || activeRide?.status === 'cancelled' || activeRide?.status === 'no_drivers'
+
   return (
     <div className="h-[100dvh] flex flex-col bg-bg">
       {/* Header */}
@@ -186,10 +195,16 @@ export default function RideChat() {
         >
           <ChevronLeft size={18} className="text-text-primary" />
         </button>
+        {/* Generic initials avatar only — never the rider's photo or rating (privacy) */}
+        <div
+          className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[13px] font-bold text-text-inverse"
+          style={{ background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)' }}
+          aria-hidden="true"
+        >
+          {initials}
+        </div>
         <div className="flex-1 min-w-0">
-          <p className="font-bold text-[15px] leading-tight text-text-primary truncate">
-            {activeRide?.userName ?? 'Rider'}
-          </p>
+          <p className="font-bold text-[15px] leading-tight text-text-primary truncate">{riderName}</p>
         </div>
       </div>
 
@@ -213,41 +228,68 @@ export default function RideChat() {
         <div ref={listEndRef} />
       </div>
 
-      {/* Canned replies */}
-      <div className="flex gap-2 px-4 pb-2 overflow-x-auto flex-shrink-0" style={{ scrollbarWidth: 'none' }}>
-        {CANNED_REPLIES.map(reply => (
-          <button
-            key={reply}
-            onClick={() => void send(reply)}
-            className="flex-shrink-0 px-3.5 py-2 rounded-full text-[12.5px] font-medium whitespace-nowrap active:scale-95 transition-transform bg-surface-2 border border-border text-text-secondary"
-          >
-            {reply}
-          </button>
-        ))}
-      </div>
+      {readOnly ? (
+        <ReadOnlyBanner />
+      ) : (
+        <>
+          {/* Canned replies */}
+          <div className="flex gap-2 px-4 pb-2 overflow-x-auto flex-shrink-0" style={{ scrollbarWidth: 'none' }}>
+            {CANNED_REPLIES.map(reply => (
+              <button
+                key={reply}
+                onClick={() => void send(reply)}
+                className="flex-shrink-0 px-3.5 py-2 rounded-full text-[12.5px] font-medium whitespace-nowrap active:scale-95 transition-transform bg-surface-2 border border-border text-text-secondary"
+              >
+                {reply}
+              </button>
+            ))}
+          </div>
 
-      {/* Input bar */}
-      <form
-        onSubmit={handleSubmit}
-        className="flex items-center gap-2 px-4 py-3 flex-shrink-0 bg-surface border-t border-border"
-        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          {/* Input bar */}
+          <form
+            onSubmit={handleSubmit}
+            className="flex items-center gap-2 px-4 py-3 flex-shrink-0 bg-surface border-t border-border"
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          >
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              placeholder="Type a message"
+              className="flex-1 rounded-2xl px-4 py-2.5 text-sm outline-none bg-surface-2 border border-border text-text-primary"
+            />
+            <motion.button
+              type="submit"
+              disabled={!input.trim()}
+              whileTap={{ scale: 0.95 }}
+              aria-label="Send message"
+              className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 disabled:opacity-40 shadow-button"
+              style={{ background: 'linear-gradient(135deg, #0A9FB0 0%, #22B8C9 55%, #DC3E93 100%)' }}
+            >
+              <Send size={16} className="text-text-inverse" />
+            </motion.button>
+          </form>
+        </>
+      )}
+    </div>
+  )
+}
+
+function ReadOnlyBanner() {
+  const reduceMotion = useReducedMotion()
+  return (
+    <div
+      className="flex-shrink-0 px-4 py-3 flex justify-center"
+      style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+    >
+      <motion.div
+        initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: reduceMotion ? 0 : 0.28, ease: EASE }}
+        className="px-4 py-2 rounded-full text-[12.5px] font-medium text-center"
+        style={{ background: '#E0F2FE', color: '#0EA5E9' }}
       >
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="Type a message"
-          className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none bg-surface-2 border border-border text-text-primary"
-        />
-        <motion.button
-          type="submit"
-          disabled={!input.trim()}
-          whileTap={{ scale: 0.9 }}
-          aria-label="Send message"
-          className="w-10 h-10 rounded-full bg-primary flex items-center justify-center flex-shrink-0 disabled:opacity-40 shadow-button"
-        >
-          <Send size={16} className="text-text-inverse" />
-        </motion.button>
-      </form>
+        This ride has ended · Chat is read-only
+      </motion.div>
     </div>
   )
 }
@@ -255,13 +297,14 @@ export default function RideChat() {
 function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
   const mine = msg.senderType === 'driver'
   const failed = msg.localStatus === 'failed'
+  const reduceMotion = useReducedMotion()
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.22, ease: EASE }}
+      exit={reduceMotion ? { opacity: 1 } : { opacity: 0 }}
+      transition={{ duration: reduceMotion ? 0 : 0.22, ease: EASE }}
       className={`flex ${mine ? 'justify-end' : 'justify-start'}`}
     >
       <div className="flex flex-col max-w-[78%]" style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
@@ -284,7 +327,7 @@ function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
             msg.localStatus === 'sending' ? (
               <span className="text-[10.5px] text-text-muted">Sending…</span>
             ) : msg.readAt ? (
-              <CheckCheck size={12} className="text-primary" />
+              <CheckCheck size={12} style={{ color: '#DC3E93' }} />
             ) : (
               <Check size={12} className="text-text-muted" />
             )
