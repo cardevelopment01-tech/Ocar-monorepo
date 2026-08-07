@@ -135,7 +135,7 @@ function RouteRow({ ride, fare, status }: { ride: RideDetail | null; fare: strin
 
 // Compact driver identity row for the sheet's peek state — avatar, name,
 // rating/plate, call. Replaces the always-expanded 64-line driver card.
-function DriverMiniRow({ ride, rideId, router }: { ride: RideDetail | null; rideId: string; router: ReturnType<typeof useRouter> }) {
+function DriverMiniRow({ ride, rideId, router, unreadChatCount }: { ride: RideDetail | null; rideId: string; router: ReturnType<typeof useRouter>; unreadChatCount: number }) {
   return (
     <div className="flex items-center gap-2.5 flex-1 min-w-0 px-3 py-2 rounded-2xl" style={{ background: '#F5F7FF', border: '1px solid #E8EEFF' }}>
       {ride?.driver_photo ? (
@@ -187,11 +187,19 @@ function DriverMiniRow({ ride, rideId, router }: { ride: RideDetail | null; ride
           only rendered once hasDriver is true, so no extra gate needed here. */}
       <button
         onClick={() => router.push(`/ride/${rideId}/chat`)}
-        className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0"
+        className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 relative"
         style={{ background: '#E4F8FA' }}
         aria-label="Message driver"
       >
         <MessageCircle size={14} style={{ color: '#0A9FB0' }} />
+        {unreadChatCount > 0 && (
+          <span
+            className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+            style={{ background: '#DC2626' }}
+          >
+            {unreadChatCount > 9 ? '9+' : unreadChatCount}
+          </span>
+        )}
       </button>
     </div>
   )
@@ -406,6 +414,8 @@ export default function RidePage() {
     }
   }
 
+  const [unreadChatCount, setUnreadChatCount] = useState(0)
+
   useEffect(() => {
     if (!rideId) return
     void loadRide()
@@ -413,6 +423,7 @@ export default function RidePage() {
     connectSocket()
     const socket = getSocket()
     joinRideRoom(rideId)
+    void rideApi.getUnreadChatCount(rideId).then(setUnreadChatCount).catch(() => {})
 
     const onConnect = () => {
       setSocketOk(true)
@@ -521,6 +532,9 @@ export default function RidePage() {
         ? { ...prev, stops: [...prev.stops, data.stop] }
         : prev)
     }
+    const onChatMessage = (data: { senderType: 'user' | 'driver' }) => {
+      if (data.senderType === 'driver') setUnreadChatCount(c => c + 1)
+    }
 
     socket.on('connect',            onConnect)
     socket.on('disconnect',         onDisconnect)
@@ -531,6 +545,7 @@ export default function RidePage() {
     socket.on('ride:stuck_flagged', onStuckFlagged)
     socket.on('stop:updated',       onStopUpdated)
     socket.on('stop:added',         onStopAdded)
+    socket.on('chat:message',       onChatMessage)
 
     // Reconcile ride state when the tab resumes from background.
     // The poll and socket may have stalled while the screen was off.
@@ -552,6 +567,7 @@ export default function RidePage() {
       socket.off('ride:stuck_flagged', onStuckFlagged)
       socket.off('stop:updated',       onStopUpdated)
       socket.off('stop:added',         onStopAdded)
+      socket.off('chat:message',       onChatMessage)
       document.removeEventListener('visibilitychange', onVisible)
       clearTimeout(fallbackTimer)
       if (pollRef.current) clearInterval(pollRef.current)
@@ -966,7 +982,7 @@ export default function RidePage() {
             >
               {/* Peek row: driver identity + call, plus whatever the rider needs to act on right now */}
               <div className="flex items-center gap-2 mb-2">
-                <DriverMiniRow ride={ride} rideId={rideId} router={router} />
+                <DriverMiniRow ride={ride} rideId={rideId} router={router} unreadChatCount={unreadChatCount} />
                 {rideStatus === 'accepted' && fare && (
                   <div className="flex-shrink-0 text-right px-1">
                     <p className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>Fare</p>
