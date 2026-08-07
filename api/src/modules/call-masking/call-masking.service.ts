@@ -1,5 +1,8 @@
 import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
+import { getRideById } from '@/modules/rides/rides.repository'
+import { createHttpError } from '@/lib/errors'
+import { AppErrors } from '@/constants/errors'
 import * as repo from '@/modules/call-masking/call-masking.repository'
 import * as exotel from '@/modules/call-masking/call-masking.exotel-client'
 import { CallMaskingError, type CallerRole } from '@/modules/call-masking/call-masking.types'
@@ -29,7 +32,19 @@ export async function releaseForRide(rideId: bigint): Promise<void> {
 export async function triggerCall(params: {
   rideId: bigint
   callerRole: CallerRole
+  callerId: bigint
 }): Promise<{ sid: string }> {
+  // Ride-participant check — mirrors ride-chat.service.ts's resolveParticipant:
+  // the caller must actually be the rider or driver on this ride, otherwise
+  // any authenticated user/driver could trigger a real, billed call between
+  // two strangers.
+  const ride = await getRideById(params.rideId)
+  if (!ride) throw createHttpError(AppErrors.RIDE_NOT_FOUND)
+  const isOwner =
+    (params.callerRole === 'user' && String(ride.user_id) === String(params.callerId)) ||
+    (params.callerRole === 'driver' && ride.driver_id !== null && String(ride.driver_id) === String(params.callerId))
+  if (!isOwner) throw createHttpError(AppErrors.AUTH_FORBIDDEN)
+
   const enabled = await getConfigValue('exotel_masking_enabled', 'false')
   if (enabled !== 'true') {
     throw new CallMaskingError('MASKING_DISABLED', 'Masked calling is currently disabled')
