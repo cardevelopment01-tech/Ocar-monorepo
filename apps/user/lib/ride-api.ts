@@ -324,4 +324,9 @@ export const rideApi = {
     const res = await api.patch(`/api/v1/rides/${rideId}/messages/read`)
     return res.data as { count: number }
   },
+
+  getUnreadChatCount: async (rideId: string): Promise<number> => {
+    const res = await api.get(`/api/v1/rides/${rideId}/messages/unread-count`)
+    return (res.data as { count: number }).count
+  },
 }
