@@ -266,6 +266,19 @@ export default function App() {
     else stopRideSound()
   }, [incomingRequest])
 
+  // Best-effort: keep the screen from sleeping while online, since a sleeping
+  // screen is the one case where a backgrounded tab's audio can actually get
+  // suspended by the OS. Silently no-ops on browsers without the API
+  // (cast to unknown avoids depending on lib.dom's WakeLock typings being
+  // present in every TS target this repo might build with).
+  useEffect(() => {
+    if (!isOnline) return
+    const nav = navigator as unknown as { wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> } }
+    let sentinel: { release: () => Promise<void> } | null = null
+    nav.wakeLock?.request('screen').then(s => { sentinel = s }).catch(() => {})
+    return () => { sentinel?.release().catch(() => {}) }
+  }, [isOnline])
+
   // Listen for user-initiated cancellation while a ride is active.
   // Scoped to activeRide.id so it attaches/detaches with the ride lifecycle.
   // Also re-joins the ride room on socket reconnect, since room membership is lost
