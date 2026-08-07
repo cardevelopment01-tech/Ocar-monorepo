@@ -212,8 +212,7 @@ export default function RideChatPage() {
           />
         ) : (
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-[12px] font-bold"
-            style={{ background: 'linear-gradient(135deg, #0A9FB0, #DC3E93)' }}
+            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-[12px] font-bold bg-gradient-primary"
           >
             {driver.name ? getInitials(driver.name) : '?'}
           </div>
@@ -306,8 +305,8 @@ function ReadOnlyBanner() {
       style={{ paddingTop: '0.75rem', paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
       <span
-        className="px-4 py-2 rounded-full text-[12.5px] font-medium text-center"
-        style={{ background: '#E0F2FE', color: '#0EA5E9' }}
+        className="px-4 py-2 rounded-full text-[12.5px] font-medium text-center text-status-info"
+        style={{ background: '#E0F2FE' }}
       >
         This ride has ended · Chat is read-only
       </span>
@@ -324,7 +323,7 @@ function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
     <motion.div
       initial={prefersReducedMotion ? false : { opacity: 0, y: 6, scale: 0.99 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0 }}
+      exit={prefersReducedMotion ? undefined : { opacity: 0 }}
       transition={{ duration: 0.18, ease: EASE }}
       className={`flex ${mine ? 'justify-end' : 'justify-start'}`}
     >
