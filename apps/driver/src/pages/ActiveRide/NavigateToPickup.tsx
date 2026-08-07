@@ -4,7 +4,7 @@ import {
   motion, AnimatePresence, useReducedMotion,
   useMotionValue, useTransform, useMotionValueEvent, animate,
 } from 'framer-motion'
-import { Navigation, Phone, RotateCcw, Clock, X, Star, Check, Locate, LocateOff } from 'lucide-react'
+import { Navigation, Phone, RotateCcw, Clock, X, Star, Check, Locate, LocateOff, MessageCircle } from 'lucide-react'
 import SOSButton from '@/components/ui/SOSButton'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import VoiceToggleButton from '@/components/ui/VoiceToggleButton'
@@ -571,10 +571,18 @@ export default function NavigateToPickup() {
                   <a
                     href={`tel:${activeRide.userPhone}`}
                     className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform"
+                    aria-label="Call rider"
                   >
                     <Phone size={18} className="text-text-secondary" />
                   </a>
                 )}
+                <button
+                  className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform"
+                  onClick={() => navigate('/ride/chat')}
+                  aria-label="Message rider"
+                >
+                  <MessageCircle size={18} className="text-text-secondary" />
+                </button>
                 <button
                   className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-95 transition-transform"
                   onClick={() => openMapsNav(pickupPos[0], pickupPos[1])}

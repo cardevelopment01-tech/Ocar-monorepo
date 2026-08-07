@@ -248,6 +248,14 @@ Server initialised in `api/src/websocket/socket.server.ts`.
                                 templates with {{variable}} body/subject + variables_schema,
                                 seeded with the exact copy notifications.worker.ts used to
                                 hardcode. version bumps on edit.
+...
+081_ride_chat.sql             — ride_messages: append-only rider<->driver in-ride chat,
+                                one row per message scoped to ride_id, client_msg_id as
+                                retry-dedup/idempotency key. Plain table, not partitioned
+                                (same call as notification_logs).
+082_ride_chat_message_notification.sql — seeds the ride_chat_message push template
+                                (notification_templates row) used to notify the other
+                                participant of a new chat message.
 ```
 
 ---
@@ -270,6 +278,8 @@ Server initialised in `api/src/websocket/socket.server.ts`.
                                           PATCH /:id/read, POST /read-all
 /api/v1/admin/notification-templates/* — super_admin only: GET / (list), PATCH /:id (edit,
                                           bumps version), PATCH /:id/active (toggle)
+/api/v1/rides/:id/messages             — POST (send, rate-limited), GET (list), PATCH /read
+                                          (mark read) — in-ride chat between rider and driver
 ```
 
 ---
@@ -303,10 +313,11 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 - "Add new rider" (For me sheet) is `disabled`. Multi-stop is live across **all** ride types: round-trip/rental add stops on their own pages, and one-way adds stops on `/select-ride` (routes through the waypoints for true detour distance since one-way is per-km; round-trip stays a flat per-stop fee). The `/search` "Add stops" pill just hints "set destination, add stops next".
 - Bottom nav: only **My Trip** and **Profile** are active — Messages and Help show "SOON"
 - Round-trip booking has a dedicated flow (`/round-trip` page → search → `/select-ride`); passes `rideType: 'round_trip'` and computed `tripHours` to the booking API. Rental fare differentiation is not yet wired.
-- Message driver button on ride tracking screen has no handler
+- Message driver button on ride tracking screen is now live (in-ride chat screen)
 
 ### Driver app
 - Earnings page now fetches real data; no remaining `DemoBlock`/mock swaps in Earnings, Wallet, or active-ride screens
+- In-ride chat is live, with entry points on both active-ride screens
 
 ### Admin portal
 - No remaining known caveats — overview, live-map, and analytics are all wired to real endpoints
@@ -333,6 +344,9 @@ api/src/websocket/socket.server.ts — Socket.io init + socketEvents helpers (in
 api/src/modules/notifications/notifications.service.ts — notifyOwner()/notifyAllAdmins(): persist
                                                            feed row + push + socket emit in one call
 api/src/modules/notifications/templates.service.ts      — renderTemplate(slug, channel, context, locale)
+api/src/modules/ride-chat/                         — in-ride chat module: ride-chat.repository.ts,
+                                                      ride-chat.service.ts, ride-chat.controller.ts,
+                                                      ride-chat.routes.ts, ride-chat.types.ts
 
 apps/admin/lib/api.ts              — axios instance (admin)
 apps/admin/lib/auth.ts             — admin login helpers
@@ -427,7 +441,7 @@ below for the exact commands to close both gaps once repo admin access is availa
   1. Enable the `pg_stat_statements` extension.
   2. Set `log_min_duration_statement = 500` (log queries slower than 500ms).
   3. Confirm the app's `DATABASE_URL` uses the `-pooler` host (see `api/.env.example`).
-  After the test, run `api/scripts/index-usage-audit.sql` to find unused indexes, dead-tuple pressure, and the slowest query shapes — that data decides whether to build keyset pagination and `ride_status_history` partitioning (both deliberately deferred until proven necessary — see `docs/superpowers/specs/2026-07-26-db-loadtest-readiness-design.md`).
+  After the test, run `api/scripts/index-usage-audit.sql` to find unused indexes, dead-tuple pressure, and the slowest query shapes — that data decides whether to build keyset pagination and `ride_status_history` partitioning (both deliberately deferred until proven necessary — see `docs/superpowers/specs/2026-07-26-db-loadtest-readiness-design.md`). `ride_messages` (rider-driver in-app chat, added in 081_ride_chat.sql) should be included in the same test — it's the same one-row-per-event/high-write/read-by-`ride_id` shape as `ride_status_history`, so it should get the same partitioning decision from the same data, not bespoke scaling work.
 
 - **No `production` GitHub Environment / required-reviewer approval gate on deploy.** The `deploy` job already references `environment: production` in `.github/workflows/ci-cd.yml`, but the environment itself was never created, so it's currently inert (deploys run immediately once checks pass, no human approval pause). Skipped because the `gh` account used to build this pipeline has `push`/`triage` on the repo but not `admin` (confirmed via `gh api repos/cardevelopment01-tech/Ocar-monorepo --jq '.permissions'` → `{"admin":false,...}`), and creating an environment protection rule requires admin. Whoever has admin rights should run:
   ```bash

@@ -29,3 +29,6 @@ graphify-out/
 .tokensave/
 .agents/
 .superpowers/
+
+# Git worktrees for isolated feature work
+.worktrees/

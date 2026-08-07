@@ -142,6 +142,17 @@ export type RetryPaymentResult =
   | { channel: 'online'; order: { orderId: string; key: string; amount: number } | null }
   | { channel: 'wallet'; paid: boolean }
 
+export interface ChatMessage {
+  id: string
+  rideId: string
+  senderType: 'user' | 'driver'
+  senderId: string
+  body: string
+  clientMsgId: string
+  readAt: string | null
+  createdAt: string
+}
+
 export const rideApi = {
   getEstimate: async (params: {
     categoryId: number
@@ -295,5 +306,22 @@ export const rideApi = {
   retryPayment: async (rideId: string): Promise<RetryPaymentResult> => {
     const res = await api.post(`/api/v1/rides/${rideId}/payment/retry`)
     return res.data as RetryPaymentResult
+  },
+
+  getMessages: async (rideId: string, after?: string): Promise<ChatMessage[]> => {
+    const res = await api.get(`/api/v1/rides/${rideId}/messages`, {
+      params: after ? { after } : undefined,
+    })
+    return (res.data as { messages: ChatMessage[] }).messages
+  },
+
+  sendMessage: async (rideId: string, body: string, clientMsgId: string): Promise<ChatMessage> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/messages`, { body, clientMsgId })
+    return res.data as ChatMessage
+  },
+
+  markChatRead: async (rideId: string): Promise<{ count: number }> => {
+    const res = await api.patch(`/api/v1/rides/${rideId}/messages/read`)
+    return res.data as { count: number }
   },
 }
