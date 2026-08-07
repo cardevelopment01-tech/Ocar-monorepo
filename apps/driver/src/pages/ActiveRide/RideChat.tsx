@@ -114,6 +114,12 @@ export default function RideChat() {
       mounted = false
       mountedRef.current = false
       socket.emit('chat:close', { rideId })
+      // App.tsx's ride-scoped socket listener stays mounted across this screen's
+      // lifecycle and increments the badge for every inbound message regardless
+      // of whether chat is open — clear again on leaving to undo any phantom
+      // increments that landed while this screen (which already marks them read)
+      // was the one actually showing them.
+      setUnreadChatCount(0)
       socket.off('chat:message', onChatMessage)
       socket.off('chat:read', onChatRead)
       socket.off('connect', onReconnect)
