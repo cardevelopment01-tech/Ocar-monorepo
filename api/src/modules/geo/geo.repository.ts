@@ -2,7 +2,7 @@ import { pool } from '@/db/client'
 import type { City, GpsTrackPayload } from './geo.types'
 
 const CITY_COLS = `
-  id, name, slug, state,
+  id::int, name, slug, state,
   ST_Y(centroid::geometry) AS centroid_lat,
   ST_X(centroid::geometry) AS centroid_lng,
   default_speed_limit_kmph,
@@ -66,7 +66,7 @@ export async function findContainingCity(
   destLng: number,
 ): Promise<{ id: number; name: string } | null> {
   const res = await pool.query(
-    `SELECT id, name
+    `SELECT id::int, name
      FROM cities
      WHERE boundary IS NOT NULL
        AND ST_Contains(boundary, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326))
