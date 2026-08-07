@@ -39,6 +39,7 @@ import api from '@/lib/api'
 import type { DriverProfile } from '@/store/useAuthStore'
 import type { NotificationItem } from '@/lib/notifications-api'
 import { driverRideApi } from '@/lib/ride-api'
+import { playRideSound, stopRideSound } from '@/lib/rideSound'
 import { connectDriverSocket, disconnectDriverSocket, getDriverSocket } from '@/lib/socket'
 import NotificationsSheet from '@/components/ui/NotificationsSheet'
 import NotificationToast from '@/components/ui/NotificationToast'
@@ -255,6 +256,15 @@ export default function App() {
     socket.on('ride:request_expired', onRequestExpired)
     return () => { socket.off('ride:request_expired', onRequestExpired) }
   }, [isOnline, clearIncomingRequest])
+
+  // Ringtone follows incomingRequest as the single source of truth: it starts
+  // the instant a request is set and stops on every path that clears it
+  // (accept, decline, expire, server-side expiry) without duplicating the
+  // stop call at each of those call sites.
+  useEffect(() => {
+    if (incomingRequest) playRideSound()
+    else stopRideSound()
+  }, [incomingRequest])
 
   // Listen for user-initiated cancellation while a ride is active.
   // Scoped to activeRide.id so it attaches/detaches with the ride lifecycle.
