@@ -882,7 +882,7 @@ export async function listExpiringDocs(daysAhead: number): Promise<ExpiringVehic
 // ─── Geo / Cities ─────────────────────────────────────────────────────────────
 
 const ADMIN_CITY_COLS = `
-  id, name, slug, state,
+  id::int, name, slug, state,
   ST_Y(centroid::geometry) AS centroid_lat,
   ST_X(centroid::geometry) AS centroid_lng,
   default_speed_limit_kmph,
