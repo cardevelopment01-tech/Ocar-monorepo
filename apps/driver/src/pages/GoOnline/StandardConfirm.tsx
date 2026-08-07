@@ -8,6 +8,7 @@ import { driverRideApi } from '@/lib/ride-api'
 import { connectDriverSocket } from '@/lib/socket'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useWalletGate } from '@/lib/useWalletGate'
+import { unlockRideSound } from '@/lib/rideSound'
 
 const CHECKLIST = [
   'Vehicle is clean and ready',
@@ -54,6 +55,7 @@ export default function StandardConfirm() {
     setChecked(prev => ({ ...prev, [item]: !prev[item] }))
 
   const handleGoOnline = async () => {
+    unlockRideSound()
     if (!vehicle) { setError('No active vehicle found. Add one in your profile.'); return }
     setGoingOnline(true)
     setError(null)
