@@ -329,7 +329,7 @@ function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
             ) : msg.readAt ? (
               <CheckCheck size={12} style={{ color: '#DC3E93' }} />
             ) : (
-              <Check size={12} className="text-text-muted" />
+              <Check size={12} className="text-primary" />
             )
           )}
           {mine && failed && (
