@@ -3,7 +3,13 @@ import fs from 'fs'
 import path from 'path'
 
 const isFresh = process.argv.includes('--fresh')
-const databaseUrl = process.env['DATABASE_URL']
+// Migrations need a direct (non-pooled) connection — pg_advisory_lock is
+// session-scoped, and Neon's pooler runs in transaction mode, which doesn't
+// guarantee lock/unlock land on the same physical backend. Over the pooler
+// that can orphan the lock forever, hanging every future migration run.
+// MIGRATION_DATABASE_URL is optional: unset in local dev/CI, where DATABASE_URL
+// already points at a plain, unpooled Postgres with no pooler in the mix.
+const databaseUrl = process.env['MIGRATION_DATABASE_URL'] || process.env['DATABASE_URL']
 
 if (!databaseUrl) {
   console.error('DATABASE_URL environment variable is not set')
