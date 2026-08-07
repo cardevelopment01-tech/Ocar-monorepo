@@ -39,7 +39,7 @@ import api from '@/lib/api'
 import type { DriverProfile } from '@/store/useAuthStore'
 import type { NotificationItem } from '@/lib/notifications-api'
 import { driverRideApi } from '@/lib/ride-api'
-import { playRideSound, stopRideSound } from '@/lib/rideSound'
+import { playRideSound, stopRideSound, unlockRideSound } from '@/lib/rideSound'
 import { connectDriverSocket, disconnectDriverSocket, getDriverSocket } from '@/lib/socket'
 import NotificationsSheet from '@/components/ui/NotificationsSheet'
 import NotificationToast from '@/components/ui/NotificationToast'
@@ -83,6 +83,19 @@ export default function App() {
         if (status === 401) clearAuth()
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Unlock ringtone playback on the very first tap anywhere in the app, not
+  // just the Go Online buttons - covers session-restore-while-online and
+  // auto-re-online-after-trip paths, which reach an online state without
+  // ever going through the Go Online tap that normally does this.
+  useEffect(() => {
+    const unlock = () => {
+      unlockRideSound()
+      document.removeEventListener('pointerdown', unlock)
+    }
+    document.addEventListener('pointerdown', unlock)
+    return () => document.removeEventListener('pointerdown', unlock)
+  }, [])
 
   // Reconcile persisted isOnline with DB reality on every auth session start.
   // Moved here from Home so it runs regardless of which page the driver lands on.
