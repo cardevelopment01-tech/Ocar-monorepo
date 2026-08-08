@@ -49,6 +49,24 @@ export function createApp(): Application {
       if (res.statusCode >= 400) return 'warn'
       return 'info'
     },
+    // pino-http's default req/res serializers dump every header (helmet's
+    // static CSP/HSTS block, repeated on every line) — pure log-volume waste
+    // once shipped off-box. Worse: req.url includes the query string, and
+    // admin-invites.controller.ts's GET verify route puts a real secret
+    // there (`req.query['token']`) — logging it verbatim would ship that
+    // token to Grafana Cloud. ip/userAgent are kept deliberately (useful for
+    // OTP-brute-force/fraud investigation), bounded by Loki's 14-day
+    // retention — not a byproduct of the header dump.
+    serializers: {
+      req: (req) => ({
+        id: req.id,
+        method: req.method,
+        url: req.url?.split('?')[0],
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      }),
+      res: (res) => ({ statusCode: res.statusCode }),
+    },
   }))
 
   // 2. Security headers
