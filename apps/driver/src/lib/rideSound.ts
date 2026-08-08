@@ -13,20 +13,17 @@ function getAudio(): HTMLAudioElement {
 
 /**
  * Must be called from a real user gesture (the driver's "Go Online" tap).
- * Browsers create every new playback session gated behind a user gesture;
- * doing a muted play/pause here means later calls to `playRideSound()` -
- * triggered by a server socket event, not a gesture - aren't blocked.
+ * Browsers gate autoplay per-origin, not per-element, so a muted play/pause
+ * on a throwaway element unlocks later `playRideSound()` calls just as well -
+ * and, unlike reusing the ringtone's own element, can't stop a ringtone that
+ * happens to already be playing when this fires.
  */
 export function unlockRideSound(): void {
-  const el = getAudio()
+  const el = new Audio(ringtoneUrl)
   el.muted = true
   el.play()
-    .then(() => {
-      el.pause()
-      el.currentTime = 0
-      el.muted = false
-    })
-    .catch(() => { el.muted = false })
+    .then(() => el.pause())
+    .catch(() => {})
 }
 
 export function playRideSound(): void {
