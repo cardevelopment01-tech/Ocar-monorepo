@@ -45,9 +45,21 @@ export function createApp(): Application {
   app.use(pinoHttp({
     logger,
     genReqId: (req) => (req as import('express').Request).requestId,
-    customLogLevel: (_req, res, err) => {
+    // Docker's internal healthcheck (Wget) hits this container directly,
+    // bypassing nginx.prod.conf's `access_log off` for /health — so pino
+    // was the only thing still logging it, once a minute forever. OPTIONS
+    // preflights carry no diagnostic value either; they just double the
+    // line count for every real request.
+    autoLogging: {
+      ignore: (req) => req.url === '/health' || req.url === '/metrics' || req.method === 'OPTIONS',
+    },
+    customLogLevel: (req, res, err) => {
       if (res.statusCode >= 500 || err) return 'error'
       if (res.statusCode >= 400) return 'warn'
+      // High-frequency polling (unread-count badges) is real traffic, not
+      // noise to drop — but zero-value at 'info'. Demote so it's silent at
+      // the prod default and reappears if LOG_LEVEL=debug is set to chase it.
+      if (req.url?.includes('/unread-count')) return 'debug'
       return 'info'
     },
     // pino-http's default req/res serializers dump every header (helmet's
