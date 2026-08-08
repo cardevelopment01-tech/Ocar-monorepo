@@ -58,6 +58,22 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  node_exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: ocar_node_exporter
+    restart: unless-stopped
+    command:
+      - '--path.rootfs=/host'
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - ocar_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
 volumes:
   certbot_webroot:
   alloy_data:

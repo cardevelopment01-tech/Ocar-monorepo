@@ -1,6 +1,48 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterAll } from 'vitest'
 import pino from 'pino'
+import { trace, context, ROOT_CONTEXT, type Context, type ContextManager } from '@opentelemetry/api'
 import { buildLoggerOptions } from '@/lib/logger'
+
+// The real SDK (api/src/observability/tracing.ts) registers a context manager
+// via NodeSDK.start(), but that's skipped in NODE_ENV=test (see that file) so
+// span context never propagates into `context.with`/`context.active` here.
+// This is a minimal synchronous stand-in — just enough for this test to
+// exercise the real trace/context API — not a replacement for the SDK's
+// AsyncHooksContextManager (no async boundaries are crossed in this test).
+class SyncTestContextManager implements ContextManager {
+  private current: Context = ROOT_CONTEXT
+  active(): Context {
+    return this.current
+  }
+  with<A extends unknown[], F extends (...args: A) => ReturnType<F>>(
+    ctx: Context,
+    fn: F,
+    thisArg?: ThisParameterType<F>,
+    ...args: A
+  ): ReturnType<F> {
+    const previous = this.current
+    this.current = ctx
+    try {
+      return fn.apply(thisArg, args)
+    } finally {
+      this.current = previous
+    }
+  }
+  bind<T>(_ctx: Context, target: T): T {
+    return target
+  }
+  enable(): this {
+    return this
+  }
+  disable(): this {
+    return this
+  }
+}
+context.setGlobalContextManager(new SyncTestContextManager())
+// Deregister on teardown — global registration shouldn't outlive this file's
+// tests even though Vitest's default isolate:true already prevents it from
+// leaking into other files today; this makes that independent of the config.
+afterAll(() => context.disable())
 
 describe('logger redaction', () => {
   it('redacts phone, otp, password, and auth header fields', () => {
@@ -50,5 +92,25 @@ describe('logger redaction', () => {
     logger.debug({ sessionId: 'abc' }, 'gps ping received')
 
     expect(lines.length).toBe(0)
+  })
+
+  it('includes trace_id in the log when a span is active, omits it otherwise', () => {
+    const lines: string[] = []
+    const stream = { write: (line: string) => { lines.push(line) } }
+    const logger = pino(buildLoggerOptions('info'), stream)
+
+    logger.info({}, 'no span active')
+    const withoutSpan = JSON.parse(lines[0]!)
+    expect(withoutSpan.trace_id).toBeUndefined()
+
+    const tracer = trace.getTracer('test')
+    const span = tracer.startSpan('test-span')
+    context.with(trace.setSpan(context.active(), span), () => {
+      logger.info({}, 'span active')
+    })
+    span.end()
+
+    const withSpan = JSON.parse(lines[1]!)
+    expect(withSpan.trace_id).toBe(span.spanContext().traceId)
   })
 })
