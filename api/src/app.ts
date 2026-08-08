@@ -3,6 +3,7 @@ import helmet from 'helmet'
 import cors from 'cors'
 import pinoHttp from 'pino-http'
 import { logger } from '@/lib/logger'
+import { register, httpRequestDuration } from '@/observability/metrics'
 import { config } from '@/config'
 import { testConnection } from '@/db/client'
 import { testConnection as testRedis } from '@/db/redis'
@@ -69,6 +70,24 @@ export function createApp(): Application {
     },
   }))
 
+  // Request-duration metric — route (not req.url) keeps Mimir series count
+  // bounded the same way Loki labels are (see MUST-DO #2's reasoning).
+  app.use((req, res, next) => {
+    const start = process.hrtime.bigint()
+    res.on('finish', () => {
+      const durationSeconds = Number(process.hrtime.bigint() - start) / 1e9
+      httpRequestDuration.observe(
+        {
+          method: req.method,
+          route: req.route?.path ?? 'unmatched',
+          status_code: String(res.statusCode),
+        },
+        durationSeconds
+      )
+    })
+    next()
+  })
+
   // 2. Security headers
   app.use(helmet())
 
@@ -99,6 +118,12 @@ export function createApp(): Application {
       timestamp: new Date().toISOString(),
       environment: config.NODE_ENV,
     })
+  })
+
+  // 5b. Metrics
+  app.get('/metrics', async (_req, res) => {
+    res.set('Content-Type', register.contentType)
+    res.send(await register.metrics())
   })
 
   // 6. API router
