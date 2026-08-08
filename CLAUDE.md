@@ -31,6 +31,7 @@ cab-booking-platform/
 | Payments | Razorpay + driver/user wallet ledger (M08 done) |
 | Storage | AWS S3 (`@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`) |
 | OTP | SHA-256 hash of numeric OTP stored in DB/Redis (6-digit login OTP, 4-digit ride start/end OTP) |
+| Observability | Pino (JSON logs) + OTel tracing + prom-client metrics, shipped by one Grafana Alloy agent per host to Grafana Cloud (Loki/Mimir/Tempo) — see `docs/superpowers/specs/2026-08-08-observability-stack-design.md` |
 | User portal | Next.js 16.2.7, React 19, Tailwind v3, App Router |
 | Driver portal | Vite 5, React 19, React Router v6, Zustand persist, Tailwind v3 |
 | Admin portal | Next.js 16.2.7, React 19, Tailwind v3, App Router |
@@ -341,6 +342,10 @@ api/src/jobs/queues/index.ts       — BullMQ queue instances (NOTIFICATIONS, GP
 api/src/jobs/processors/broadcast.processor.ts — ride broadcast fan-out
 api/src/jobs/workers/notifications.worker.ts — sends SMS/push for 6 events via renderTemplate()
 api/src/websocket/socket.server.ts — Socket.io init + socketEvents helpers (incl. sendNotification)
+api/src/observability/tracing.ts   — OTel SDK init, imported first line of server.ts; trace_id
+                                      feeds logger.ts's mixin so every log line correlates to a span
+api/src/observability/metrics.ts   — prom-client Registry + /metrics: http_request_duration_seconds
+                                      (method/route/status_code), pg_pool_connections, bullmq_queue_job_counts
 api/src/modules/notifications/notifications.service.ts — notifyOwner()/notifyAllAdmins(): persist
                                                            feed row + push + socket emit in one call
 api/src/modules/notifications/templates.service.ts      — renderTemplate(slug, channel, context, locale)
