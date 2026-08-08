@@ -56,7 +56,7 @@ function SelectRideContent() {
   const hasOriginDest      = !isNaN(originLat) && !isNaN(originLng) && !isNaN(destinationLat) && !isNaN(destinationLng)
   const distanceKm         = parseFloat(sp.get('distanceKm') ?? '10')
   const durationMin        = parseFloat(sp.get('durationMin') ?? '20')
-  const originCityId       = parseInt(sp.get('originCityId') ?? '1', 10)
+  const originCityId       = sp.get('originCityId') ? parseInt(sp.get('originCityId')!, 10) : undefined
   const encodedPolyline    = sp.get('polyline') ?? undefined
   const riderName          = sp.get('riderName') ?? undefined
   const riderPhone         = sp.get('riderPhone') ?? undefined
@@ -140,8 +140,8 @@ function SelectRideContent() {
         const params = new URLSearchParams({
           originLat: String(originLat), originLng: String(originLng), originAddress,
           destinationAddress, destinationLat: String(destinationLat), destinationLng: String(destinationLng),
-          originCityId: String(originCityId),
         })
+        if (originCityId !== undefined) params.set('originCityId', String(originCityId))
         if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
         if (riderName)  params.set('riderName', riderName)
         if (riderPhone) params.set('riderPhone', riderPhone)

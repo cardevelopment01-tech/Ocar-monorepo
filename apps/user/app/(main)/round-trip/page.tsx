@@ -41,7 +41,7 @@ function RoundTripContent() {
   const originLng     = parseFloat(sp.get('originLng')  ?? '')
   const originAddress = sp.get('originAddress') ?? 'Pickup location'
   const hasOrigin     = !isNaN(originLat) && !isNaN(originLng)
-  const originCityId  = parseInt(sp.get('originCityId') ?? '1', 10)
+  const originCityId  = sp.get('originCityId') ? parseInt(sp.get('originCityId')!, 10) : undefined
 
   // Set only after destination is picked via the search page
   const destLat     = sp.get('destinationLat')     ? parseFloat(sp.get('destinationLat')!)  : null
@@ -126,10 +126,10 @@ function RoundTripContent() {
       destinationAddress: destAddress!,
       distanceKm:         String(distanceKm),
       durationMin:        String(durationMin),
-      originCityId:       String(originCityId),
       rideType:           'round_trip',
       tripHours:          String(selectedHours),
     })
+    if (originCityId !== undefined) params.set('originCityId', String(originCityId))
     if (polyline) params.set('polyline', polyline)
     if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
     if (riderName)  params.set('riderName', riderName)

@@ -28,6 +28,11 @@ export type TripClassification = {
   cityName: string | null
 }
 
+export type NearestCity = {
+  id: number
+  name: string
+}
+
 export const geoApi = {
   autocomplete: async (
     q: string,
@@ -62,6 +67,11 @@ export const geoApi = {
     if (opts?.trafficAware) params['trafficAware'] = 'true'
     const res = await api.get('/api/v1/geo/route', { params })
     return res.data as RouteResult
+  },
+
+  findNearestCity: async (lat: number, lng: number): Promise<NearestCity> => {
+    const res = await api.get('/api/v1/geo/cities/nearest', { params: { lat, lng } })
+    return res.data as NearestCity
   },
 
   classifyTrip: async (

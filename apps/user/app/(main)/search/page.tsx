@@ -245,11 +245,12 @@ function SearchContent() {
     }
     setResolving(true)
     try {
-      const [route, classification] = await Promise.all([
+      const [route, classification, nearestCity] = await Promise.all([
         geoApi.getRoute(oLat, oLng, dest.lat, dest.lng),
         // Classification failure must not block booking, fall back to the
         // safe "outstation" default (same default used for out-of-bounds points)
         geoApi.classifyTrip(oLat, oLng, dest.lat, dest.lng).catch(() => null),
+        geoApi.findNearestCity(oLat, oLng).catch(() => null),
       ])
       const params = new URLSearchParams({
         originLat:          String(oLat),
@@ -260,8 +261,10 @@ function SearchContent() {
         destinationAddress: dest.address,
         distanceKm:         String(route.distanceKm),
         durationMin:        String(route.durationMin),
-        originCityId:       '1',
       })
+      // No fallback to city 1: if the lookup failed, omit it and let the
+      // backend's own city_id IS NULL -> global-rate-card convention apply.
+      if (nearestCity) params.set('originCityId', String(nearestCity.id))
       if (route.polyline) params.set('polyline', route.polyline)
       if (rideType)      params.set('rideType', rideType)
       if (scheduledFor)  params.set('scheduledFor', scheduledFor.toISOString())

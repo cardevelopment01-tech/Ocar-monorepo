@@ -101,8 +101,9 @@ export default function HomePage() {
   const reduce   = useReducedMotion()
 
   const [addr,        setAddr]        = useState('Bhubaneswar')
-  const [lat,         setLat]         = useState(20.2961)
-  const [lng,         setLng]         = useState(85.8245)
+  const [lat,         setLat]         = useState<number | null>(null)
+  const [lng,         setLng]         = useState<number | null>(null)
+  const [originCityId, setOriginCityId] = useState<number | null>(null)
   const [collapsed,   setCollapsed]   = useState(false)
   const [resolving,   setResolving]   = useState(false)
   const [recentTrips, setRecentTrips] = useState<RideHistoryItem[]>([])
@@ -123,14 +124,18 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
-    if (fetched.current || !navigator.geolocation) return
+    if (fetched.current) return
     fetched.current = true
+    if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
       p => {
         setLat(p.coords.latitude)
         setLng(p.coords.longitude)
         geoApi.reverseGeocode(p.coords.latitude, p.coords.longitude)
           .then(address => setAddr(address))
+          .catch(() => setAddr('Current location'))
+        geoApi.findNearestCity(p.coords.latitude, p.coords.longitude)
+          .then(city => setOriginCityId(city.id))
           .catch(() => {})
       },
       () => {},
@@ -138,23 +143,47 @@ export default function HomePage() {
     )
   }, [])
 
+  // No coordinate fallback: when GPS hasn't resolved yet (or failed/denied),
+  // omit origin params entirely so /search runs its own GPS detection
+  // instead of silently booking from a fake point.
   function toSearch() {
-    router.push(`/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}`)
+    const params = new URLSearchParams()
+    if (lat !== null && lng !== null) {
+      params.set('originLat', String(lat))
+      params.set('originLng', String(lng))
+      params.set('originAddress', addr)
+    }
+    router.push(`/search?${params.toString()}`)
   }
 
   function toOneWay() {
-    router.push(`/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&rideType=one_way`)
+    const params = new URLSearchParams({ rideType: 'one_way' })
+    if (lat !== null && lng !== null) {
+      params.set('originLat', String(lat))
+      params.set('originLng', String(lng))
+      params.set('originAddress', addr)
+    }
+    router.push(`/search?${params.toString()}`)
   }
 
+  // Round trip / rental need a real origin + city id up front (no picker of
+  // their own) — if either hasn't resolved yet, send the user through
+  // /search instead of booking off a missing/wrong location.
   function toRoundTrip() {
-    router.push(`/round-trip?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&originCityId=1`)
+    if (lat === null || lng === null || originCityId === null) { router.push('/search'); return }
+    router.push(`/round-trip?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&originCityId=${originCityId}`)
   }
 
   function toRental() {
-    router.push(`/rental?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&originCityId=1`)
+    if (lat === null || lng === null || originCityId === null) { router.push('/search'); return }
+    router.push(`/rental?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&originCityId=${originCityId}`)
   }
 
   async function toRide(destLabel: string, dLat: number, dLng: number) {
+    if (lat === null || lng === null || originCityId === null) {
+      router.push(`/search?destinationQuery=${encodeURIComponent(destLabel)}`)
+      return
+    }
     setResolving(true)
     try {
       const [route, classification] = await Promise.all([
@@ -172,7 +201,7 @@ export default function HomePage() {
         destinationAddress: destLabel,
         distanceKm:         String(route.distanceKm),
         durationMin:        String(route.durationMin),
-        originCityId:       '1',
+        originCityId:       String(originCityId),
       })
       if (route.polyline) params.set('polyline', route.polyline)
       const path = classification?.scope === 'in_city' ? '/rental' : '/trip-type'
@@ -492,9 +521,15 @@ export default function HomePage() {
                   return (
                     <motion.button
                       key={r.id}
-                      onClick={() => router.push(
-                        `/search?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&destinationQuery=${encodeURIComponent(label)}`
-                      )}
+                      onClick={() => {
+                        const params = new URLSearchParams({ destinationQuery: label })
+                        if (lat !== null && lng !== null) {
+                          params.set('originLat', String(lat))
+                          params.set('originLng', String(lng))
+                          params.set('originAddress', addr)
+                        }
+                        router.push(`/search?${params.toString()}`)
+                      }}
                       className={`gloss-sheen w-full flex items-center gap-3 px-4 py-3.5 text-left${i < recentTrips.length - 1 ? ' border-b border-border' : ''}`}
                       variants={row}
                       whileTap={{ backgroundColor: '#F8FAFF' }}

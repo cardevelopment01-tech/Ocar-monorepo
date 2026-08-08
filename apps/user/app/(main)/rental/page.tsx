@@ -77,7 +77,7 @@ function RentalContent() {
   const originLng     = parseFloat(sp.get('originLng')  ?? '')
   const originAddress = sp.get('originAddress') ?? 'Pickup location'
   const hasOrigin     = !isNaN(originLat) && !isNaN(originLng)
-  const originCityId  = parseInt(sp.get('originCityId') ?? '1', 10)
+  const originCityId  = sp.get('originCityId') ? parseInt(sp.get('originCityId')!, 10) : undefined
 
   const destAddress = sp.get('destinationAddress') ?? null
   const hasDestination = destAddress !== null
@@ -164,7 +164,7 @@ function RentalContent() {
   const [paymentNote,     setPaymentNote]     = useState<string | null>(null)
 
   // Fetch packages whenever category changes; auto-select first
-  const loadPackages = useCallback(async (catId: number, cityId: number) => {
+  const loadPackages = useCallback(async (catId: number, cityId: number | undefined) => {
     setPkgsLoading(true)
     setPackages([])
     setSelectedPkgId(null)
