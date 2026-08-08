@@ -1,0 +1,55 @@
+// infra/alloy/config.alloy
+//
+// Discovers all containers on this host, tails their stdout, attaches
+// exactly three labels (service, env, host) to keep Loki's index small —
+// see docs/superpowers/specs/2026-08-08-observability-stack-design.md
+// MUST-DO #2. Everything else (requestId, userId, rideId, etc.) stays in
+// the JSON log body untouched — Loki can still full-text/JSON-filter on it,
+// it just isn't part of the indexed label set.
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    target_label = "service"
+    replacement   = "ocar"
+  }
+
+  rule {
+    target_label = "env"
+    replacement   = sys.env("ALLOY_ENV")
+  }
+
+  rule {
+    target_label = "host"
+    replacement   = sys.env("ALLOY_HOSTNAME")
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.relabel.containers.output
+  forward_to    = [loki.write.grafana_cloud.receiver]
+  relabel_rules = discovery.relabel.containers.rules
+}
+
+loki.write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_LOKI_USER")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
+    }
+  }
+}
