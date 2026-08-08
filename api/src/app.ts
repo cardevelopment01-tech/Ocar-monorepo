@@ -56,10 +56,16 @@ export function createApp(): Application {
     customLogLevel: (req, res, err) => {
       if (res.statusCode >= 500 || err) return 'error'
       if (res.statusCode >= 400) return 'warn'
-      // High-frequency polling (unread-count badges) is real traffic, not
-      // noise to drop — but zero-value at 'info'. Demote so it's silent at
-      // the prod default and reappears if LOG_LEVEL=debug is set to chase it.
-      if (req.url?.includes('/unread-count')) return 'debug'
+      // High-frequency polling (unread-count badges, admin SOS-count every
+      // 30s from apps/admin's layout.tsx) is real traffic, not noise to
+      // drop — but zero-value at 'info' on success. Demote so it's silent
+      // at the prod default and reappears if LOG_LEVEL=debug is set to
+      // chase it. Path-exact match on the SOS list route only — leaves
+      // .../sos/:id/acknowledge and .../resolve (real admin actions, not
+      // polling) at 'info'.
+      const path = req.url?.split('?')[0]
+      if (path?.includes('/unread-count')) return 'debug'
+      if (path === '/api/v1/admin/safety/sos' && req.method === 'GET') return 'debug'
       return 'info'
     },
     // pino-http's default req/res serializers dump every header (helmet's
