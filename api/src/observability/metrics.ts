@@ -1,6 +1,7 @@
 import { Registry, collectDefaultMetrics, Histogram, Gauge } from 'prom-client'
 import { pool } from '@/db/client'
 import { queues } from '@/jobs/queues'
+import { logger } from '@/lib/logger'
 
 export const register = new Registry()
 collectDefaultMetrics({ register })
@@ -33,10 +34,19 @@ new Gauge({
   labelNames: ['queue', 'state'],
   registers: [register],
   async collect() {
+    // register.metrics() awaits every metric's collect() and does not
+    // isolate a rejection — one queue's Redis hiccup at scrape time would
+    // otherwise blank the whole /metrics response, including the
+    // unrelated pg_pool_connections/http_request_duration_seconds series.
+    // Skip the failing queue's series for this scrape instead.
     for (const [name, queue] of Object.entries(queues)) {
-      const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'failed')
-      for (const [state, count] of Object.entries(counts)) {
-        this.set({ queue: name, state }, count)
+      try {
+        const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'failed')
+        for (const [state, count] of Object.entries(counts)) {
+          this.set({ queue: name, state }, count)
+        }
+      } catch (err) {
+        logger.warn({ err, queue: name }, 'failed to collect queue job counts for metrics')
       }
     }
   },
