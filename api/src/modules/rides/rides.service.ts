@@ -36,7 +36,7 @@ import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner } from '@/modules
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { calculateFare } from '@/lib/fare'
-import { classifyTrip, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
+import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
 import { MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES } from '@/constants/limits'
 import { logger } from '@/lib/logger'
@@ -442,6 +442,11 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   // fare_snapshots.trip_hours records the same value used to compute the fare.
   const effectiveTripHours = clampTripHours(data.rideType, data.tripHours)
 
+  // originCityId is client-supplied and unverified (URL params are tamperable) — the
+  // pickup coordinates are what the client actually can't fake without lying about GPS,
+  // so re-derive the billing city from them instead of trusting data.originCityId.
+  const originCity = await findNearestCity(data.originLat, data.originLng)
+
   const fareReq: FareEstimateRequest = {
     category_id:  data.categoryId,
     ride_type:    data.rideType,
@@ -452,7 +457,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     trip_hours:   effectiveTripHours,
   }
   if (data.rentalPackageId !== undefined) fareReq.rental_package_id = data.rentalPackageId
-  if (data.originCityId   !== undefined) fareReq.city_id            = data.originCityId
+  if (originCity           !== null)      fareReq.city_id           = originCity.id
   const fareEstimate = await getFareEstimate(fareReq)
 
   const rideInput: Parameters<typeof repo.createRide>[0] = {
@@ -467,7 +472,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   }
   if (data.originAddress      !== undefined) rideInput.originAddress      = data.originAddress
   if (data.destinationAddress !== undefined) rideInput.destinationAddress = data.destinationAddress
-  if (data.originCityId       !== undefined) rideInput.originCityId       = BigInt(data.originCityId)
+  if (originCity              !== null)      rideInput.originCityId       = BigInt(originCity.id)
   if (data.destinationCityId  !== undefined) rideInput.destinationCityId  = BigInt(data.destinationCityId)
   if (data.rentalPackageId    !== undefined) rideInput.rentalPackageId    = BigInt(data.rentalPackageId)
   const storedTripHours = fareEstimate.rental_hours ?? (effectiveTripHours > 0 ? effectiveTripHours : undefined)
