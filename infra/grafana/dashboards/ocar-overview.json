@@ -32,6 +32,22 @@
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "tags": ["ocar", "observability"],
+  "templating": {
+    "list": [
+      {
+        "name": "min_level",
+        "label": "Log level",
+        "type": "custom",
+        "query": "All : 0,Warnings & Errors : 40,Errors only : 50",
+        "current": { "text": "Errors only", "value": "50" },
+        "options": [
+          { "text": "All", "value": "0" },
+          { "text": "Warnings & Errors", "value": "40" },
+          { "text": "Errors only", "value": "50", "selected": true }
+        ]
+      }
+    ]
+  },
   "panels": [
     { "id": 100, "type": "row", "title": "Golden Signals — API", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
 
@@ -193,13 +209,13 @@
       "id": 9,
       "type": "logs",
       "title": "ocar-api / nginx logs",
-      "description": "{service=\"ocar\", env=\"production\"} — same low-cardinality labels as MUST-DO #2. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
+      "description": "{service=\"ocar\", env=\"production\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $min_level dropdown above (Pino numeric levels: 30=info, 40=warn, 50=error) — a line filter, not a Loki label, so it costs nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 34 },
       "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-          "expr": "{service=\"ocar\", env=\"production\"}",
+          "expr": "{service=\"ocar\", env=\"production\"} | json | level >= $min_level",
           "refId": "A"
         }
       ],
