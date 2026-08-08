@@ -98,10 +98,15 @@ otelcol.receiver.otlp "default" {
 }
 
 otelcol.auth.basic "grafana_cloud" {
-  client_auth {
-    username = sys.env("GRAFANA_CLOUD_TEMPO_USER")
-    password = sys.env("GRAFANA_CLOUD_API_KEY")
-  }
+  // client_auth{} is docs.grafana.com/alloy/latest's documented replacement
+  // for these top-level args, but it produced "no credential source
+  // provided" against the actually-deployed v1.18.1 (verified live against
+  // production Alloy logs, 2026-08-08) — the docs describe a newer version
+  // than what's pinned in docker-compose.prod.yml. Revert to the
+  // deprecated-but-functional form; revisit client_auth{} if/when the
+  // pinned image is upgraded past v1.18.1.
+  username = sys.env("GRAFANA_CLOUD_TEMPO_USER")
+  password = sys.env("GRAFANA_CLOUD_API_KEY")
 }
 
 otelcol.exporter.otlphttp "grafana_cloud" {
