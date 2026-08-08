@@ -1,6 +1,8 @@
+import './observability/tracing'
 import http from 'http'
 import { logger } from '@/lib/logger'
 import { config } from './config'
+import { shutdownTracing } from './observability/tracing'
 import { createApp } from './app'
 import { testConnection, pool } from './db/client'
 import { testConnection as testRedis, client as redisClient } from './db/redis'
@@ -143,6 +145,7 @@ async function start(): Promise<void> {
     httpServer.close(async () => {
       await pool.end()
       redisClient.disconnect()
+      await shutdownTracing()
       process.exit(0)
     })
   }
