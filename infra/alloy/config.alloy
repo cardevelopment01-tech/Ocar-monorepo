@@ -1,7 +1,8 @@
 // infra/alloy/config.alloy
 //
-// Discovers all containers on this host, tails their stdout, attaches
-// exactly three labels (service, env, host) to keep Loki's index small —
+// Discovers all containers on this host, tails their combined stdout/stderr
+// log stream, and attaches exactly four labels (container, service, env,
+// host) to keep Loki's index small —
 // see docs/superpowers/specs/2026-08-08-observability-stack-design.md
 // MUST-DO #2. Everything else (requestId, userId, rideId, etc.) stays in
 // the JSON log body untouched — Loki can still full-text/JSON-filter on it,
