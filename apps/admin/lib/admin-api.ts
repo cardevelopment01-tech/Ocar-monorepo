@@ -311,7 +311,18 @@ export interface AdminUpcomingRideItem {
   is_stuck: boolean
 }
 
+export interface AdminRideStats {
+  today_count: string
+  active_count: string
+  cancelled_today_count: string
+  cash_flagged_count: string
+}
+
 export const adminRideApi = {
+  stats: async (): Promise<AdminRideStats> => {
+    const res = await api.get('/api/v1/admin/rides/stats')
+    return res.data as AdminRideStats
+  },
   list: async (params: { status?: string; ride_type?: string; search?: string; cashDiscrepancy?: boolean; dateFrom?: string; dateTo?: string; cityId?: number; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
     const res = await api.get('/api/v1/admin/rides', { params })
     return res.data as AdminRidesResponse

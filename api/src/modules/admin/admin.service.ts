@@ -371,6 +371,10 @@ export async function cancelAdminSurgeEvent(id: bigint, adminId: bigint) {
 
 // ─── Rides / Users / Payments ─────────────────────────────────────────────────
 
+export async function getAdminRideStats() {
+  return repo.getAdminRideStats()
+}
+
 export async function listAdminRides(query: {
   status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean
   date_from?: string; date_to?: string; city_id?: number; page?: number; limit?: number

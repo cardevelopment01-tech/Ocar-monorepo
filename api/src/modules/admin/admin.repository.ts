@@ -1057,6 +1057,18 @@ export async function cancelAdminSurgeEvent(id: bigint, adminId: bigint) {
 
 // ─── Rides (admin listing) ─────────────────────────────────────────────────────
 
+export async function getAdminRideStats() {
+  const res = await pool.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE requested_at::date = CURRENT_DATE)::text AS today_count,
+       COUNT(*) FILTER (WHERE status IN ('accepted','driver_arrived','in_progress'))::text AS active_count,
+       COUNT(*) FILTER (WHERE status = 'cancelled' AND requested_at::date = CURRENT_DATE)::text AS cancelled_today_count,
+       COUNT(*) FILTER (WHERE cash_discrepancy AND requested_at::date = CURRENT_DATE)::text AS cash_flagged_count
+     FROM rides`
+  )
+  return res.rows[0]
+}
+
 export async function listAdminRides(filters: {
   status?: string
   ride_type?: string

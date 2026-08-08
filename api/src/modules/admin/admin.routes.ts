@@ -97,6 +97,7 @@ router.patch('/safety/disputes/:id/assign',  requireAdmin('super_admin', 'suppor
 router.patch('/safety/disputes/:id/resolve', requireAdmin('super_admin', 'support_admin'), controller.resolveAdminDispute)
 
 // ─── Rides ────────────────────────────────────────────────────────────────────
+router.get('/rides/stats', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideStats)
 router.get('/rides', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRides)
 router.get('/rides/upcoming', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getUpcomingScheduledRides)
 router.get('/rides/:id', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideById)

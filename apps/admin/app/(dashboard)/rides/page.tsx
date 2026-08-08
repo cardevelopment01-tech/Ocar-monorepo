@@ -3,17 +3,33 @@ import React from 'react'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Car, ArrowRight, RefreshCw, Clock, MapPin, Star, ChevronDown } from 'lucide-react'
+import { Car, ArrowRight, RefreshCw, Clock, MapPin, Star, ChevronDown, Phone, Copy, Check, Activity, XCircle, Wallet, CalendarClock } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
-import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem, type AdminRideStop, type AdminRideDetail } from '@/lib/admin-api'
+import StatCard from '@/components/ui/StatCard'
+import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem, type AdminRideStop, type AdminRideDetail, type AdminRideStats } from '@/lib/admin-api'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 
 function fmt(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/)
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '')).toUpperCase()
+}
+
+function Avatar({ name, tone = 'primary' }: { name: string; tone?: 'primary' | 'muted' }) {
+  return (
+    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-[11px] font-semibold shrink-0 ${
+      tone === 'primary' ? 'bg-primary/10 text-primary' : 'bg-surface-2 text-text-muted border border-border-light'
+    }`}>
+      {initials(name) || '?'}
+    </span>
+  )
 }
 
 // Secondary/investigative ride-detail info: collapsed by default so the
@@ -76,6 +92,11 @@ function RidesPageContent() {
 
   const [upcoming, setUpcoming] = useState<AdminUpcomingRideItem[]>([])
   const [upcomingLoading, setUpcomingLoading] = useState(true)
+
+  const [stats, setStats] = useState<AdminRideStats | null>(null)
+  useEffect(() => { adminRideApi.stats().then(setStats).catch(() => setStats(null)) }, [])
+
+  const [copiedId, setCopiedId] = useState(false)
 
   const fetchUpcoming = useCallback(async () => {
     setUpcomingLoading(true)
@@ -161,16 +182,27 @@ function RidesPageContent() {
     {
       key: 'user', header: 'User',
       render: (r: AdminRideItem) => (
-        <div>
-          <p className="font-semibold text-text-primary">{r.user_name}</p>
-          <p className="text-xs text-text-muted">{r.user_phone}</p>
+        <div className="flex items-center gap-2">
+          <Avatar name={r.user_name} />
+          <div className="min-w-0">
+            <p className="font-semibold text-text-primary truncate">{r.user_name}</p>
+            <p className="text-xs text-text-muted">{r.user_phone}</p>
+          </div>
         </div>
       ),
     },
     {
       key: 'driver', header: 'Driver',
       render: (r: AdminRideItem) => r.driver_name
-        ? <div><p className="font-medium text-text-secondary">{r.driver_name}</p><p className="text-xs text-text-muted">{r.driver_phone}</p></div>
+        ? (
+          <div className="flex items-center gap-2">
+            <Avatar name={r.driver_name} tone="muted" />
+            <div className="min-w-0">
+              <p className="font-medium text-text-secondary truncate">{r.driver_name}</p>
+              <p className="text-xs text-text-muted">{r.driver_phone}</p>
+            </div>
+          </div>
+        )
         : <span className="text-text-muted italic text-xs">Unassigned</span>,
     },
     {
@@ -228,12 +260,22 @@ function RidesPageContent() {
     {
       key: 'actions', header: '',
       render: (r: AdminRideItem) => (
-        <button
-          onClick={e => { e.stopPropagation(); setSelected(r) }}
-          className="px-3 py-1 text-xs font-semibold border border-border rounded-lg hover:bg-surface-2 transition-colors text-text-secondary"
-        >
-          View
-        </button>
+        <div className="flex items-center gap-1.5 justify-end">
+          <a
+            href={`tel:${r.user_phone}`}
+            onClick={e => e.stopPropagation()}
+            title={`Call ${r.user_name}`}
+            className="p-1.5 rounded-lg text-text-muted hover:text-primary hover:bg-surface-2 transition-colors"
+          >
+            <Phone className="w-3.5 h-3.5" />
+          </a>
+          <button
+            onClick={e => { e.stopPropagation(); setSelected(r) }}
+            className="px-3 py-1 text-xs font-semibold border border-border rounded-lg hover:bg-surface-2 transition-colors text-text-secondary"
+          >
+            View
+          </button>
+        </div>
       ),
     },
   ]
@@ -250,6 +292,13 @@ function RidesPageContent() {
             <p className="text-xs text-text-muted">{total.toLocaleString('en-IN')} total rides</p>
           </div>
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Rides today" value={stats?.today_count ?? '—'} change="" changeType="neutral" icon={CalendarClock} gradient="blue" loading={!stats} />
+        <StatCard title="Active now" value={stats?.active_count ?? '—'} change="" changeType="neutral" icon={Activity} gradient="green" loading={!stats} />
+        <StatCard title="Cancelled today" value={stats?.cancelled_today_count ?? '—'} change="" changeType="neutral" icon={XCircle} gradient="pink" loading={!stats} />
+        <StatCard title="Cash flagged today" value={stats?.cash_flagged_count ?? '—'} change="" changeType="neutral" icon={Wallet} gradient="amber" loading={!stats} />
       </div>
 
       {!upcomingLoading && upcoming.length > 0 && (
@@ -391,10 +440,58 @@ function RidesPageContent() {
               <span className="text-text-muted text-sm">{fmt(selected.requested_at)}</span>
             </div>
 
+            {/* Persistent action bar — the primary CTAs for this ride, always
+                visible instead of buried inline further down the scroll. */}
+            <div className="flex items-center gap-1.5 flex-wrap pb-1 border-b border-border-light">
+              <a
+                href={`tel:${selected.user_phone}`}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors"
+              >
+                <Phone className="w-3.5 h-3.5" /> Call rider
+              </a>
+              {selected.driver_phone && (
+                <a
+                  href={`tel:${selected.driver_phone}`}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors"
+                >
+                  <Phone className="w-3.5 h-3.5" /> Call driver
+                </a>
+              )}
+              <button
+                onClick={() => {
+                  void navigator.clipboard.writeText(selected.id)
+                  setCopiedId(true)
+                  setTimeout(() => setCopiedId(false), 1500)
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors"
+              >
+                {copiedId ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedId ? 'Copied' : 'Copy ID'}
+              </button>
+              {selected.status === 'in_progress' && (
+                <>
+                  <button
+                    disabled={resolving}
+                    onClick={() => void handleForceResolve('cancel')}
+                    className="ml-auto px-2.5 py-1.5 text-xs font-semibold bg-danger text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  >
+                    Force cancel
+                  </button>
+                  <button
+                    disabled={resolving}
+                    onClick={() => void handleForceResolve('complete')}
+                    className="px-2.5 py-1.5 text-xs font-semibold bg-success text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  >
+                    Force complete
+                  </button>
+                </>
+              )}
+            </div>
+
             {selected.status === 'in_progress' && (
               <div className={selected.review_flagged_at
-                ? 'bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2'
-                : 'bg-surface-2 border border-border-light rounded-xl p-3 space-y-2'}>
+                ? 'bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1'
+                : 'bg-surface-2 border border-border-light rounded-xl p-3 space-y-1'}>
                 <p className={selected.review_flagged_at
                   ? 'text-xs font-semibold text-amber-800'
                   : 'text-xs font-semibold text-text-secondary'}>
@@ -405,35 +502,25 @@ function RidesPageContent() {
                     ? `No driver GPS update since ${fmt(selected.review_flagged_at)}${selected.review_reason ? ` (${selected.review_reason.replace(/_/g, ' ')})` : ''}`
                     : 'Not auto-flagged yet. Resolve manually if this ride needs intervention.'}
                 </p>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    disabled={resolving}
-                    onClick={() => void handleForceResolve('cancel')}
-                    className="px-3 py-1.5 text-xs font-semibold bg-danger text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
-                  >
-                    Force cancel
-                  </button>
-                  <button
-                    disabled={resolving}
-                    onClick={() => void handleForceResolve('complete')}
-                    className="px-3 py-1.5 text-xs font-semibold bg-success text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
-                  >
-                    Force complete
-                  </button>
-                </div>
               </div>
             )}
 
             <div className={`bg-surface-2 rounded-xl border border-border-light grid ${detail?.vehicle_number_plate ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-border-light`}>
-              <div className="p-3 min-w-0">
-                <p className="text-xs font-semibold text-text-secondary mb-1">Rider</p>
-                <p className="font-semibold text-text-primary text-sm truncate">{selected.user_name}</p>
-                <p className="text-xs text-text-muted">{selected.user_phone}</p>
+              <div className="p-3 min-w-0 flex items-center gap-2">
+                <Avatar name={selected.user_name} />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-text-secondary mb-0.5">Rider</p>
+                  <p className="font-semibold text-text-primary text-sm truncate">{selected.user_name}</p>
+                  <p className="text-xs text-text-muted">{selected.user_phone}</p>
+                </div>
               </div>
-              <div className="p-3 min-w-0">
-                <p className="text-xs font-semibold text-text-secondary mb-1">Driver</p>
-                <p className="font-semibold text-text-primary text-sm truncate">{selected.driver_name ?? 'Unassigned'}</p>
-                <p className="text-xs text-text-muted">{selected.driver_phone ?? ''}</p>
+              <div className="p-3 min-w-0 flex items-center gap-2">
+                {selected.driver_name && <Avatar name={selected.driver_name} tone="muted" />}
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-text-secondary mb-0.5">Driver</p>
+                  <p className="font-semibold text-text-primary text-sm truncate">{selected.driver_name ?? 'Unassigned'}</p>
+                  <p className="text-xs text-text-muted">{selected.driver_phone ?? ''}</p>
+                </div>
               </div>
               {detail?.vehicle_number_plate && (
                 <div className="p-3 min-w-0">
@@ -493,33 +580,40 @@ function RidesPageContent() {
             )}
 
             <Section title="Timeline">
-              {detail?.status_history.map((ev, i) => (
-                <div key={i} className="flex justify-between items-start gap-2">
-                  <div>
-                    <span className="text-xs font-medium text-text-primary capitalize">{ev.to_status.replace(/_/g, ' ')}</span>
-                    <span className="text-xs text-text-muted capitalize"> · {ev.actor}</span>
-                    {ev.note && <p className="text-[11px] text-text-muted">{ev.note}</p>}
-                  </div>
-                  <span className="text-xs text-text-muted whitespace-nowrap">{fmt(ev.created_at)}</span>
-                </div>
-              ))}
               {(() => {
                 const loggedStatuses = new Set((detail?.status_history ?? []).map(ev => ev.to_status))
+                const fromHistory = (detail?.status_history ?? []).map(ev => ({
+                  label: ev.to_status.replace(/_/g, ' '), ts: ev.created_at, actor: ev.actor, note: ev.note,
+                }))
+                const fromFlat = [
+                  { label: 'Requested',      ts: selected.requested_at,      status: 'requested' },
+                  { label: 'Accepted',       ts: selected.accepted_at,       status: 'accepted' },
+                  { label: 'Driver Arrived', ts: selected.driver_arrived_at, status: 'driver_arrived' },
+                  { label: 'Trip Started',   ts: selected.started_at,        status: 'in_progress' },
+                  { label: 'Completed',      ts: selected.completed_at,      status: 'completed' },
+                ]
+                  .filter(({ ts, status }) => ts && !loggedStatuses.has(status))
+                  .map(({ label, ts }) => ({ label, ts: ts as string, actor: null as string | null, note: null as string | null }))
+                const events = [...fromHistory, ...fromFlat].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
                 return (
-                  [
-                    { label: 'Requested',       ts: selected.requested_at,       status: 'requested' },
-                    { label: 'Accepted',        ts: selected.accepted_at,        status: 'accepted' },
-                    { label: 'Driver Arrived',  ts: selected.driver_arrived_at,  status: 'driver_arrived' },
-                    { label: 'Trip Started',    ts: selected.started_at,         status: 'in_progress' },
-                    { label: 'Completed',       ts: selected.completed_at,       status: 'completed' },
-                  ]
-                    .filter(({ ts, status }) => ts && !loggedStatuses.has(status))
-                    .map(({ label, ts }) => (
-                      <div key={label} className="flex justify-between items-center">
-                        <span className="text-xs text-text-muted">{label}</span>
-                        <span className="text-xs font-medium text-text-primary">{fmt(ts)}</span>
+                  <div className="relative">
+                    {events.map((ev, i) => (
+                      <div key={i} className="relative pl-4 pb-3 last:pb-0">
+                        {i < events.length - 1 && (
+                          <span className="absolute left-[3px] top-2.5 bottom-[-4px] w-px bg-border-light" />
+                        )}
+                        <span className={`absolute left-0 top-1 w-[7px] h-[7px] rounded-full ${i === events.length - 1 ? 'bg-primary' : 'bg-text-muted'}`} />
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0">
+                            <span className="text-xs font-medium text-text-primary capitalize">{ev.label}</span>
+                            {ev.actor && <span className="text-xs text-text-muted capitalize"> · {ev.actor}</span>}
+                            {ev.note && <p className="text-[11px] text-text-muted">{ev.note}</p>}
+                          </div>
+                          <span className="text-xs text-text-muted whitespace-nowrap">{fmt(ev.ts)}</span>
+                        </div>
                       </div>
-                    ))
+                    ))}
+                  </div>
                 )
               })()}
             </Section>

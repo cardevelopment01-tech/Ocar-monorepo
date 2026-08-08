@@ -533,6 +533,12 @@ export async function resolveAdminDispute(req: Request, res: Response, next: Nex
 
 // ─── Admin Rides ──────────────────────────────────────────────────────────────
 
+export async function getAdminRideStats(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json(await service.getAdminRideStats())
+  } catch (err) { next(err) }
+}
+
 export async function getAdminRides(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const q: {
