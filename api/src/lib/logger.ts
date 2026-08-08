@@ -1,4 +1,5 @@
 import pino from 'pino'
+import { trace } from '@opentelemetry/api'
 import { config } from '@/config'
 
 // Exported separately from the singleton so the redaction/level logic is
@@ -9,6 +10,10 @@ import { config } from '@/config'
 export function buildLoggerOptions(level: string = 'info'): pino.LoggerOptions {
   const options: pino.LoggerOptions = {
     level,
+    mixin() {
+      const span = trace.getActiveSpan()
+      return span ? { trace_id: span.spanContext().traceId } : {}
+    },
     redact: {
       paths: [
         'req.headers.authorization',
