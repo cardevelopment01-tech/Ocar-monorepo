@@ -1,9 +1,10 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useNotifications } from '@/lib/notifications-context'
+import { useLocation } from '@/lib/location-context'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import {
   Search, Bell, User,
@@ -100,15 +101,14 @@ export default function HomePage() {
   const name     = user?.name?.split(' ')[0] ?? 'there'
   const reduce   = useReducedMotion()
 
-  const [addr,        setAddr]        = useState('Bhubaneswar')
-  const [lat,         setLat]         = useState<number | null>(null)
-  const [lng,         setLng]         = useState<number | null>(null)
-  const [originCityId, setOriginCityId] = useState<number | null>(null)
+  // GPS was already requested as early as the app can run JS (root layout,
+  // before this page even mounted) — read the shared result instead of
+  // firing a second independent geolocation request here.
+  const { lat, lng, address: addr, cityId: originCityId, ensureFresh } = useLocation()
   const [collapsed,   setCollapsed]   = useState(false)
   const [resolving,   setResolving]   = useState(false)
   const [recentTrips, setRecentTrips] = useState<RideHistoryItem[]>([])
   const [resumeRideId, setResumeRideId] = useState<string | null>(null)
-  const fetched = useRef(false)
 
   useEffect(() => {
     void rideApi.getHistory(1, 3)
@@ -123,44 +123,34 @@ export default function HomePage() {
     void rideApi.getActiveRide().then(res => setResumeRideId(res?.rideId ?? null))
   }, [])
 
-  useEffect(() => {
-    if (fetched.current) return
-    fetched.current = true
-    if (!navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(
-      p => {
-        setLat(p.coords.latitude)
-        setLng(p.coords.longitude)
-        geoApi.reverseGeocode(p.coords.latitude, p.coords.longitude)
-          .then(address => setAddr(address))
-          .catch(() => setAddr('Current location'))
-        geoApi.findNearestCity(p.coords.latitude, p.coords.longitude)
-          .then(city => setOriginCityId(city.id))
-          .catch(() => {})
-      },
-      () => {},
-      { enableHighAccuracy: false, timeout: 8000 },
-    )
-  }, [])
-
   // No coordinate fallback: when GPS hasn't resolved yet (or failed/denied),
   // omit origin params entirely so /search runs its own GPS detection
-  // instead of silently booking from a fake point.
-  function toSearch() {
+  // instead of silently booking from a fake point. Re-checks a stale cached
+  // fix before handing it off, so a booking started long after the app
+  // landed still starts from where the user actually is now.
+  async function toSearch() {
+    setResolving(true)
+    const fix = await ensureFresh()
+    const rLat = fix?.lat ?? lat
+    const rLng = fix?.lng ?? lng
     const params = new URLSearchParams()
-    if (lat !== null && lng !== null) {
-      params.set('originLat', String(lat))
-      params.set('originLng', String(lng))
+    if (rLat !== null && rLng !== null) {
+      params.set('originLat', String(rLat))
+      params.set('originLng', String(rLng))
       params.set('originAddress', addr)
     }
     router.push(`/search?${params.toString()}`)
   }
 
-  function toOneWay() {
+  async function toOneWay() {
+    setResolving(true)
+    const fix = await ensureFresh()
+    const rLat = fix?.lat ?? lat
+    const rLng = fix?.lng ?? lng
     const params = new URLSearchParams({ rideType: 'one_way' })
-    if (lat !== null && lng !== null) {
-      params.set('originLat', String(lat))
-      params.set('originLng', String(lng))
+    if (rLat !== null && rLng !== null) {
+      params.set('originLat', String(rLat))
+      params.set('originLng', String(rLng))
       params.set('originAddress', addr)
     }
     router.push(`/search?${params.toString()}`)
@@ -169,32 +159,43 @@ export default function HomePage() {
   // Round trip / rental need a real origin + city id up front (no picker of
   // their own) — if either hasn't resolved yet, send the user through
   // /search instead of booking off a missing/wrong location.
-  function toRoundTrip() {
-    if (lat === null || lng === null || originCityId === null) { router.push('/search'); return }
-    router.push(`/round-trip?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&originCityId=${originCityId}`)
+  async function toRoundTrip() {
+    setResolving(true)
+    const fix = await ensureFresh()
+    const rLat = fix?.lat ?? lat
+    const rLng = fix?.lng ?? lng
+    if (rLat === null || rLng === null || originCityId === null) { router.push('/search'); return }
+    router.push(`/round-trip?originLat=${rLat}&originLng=${rLng}&originAddress=${encodeURIComponent(addr)}&originCityId=${originCityId}`)
   }
 
-  function toRental() {
-    if (lat === null || lng === null || originCityId === null) { router.push('/search'); return }
-    router.push(`/rental?originLat=${lat}&originLng=${lng}&originAddress=${encodeURIComponent(addr)}&originCityId=${originCityId}`)
+  async function toRental() {
+    setResolving(true)
+    const fix = await ensureFresh()
+    const rLat = fix?.lat ?? lat
+    const rLng = fix?.lng ?? lng
+    if (rLat === null || rLng === null || originCityId === null) { router.push('/search'); return }
+    router.push(`/rental?originLat=${rLat}&originLng=${rLng}&originAddress=${encodeURIComponent(addr)}&originCityId=${originCityId}`)
   }
 
   async function toRide(destLabel: string, dLat: number, dLng: number) {
-    if (lat === null || lng === null || originCityId === null) {
+    setResolving(true)
+    const fix = await ensureFresh()
+    const rLat = fix?.lat ?? lat
+    const rLng = fix?.lng ?? lng
+    if (rLat === null || rLng === null || originCityId === null) {
       router.push(`/search?destinationQuery=${encodeURIComponent(destLabel)}`)
       return
     }
-    setResolving(true)
     try {
       const [route, classification] = await Promise.all([
-        geoApi.getRoute(lat, lng, dLat, dLng),
+        geoApi.getRoute(rLat, rLng, dLat, dLng),
         // Classification failure must not block booking, fall back to the
         // safe "outstation" default (same default used for out-of-bounds points)
-        geoApi.classifyTrip(lat, lng, dLat, dLng).catch(() => null),
+        geoApi.classifyTrip(rLat, rLng, dLat, dLng).catch(() => null),
       ])
       const params = new URLSearchParams({
-        originLat:          String(lat),
-        originLng:          String(lng),
+        originLat:          String(rLat),
+        originLng:          String(rLng),
         originAddress:      addr,
         destinationLat:     String(dLat),
         destinationLng:     String(dLng),

@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth-context'
 import { NotificationsProvider } from '@/lib/notifications-context'
+import { LocationProvider } from '@/lib/location-context'
 import SplashWrapper from '@/components/ui/SplashWrapper'
 import NotificationToast from '@/components/ui/NotificationToast'
 
@@ -32,12 +33,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <main className="min-h-[100dvh] bg-background">
           <div className="mx-auto max-w-[430px] min-h-[100dvh] bg-background relative">
-            <AuthProvider>
-              <NotificationsProvider>
-                <SplashWrapper>{children}</SplashWrapper>
-                <NotificationToast />
-              </NotificationsProvider>
-            </AuthProvider>
+            <LocationProvider>
+              <AuthProvider>
+                <NotificationsProvider>
+                  <SplashWrapper>{children}</SplashWrapper>
+                  <NotificationToast />
+                </NotificationsProvider>
+              </AuthProvider>
+            </LocationProvider>
           </div>
         </main>
       </body>

@@ -13,6 +13,7 @@ import PickupTimeChip from '@/components/ui/PickupTimeChip'
 import BookingForSheet from '@/components/booking/BookingForSheet'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
+import { useLocation } from '@/lib/location-context'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -51,10 +52,14 @@ type ConfirmedDest = { lat: number; lng: number; address: string }
 function SearchContent() {
   const router = useRouter()
   const sp     = useSearchParams()
+  const location = useLocation()
+  // Whether the previous page already handed us an origin — if so, that
+  // takes priority over the shared GPS result and we never touch it below.
+  const hasUrlOrigin = useRef(!!sp.get('originLat'))
 
-  const [originLat,     setOriginLat]     = useState(() => parseFloat(sp.get('originLat') ?? '') || 0)
-  const [originLng,     setOriginLng]     = useState(() => parseFloat(sp.get('originLng') ?? '') || 0)
-  const [originAddress, setOriginAddress] = useState(() => sp.get('originAddress') ?? '')
+  const [originLat,     setOriginLat]     = useState(() => hasUrlOrigin.current ? (parseFloat(sp.get('originLat') ?? '') || 0) : (location.lat ?? 0))
+  const [originLng,     setOriginLng]     = useState(() => hasUrlOrigin.current ? (parseFloat(sp.get('originLng') ?? '') || 0) : (location.lng ?? 0))
+  const [originAddress, setOriginAddress] = useState(() => hasUrlOrigin.current ? (sp.get('originAddress') ?? '') : location.address)
 
   const [confirmedDest, setConfirmedDest] = useState<ConfirmedDest | null>(() => {
     const lat     = parseFloat(sp.get('destinationLat') ?? '')
@@ -91,7 +96,7 @@ function SearchContent() {
   const [searching,   setSearching]   = useState(false)
   const [resolving,   setResolving]   = useState(false)
   // true once GPS has responded (success or failure), prevents Bhubaneswar flash
-  const [gpsReady,    setGpsReady]    = useState(() => !!sp.get('originLat'))
+  const [gpsReady,    setGpsReady]    = useState(() => hasUrlOrigin.current || location.gpsReady)
 
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -100,6 +105,7 @@ function SearchContent() {
   const originTouched  = useRef(false)
   const modeRef        = useRef<EditMode>(mode)
   const autoNavRef     = useRef(false)
+  const pendingDestRef = useRef<ConfirmedDest | null>(null)
 
   const [forMeOpen, setForMeOpen] = useState(false)
   const [riderName,  setRiderName]  = useState(() => sp.get('riderName') ?? '')
@@ -107,30 +113,20 @@ function SearchContent() {
   const bookingForOther = riderName !== '' && riderPhone !== ''
   const [redirectToast, setRedirectToast] = useState<string | null>(null)
 
-  // On mount: try GPS once, fast network-position fix, cached ok up to 1 min
+  // Mirror the shared GPS result — already requested once at app landing,
+  // long before this page mounted — instead of firing a second independent
+  // geolocation request here. Only when the previous page didn't already
+  // hand us an origin.
   useEffect(() => {
-    if (sp.get('originLat')) return
-    if (!navigator.geolocation) { setGpsReady(true); return }
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        const { latitude, longitude } = pos.coords
-        setOriginLat(latitude)
-        setOriginLng(longitude)
-        setOriginAddress('Current Location')
-        setGpsReady(true)
-        if (modeRef.current === 'origin') setQuery('Current Location')
-        geoApi.reverseGeocode(latitude, longitude)
-          .then(addr => {
-            setOriginAddress(addr)
-            if (modeRef.current === 'origin') setQuery(addr)
-          })
-          .catch(() => {})
-      },
-      () => { setGpsReady(true) },
-      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 },
-    )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (hasUrlOrigin.current) return
+    if (!location.gpsReady) return
+    setGpsReady(true)
+    if (location.lat === null || location.lng === null) return  // GPS denied/failed — nothing to fill in
+    setOriginLat(location.lat)
+    setOriginLng(location.lng)
+    setOriginAddress(location.address)
+    if (modeRef.current === 'origin') setQuery(location.address || 'Current Location')
+  }, [location.gpsReady, location.lat, location.lng, location.address])
 
   // Cancel a pending redirect-toast navigation if the user leaves this screen another way
   useEffect(() => {
@@ -330,17 +326,42 @@ function SearchContent() {
 
   // Confirm a destination, auto-navigates if origin is set
   function confirmDest(lat: number, lng: number, address: string) {
-    setConfirmedDest({ lat, lng, address })
+    const dest = { lat, lng, address }
+    setConfirmedDest(dest)
     setQuery('')
     setSuggestions([])
     setSearching(false)
     if ((originAddress ?? '').trim() !== '') {
-      void navigateToRide({ lat, lng, address })
-    } else {
+      void navigateToRide(dest)
+    } else if (gpsReady) {
+      // GPS already finished and came back empty (denied/failed) — origin is
+      // genuinely unknown, ask the user to set it manually.
       setResolving(false)
       switchMode('origin')
+    } else {
+      // GPS is still resolving (typically <5s) — hold here instead of
+      // bouncing to a manual "set pickup" screen; the effect below continues
+      // automatically once origin lands.
+      pendingDestRef.current = dest
+      setResolving(true)
     }
   }
+
+  // Continues a destination confirmed while origin GPS was still in flight,
+  // once it resolves — avoids stranding the user in origin-entry mode for a
+  // location that was only ever going to take a couple more seconds.
+  useEffect(() => {
+    if (!gpsReady || !pendingDestRef.current) return
+    const dest = pendingDestRef.current
+    pendingDestRef.current = null
+    if ((originAddress ?? '').trim() === '') {
+      setResolving(false)
+      switchMode('origin')
+      return
+    }
+    void navigateToRide(dest)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpsReady, originAddress])
 
   async function selectDestinationSuggestion(s: PlaceSuggestion) {
     setResolving(true)
