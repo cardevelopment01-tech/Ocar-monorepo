@@ -10,11 +10,10 @@ import { connectSocket, joinRideRoom, getSocket } from '@/lib/socket'
 const EASE = [0.22, 1, 0.36, 1] as const
 
 const CANNED_REPLIES = [
-  'On my way',
-  "I'm at the pickup point",
-  'Running a few min late',
-  "Can't find you, please call",
-  'Here',
+  'Are you coming?',
+  'Where are you?',
+  'I am at my pick up point.',
+  'I am in urgent please come soon',
 ]
 
 // Local send-lifecycle overlay on top of the server message shape. 'sending'/'failed'
