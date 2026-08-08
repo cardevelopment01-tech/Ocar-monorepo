@@ -41,14 +41,15 @@ services:
         max-file: "5"
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:v1.18.1
     container_name: ocar_alloy
     restart: unless-stopped
     env_file: .env.prod
     volumes:
       - ./infra/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    command: run --server.http.listen-addr=127.0.0.1:12345 /etc/alloy/config.alloy
+      - alloy_data:/var/lib/alloy/data
+    command: run --storage.path=/var/lib/alloy/data --server.http.listen-addr=127.0.0.1:12345 /etc/alloy/config.alloy
     networks:
       - ocar_net
     logging:
@@ -59,6 +60,7 @@ services:
 
 volumes:
   certbot_webroot:
+  alloy_data:
 
 networks:
   ocar_net:
