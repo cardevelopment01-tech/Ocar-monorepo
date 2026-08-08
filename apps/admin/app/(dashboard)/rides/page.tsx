@@ -3,7 +3,7 @@ import React from 'react'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Car, ArrowRight, RefreshCw, Clock, MapPin, Star } from 'lucide-react'
+import { Car, ArrowRight, RefreshCw, Clock, MapPin, Star, ChevronDown } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
@@ -14,6 +14,20 @@ import { cityApi, type AdminCity } from '@/lib/city-api'
 function fmt(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+// Secondary/investigative ride-detail info: collapsed by default so the
+// primary trip summary isn't buried under a scroll of equal-weight cards.
+function Section({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  return (
+    <details open={defaultOpen} className="bg-surface-2 rounded-xl border border-border-light group">
+      <summary className="flex items-center justify-between px-3 py-2.5 cursor-pointer select-none list-none text-xs font-semibold text-text-secondary [&::-webkit-details-marker]:hidden">
+        {title}
+        <ChevronDown className="w-3.5 h-3.5 text-text-muted transition-transform duration-150 motion-reduce:transition-none group-open:rotate-180" />
+      </summary>
+      <div className="px-3 pb-3 space-y-1.5">{children}</div>
+    </details>
+  )
 }
 
 function SkeletonRows({ cols }: { cols: number }) {
@@ -360,7 +374,7 @@ function RidesPageContent() {
         )}
       </div>
 
-      <SlideOver isOpen={!!selected} onClose={() => setSelected(null)} title={selected ? `Ride #${selected.id}` : ''}>
+      <SlideOver isOpen={!!selected} onClose={() => setSelected(null)} title={selected ? `Ride #${selected.id}` : ''} width="lg">
         {selected && (
           <div className="p-6 space-y-5">
             <div className="flex items-center gap-2 flex-wrap">
@@ -410,26 +424,25 @@ function RidesPageContent() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Rider',  name: selected.user_name,        sub: selected.user_phone },
-                { label: 'Driver', name: selected.driver_name ?? 'Unassigned', sub: selected.driver_phone ?? '' },
-              ].map(p => (
-                <div key={p.label} className="bg-surface-2 rounded-xl p-3 border border-border-light">
-                  <p className="text-xs font-semibold text-text-secondary mb-1">{p.label}</p>
-                  <p className="font-semibold text-text-primary">{p.name}</p>
-                  <p className="text-xs text-text-muted">{p.sub}</p>
-                </div>
-              ))}
-            </div>
-
-            {detail?.vehicle_number_plate && (
-              <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
-                <p className="text-xs font-semibold text-text-secondary mb-1">Vehicle</p>
-                <p className="font-semibold text-text-primary">{detail.vehicle_name ?? '—'} {detail.vehicle_color ? `· ${detail.vehicle_color}` : ''}</p>
-                <p className="text-xs text-text-muted font-mono">{detail.vehicle_number_plate}</p>
+            <div className={`bg-surface-2 rounded-xl border border-border-light grid ${detail?.vehicle_number_plate ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-border-light`}>
+              <div className="p-3 min-w-0">
+                <p className="text-xs font-semibold text-text-secondary mb-1">Rider</p>
+                <p className="font-semibold text-text-primary text-sm truncate">{selected.user_name}</p>
+                <p className="text-xs text-text-muted">{selected.user_phone}</p>
               </div>
-            )}
+              <div className="p-3 min-w-0">
+                <p className="text-xs font-semibold text-text-secondary mb-1">Driver</p>
+                <p className="font-semibold text-text-primary text-sm truncate">{selected.driver_name ?? 'Unassigned'}</p>
+                <p className="text-xs text-text-muted">{selected.driver_phone ?? ''}</p>
+              </div>
+              {detail?.vehicle_number_plate && (
+                <div className="p-3 min-w-0">
+                  <p className="text-xs font-semibold text-text-secondary mb-1">Vehicle</p>
+                  <p className="font-semibold text-text-primary text-sm truncate">{detail.vehicle_name ?? '—'}{detail.vehicle_color ? ` · ${detail.vehicle_color}` : ''}</p>
+                  <p className="text-xs text-text-muted font-mono">{detail.vehicle_number_plate}</p>
+                </div>
+              )}
+            </div>
 
             <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
               <p className="text-xs font-semibold text-text-secondary mb-2">Route</p>
@@ -450,8 +463,7 @@ function RidesPageContent() {
             </div>
 
             {detail && [detail.base_fare, detail.distance_fare, detail.time_fare, detail.stop_fare, detail.hour_surcharge, detail.overage_fare, detail.surge_fare, detail.refund_amount].some(v => v && parseFloat(v) > 0) && (
-              <div className="bg-surface-2 rounded-xl p-3 border border-border-light space-y-1.5">
-                <p className="text-xs font-semibold text-text-secondary mb-2">Fare breakdown</p>
+              <Section title="Fare breakdown">
                 {(
                   [
                     ['Base', detail.base_fare], ['Distance', detail.distance_fare], ['Time', detail.time_fare],
@@ -477,11 +489,10 @@ function RidesPageContent() {
                     {detail.overage_km && parseFloat(detail.overage_km) > 0 ? ` · ${parseFloat(detail.overage_km).toFixed(1)} km overage` : ''}
                   </p>
                 )}
-              </div>
+              </Section>
             )}
 
-            <div className="bg-surface-2 rounded-xl p-3 border border-border-light space-y-1.5">
-              <p className="text-xs font-semibold text-text-secondary mb-2">Timeline</p>
+            <Section title="Timeline">
               {detail?.status_history.map((ev, i) => (
                 <div key={i} className="flex justify-between items-start gap-2">
                   <div>
@@ -511,11 +522,10 @@ function RidesPageContent() {
                     ))
                 )
               })()}
-            </div>
+            </Section>
 
             {detailStops.length > 0 && (
-              <div className="bg-surface-2 rounded-xl p-3 border border-border-light space-y-1.5">
-                <p className="text-xs font-semibold text-text-secondary mb-2">Stops</p>
+              <Section title="Stops">
                 {detailStops.map((s) => {
                   const dwellMin = s.arrived_at && s.reached_at
                     ? Math.round((new Date(s.reached_at).getTime() - new Date(s.arrived_at).getTime()) / 60000)
@@ -532,12 +542,11 @@ function RidesPageContent() {
                     </div>
                   )
                 })}
-              </div>
+              </Section>
             )}
 
             {(selected.payment_status || selected.payment_channel) && (
-              <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
-                <p className="text-xs font-semibold text-text-secondary mb-2">Payment</p>
+              <Section title="Payment" defaultOpen={selected.cash_discrepancy}>
                 <div className="flex justify-between items-center">
                   <span className="inline-flex items-center gap-1 flex-wrap">
                     <StatusPill status={selected.payment_status ?? 'pending'} />
@@ -553,12 +562,11 @@ function RidesPageContent() {
                     {selected.fare ? ` vs fare ₹${parseFloat(selected.fare).toLocaleString('en-IN')}` : ''}
                   </p>
                 )}
-              </div>
+              </Section>
             )}
 
             {selected.status === 'cancelled' && (
-              <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
-                <p className="text-xs font-semibold text-text-secondary mb-1">Cancellation</p>
+              <Section title="Cancellation" defaultOpen>
                 {selected.cancellation_actor && (
                   <p className="text-xs text-text-muted capitalize mb-1">By: {selected.cancellation_actor}</p>
                 )}
@@ -582,12 +590,11 @@ function RidesPageContent() {
                     )}
                   </p>
                 )}
-              </div>
+              </Section>
             )}
 
             {detail && detail.messages.length > 0 && (
-              <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
-                <p className="text-xs font-semibold text-text-secondary mb-2">Chat</p>
+              <Section title={`Chat (${detail.messages.length})`}>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {detail.messages.map(m => {
                     const fromDriver = m.senderType === 'driver'
@@ -603,12 +610,11 @@ function RidesPageContent() {
                     )
                   })}
                 </div>
-              </div>
+              </Section>
             )}
 
             {detail && (detail.disputes.length > 0 || detail.sos_alerts.length > 0 || detail.ratings.length > 0) && (
-              <div className="bg-surface-2 rounded-xl p-3 border border-border-light space-y-2">
-                <p className="text-xs font-semibold text-text-secondary mb-1">Related</p>
+              <Section title="Related">
                 {detail.disputes.map(d => (
                   <Link key={d.id} href="/disputes" className="flex justify-between items-center text-xs hover:underline">
                     <span className="text-text-primary capitalize">Dispute · {d.type.replace(/_/g, ' ')}</span>
@@ -632,7 +638,7 @@ function RidesPageContent() {
                     </div>
                   </div>
                 ))}
-              </div>
+              </Section>
             )}
           </div>
         )}
