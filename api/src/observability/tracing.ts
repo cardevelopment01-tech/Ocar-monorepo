@@ -3,6 +3,8 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
+import { config } from '@/config'
+import { logger } from '@/lib/logger'
 
 // Exported so the test above can assert on it without booting the SDK
 // (booting it patches global modules — wrong thing to do in a unit test).
@@ -28,7 +30,13 @@ const sdk = new NodeSDK({
   ],
 })
 
-sdk.start()
+if (config.NODE_ENV !== 'test') {
+  try {
+    sdk.start()
+  } catch (err) {
+    logger.warn({ err }, 'failed to start OpenTelemetry SDK — continuing without tracing')
+  }
+}
 
 export async function shutdownTracing(): Promise<void> {
   await sdk.shutdown()
