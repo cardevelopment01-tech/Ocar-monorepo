@@ -535,11 +535,17 @@ export async function resolveAdminDispute(req: Request, res: Response, next: Nex
 
 export async function getAdminRides(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const q: { status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean; page?: number; limit?: number } = {}
+    const q: {
+      status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean
+      date_from?: string; date_to?: string; city_id?: number; page?: number; limit?: number
+    } = {}
     if (req.query['status'])          q.status           = req.query['status'] as string
     if (req.query['ride_type'])       q.ride_type        = req.query['ride_type'] as string
     if (req.query['search'])          q.search           = req.query['search'] as string
     if (req.query['cashDiscrepancy']) q.cash_discrepancy = req.query['cashDiscrepancy'] === 'true'
+    if (req.query['dateFrom'])        q.date_from        = req.query['dateFrom'] as string
+    if (req.query['dateTo'])          q.date_to          = req.query['dateTo'] as string
+    if (req.query['cityId'])          q.city_id          = parseInt(req.query['cityId'] as string, 10)
     if (req.query['page'])            q.page             = parseInt(req.query['page'] as string, 10)
     if (req.query['limit'])           q.limit            = parseInt(req.query['limit'] as string, 10)
     res.json(await service.listAdminRides(q))

@@ -1062,6 +1062,9 @@ export async function listAdminRides(filters: {
   ride_type?: string
   search?: string
   cash_discrepancy?: boolean
+  date_from?: string
+  date_to?: string
+  city_id?: number
   limit: number
   offset: number
 }) {
@@ -1081,17 +1084,30 @@ export async function listAdminRides(filters: {
     conditions.push(`r.cash_discrepancy = $${p++}`)
     params.push(true)
   }
+  if (filters.date_from) {
+    conditions.push(`r.requested_at::date >= $${p++}`)
+    params.push(filters.date_from)
+  }
+  if (filters.date_to) {
+    conditions.push(`r.requested_at::date <= $${p++}`)
+    params.push(filters.date_to)
+  }
+  if (filters.city_id !== undefined) {
+    conditions.push(`(r.origin_city_id = $${p} OR r.destination_city_id = $${p})`)
+    params.push(filters.city_id)
+    p++
+  }
   if (filters.search) {
     const likeParam = p++
     const idParam   = p++
-    conditions.push(`(u.name ILIKE $${likeParam} OR u.phone ILIKE $${likeParam} OR r.id::text = $${idParam})`)
+    conditions.push(`(u.name ILIKE $${likeParam} OR u.phone ILIKE $${likeParam} OR d.full_name ILIKE $${likeParam} OR d.phone ILIKE $${likeParam} OR r.id::text = $${idParam})`)
     params.push(`%${filters.search}%`, filters.search)
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
   const countRes = await pool.query(
-    `SELECT COUNT(*) FROM rides r JOIN users u ON u.id = r.user_id ${where}`,
+    `SELECT COUNT(*) FROM rides r JOIN users u ON u.id = r.user_id LEFT JOIN drivers d ON d.id = r.driver_id ${where}`,
     params
   )
   const total = parseInt(countRes.rows[0].count as string, 10)
@@ -1148,14 +1164,23 @@ export async function getAdminRideById(rideId: bigint) {
        r.requested_at, r.accepted_at, r.driver_arrived_at, r.started_at, r.completed_at,
        r.review_flagged_at, r.review_reason,
        r.cash_discrepancy, r.cash_collected_amount::text AS cash_collected_amount,
+       r.sos_triggered, r.sos_triggered_at,
        u.name AS user_name, u.phone AS user_phone,
        d.full_name AS driver_name, d.phone AS driver_phone,
+       dv.number_plate AS vehicle_number_plate, dv.vehicle_name AS vehicle_name, dv.color AS vehicle_color,
        COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
+       fs.base_fare::text, fs.distance_fare::text, fs.time_fare::text, fs.stop_fare::text,
+       fs.hour_surcharge::text, fs.overage_fare::text, fs.surge_fare::text, fs.surge_multiplier::text,
+       fs.estimated_km::text, fs.estimated_min::text, fs.actual_km::text, fs.actual_min::text,
+       fs.overage_km::text, fs.overage_min::text, fs.refund_amount::text,
        pay.status AS payment_status, pay.channel AS payment_channel,
-       rc.reason_code AS cancellation_reason_code, rc.reason AS cancellation_reason, rc.actor AS cancellation_actor
+       rc.reason_code AS cancellation_reason_code, rc.reason AS cancellation_reason, rc.actor AS cancellation_actor,
+       rc.fee_applicable AS cancellation_fee_applicable, rc.fee_amount::text AS cancellation_fee_amount,
+       rc.fee_waived AS cancellation_fee_waived, rc.fee_waived_reason AS cancellation_fee_waived_reason
      FROM rides r
      JOIN users u ON u.id = r.user_id
      LEFT JOIN drivers d ON d.id = r.driver_id
+     LEFT JOIN driver_vehicles dv ON dv.id = r.vehicle_id
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
      LEFT JOIN payments pay ON pay.ride_id = r.id
      LEFT JOIN ride_cancellations rc ON rc.ride_id = r.id
@@ -1163,6 +1188,24 @@ export async function getAdminRideById(rideId: bigint) {
     [rideId]
   )
   return res.rows[0] ?? null
+}
+
+export async function getRideStatusHistory(rideId: bigint) {
+  const res = await pool.query(
+    `SELECT from_status, to_status, actor, note, created_at
+     FROM ride_status_history WHERE ride_id = $1 ORDER BY created_at ASC`,
+    [rideId]
+  )
+  return res.rows
+}
+
+export async function getRideLinkedSafety(rideId: bigint) {
+  const [disputes, sos, ratings] = await Promise.all([
+    pool.query(`SELECT id::text, status, type FROM disputes WHERE ride_id = $1`, [rideId]),
+    pool.query(`SELECT id::text, status, severity FROM sos_alerts WHERE ride_id = $1`, [rideId]),
+    pool.query(`SELECT direction, score, comment FROM ratings WHERE ride_id = $1`, [rideId]),
+  ])
+  return { disputes: disputes.rows, sos_alerts: sos.rows, ratings: ratings.rows }
 }
 
 // ─── Rental Packages (admin CRUD) ────────────────────────────────────────────

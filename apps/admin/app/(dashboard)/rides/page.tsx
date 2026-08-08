@@ -2,12 +2,14 @@
 import React from 'react'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Car, ArrowRight, RefreshCw, Clock, MapPin } from 'lucide-react'
+import Link from 'next/link'
+import { Car, ArrowRight, RefreshCw, Clock, MapPin, Star } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
-import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem, type AdminRideStop } from '@/lib/admin-api'
+import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem, type AdminRideStop, type AdminRideDetail } from '@/lib/admin-api'
+import { cityApi, type AdminCity } from '@/lib/city-api'
 
 function fmt(iso: string | null) {
   if (!iso) return '—'
@@ -44,11 +46,18 @@ function RidesPageContent() {
   const [statusFilter, setStatusFilter] = useState('')
   const [rideTypeFilter, setRideTypeFilter] = useState('')
   const [cashFlagFilter, setCashFlagFilter] = useState('')
+  const [cityFilter, setCityFilter] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [cities, setCities] = useState<AdminCity[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
+  useEffect(() => { cityApi.list().then(setCities).catch(() => setCities([])) }, [])
+
   const [selected, setSelected] = useState<AdminRideItem | null>(null)
   const [detailStops, setDetailStops] = useState<AdminRideStop[]>([])
+  const [detail, setDetail] = useState<AdminRideDetail | null>(null)
   const [resolving, setResolving] = useState(false)
 
   const [upcoming, setUpcoming] = useState<AdminUpcomingRideItem[]>([])
@@ -70,11 +79,11 @@ function RidesPageContent() {
   // Fetch the ride's stop timeline (incl. wait charges) when a ride is opened —
   // the list row doesn't carry stops. Needed for wait-charge dispute resolution.
   useEffect(() => {
-    if (!selected) { setDetailStops([]); return }
+    if (!selected) { setDetailStops([]); setDetail(null); return }
     let cancelled = false
     adminRideApi.getById(selected.id)
-      .then(d => { if (!cancelled) setDetailStops(d.stops ?? []) })
-      .catch(() => { if (!cancelled) setDetailStops([]) })
+      .then(d => { if (!cancelled) { setDetailStops(d.stops ?? []); setDetail(d) } })
+      .catch(() => { if (!cancelled) { setDetailStops([]); setDetail(null) } })
     return () => { cancelled = true }
   }, [selected?.id])
 
@@ -95,7 +104,9 @@ function RidesPageContent() {
   useEffect(() => {
     const rideId = searchParams.get('ride')
     if (!rideId) return
-    adminRideApi.getById(rideId).then(setSelected).catch(() => {})
+    let cancelled = false
+    adminRideApi.getById(rideId).then(d => { if (!cancelled) setSelected(d) }).catch(() => {})
+    return () => { cancelled = true }
   }, [searchParams])
 
   useEffect(() => {
@@ -112,6 +123,9 @@ function RidesPageContent() {
       if (rideTypeFilter)  params.ride_type = rideTypeFilter
       if (debouncedSearch) params.search    = debouncedSearch
       if (cashFlagFilter)  params.cashDiscrepancy = true
+      if (cityFilter)      params.cityId    = parseInt(cityFilter, 10)
+      if (dateFrom)         params.dateFrom  = dateFrom
+      if (dateTo)           params.dateTo    = dateTo
       const data = await adminRideApi.list(params)
       setRides(data.rides)
       setTotal(data.pagination.total)
@@ -121,7 +135,7 @@ function RidesPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [page, statusFilter, rideTypeFilter, debouncedSearch, cashFlagFilter])
+  }, [page, statusFilter, rideTypeFilter, debouncedSearch, cashFlagFilter, cityFilter, dateFrom, dateTo])
 
   useEffect(() => { void fetchRides() }, [fetchRides])
 
@@ -266,8 +280,28 @@ function RidesPageContent() {
           <FilterBar
             search={search}
             onSearch={setSearch}
-            searchPlaceholder="Search by user name or phone…"
+            searchPlaceholder="Search by user or driver name/phone…"
+            actions={
+              <>
+                <input
+                  type="date" value={dateFrom}
+                  onChange={e => { setDateFrom(e.target.value); setPage(1) }}
+                  className="px-3 py-2 text-sm bg-surface border border-border rounded-xl text-text-secondary focus:outline-none focus:border-primary"
+                />
+                <input
+                  type="date" value={dateTo}
+                  onChange={e => { setDateTo(e.target.value); setPage(1) }}
+                  className="px-3 py-2 text-sm bg-surface border border-border rounded-xl text-text-secondary focus:outline-none focus:border-primary"
+                />
+              </>
+            }
             filters={[
+              {
+                key: 'city', label: 'All Cities',
+                options: cities.map(c => ({ value: String(c.id), label: c.name })),
+                value: cityFilter,
+                onChange: (v) => { setCityFilter(v); setPage(1) },
+              },
               {
                 key: 'status', label: 'All Statuses',
                 options: [
@@ -335,6 +369,11 @@ function RidesPageContent() {
               {selected.is_return_cab && (
                 <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700">Return Cab</span>
               )}
+              {detail?.sos_triggered && (
+                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-700">
+                  SOS · {fmt(detail.sos_triggered_at)}
+                </span>
+              )}
               <span className="text-text-muted text-sm">{fmt(selected.requested_at)}</span>
             </div>
 
@@ -384,6 +423,14 @@ function RidesPageContent() {
               ))}
             </div>
 
+            {detail?.vehicle_number_plate && (
+              <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
+                <p className="text-xs font-semibold text-text-secondary mb-1">Vehicle</p>
+                <p className="font-semibold text-text-primary">{detail.vehicle_name ?? '—'} {detail.vehicle_color ? `· ${detail.vehicle_color}` : ''}</p>
+                <p className="text-xs text-text-muted font-mono">{detail.vehicle_number_plate}</p>
+              </div>
+            )}
+
             <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
               <p className="text-xs font-semibold text-text-secondary mb-2">Route</p>
               <div className="space-y-2">
@@ -402,22 +449,68 @@ function RidesPageContent() {
               )}
             </div>
 
+            {detail && [detail.base_fare, detail.distance_fare, detail.time_fare, detail.stop_fare, detail.hour_surcharge, detail.overage_fare, detail.surge_fare, detail.refund_amount].some(v => v && parseFloat(v) > 0) && (
+              <div className="bg-surface-2 rounded-xl p-3 border border-border-light space-y-1.5">
+                <p className="text-xs font-semibold text-text-secondary mb-2">Fare breakdown</p>
+                {(
+                  [
+                    ['Base', detail.base_fare], ['Distance', detail.distance_fare], ['Time', detail.time_fare],
+                    ['Stops', detail.stop_fare], ['Hour surcharge', detail.hour_surcharge],
+                    ['Overage', detail.overage_fare],
+                    ['Surge', detail.surge_fare, detail.surge_multiplier && parseFloat(detail.surge_multiplier) > 1 ? `×${detail.surge_multiplier}` : ''],
+                  ] as [string, string | null, string?][]
+                ).filter(([, v]) => v && parseFloat(v) > 0).map(([label, v, suffix]) => (
+                  <div key={label} className="flex justify-between items-center">
+                    <span className="text-xs text-text-muted">{label} {suffix}</span>
+                    <span className="text-xs font-medium text-text-primary">₹{parseFloat(v!).toLocaleString('en-IN')}</span>
+                  </div>
+                ))}
+                {detail.refund_amount && parseFloat(detail.refund_amount) > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-danger">Refunded</span>
+                    <span className="text-xs font-medium text-danger">₹{parseFloat(detail.refund_amount).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {(detail.actual_km || detail.estimated_km) && (
+                  <p className="text-[11px] text-text-muted pt-1">
+                    {detail.actual_km ? `${parseFloat(detail.actual_km).toFixed(1)} km actual` : `${parseFloat(detail.estimated_km ?? '0').toFixed(1)} km estimated`}
+                    {detail.overage_km && parseFloat(detail.overage_km) > 0 ? ` · ${parseFloat(detail.overage_km).toFixed(1)} km overage` : ''}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="bg-surface-2 rounded-xl p-3 border border-border-light space-y-1.5">
               <p className="text-xs font-semibold text-text-secondary mb-2">Timeline</p>
-              {(
-                [
-                  { label: 'Requested',       ts: selected.requested_at },
-                  { label: 'Accepted',        ts: selected.accepted_at },
-                  { label: 'Driver Arrived',  ts: selected.driver_arrived_at },
-                  { label: 'Trip Started',    ts: selected.started_at },
-                  { label: 'Completed',       ts: selected.completed_at },
-                ] as { label: string; ts: string | null }[]
-              ).map(({ label, ts }) => ts ? (
-                <div key={label} className="flex justify-between items-center">
-                  <span className="text-xs text-text-muted">{label}</span>
-                  <span className="text-xs font-medium text-text-primary">{fmt(ts)}</span>
+              {detail?.status_history.map((ev, i) => (
+                <div key={i} className="flex justify-between items-start gap-2">
+                  <div>
+                    <span className="text-xs font-medium text-text-primary capitalize">{ev.to_status.replace(/_/g, ' ')}</span>
+                    <span className="text-xs text-text-muted capitalize"> · {ev.actor}</span>
+                    {ev.note && <p className="text-[11px] text-text-muted">{ev.note}</p>}
+                  </div>
+                  <span className="text-xs text-text-muted whitespace-nowrap">{fmt(ev.created_at)}</span>
                 </div>
-              ) : null)}
+              ))}
+              {(() => {
+                const loggedStatuses = new Set((detail?.status_history ?? []).map(ev => ev.to_status))
+                return (
+                  [
+                    { label: 'Requested',       ts: selected.requested_at,       status: 'requested' },
+                    { label: 'Accepted',        ts: selected.accepted_at,        status: 'accepted' },
+                    { label: 'Driver Arrived',  ts: selected.driver_arrived_at,  status: 'driver_arrived' },
+                    { label: 'Trip Started',    ts: selected.started_at,         status: 'in_progress' },
+                    { label: 'Completed',       ts: selected.completed_at,       status: 'completed' },
+                  ]
+                    .filter(({ ts, status }) => ts && !loggedStatuses.has(status))
+                    .map(({ label, ts }) => (
+                      <div key={label} className="flex justify-between items-center">
+                        <span className="text-xs text-text-muted">{label}</span>
+                        <span className="text-xs font-medium text-text-primary">{fmt(ts)}</span>
+                      </div>
+                    ))
+                )
+              })()}
             </div>
 
             {detailStops.length > 0 && (
@@ -475,6 +568,70 @@ function RidesPageContent() {
                         ? selected.cancellation_reason_code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
                         : 'No reason provided')}
                 </p>
+                {detail?.cancellation_fee_applicable && (
+                  <p className="text-xs mt-2">
+                    {detail.cancellation_fee_waived ? (
+                      <span className="text-text-muted">
+                        Fee ₹{parseFloat(detail.cancellation_fee_amount ?? '0').toLocaleString('en-IN')} waived
+                        {detail.cancellation_fee_waived_reason ? ` — ${detail.cancellation_fee_waived_reason}` : ''}
+                      </span>
+                    ) : (
+                      <span className="text-text-primary font-medium">
+                        Cancellation fee: ₹{parseFloat(detail.cancellation_fee_amount ?? '0').toLocaleString('en-IN')}
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {detail && detail.messages.length > 0 && (
+              <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
+                <p className="text-xs font-semibold text-text-secondary mb-2">Chat</p>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {detail.messages.map(m => {
+                    const fromDriver = m.senderType === 'driver'
+                    return (
+                      <div key={m.id} className={`flex ${fromDriver ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[80%] rounded-lg px-2.5 py-1.5 ${fromDriver ? 'bg-primary/10' : 'bg-surface border border-border-light'}`}>
+                          <p className="text-xs text-text-primary whitespace-pre-wrap break-words">{m.body}</p>
+                          <p className="text-[10px] text-text-muted mt-0.5">
+                            {fromDriver ? selected.driver_name ?? 'Driver' : selected.user_name} · {fmt(m.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {detail && (detail.disputes.length > 0 || detail.sos_alerts.length > 0 || detail.ratings.length > 0) && (
+              <div className="bg-surface-2 rounded-xl p-3 border border-border-light space-y-2">
+                <p className="text-xs font-semibold text-text-secondary mb-1">Related</p>
+                {detail.disputes.map(d => (
+                  <Link key={d.id} href="/disputes" className="flex justify-between items-center text-xs hover:underline">
+                    <span className="text-text-primary capitalize">Dispute · {d.type.replace(/_/g, ' ')}</span>
+                    <StatusPill status={d.status} />
+                  </Link>
+                ))}
+                {detail.sos_alerts.map(s => (
+                  <Link key={s.id} href="/sos" className="flex justify-between items-center text-xs hover:underline">
+                    <span className="text-text-primary capitalize">SOS · {s.severity}</span>
+                    <StatusPill status={s.status} />
+                  </Link>
+                ))}
+                {detail.ratings.map((r, i) => (
+                  <div key={i} className="flex justify-between items-start gap-2 text-xs">
+                    <span className="text-text-muted capitalize">{r.direction.replace(/_/g, ' ')}</span>
+                    <div className="text-right">
+                      <span className="inline-flex items-center gap-0.5 font-medium text-text-primary">
+                        {r.score} <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                      </span>
+                      {r.comment && <p className="text-[11px] text-text-muted max-w-[200px]">{r.comment}</p>}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

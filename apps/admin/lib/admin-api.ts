@@ -237,7 +237,62 @@ export interface AdminRideStop {
   wait_charge: string
 }
 
-export type AdminRideDetail = AdminRideItem & { stops: AdminRideStop[] }
+export interface AdminRideFareBreakdown {
+  base_fare: string | null
+  distance_fare: string | null
+  time_fare: string | null
+  stop_fare: string | null
+  hour_surcharge: string | null
+  overage_fare: string | null
+  surge_fare: string | null
+  surge_multiplier: string | null
+  estimated_km: string | null
+  estimated_min: string | null
+  actual_km: string | null
+  actual_min: string | null
+  overage_km: string | null
+  overage_min: string | null
+  refund_amount: string | null
+}
+
+export interface AdminRideStatusEvent {
+  from_status: string | null
+  to_status: string
+  actor: string
+  note: string | null
+  created_at: string
+}
+
+export interface AdminRideLinkedDispute { id: string; status: string; type: string }
+export interface AdminRideLinkedSos { id: string; status: string; severity: string }
+export interface AdminRideLinkedRating { direction: string; score: number; comment: string | null }
+
+export interface AdminRideMessage {
+  id: string
+  senderType: 'user' | 'driver'
+  senderId: string
+  body: string
+  readAt: string | null
+  createdAt: string
+}
+
+export type AdminRideDetail = AdminRideItem & AdminRideFareBreakdown & {
+  stops: AdminRideStop[]
+  sos_triggered: boolean
+  sos_triggered_at: string | null
+  vehicle_number_plate: string | null
+  vehicle_name: string | null
+  vehicle_color: string | null
+  cancellation_fee_applicable: boolean | null
+  cancellation_fee_amount: string | null
+  cancellation_fee_waived: boolean | null
+  cancellation_fee_waived_reason: string | null
+  status_history: AdminRideStatusEvent[]
+  disputes: AdminRideLinkedDispute[]
+  sos_alerts: AdminRideLinkedSos[]
+  ratings: AdminRideLinkedRating[]
+  messages: AdminRideMessage[]
+}
 
 export interface AdminRidesResponse {
   rides: AdminRideItem[]
@@ -257,7 +312,7 @@ export interface AdminUpcomingRideItem {
 }
 
 export const adminRideApi = {
-  list: async (params: { status?: string; ride_type?: string; search?: string; cashDiscrepancy?: boolean; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
+  list: async (params: { status?: string; ride_type?: string; search?: string; cashDiscrepancy?: boolean; dateFrom?: string; dateTo?: string; cityId?: number; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
     const res = await api.get('/api/v1/admin/rides', { params })
     return res.data as AdminRidesResponse
   },

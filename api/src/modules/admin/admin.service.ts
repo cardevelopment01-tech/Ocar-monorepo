@@ -5,6 +5,7 @@ import * as repo from './admin.repository'
 import type { DriverStatus, UpdateDriverStatusPayload, UpdateDriverProfilePayload, UpdateDriverVehiclePayload } from './admin.types'
 import { forceResolveRide as resolveStuckRide } from '@/modules/rides/rides.service'
 import { getRideStops } from '@/modules/rides/rides.repository'
+import { listMessages as listRideMessages } from '@/modules/ride-chat/ride-chat.repository'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { recordAuditLog } from '@/lib/audit-log'
 
@@ -371,15 +372,22 @@ export async function cancelAdminSurgeEvent(id: bigint, adminId: bigint) {
 // ─── Rides / Users / Payments ─────────────────────────────────────────────────
 
 export async function listAdminRides(query: {
-  status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean; page?: number; limit?: number
+  status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean
+  date_from?: string; date_to?: string; city_id?: number; page?: number; limit?: number
 }) {
   const limit = Math.min(query.limit ?? 20, 100)
   const page  = Math.max(query.page ?? 1, 1)
-  const q: { status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean; limit: number; offset: number } = { limit, offset: (page - 1) * limit }
+  const q: {
+    status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean
+    date_from?: string; date_to?: string; city_id?: number; limit: number; offset: number
+  } = { limit, offset: (page - 1) * limit }
   if (query.status          !== undefined) q.status           = query.status
   if (query.ride_type       !== undefined) q.ride_type        = query.ride_type
   if (query.search          !== undefined) q.search           = query.search
   if (query.cash_discrepancy !== undefined) q.cash_discrepancy = query.cash_discrepancy
+  if (query.date_from       !== undefined) q.date_from        = query.date_from
+  if (query.date_to         !== undefined) q.date_to          = query.date_to
+  if (query.city_id         !== undefined) q.city_id          = query.city_id
   const { rows, total } = await repo.listAdminRides(q)
   return { rides: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
 }
@@ -391,8 +399,20 @@ export async function listUpcomingScheduledRides() {
 export async function getAdminRideById(rideId: bigint) {
   const ride = await repo.getAdminRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
-  const stops = await getRideStops(rideId)
-  return { ...ride, stops }
+  const [stops, [statusHistory, linkedSafety, messages]] = await Promise.all([
+    getRideStops(rideId),
+    // Enrichment queries: degrade to empty rather than failing the whole ride detail.
+    Promise.allSettled([
+      repo.getRideStatusHistory(rideId),
+      repo.getRideLinkedSafety(rideId),
+      listRideMessages(rideId, undefined),
+    ]).then(([h, s, m]) => [
+      h.status === 'fulfilled' ? h.value : [],
+      s.status === 'fulfilled' ? s.value : { disputes: [], sos_alerts: [], ratings: [] },
+      m.status === 'fulfilled' ? m.value : [],
+    ] as const),
+  ])
+  return { ...ride, stops, status_history: statusHistory, ...linkedSafety, messages }
 }
 
 export async function forceResolveAdminRide(

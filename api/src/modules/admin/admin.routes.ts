@@ -7,6 +7,7 @@ const router: IRouter = Router()
 
 // All admin routes require a valid admin JWT
 router.use(authenticate())
+router.use(requireAdmin())
 
 // ─── Dashboard stats ─────────────────────────────────────────────────────────
 router.get('/stats', controller.getAdminStats)
@@ -96,9 +97,9 @@ router.patch('/safety/disputes/:id/assign',  requireAdmin('super_admin', 'suppor
 router.patch('/safety/disputes/:id/resolve', requireAdmin('super_admin', 'support_admin'), controller.resolveAdminDispute)
 
 // ─── Rides ────────────────────────────────────────────────────────────────────
-router.get('/rides', controller.getAdminRides)
-router.get('/rides/upcoming', controller.getUpcomingScheduledRides)
-router.get('/rides/:id', controller.getAdminRideById)
+router.get('/rides', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRides)
+router.get('/rides/upcoming', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getUpcomingScheduledRides)
+router.get('/rides/:id', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideById)
 router.post('/rides/:id/force-resolve', requireAdmin('super_admin', 'ops_admin'), controller.forceResolveAdminRide)
 
 // ─── Users ────────────────────────────────────────────────────────────────────
