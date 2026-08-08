@@ -72,6 +72,10 @@ export function createApp(): Application {
 
   // Request-duration metric — route (not req.url) keeps Mimir series count
   // bounded the same way Loki labels are (see MUST-DO #2's reasoning).
+  // req.route.path alone is only the innermost router's local fragment (this
+  // app nests routers under /api/v1/<module>/...), so '/:id' from rides and
+  // '/:id' from drivers would otherwise collapse into the same label —
+  // prepend req.baseUrl for the full mounted path.
   app.use((req, res, next) => {
     const start = process.hrtime.bigint()
     res.on('finish', () => {
@@ -79,7 +83,7 @@ export function createApp(): Application {
       httpRequestDuration.observe(
         {
           method: req.method,
-          route: req.route?.path ?? 'unmatched',
+          route: req.route ? `${req.baseUrl}${req.route.path}` : 'unmatched',
           status_code: String(res.statusCode),
         },
         durationSeconds
