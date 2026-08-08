@@ -40,6 +40,23 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  alloy:
+    image: grafana/alloy:latest
+    container_name: ocar_alloy
+    restart: unless-stopped
+    env_file: .env.prod
+    volumes:
+      - ./infra/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: run --server.http.listen-addr=127.0.0.1:12345 /etc/alloy/config.alloy
+    networks:
+      - ocar_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
 volumes:
   certbot_webroot:
 
