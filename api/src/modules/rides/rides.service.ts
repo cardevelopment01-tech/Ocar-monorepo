@@ -1504,7 +1504,7 @@ export async function forceAssignGraceCheck(rideId: bigint, driverId: bigint): P
   }
 
   const ride = await repo.getRideById(rideId)
-  if (!ride || ride.status !== 'accepted' || ride.driver_id !== driverId) return
+  if (!ride || ride.status !== 'accepted' || !ride.driver_id || BigInt(ride.driver_id) !== driverId) return
 
   const reverted = await repo.revertForceAssign(rideId, driverId)
   if (!reverted) return
@@ -1519,7 +1519,7 @@ export async function forceAssignGraceCheck(rideId: bigint, driverId: bigint): P
     title: 'Force-assigned ride reverted',
     body: `Ride #${rideId} was force-assigned but the driver never responded — it's unassigned again.`,
     rideId,
-  })
+  }).catch(() => {})
 
   await queues[QUEUE_NAMES.DISPATCH].add(
     'broadcast_ride',

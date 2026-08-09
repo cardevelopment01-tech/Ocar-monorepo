@@ -12,7 +12,7 @@ vi.mock('@/websocket/socket.server', () => ({
 }))
 vi.mock('@/modules/notifications/notifications.service', () => ({
   notifyOwner: vi.fn(),
-  notifyAllAdmins: vi.fn(),
+  notifyAllAdmins: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/jobs/queues', () => ({
   queues: { dispatch: { add: vi.fn().mockResolvedValue({ id: 'job-1' }) } },
@@ -100,7 +100,9 @@ describe('forceAssignGraceCheck', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(repo.hasRideGpsActivity).mockResolvedValue(false)
-    vi.mocked(repo.getRideById).mockResolvedValue({ ...baseRide, status: 'accepted', driver_id: 9n } as never)
+    // driver_id mocked as a string here (not bigint) to match real pg runtime behavior —
+    // pg returns bigint/int8 columns as strings (no setTypeParser override for OID 20).
+    vi.mocked(repo.getRideById).mockResolvedValue({ ...baseRide, status: 'accepted', driver_id: '9' } as never)
     vi.mocked(repo.revertForceAssign).mockResolvedValue(true)
     vi.mocked(repo.clearForceAssignGraceJob).mockResolvedValue(undefined as never)
     vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
@@ -119,7 +121,7 @@ describe('forceAssignGraceCheck', () => {
   })
 
   it('does nothing when the ride already moved past accepted', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({ ...baseRide, status: 'driver_arrived', driver_id: 9n } as never)
+    vi.mocked(repo.getRideById).mockResolvedValue({ ...baseRide, status: 'driver_arrived', driver_id: '9' } as never)
     await forceAssignGraceCheck(5n, 9n)
     expect(repo.revertForceAssign).not.toHaveBeenCalled()
   })
