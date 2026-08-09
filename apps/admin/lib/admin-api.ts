@@ -318,6 +318,19 @@ export interface AdminRideStats {
   cash_flagged_count: string
 }
 
+
+export interface AssignCandidate {
+  driver_id: string
+  driver_name: string
+  driver_phone: string
+  category_name: string | null
+  is_online: boolean
+  category_ok: boolean
+  wallet_ok: boolean
+  distance_metres: number | null
+  eligible: boolean
+}
+
 export const adminRideApi = {
   stats: async (): Promise<AdminRideStats> => {
     const res = await api.get('/api/v1/admin/rides/stats')
@@ -337,6 +350,13 @@ export const adminRideApi = {
   },
   forceResolve: async (rideId: string, action: 'complete' | 'cancel', note?: string): Promise<void> => {
     await api.post(`/api/v1/admin/rides/${rideId}/force-resolve`, { action, note })
+  },
+  getAssignCandidates: async (rideId: string): Promise<AssignCandidate[]> => {
+    const res = await api.get(`/api/v1/admin/rides/${rideId}/assign-candidates`)
+    return (res.data as { candidates: AssignCandidate[] }).candidates
+  },
+  assignDriver: async (rideId: string, driverId: string, mode: 'request' | 'force', overrideEligibility?: boolean): Promise<void> => {
+    await api.post(`/api/v1/admin/rides/${rideId}/assign`, { driverId, mode, overrideEligibility })
   },
 }
 
