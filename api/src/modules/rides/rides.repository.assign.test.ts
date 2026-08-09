@@ -37,16 +37,16 @@ describe('getCityBillingMode', () => {
 describe('hasRideGpsActivity', () => {
   beforeEach(() => { mockQuery.mockReset() })
 
-  it('returns true when gps_tracks has a row for the ride', async () => {
+  it('returns true when gps_tracks has a row for the ride and driver', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ exists: true }] })
-    const result = await hasRideGpsActivity(42n)
+    const result = await hasRideGpsActivity(42n, 9n)
     expect(result).toBe(true)
-    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM gps_tracks'), [42n])
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM gps_tracks'), [42n, 9n])
   })
 
   it('returns false when there are no rows', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ exists: false }] })
-    const result = await hasRideGpsActivity(42n)
+    const result = await hasRideGpsActivity(42n, 9n)
     expect(result).toBe(false)
   })
 })

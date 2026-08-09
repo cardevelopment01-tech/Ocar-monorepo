@@ -41,8 +41,9 @@ export default function AssignDriverDrawer({ ride, onClose, onAssigned }: Props)
     try {
       await adminRideApi.assignDriver(ride.id, candidate.driver_id, mode, !candidate.eligible)
       onAssigned()
-    } catch {
-      setError('Assignment failed — the ride may have already been accepted.')
+    } catch (err) {
+      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setError(message ?? 'Assignment failed — the ride may have already been accepted.')
     } finally {
       setAssigningId(null)
       setConfirmingId(null)

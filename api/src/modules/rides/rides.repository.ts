@@ -922,10 +922,10 @@ export async function getCityBillingMode(cityId: bigint): Promise<BillingMode> {
   return res.rows[0]!.billing_mode
 }
 
-export async function hasRideGpsActivity(rideId: bigint): Promise<boolean> {
+export async function hasRideGpsActivity(rideId: bigint, driverId: bigint): Promise<boolean> {
   const res = await pool.query<{ exists: boolean }>(
-    `SELECT EXISTS(SELECT 1 FROM gps_tracks WHERE ride_id = $1) AS exists`,
-    [rideId]
+    `SELECT EXISTS(SELECT 1 FROM gps_tracks WHERE ride_id = $1 AND driver_id = $2) AS exists`,
+    [rideId, driverId]
   )
   return res.rows[0]?.exists ?? false
 }

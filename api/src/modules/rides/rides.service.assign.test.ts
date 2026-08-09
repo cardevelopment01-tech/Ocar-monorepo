@@ -15,12 +15,18 @@ vi.mock('@/modules/notifications/notifications.service', () => ({
   notifyAllAdmins: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/jobs/queues', () => ({
-  queues: { dispatch: { add: vi.fn().mockResolvedValue({ id: 'job-1' }) } },
+  queues: {
+    dispatch: {
+      add: vi.fn().mockResolvedValue({ id: 'job-1' }),
+      getJob: vi.fn().mockResolvedValue(undefined),
+    },
+  },
   QUEUE_NAMES: { DISPATCH: 'dispatch' },
 }))
 vi.mock('@/db/redis', () => ({ client: { set: vi.fn() } }))
 
 import * as repo from '@/modules/rides/rides.repository'
+import { queues } from '@/jobs/queues'
 import { adminAssignDriver, forceAssignGraceCheck } from './rides.service'
 
 const baseRide = {
@@ -93,6 +99,23 @@ describe('adminAssignDriver', () => {
     vi.mocked(repo.updateRideStatusCAS).mockResolvedValue({ ...baseRide, status: 'requested' } as never)
     await adminAssignDriver(5n, 9n, 'request', false, 1n)
     expect(repo.updateRideStatusCAS).toHaveBeenCalledWith(5n, 'scheduled', 'requested')
+  })
+
+  it('request mode schedules the fallback broadcast with a ride-scoped jobId', async () => {
+    await adminAssignDriver(5n, 9n, 'request', false, 1n)
+    expect(queues.dispatch.getJob).toHaveBeenCalledWith('manual-assign-fallback-5')
+    expect(queues.dispatch.add).toHaveBeenCalledWith(
+      'broadcast_ride',
+      expect.objectContaining({ rideId: '5' }),
+      expect.objectContaining({ jobId: 'manual-assign-fallback-5' })
+    )
+  })
+
+  it('request mode removes a stale fallback job before scheduling a new one', async () => {
+    const removeMock = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(queues.dispatch.getJob).mockResolvedValueOnce({ remove: removeMock } as never)
+    await adminAssignDriver(5n, 9n, 'request', false, 1n)
+    expect(removeMock).toHaveBeenCalled()
   })
 })
 

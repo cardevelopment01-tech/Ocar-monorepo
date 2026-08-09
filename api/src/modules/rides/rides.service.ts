@@ -1469,6 +1469,15 @@ export async function adminAssignDriver(
   // Fallback: processBroadcast() already no-ops when the ride is no longer
   // 'requested', so firing this unconditionally is safe — it only actually
   // rebroadcasts if the manual offer above was declined/timed out.
+  // Deterministic jobId scoped to the ride: if the admin re-assigns the same
+  // ride to a different driver while this offer is still pending, we cancel
+  // the stale fallback below instead of leaving two fallback timers in flight
+  // (the earlier one could otherwise broadcast over the new manual offer).
+  const fallbackJobId = `manual-assign-fallback-${rideId}`
+  const existingFallback = await queues[QUEUE_NAMES.DISPATCH].getJob(fallbackJobId)
+  if (existingFallback) {
+    await existingFallback.remove().catch(() => {})
+  }
   await queues[QUEUE_NAMES.DISPATCH].add(
     'broadcast_ride',
     {
@@ -1480,7 +1489,7 @@ export async function adminAssignDriver(
       isReturnCab: workingRide.is_return_cab,
       broadcastRound: 1,
     },
-    { delay: (timeoutSeconds + 2) * 1000, attempts: 1, removeOnComplete: true }
+    { delay: (timeoutSeconds + 2) * 1000, attempts: 1, removeOnComplete: true, jobId: fallbackJobId }
   )
 
   await repo.logStatusHistory({
@@ -1497,7 +1506,7 @@ export async function adminAssignDriver(
 }
 
 export async function forceAssignGraceCheck(rideId: bigint, driverId: bigint): Promise<void> {
-  const hasActivity = await repo.hasRideGpsActivity(rideId)
+  const hasActivity = await repo.hasRideGpsActivity(rideId, driverId)
   if (hasActivity) {
     await repo.clearForceAssignGraceJob(rideId)
     return
