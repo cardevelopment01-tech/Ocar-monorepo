@@ -11,6 +11,7 @@ import SlideOver from '@/components/ui/SlideOver'
 import StatCard from '@/components/ui/StatCard'
 import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem, type AdminRideStop, type AdminRideDetail, type AdminRideStats } from '@/lib/admin-api'
 import { cityApi, type AdminCity } from '@/lib/city-api'
+import AssignDriverDrawer from './AssignDriverDrawer'
 
 function fmt(iso: string | null) {
   if (!iso) return '—'
@@ -86,6 +87,7 @@ function RidesPageContent() {
   useEffect(() => { cityApi.list().then(setCities).catch(() => setCities([])) }, [])
 
   const [selected, setSelected] = useState<AdminRideItem | null>(null)
+  const [assignTarget, setAssignTarget] = useState<AdminRideItem | null>(null)
   const [detailStops, setDetailStops] = useState<AdminRideStop[]>([])
   const [detail, setDetail] = useState<AdminRideDetail | null>(null)
   const [resolving, setResolving] = useState(false)
@@ -203,7 +205,19 @@ function RidesPageContent() {
             </div>
           </div>
         )
-        : <span className="text-text-muted italic text-xs">Unassigned</span>,
+        : (
+          <div className="flex items-center gap-2">
+            <span className="text-text-muted italic text-xs">Unassigned</span>
+            {['scheduled', 'requested', 'no_drivers'].includes(r.status) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setAssignTarget(r) }}
+                className="px-2 py-1 text-xs font-semibold bg-primary text-white rounded-full hover:bg-primary-dark transition-colors duration-150"
+              >
+                Assign
+              </button>
+            )}
+          </div>
+        ),
     },
     {
       key: 'route', header: 'Route',
@@ -737,6 +751,12 @@ function RidesPageContent() {
           </div>
         )}
       </SlideOver>
+
+      <AssignDriverDrawer
+        ride={assignTarget}
+        onClose={() => setAssignTarget(null)}
+        onAssigned={() => { setAssignTarget(null); void fetchRides() }}
+      />
     </div>
   )
 }
