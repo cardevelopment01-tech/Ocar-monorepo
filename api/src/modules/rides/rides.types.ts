@@ -135,3 +135,20 @@ export interface BookingRequest {
   riderName?: string
   riderPhone?: string
 }
+
+// One row per driver in a ride's city, for the admin manual-assignment picker.
+// `eligible` mirrors the same gates findNearbyDrivers() encodes for broadcast,
+// minus the geo-radius check (admin is intentionally picking outside auto-match range).
+export interface AssignCandidate {
+  driver_id: string
+  driver_name: string
+  driver_phone: string
+  session_id: string | null
+  category_id: string | null
+  category_name: string | null
+  is_online: boolean
+  category_ok: boolean
+  wallet_ok: boolean
+  distance_metres: number | null
+  eligible: boolean
+}
