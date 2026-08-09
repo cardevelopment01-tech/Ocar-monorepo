@@ -15,6 +15,12 @@ export const BCRYPT_ROUNDS = 12
 export const BROADCAST_WINDOW_SECONDS = 20
 export const BROADCAST_MAX_DRIVERS = 5
 export const BROADCAST_ROUND_MAX = 3
+// Admin manual-assign: longer than a broadcast ping since the driver was
+// deliberately picked and deserves a beat to check the trip before responding.
+export const MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS = 30
+// How long a force-assigned (no accept step) driver has to show GPS activity
+// before the ride auto-reverts to unassigned and flags the admin.
+export const FORCE_ASSIGN_GRACE_MINUTES = 4
 
 export const GPS_FLUSH_INTERVAL_SECONDS = 30
 export const GPS_ACCURACY_THRESHOLD_METRES = 50

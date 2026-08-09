@@ -3,7 +3,7 @@ import { AppErrors } from '@/constants/errors'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
 import type { DriverStatus, UpdateDriverStatusPayload, UpdateDriverProfilePayload, UpdateDriverVehiclePayload } from './admin.types'
-import { forceResolveRide as resolveStuckRide } from '@/modules/rides/rides.service'
+import { forceResolveRide as resolveStuckRide, getRideAssignCandidates as getAssignCandidatesForRide, adminAssignDriver } from '@/modules/rides/rides.service'
 import { getRideStops } from '@/modules/rides/rides.repository'
 import { listMessages as listRideMessages } from '@/modules/ride-chat/ride-chat.repository'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
@@ -427,6 +427,20 @@ export async function forceResolveAdminRide(
 ) {
   const outcome = action === 'complete' ? 'completed' as const : 'cancelled' as const
   return resolveStuckRide(rideId, outcome, 'admin', note, adminId)
+}
+
+export async function getRideAssignCandidates(rideId: bigint) {
+  return getAssignCandidatesForRide(rideId)
+}
+
+export async function assignDriverToRide(
+  rideId: bigint,
+  driverId: bigint,
+  mode: 'request' | 'force',
+  adminId: bigint,
+  overrideEligibility: boolean,
+) {
+  return adminAssignDriver(rideId, driverId, mode, overrideEligibility, adminId)
 }
 
 // ─── Rental Packages ──────────────────────────────────────────────────────────

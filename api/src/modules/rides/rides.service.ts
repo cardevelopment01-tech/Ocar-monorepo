@@ -2,7 +2,7 @@ import { pool } from '@/db/client'
 import { httpError, createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { client as redis } from '@/db/redis'
-import { startOtpKey, endOtpKey, activeRideByDriverKey } from '@/constants/redis-keys'
+import { startOtpKey, endOtpKey, activeRideByDriverKey, rideAckKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
 import { getConfigValue } from '@/lib/system-config'
 import * as repo from './rides.repository'
@@ -19,6 +19,8 @@ import {
   MAX_ADVANCE_BOOKING_DAYS,
   MAX_CONCURRENT_SCHEDULED_BOOKINGS,
   IN_CITY_MAX_TRIP_DISTANCE_METRES,
+  MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS,
+  FORCE_ASSIGN_GRACE_MINUTES,
 } from '@/constants/limits'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import type { BillingMode, BookingRequest, StopInput } from './rides.types'
@@ -1347,6 +1349,200 @@ export async function forceResolveRide(
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: outcome, resolvedBy: actor })
   return { success: true }
+}
+
+// ── Admin manual driver assignment ──────────────────────────────
+
+export async function getRideAssignCandidates(rideId: bigint) {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (!ride.origin_city_id) {
+    throw Object.assign(new Error('Ride has no origin city'), { httpStatus: 409 })
+  }
+
+  const categoryIds = await repo.getEligibleDriverCategoryIds(ride.category_id)
+  const minWalletBalance = await getMinWalletBalance()
+
+  return repo.getAssignCandidates({
+    cityId: ride.origin_city_id,
+    rideLat: ride.origin_lat,
+    rideLng: ride.origin_lng,
+    categoryIds,
+    minWalletBalance,
+  })
+}
+
+export async function adminAssignDriver(
+  rideId: bigint,
+  driverId: bigint,
+  mode: 'request' | 'force',
+  overrideEligibility: boolean,
+  adminId: bigint,
+): Promise<{ success: true; mode: 'request' | 'force' }> {
+  const ride = await repo.getRideById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (!['scheduled', 'requested', 'no_drivers'].includes(ride.status)) {
+    throw Object.assign(new Error('Ride is not open for assignment'), { httpStatus: 409 })
+  }
+
+  const candidates = await getRideAssignCandidates(rideId)
+  const candidate = candidates.find(c => c.driver_id === driverId.toString())
+  if (!candidate) throw Object.assign(new Error('Driver not found in this city'), { httpStatus: 404 })
+
+  // is_online is a hard gate — there is nowhere to route the assignment
+  // without an active session — never bypassable by overrideEligibility.
+  if (!candidate.is_online) {
+    throw Object.assign(new Error('Driver must be online to be assigned'), { httpStatus: 422 })
+  }
+  if (!candidate.eligible && !overrideEligibility) {
+    throw Object.assign(new Error('Driver is not eligible — pass overrideEligibility to force'), { httpStatus: 422 })
+  }
+
+  let workingRide = ride
+  if (ride.status !== 'requested') {
+    const updated = await repo.updateRideStatusCAS(rideId, ride.status, 'requested')
+    if (!updated) throw Object.assign(new Error('Ride status changed — please refresh'), { httpStatus: 409 })
+    workingRide = updated
+    await repo.logStatusHistory({
+      rideId, fromStatus: ride.status, toStatus: 'requested',
+      actor: 'admin', actorId: adminId, note: 'Opened for manual assignment',
+    })
+  }
+
+  const cancelledDriverIds = await repo.cancelAllAssignments(rideId)
+  for (const id of cancelledDriverIds) socketEvents.sendRequestExpired(id, rideId.toString())
+
+  const sessionId = BigInt(candidate.session_id!)
+  const billingMode = await repo.getCityBillingMode(workingRide.origin_city_id!)
+
+  if (mode === 'force') {
+    await repo.createRideAssignment({ rideId, driverId, sessionId, expiresAt: new Date(), broadcastRound: 0 })
+
+    const cancelledOnAccept = await repo.acceptAssignment(rideId, driverId, billingMode)
+    if (cancelledOnAccept === false) {
+      throw Object.assign(new Error('Ride was accepted by another driver — please refresh'), { httpStatus: 409 })
+    }
+    for (const id of cancelledOnAccept) socketEvents.sendRequestExpired(id, rideId.toString())
+
+    const graceMs = FORCE_ASSIGN_GRACE_MINUTES * 60_000
+    const job = await queues[QUEUE_NAMES.DISPATCH].add(
+      'force_assign_grace_check',
+      { rideId: rideId.toString(), driverId: driverId.toString() },
+      { delay: graceMs, attempts: 1, removeOnComplete: true }
+    )
+    if (job.id) await repo.setForceAssignGraceJob(rideId, job.id)
+
+    await repo.logStatusHistory({
+      rideId, fromStatus: 'requested', toStatus: 'accepted',
+      actor: 'admin', actorId: adminId, note: `Force-assigned to driver ${driverId}`,
+    })
+
+    socketEvents.sendDriverAssigned(rideId.toString(), { rideId: rideId.toString(), driverId: driverId.toString() })
+    await notifyOwner({
+      ownerType: 'driver', ownerId: driverId, type: 'ride_force_assigned',
+      title: 'You have a new ride', body: 'An admin has assigned you a ride — check your active ride screen.',
+      rideId, tag: `ride-${rideId}`,
+    })
+    return { success: true, mode: 'force' }
+  }
+
+  const timeoutSeconds = MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS
+  const expiresAt = new Date(Date.now() + timeoutSeconds * 1000)
+  await repo.createRideAssignment({ rideId, driverId, sessionId, expiresAt, broadcastRound: 0 })
+  await redis.set(rideAckKey(rideId.toString(), driverId.toString()), '1', 'EX', timeoutSeconds + 30)
+
+  socketEvents.sendRideRequest(driverId.toString(), {
+    rideId: rideId.toString(),
+    pickup: workingRide.origin_address ?? 'Pickup location',
+    drop: workingRide.destination_address ?? 'Destination',
+    pickupLat: workingRide.origin_lat,
+    pickupLng: workingRide.origin_lng,
+    distanceToPickup: Math.round(candidate.distance_metres ?? 0),
+    estimatedFare: workingRide.total_estimated != null ? parseFloat(workingRide.total_estimated) : 0,
+    rideType: workingRide.ride_type,
+    isReturnCab: workingRide.is_return_cab,
+    expiresAt: expiresAt.toISOString(),
+    timeoutSeconds,
+    assignedByOps: true,
+  })
+
+  // Fallback: processBroadcast() already no-ops when the ride is no longer
+  // 'requested', so firing this unconditionally is safe — it only actually
+  // rebroadcasts if the manual offer above was declined/timed out.
+  // Deterministic jobId scoped to the ride: if the admin re-assigns the same
+  // ride to a different driver while this offer is still pending, we cancel
+  // the stale fallback below instead of leaving two fallback timers in flight
+  // (the earlier one could otherwise broadcast over the new manual offer).
+  const fallbackJobId = `manual-assign-fallback-${rideId}`
+  const existingFallback = await queues[QUEUE_NAMES.DISPATCH].getJob(fallbackJobId)
+  if (existingFallback) {
+    await existingFallback.remove().catch(() => {})
+  }
+  await queues[QUEUE_NAMES.DISPATCH].add(
+    'broadcast_ride',
+    {
+      rideId: rideId.toString(),
+      categoryId: workingRide.category_id.toString(),
+      originLat: workingRide.origin_lat,
+      originLng: workingRide.origin_lng,
+      rideType: workingRide.ride_type,
+      isReturnCab: workingRide.is_return_cab,
+      broadcastRound: 1,
+    },
+    { delay: (timeoutSeconds + 2) * 1000, attempts: 1, removeOnComplete: true, jobId: fallbackJobId }
+  )
+
+  await repo.logStatusHistory({
+    rideId, fromStatus: workingRide.status, toStatus: workingRide.status,
+    actor: 'admin', actorId: adminId, note: `Manually offered to driver ${driverId}, awaiting response`,
+  })
+  await notifyOwner({
+    ownerType: 'driver', ownerId: driverId, type: 'ride_manual_request',
+    title: 'Ride assigned to you', body: 'An admin has selected you for a ride — respond within 30s.',
+    rideId, tag: `ride-${rideId}`,
+  })
+
+  return { success: true, mode: 'request' }
+}
+
+export async function forceAssignGraceCheck(rideId: bigint, driverId: bigint): Promise<void> {
+  const hasActivity = await repo.hasRideGpsActivity(rideId, driverId)
+  if (hasActivity) {
+    await repo.clearForceAssignGraceJob(rideId)
+    return
+  }
+
+  const ride = await repo.getRideById(rideId)
+  if (!ride || ride.status !== 'accepted' || !ride.driver_id || BigInt(ride.driver_id) !== driverId) return
+
+  const reverted = await repo.revertForceAssign(rideId, driverId)
+  if (!reverted) return
+
+  await repo.logStatusHistory({
+    rideId, fromStatus: 'accepted', toStatus: 'requested', actor: 'system',
+    note: `Force-assigned driver ${driverId} showed no activity within the grace period — reverted to unassigned`,
+  })
+
+  await notifyAllAdmins({
+    type: 'force_assign_reverted',
+    title: 'Force-assigned ride reverted',
+    body: `Ride #${rideId} was force-assigned but the driver never responded — it's unassigned again.`,
+    rideId,
+  }).catch(() => {})
+
+  await queues[QUEUE_NAMES.DISPATCH].add(
+    'broadcast_ride',
+    {
+      rideId: rideId.toString(),
+      categoryId: ride.category_id.toString(),
+      originLat: ride.origin_lat,
+      originLng: ride.origin_lng,
+      rideType: ride.ride_type,
+      isReturnCab: ride.is_return_cab,
+      broadcastRound: 1,
+    },
+    { delay: 0, attempts: 2, removeOnComplete: true }
+  )
 }
 
 // ── Orphaned-ride sweep (cleanup worker) ────────────────────────

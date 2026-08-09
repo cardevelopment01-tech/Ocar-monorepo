@@ -222,7 +222,7 @@ export default function App() {
       estimatedFare: number; rideType: string; isReturnCab: boolean; expiresAt: string;
       timeoutSeconds: number; pickupLat?: number; pickupLng?: number;
       destinationLat?: number; destinationLng?: number; returnAt?: string; tripHours?: number;
-      stopCount?: number; rideCategoryName?: string;
+      stopCount?: number; rideCategoryName?: string; assignedByOps?: boolean;
     }) => {
       const pLat = data.pickupLat ?? DEFAULT_LAT
       const pLng = data.pickupLng ?? DEFAULT_LNG
@@ -246,6 +246,7 @@ export default function App() {
       }
       if (data.stopCount !== undefined) incomingReq.stopCount = data.stopCount
       if (data.rideCategoryName !== undefined) incomingReq.rideCategoryName = data.rideCategoryName
+      if (data.assignedByOps !== undefined) incomingReq.assignedByOps = data.assignedByOps
       setIncomingRequest(incomingReq)
       // Confirm receipt so the server stops the retry loop for this driver
       socket.emit('ride:request:ack', { rideId: data.rideId })
@@ -557,6 +558,7 @@ export default function App() {
               returnAt={incomingRequest.returnAt}
               stopCount={incomingRequest.stopCount}
               rideCategoryName={incomingRequest.rideCategoryName}
+              assignedByOps={incomingRequest.assignedByOps}
               pickupLat={incomingRequest.pickupLat}
               pickupLng={incomingRequest.pickupLng}
               isAccepting={accepting}

@@ -1,5 +1,5 @@
 import { pool } from '@/db/client'
-import type { BillingMode, DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
+import type { AssignCandidate, BillingMode, DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
 import {
   STALE_REQUESTED_MINUTES,
   STALE_ACCEPTED_HOURS,
@@ -906,6 +906,127 @@ export async function cancelAllAssignments(rideId: bigint): Promise<string[]> {
     [rideId]
   )
   return res.rows.map(r => r.driver_id)
+}
+
+export async function getCityBillingMode(cityId: bigint): Promise<BillingMode> {
+  const res = await pool.query<{ billing_mode: BillingMode }>(
+    `SELECT billing_mode FROM cities WHERE id = $1`,
+    [cityId]
+  )
+  // Unlike getRideById et al., a missing city here is always a caller bug
+  // (the ride's origin_city_id came from the DB), not a normal not-found
+  // path a service layer needs to branch on — so throw directly.
+  if (!res.rows.length) {
+    throw Object.assign(new Error('City not found'), { httpStatus: 404 })
+  }
+  return res.rows[0]!.billing_mode
+}
+
+export async function hasRideGpsActivity(rideId: bigint, driverId: bigint): Promise<boolean> {
+  const res = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS(SELECT 1 FROM gps_tracks WHERE ride_id = $1 AND driver_id = $2) AS exists`,
+    [rideId, driverId]
+  )
+  return res.rows[0]?.exists ?? false
+}
+
+// Every driver in the ride's city, eligible or not — the admin picker shows
+// ineligible drivers greyed out with a reason rather than hiding them.
+// Mirrors the same gates findNearbyDrivers() uses for broadcast, minus the
+// geo-radius cutoff (admin is intentionally picking outside auto-match range).
+export async function getAssignCandidates(params: {
+  cityId: bigint
+  rideLat: number
+  rideLng: number
+  categoryIds: bigint[]
+  minWalletBalance: number
+}): Promise<AssignCandidate[]> {
+  const res = await pool.query<Omit<AssignCandidate, 'eligible'>>(
+    `SELECT
+       d.id::text AS driver_id,
+       d.full_name AS driver_name,
+       d.phone AS driver_phone,
+       ds.id::text AS session_id,
+       ds.category_id::text AS category_id,
+       vc.display_name AS category_name,
+       (ds.id IS NOT NULL AND ds.status = 'online' AND ds.mode = 'standard') AS is_online,
+       (ds.category_id = ANY($4::bigint[])) AS category_ok,
+       COALESCE(
+         (dc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $5 AND NOT COALESCE(dw.is_frozen, false))
+         OR
+         (dc.billing_mode = 'package' AND COALESCE(dpw.balance, 0) > 0 AND NOT COALESCE(dpw.is_frozen, false)),
+         false
+       ) AS wallet_ok,
+       CASE WHEN dls.location IS NOT NULL THEN
+         ST_Distance(
+           dls.location,
+           ST_SetSRID(ST_MakePoint($3::float8, $2::float8), 4326)::geography
+         )
+       ELSE NULL END AS distance_metres
+     FROM drivers d
+     JOIN cities dc ON dc.id = d.city_id AND dc.status = 'active'
+     LEFT JOIN driver_sessions ds ON ds.driver_id = d.id AND ds.status = 'online'
+     LEFT JOIN driver_location_snapshots dls ON dls.session_id = ds.id
+     LEFT JOIN vehicle_categories vc ON vc.id = ds.category_id
+     LEFT JOIN driver_wallets dw ON dw.driver_id = d.id
+     LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = d.id
+     WHERE d.city_id = $1
+     ORDER BY distance_metres ASC NULLS LAST, d.full_name ASC
+     -- Fixed cap (not parameterized like findNearbyDrivers' maxDrivers) — this is
+     -- an admin-only picker list, not a per-call-tunable matching algorithm.
+     LIMIT 50`,
+    [params.cityId, params.rideLat, params.rideLng, params.categoryIds, params.minWalletBalance]
+  )
+  return res.rows.map(r => ({ ...r, eligible: r.is_online && r.category_ok && r.wallet_ok }))
+}
+
+export async function setForceAssignGraceJob(rideId: bigint, jobId: string): Promise<void> {
+  await pool.query(`UPDATE rides SET force_assign_grace_job_id = $2 WHERE id = $1`, [rideId, jobId])
+}
+
+export async function clearForceAssignGraceJob(rideId: bigint): Promise<void> {
+  await pool.query(`UPDATE rides SET force_assign_grace_job_id = NULL WHERE id = $1`, [rideId])
+}
+
+// Reverts a force-assigned ride back to unassigned if the driver never showed
+// activity within the grace window. CAS on (driver_id, status='accepted') so
+// a ride that already progressed (driver_arrived/in_progress/etc.) is left alone.
+export async function revertForceAssign(rideId: bigint, driverId: bigint): Promise<boolean> {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const res = await client.query(
+      `UPDATE rides
+       SET status = 'requested', driver_id = NULL, accepted_at = NULL,
+           force_assign_grace_job_id = NULL, updated_at = now()
+       WHERE id = $1 AND driver_id = $2 AND status = 'accepted'
+       RETURNING id`,
+      [rideId, driverId]
+    )
+
+    if (!res.rows.length) {
+      await client.query('ROLLBACK')
+      return false
+    }
+
+    await client.query(
+      `UPDATE driver_sessions SET status = 'online' WHERE driver_id = $1 AND status = 'on_trip'`,
+      [driverId]
+    )
+    await client.query(
+      `UPDATE driver_location_snapshots SET is_available = true WHERE driver_id = $1`,
+      [driverId]
+    )
+
+    await client.query('COMMIT')
+    return true
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
 export async function getUserRideHistory(
