@@ -913,6 +913,9 @@ export async function getCityBillingMode(cityId: bigint): Promise<BillingMode> {
     `SELECT billing_mode FROM cities WHERE id = $1`,
     [cityId]
   )
+  // Unlike getRideById et al., a missing city here is always a caller bug
+  // (the ride's origin_city_id came from the DB), not a normal not-found
+  // path a service layer needs to branch on — so throw directly.
   if (!res.rows.length) {
     throw Object.assign(new Error('City not found'), { httpStatus: 404 })
   }
@@ -969,6 +972,8 @@ export async function getAssignCandidates(params: {
      LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = d.id
      WHERE d.city_id = $1
      ORDER BY distance_metres ASC NULLS LAST, d.full_name ASC
+     -- Fixed cap (not parameterized like findNearbyDrivers' maxDrivers) — this is
+     -- an admin-only picker list, not a per-call-tunable matching algorithm.
      LIMIT 50`,
     [params.cityId, params.rideLat, params.rideLng, params.categoryIds, params.minWalletBalance]
   )

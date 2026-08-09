@@ -68,6 +68,11 @@ describe('getAssignCandidates', () => {
     })
 
     expect(result.map(r => r.eligible)).toEqual([true, false, false])
+
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('ds.category_id = ANY($4::bigint[])')
+    expect(params[0]).toBe(1n) // cityId
+    expect(params[3]).toEqual([2n]) // categoryIds
   })
 })
 
