@@ -43,6 +43,7 @@ interface TripRequestCardProps {
   timeRemaining: number
   rideType: string
   rideCategoryName?: string
+  assignedByOps?: boolean
   tripHours?: number
   returnAt?: string
   stopCount?: number
@@ -64,7 +65,7 @@ const RIDE_TYPE_BADGE: Record<string, { label: string; bg: string; color: string
 
 export default function TripRequestCard({
   pickup, drop, pickupDistance, tripDistance, fare,
-  timeRemaining: initialTime, rideType, rideCategoryName, tripHours, returnAt, stopCount,
+  timeRemaining: initialTime, rideType, rideCategoryName, assignedByOps, tripHours, returnAt, stopCount,
   pickupLat, pickupLng, isAccepting, accepted, failed, onAccept, onDecline,
 }: TripRequestCardProps) {
   const [time, setTime] = useState(initialTime)
@@ -219,6 +220,14 @@ export default function TripRequestCard({
                   style={{ background: 'rgba(10,159,176,0.18)', color: C.primary }}
                 >
                   {rideCategoryName} ride
+                </span>
+              )}
+              {assignedByOps && (
+                <span
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{ background: 'rgba(14,165,233,0.15)', color: C.info }}
+                >
+                  Assigned by Ops
                 </span>
               )}
             </div>

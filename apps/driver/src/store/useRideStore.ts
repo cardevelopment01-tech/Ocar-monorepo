@@ -56,6 +56,7 @@ interface RideState {
     returnAt?: string
     stopCount?: number
     rideCategoryName?: string
+    assignedByOps?: boolean
   } | null
   unreadChatCount: number
 
