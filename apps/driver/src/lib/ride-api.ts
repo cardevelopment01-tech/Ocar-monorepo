@@ -117,6 +117,14 @@ export const driverRideApi = {
     await api.post('/api/v1/rides/sessions/offline', { reason })
   },
 
+  pause: async (): Promise<void> => {
+    await api.post('/api/v1/rides/sessions/pause')
+  },
+
+  resume: async (): Promise<void> => {
+    await api.post('/api/v1/rides/sessions/resume')
+  },
+
   updateLocation: async (params: {
     sessionId: number
     lat: number
