@@ -16,6 +16,7 @@ import {
   setForceAssignGraceJob,
   clearForceAssignGraceJob,
   revertForceAssign,
+  expireAssignment,
 } from './rides.repository'
 
 describe('getCityBillingMode', () => {
@@ -71,6 +72,7 @@ describe('getAssignCandidates', () => {
 
     const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]]
     expect(sql).toContain('ds.category_id = ANY($4::bigint[])')
+    expect(sql).toContain("d.status = 'active'")
     expect(params[0]).toBe(1n) // cityId
     expect(params[3]).toEqual([2n]) // categoryIds
   })
@@ -89,6 +91,16 @@ describe('setForceAssignGraceJob / clearForceAssignGraceJob', () => {
     mockQuery.mockResolvedValueOnce({ rows: [] })
     await clearForceAssignGraceJob(5n)
     expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('force_assign_grace_job_id = NULL'), [5n])
+  })
+})
+
+describe('expireAssignment', () => {
+  beforeEach(() => { mockQuery.mockReset() })
+
+  it('marks the offered assignment as expired', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+    await expireAssignment(5n, 9n)
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("status = 'expired'"), [5n, 9n])
   })
 })
 

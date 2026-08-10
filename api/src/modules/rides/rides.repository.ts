@@ -908,6 +908,19 @@ export async function cancelAllAssignments(rideId: bigint): Promise<string[]> {
   return res.rows.map(r => r.driver_id)
 }
 
+// Marks a single manually-offered assignment as expired ahead of the
+// fallback broadcast — keeps the audit row honest ('expired', not stuck
+// 'offered' forever) once the manual offer's window has passed. Does not
+// affect createRideAssignment's ON CONFLICT DO NOTHING behavior.
+export async function expireAssignment(rideId: bigint, driverId: bigint): Promise<void> {
+  await pool.query(
+    `UPDATE ride_assignments
+     SET status = 'expired', responded_at = now()
+     WHERE ride_id = $1 AND driver_id = $2 AND status = 'offered'`,
+    [rideId, driverId]
+  )
+}
+
 export async function getCityBillingMode(cityId: bigint): Promise<BillingMode> {
   const res = await pool.query<{ billing_mode: BillingMode }>(
     `SELECT billing_mode FROM cities WHERE id = $1`,
@@ -970,7 +983,7 @@ export async function getAssignCandidates(params: {
      LEFT JOIN vehicle_categories vc ON vc.id = ds.category_id
      LEFT JOIN driver_wallets dw ON dw.driver_id = d.id
      LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = d.id
-     WHERE d.city_id = $1
+     WHERE d.city_id = $1 AND d.status = 'active'
      ORDER BY distance_metres ASC NULLS LAST, d.full_name ASC
      -- Fixed cap (not parameterized like findNearbyDrivers' maxDrivers) — this is
      -- an admin-only picker list, not a per-call-tunable matching algorithm.
