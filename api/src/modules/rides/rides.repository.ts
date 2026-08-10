@@ -962,6 +962,7 @@ export async function getAssignCandidates(params: {
        ds.id::text AS session_id,
        ds.category_id::text AS category_id,
        vc.display_name AS category_name,
+       dc.billing_mode AS city_billing_mode,
        (ds.id IS NOT NULL AND ds.status = 'online' AND ds.mode = 'standard') AS is_online,
        (ds.category_id = ANY($4::bigint[])) AS category_ok,
        COALESCE(

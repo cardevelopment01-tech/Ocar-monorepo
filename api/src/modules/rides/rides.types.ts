@@ -146,6 +146,7 @@ export interface AssignCandidate {
   session_id: string | null
   category_id: string | null
   category_name: string | null
+  city_billing_mode: BillingMode
   is_online: boolean
   category_ok: boolean
   wallet_ok: boolean

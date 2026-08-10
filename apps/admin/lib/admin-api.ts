@@ -324,6 +324,7 @@ export interface AssignCandidate {
   driver_name: string
   driver_phone: string
   category_name: string | null
+  city_billing_mode: 'commission' | 'package'
   is_online: boolean
   category_ok: boolean
   wallet_ok: boolean
