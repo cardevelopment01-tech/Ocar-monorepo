@@ -4,12 +4,17 @@ import * as repo from '@/modules/rides/rides.repository'
 import {
   expireStaleRequestedRide,
   expireStaleAcceptedOrArrivedRide,
+  pauseAvailability,
+  goOffline,
 } from '@/modules/rides/rides.service'
+import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { socketEvents } from '@/websocket/socket.server'
 import {
   STALE_REQUESTED_MINUTES,
   STALE_ACCEPTED_HOURS,
   STALE_DRIVER_ARRIVED_HOURS,
+  IDLE_HEARTBEAT_PAUSE_SECONDS,
+  IDLE_HEARTBEAT_OFFLINE_MINUTES,
 } from '@/constants/limits'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
@@ -45,6 +50,26 @@ export const cleanupWorker = new Worker(
     }
     for (const ride of await repo.findStaleAcceptedOrArrivedRides(STALE_ACCEPTED_HOURS, STALE_DRIVER_ARRIVED_HOURS)) {
       await expireStaleAcceptedOrArrivedRide(BigInt(ride.id), ride.status, BigInt(ride.driver_id))
+    }
+
+    // Idle-driver heartbeat: the client's own visibilitychange/pagehide handlers
+    // (apps/driver/src/App.tsx) are the primary signal and react within a second —
+    // this sweep only catches drivers who never got to report anything (real crash,
+    // OS-killed process, battery death). Short tier pulls them out of the matching
+    // pool; only the long tier actually ends the session.
+    for (const d of await repo.findStaleOnlineDrivers(IDLE_HEARTBEAT_PAUSE_SECONDS)) {
+      await pauseAvailability(BigInt(d.driver_id))
+    }
+    for (const d of await repo.findStaleOnlineDrivers(IDLE_HEARTBEAT_OFFLINE_MINUTES * 60)) {
+      await goOffline(BigInt(d.driver_id), 'stale_heartbeat')
+      await notifyOwner({
+        ownerType: 'driver',
+        ownerId:   BigInt(d.driver_id),
+        type:      'session_ended_stale',
+        title:     'You went offline',
+        body:      "We lost connection to your device and paused your online status. Tap Go Online to start again.",
+        tag:       'session-status',
+      }).catch((err: unknown) => log.error({ err, driverId: d.driver_id }, 'stale-offline notify failed'))
     }
   },
   { connection: redisConnection }
