@@ -1478,6 +1478,10 @@ export async function adminAssignDriver(
   if (existingFallback) {
     await existingFallback.remove().catch(() => {})
   }
+  // By the time this fallback can fire (timeoutSeconds + 2s later), the manual
+  // offer's own window has already passed — mark it expired now so the audit
+  // trail is accurate instead of stuck 'offered' forever.
+  await repo.expireAssignment(rideId, driverId)
   await queues[QUEUE_NAMES.DISPATCH].add(
     'broadcast_ride',
     {
@@ -1492,10 +1496,15 @@ export async function adminAssignDriver(
     { delay: (timeoutSeconds + 2) * 1000, attempts: 1, removeOnComplete: true, jobId: fallbackJobId }
   )
 
-  await repo.logStatusHistory({
-    rideId, fromStatus: workingRide.status, toStatus: workingRide.status,
-    actor: 'admin', actorId: adminId, note: `Manually offered to driver ${driverId}, awaiting response`,
-  })
+  // Only log this when the ride was already 'requested' on entry — otherwise
+  // the CAS-transition block above already logged a history row for this
+  // same admin action, and this would just be a same-status duplicate.
+  if (ride.status === 'requested') {
+    await repo.logStatusHistory({
+      rideId, fromStatus: workingRide.status, toStatus: workingRide.status,
+      actor: 'admin', actorId: adminId, note: `Manually offered to driver ${driverId}, awaiting response`,
+    })
+  }
   await notifyOwner({
     ownerType: 'driver', ownerId: driverId, type: 'ride_manual_request',
     title: 'Ride assigned to you', body: 'An admin has selected you for a ride — respond within 30s.',
@@ -1522,6 +1531,8 @@ export async function forceAssignGraceCheck(rideId: bigint, driverId: bigint): P
     rideId, fromStatus: 'accepted', toStatus: 'requested', actor: 'system',
     note: `Force-assigned driver ${driverId} showed no activity within the grace period — reverted to unassigned`,
   })
+
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'requested', reason: 'force_assign_reverted' })
 
   await notifyAllAdmins({
     type: 'force_assign_reverted',
