@@ -296,6 +296,39 @@ export default function App() {
     return () => { cancelled = true; sentinel?.release().catch(() => {}) }
   }, [isOnline])
 
+  // Idle-driver availability follows tab visibility: pause matching the instant
+  // the tab backgrounds (screen lock, app switch — the driver app is a browser
+  // tab with no background-GPS capability, so this is the primary signal, not
+  // just a nicety), resume the instant it's visible again. Silent both ways —
+  // no toast, no navigation. Only applies while online with no active ride;
+  // mid-trip visibility changes (screen off while driving) are left alone —
+  // that's governed entirely by the server-side ride sweep, not this.
+  useEffect(() => {
+    if (!isOnline || activeRide) return
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        driverRideApi.pause().catch(() => {})
+      } else {
+        driverRideApi.resume().catch(() => {})
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [isOnline, activeRide])
+
+  // Tab close / navigate away while idle-online: best-effort pause via
+  // sendBeacon, the one API that reliably fires during unload where fetch is
+  // not guaranteed to. No body needed — the endpoint reads driverId from the
+  // auth cookie/header already attached by the browser for same-origin requests.
+  useEffect(() => {
+    if (!isOnline || activeRide) return
+    const onPageHide = () => {
+      navigator.sendBeacon('/api/v1/rides/sessions/pause')
+    }
+    window.addEventListener('pagehide', onPageHide)
+    return () => window.removeEventListener('pagehide', onPageHide)
+  }, [isOnline, activeRide])
+
   // Listen for user-initiated cancellation while a ride is active.
   // Scoped to activeRide.id so it attaches/detaches with the ride lifecycle.
   // Also re-joins the ride room on socket reconnect, since room membership is lost
