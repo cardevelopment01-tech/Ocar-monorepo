@@ -207,7 +207,13 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated) return
     const socket = getDriverSocket()
-    const onNotification = (item: NotificationItem) => addLive(item)
+    const onNotification = (item: NotificationItem) => {
+      addLive(item)
+      if (item.type === 'session_ended_stale') {
+        setOffline()
+        disconnectDriverSocket()
+      }
+    }
     socket.on('notification:new', onNotification)
     return () => { socket.off('notification:new', onNotification) }
   }, [isAuthenticated]) // eslint-disable-line react-hooks/exhaustive-deps
