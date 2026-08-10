@@ -247,6 +247,18 @@ export async function goOffline(driverId: bigint, reason = 'driver_choice') {
   return session
 }
 
+export async function pauseAvailability(driverId: bigint): Promise<void> {
+  const session = await repo.getActiveSession(driverId)
+  if (!session || session.status !== 'online') return
+  await repo.setDriverAvailability(driverId, false)
+}
+
+export async function resumeAvailability(driverId: bigint): Promise<void> {
+  const session = await repo.getActiveSession(driverId)
+  if (!session || session.status !== 'online') return
+  await repo.setDriverAvailability(driverId, true)
+}
+
 // Last raw ping per driver, so each new ping can be road-snapped together with
 // its predecessor (the exact hop where a straight chord would cut through a
 // building/lake, or across a turn) — keyed by driverId (a small, slowly-growing

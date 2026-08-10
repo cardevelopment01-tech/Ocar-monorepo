@@ -113,6 +113,20 @@ router.post('/sessions/location', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+router.post('/sessions/pause', authenticate(), async (req, res, next) => {
+  try {
+    await service.pauseAvailability(req.driver!.id)
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
+router.post('/sessions/resume', authenticate(), async (req, res, next) => {
+  try {
+    await service.resumeAvailability(req.driver!.id)
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
 router.get('/sessions/current', authenticate(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id
