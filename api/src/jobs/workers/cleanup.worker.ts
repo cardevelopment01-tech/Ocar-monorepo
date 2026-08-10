@@ -52,8 +52,8 @@ export const cleanupWorker = new Worker(
       await expireStaleAcceptedOrArrivedRide(BigInt(ride.id), ride.status, BigInt(ride.driver_id))
     }
 
-    // Idle-driver heartbeat: the client's own visibilitychange/pagehide handlers
-    // (apps/driver/src/App.tsx) are the primary signal and react within a second —
+    // Idle-driver heartbeat: the client's own visibilitychange handler
+    // (apps/driver/src/App.tsx) is the primary signal and reacts within a second —
     // this sweep only catches drivers who never got to report anything (real crash,
     // OS-killed process, battery death). Short tier pulls them out of the matching
     // pool; only the long tier actually ends the session.
