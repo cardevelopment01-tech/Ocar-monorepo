@@ -62,6 +62,8 @@ export const cleanupWorker = new Worker(
     }
     for (const d of await repo.findStaleOnlineDrivers(IDLE_HEARTBEAT_OFFLINE_MINUTES * 60)) {
       await goOffline(BigInt(d.driver_id), 'stale_heartbeat')
+      // Hardcoded copy, not a notification_templates row (unlike most other notification
+      // types) — deliberately out of scope for this fix; revisit if ops needs to edit this wording.
       await notifyOwner({
         ownerType: 'driver',
         ownerId:   BigInt(d.driver_id),

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { IDLE_HEARTBEAT_PAUSE_SECONDS, IDLE_HEARTBEAT_OFFLINE_MINUTES } from '@/constants/limits'
 
 vi.mock('@/modules/rides/rides.repository', () => ({
   findStaleInProgressRides:        vi.fn(),
@@ -93,5 +94,25 @@ describe('cleanup worker — idle heartbeat sweep', () => {
       ownerId:   BigInt(7),
       type:      'session_ended_stale',
     }))
+    expect(repo.findStaleOnlineDrivers).toHaveBeenNthCalledWith(1, IDLE_HEARTBEAT_PAUSE_SECONDS)
+    expect(repo.findStaleOnlineDrivers).toHaveBeenNthCalledWith(2, IDLE_HEARTBEAT_OFFLINE_MINUTES * 60)
+  })
+
+  it('a driver stale past both tiers gets both actions, without erroring or double-notifying', async () => {
+    vi.mocked(repo.findStaleInProgressRides).mockResolvedValue([])
+    // Real usage: a driver stale 15 minutes matches BOTH the short-tier and
+    // long-tier queries (both are unbounded "stale beyond X" checks) — this
+    // locks in that dual-firing is handled cleanly, not just theoretically safe.
+    vi.mocked(repo.findStaleOnlineDrivers).mockResolvedValue([{ driver_id: '7' }] as never)
+
+    const { cleanupWorker } = await import('@/jobs/workers/cleanup.worker')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (cleanupWorker as any).__processor()
+
+    expect(pauseAvailability).toHaveBeenCalledTimes(1)
+    expect(pauseAvailability).toHaveBeenCalledWith(BigInt(7))
+    expect(goOffline).toHaveBeenCalledTimes(1)
+    expect(goOffline).toHaveBeenCalledWith(BigInt(7), 'stale_heartbeat')
+    expect(notifyOwner).toHaveBeenCalledTimes(1)
   })
 })
