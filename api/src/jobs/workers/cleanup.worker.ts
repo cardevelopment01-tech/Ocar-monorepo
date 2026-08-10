@@ -2,7 +2,6 @@ import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import * as repo from '@/modules/rides/rides.repository'
 import {
-  forceResolveRide,
   expireStaleRequestedRide,
   expireStaleAcceptedOrArrivedRide,
 } from '@/modules/rides/rides.service'
@@ -17,10 +16,14 @@ import { createWorkerLogger } from '@/lib/worker-logger'
 const log = createWorkerLogger('cleanup')
 
 // Ride stuck in_progress with no driver heartbeat (driver_location_snapshots.recorded_at):
-//  - past FLAG_AFTER_SECONDS  -> flag for review, notify rider + admin ops
-//  - past CANCEL_AFTER_SECONDS -> auto-cancel (no fare — the trip was never verifiable)
-const FLAG_AFTER_SECONDS   = 10 * 60
-const CANCEL_AFTER_SECONDS = 30 * 60
+// past FLAG_AFTER_SECONDS -> flag for review, notify rider + admin ops.
+// Deliberately does NOT auto-cancel past any further threshold — the driver app
+// is a browser tab with no background-GPS capability, so GPS silence past 30
+// minutes is close to guaranteed on any real multi-hour trip once the tab
+// backgrounds (screen lock, switching to Maps for turn-by-turn). Auto-cancelling
+// a live ride on that signal alone force-ends real trips with zero fare to the
+// driver. A flagged ride is resolved by a human at ops, never by a timer.
+const FLAG_AFTER_SECONDS = 10 * 60
 
 export const cleanupWorker = new Worker(
   QUEUE_NAMES.CLEANUP,
@@ -28,17 +31,9 @@ export const cleanupWorker = new Worker(
     const staleRides = await repo.findStaleInProgressRides(FLAG_AFTER_SECONDS)
 
     for (const ride of staleRides) {
-      const rideId = BigInt(ride.id)
-
       if (!ride.review_flagged_at) {
-        await repo.flagRideForReview(rideId, 'gps_stale')
+        await repo.flagRideForReview(BigInt(ride.id), 'gps_stale')
         socketEvents.sendStuckRideFlagged(ride.id, { reason: 'gps_stale' })
-        continue
-      }
-
-      const flaggedForSeconds = (Date.now() - new Date(ride.review_flagged_at).getTime()) / 1000
-      if (flaggedForSeconds > CANCEL_AFTER_SECONDS - FLAG_AFTER_SECONDS) {
-        await forceResolveRide(rideId, 'cancelled', 'timeout', 'auto-cancelled: no driver heartbeat')
       }
     }
 
