@@ -77,3 +77,11 @@ export const STALE_REQUESTED_MINUTES = 20
 export const STALE_ACCEPTED_HOURS = 3
 export const STALE_DRIVER_ARRIVED_HOURS = 1
 export const STALE_IN_PROGRESS_CEILING_HOURS = 12
+
+// Idle "online" (not on_trip) driver whose GPS ping has gone stale — see
+// cleanup.worker.ts's idle-heartbeat sweep. Two tiers: pull from the matching
+// pool fast (cheap, reversible — a driver's tab backgrounding is the primary,
+// client-reported path, this is only the backstop for a real crash/OS-kill),
+// end the session only after a much longer silence.
+export const IDLE_HEARTBEAT_PAUSE_SECONDS = 90
+export const IDLE_HEARTBEAT_OFFLINE_MINUTES = 10
