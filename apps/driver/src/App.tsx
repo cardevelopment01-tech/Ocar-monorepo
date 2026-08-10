@@ -310,12 +310,15 @@ export default function App() {
     // the live event, since Socket.io doesn't replay missed events on
     // reconnect. Without this being called from both places, the driver's
     // screen would stay stuck showing the trip as active forever.
-    const resolveRideExternally = (status: string, resolvedBy?: string) => {
+    const resolveRideExternally = (status: string, resolvedBy?: string, reason?: string) => {
       const isForceResolved = status === 'completed' && !!resolvedBy
-      if (status !== 'cancelled' && !isForceResolved) return
+      const isForceAssignReverted = status === 'requested' && reason === 'force_assign_reverted'
+      if (status !== 'cancelled' && !isForceResolved && !isForceAssignReverted) return
       socket.emit('leave:ride', activeRide.id)
       clearRide()
-      if (resolvedBy === 'timeout') {
+      if (isForceAssignReverted) {
+        setForceEndedMessage('This ride was reassigned to another driver')
+      } else if (resolvedBy === 'timeout') {
         setForceEndedMessage('This trip was automatically ended due to inactivity')
       } else if (resolvedBy === 'admin') {
         setForceEndedMessage('This trip was ended by support')
@@ -324,16 +327,24 @@ export default function App() {
       }
       navigate('/', { replace: true })
     }
-    const onStatusUpdate = (data: { status: string; resolvedBy?: string }) => {
+    const onStatusUpdate = (data: { status: string; resolvedBy?: string; reason?: string }) => {
       // resolvedBy is only set by the stuck-ride sweeper/admin force-resolve,
       // normal driver-initiated completion (verifyEndOtp) never sets it, so
       // this doesn't interfere with the driver's own end-of-trip navigation.
-      resolveRideExternally(data.status, data.resolvedBy)
+      // reason is set when an admin's manual force-assign is auto-reverted
+      // after the assigned driver never showed GPS activity within the grace
+      // period — the ride goes back to 'requested' and this driver was freed
+      // server-side, so their "active ride" screen must clear too.
+      resolveRideExternally(data.status, data.resolvedBy, data.reason)
     }
     // Re-checks truth from the server on every (re)connect instead of trusting
     // only the live push event — closes the gap above. RideDetail doesn't
-    // expose resolvedBy, so this only recognizes plain 'cancelled'; that's
-    // the scenario the stale-GPS sweeper actually produces.
+    // expose resolvedBy or reason, so this only recognizes plain 'cancelled';
+    // that's the scenario the stale-GPS sweeper actually produces. A
+    // force-assign revert landing in the exact same reconnect window as this
+    // resync (rather than via the live socket event) is a narrow known gap —
+    // RideDetail has no field to distinguish it from any other 'requested'
+    // ride, and the live event above is the primary delivery path anyway.
     const resyncRideStatus = async () => {
       try {
         const ride = await driverRideApi.getRide(activeRide.id)

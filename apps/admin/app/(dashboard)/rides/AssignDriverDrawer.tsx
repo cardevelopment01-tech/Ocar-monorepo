@@ -19,9 +19,14 @@ export default function AssignDriverDrawer({ ride, onClose, onAssigned }: Props)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [assigningId, setAssigningId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showOffline, setShowOffline] = useState(false)
 
   useEffect(() => {
     if (!ride) return
+    setConfirmingId(null)
+    setAssigningId(null)
+    setSearch('')
+    setShowOffline(false)
     setLoading(true)
     setError(null)
     adminRideApi.getAssignCandidates(ride.id)
@@ -50,9 +55,10 @@ export default function AssignDriverDrawer({ ride, onClose, onAssigned }: Props)
     }
   }
 
-  const filtered = candidates.filter(c =>
-    !search || c.driver_name.toLowerCase().includes(search.toLowerCase()) || c.driver_phone.includes(search)
-  )
+  const filtered = candidates.filter(c => {
+    if (!showOffline && c.is_online === false) return false
+    return !search || c.driver_name.toLowerCase().includes(search.toLowerCase()) || c.driver_phone.includes(search)
+  })
 
   return (
     <AnimatePresence>
@@ -100,6 +106,13 @@ export default function AssignDriverDrawer({ ride, onClose, onAssigned }: Props)
                   className={`px-3 py-1.5 rounded-full font-semibold transition-colors duration-150 ${mode === 'force' ? 'bg-primary text-white' : 'bg-surface-2 text-text-muted'}`}
                 >
                   Force Assign
+                </button>
+                <span className="text-text-muted ml-2">Filter:</span>
+                <button
+                  onClick={() => setShowOffline(v => !v)}
+                  className={`px-3 py-1.5 rounded-full font-semibold transition-colors duration-150 ${showOffline ? 'bg-primary text-white' : 'bg-surface-2 text-text-muted'}`}
+                >
+                  Show offline drivers
                 </button>
               </div>
             </div>

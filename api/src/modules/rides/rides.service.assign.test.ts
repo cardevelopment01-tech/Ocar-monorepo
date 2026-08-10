@@ -8,6 +8,7 @@ vi.mock('@/websocket/socket.server', () => ({
     sendRequestExpired: vi.fn(),
     sendRideRequest: vi.fn(),
     sendDriverAssigned: vi.fn(),
+    sendRideStatusUpdate: vi.fn(),
   },
 }))
 vi.mock('@/modules/notifications/notifications.service', () => ({
@@ -27,6 +28,7 @@ vi.mock('@/db/redis', () => ({ client: { set: vi.fn() } }))
 
 import * as repo from '@/modules/rides/rides.repository'
 import { queues } from '@/jobs/queues'
+import { socketEvents } from '@/websocket/socket.server'
 import { adminAssignDriver, forceAssignGraceCheck } from './rides.service'
 
 const baseRide = {
@@ -53,6 +55,7 @@ describe('adminAssignDriver', () => {
     vi.mocked(repo.acceptAssignment).mockResolvedValue([])
     vi.mocked(repo.setForceAssignGraceJob).mockResolvedValue(undefined as never)
     vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
+    vi.mocked(repo.expireAssignment).mockResolvedValue(undefined as never)
   })
 
   it('rejects a ride that is not open for assignment', async () => {
@@ -117,6 +120,29 @@ describe('adminAssignDriver', () => {
     await adminAssignDriver(5n, 9n, 'request', false, 1n)
     expect(removeMock).toHaveBeenCalled()
   })
+
+  it('request mode expires the manual offer before scheduling the fallback broadcast', async () => {
+    await adminAssignDriver(5n, 9n, 'request', false, 1n)
+    expect(repo.expireAssignment).toHaveBeenCalledWith(5n, 9n)
+  })
+
+  it('logs only one status-history row for the CAS transition when the ride starts scheduled', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({ ...baseRide, status: 'scheduled' } as never)
+    vi.mocked(repo.updateRideStatusCAS).mockResolvedValue({ ...baseRide, status: 'requested' } as never)
+    await adminAssignDriver(5n, 9n, 'request', false, 1n)
+    expect(repo.logStatusHistory).toHaveBeenCalledTimes(1)
+    expect(repo.logStatusHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ fromStatus: 'scheduled', toStatus: 'requested', note: 'Opened for manual assignment' })
+    )
+  })
+
+  it('logs the "manually offered" note when the ride was already requested on entry', async () => {
+    await adminAssignDriver(5n, 9n, 'request', false, 1n)
+    expect(repo.logStatusHistory).toHaveBeenCalledTimes(1)
+    expect(repo.logStatusHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ note: 'Manually offered to driver 9, awaiting response' })
+    )
+  })
 })
 
 describe('forceAssignGraceCheck', () => {
@@ -141,6 +167,7 @@ describe('forceAssignGraceCheck', () => {
   it('reverts the ride when there is no GPS activity', async () => {
     await forceAssignGraceCheck(5n, 9n)
     expect(repo.revertForceAssign).toHaveBeenCalledWith(5n, 9n)
+    expect(socketEvents.sendRideStatusUpdate).toHaveBeenCalledWith('5', { status: 'requested', reason: 'force_assign_reverted' })
   })
 
   it('does nothing when the ride already moved past accepted', async () => {
