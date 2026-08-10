@@ -102,6 +102,8 @@ router.get('/rides', requireAdmin('super_admin', 'ops_admin', 'support_admin'), 
 router.get('/rides/upcoming', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getUpcomingScheduledRides)
 router.get('/rides/:id', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideById)
 router.post('/rides/:id/force-resolve', requireAdmin('super_admin', 'ops_admin'), controller.forceResolveAdminRide)
+router.get('/rides/:id/assign-candidates', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getRideAssignCandidates)
+router.post('/rides/:id/assign', requireAdmin('super_admin', 'ops_admin'), controller.assignDriverToRide)
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 router.get('/users',                controller.getAdminUsers)

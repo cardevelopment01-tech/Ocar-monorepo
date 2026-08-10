@@ -2,6 +2,7 @@ import { Worker } from 'bullmq'
 import { QUEUE_NAMES, redisConnection } from '@/jobs/queues'
 import { processBroadcast, type BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import { processAckCheck, type AckCheckJobData } from '@/jobs/processors/ack-check.processor'
+import { processForceAssignGraceCheck, type ForceAssignGraceJobData } from '@/jobs/processors/force-assign-grace.processor'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
 const log = createWorkerLogger('dispatch')
@@ -13,6 +14,8 @@ export const dispatchWorker = new Worker(
       await processBroadcast(job.data as BroadcastJobData)
     } else if (job.name === 'broadcast_ride_ack_check') {
       await processAckCheck(job.data as AckCheckJobData)
+    } else if (job.name === 'force_assign_grace_check') {
+      await processForceAssignGraceCheck(job.data as ForceAssignGraceJobData)
     }
     // Unknown job names complete silently
   },

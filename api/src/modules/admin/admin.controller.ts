@@ -582,6 +582,26 @@ export async function forceResolveAdminRide(req: Request, res: Response, next: N
   } catch (err) { next(err) }
 }
 
+export async function getRideAssignCandidates(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json({ candidates: await service.getRideAssignCandidates(BigInt(req.params['id']!)) })
+  } catch (err) { next(err) }
+}
+
+export async function assignDriverToRide(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const body = req.body as { driverId?: string; mode?: string; overrideEligibility?: boolean }
+    if (!body.driverId || (body.mode !== 'request' && body.mode !== 'force')) {
+      res.status(400).json({ error: 'driverId and mode (request|force) are required', code: 'VALIDATION_ERROR' })
+      return
+    }
+    const result = await service.assignDriverToRide(
+      BigInt(req.params['id']!), BigInt(body.driverId), body.mode, req.admin!.id, body.overrideEligibility ?? false
+    )
+    res.json(result)
+  } catch (err) { next(err) }
+}
+
 // ─── Admin Rental Packages ────────────────────────────────────────────────────
 
 export async function getAdminRentalPackages(req: Request, res: Response, next: NextFunction): Promise<void> {
