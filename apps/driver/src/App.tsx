@@ -316,18 +316,9 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [isOnline, activeRide])
 
-  // Tab close / navigate away while idle-online: best-effort pause via
-  // sendBeacon, the one API that reliably fires during unload where fetch is
-  // not guaranteed to. No body needed — the endpoint reads driverId from the
-  // auth cookie/header already attached by the browser for same-origin requests.
-  useEffect(() => {
-    if (!isOnline || activeRide) return
-    const onPageHide = () => {
-      navigator.sendBeacon('/api/v1/rides/sessions/pause')
-    }
-    window.addEventListener('pagehide', onPageHide)
-    return () => window.removeEventListener('pagehide', onPageHide)
-  }, [isOnline, activeRide])
+  // No pagehide/sendBeacon pause on tab close: sendBeacon can't carry our
+  // Bearer JWT (auth is a header, not a cookie), so it would 401 silently.
+  // The server-side idle-heartbeat sweep (90s) already backstops this case.
 
   // Listen for user-initiated cancellation while a ride is active.
   // Scoped to activeRide.id so it attaches/detaches with the ride lifecycle.
