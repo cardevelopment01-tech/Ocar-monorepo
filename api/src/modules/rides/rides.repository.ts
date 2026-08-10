@@ -756,6 +756,29 @@ export async function findStaleInProgressRides(staleSeconds: number): Promise<St
   return res.rows
 }
 
+export async function setDriverAvailability(driverId: bigint, isAvailable: boolean): Promise<void> {
+  await pool.query(
+    `UPDATE driver_location_snapshots SET is_available = $2 WHERE driver_id = $1`,
+    [driverId, isAvailable]
+  )
+}
+
+// Idle (status = 'online', never 'on_trip' — that's the separate in-progress-ride
+// sweep above) drivers whose GPS has gone stale. Same staleSeconds param is reused
+// for both the short pause-from-pool tier and the longer force-offline tier —
+// see cleanup.worker.ts.
+export async function findStaleOnlineDrivers(staleSeconds: number): Promise<{ driver_id: string }[]> {
+  const res = await pool.query<{ driver_id: string }>(
+    `SELECT ds.driver_id::text
+     FROM driver_sessions ds
+     JOIN driver_location_snapshots dls ON dls.driver_id = ds.driver_id
+     WHERE ds.status = 'online'
+       AND now() - dls.recorded_at > ($1 || ' seconds')::interval`,
+    [staleSeconds]
+  )
+  return res.rows
+}
+
 // Orphaned rides: broadcast job died mid-flight (requested), or the driver
 // accepted/arrived and the flow was interrupted before in_progress (crash,
 // force-quit, network drop). Neither has a GPS heartbeat to key off, unlike
