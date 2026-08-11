@@ -713,7 +713,7 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
       driverPhone: ride.driver_phone ?? null,
       bookedCategoryName:   ride.booked_category_name ?? null,
       assignedCategoryName: ride.assigned_category_name ?? null,
-    }, { attempts: 2, removeOnComplete: 50, removeOnFail: 20 }).catch(() => {})
+    }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: 50, removeOnFail: 20 }).catch(() => {})
   }
 
   return { success: true, rideId: rideId.toString() }
@@ -1907,7 +1907,7 @@ export async function verifyEndOTP(
       userId:     ride.user_id.toString(),
       userPhone:  ride.user_phone,
       driverName: ride.driver_name ?? null,
-    }, { attempts: 2, removeOnComplete: 50, removeOnFail: 20 }).catch(() => {})
+    }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: 50, removeOnFail: 20 }).catch(() => {})
   }
 
   // Payment + wallet post-processing (non-blocking — ride is already completed)

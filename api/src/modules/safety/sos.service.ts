@@ -40,14 +40,18 @@ export async function triggerSos(input: TriggerSosInput) {
     userPhone = phoneRes.rows[0]?.phone ?? ''
   }
 
-  notificationsQueue.add('sos_alert', {
-    rideId:      String(input.rideId),
-    userId:      String(triggeredUserId ?? ''),
-    userPhone,
-    lat:         input.lat  ?? 0,
-    lng:         input.lng  ?? 0,
-    triggeredAt: new Date().toISOString(),
-  }).catch((err: unknown) => {
+  notificationsQueue.add(
+    'sos_alert',
+    {
+      rideId:      String(input.rideId),
+      userId:      String(triggeredUserId ?? ''),
+      userPhone,
+      lat:         input.lat  ?? 0,
+      lng:         input.lng  ?? 0,
+      triggeredAt: new Date().toISOString(),
+    },
+    { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+  ).catch((err: unknown) => {
     log.error({ err }, 'failed to enqueue sos_alert job')
   })
 

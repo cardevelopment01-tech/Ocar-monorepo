@@ -143,6 +143,18 @@ async function start(): Promise<void> {
   async function shutdown(): Promise<void> {
     logger.info('shutting down gracefully')
     httpServer.close(async () => {
+      await Promise.all([
+        notificationsWorker.close(),
+        dispatchWorker.close(),
+        gpsFlushWorker.close(),
+        cleanupWorker.close(),
+        schedulerWorker.close(),
+        auditWorker.close(),
+        partitionMaintenanceWorker.close(),
+        paymentReconcileWorker.close(),
+        settlementsWorker.close(),
+        callMaskingWorker.close(),
+      ])
       await pool.end()
       redisClient.disconnect()
       await shutdownTracing()

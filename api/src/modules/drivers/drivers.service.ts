@@ -325,12 +325,16 @@ export async function submitApplication(
     reason: 'Driver submitted application',
   })
 
-  await notificationsQueue.add('driver_submitted_for_review', {
-    driverId: driverId.toString(),
-    driverName: driver.full_name,
-    driverPhone: driver.phone,
-    submittedAt: new Date().toISOString(),
-  })
+  await notificationsQueue.add(
+    'driver_submitted_for_review',
+    {
+      driverId: driverId.toString(),
+      driverName: driver.full_name,
+      driverPhone: driver.phone,
+      submittedAt: new Date().toISOString(),
+    },
+    { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+  )
 
   return { success: true, status: 'pending_approval' }
 }

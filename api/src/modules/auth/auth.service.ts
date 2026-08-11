@@ -97,7 +97,11 @@ export async function requestOtp(
     repo.createOtpRequest({ principalRole, phone, purpose: otpPurpose, otpHash, expiresAt }),
   ])
 
-  await notificationsQueue.add('otp_sms', { phone, otp, type: 'auth' })
+  await notificationsQueue.add(
+    'otp_sms',
+    { phone, otp, type: 'auth' },
+    { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+  )
 
   return { otp }
 }

@@ -33,11 +33,15 @@ export async function createInvite(params: {
     expiresAt,
   })
 
-  await notificationsQueue.add('admin_invite_email', {
-    email: params.email,
-    rawToken,
-    expiresAt: expiresAt.toISOString(),
-  })
+  await notificationsQueue.add(
+    'admin_invite_email',
+    {
+      email: params.email,
+      rawToken,
+      expiresAt: expiresAt.toISOString(),
+    },
+    { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+  )
 
   return invite
 }
