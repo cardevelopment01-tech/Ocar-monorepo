@@ -1033,7 +1033,7 @@ export default function RidePage() {
                 className="mx-4 mb-2 px-3 py-2 rounded-xl text-[12px] font-semibold"
                 style={{ background: '#D1FAE5', color: '#059669' }}
               >
-                You've been upgraded to {ride.assigned_category_name} — same fare, more room.
+                You&apos;ve been upgraded to {ride.assigned_category_name} — same fare, more room.
               </motion.div>
             )}
           </AnimatePresence>
