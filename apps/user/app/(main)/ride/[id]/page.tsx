@@ -197,6 +197,18 @@ function DriverMiniRow({ ride, rideId, router, unreadChatCount, rideStatus }: { 
               <span className="text-[11px] font-semibold tracking-wide truncate" style={{ color: '#475569' }}>{ride.vehicle_number_plate}</span>
             </>
           )}
+          {ride?.booked_category_name && ride?.assigned_category_name && ride.booked_category_name !== ride.assigned_category_name && (
+            <>
+              <span className="text-[10px]" style={{ color: '#E8EEFF' }}>·</span>
+              <span
+                title={`You booked ${ride.booked_category_name} — upgraded to ${ride.assigned_category_name} at no extra cost.`}
+                className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                style={{ background: '#D1FAE5', color: '#059669' }}
+              >
+                Upgraded
+              </span>
+            </>
+          )}
         </div>
       </div>
       {/* Rider's phone never sees the driver's raw number — masking is server-side
@@ -321,6 +333,7 @@ export default function RidePage() {
   const [reportSending,  setReportSending]  = useState(false)
   const [reportSent,     setReportSent]     = useState(false)
   const [addStopError,   setAddStopError]   = useState<string | null>(null)
+  const [showUpgradeToast, setShowUpgradeToast] = useState(false)
   const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastFetch      = useRef<{ mode: RouteMode; origin: [number, number]; dest: [number, number]; at: number; stopsKey: string } | null>(null)
   const fetchSeq       = useRef(0)
@@ -515,6 +528,7 @@ export default function RidePage() {
       vehicleModel?: string | null; vehicleBrand?: string | null
       vehicleColor?: string | null; vehicleName?: string | null
       vehicleNumberPlate?: string | null
+      bookedCategoryName?: string | null; assignedCategoryName?: string | null
     }) => {
       setRideStatus('accepted')
       setRide(prev => prev ? {
@@ -528,7 +542,13 @@ export default function RidePage() {
         vehicle_color:        data.vehicleColor        ?? prev.vehicle_color,
         vehicle_name:         data.vehicleName         ?? prev.vehicle_name,
         vehicle_number_plate: data.vehicleNumberPlate  ?? prev.vehicle_number_plate,
+        booked_category_name:   data.bookedCategoryName   ?? prev.booked_category_name,
+        assigned_category_name: data.assignedCategoryName ?? prev.assigned_category_name,
       } : prev)
+      if (data.bookedCategoryName && data.assignedCategoryName && data.bookedCategoryName !== data.assignedCategoryName) {
+        setShowUpgradeToast(true)
+        setTimeout(() => setShowUpgradeToast(false), 4000)
+      }
     }
     const onDriverLocation = (data: { lat: number; lng: number; heading: number }) => {
       setDriverPos([data.lat, data.lng])
@@ -1002,6 +1022,21 @@ export default function RidePage() {
               </button>
             </motion.div>
           )}
+
+          <AnimatePresence>
+            {showUpgradeToast && ride?.assigned_category_name && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22, ease: EASE }}
+                className="mx-4 mb-2 px-3 py-2 rounded-xl text-[12px] font-semibold"
+                style={{ background: '#D1FAE5', color: '#059669' }}
+              >
+                You&apos;ve been upgraded to {ride.assigned_category_name} — same fare, more room.
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Driver assigned — peek row always visible, detail expands on demand */}
           {hasDriver && (

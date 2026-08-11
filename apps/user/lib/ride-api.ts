@@ -67,6 +67,8 @@ export type RideDetail = {
   vehicle_name: string | null
   vehicle_model: string | null
   vehicle_brand: string | null
+  booked_category_name: string | null
+  assigned_category_name: string | null
   total_estimated: string | null
   total_final: string | null
   base_fare: string | null

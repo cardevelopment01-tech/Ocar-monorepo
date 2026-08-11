@@ -116,10 +116,16 @@ export const notificationsWorker = new Worker(
         userPhone:   string
         driverName:  string | null
         driverPhone: string | null
+        bookedCategoryName:   string | null
+        assignedCategoryName: string | null
       }
       const lp: LogParams = { jobName: job.name, recipientPhone: data.userPhone, payload: data as Record<string, unknown> }
       const logId = await notifService.logNotification(lp)
       const driverName = data.driverName ?? 'Your driver'
+      const upgradeNote =
+        data.bookedCategoryName && data.assignedCategoryName && data.bookedCategoryName !== data.assignedCategoryName
+          ? ` You've been upgraded to ${data.assignedCategoryName} at no extra cost.`
+          : ''
       try {
         const { body: message } = await renderTemplate('ride_accepted', 'sms', {
           driverName,
@@ -132,7 +138,7 @@ export const notificationsWorker = new Worker(
       }
 
       try {
-        const { subject, body } = await renderTemplate('ride_accepted', 'push', { driverName })
+        const { subject, body } = await renderTemplate('ride_accepted', 'push', { driverName, upgradeNote })
         await notifService.notifyOwner({
           ownerType: 'user',
           ownerId: BigInt(data.userId),
