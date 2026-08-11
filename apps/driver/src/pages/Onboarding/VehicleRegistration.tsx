@@ -22,8 +22,8 @@ const FUEL_TYPES = [
 ] as const
 
 const CATEGORY_FALLBACK_NOTE: Record<string, string> = {
-  sedan: 'Sedan drivers also receive Hatchback requests when Hatchbacks are scarce nearby, paid at Sedan fare.',
-  suv:   'SUV drivers also receive Sedan requests when Sedans are scarce nearby, paid at SUV fare.',
+  sedan: 'Sedan drivers also receive Hatchback requests when Hatchbacks are scarce nearby, paid at Hatchback fare.',
+  suv:   'SUV drivers also receive Sedan requests when Sedans are scarce nearby, paid at Sedan fare.',
 }
 
 export default function VehicleRegistration() {
