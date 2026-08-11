@@ -689,6 +689,8 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
     vehicleColor:       ride?.vehicle_color ?? null,
     vehicleName:        ride?.vehicle_name ?? null,
     vehicleNumberPlate: ride?.vehicle_number_plate ?? null,
+    bookedCategoryName:   ride?.booked_category_name ?? null,
+    assignedCategoryName: ride?.assigned_category_name ?? null,
   })
 
   const riderPhoneForMasking = ride?.rider_phone ?? ride?.user_phone
@@ -709,6 +711,8 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
       userPhone:   ride.user_phone,
       driverName:  ride.driver_name ?? null,
       driverPhone: ride.driver_phone ?? null,
+      bookedCategoryName:   ride.booked_category_name ?? null,
+      assignedCategoryName: ride.assigned_category_name ?? null,
     }, { attempts: 2, removeOnComplete: 50, removeOnFail: 20 }).catch(() => {})
   }
 
