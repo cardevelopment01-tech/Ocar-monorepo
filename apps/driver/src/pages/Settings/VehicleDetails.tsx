@@ -19,6 +19,11 @@ const FUEL_TYPES = [
   { value: 'electric', label: 'EV'     },
 ] as const
 
+const CATEGORY_FALLBACK_NOTE: Record<string, string> = {
+  sedan: 'Sedan drivers also receive Hatchback requests when Hatchbacks are scarce nearby, paid at Sedan fare.',
+  suv:   'SUV drivers also receive Sedan requests when Sedans are scarce nearby, paid at SUV fare.',
+}
+
 // Flat settings screen for an already-approved driver's vehicle record.
 // Not a step in a sequence: no stepper, no "Continue", saves in place.
 export default function VehicleDetails() {
@@ -210,6 +215,11 @@ export default function VehicleDetails() {
                 </button>
               ))}
             </div>
+            {(() => {
+              const slug = categories.find(c => Number(c.id) === categoryId)?.slug
+              const note = slug ? CATEGORY_FALLBACK_NOTE[slug] : undefined
+              return note ? <p className="text-text-muted text-xs mt-2">{note}</p> : null
+            })()}
           </Field>
 
           {/* Number plate */}
