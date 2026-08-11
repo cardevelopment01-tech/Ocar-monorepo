@@ -83,6 +83,8 @@ export interface Ride {
   vehicle_name: string | null
   vehicle_model: string | null
   vehicle_brand: string | null
+  booked_category_name: string | null
+  assigned_category_name: string | null
   driver_current_lat: number | null
   driver_current_lng: number | null
   payment_status: string | null

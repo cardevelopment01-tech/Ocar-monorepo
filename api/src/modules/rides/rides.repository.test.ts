@@ -5,7 +5,7 @@ vi.mock('@/db/client', () => ({
   pool: { query: (...args: unknown[]) => mockQuery(...args) },
 }))
 
-import { getEligibleDriverCategoryIds, findNearbyDrivers, findReturnCabDrivers, getCategoryDisplayName } from './rides.repository'
+import { getEligibleDriverCategoryIds, findNearbyDrivers, findReturnCabDrivers, getCategoryDisplayName, getRideById } from './rides.repository'
 
 describe('findNearbyDrivers', () => {
   beforeEach(() => { mockQuery.mockReset() })
@@ -84,5 +84,19 @@ describe('getCategoryDisplayName', () => {
     mockQuery.mockResolvedValueOnce({ rows: [] })
     const result = await getCategoryDisplayName(999n)
     expect(result).toBeNull()
+  })
+})
+
+describe('getRideById', () => {
+  beforeEach(() => { mockQuery.mockReset() })
+
+  it('joins vehicle_categories for both booked and assigned category names', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: '1' }] })
+
+    await getRideById(1n)
+
+    const [sql] = mockQuery.mock.calls[0] as [string]
+    expect(sql).toContain('booked_category_name')
+    expect(sql).toContain('assigned_category_name')
   })
 })
