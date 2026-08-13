@@ -122,10 +122,13 @@ resource "aws_iam_role_policy" "github_actions_plan_state" {
       },
       {
         # State bucket moved to SSE-KMS (customer-managed key, see
-        # state-bucket.tf) -- reading state now requires decrypt access to
-        # that specific key, not just S3 permissions.
+        # state-bucket.tf). Decrypt covers reading the state object;
+        # GenerateDataKey is separately required to WRITE the lock file
+        # object when acquiring the state lock -- confirmed via a real CI
+        # failure (kms:GenerateDataKey denied) after Decrypt alone turned
+        # out insufficient.
         Effect   = "Allow"
-        Action   = ["kms:Decrypt", "kms:DescribeKey"]
+        Action   = ["kms:Decrypt", "kms:DescribeKey", "kms:GenerateDataKey"]
         Resource = aws_kms_key.terraform_state.arn
       }
     ]
