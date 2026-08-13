@@ -59,14 +59,18 @@ loki.write "grafana_cloud" {
 // Scrapes the API's /metrics endpoint and node_exporter, ships both to
 // Grafana Cloud Prometheus (remote_write).
 
+// host label matches what the logs pipeline already tags each line with --
+// without it, every instance's series arrive under the same identity and
+// can't be told apart in a query or dashboard (see docs/superpowers/specs/
+// 2026-08-08-observability-stack-design.md).
 prometheus.scrape "api" {
-  targets       = [{"__address__" = "api:4000"}]
+  targets       = [{"__address__" = "api:4000", "host" = sys.env("ALLOY_HOSTNAME")}]
   metrics_path  = "/metrics"
   forward_to    = [prometheus.remote_write.grafana_cloud.receiver]
 }
 
 prometheus.scrape "node" {
-  targets    = [{"__address__" = "node_exporter:9100"}]
+  targets    = [{"__address__" = "node_exporter:9100", "host" = sys.env("ALLOY_HOSTNAME")}]
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 }
 
