@@ -258,14 +258,89 @@
       "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
     },
 
-    { "id": 103, "type": "row", "title": "Live Logs", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 }, "panels": [] },
+    { "id": 105, "type": "row", "title": "DB Internals (pg_stat_statements)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 }, "panels": [] },
+
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Top 10 Slow Queries (mean exec time)",
+      "description": "rate(pg_stat_statements_seconds_total) / rate(pg_stat_statements_calls_total), joined to the queryid→query text lookup metric (only populated because postgres_exporter runs with --collector.stat_statements.include_query). Uses max() across instances, not sum() -- every instance's exporter reports identical numbers since they all query the same shared Neon DB.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 48 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "topk(10, max by (queryid, query) ((rate(pg_stat_statements_seconds_total[5m]) / rate(pg_stat_statements_calls_total[5m])) * on(queryid) group_left(query) pg_stat_statements_query_id))",
+          "refId": "A", "format": "table", "instant": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Top 10 Queries by Total Time",
+      "description": "The queries actually costing the most aggregate DB time -- a query that's individually fast but called constantly can outweigh a rare slow one. Same max()-not-sum() reasoning as the panel above.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 56 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "topk(10, max by (queryid, query) (rate(pg_stat_statements_seconds_total[5m]) * on(queryid) group_left(query) pg_stat_statements_query_id))",
+          "refId": "A", "format": "table", "instant": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Cache Hit Ratio by Database",
+      "description": "blks_hit / (blks_hit + blks_read) -- a healthy Postgres should stay >99%. A sustained drop means working-set data no longer fits in shared_buffers and queries are hitting disk more.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 64 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "max by (datname) (rate(pg_stat_database_blks_hit[5m])) / (max by (datname) (rate(pg_stat_database_blks_hit[5m])) + max by (datname) (rate(pg_stat_database_blks_read[5m])))",
+          "legendFormat": "{{datname}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Deadlocks & Rollbacks by Database",
+      "description": "Either climbing is a real correctness/contention signal, not just a performance one.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 64 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "max by (datname) (rate(pg_stat_database_deadlocks[5m]))",
+          "legendFormat": "deadlocks {{datname}}",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "max by (datname) (rate(pg_stat_database_xact_rollback[5m]))",
+          "legendFormat": "rollbacks {{datname}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+
+    { "id": 103, "type": "row", "title": "Live Logs", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 71 }, "panels": [] },
 
     {
       "id": 9,
       "type": "logs",
       "title": "ocar-api logs",
       "description": "{service=\"ocar\", env=\"prod\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $host variable and the $min_level dropdown above (Pino numeric levels: 30=info, 40=warn, 50=error) — both are line/label filters, not extra Loki stream labels, so they cost nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 48 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 72 },
       "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
       "targets": [
         {
