@@ -21,14 +21,15 @@
     { "type": "datasource", "id": "loki", "name": "Loki", "version": "1.0.0" },
     { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
     { "type": "panel", "id": "logs", "name": "Logs", "version": "" },
-    { "type": "panel", "id": "stat", "name": "Stat", "version": "" }
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "table", "name": "Table", "version": "" }
   ],
   "title": "Ocar — Overview",
-  "description": "RED-method golden signals (rate/errors/duration) for the API, plus DB pool, BullMQ queue depth, host resources, and a live log stream — built from the observability stack in docs/superpowers/specs/2026-08-08-observability-stack-design.md. See docs/superpowers/plans/2026-08-08-grafana-overview-dashboard.md for panel-by-panel rationale.",
+  "description": "Single dashboard for the whole ASG fleet: live instance count/autoscaling activity, RED-method golden signals for the API, DB pool, BullMQ queue depth, per-instance host resources, and a live log stream. Built from the observability stack in docs/superpowers/specs/2026-08-08-observability-stack-design.md — see docs/superpowers/plans/2026-08-08-grafana-overview-dashboard.md for panel-by-panel rationale. Previously split across this file and a separate ocar-fleet-dashboard.json; merged into one file on 2026-08-13 so fleet/host panels and the log-level-filtered Live Logs panel can never drift out of sync with each other again (that drift is exactly how the Live Logs panel ended up querying the wrong env label for several days).",
   "editable": true,
   "timezone": "",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "tags": ["ocar", "observability"],
@@ -45,18 +46,56 @@
           { "text": "Warnings & Errors", "value": "40" },
           { "text": "Errors only", "value": "50", "selected": true }
         ]
+      },
+      {
+        "name": "host",
+        "label": "Instance",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+        "query": "label_values({service=\"ocar\", env=\"prod\"}, host)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
       }
     ]
   },
   "panels": [
-    { "id": 100, "type": "row", "title": "Golden Signals — API", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    { "id": 104, "type": "row", "title": "Fleet Overview", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Live Instances",
+      "description": "count(up{instance=\"api:4000\"} == 1) — an instant query, not a range, so a since-terminated instance's stale series can't inflate the count.",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{instance=\"api:4000\"} == 1)", "refId": "A", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Instance Count Over Time (autoscaling activity)",
+      "gridPos": { "h": 6, "w": 18, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{instance=\"api:4000\"})", "refId": "A", "legendFormat": "instances" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+
+    { "id": 100, "type": "row", "title": "Golden Signals — API", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }, "panels": [] },
 
     {
       "id": 1,
       "type": "timeseries",
       "title": "Request rate by route",
       "description": "sum(rate(http_request_duration_seconds_count[5m])) by (route) — the R in RED.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         {
@@ -73,7 +112,7 @@
       "type": "timeseries",
       "title": "Error rate (5xx ratio)",
       "description": "sum(rate(...{status_code=~\"5..\"}[5m])) / sum(rate(...[5m])) — the E in RED. A route with zero traffic in the window shows no data, not a false 0%.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         {
@@ -90,7 +129,7 @@
       "type": "timeseries",
       "title": "Request duration — p50 / p95 / p99",
       "description": "histogram_quantile over http_request_duration_seconds_bucket — the D in RED.",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 9 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         {
@@ -114,15 +153,30 @@
       ],
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
     },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Top Routes by Traffic",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "topk(10, sum by (route, method) (rate(http_request_duration_seconds_count[5m])))",
+          "refId": "A", "format": "table", "instant": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
 
-    { "id": 101, "type": "row", "title": "Database & Queues", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }, "panels": [] },
+    { "id": 101, "type": "row", "title": "Database & Queues", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 }, "panels": [] },
 
     {
       "id": 4,
       "type": "timeseries",
       "title": "pg.Pool connections by state",
       "description": "pg_pool_connections{state=~\"total|idle|waiting\"} — a rising 'waiting' with flat 'total' at DATABASE_POOL_MAX means requests are queuing for a connection.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         {
@@ -139,7 +193,7 @@
       "type": "timeseries",
       "title": "BullMQ job counts by queue and state",
       "description": "bullmq_queue_job_counts{state=~\"waiting|active|delayed|failed\"} — a queue stuck rising in 'waiting' or 'failed' needs attention.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         {
@@ -152,70 +206,71 @@
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
     },
 
-    { "id": 102, "type": "row", "title": "Host", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }, "panels": [] },
+    { "id": 102, "type": "row", "title": "Per-Instance Saturation", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 }, "panels": [] },
 
     {
       "id": 6,
-      "type": "stat",
-      "title": "CPU usage",
-      "description": "100 - idle% averaged across cores, from node_exporter.",
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 27 },
+      "type": "timeseries",
+      "title": "CPU % by Instance",
+      "description": "100 - idle%, broken out by the host label (EC2 instance ID) — a single aggregate number hides one hot instance behind a healthy average.",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 40 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "expr": "100 - (avg by (host) (rate(node_cpu_seconds_total{instance=\"node_exporter:9100\", mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "{{host}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 } ] } }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
     },
     {
       "id": 7,
-      "type": "stat",
-      "title": "Memory used",
-      "description": "1 - (MemAvailable / MemTotal), from node_exporter.",
-      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 27 },
+      "type": "timeseries",
+      "title": "Memory % by Instance",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 40 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+          "expr": "100 * (1 - (node_memory_MemAvailable_bytes{instance=\"node_exporter:9100\"} / node_memory_MemTotal_bytes{instance=\"node_exporter:9100\"}))",
+          "legendFormat": "{{host}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 } ] } }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
     },
     {
       "id": 8,
-      "type": "stat",
-      "title": "Disk used (/)",
-      "description": "Root filesystem usage, from node_exporter.",
-      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 27 },
+      "type": "timeseries",
+      "title": "Disk % by Instance (root volume)",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 40 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "100 - ((node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100)",
+          "expr": "100 * (1 - (node_filesystem_avail_bytes{instance=\"node_exporter:9100\", mountpoint=\"/\"} / node_filesystem_size_bytes{instance=\"node_exporter:9100\", mountpoint=\"/\"}))",
+          "legendFormat": "{{host}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 } ] } }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
     },
 
-    { "id": 103, "type": "row", "title": "Live Logs", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 }, "panels": [] },
+    { "id": 103, "type": "row", "title": "Live Logs", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 }, "panels": [] },
 
     {
       "id": 9,
       "type": "logs",
-      "title": "ocar-api / nginx logs",
-      "description": "{service=\"ocar\", env=\"production\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $min_level dropdown above (Pino numeric levels: 30=info, 40=warn, 50=error) — a line filter, not a Loki label, so it costs nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 34 },
+      "title": "ocar-api logs",
+      "description": "{service=\"ocar\", env=\"prod\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $host variable and the $min_level dropdown above (Pino numeric levels: 30=info, 40=warn, 50=error) — both are line/label filters, not extra Loki stream labels, so they cost nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 48 },
       "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-          "expr": "{service=\"ocar\", env=\"production\"} | json | level >= $min_level",
+          "expr": "{service=\"ocar\", env=\"prod\", host=~\"$host\"} | json | level >= $min_level",
           "refId": "A"
         }
       ],

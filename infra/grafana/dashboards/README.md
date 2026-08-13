@@ -1,7 +1,15 @@
 # Grafana dashboards
 
-`ocar-overview.json` is edited here, then manually re-imported into Grafana Cloud — there is no
-provisioning automation (deliberately, see `docs/superpowers/plans/2026-08-09-grafana-log-level-filter-design.md`).
+`ocar-overview.json` is the single dashboard for this project — fleet/autoscaling overview, RED
+golden signals, DB pool, BullMQ, per-instance host resources, and live logs, all in one file. It's
+edited here, then manually re-imported into Grafana Cloud — there is no provisioning automation
+(deliberately, see `docs/superpowers/plans/2026-08-09-grafana-log-level-filter-design.md`).
+
+A separate `ocar-fleet-dashboard.json` briefly existed alongside this one (added during the ASG
+migration without realizing this file already covered most of the same ground) and was merged into
+this file on 2026-08-13, then deleted. Keep it that way — a second dashboard is exactly how the
+Live Logs panel below ended up querying the wrong `env` label for days without anyone noticing:
+nothing forced the two files to agree with each other. One file, one source of truth.
 
 ## Re-importing after an edit
 
