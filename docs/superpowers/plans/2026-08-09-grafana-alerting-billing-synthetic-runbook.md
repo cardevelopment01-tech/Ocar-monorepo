@@ -76,16 +76,19 @@ surge is an invoice" scenario CLAUDE.md's Pending Ops Actions already flags.
 
 Grafana Cloud → **Synthetics → Create check → HTTP**.
 
-- **Target:** `https://ocar-api.clienttesting.in/health` (from `infra/nginx/nginx.prod.conf`)
+- **Target:** `https://ocar-api.clienttesting.in/health`
 - **Frequency:** 60s
 - **Probes:** pick 3+ public probes geographically close to the user base (Mumbai/Singapore if
   available) — this is an intercity Odisha platform, a probe check from São Paulo tells you nothing
   useful about real user reachability.
 - **Assertions:** status code `200`, response body contains `"status":"ok"` (matches the literal
   JSON shape returned by `app.ts`'s `/health` handler).
-- **Bonus, same check, no extra cost:** enable the **TLS certificate expiry** assertion — this repo
-  terminates TLS via Let's Encrypt (`nginx.prod.conf`), and cert auto-renewal silently failing is a
-  real, recurring outage class this check catches for free.
+- **Bonus, same check, no extra cost:** enable the **TLS certificate expiry** assertion. As of the
+  2026-08-13 ALB migration, TLS terminates at the ALB via an ACM certificate that AWS auto-renews —
+  `nginx`/Let's Encrypt/`certbot` no longer run at all (the old `infra/nginx/nginx.prod.conf` setup
+  is retired; `user_data.sh.tpl` only starts `api alloy node_exporter` on the new ASG instances).
+  The assertion is still worth keeping as defense in depth (catches an ACM renewal failure or a
+  future misconfiguration too), just not for the original certbot-can-silently-fail reason.
 - **Alert:** fail from ≥2 probes sustained 5m → same email contact point as #6.
 
 ---
