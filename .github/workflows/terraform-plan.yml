@@ -54,10 +54,16 @@ jobs:
         with:
           script: |
             const fs = require('fs')
-            const plan = fs.readFileSync('infra/terraform/plan_output.txt', 'utf8')
+            const raw = fs.readFileSync('infra/terraform/plan_output.txt', 'utf8')
+            // "X: Refreshing state..." lines are pure noise (one per resource,
+            // never useful) and, worse, they're what pushed the real plan
+            // output/error text (which prints AFTER the refresh phase) past
+            // the truncation cutoff below on the first real run of this
+            // workflow -- the error was silently dropped from the comment.
+            const plan = raw.split('\n').filter(line => !line.includes(': Refreshing state...')).join('\n')
             const maxLen = 60000
             const body = plan.length > maxLen
-              ? plan.slice(0, maxLen) + '\n\n... (truncated, see workflow logs for full output)'
+              ? '... (truncated from the start, see workflow logs for full output)\n\n' + plan.slice(-maxLen)
               : plan
 
             const marker = '<!-- terraform-plan-comment -->'
