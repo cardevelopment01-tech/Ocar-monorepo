@@ -13,6 +13,7 @@ vi.mock('firebase-admin/messaging', () => ({
 vi.mock('@/config', () => ({
   config: { FCM_SERVICE_ACCOUNT_KEY: JSON.stringify({ project_id: 'test' }) },
 }))
+vi.mock('@/db/redis', () => ({ client: { set: vi.fn() } }))
 vi.mock('@/modules/notifications/notifications.repository', () => ({
   createInAppNotification: vi.fn().mockResolvedValue({ id: '1' }),
   getTokensForOwner: vi.fn().mockResolvedValue(['tok1']),

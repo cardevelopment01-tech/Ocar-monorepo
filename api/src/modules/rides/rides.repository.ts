@@ -5,6 +5,7 @@ import {
   STALE_ACCEPTED_HOURS,
   STALE_DRIVER_ARRIVED_HOURS,
   STALE_IN_PROGRESS_CEILING_HOURS,
+  BACKGROUND_MATCH_GRACE_SECONDS,
 } from '@/constants/limits'
 
 // ── Driver session queries ────────────────────────────────────
@@ -130,6 +131,7 @@ export async function findNearbyDrivers(params: {
        dls.driver_id,
        ds.id AS session_id,
        ds.mode,
+       dls.is_available,
        ST_Y(dls.location::geometry) AS lat,
        ST_X(dls.location::geometry) AS lng,
        ST_Distance(
@@ -145,7 +147,16 @@ export async function findNearbyDrivers(params: {
      JOIN cities dc ON dc.id = d.city_id AND dc.status = 'active'
      LEFT JOIN driver_wallets dw ON dw.driver_id = ds.driver_id
      LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = ds.driver_id
-     WHERE dls.is_available = true
+     WHERE (
+       dls.is_available = true
+       -- A driver whose tab backgrounded (pauseAvailability) within the grace
+       -- window is still matched and gets push-notified instead of a live
+       -- socket emit -- see broadcast.processor.ts. ds.status = 'online' below
+       -- already excludes on_trip/offline drivers, so this can only ever admit
+       -- the tab-paused case (the only is_available=false path that leaves
+       -- ds.status at 'online').
+       OR (dls.is_available = false AND dls.updated_at > now() - ($7 || ' seconds')::interval)
+     )
        AND ds.status = 'online'
        AND ds.mode = 'standard'
        AND ds.category_id = ANY($3::bigint[])
@@ -161,7 +172,7 @@ export async function findNearbyDrivers(params: {
        )
      ORDER BY distance_metres ASC
      LIMIT $5`,
-    [params.lat, params.lng, params.categoryIds, radius, max, params.minWalletBalance]
+    [params.lat, params.lng, params.categoryIds, radius, max, params.minWalletBalance, BACKGROUND_MATCH_GRACE_SECONDS]
   )
   return res.rows
 }
@@ -762,7 +773,7 @@ export async function findStaleInProgressRides(staleSeconds: number): Promise<St
 
 export async function setDriverAvailability(driverId: bigint, isAvailable: boolean): Promise<void> {
   await pool.query(
-    `UPDATE driver_location_snapshots SET is_available = $2 WHERE driver_id = $1`,
+    `UPDATE driver_location_snapshots SET is_available = $2, updated_at = now() WHERE driver_id = $1`,
     [driverId, isAvailable]
   )
 }

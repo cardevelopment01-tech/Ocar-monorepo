@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// The one-shot-per-ride+driver dedupe guard now lives in
+// sendRideRequestPushOnce (notifications.service.ts) — see
+// tests/unit/notifications/send-ride-request-push-once.test.ts for that
+// behavior. This file only verifies processAckCheck delegates to it with the
+// right arguments.
 const { store, redisMock } = vi.hoisted(() => {
   const store = new Map<string, string>()
   const redisMock = {
     exists: vi.fn(async (key: string) => (store.has(key) ? 1 : 0)),
     del: vi.fn(async (key: string) => { store.delete(key); return 1 }),
-    set: vi.fn(async (key: string, value: string, ...args: unknown[]) => {
-      if (args.includes('NX') && store.has(key)) return null
-      store.set(key, value)
-      return 'OK'
-    }),
   }
   return { store, redisMock }
 })
@@ -20,12 +20,10 @@ vi.mock('@/jobs/queues', () => ({
   queues: { dispatch: { add: vi.fn() } },
   QUEUE_NAMES: { DISPATCH: 'dispatch' },
 }))
-vi.mock('@/modules/notifications/notifications.service', () => ({ pushToTokens: vi.fn() }))
-vi.mock('@/modules/notifications/notifications.repository', () => ({ getTokensForOwner: vi.fn() }))
+vi.mock('@/modules/notifications/notifications.service', () => ({ sendRideRequestPushOnce: vi.fn() }))
 
 import * as repo from '@/modules/rides/rides.repository'
-import { pushToTokens } from '@/modules/notifications/notifications.service'
-import { getTokensForOwner } from '@/modules/notifications/notifications.repository'
+import { sendRideRequestPushOnce } from '@/modules/notifications/notifications.service'
 import { rideAckKey } from '@/constants/redis-keys'
 import { processAckCheck, type AckCheckJobData } from '@/jobs/processors/ack-check.processor'
 
@@ -43,32 +41,19 @@ const baseData: AckCheckJobData = {
   isReturnCab: false,
 }
 
-describe('processAckCheck — one-shot fallback push', () => {
+describe('processAckCheck — fallback push delegation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     store.clear()
     store.set(rideAckKey(baseData.rideId, baseData.driverId), '1')
     vi.mocked(repo.getRideById).mockResolvedValue({ status: 'requested' } as never)
-    vi.mocked(getTokensForOwner).mockResolvedValue(['device-token-1'])
   })
 
-  it('fires exactly one tagged push the first time it runs for a ride+driver', async () => {
+  it('delegates the fallback push to sendRideRequestPushOnce with the ride/driver/pickup/drop', async () => {
     await processAckCheck(baseData)
 
-    expect(getTokensForOwner).toHaveBeenCalledWith('driver', BigInt(baseData.driverId))
-    expect(pushToTokens).toHaveBeenCalledTimes(1)
-    const [, msg] = vi.mocked(pushToTokens).mock.calls[0]!
-    expect(msg).toMatchObject({ tag: `ride-${baseData.rideId}` })
-  })
-
-  it('does not push again on a second retry for the same ride+driver', async () => {
-    await processAckCheck(baseData)
-    vi.mocked(pushToTokens).mockClear()
-    vi.mocked(getTokensForOwner).mockClear()
-
-    await processAckCheck(baseData)
-
-    expect(pushToTokens).not.toHaveBeenCalled()
-    expect(getTokensForOwner).not.toHaveBeenCalled()
+    expect(sendRideRequestPushOnce).toHaveBeenCalledWith(
+      baseData.rideId, baseData.driverId, baseData.pickup, baseData.drop, expect.any(Number)
+    )
   })
 })
