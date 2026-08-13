@@ -12,6 +12,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   getActiveSession: vi.fn(() => Promise.resolve(null)),
   createSession: vi.fn(() => Promise.resolve({ id: '1' })),
   upsertDriverLocation: vi.fn(() => Promise.resolve()),
+  setDriverAvailability: vi.fn(() => Promise.resolve()),
 }))
 const getMinWalletBalance = vi.fn(() => Promise.resolve(500))
 const getDriverWallet = vi.fn(() => Promise.resolve({ balance: '0', is_frozen: false }))
