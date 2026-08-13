@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-scan:
+    name: Security Scan (Trivy)
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-security-scan-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned to a commit SHA, not a version tag -- trivy-action's own tags
+      # were force-pushed in a March 2026 supply-chain attack.
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-lint-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run lint
+
+  typecheck-api:
+    name: Typecheck API
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-typecheck-api-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @ocar/api --config.dangerouslyAllowAllBuilds=true
+      - run: pnpm --filter @ocar/api exec tsc --noEmit
+
+  test-api:
+    name: Test API
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-test-api-${{ github.ref }}
+      cancel-in-progress: true
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_DB: ocar_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @ocar/api --config.dangerouslyAllowAllBuilds=true
+
+      - name: Create .env for migrations
+        run: |
+          cat > api/.env <<'EOF'
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ocar_test
+          REDIS_URL=redis://localhost:6379
+          JWT_ACCESS_SECRET=test-access-secret-at-least-32-chars
+          JWT_REFRESH_SECRET=test-refresh-secret-at-least-32-chars
+          JWT_ACCESS_EXPIRY=15m
+          JWT_REFRESH_EXPIRY_USER=30d
+          JWT_REFRESH_EXPIRY_ADMIN=24h
+          TOTP_ENCRYPTION_KEY=abababababababababababababababababababababababababababababababab
+          BANK_ACCOUNT_ENCRYPTION_KEY=abababababababababababababababababababababababababababababababab
+          S3_BUCKET_NAME=test-bucket
+          S3_REGION=ap-south-1
+          S3_ACCESS_KEY=test-access-key
+          S3_SECRET_KEY=test-secret-key
+          EOF
+
+      - name: Run migrations
+        run: pnpm --filter @ocar/api migrate
+
+      - name: Run tests
+        run: pnpm --filter @ocar/api test
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ocar_test
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ocar_test
+          REDIS_URL: redis://localhost:6379
+          JWT_ACCESS_SECRET: test-access-secret-at-least-32-chars
+          JWT_REFRESH_SECRET: test-refresh-secret-at-least-32-chars
+          JWT_ACCESS_EXPIRY: 15m
+          JWT_REFRESH_EXPIRY_USER: 30d
+          JWT_REFRESH_EXPIRY_ADMIN: 24h
+          TOTP_ENCRYPTION_KEY: abababababababababababababababababababababababababababababababab
+          BANK_ACCOUNT_ENCRYPTION_KEY: abababababababababababababababababababababababababababababababab
+          S3_BUCKET_NAME: test-bucket
+          S3_REGION: ap-south-1
+          S3_ACCESS_KEY: test-access-key
+          S3_SECRET_KEY: test-secret-key
+
+  typecheck-user:
+    name: Typecheck User App
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-typecheck-user-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @ocar/user
+      - run: pnpm --filter @ocar/user exec tsc --noEmit
+
+  typecheck-driver:
+    name: Typecheck Driver App
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-typecheck-driver-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @ocar/driver
+      - run: pnpm --filter @ocar/driver exec tsc --noEmit
+
+  typecheck-admin:
+    name: Typecheck Admin App
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-typecheck-admin-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @ocar/admin
+      - run: pnpm --filter @ocar/admin exec tsc --noEmit

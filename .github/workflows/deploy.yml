@@ -1,0 +1,188 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  build-push:
+    name: Build & Push Docker Image
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-api
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/ocar-api
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: api/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to ASG
+    needs: build-push
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-api
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+      packages: read
+    env:
+      IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
+      IMAGE_TAG_PARAM: /ocar/prod/image-tag
+      ASG_NAME: ${{ vars.ASG_NAME }}
+      ALB_DNS_NAME: ${{ vars.ALB_DNS_NAME }}
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.GHA_DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - name: Run migrations (new image, current instances still serving traffic)
+        run: |
+          set -e
+          # api/entrypoint.sh also runs migrate.js on every container start, so
+          # this ad-hoc run and each instance's own boot both invoke it -- safe
+          # only because migrate.js is idempotent (skips already-applied files,
+          # and pg_advisory_lock serializes concurrent runs). This run exists
+          # solely to gate the rollout on migrations succeeding.
+          docker run --rm \
+            -e MIGRATION_DATABASE_URL="${{ secrets.MIGRATION_DATABASE_URL }}" \
+            --entrypoint node \
+            ghcr.io/${{ github.repository_owner }}/ocar-api:$IMAGE_TAG \
+            dist/db/migrate.js
+
+      - name: Record previous image tag (for rollback)
+        id: previous
+        run: |
+          PREV=$(aws ssm get-parameter --name "$IMAGE_TAG_PARAM" --query 'Parameter.Value' --output text 2>/dev/null || echo "")
+          echo "tag=$PREV" >> "$GITHUB_OUTPUT"
+
+      - name: Update image-tag parameter
+        run: |
+          aws ssm put-parameter --name "$IMAGE_TAG_PARAM" --type String --value "$IMAGE_TAG" --overwrite
+
+      - name: Start instance refresh
+        id: refresh
+        run: |
+          ID=$(aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "$ASG_NAME" \
+            --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}' \
+            --query 'InstanceRefreshId' --output text)
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for instance refresh to complete
+        id: wait
+        run: |
+          set +e
+          for i in $(seq 1 60); do
+            STATUS=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name "$ASG_NAME" \
+              --instance-refresh-ids "${{ steps.refresh.outputs.id }}" \
+              --query 'InstanceRefreshes[0].Status' --output text)
+            echo "status: $STATUS"
+            if [ "$STATUS" = "Successful" ]; then
+              echo "result=success" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ]; then
+              echo "result=failed" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "result=timeout" >> "$GITHUB_OUTPUT"
+
+      - name: Health-check the ALB
+        id: health
+        if: steps.wait.outputs.result == 'success'
+        run: |
+          set +e
+          for i in 1 2 3 4 5 6 7 8; do
+            CODE=$(curl -sk --max-time 5 -o /dev/null -w "%{http_code}" \
+              -H "Host: ocar-api.clienttesting.in" "https://$ALB_DNS_NAME/health")
+            if [ "$CODE" = "200" ]; then
+              echo "result=success" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "result=failed" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test a real DB-backed route
+        id: smoke
+        if: steps.health.outputs.result == 'success'
+        run: |
+          set +e
+          for i in 1 2 3; do
+            if curl -sk --max-time 5 -H "Host: ocar-api.clienttesting.in" \
+                 "https://$ALB_DNS_NAME/api/v1/geo/cities" | grep -q '"slug"'; then
+              echo "result=success" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "result=failed" >> "$GITHUB_OUTPUT"
+
+      - name: Roll back on failure
+        if: steps.wait.outputs.result != 'success' || steps.health.outputs.result != 'success' || steps.smoke.outputs.result != 'success'
+        run: |
+          PREV="${{ steps.previous.outputs.tag }}"
+          if [ -n "$PREV" ] && [ "$PREV" != "$IMAGE_TAG" ]; then
+            echo "Rolling back image-tag parameter to $PREV"
+            aws ssm put-parameter --name "$IMAGE_TAG_PARAM" --type String --value "$PREV" --overwrite
+            aws autoscaling start-instance-refresh \
+              --auto-scaling-group-name "$ASG_NAME" \
+              --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'
+            echo "Rolled back. NOTE: any migrations $IMAGE_TAG applied are NOT reverted (forward-only migrations) -- if the migration itself is the problem, it must be fixed forward, not rolled back."
+          else
+            echo "No distinct previous tag found -- nothing to roll back to. Manual intervention required."
+          fi
+          exit 1
