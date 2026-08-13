@@ -1,6 +1,28 @@
 import { rateLimit } from 'express-rate-limit'
+import { RedisStore, type RedisReply } from 'rate-limit-redis'
 import type { Request } from 'express'
 import { verifyAccessToken } from '@/lib/jwt'
+import { client as redis } from '@/db/redis'
+
+// Redis-backed store so limits are shared across all ASG instances instead
+// of each instance counting independently -- an in-memory MemoryStore (the
+// express-rate-limit default) would let the effective limit multiply by
+// instance count, since the ALB has no session affinity. Separate prefix per
+// limiter so they don't share counters despite different windows.
+//
+// Skipped entirely in tests: RedisStore loads Lua scripts into Redis at
+// construction time, which would require a live Redis connection just to
+// import this module -- unnecessary since skip: skipInTest already disables
+// rate limiting per-request in tests, and a single test process has no
+// multi-instance concern for the fallback MemoryStore to get wrong.
+function redisStore(prefix: string): RedisStore | undefined {
+  if (skipInTest()) return undefined
+  return new RedisStore({
+    prefix,
+    sendCommand: (...args: string[]) =>
+      redis.call(...(args as [string, ...string[]])) as Promise<RedisReply>,
+  })
+}
 
 // Bypass IP-based limiters in test environment — tests use a shared localhost
 // IP which would exhaust the window in a single suite. The OTP service's own
@@ -29,7 +51,7 @@ function principalKey(req: Request): string {
 }
 
 // General API: 600 requests per minute per principal (or per IP if unauthenticated)
-export const generalLimiter = rateLimit({
+const generalLimiterOptions: Parameters<typeof rateLimit>[0] = {
   windowMs: 60 * 1000,
   max: 600,
   standardHeaders: true,
@@ -37,24 +59,30 @@ export const generalLimiter = rateLimit({
   skip: skipInTest,
   keyGenerator: principalKey,
   message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
-})
+}
+const generalStore = redisStore('rl:general:')
+if (generalStore !== undefined) generalLimiterOptions.store = generalStore
+export const generalLimiter = rateLimit(generalLimiterOptions)
 
 // Auth/OTP: 10 requests per minute per IP to limit brute-force
-export const authLimiter = rateLimit({
+const authLimiterOptions: Parameters<typeof rateLimit>[0] = {
   windowMs: 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
   skip: skipInTest,
   message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
-})
+}
+const authStore = redisStore('rl:auth:')
+if (authStore !== undefined) authLimiterOptions.store = authStore
+export const authLimiter = rateLimit(authLimiterOptions)
 
 // Per (principal, ride) chat-send throttle. express-rate-limit is a fixed-window
 // counter, so this caps ~5 sends/second/ride rather than a true "burst 5 then
 // 1/sec" token bucket — close enough, and it reuses the existing middleware
 // stack. ponytail: fixed-window approximation; swap for a Redis token-bucket
 // (see the OTP rate limiter pattern in lib/otp.ts) only if abuse proves this too coarse.
-export const chatMessageLimiter = rateLimit({
+const chatMessageLimiterOptions: Parameters<typeof rateLimit>[0] = {
   windowMs: 1000,
   max: 5,
   standardHeaders: true,
@@ -62,11 +90,14 @@ export const chatMessageLimiter = rateLimit({
   skip: skipInTest,
   keyGenerator: (req) => `chat:${principalKey(req)}:${req.params['id'] ?? ''}`,
   message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
-})
+}
+const chatStore = redisStore('rl:chat:')
+if (chatStore !== undefined) chatMessageLimiterOptions.store = chatStore
+export const chatMessageLimiter = rateLimit(chatMessageLimiterOptions)
 
 // Per (principal, ride) masked-call throttle — real phone calls cost real
 // money per minute, so this is intentionally tighter than chat.
-export const maskedCallLimiter = rateLimit({
+const maskedCallLimiterOptions: Parameters<typeof rateLimit>[0] = {
   windowMs: 60 * 1000,
   max: 3,
   standardHeaders: true,
@@ -74,4 +105,7 @@ export const maskedCallLimiter = rateLimit({
   skip: skipInTest,
   keyGenerator: (req) => `call:${principalKey(req)}:${req.params['id'] ?? ''}`,
   message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
-})
+}
+const callStore = redisStore('rl:call:')
+if (callStore !== undefined) maskedCallLimiterOptions.store = callStore
+export const maskedCallLimiter = rateLimit(maskedCallLimiterOptions)

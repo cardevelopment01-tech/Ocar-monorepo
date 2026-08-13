@@ -6,7 +6,7 @@ import { shutdownTracing } from './observability/tracing'
 import { createApp } from './app'
 import { testConnection, pool } from './db/client'
 import { testConnection as testRedis, client as redisClient } from './db/redis'
-import { initSocketServer } from './websocket/socket.server'
+import { initSocketServer, getIO } from './websocket/socket.server'
 import { notificationsWorker } from './jobs/workers/notifications.worker'
 import { dispatchWorker } from './jobs/workers/dispatch.worker'
 import { gpsFlushWorker } from './jobs/workers/gps-flush.worker'
@@ -142,7 +142,25 @@ async function start(): Promise<void> {
 
   async function shutdown(): Promise<void> {
     logger.info('shutting down gracefully')
-    httpServer.close(async () => {
+
+    // Guarantees the process actually exits even if something in the graceful
+    // path hangs, instead of the container sitting until the platform's own
+    // SIGKILL grace period expires.
+    const forceExitTimer = setTimeout(() => {
+      logger.error('graceful shutdown timed out, forcing exit')
+      process.exit(1)
+    }, 10_000)
+    forceExitTimer.unref()
+
+    // io.close() disconnects every connected socket (clients auto-reconnect
+    // elsewhere via connectionStateRecovery) and closes the underlying HTTP
+    // server itself -- calling httpServer.close() separately would double-close
+    // it. Plain httpServer.close() alone would never fire its callback while
+    // any WebSocket connection is still open: Node only stops accepting new
+    // connections, it doesn't close existing ones, and every ride/chat
+    // connection is now a long-lived WebSocket (websocket-only transport).
+    getIO().close(async () => {
+      clearTimeout(forceExitTimer)
       await Promise.all([
         notificationsWorker.close(),
         dispatchWorker.close(),
