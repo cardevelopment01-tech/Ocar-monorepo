@@ -426,6 +426,8 @@ below for the exact commands to close both gaps once repo admin access is availa
 
 ## Pending Ops Actions
 
+- **Evaluate a real secrets manager (e.g. Infisical) to replace the raw SSM `SecureString` workflow for the Terraform-managed prod EC2 fleet (`infra/terraform/iam.tf`, `api-env`/`ghcr-token`/`image-tag` parameters).** Not urgent, not a security problem — SSM `SecureString` is still a legitimate credential store. The pain is ergonomic: SSM only supports whole-value overwrite, so every edit (e.g. changing one line in `api-env`) means pulling the entire blob to a local file, hand-editing it, and re-uploading the whole thing — during the 2026-08-12 Redis-to-Valkey cutover this exact loop caused a real mistake (a human edit changed the `REDIS_URL` scheme but missed the hostname, since the whole value has to be eyeballed at once instead of editing one key). A secrets manager with per-key editing would remove that failure mode. Weigh against the cost: it's a new external dependency the EC2 boot script would need network access to and authenticate against (or a self-hosted instance to run and maintain) — evaluate calmly, not as a reactive swap. Delete this note once decided either way.
+
 - **Driver instant cash-out is behind a kill switch, `system_config.driver_payouts_enabled` (default `'false'`).** The driver app hides the "Cash Out Now" button and the API rejects the endpoint while it's off — this is intentional until RazorpayX payouts are confirmed working end-to-end in an environment (real `RAZORPAYX_ACCOUNT_NUMBER` set, webhook events `payout.processed`/`payout.failed`/`payout.reversed` enabled in the Razorpay dashboard, a real payout tested and confirmed to land). Once verified, flip it on:
   ```sql
   UPDATE system_config SET value = 'true' WHERE key = 'driver_payouts_enabled';
@@ -494,6 +496,8 @@ below for the exact commands to close both gaps once repo admin access is availa
 - No chmod/chown anywhere
 - PostGIS queries always use parameterized geography — never string concat
 - SQL injection: only hardcoded column names in dynamic UPDATE builders
+
+**Secret scanning**: this is a private repo, so GitHub's native secret scanning (`GitHub Secret Protection`) is a paid add-on ($19/mo per active committer), not free like it is on public repos — declined on cost. Mitigation in place instead: Trivy's `secret` scanner runs in `ci.yml` on every push/PR (fails the build on CRITICAL/HIGH findings). Known gap versus the paid product: no push protection (a secret can still land in a commit before CI runs) and no retroactive scan of existing git history — Trivy only checks the code at the commit that triggered the run. Revisit if budget changes or a leak ever happens.
 
 ## graphify
 

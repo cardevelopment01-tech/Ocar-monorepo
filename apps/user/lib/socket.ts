@@ -8,7 +8,9 @@ export function getSocket(): Socket {
   if (!socket) {
     socket = io(process.env['NEXT_PUBLIC_API_URL']!, {
       auth: { token },
-      transports: ['websocket', 'polling'],
+      // Must match the server's websocket-only transport (no ALB sticky
+      // sessions configured -- see api/src/websocket/socket.server.ts).
+      transports: ['websocket'],
       autoConnect: false,
     })
   } else {

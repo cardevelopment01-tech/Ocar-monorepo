@@ -23,6 +23,12 @@ export function initSocketServer(httpServer: HttpServer): Server {
       origin: config.ALLOWED_ORIGINS.split(',').map(o => o.trim()),
       methods: ['GET', 'POST'],
     },
+    // websocket-only: the ALB has no sticky sessions configured, and HTTP
+    // long-polling requires every request from a client to land on the same
+    // instance to read/write its Engine.IO session -- a plain WebSocket
+    // upgrade pins the whole connection to one instance for its lifetime
+    // instead, so no session affinity is needed at the load balancer.
+    transports: ['websocket'],
     pingTimeout: 60000,
     pingInterval: 25000,
     // Buffers packets emitted to a room during a short disconnect (phone

@@ -4,6 +4,11 @@ services:
     container_name: ocar_api
     restart: unless-stopped
     env_file: .env.prod
+    # Published to the host so the ALB (no nginx in front on the new ASG
+    # instances) can reach it directly. Harmless on the old box too --
+    # nginx still routes internally via ocar_net regardless.
+    ports:
+      - "4000:4000"
     networks:
       - ocar_net
     healthcheck:

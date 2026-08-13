@@ -1,0 +1,160 @@
+{
+  "title": "Ocar — Fleet & Golden Signals",
+  "uid": "ocar-fleet-golden-signals",
+  "schemaVersion": 39,
+  "editable": true,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Prometheus"
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "Fleet Overview", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 1 },
+
+    {
+      "type": "stat",
+      "title": "Live Instances",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "id": 2,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "count(up{instance=\"api:4000\"} == 1)", "refId": "A", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 } },
+      "options": { "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Instance Count Over Time (autoscaling activity)",
+      "gridPos": { "h": 6, "w": 18, "x": 6, "y": 1 },
+      "id": 3,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "count(up{instance=\"api:4000\"})", "refId": "A", "legendFormat": "instances" }],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 } }
+    },
+
+    { "type": "row", "title": "Golden Signals (Rate / Errors / Duration)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }, "id": 4 },
+
+    {
+      "type": "timeseries",
+      "title": "Request Rate",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 8 },
+      "id": 5,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "sum(rate(http_request_duration_seconds_count{instance=\"api:4000\"}[5m]))", "refId": "A", "legendFormat": "req/s" }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error Rate (5xx)",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 8 },
+      "id": 6,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "100 * sum(rate(http_request_duration_seconds_count{instance=\"api:4000\", status_code=~\"5..\"}[5m])) / sum(rate(http_request_duration_seconds_count{instance=\"api:4000\"}[5m]))",
+        "refId": "A", "legendFormat": "% 5xx"
+      }],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "thresholds": { "steps": [
+        { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }
+      ] } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency (p50 / p95 / p99)",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 8 },
+      "id": 7,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{instance=\"api:4000\"}[5m])) by (le))", "refId": "A", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{instance=\"api:4000\"}[5m])) by (le))", "refId": "B", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{instance=\"api:4000\"}[5m])) by (le))", "refId": "C", "legendFormat": "p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 } }
+    },
+    {
+      "type": "table",
+      "title": "Top Routes by Traffic",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 15 },
+      "id": 8,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "topk(10, sum by (route, method) (rate(http_request_duration_seconds_count{instance=\"api:4000\"}[5m])))",
+        "refId": "A", "format": "table", "instant": true
+      }]
+    },
+
+    { "type": "row", "title": "Per-Instance Saturation", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 }, "id": 9 },
+
+    {
+      "type": "timeseries",
+      "title": "CPU % by Instance",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 22 },
+      "id": 10,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "100 - (avg by (host) (rate(node_cpu_seconds_total{instance=\"node_exporter:9100\", mode=\"idle\"}[5m])) * 100)",
+        "refId": "A", "legendFormat": "{{host}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory % by Instance",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 22 },
+      "id": 11,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "100 * (1 - (node_memory_MemAvailable_bytes{instance=\"node_exporter:9100\"} / node_memory_MemTotal_bytes{instance=\"node_exporter:9100\"}))",
+        "refId": "A", "legendFormat": "{{host}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk % by Instance (root volume)",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 22 },
+      "id": 12,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "100 * (1 - (node_filesystem_avail_bytes{instance=\"node_exporter:9100\", mountpoint=\"/\"} / node_filesystem_size_bytes{instance=\"node_exporter:9100\", mountpoint=\"/\"}))",
+        "refId": "A", "legendFormat": "{{host}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } }
+    },
+
+    { "type": "row", "title": "Application Internals (DB / Queues / Event Loop)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 }, "id": 13 },
+
+    {
+      "type": "timeseries",
+      "title": "DB Pool Connections",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 30 },
+      "id": 14,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "pg_pool_connections{instance=\"api:4000\"}", "refId": "A", "legendFormat": "{{host}} - {{state}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 } }
+    },
+    {
+      "type": "timeseries",
+      "title": "BullMQ Queue Depth",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 30 },
+      "id": 15,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "bullmq_queue_job_counts{instance=\"api:4000\", state=~\"waiting|active|delayed|failed\"}", "refId": "A", "legendFormat": "{{queue}} - {{state}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Node.js Event Loop Lag",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 30 },
+      "id": 16,
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "nodejs_eventloop_lag_seconds{instance=\"api:4000\"}", "refId": "A", "legendFormat": "{{host}}" }],
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 } }
+    }
+  ]
+}

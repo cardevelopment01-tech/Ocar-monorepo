@@ -24,7 +24,9 @@ export function getDriverSocket(): Socket {
   if (!socket) {
     socket = io(import.meta.env['VITE_API_URL'] as string, {
       auth: { token },
-      transports: ['websocket', 'polling'],
+      // Must match the server's websocket-only transport (no ALB sticky
+      // sessions configured -- see api/src/websocket/socket.server.ts).
+      transports: ['websocket'],
       autoConnect: false,
     })
 
