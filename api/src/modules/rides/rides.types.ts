@@ -28,6 +28,8 @@ export interface NearbyDriver {
   lat: number
   lng: number
   distance_metres: number
+  // Absent (undefined) for return-cab matches, which don't select this column.
+  is_available?: boolean
 }
 
 export interface Ride {

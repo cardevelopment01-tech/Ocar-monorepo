@@ -4,6 +4,8 @@ import { socketEvents } from '@/websocket/socket.server'
 import type { NotifOwnerType } from './notifications.repository'
 import { renderTemplate } from './templates.service'
 import { logger } from '@/lib/logger'
+import { client as redis } from '@/db/redis'
+import { ridePushSentKey } from '@/constants/redis-keys'
 
 const log = logger.child({ module: 'notifications-service' })
 
@@ -22,6 +24,39 @@ export async function pushToTokens(tokens: string[], msg: PushMessage): Promise<
     }
   } catch (err) {
     log.error({ err }, 'pushToTokens failed')
+  }
+}
+
+// Fires at most ONE ride-request push per ride+driver, guarded by a Redis
+// SET NX so a live-socket driver's later ack-check retries (or a caller that
+// already push-notified them, e.g. a backgrounded broadcast match) never
+// double-send. Shared by broadcast.processor.ts (immediate push for a
+// backgrounded match) and ack-check.processor.ts (fallback push for a driver
+// whose live socket emit never got acked).
+export async function sendRideRequestPushOnce(
+  rideId: string,
+  driverId: string,
+  pickup: string,
+  drop: string,
+  windowSeconds: number
+): Promise<void> {
+  const firstFire = await redis.set(
+    ridePushSentKey(rideId, driverId), '1',
+    'EX', windowSeconds + 30, 'NX'
+  )
+  if (firstFire !== 'OK') return
+
+  try {
+    const tokens = await repo.getTokensForOwner('driver', BigInt(driverId))
+    await pushToTokens(tokens, {
+      title: 'New ride request',
+      body: `${pickup} → ${drop}`,
+      tag: `ride-${rideId}`,
+      ttlSeconds: Math.min(windowSeconds, 30),
+      data: { type: 'ride_request', rideId },
+    })
+  } catch (err) {
+    log.error({ err }, 'sendRideRequestPushOnce failed')
   }
 }
 

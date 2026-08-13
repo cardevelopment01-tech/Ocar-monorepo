@@ -15,6 +15,14 @@ export const BCRYPT_ROUNDS = 12
 export const BROADCAST_WINDOW_SECONDS = 20
 export const BROADCAST_MAX_DRIVERS = 5
 export const BROADCAST_ROUND_MAX = 3
+// A driver whose tab backgrounded (pauseAvailability, is_available=false,
+// ds.status stays 'online') within this many seconds is still matched into
+// broadcasts and push-notified immediately, rather than being invisible
+// until they reopen the app on their own.
+export const BACKGROUND_MATCH_GRACE_SECONDS = 60
+// Longer per-assignment response window for a backgrounded match than a live
+// one — realistic time to notice a push, tap it, and let the app reconnect.
+export const BACKGROUND_ACCEPT_WINDOW_SECONDS = 45
 // Admin manual-assign: longer than a broadcast ping since the driver was
 // deliberately picked and deserves a beat to check the trip before responding.
 export const MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS = 30
