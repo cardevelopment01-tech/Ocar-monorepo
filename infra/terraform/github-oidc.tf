@@ -121,6 +121,17 @@ resource "aws_iam_role_policy" "github_actions_plan_state" {
         Resource = aws_s3_bucket.terraform_state.arn
       },
       {
+        # state-bucket.tf makes the bucket itself (policy, versioning,
+        # encryption config, public access block) a managed Terraform
+        # resource, not just backend storage -- plan needs to read the
+        # bucket's own configuration to refresh those, separate from the
+        # state-object permissions above. Confirmed via a real CI failure
+        # (s3:GetBucketPolicy denied).
+        Effect   = "Allow"
+        Action   = ["s3:Get*", "s3:List*"]
+        Resource = aws_s3_bucket.terraform_state.arn
+      },
+      {
         # State bucket moved to SSE-KMS (customer-managed key, see
         # state-bucket.tf). Decrypt covers reading the state object;
         # GenerateDataKey is separately required to WRITE the lock file
