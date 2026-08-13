@@ -119,6 +119,14 @@ resource "aws_iam_role_policy" "github_actions_plan_state" {
         Effect   = "Allow"
         Action   = ["s3:ListBucket"]
         Resource = aws_s3_bucket.terraform_state.arn
+      },
+      {
+        # State bucket moved to SSE-KMS (customer-managed key, see
+        # state-bucket.tf) -- reading state now requires decrypt access to
+        # that specific key, not just S3 permissions.
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:DescribeKey"]
+        Resource = aws_kms_key.terraform_state.arn
       }
     ]
   })
