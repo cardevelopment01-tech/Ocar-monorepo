@@ -79,6 +79,30 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  # pg_stat_statements collector is disabled by default upstream (expensive
+  # on a busy server, one series per unique query) -- explicitly enabled here
+  # since finding slow/unusual queries is the whole point of running this.
+  # DATA_SOURCE_NAME (not DATABASE_URL, which is what .env.prod actually has)
+  # is what the exporter reads -- the entrypoint override maps one to the
+  # other rather than duplicating the connection string under a second name.
+  # Runs on every instance identically: all instances share the same Neon DB,
+  # so every instance's exporter reports the same pg_stat_statements numbers
+  # -- harmless duplication (dashboard queries use max() not sum()), simpler
+  # than standing up a dedicated instance just to avoid it.
+  postgres_exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    container_name: ocar_postgres_exporter
+    restart: unless-stopped
+    env_file: .env.prod
+    entrypoint: ["sh", "-c", "DATA_SOURCE_NAME=\"$$DATABASE_URL\" exec /bin/postgres_exporter --collector.stat_statements --collector.stat_statements.include_query"]
+    networks:
+      - ocar_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
 volumes:
   certbot_webroot:
   alloy_data:
