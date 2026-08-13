@@ -74,6 +74,14 @@ prometheus.scrape "node" {
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 }
 
+// Every instance's exporter reports the same pg_stat_statements/pg_stat_database
+// numbers (they all connect to the same shared Neon DB) -- harmless
+// duplication, dashboard queries use max() rather than sum() where that matters.
+prometheus.scrape "postgres" {
+  targets    = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME")}]
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
 prometheus.remote_write "grafana_cloud" {
   endpoint {
     url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
