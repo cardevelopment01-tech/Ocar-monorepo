@@ -12,8 +12,11 @@ resource "aws_iam_openid_connect_provider" "github_actions" {
   thumbprint_list = [data.tls_certificate.github_actions.certificates[0].sha1_fingerprint]
 }
 
-# Scoped to exactly this repo, and only the main branch -- matches where the
-# deploy job in ci-cd.yml already only runs (push to main), not every PR/branch.
+# Scoped to exactly this repo. The deploy job in deploy.yml declares
+# `environment: production`, which changes GitHub's OIDC sub claim format
+# from the usual ref-based one (repo:OWNER/REPO:ref:refs/heads/main) to an
+# environment-based one instead -- confirmed via the actual rejected claim
+# in CloudTrail after the ref-based condition failed for real.
 resource "aws_iam_role" "github_actions_deploy" {
   name = "${var.project_name}-${var.environment}-gha-deploy"
 
@@ -28,7 +31,7 @@ resource "aws_iam_role" "github_actions_deploy" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:cardevelopment01-tech/Ocar-monorepo:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub" = "repo:cardevelopment01-tech/Ocar-monorepo:environment:production"
         }
       }
     }]
