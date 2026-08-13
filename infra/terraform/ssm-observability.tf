@@ -13,6 +13,10 @@ resource "aws_ssm_parameter" "docker_compose_prod" {
 
 resource "aws_ssm_parameter" "alloy_config" {
   name  = "/${var.project_name}/${var.environment}/alloy-config"
+  # Standard tier caps out at 4096 characters -- config.alloy crossed that
+  # threshold once the postgres_exporter scrape block was added. Advanced
+  # tier costs $0.05/parameter/month, negligible at this scale.
+  tier  = "Advanced"
   type  = "String"
   value = file("${path.module}/../../infra/alloy/config.alloy")
 }
