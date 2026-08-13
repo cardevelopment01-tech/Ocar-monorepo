@@ -23,6 +23,11 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Needs unrestricted egress to reach GHCR, AWS APIs, Grafana Cloud, Neon,
+  # etc. -- allowlisting every external endpoint by IP is real, ongoing
+  # maintenance for marginal benefit at this scale (those IPs also aren't
+  # static). Standard practice for outbound-heavy workloads.
+  #trivy:ignore:AVD-AWS-0104
   egress {
     from_port   = 0
     to_port     = 0
@@ -59,6 +64,8 @@ resource "aws_security_group" "ec2" {
     }
   }
 
+  # Same reasoning as the ALB security group above.
+  #trivy:ignore:AVD-AWS-0104
   egress {
     from_port   = 0
     to_port     = 0

@@ -12,6 +12,11 @@ resource "aws_vpc" "main" {
   }
 }
 
+# Deliberate: no NAT gateway (~$32-45/month + data fees, not worth it at
+# this scale -- see TERRAFORM_INFRA_BRIEF.md), so instances need a public IP
+# to reach the internet directly. Security comes from the EC2 security group
+# (only the ALB's SG can reach in), not from subnet placement.
+#trivy:ignore:AVD-AWS-0164
 resource "aws_subnet" "public" {
   count = length(var.availability_zones)
 

@@ -64,12 +64,37 @@ resource "aws_elasticache_replication_group" "valkey" {
   subnet_group_name          = aws_elasticache_subnet_group.valkey.name
   security_group_ids         = [aws_security_group.valkey.id]
 
+  # Both are creation-time-only settings on ElastiCache -- enabling them on
+  # an already-live cluster forces Terraform to replace it (destroy +
+  # recreate), not update in place. Acceptable: cache contents are disposable
+  # (job queue state, sessions, OTP hashes), nothing here is a source of
+  # truth. Traffic stays SG-restricted to only the EC2 instances either way;
+  # this closes the gap for anyone with broader VPC-level visibility.
+  at_rest_encryption_enabled = true
+  transit_encryption_enabled = true
+  # AWS rejects a transit-encryption change without this -- it otherwise
+  # defers to the next maintenance window, which isn't scheduled for this
+  # cluster, so the change would silently never apply.
+  apply_immediately = true
+  # AWS's documented safe migration for converting an already-unencrypted
+  # cluster: "preferred" accepts both rediss:// and redis:// while REDIS_URL
+  # gets updated across instances, avoiding a hard cutover that breaks
+  # every currently-connected client at once. Flip to "required" once
+  # every instance is confirmed using rediss://.
+  transit_encryption_mode = "preferred"
+
   tags = {
     Name = "${var.project_name}-${var.environment}-valkey"
   }
 }
 
+# Before transit encryption was enabled, this attribute returned a hostname
+# (<name>.<suffix>.ng.0001.<region>.cache.amazonaws.com) that didn't match
+# the TLS cert's SAN, throwing ERR_TLS_CERT_ALTNAME_INVALID -- confirmed
+# directly against a live instance. AWS switched the reported endpoint to a
+# "master."-prefixed, cert-matching format automatically once transit
+# encryption was turned on, so this now just reads the attribute as-is.
 output "valkey_endpoint" {
-  description = "Valkey host:port -- update REDIS_URL in the api-env SSM parameter to point here"
+  description = "Valkey host:port (rediss://, TLS required) -- update REDIS_URL in the api-env SSM parameter to rediss://<this>:6379"
   value       = "${aws_elasticache_replication_group.valkey.primary_endpoint_address}:6379"
 }

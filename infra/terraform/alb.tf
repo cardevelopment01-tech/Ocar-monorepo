@@ -2,6 +2,9 @@
 # from acm.tf; HTTP just redirects to HTTPS. Target group health-checks
 # /health -- same endpoint the current deploy pipeline already checks.
 
+# Publicly exposed on purpose -- this is the internet-facing API load
+# balancer, that's the whole point of it.
+#trivy:ignore:AVD-AWS-0053
 resource "aws_lb" "main" {
   name               = "${var.project_name}-${var.environment}-alb"
   internal           = false
