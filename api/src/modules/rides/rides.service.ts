@@ -185,6 +185,13 @@ export async function goOnline(driverId: bigint, data: {
     originLng:         data.lng,
   })
 
+  // A ride interrupted mid-trip (app crash, connection drop, instance cycled
+  // during a deploy) never reaches the normal completion/cancellation path
+  // that resets is_available, so it can be stuck false from a previous
+  // session. Going online is an explicit "I'm available now" signal --
+  // always clear it here rather than leaving the driver silently unmatched.
+  await repo.setDriverAvailability(driverId, true)
+
   if (data.mode === 'return_cab' && data.destinationCityId) {
     const cityRes = await pool.query<{ dest_lat: number; dest_lng: number }>(
       `SELECT

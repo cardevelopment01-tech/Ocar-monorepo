@@ -7,6 +7,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   createSession:       vi.fn(),
   upsertDriverLocation: vi.fn(),
   endSession:          vi.fn(),
+  setDriverAvailability: vi.fn(),
 }))
 
 vi.mock('@/modules/drivers/driver-verification.repository', () => ({
