@@ -61,10 +61,20 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         Effect = "Allow"
         Action = [
           "autoscaling:StartInstanceRefresh",
-          "autoscaling:DescribeInstanceRefreshes",
           "autoscaling:CancelInstanceRefresh",
         ]
         Resource = aws_autoscaling_group.api.arn
+      },
+      {
+        # DescribeInstanceRefreshes doesn't support resource-level
+        # permissions at all (confirmed via AWS's own IAM docs) -- scoping
+        # it to the ASG ARN like the write actions above silently denies it
+        # regardless of which resource is targeted. Confirmed via a real CI
+        # failure after StartInstanceRefresh (correctly resource-scoped)
+        # succeeded but the very next step's Describe call was denied.
+        Effect   = "Allow"
+        Action   = ["autoscaling:DescribeInstanceRefreshes"]
+        Resource = "*"
       }
     ]
   })
