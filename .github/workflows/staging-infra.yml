@@ -1,0 +1,50 @@
+name: Staging Infra (apply/destroy)
+
+# Manual only -- never on push or pull_request. Staging is provisioned on
+# demand for a load test, not kept in sync with every commit.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "apply or destroy"
+        required: true
+        type: choice
+        options: [apply, destroy]
+
+permissions:
+  id-token: write   # required for OIDC -- no static AWS keys stored anywhere
+  contents: read
+
+jobs:
+  staging:
+    name: terraform ${{ github.event.inputs.action }} (staging)
+    runs-on: ubuntu-latest
+    environment: staging
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.STAGING_GHA_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - run: terraform init -backend-config=staging.backend.hcl
+
+      - name: Plan
+        run: terraform plan -var-file=staging.tfvars -out=tfplan
+
+      - name: Apply
+        if: github.event.inputs.action == 'apply'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Destroy
+        if: github.event.inputs.action == 'destroy'
+        run: terraform destroy -var-file=staging.tfvars -auto-approve
