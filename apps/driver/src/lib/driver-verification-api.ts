@@ -15,6 +15,7 @@ async function uploadOne(file: File, kind: 'selfie' | 'plate'): Promise<string> 
   const { upload_url, key } = (await api.post('/api/v1/drivers/daily-verification/upload-init', {
     kind,
     content_type: file.type,
+    content_length: file.size,
   })).data as { upload_url: string; key: string }
 
   await putToS3WithRetry(upload_url, file)

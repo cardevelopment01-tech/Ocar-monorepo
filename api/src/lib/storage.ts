@@ -34,10 +34,16 @@ export async function uploadFile(
   return `${S3_URL_PREFIX}${key}`
 }
 
-export async function getUploadUrl(key: string, contentType: string): Promise<string> {
+// Signing with an exact ContentLength is what makes a plain presigned PUT
+// enforce a size cap -- S3 rejects the upload if the actual Content-Length
+// header doesn't match what was signed. Presigned POST supports a size
+// *range* via a policy document; presigned PUT only supports an exact
+// value, which is fine here since the client already knows its (compressed)
+// file's byte length before requesting the URL.
+export async function getUploadUrl(key: string, contentType: string, contentLength: number): Promise<string> {
   return getSignedUrl(
     s3,
-    new PutObjectCommand({ Bucket: config.S3_BUCKET_NAME, Key: key, ContentType: contentType }),
+    new PutObjectCommand({ Bucket: config.S3_BUCKET_NAME, Key: key, ContentType: contentType, ContentLength: contentLength }),
     { expiresIn: 300 }
   )
 }

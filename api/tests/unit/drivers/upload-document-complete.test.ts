@@ -16,8 +16,13 @@ import { promotePendingUpload } from '@/lib/storage'
 
 describe('initDriverDocumentUpload', () => {
   it('scopes the pending key under the requesting driver only', async () => {
-    const { key } = await initDriverDocumentUpload(BigInt(7), 'profile_photo', 'image/jpeg')
+    const { key } = await initDriverDocumentUpload(BigInt(7), 'profile_photo', 'image/jpeg', 204800)
     expect(key).toMatch(/^uploads\/pending\/drivers\/7\/profile_photo\/.+\.jpg$/)
+  })
+
+  it('rejects a file over the 10MB limit before signing anything', async () => {
+    await expect(initDriverDocumentUpload(BigInt(7), 'profile_photo', 'image/jpeg', 11 * 1024 * 1024))
+      .rejects.toMatchObject({ appCode: 'FILE_TOO_LARGE' })
   })
 })
 

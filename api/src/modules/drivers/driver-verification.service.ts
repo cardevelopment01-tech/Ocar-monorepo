@@ -12,6 +12,8 @@ const EXT_BY_MIME: Record<string, string> = {
   'application/pdf': '.pdf',
 }
 
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // matches the old multer limits.fileSize
+
 export async function getStatus(driverId: bigint): Promise<VerificationStatusToday & { complete: boolean }> {
   const status = await repo.getTodayStatus(driverId)
   return { ...status, complete: status.selfieDone && status.plateDone }
@@ -20,11 +22,15 @@ export async function getStatus(driverId: bigint): Promise<VerificationStatusTod
 export async function initUpload(
   driverId: bigint,
   kind: 'selfie' | 'plate',
-  contentType: string
+  contentType: string,
+  contentLength: number
 ): Promise<{ upload_url: string; key: string }> {
+  if (contentLength > MAX_UPLOAD_BYTES) {
+    throw httpError(422, 'File size exceeds 10MB limit', 'FILE_TOO_LARGE')
+  }
   const ext = EXT_BY_MIME[contentType] ?? '.bin'
   const key = `uploads/pending/drivers/${driverId}/daily-verification/${kind}/${crypto.randomUUID()}${ext}`
-  const uploadUrl = await getUploadUrl(key, contentType)
+  const uploadUrl = await getUploadUrl(key, contentType, contentLength)
   return { upload_url: uploadUrl, key }
 }
 

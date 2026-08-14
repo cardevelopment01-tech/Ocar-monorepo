@@ -85,6 +85,7 @@ const VEHICLE_DOC_TYPES  = ['vehicle_rc', 'insurance', 'permit', 'pollution_cert
 export const identityUploadInitSchema = z.object({
   doc_type: z.enum(IDENTITY_DOC_TYPES),
   content_type: z.enum(ALLOWED_UPLOAD_MIME),
+  content_length: z.number().int().positive(),
 })
 
 export const identityUploadCompleteSchema = z.object({
@@ -97,6 +98,7 @@ export const identityUploadCompleteSchema = z.object({
 export const vehicleUploadInitSchema = z.object({
   doc_type: z.enum(VEHICLE_DOC_TYPES),
   content_type: z.enum(ALLOWED_UPLOAD_MIME),
+  content_length: z.number().int().positive(),
 })
 
 export const vehicleUploadCompleteSchema = z.object({
@@ -109,6 +111,7 @@ export const vehicleUploadCompleteSchema = z.object({
 export const verificationUploadInitSchema = z.object({
   kind: z.enum(['selfie', 'plate']),
   content_type: z.enum(ALLOWED_UPLOAD_MIME),
+  content_length: z.number().int().positive(),
 })
 
 export const verificationSubmitSchema = z.object({

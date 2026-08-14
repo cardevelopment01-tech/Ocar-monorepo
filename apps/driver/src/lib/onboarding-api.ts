@@ -109,6 +109,7 @@ export const onboardingApi = {
     const { upload_url, key } = (await api.post('/api/v1/drivers/onboarding/documents/upload-init', {
       doc_type: docType,
       content_type: compressed.type,
+      content_length: compressed.size,
     })).data as { upload_url: string; key: string }
 
     await putToS3WithRetry(upload_url, compressed)
@@ -126,6 +127,7 @@ export const onboardingApi = {
     const { upload_url, key } = (await api.post('/api/v1/drivers/onboarding/documents/vehicle-upload-init', {
       doc_type: docType,
       content_type: compressed.type,
+      content_length: compressed.size,
     })).data as { upload_url: string; key: string }
 
     await putToS3WithRetry(upload_url, compressed)

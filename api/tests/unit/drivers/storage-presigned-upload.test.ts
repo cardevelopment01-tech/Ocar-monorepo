@@ -21,8 +21,8 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 describe('getUploadUrl', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('signs a PutObject request with the given key and content type, 5-minute expiry', async () => {
-    const url = await getUploadUrl('uploads/pending/drivers/7/profile_photo/abc.jpg', 'image/jpeg')
+  it('signs a PutObject request with the given key, content type, and exact content length, 5-minute expiry', async () => {
+    const url = await getUploadUrl('uploads/pending/drivers/7/profile_photo/abc.jpg', 'image/jpeg', 204800)
     expect(url).toBe('https://signed.example.com/put-url')
     expect(getSignedUrl).toHaveBeenCalledWith(
       expect.anything(),
@@ -31,6 +31,7 @@ describe('getUploadUrl', () => {
           Bucket: 'ocar-docs',
           Key: 'uploads/pending/drivers/7/profile_photo/abc.jpg',
           ContentType: 'image/jpeg',
+          ContentLength: 204800,
         }),
       }),
       { expiresIn: 300 }

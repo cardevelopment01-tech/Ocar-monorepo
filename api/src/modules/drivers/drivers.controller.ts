@@ -68,8 +68,8 @@ export async function saveIdentityDocuments(req: Request, res: Response, next: N
 
 export async function uploadDocumentInit(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { doc_type, content_type } = req.body as { doc_type: string; content_type: string }
-    const result = await service.initDriverDocumentUpload(req.driver!.id, doc_type, content_type)
+    const { doc_type, content_type, content_length } = req.body as { doc_type: string; content_type: string; content_length: number }
+    const result = await service.initDriverDocumentUpload(req.driver!.id, doc_type, content_type, content_length)
     res.status(200).json(result)
   } catch (err) {
     next(err)
@@ -90,8 +90,8 @@ export async function uploadDocumentComplete(req: Request, res: Response, next: 
 
 export async function uploadVehicleDocumentInit(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { doc_type, content_type } = req.body as { doc_type: string; content_type: string }
-    const result = await service.initVehicleDocumentUpload(req.driver!.id, doc_type, content_type)
+    const { doc_type, content_type, content_length } = req.body as { doc_type: string; content_type: string; content_length: number }
+    const result = await service.initVehicleDocumentUpload(req.driver!.id, doc_type, content_type, content_length)
     res.status(200).json(result)
   } catch (err) {
     next(err)

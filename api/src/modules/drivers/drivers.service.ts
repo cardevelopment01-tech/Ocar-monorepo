@@ -13,9 +13,17 @@ const EXT_BY_MIME: Record<string, string> = {
   'application/pdf': '.pdf',
 }
 
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // matches the old multer limits.fileSize
+
 function pendingKey(driverId: bigint, folder: string, contentType: string): string {
   const ext = EXT_BY_MIME[contentType] ?? '.bin'
   return `uploads/pending/drivers/${driverId}/${folder}/${crypto.randomUUID()}${ext}`
+}
+
+function assertWithinSizeLimit(contentLength: number): void {
+  if (contentLength > MAX_UPLOAD_BYTES) {
+    throw httpError(422, 'File size exceeds 10MB limit', 'FILE_TOO_LARGE')
+  }
 }
 
 function assertKeyBelongsToDriver(driverId: bigint, key: string): void {
@@ -218,10 +226,12 @@ export async function saveIdentityDocuments(
 export async function initDriverDocumentUpload(
   driverId: bigint,
   docType: string,
-  contentType: string
+  contentType: string,
+  contentLength: number
 ): Promise<{ upload_url: string; key: string }> {
+  assertWithinSizeLimit(contentLength)
   const key = pendingKey(driverId, docType, contentType)
-  const uploadUrl = await getUploadUrl(key, contentType)
+  const uploadUrl = await getUploadUrl(key, contentType, contentLength)
   return { upload_url: uploadUrl, key }
 }
 
@@ -254,12 +264,14 @@ export async function completeDriverDocumentUpload(
 export async function initVehicleDocumentUpload(
   driverId: bigint,
   docType: string,
-  contentType: string
+  contentType: string,
+  contentLength: number
 ): Promise<{ upload_url: string; key: string }> {
+  assertWithinSizeLimit(contentLength)
   const vehicle = await repo.findVehicleByDriverId(driverId)
   if (!vehicle) throw httpError(422, 'Complete vehicle info step first', 'STEP_NOT_COMPLETE')
   const key = pendingKey(driverId, `vehicle/${docType}`, contentType)
-  const uploadUrl = await getUploadUrl(key, contentType)
+  const uploadUrl = await getUploadUrl(key, contentType, contentLength)
   return { upload_url: uploadUrl, key }
 }
 

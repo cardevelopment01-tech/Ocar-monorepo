@@ -9,8 +9,8 @@ export async function getVerificationStatus(req: Request, res: Response, next: N
 
 export async function initVerificationUpload(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { kind, content_type } = req.body as { kind: 'selfie' | 'plate'; content_type: string }
-    const result = await service.initUpload(req.driver!.id, kind, content_type)
+    const { kind, content_type, content_length } = req.body as { kind: 'selfie' | 'plate'; content_type: string; content_length: number }
+    const result = await service.initUpload(req.driver!.id, kind, content_type, content_length)
     res.status(200).json(result)
   } catch (err) { next(err) }
 }
