@@ -8,11 +8,18 @@ Manual steps needed alongside the Terraform in `infra/terraform/staging.*`
 
 The `github_actions_staging` IAM role itself is a prod-account resource
 (shared infrastructure, not staging-specific), so it's applied against the
-existing prod Terraform state, not the new staging one:
+existing prod Terraform state, not the new staging one. `providers.tf`'s
+backend block is deliberately empty now (see its comment) -- no backend is
+ever a silent default, so the init step below is mandatory, not optional:
 
     cd infra/terraform
+    terraform init -reconfigure -backend-config=prod.backend.hcl
     terraform plan -var="environment=prod" -out=tfplan
     terraform apply tfplan
+
+If you're switching back and forth between prod and staging work in the same
+terminal session, always re-run the matching `-backend-config` init first --
+`pnpm infra:prod:init` / `pnpm infra:staging:init` do exactly this.
 
 Review the plan output first -- it should show only the new IAM role/policy/
 output being added, nothing else changing. Then:
