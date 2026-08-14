@@ -149,9 +149,9 @@ export const driverRideApi = {
     return res.data as DriverSession | null
   },
 
-  acceptRide: async (rideId: string): Promise<{ success: boolean; rideId: string }> => {
+  acceptRide: async (rideId: string): Promise<{ success: boolean; rideId: string; ride: RideDetail | null }> => {
     const res = await api.post(`/api/v1/rides/${rideId}/accept`)
-    return res.data as { success: boolean; rideId: string }
+    return res.data as { success: boolean; rideId: string; ride: RideDetail | null }
   },
 
   markArrived: async (rideId: string): Promise<{ success: boolean }> => {
