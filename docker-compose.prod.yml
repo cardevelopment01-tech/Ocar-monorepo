@@ -126,7 +126,7 @@ services:
   # anyone reads the data is wasted CPU. Not published to the host; only
   # alloy (over ocar_net) needs to reach it.
   cadvisor:
-    image: ghcr.io/google/cadvisor:v0.55.1
+    image: ghcr.io/google/cadvisor:v0.60.5
     container_name: ocar_cadvisor
     restart: unless-stopped
     command:
