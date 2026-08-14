@@ -66,30 +66,44 @@ export async function saveIdentityDocuments(req: Request, res: Response, next: N
   }
 }
 
-export async function uploadDocument(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function uploadDocumentInit(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    if (!req.file) {
-      res.status(422).json({ error: 'No file uploaded', code: 'VALIDATION_ERROR' })
-      return
+    const { doc_type, content_type } = req.body as { doc_type: string; content_type: string }
+    const result = await service.initDriverDocumentUpload(req.driver!.id, doc_type, content_type)
+    res.status(200).json(result)
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function uploadDocumentComplete(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { doc_type, key, valid_from, valid_until } = req.body as {
+      doc_type: string; key: string; valid_from?: string; valid_until?: string
     }
-    const { doc_type, valid_from, valid_until } = req.body as { doc_type: string; valid_from?: string; valid_until?: string }
-    const result = await service.uploadDriverDocument(req.driver!.id, req.file, doc_type, valid_from, valid_until)
+    const result = await service.completeDriverDocumentUpload(req.driver!.id, key, doc_type, valid_from, valid_until)
     res.status(201).json(result)
   } catch (err) {
     next(err)
   }
 }
 
-export async function uploadVehicleDocument(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function uploadVehicleDocumentInit(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    if (!req.file) {
-      res.status(422).json({ error: 'No file uploaded', code: 'VALIDATION_ERROR' })
-      return
+    const { doc_type, content_type } = req.body as { doc_type: string; content_type: string }
+    const result = await service.initVehicleDocumentUpload(req.driver!.id, doc_type, content_type)
+    res.status(200).json(result)
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function uploadVehicleDocumentComplete(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { doc_type, key, doc_number, valid_until } = req.body as {
+      doc_type: string; key: string; doc_number?: string; valid_until?: string
     }
-    const { doc_type, doc_number, valid_until } = req.body as {
-      doc_type: string; doc_number?: string; valid_until?: string
-    }
-    const result = await service.uploadVehicleDocument(req.driver!.id, req.file, doc_type, doc_number, valid_until)
+    const result = await service.completeVehicleDocumentUpload(req.driver!.id, key, doc_type, doc_number, valid_until)
     res.status(201).json(result)
   } catch (err) {
     next(err)
