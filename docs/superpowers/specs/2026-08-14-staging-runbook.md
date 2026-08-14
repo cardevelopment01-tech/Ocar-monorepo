@@ -4,7 +4,24 @@ Manual steps needed alongside the Terraform in `infra/terraform/staging.*`
 -- things that are secrets, third-party accounts, or DNS, none of which are
 (or should be) checked into this repo or automated by Terraform.
 
-## 0. GitHub Environment + reviewer gate (do this before ever using the workflow)
+## 0. Apply the staging IAM role (once, against PROD state)
+
+The `github_actions_staging` IAM role itself is a prod-account resource
+(shared infrastructure, not staging-specific), so it's applied against the
+existing prod Terraform state, not the new staging one:
+
+    cd infra/terraform
+    terraform plan -var="environment=prod" -out=tfplan
+    terraform apply tfplan
+
+Review the plan output first -- it should show only the new IAM role/policy/
+output being added, nothing else changing. Then:
+
+    terraform output github_actions_staging_role_arn
+
+Use that value for the `STAGING_GHA_ROLE_ARN` secret in step 1.
+
+## 1. GitHub Environment + reviewer gate (do this before ever using the workflow)
 
 `.github/workflows/staging-infra.yml`'s `environment: staging` reference is
 currently inert -- the `staging` GitHub Environment doesn't exist yet, and
@@ -21,27 +38,10 @@ should run:
 
 Then add `STAGING_GHA_ROLE_ARN` as an **environment secret** on that `staging`
 environment (Settings -> Environments -> staging -> Add secret), with the
-value from `terraform output github_actions_staging_role_arn` (see step 3
-below -- you need the IAM role applied first before this ARN exists).
+value from `terraform output github_actions_staging_role_arn` (see step 0
+above -- you need the IAM role applied first before this ARN exists).
 Without the reviewer gate, an accidental `destroy` dispatch has no human
 confirmation step at all.
-
-## 1. Apply the staging IAM role (once, against PROD state)
-
-The `github_actions_staging` IAM role itself is a prod-account resource
-(shared infrastructure, not staging-specific), so it's applied against the
-existing prod Terraform state, not the new staging one:
-
-    cd infra/terraform
-    terraform plan -var="environment=prod" -out=tfplan
-    terraform apply tfplan
-
-Review the plan output first -- it should show only the new IAM role/policy/
-output being added, nothing else changing. Then:
-
-    terraform output github_actions_staging_role_arn
-
-Use that value for the `STAGING_GHA_ROLE_ARN` secret in step 0.
 
 ## 2. Cloudflare DNS
 
@@ -92,10 +92,12 @@ For the load test window specifically, either:
 
 ## 6. Populate the staging `api-env` SSM parameter
 
-The parameter is created empty by the first `terraform apply` (see
-`ssm-observability.tf`'s pattern -- `api-env` itself is a `SecureString`
-populated by hand, same as prod's, not committed to the repo). Pull prod's
-current `api-env` as a starting template, then swap in:
+Unlike `docker-compose-prod` and `alloy-config` (which `ssm-observability.tf`
+creates via Terraform from files in the repo), there is no Terraform resource
+that creates `api-env` -- it must be created **manually** as a `SecureString`,
+same as prod's (`infra/terraform/iam.tf` only reads this parameter, it never
+creates it). Pull prod's current `api-env` as a starting template, then swap
+in:
   - `DATABASE_URL` -> the Neon branch connection string from step 3
   - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` -> the test-mode keys from step 4
   - `JWT_SECRET` -> a fresh, staging-only secret (never reuse prod's)
