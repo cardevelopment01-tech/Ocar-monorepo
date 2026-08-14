@@ -5,7 +5,8 @@ import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 
 vi.mock('@/lib/storage', () => ({
-  uploadFile: vi.fn().mockResolvedValue('https://storage.test/drivers/1/profile_photo/test.jpg'),
+  getUploadUrl: vi.fn().mockResolvedValue('https://storage.test/put-url'),
+  promotePendingUpload: vi.fn().mockResolvedValue('https://storage.test/drivers/1/profile_photo/test.jpg'),
   deleteFile: vi.fn().mockResolvedValue(undefined),
   getPresignedUrl: vi.fn().mockImplementation((url: string) => Promise.resolve(url)),
 }))
@@ -34,6 +35,37 @@ async function loginDriver(phone: string): Promise<{ accessToken: string; refres
     principal: { id: string }
   }
   return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, driverId: principal.id }
+}
+
+// Two-step presigned flow: init returns 200 + {upload_url, key} (or a 422
+// FILE_TOO_LARGE before anything is "uploaded" if contentLength is over the
+// cap) -- storage.ts is mocked above, so no real S3 traffic happens here.
+async function uploadIdentityDoc(
+  accessToken: string, docType: string, contentLength = 512, validUntil?: string
+): Promise<request.Response> {
+  const initRes = await request(app)
+    .post('/api/v1/drivers/onboarding/documents/upload-init')
+    .set('Authorization', `Bearer ${accessToken}`)
+    .send({ doc_type: docType, content_type: 'image/jpeg', content_length: contentLength })
+  if (initRes.status !== 200) return initRes
+  return request(app)
+    .post('/api/v1/drivers/onboarding/documents/upload-complete')
+    .set('Authorization', `Bearer ${accessToken}`)
+    .send({ doc_type: docType, key: initRes.body.key, ...(validUntil ? { valid_until: validUntil } : {}) })
+}
+
+async function uploadVehicleDoc(
+  accessToken: string, docType: string, contentLength = 512
+): Promise<request.Response> {
+  const initRes = await request(app)
+    .post('/api/v1/drivers/onboarding/documents/vehicle-upload-init')
+    .set('Authorization', `Bearer ${accessToken}`)
+    .send({ doc_type: docType, content_type: 'image/jpeg', content_length: contentLength })
+  if (initRes.status !== 200) return initRes
+  return request(app)
+    .post('/api/v1/drivers/onboarding/documents/vehicle-upload-complete')
+    .set('Authorization', `Bearer ${accessToken}`)
+    .send({ doc_type: docType, key: initRes.body.key })
 }
 
 const VALID_PERSONAL_INFO = {
@@ -218,11 +250,7 @@ describe('M03 — Driver Onboarding', () => {
       const phone = '+918100000009'
       const { accessToken, driverId } = await loginDriver(phone)
 
-      const res = await request(app)
-        .post('/api/v1/drivers/onboarding/documents/upload')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .field('doc_type', 'profile_photo')
-        .attach('file', Buffer.alloc(1024), { filename: 'photo.jpg', contentType: 'image/jpeg' })
+      const res = await uploadIdentityDoc(accessToken, 'profile_photo', 1024)
       expect(res.status).toBe(201)
       expect(res.body.doc_type).toBe('profile_photo')
       expect(res.body.status).toBe('pending')
@@ -234,16 +262,11 @@ describe('M03 — Driver Onboarding', () => {
       expect(rows).toHaveLength(1)
     })
 
-    it('TC-M03-010: file > 20MB → 422 FILE_TOO_LARGE', async () => {
+    it('TC-M03-010: declared content_length > 10MB → 422 FILE_TOO_LARGE at upload-init', async () => {
       const phone = '+918100000010'
       const { accessToken } = await loginDriver(phone)
 
-      const bigFile = Buffer.alloc(21 * 1024 * 1024)
-      const res = await request(app)
-        .post('/api/v1/drivers/onboarding/documents/upload')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .field('doc_type', 'profile_photo')
-        .attach('file', bigFile, { filename: 'big.jpg', contentType: 'image/jpeg' })
+      const res = await uploadIdentityDoc(accessToken, 'profile_photo', 11 * 1024 * 1024)
       expect(res.status).toBe(422)
       expect(res.body.code).toBe('FILE_TOO_LARGE')
     })
@@ -273,21 +296,13 @@ describe('M03 — Driver Onboarding', () => {
       // Step 4: required photo uploads (DL is now split into front + back)
       const photoTypes = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
       for (const dt of photoTypes) {
-        await request(app)
-          .post('/api/v1/drivers/onboarding/documents/upload')
-          .set('Authorization', `Bearer ${accessToken}`)
-          .field('doc_type', dt)
-          .attach('file', Buffer.alloc(512), { filename: `${dt}.jpg`, contentType: 'image/jpeg' })
+        await uploadIdentityDoc(accessToken, dt)
       }
 
       // Step 4b: required vehicle doc uploads
       const vehicleDocTypes = ['vehicle_rc', 'insurance', 'permit']
       for (const dt of vehicleDocTypes) {
-        await request(app)
-          .post('/api/v1/drivers/onboarding/documents/vehicle-upload')
-          .set('Authorization', `Bearer ${accessToken}`)
-          .field('doc_type', dt)
-          .attach('file', Buffer.alloc(512), { filename: `${dt}.jpg`, contentType: 'image/jpeg' })
+        await uploadVehicleDoc(accessToken, dt)
       }
 
       // Submit
@@ -333,12 +348,7 @@ describe('M03 — Driver Onboarding', () => {
       const phone = '+918100000014'
       const { accessToken, driverId } = await loginDriver(phone)
 
-      const res = await request(app)
-        .post('/api/v1/drivers/onboarding/documents/upload')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .field('doc_type', 'driving_license_front')
-        .field('valid_until', '2030-12-31')
-        .attach('file', Buffer.alloc(512), { filename: 'dl_front.jpg', contentType: 'image/jpeg' })
+      const res = await uploadIdentityDoc(accessToken, 'driving_license_front', 512, '2030-12-31')
       expect(res.status).toBe(201)
       expect(res.body.doc_type).toBe('driving_license_front')
       expect(res.body.status).toBe('pending')
@@ -355,11 +365,7 @@ describe('M03 — Driver Onboarding', () => {
       const phone = '+918100000015'
       const { accessToken, driverId } = await loginDriver(phone)
 
-      const res = await request(app)
-        .post('/api/v1/drivers/onboarding/documents/upload')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .field('doc_type', 'driving_license_back')
-        .attach('file', Buffer.alloc(512), { filename: 'dl_back.jpg', contentType: 'image/jpeg' })
+      const res = await uploadIdentityDoc(accessToken, 'driving_license_back')
       expect(res.status).toBe(201)
       expect(res.body.doc_type).toBe('driving_license_back')
       expect(res.body.status).toBe('pending')
