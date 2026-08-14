@@ -432,8 +432,8 @@ export default function App() {
     setAccepting(true)
     setAcceptFailed(false)
     try {
-      await driverRideApi.acceptRide(rideId)
-      const ride = await driverRideApi.getRide(rideId)
+      const { ride } = await driverRideApi.acceptRide(rideId)
+      if (!ride) throw new Error('Ride not found after accept')
       const req = incomingRequest  // capture before clearIncomingRequest clears it
       const activeRideInput: Parameters<typeof setActiveRide>[0] = {
         id: rideId, status: 'accepted',

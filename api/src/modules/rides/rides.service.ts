@@ -723,7 +723,18 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
     }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: 50, removeOnFail: 20 }).catch(() => {})
   }
 
-  return { success: true, rideId: rideId.toString() }
+  // Return the full ride payload (same shape as GET /:id for a driver viewer)
+  // so the driver app doesn't need a second round-trip just to render the
+  // just-accepted ride -- it already has everything it needs from calling
+  // accept alone.
+  const stops = ride ? await repo.getRideStops(rideId) : []
+  const maskedRide = ride ? maskRideContacts(ride, 'driver') : null
+
+  return {
+    success: true,
+    rideId: rideId.toString(),
+    ride: maskedRide ? { ...maskedRide, stops, driver_photo: driverPhoto } : null,
+  }
 }
 
 export async function markArrived(driverId: bigint, rideId: bigint) {
