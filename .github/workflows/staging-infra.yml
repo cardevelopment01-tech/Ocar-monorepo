@@ -19,6 +19,24 @@ jobs:
   staging:
     name: terraform ${{ github.event.inputs.action }} (staging)
     runs-on: ubuntu-latest
+    concurrency:
+      group: staging-infra
+      cancel-in-progress: false
+    # NOTE: this `environment: staging` key is currently INERT as a safety gate.
+    # The `staging` GitHub Environment does not exist yet, so there is no
+    # required-reviewer approval currently blocking a `destroy` dispatch --
+    # `-auto-approve` on destroy should be treated as genuinely unguarded until
+    # this is created. Same gap already documented for `production` in
+    # CLAUDE.md's "Pending Ops Actions" section. Whoever has repo admin access
+    # (this gh account does not -- confirmed via
+    # `gh api repos/:owner/:repo --jq '.permissions'` -> `admin: false`) should run:
+    #   gh api --method PUT repos/:owner/:repo/environments/staging
+    #   REVIEWER_ID=$(gh api users/<github-username> --jq .id)
+    #   gh api --method PUT repos/:owner/:repo/environments/staging \
+    #     -f "reviewers[][type]=User" \
+    #     -F "reviewers[][id]=$REVIEWER_ID"
+    # Verify in Settings -> Environments -> staging that "Required reviewers"
+    # is checked. Delete this note once done.
     environment: staging
     defaults:
       run:
@@ -36,9 +54,16 @@ jobs:
           terraform_version: "1.15.8"
           terraform_wrapper: false
 
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
       - run: terraform init -backend-config=staging.backend.hcl
 
+      - name: Terraform validate
+        run: terraform validate
+
       - name: Plan
+        if: github.event.inputs.action == 'apply'
         run: terraform plan -var-file=staging.tfvars -out=tfplan
 
       - name: Apply
