@@ -5,7 +5,8 @@ import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 
 vi.mock('@/lib/storage', () => ({
-  uploadFile: vi.fn().mockResolvedValue('https://storage.test/drivers/1/daily-verification/test.jpg'),
+  getUploadUrl: vi.fn().mockResolvedValue('https://storage.test/put-url'),
+  promotePendingUpload: vi.fn().mockResolvedValue('https://storage.test/drivers/1/daily-verification/test.jpg'),
   deleteFile: vi.fn().mockResolvedValue(undefined),
   getPresignedUrl: vi.fn().mockImplementation((url: string) => Promise.resolve(url)),
 }))
@@ -114,11 +115,22 @@ describe('Driver daily verification', () => {
   })
 
   it('TC-DV-003: submitting both photos marks today complete and creates two rows', async () => {
+    const selfieInit = await request(app)
+      .post('/api/v1/drivers/daily-verification/upload-init')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ kind: 'selfie', content_type: 'image/jpeg', content_length: 1024 })
+    expect(selfieInit.status).toBe(200)
+
+    const plateInit = await request(app)
+      .post('/api/v1/drivers/daily-verification/upload-init')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ kind: 'plate', content_type: 'image/jpeg', content_length: 1024 })
+    expect(plateInit.status).toBe(200)
+
     const res = await request(app)
       .post('/api/v1/drivers/daily-verification')
       .set('Authorization', `Bearer ${accessToken}`)
-      .attach('selfie', Buffer.from('fake-selfie'), { filename: 'selfie.jpg', contentType: 'image/jpeg' })
-      .attach('plate',  Buffer.from('fake-plate'),  { filename: 'plate.jpg',  contentType: 'image/jpeg' })
+      .send({ selfie_key: selfieInit.body.key, plate_key: plateInit.body.key })
     expect(res.status).toBe(201)
 
     const rows = await pool.query<{ kind: string; status: string }>(

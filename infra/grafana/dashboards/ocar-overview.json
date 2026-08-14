@@ -25,7 +25,8 @@
     { "type": "panel", "id": "table", "name": "Table", "version": "" }
   ],
   "title": "Ocar — Overview",
-  "description": "Single dashboard for the whole ASG fleet: live instance count/autoscaling activity, RED-method golden signals for the API, DB pool, BullMQ queue depth, per-instance host resources, and a live log stream. Built from the observability stack in docs/superpowers/specs/2026-08-08-observability-stack-design.md — see docs/superpowers/plans/2026-08-08-grafana-overview-dashboard.md for panel-by-panel rationale. Previously split across this file and a separate ocar-fleet-dashboard.json; merged into one file on 2026-08-13 so fleet/host panels and the log-level-filtered Live Logs panel can never drift out of sync with each other again (that drift is exactly how the Live Logs panel ended up querying the wrong env label for several days).",
+  "uid": "ocar-overview",
+  "description": "Single dashboard for the whole ASG fleet: live instance count/autoscaling activity, RED-method golden signals for the API, DB pool, BullMQ queue depth, per-instance host resources, and a live log stream. Built from the observability stack in docs/superpowers/specs/2026-08-08-observability-stack-design.md — see docs/superpowers/plans/2026-08-08-grafana-overview-dashboard.md for panel-by-panel rationale. Previously split across this file and a separate ocar-fleet-dashboard.json; merged into one file on 2026-08-13 so fleet/host panels and the log-level-filtered Live Logs panel can never drift out of sync with each other again (that drift is exactly how the Live Logs panel ended up querying the wrong env label for several days). Fixed uid added 2026-08-14 -- without it, Grafana's Import treated every re-import as a brand-new dashboard (uid-less JSON always gets a random uid on import), so past re-imports silently piled up duplicate stale dashboards instead of updating this one in place.",
   "editable": true,
   "timezone": "",
   "schemaVersion": 39,

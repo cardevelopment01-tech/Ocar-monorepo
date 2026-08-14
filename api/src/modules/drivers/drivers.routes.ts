@@ -1,5 +1,4 @@
 import { IRouter, Router } from 'express'
-import multer from 'multer'
 import { validate } from '@/middleware/validate.middleware'
 import { authenticate } from '@/middleware/auth.middleware'
 import { requireDriver } from '@/middleware/role.middleware'
@@ -10,23 +9,13 @@ import {
   personalInfoSchema,
   vehicleInfoSchema,
   identityDocumentSchema,
-  identityUploadSchema,
-  vehicleUploadSchema,
+  identityUploadInitSchema,
+  identityUploadCompleteSchema,
+  vehicleUploadInitSchema,
+  vehicleUploadCompleteSchema,
+  verificationUploadInitSchema,
+  verificationSubmitSchema,
 } from './drivers.validator'
-
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'application/pdf'])
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIME.has(file.mimetype)) {
-      cb(null, true)
-    } else {
-      cb(new Error('Only JPEG, PNG, and PDF files are allowed'))
-    }
-  },
-})
 
 const router: IRouter = Router()
 const guard = [authenticate(), requireDriver()]
@@ -47,22 +36,24 @@ router.post('/onboarding/vehicle-info', ...guard, validate(vehicleInfoSchema), c
 router.post('/onboarding/documents/identity',
   ...guard, validate(identityDocumentSchema), controller.saveIdentityDocuments)
 
-router.post('/onboarding/documents/upload',
-  ...guard, upload.single('file'), validate(identityUploadSchema), controller.uploadDocument)
+router.post('/onboarding/documents/upload-init',
+  ...guard, validate(identityUploadInitSchema), controller.uploadDocumentInit)
+router.post('/onboarding/documents/upload-complete',
+  ...guard, validate(identityUploadCompleteSchema), controller.uploadDocumentComplete)
 
-router.post('/onboarding/documents/vehicle-upload',
-  ...guard, upload.single('file'), validate(vehicleUploadSchema), controller.uploadVehicleDocument)
+router.post('/onboarding/documents/vehicle-upload-init',
+  ...guard, validate(vehicleUploadInitSchema), controller.uploadVehicleDocumentInit)
+router.post('/onboarding/documents/vehicle-upload-complete',
+  ...guard, validate(vehicleUploadCompleteSchema), controller.uploadVehicleDocumentComplete)
 
 router.get('/onboarding/documents/status', ...guard, controller.getDocumentStatus)
 
 router.post('/onboarding/submit', ...guard, controller.submitApplication)
 
 router.get('/daily-verification/status', ...activeGuard, verificationController.getVerificationStatus)
-router.post(
-  '/daily-verification',
-  ...activeGuard,
-  upload.fields([{ name: 'selfie', maxCount: 1 }, { name: 'plate', maxCount: 1 }]),
-  verificationController.submitVerification
-)
+router.post('/daily-verification/upload-init',
+  ...activeGuard, validate(verificationUploadInitSchema), verificationController.initVerificationUpload)
+router.post('/daily-verification',
+  ...activeGuard, validate(verificationSubmitSchema), verificationController.submitVerification)
 
 export default router
