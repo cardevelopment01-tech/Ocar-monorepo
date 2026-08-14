@@ -73,5 +73,5 @@ set +x
 echo "$GHCR_TOKEN" | docker login ghcr.io -u "${ghcr_username}" --password-stdin
 set -x
 
-docker compose -f docker-compose.prod.yml pull api alloy node_exporter postgres_exporter
-docker compose -f docker-compose.prod.yml up -d api alloy node_exporter postgres_exporter
+docker compose -f docker-compose.prod.yml pull api alloy node_exporter postgres_exporter cadvisor
+docker compose -f docker-compose.prod.yml up -d api alloy node_exporter postgres_exporter cadvisor
