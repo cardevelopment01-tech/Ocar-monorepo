@@ -7,9 +7,42 @@ on:
     branches: [main]
 
 jobs:
+  # workflow_run doesn't support `on.paths:` filtering (push/pull_request only)
+  # -- so this job does it by hand: diff the exact commit CI just validated
+  # against its immediate parent (correct for both a squash-merge and a
+  # regular merge commit -- HEAD^ is "main's tip right before this PR
+  # landed" either way) and skip build/deploy entirely if nothing that
+  # actually runs in prod changed. Otherwise every merge, even a
+  # docs/Terraform-only one, would rebuild the image and restart the whole
+  # ASG for no reason. Known gap, not fixed here: a direct push of multiple
+  # commits straight to main (no PR) only diffs against the last commit's
+  # parent, not the whole batch -- doesn't match how this repo has actually
+  # been used (every change goes through a PR merge), so not worth the extra
+  # complexity of tracking a separate "last deployed SHA" until it's a real problem.
+  changes:
+    name: Detect relevant changes
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - id: filter
+        run: |
+          if git diff --name-only HEAD^ HEAD | grep -qE '^(api/|docker-compose\.prod\.yml|infra/|\.github/workflows/deploy\.yml)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build-push:
     name: Build & Push Docker Image
-    if: github.event.workflow_run.conclusion == 'success'
+    needs: changes
+    if: github.event.workflow_run.conclusion == 'success' && needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-api
@@ -56,7 +89,8 @@ jobs:
 
   deploy:
     name: Deploy to ASG
-    needs: build-push
+    needs: [changes, build-push]
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     environment: production
     concurrency:
