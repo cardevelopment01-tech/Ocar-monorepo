@@ -1,10 +1,28 @@
+import crypto from 'crypto'
 import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
-import { uploadFile, getPresignedUrl } from '@/lib/storage'
+import { getUploadUrl, promotePendingUpload, getPresignedUrl } from '@/lib/storage'
 import { notificationsQueue } from '@/jobs/queues'
 import * as repo from './drivers.repository'
 import * as safetyRepo from '@/modules/safety/safety.repository'
 import type { Driver, DriverVehicle, OnboardingStatus } from './drivers.types'
+
+const EXT_BY_MIME: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'application/pdf': '.pdf',
+}
+
+function pendingKey(driverId: bigint, folder: string, contentType: string): string {
+  const ext = EXT_BY_MIME[contentType] ?? '.bin'
+  return `uploads/pending/drivers/${driverId}/${folder}/${crypto.randomUUID()}${ext}`
+}
+
+function assertKeyBelongsToDriver(driverId: bigint, key: string): void {
+  if (!key.startsWith(`uploads/pending/drivers/${driverId}/`)) {
+    throw createHttpError(AppErrors.AUTH_FORBIDDEN)
+  }
+}
 
 // ── Completion helpers ────────────────────────────────────────────────────────
 
@@ -197,18 +215,29 @@ export async function saveIdentityDocuments(
   await repo.updateIdentityDocuments(driverId, licenseNumber, aadhaarNumber)
 }
 
-export async function uploadDriverDocument(
+export async function initDriverDocumentUpload(
   driverId: bigint,
-  file: Express.Multer.File,
+  docType: string,
+  contentType: string
+): Promise<{ upload_url: string; key: string }> {
+  const key = pendingKey(driverId, docType, contentType)
+  const uploadUrl = await getUploadUrl(key, contentType)
+  return { upload_url: uploadUrl, key }
+}
+
+export async function completeDriverDocumentUpload(
+  driverId: bigint,
+  key: string,
   docType: string,
   validFrom?: string,
   validUntil?: string
 ): Promise<{ doc_type: string; file_url: string; status: string }> {
+  assertKeyBelongsToDriver(driverId, key)
+
   const driver = await repo.findDriverById(driverId)
   if (!driver) throw createHttpError(AppErrors.NOT_FOUND)
 
-  const folder = `drivers/${driverId}/${docType}`
-  const fileUrl = await uploadFile(file, folder)
+  const fileUrl = await promotePendingUpload(key, `drivers/${driverId}/${docType}`)
 
   const validFromDate  = validFrom  ? new Date(validFrom)  : undefined
   const validUntilDate = validUntil ? new Date(validUntil) : undefined
@@ -222,18 +251,31 @@ export async function uploadDriverDocument(
   return { doc_type: doc.doc_type, file_url: await getPresignedUrl(doc.file_url), status: doc.status }
 }
 
-export async function uploadVehicleDocument(
+export async function initVehicleDocumentUpload(
   driverId: bigint,
-  file: Express.Multer.File,
+  docType: string,
+  contentType: string
+): Promise<{ upload_url: string; key: string }> {
+  const vehicle = await repo.findVehicleByDriverId(driverId)
+  if (!vehicle) throw httpError(422, 'Complete vehicle info step first', 'STEP_NOT_COMPLETE')
+  const key = pendingKey(driverId, `vehicle/${docType}`, contentType)
+  const uploadUrl = await getUploadUrl(key, contentType)
+  return { upload_url: uploadUrl, key }
+}
+
+export async function completeVehicleDocumentUpload(
+  driverId: bigint,
+  key: string,
   docType: string,
   docNumber?: string,
   validUntil?: string
 ): Promise<{ doc_type: string; file_url: string; status: string }> {
+  assertKeyBelongsToDriver(driverId, key)
+
   const vehicle = await repo.findVehicleByDriverId(driverId)
   if (!vehicle) throw httpError(422, 'Complete vehicle info step first', 'STEP_NOT_COMPLETE')
 
-  const folder = `drivers/${driverId}/vehicle/${docType}`
-  const fileUrl = await uploadFile(file, folder)
+  const fileUrl = await promotePendingUpload(key, `drivers/${driverId}/vehicle/${docType}`)
   const validUntilDate = validUntil ? new Date(validUntil) : undefined
 
   const doc = await repo.upsertVehicleDocument(vehicle.id, docType, fileUrl, docNumber, validUntilDate)
