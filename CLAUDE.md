@@ -486,6 +486,16 @@ this environment isn't meant to run continuously.
   ```
   Replace `<your-github-username>` with the GitHub login that should approve production deploys. Verify in `Settings → Environments → production` that "Required reviewers" is checked. Delete this note once done.
 
+- **No `staging` GitHub Environment / required-reviewer approval gate on the staging-infra workflow.** `.github/workflows/staging-infra.yml`'s `environment: staging` reference is currently inert — no GitHub Environment exists with that name, so a `workflow_dispatch` run with `action: destroy` executes `terraform destroy -auto-approve` against real staging AWS infrastructure with zero human confirmation step. Same root cause as the production gap above (this `gh` account has `admin: false` on the repo, confirmed via `gh api repos/:owner/:repo --jq '.permissions'`). Whoever has admin rights should run:
+  ```bash
+  gh api --method PUT repos/:owner/:repo/environments/staging
+  REVIEWER_ID=$(gh api users/<your-github-username> --jq .id)
+  gh api --method PUT repos/:owner/:repo/environments/staging \
+    -f "reviewers[][type]=User" \
+    -F "reviewers[][id]=$REVIEWER_ID"
+  ```
+  Replace `<your-github-username>` with the GitHub login that should approve staging destroys. Verify in `Settings → Environments → staging` that "Required reviewers" is checked. Delete this note once done. (Full detail already in `docs/superpowers/specs/2026-08-14-staging-runbook.md`, step 1.)
+
 - **No branch protection on `main`.** Nothing currently stops a direct push to `main` (bypassing a PR) from landing bad code — the CI `needs:` gate stops that code from being *deployed*, but not from being *merged/pushed*. Skipped for the same admin-rights reason as above (branch protection is also an admin-only `gh api` call). Whoever has admin rights should run:
   ```bash
   gh api --method PUT repos/:owner/:repo/branches/main/protection \
