@@ -1,5 +1,6 @@
 import api from './api'
 import { compressImage } from './image-compress'
+import { putToS3WithRetry } from './s3-upload'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -105,27 +106,35 @@ export const onboardingApi = {
 
   uploadDriverDoc: async (file: File, docType: string, validUntil?: string) => {
     const compressed = await compressDocImage(file)
-    const formData = new FormData()
-    formData.append('file', compressed)
-    formData.append('doc_type', docType)
-    if (validUntil) formData.append('valid_until', validUntil)
-    const res = await api.post('/api/v1/drivers/onboarding/documents/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 120000,
+    const { upload_url, key } = (await api.post('/api/v1/drivers/onboarding/documents/upload-init', {
+      doc_type: docType,
+      content_type: compressed.type,
+    })).data as { upload_url: string; key: string }
+
+    await putToS3WithRetry(upload_url, compressed)
+
+    const res = await api.post('/api/v1/drivers/onboarding/documents/upload-complete', {
+      doc_type: docType,
+      key,
+      ...(validUntil ? { valid_until: validUntil } : {}),
     })
     return res.data as { doc_type: string; file_url: string; status: string }
   },
 
   uploadVehicleDoc: async (file: File, docType: string, docNumber?: string, validUntil?: string) => {
     const compressed = await compressDocImage(file)
-    const formData = new FormData()
-    formData.append('file', compressed)
-    formData.append('doc_type', docType)
-    if (docNumber)   formData.append('doc_number', docNumber)
-    if (validUntil)  formData.append('valid_until', validUntil)
-    const res = await api.post('/api/v1/drivers/onboarding/documents/vehicle-upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 120000,
+    const { upload_url, key } = (await api.post('/api/v1/drivers/onboarding/documents/vehicle-upload-init', {
+      doc_type: docType,
+      content_type: compressed.type,
+    })).data as { upload_url: string; key: string }
+
+    await putToS3WithRetry(upload_url, compressed)
+
+    const res = await api.post('/api/v1/drivers/onboarding/documents/vehicle-upload-complete', {
+      doc_type: docType,
+      key,
+      ...(docNumber  ? { doc_number: docNumber }   : {}),
+      ...(validUntil ? { valid_until: validUntil } : {}),
     })
     return res.data as { doc_type: string; file_url: string; status: string }
   },
