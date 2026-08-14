@@ -77,14 +77,41 @@ export const identityDocumentSchema = z.object({
     .regex(/^\d{12}$/, 'Aadhaar number must be exactly 12 digits'),
 })
 
-export const identityUploadSchema = z.object({
-  doc_type:    z.enum(['profile_photo', 'driving_license', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']),
-  valid_from:  z.string().optional(),
+export const ALLOWED_UPLOAD_MIME = ['image/jpeg', 'image/png', 'application/pdf'] as const
+
+const IDENTITY_DOC_TYPES = ['profile_photo', 'driving_license', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back'] as const
+const VEHICLE_DOC_TYPES  = ['vehicle_rc', 'insurance', 'permit', 'pollution_cert', 'fitness_cert'] as const
+
+export const identityUploadInitSchema = z.object({
+  doc_type: z.enum(IDENTITY_DOC_TYPES),
+  content_type: z.enum(ALLOWED_UPLOAD_MIME),
+})
+
+export const identityUploadCompleteSchema = z.object({
+  doc_type: z.enum(IDENTITY_DOC_TYPES),
+  key: z.string().min(1),
+  valid_from: z.string().optional(),
   valid_until: z.string().optional(),
 })
 
-export const vehicleUploadSchema = z.object({
-  doc_type: z.enum(['vehicle_rc', 'insurance', 'permit', 'pollution_cert', 'fitness_cert']),
+export const vehicleUploadInitSchema = z.object({
+  doc_type: z.enum(VEHICLE_DOC_TYPES),
+  content_type: z.enum(ALLOWED_UPLOAD_MIME),
+})
+
+export const vehicleUploadCompleteSchema = z.object({
+  doc_type: z.enum(VEHICLE_DOC_TYPES),
+  key: z.string().min(1),
   doc_number: z.string().max(80).optional(),
   valid_until: z.string().optional(),
+})
+
+export const verificationUploadInitSchema = z.object({
+  kind: z.enum(['selfie', 'plate']),
+  content_type: z.enum(ALLOWED_UPLOAD_MIME),
+})
+
+export const verificationSubmitSchema = z.object({
+  selfie_key: z.string().min(1),
+  plate_key: z.string().min(1),
 })
