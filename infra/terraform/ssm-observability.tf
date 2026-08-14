@@ -6,7 +6,12 @@
 # committed -- no manual re-upload needed when either file changes.
 
 resource "aws_ssm_parameter" "docker_compose_prod" {
-  name  = "/${var.project_name}/${var.environment}/docker-compose-prod"
+  name = "/${var.project_name}/${var.environment}/docker-compose-prod"
+  # Standard tier caps out at 4096 characters -- docker-compose.prod.yml
+  # crossed that threshold once the cadvisor service + api resource limits
+  # were added (same failure mode alloy_config hit below). Advanced tier
+  # costs $0.05/parameter/month, negligible at this scale.
+  tier  = "Advanced"
   type  = "String"
   value = file("${path.module}/../../docker-compose.prod.yml")
 }

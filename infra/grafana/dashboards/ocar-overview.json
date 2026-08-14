@@ -351,6 +351,76 @@
         }
       ],
       "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" }
+    },
+
+    { "id": 106, "type": "row", "title": "Per-Container Resource Usage", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 83 }, "panels": [] },
+
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Memory Working Set by Container",
+      "description": "container_memory_working_set_bytes -- non-reclaimable memory, what the kernel OOM-killer actually looks at, not container_memory_usage_bytes (which includes reclaimable page cache and overstates real pressure).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 84 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "container_memory_working_set_bytes{name=~\"ocar_.*\"}",
+          "legendFormat": "{{host}} — {{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Memory Usage as % of Limit by Container",
+      "description": "working_set / spec_memory_limit -- only meaningful for containers with mem_limit actually set in docker-compose.prod.yml (currently api, cadvisor); containers with no configured limit report 0 as their limit and will show no data here, not 0%.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 84 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "container_memory_working_set_bytes{name=~\"ocar_.*\"} / container_spec_memory_limit_bytes{name=~\"ocar_.*\"}",
+          "legendFormat": "{{host}} — {{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "CPU Usage (cores) by Container",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 92 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "rate(container_cpu_usage_seconds_total{name=~\"ocar_.*\"}[5m])",
+          "legendFormat": "{{host}} — {{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "OOM Events by Container",
+      "description": "increase(container_oom_events_total) -- should be a flat zero line always. Any nonzero point means that container actually hit its mem_limit and was killed by the kernel; the direct answer to 'did a limit trip yet'.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 92 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "increase(container_oom_events_total{name=~\"ocar_.*\"}[5m])",
+          "legendFormat": "{{host}} — {{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
     }
   ]
 }

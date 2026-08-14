@@ -82,6 +82,13 @@ prometheus.scrape "postgres" {
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 }
 
+// Per-container CPU/memory -- node_exporter above is host-wide only, this is
+// what lets the dashboard tell api's usage apart from alloy's/postgres_exporter's.
+prometheus.scrape "cadvisor" {
+  targets    = [{"__address__" = "cadvisor:8080", "host" = sys.env("ALLOY_HOSTNAME")}]
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
 prometheus.remote_write "grafana_cloud" {
   endpoint {
     url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
