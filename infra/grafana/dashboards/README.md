@@ -13,9 +13,17 @@ nothing forced the two files to agree with each other. One file, one source of t
 
 ## Re-importing after an edit
 
+`ocar-overview.json` has a fixed `uid` (`ocar-overview`) — Grafana matches dashboards by uid, not
+title, so this is what makes re-import actually overwrite in place instead of creating a new
+dashboard each time. **Before this uid was added (2026-08-14), every re-import silently created a
+new duplicate dashboard** (uid-less JSON always gets a random uid on import) — if you're on an old
+Grafana Cloud org where this happened, check **Dashboards → Ocar** for more than one dashboard
+named "Ocar — Overview" and delete every copy except the one you keep re-importing into, otherwise
+you'll keep opening a stale duplicate and wondering why your latest changes aren't there.
+
 Grafana Cloud UI → **Dashboards → Import** → paste the contents of `ocar-overview.json` → pick
 the existing Prometheus/Mimir and Loki datasources for the `DS_PROMETHEUS`/`DS_LOKI` prompts →
-Import (overwrites the existing dashboard of the same name).
+Import (overwrites the dashboard with uid `ocar-overview`, if one already exists with that uid).
 
 ## Inviting a repeatable Viewer (support staff)
 
