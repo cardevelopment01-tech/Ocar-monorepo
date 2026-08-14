@@ -207,7 +207,7 @@ output "github_actions_plan_role_arn" {
 # staging state path, and only resources this config can even create (no
 # wildcard iam:* or ec2:* across the whole account).
 resource "aws_iam_role" "github_actions_staging" {
-  name = "${var.project_name}-gha-staging"
+  name = "${var.project_name}-${var.environment}-gha-staging"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -227,12 +227,12 @@ resource "aws_iam_role" "github_actions_staging" {
   })
 
   tags = {
-    Name = "${var.project_name}-gha-staging"
+    Name = "${var.project_name}-${var.environment}-gha-staging"
   }
 }
 
 resource "aws_iam_role_policy" "github_actions_staging" {
-  name = "${var.project_name}-gha-staging-policy"
+  name = "${var.project_name}-${var.environment}-gha-staging-policy"
   role = aws_iam_role.github_actions_staging.id
 
   policy = jsonencode({
@@ -258,13 +258,13 @@ resource "aws_iam_role_policy" "github_actions_staging" {
       {
         # Full apply/destroy needs to create/modify/delete the resource
         # *types* this config manages -- VPC networking, the ALB, the ASG +
-        # launch template, ElastiCache, SSM parameters, and the IAM
-        # role/instance-profile the EC2 fleet itself assumes. This is
-        # necessarily broader than the prod deploy role (which never
-        # provisions anything, only flips a parameter + triggers a refresh)
-        # -- full terraform apply of this config requires it. Not scoped
-        # down to individual ARNs because most of these don't exist yet
-        # before the first apply creates them.
+        # launch template, ElastiCache, and ACM. Deliberate full-service
+        # wildcards: unlike the narrower per-action lists on the plan/deploy
+        # roles above (which only ever do a handful of specific things),
+        # this role genuinely needs broad access to these 4 services since
+        # this config exclusively manages them in this region/account, and
+        # EC2/ELB/ASG/ElastiCache resources don't support useful ARN-based
+        # scoping before the first apply creates them anyway.
         Effect = "Allow"
         Action = [
           "ec2:*Vpc*", "ec2:*Subnet*", "ec2:*RouteTable*", "ec2:*InternetGateway*",
@@ -273,15 +273,56 @@ resource "aws_iam_role_policy" "github_actions_staging" {
           "elasticloadbalancing:*",
           "autoscaling:*",
           "elasticache:*",
-          "ssm:*Parameter*",
-          "iam:GetRole", "iam:CreateRole", "iam:DeleteRole", "iam:TagRole",
-          "iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy",
-          "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile",
-          "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile",
-          "iam:GetInstanceProfile", "iam:PassRole",
           "acm:*",
         ]
         Resource = "*"
+      },
+      {
+        # SSM parameters, unlike the EC2/networking actions above, DO support
+        # meaningful ARN-pattern scoping -- restrict to this project's
+        # staging parameter path instead of every parameter in the account.
+        Effect   = "Allow"
+        Action   = ["ssm:*Parameter*"]
+        Resource = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/staging/*"
+      },
+      {
+        # IAM role management, also ARN-scopeable even before the role
+        # exists (unlike EC2/ELB/ASG). Scoped to only the staging-prefixed
+        # role this config itself creates (the EC2 role at iam.tf:24,
+        # `${var.project_name}-staging-ec2-role`) -- not every role in the
+        # account. AttachRolePolicy/DetachRolePolicy are required for
+        # aws_iam_role_policy_attachment.ssm_session_manager_debug (iam.tf).
+        Effect = "Allow"
+        Action = [
+          "iam:GetRole", "iam:CreateRole", "iam:DeleteRole", "iam:TagRole",
+          "iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy",
+          "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-staging-*"
+      },
+      {
+        # Instance profile management, same staging-scoped ARN pattern as
+        # the IAM role statement above.
+        Effect = "Allow"
+        Action = [
+          "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile",
+          "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile",
+          "iam:GetInstanceProfile",
+        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:instance-profile/${var.project_name}-staging-*"
+      },
+      {
+        # iam:PassRole with Resource="*" is a privilege-escalation primitive
+        # -- it would let this role pass ANY role in the account to any
+        # service, not just the EC2 role this config manages. Scoped to the
+        # staging-prefixed role ARN plus a service condition so it can only
+        # be passed to EC2.
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-staging-*"
+        Condition = {
+          StringEquals = { "iam:PassedToService" = "ec2.amazonaws.com" }
+        }
       }
     ]
   })
