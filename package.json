@@ -14,7 +14,11 @@
     "migrate": "cd api && pnpm migrate",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "infra:staging:init": "cd infra/terraform && terraform init -reconfigure -backend-config=staging.backend.hcl",
+    "infra:staging:plan": "cd infra/terraform && terraform plan -var-file=staging.tfvars -out=staging.tfplan",
+    "infra:staging:apply": "cd infra/terraform && terraform apply staging.tfplan",
+    "infra:staging:destroy": "cd infra/terraform && terraform destroy -var-file=staging.tfvars"
   },
   "devDependencies": {
     "turbo": "latest",
