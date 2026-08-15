@@ -1,5 +1,12 @@
 # Grafana Cloud alerting, billing alerts, synthetic check — runbook
 
+> **Superseded 2026-08-16:** provisioning now happens via Terraform in
+> `infra/terraform/observability/` — see
+> `docs/superpowers/specs/2026-08-16-grafana-cloud-alerting-terraform-design.md` and
+> `docs/superpowers/plans/2026-08-16-grafana-cloud-alerting-terraform.md`. This document is kept as
+> the per-rule rationale (why each threshold/route/window was picked) that the Terraform files
+> reference in comments — do not use it as the provisioning method anymore.
+
 **Date:** 2026-08-09
 **Driver:** Closes MUST-DO #6/#7 and SHOULD-DO #8/#11 from
 `docs/superpowers/specs/2026-08-08-observability-stack-design.md`. Researched 2026-08-09: **Grafana
