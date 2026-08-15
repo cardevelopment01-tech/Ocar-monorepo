@@ -5,6 +5,10 @@
 # section #7. Using the cap itself as the budget means 85% fires comfortably
 # before the hard cutoff, no separate math to get wrong.
 
+locals {
+  free_tier_bytes_50gb = 50 * 1024 * 1024 * 1024
+}
+
 resource "grafana_rule_group" "billing_usage" {
   name             = "ocar-billing-usage"
   folder_uid       = grafana_folder.alerts.uid
@@ -17,7 +21,7 @@ resource "grafana_rule_group" "billing_usage" {
 
     data {
       ref_id         = "A"
-      datasource_uid = var.prometheus_datasource_uid
+      datasource_uid = var.usage_insights_datasource_uid
       relative_time_range {
         from = 60
         to   = 0
@@ -60,7 +64,7 @@ resource "grafana_rule_group" "billing_usage" {
 
     data {
       ref_id         = "A"
-      datasource_uid = var.prometheus_datasource_uid
+      datasource_uid = var.usage_insights_datasource_uid
       relative_time_range {
         from = 60
         to   = 0
@@ -68,7 +72,7 @@ resource "grafana_rule_group" "billing_usage" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "grafanacloud_org_logs_usage_bytes / (50 * 1024 * 1024 * 1024)"
+        expr    = "grafanacloud_org_logs_usage_bytes / (${local.free_tier_bytes_50gb})"
       })
     }
 
@@ -103,7 +107,7 @@ resource "grafana_rule_group" "billing_usage" {
 
     data {
       ref_id         = "A"
-      datasource_uid = var.prometheus_datasource_uid
+      datasource_uid = var.usage_insights_datasource_uid
       relative_time_range {
         from = 60
         to   = 0
@@ -111,7 +115,7 @@ resource "grafana_rule_group" "billing_usage" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "grafanacloud_org_traces_usage_bytes / (50 * 1024 * 1024 * 1024)"
+        expr    = "grafanacloud_org_traces_usage_bytes / (${local.free_tier_bytes_50gb})"
       })
     }
 
