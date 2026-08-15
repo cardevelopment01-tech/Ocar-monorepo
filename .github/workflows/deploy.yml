@@ -12,9 +12,16 @@ jobs:
   # against its immediate parent (correct for both a squash-merge and a
   # regular merge commit -- HEAD^ is "main's tip right before this PR
   # landed" either way) and skip build/deploy entirely if nothing that
-  # actually runs in prod changed. Otherwise every merge, even a
+  # actually feeds the Docker image changed. Otherwise every merge, even a
   # docs/Terraform-only one, would rebuild the image and restart the whole
-  # ASG for no reason. Known gap, not fixed here: a direct push of multiple
+  # ASG for no reason -- confirmed live: an infra/**-only PR (adding a new
+  # IAM role, no app code touched) still triggered a real deploy under an
+  # earlier version of this filter that included `infra/` and
+  # `docker-compose.prod.yml`. Neither ever reaches the image -- checked
+  # api/Dockerfile directly: it only COPYs pnpm-lock.yaml/pnpm-workspace.yaml/
+  # package.json and api/. infra/** and docker-compose.prod.yml changes are
+  # applied by a completely separate, manual `terraform apply`, not by this
+  # workflow at all. Known gap, not fixed here: a direct push of multiple
   # commits straight to main (no PR) only diffs against the last commit's
   # parent, not the whole batch -- doesn't match how this repo has actually
   # been used (every change goes through a PR merge), so not worth the extra
@@ -33,7 +40,7 @@ jobs:
 
       - id: filter
         run: |
-          if git diff --name-only HEAD^ HEAD | grep -qE '^(api/|docker-compose\.prod\.yml|infra/|\.github/workflows/deploy\.yml)'; then
+          if git diff --name-only HEAD^ HEAD | grep -qE '^(api/|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|\.github/workflows/deploy\.yml)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
