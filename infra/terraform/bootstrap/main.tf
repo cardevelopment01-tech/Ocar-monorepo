@@ -1,8 +1,11 @@
-# The S3 bucket Terraform state itself will live in, once migrated off local
-# state. Bootstrapped with local state (can't use the S3 backend to create
-# the bucket that backend needs) -- apply this first, then flip the
-# commented-out backend block in providers.tf and run `terraform init
-# -migrate-state` to move the existing state file in.
+# infra/terraform/bootstrap/main.tf
+#
+# The S3 bucket Terraform state itself lives in. Originally bootstrapped
+# with local state (can't use the S3 backend to create the bucket that
+# backend needs), then applied once and never touched again in the
+# ordinary course of things -- this file moved here from the main
+# prod/staging config specifically because it's an account-wide singleton,
+# not a per-environment resource.
 
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "ocar-terraform-state"
