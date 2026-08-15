@@ -22,7 +22,8 @@ so it's strictly better than hand-rolling API calls.
 ## Scope
 
 - New Terraform root module: `infra/terraform/observability/`.
-- Provisions: contact point (Slack + email), notification policy, 4 static-threshold alert rules,
+- Provisions: contact point (Slack + email), notification policy, 5 static-threshold alert rules
+  (4 signals, with the error-rate signal split into separate warning/critical rules),
   2 SLOs with generated burn-rate alerts (ride success rate, payment success rate), 3 billing/usage
   alerts, 1 synthetic HTTP check on `/health`.
 - No application code changes — every metric referenced already exists in
@@ -178,7 +179,7 @@ resource "grafana_slo" "ride_success" {
 error budget) for both — reasonable starting point, not a value with real historical data behind it
 yet; revisit once real ride/payment volume exists to see if 98% is too strict or too loose. This is
 the exact same "assumes higher request volume" caveat the research flagged: at low absolute traffic
-these two SLOs may need retuning once real numbers come in, unlike the 4 static rules above which
+these two SLOs may need retuning once real numbers come in, unlike the static rules above which
 are safe at any volume.
 
 ---
