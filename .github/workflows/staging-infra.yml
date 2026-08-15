@@ -1,0 +1,75 @@
+name: Staging Infra (apply/destroy)
+
+# Manual only -- never on push or pull_request. Staging is provisioned on
+# demand for a load test, not kept in sync with every commit.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "apply or destroy"
+        required: true
+        type: choice
+        options: [apply, destroy]
+
+permissions:
+  id-token: write   # required for OIDC -- no static AWS keys stored anywhere
+  contents: read
+
+jobs:
+  staging:
+    name: terraform ${{ github.event.inputs.action }} (staging)
+    runs-on: ubuntu-latest
+    concurrency:
+      group: staging-infra
+      cancel-in-progress: false
+    # NOTE: this `environment: staging` key is currently INERT as a safety gate.
+    # The `staging` GitHub Environment does not exist yet, so there is no
+    # required-reviewer approval currently blocking a `destroy` dispatch --
+    # `-auto-approve` on destroy should be treated as genuinely unguarded until
+    # this is created. Same gap already documented for `production` in
+    # CLAUDE.md's "Pending Ops Actions" section. Whoever has repo admin access
+    # (this gh account does not -- confirmed via
+    # `gh api repos/:owner/:repo --jq '.permissions'` -> `admin: false`) should run:
+    #   gh api --method PUT repos/:owner/:repo/environments/staging
+    #   REVIEWER_ID=$(gh api users/<github-username> --jq .id)
+    #   gh api --method PUT repos/:owner/:repo/environments/staging \
+    #     -f "reviewers[][type]=User" \
+    #     -F "reviewers[][id]=$REVIEWER_ID"
+    # Verify in Settings -> Environments -> staging that "Required reviewers"
+    # is checked. Delete this note once done.
+    environment: staging
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.STAGING_GHA_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      - run: terraform init -backend-config=staging.backend.hcl
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Plan
+        if: github.event.inputs.action == 'apply'
+        run: terraform plan -var-file=staging.tfvars -out=tfplan
+
+      - name: Apply
+        if: github.event.inputs.action == 'apply'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Destroy
+        if: github.event.inputs.action == 'destroy'
+        run: terraform destroy -var-file=staging.tfvars -auto-approve

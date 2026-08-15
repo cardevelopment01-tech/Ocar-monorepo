@@ -424,6 +424,28 @@ below for the exact commands to close both gaps once repo admin access is availa
 
 ---
 
+## Staging Environment
+
+A second, infrastructure-identical copy of prod, provisioned on demand for
+client load tests -- not a permanent always-on environment. Same
+`instance_type`/ASG scaling policy/ElastiCache tier as prod (the whole
+point of a load-test environment is trustworthy numbers), but its own
+Terraform state (`staging/terraform.tfstate`, never `prod/terraform.tfstate`)
+and its own non-production secrets (Razorpay test-mode keys, a Neon DB
+branch, a separate JWT secret) -- see
+`docs/superpowers/specs/2026-08-14-staging-runbook.md` for the manual
+non-Terraform steps.
+
+**Spin up:** GitHub Actions -> "Staging Infra (apply/destroy)" -> Run
+workflow -> `action: apply` (or `pnpm infra:staging:apply` locally after
+`pnpm infra:staging:init` + `pnpm infra:staging:plan`).
+
+**Tear down:** same workflow with `action: destroy`, or
+`pnpm infra:staging:destroy`. Always tear down after a load test --
+this environment isn't meant to run continuously.
+
+---
+
 ## Pending Ops Actions
 
 - **cAdvisor + per-container resource limits shipped in code — needs a `terraform apply` plus a Grafana dashboard re-import to go live, same two-step rollout `postgres_exporter` needed.** `docker-compose.prod.yml` now runs `cadvisor` (per-container CPU/memory, since `node_exporter` is host-wide only) and sets a starting `mem_limit`/`mem_reservation`/`cpus` on `api` (2g/512m/1.5 — a safety net against an unbounded leak taking down the whole instance via the kernel OOM-killer picking an arbitrary victim container, not yet a tuned value). `user_data.sh.tpl` only applies compose changes at instance boot, so a rolling `terraform apply` is required to actually roll this out to the running ASG instances. `ocar-overview.json` has a new "Per-Container Resource Usage" row (working set, % of limit, CPU cores, OOM events by container) — needs the usual manual re-import. Once real/load-tested traffic exists, use that row's data to size `api`'s final `mem_limit`/`cpus` from observed p95/p99 usage instead of the current rough starting values. Delete this note once both steps are done.
@@ -463,6 +485,16 @@ below for the exact commands to close both gaps once repo admin access is availa
     -F "reviewers[][id]=$REVIEWER_ID"
   ```
   Replace `<your-github-username>` with the GitHub login that should approve production deploys. Verify in `Settings → Environments → production` that "Required reviewers" is checked. Delete this note once done.
+
+- **No `staging` GitHub Environment / required-reviewer approval gate on the staging-infra workflow.** `.github/workflows/staging-infra.yml`'s `environment: staging` reference is currently inert — no GitHub Environment exists with that name, so a `workflow_dispatch` run with `action: destroy` executes `terraform destroy -auto-approve` against real staging AWS infrastructure with zero human confirmation step. Same root cause as the production gap above (this `gh` account has `admin: false` on the repo, confirmed via `gh api repos/:owner/:repo --jq '.permissions'`). Whoever has admin rights should run:
+  ```bash
+  gh api --method PUT repos/:owner/:repo/environments/staging
+  REVIEWER_ID=$(gh api users/<your-github-username> --jq .id)
+  gh api --method PUT repos/:owner/:repo/environments/staging \
+    -f "reviewers[][type]=User" \
+    -F "reviewers[][id]=$REVIEWER_ID"
+  ```
+  Replace `<your-github-username>` with the GitHub login that should approve staging destroys. Verify in `Settings → Environments → staging` that "Required reviewers" is checked. Delete this note once done. (Full detail already in `docs/superpowers/specs/2026-08-14-staging-runbook.md`, step 1.)
 
 - **No branch protection on `main`.** Nothing currently stops a direct push to `main` (bypassing a PR) from landing bad code — the CI `needs:` gate stops that code from being *deployed*, but not from being *merged/pushed*. Skipped for the same admin-rights reason as above (branch protection is also an admin-only `gh api` call). Whoever has admin rights should run:
   ```bash

@@ -19,12 +19,16 @@ terraform {
   # S3 backend, migrated off local state now that CI needs to read the same
   # state this machine does -- native S3 locking (use_lockfile) instead of
   # the older DynamoDB-table pattern, no extra resource needed for it.
-  backend "s3" {
-    bucket       = "ocar-terraform-state"
-    key          = "prod/terraform.tfstate"
-    region       = "ap-south-1"
-    use_lockfile = true
-  }
+  #
+  # Deliberately empty: values come ONLY from an explicit
+  # `-backend-config=<env>.backend.hcl` at init time (see prod.backend.hcl /
+  # staging.backend.hcl). Before the staging environment existed, this block
+  # had prod's values hardcoded here directly -- which meant a bare
+  # `terraform init` with no flags silently initialized against prod's real
+  # state. With two environments now sharing this same config, that silent
+  # default is exactly what could make a staging-intended plan/apply target
+  # prod's state by accident. No backend may ever be the default again.
+  backend "s3" {}
 }
 
 provider "aws" {

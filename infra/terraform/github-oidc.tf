@@ -198,3 +198,137 @@ output "github_actions_plan_role_arn" {
   description = "IAM role ARN for the terraform-plan-on-PR workflow"
   value       = aws_iam_role.github_actions_plan.arn
 }
+
+# Staging apply/destroy, triggered manually via workflow_dispatch (never on
+# push/PR -- staging is provisioned on demand for a load test, not on every
+# commit). Broader than the prod deploy role (that one only ever touches an
+# image-tag parameter + ASG refresh) because this one runs full
+# terraform apply/destroy -- scoped as tightly as that requires: only the
+# staging state path, and only resources this config can even create (no
+# wildcard iam:* or ec2:* across the whole account).
+resource "aws_iam_role" "github_actions_staging" {
+  name = "${var.project_name}-${var.environment}-gha-staging"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github_actions.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "token.actions.githubusercontent.com:sub" = "repo:cardevelopment01-tech/Ocar-monorepo:environment:staging"
+        }
+      }
+    }]
+  })
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-gha-staging"
+  }
+}
+
+resource "aws_iam_role_policy" "github_actions_staging" {
+  name = "${var.project_name}-${var.environment}-gha-staging-policy"
+  role = aws_iam_role.github_actions_staging.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # State access -- same shape as the plan role's policy above, but
+        # scoped to staging/* instead of prod/*.
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "${aws_s3_bucket.terraform_state.arn}/staging/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket", "s3:GetBucketPolicy", "s3:GetBucketVersioning"]
+        Resource = aws_s3_bucket.terraform_state.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:DescribeKey", "kms:GenerateDataKey"]
+        Resource = aws_kms_key.terraform_state.arn
+      },
+      {
+        # Full apply/destroy needs to create/modify/delete the resource
+        # *types* this config manages -- VPC networking, the ALB, the ASG +
+        # launch template, ElastiCache, and ACM. Deliberate full-service
+        # wildcards: unlike the narrower per-action lists on the plan/deploy
+        # roles above (which only ever do a handful of specific things),
+        # this role genuinely needs broad access to these 4 services since
+        # this config exclusively manages them in this region/account, and
+        # EC2/ELB/ASG/ElastiCache resources don't support useful ARN-based
+        # scoping before the first apply creates them anyway.
+        Effect = "Allow"
+        Action = [
+          "ec2:*Vpc*", "ec2:*Subnet*", "ec2:*RouteTable*", "ec2:*InternetGateway*",
+          "ec2:*SecurityGroup*", "ec2:*LaunchTemplate*", "ec2:*Tags*",
+          "ec2:Describe*",
+          "elasticloadbalancing:*",
+          "autoscaling:*",
+          "elasticache:*",
+          "acm:*",
+        ]
+        Resource = "*"
+      },
+      {
+        # SSM parameters, unlike the EC2/networking actions above, DO support
+        # meaningful ARN-pattern scoping -- restrict to this project's
+        # staging parameter path instead of every parameter in the account.
+        Effect   = "Allow"
+        Action   = ["ssm:*Parameter*"]
+        Resource = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/staging/*"
+      },
+      {
+        # IAM role management, also ARN-scopeable even before the role
+        # exists (unlike EC2/ELB/ASG). Scoped to only the staging-prefixed
+        # role this config itself creates (the EC2 role at iam.tf:24,
+        # `${var.project_name}-staging-ec2-role`) -- not every role in the
+        # account. AttachRolePolicy/DetachRolePolicy are required for
+        # aws_iam_role_policy_attachment.ssm_session_manager_debug (iam.tf).
+        Effect = "Allow"
+        Action = [
+          "iam:GetRole", "iam:CreateRole", "iam:DeleteRole", "iam:TagRole",
+          "iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy",
+          "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-staging-*"
+      },
+      {
+        # Instance profile management, same staging-scoped ARN pattern as
+        # the IAM role statement above.
+        Effect = "Allow"
+        Action = [
+          "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile",
+          "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile",
+          "iam:GetInstanceProfile",
+        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:instance-profile/${var.project_name}-staging-*"
+      },
+      {
+        # iam:PassRole with Resource="*" is a privilege-escalation primitive
+        # -- it would let this role pass ANY role in the account to any
+        # service, not just the EC2 role this config manages. Scoped to the
+        # staging-prefixed role ARN plus a service condition so it can only
+        # be passed to EC2.
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-staging-*"
+        Condition = {
+          StringEquals = { "iam:PassedToService" = "ec2.amazonaws.com" }
+        }
+      }
+    ]
+  })
+}
+
+output "github_actions_staging_role_arn" {
+  description = "IAM role ARN for the staging-infra workflow's aws-actions/configure-aws-credentials step"
+  value       = aws_iam_role.github_actions_staging.arn
+}
