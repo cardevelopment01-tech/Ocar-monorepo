@@ -5,6 +5,10 @@
 # section #6 -- that doc keeps the per-rule rationale; this file is the source
 # of truth for what's actually deployed.
 
+locals {
+  rides_payments_error_rate_expr = "sum(rate(http_request_duration_seconds_count{route=~\"/api/v1/rides.*|/api/v1/payments.*\", status_code=~\"5..\"}[5m])) / sum(rate(http_request_duration_seconds_count{route=~\"/api/v1/rides.*|/api/v1/payments.*\"}[5m]))"
+}
+
 resource "grafana_folder" "alerts" {
   title = "Ocar Alerts"
 }
@@ -29,7 +33,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "sum(rate(http_request_duration_seconds_count{route=~\"/api/v1/rides.*|/api/v1/payments.*\", status_code=~\"5..\"}[5m])) / sum(rate(http_request_duration_seconds_count{route=~\"/api/v1/rides.*|/api/v1/payments.*\"}[5m]))"
+        expr    = local.rides_payments_error_rate_expr
       })
     }
 
@@ -72,7 +76,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "sum(rate(http_request_duration_seconds_count{route=~\"/api/v1/rides.*|/api/v1/payments.*\", status_code=~\"5..\"}[5m])) / sum(rate(http_request_duration_seconds_count{route=~\"/api/v1/rides.*|/api/v1/payments.*\"}[5m]))"
+        expr    = local.rides_payments_error_rate_expr
       })
     }
 
@@ -139,7 +143,7 @@ resource "grafana_rule_group" "static_thresholds" {
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
     }
     labels         = { severity = "warning" }
-    no_data_state  = "OK"
+    no_data_state  = "Alerting"
     exec_err_state = "Alerting"
   }
 
@@ -225,7 +229,7 @@ resource "grafana_rule_group" "static_thresholds" {
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
     }
     labels         = { severity = "warning" }
-    no_data_state  = "OK"
+    no_data_state  = "Alerting"
     exec_err_state = "Alerting"
   }
 }
