@@ -16,16 +16,16 @@
 #      `type = "not_contains"` on a nonexistent field would have silently
 #      shipped no assertion at all, or (if the field existed as literally
 #      named) the inverse of the intended check.
-#   2. There is no per-check field to configure a numeric TLS-expiry
-#      alert threshold (e.g. "14 days"). TLS certificate expiry is one of
-#      the built-in per-check alert types Grafana Synthetic Monitoring
-#      generates once `alert_sensitivity` is set to anything but `none`,
-#      but the actual day-threshold for that built-in alert is only
-#      adjustable from the Grafana Cloud UI (Synthetic Monitoring -> this
-#      check -> Alerting), not via this Terraform resource. So the 14-day
-#      bump referenced above is a manual one-time UI click, not code --
-#      tracked so it isn't lost: after first apply, open this check in the
-#      UI and set the TLS-expiry per-check alert threshold to 14 days.
+#   2. The per-check alert thresholds (e.g. TLS-expiry days) live on a
+#      separate resource, `grafana_synthetic_monitoring_check_alerts`,
+#      keyed by `check_id`. Its `alerts` field is a *set attribute* of
+#      objects (name/period/threshold), assigned with `= [...]`, not a
+#      repeatable `alerts { ... }` block -- the pinned v3.25.9 schema has
+#      no `runbook_url` field on that object (a newer provider version's
+#      docs mention one; this pin doesn't have it, so it's omitted below).
+#      The `grafana_synthetic_monitoring_check_alerts.health` resource
+#      below sets the TLS-expiry threshold to 14 days directly in code --
+#      no manual UI step needed.
 
 resource "grafana_synthetic_monitoring_check" "health" {
   job       = "ocar-api-health"
@@ -53,4 +53,18 @@ resource "grafana_synthetic_monitoring_check" "health" {
       fail_if_body_not_matches_regexp = ["\"status\":\"ok\""]
     }
   }
+}
+
+# Per-check alert thresholds -- verified against the grafana/grafana v3.25.9
+# provider schema (`terraform providers schema -json`): `alerts` is a set
+# attribute of {name, period, threshold} objects, not a repeatable block.
+resource "grafana_synthetic_monitoring_check_alerts" "health" {
+  check_id = grafana_synthetic_monitoring_check.health.id
+  alerts = [
+    {
+      name      = "TLSTargetCertificateCloseToExpiring"
+      threshold = 14
+      period    = ""
+    }
+  ]
 }
