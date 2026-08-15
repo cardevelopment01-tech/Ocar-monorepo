@@ -256,14 +256,33 @@ resource "aws_iam_role_policy" "github_actions_staging" {
         Resource = "${data.aws_s3_bucket.terraform_state.arn}/staging/*"
       },
       {
+        # GetBucketLocation added alongside the others -- the
+        # data.aws_s3_bucket lookup this policy itself depends on (added
+        # when the state bucket moved to infra/terraform/bootstrap/) calls
+        # this, not just the s3:GetObject/PutObject actions above.
         Effect   = "Allow"
-        Action   = ["s3:ListBucket", "s3:GetBucketPolicy", "s3:GetBucketVersioning"]
+        Action   = ["s3:ListBucket", "s3:GetBucketPolicy", "s3:GetBucketVersioning", "s3:GetBucketLocation"]
         Resource = data.aws_s3_bucket.terraform_state.arn
       },
       {
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:DescribeKey", "kms:GenerateDataKey"]
         Resource = data.aws_kms_key.terraform_state.arn
+      },
+      {
+        # The data.aws_iam_openid_connect_provider lookup this policy's own
+        # role's trust relationship depends on (same bootstrap-module move)
+        # needs its own read permissions -- ListOpenIDConnectProviders
+        # doesn't support resource-level scoping (must be "*"),
+        # GetOpenIDConnectProvider does.
+        Effect   = "Allow"
+        Action   = ["iam:ListOpenIDConnectProviders"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iam:GetOpenIDConnectProvider"]
+        Resource = data.aws_iam_openid_connect_provider.github_actions.arn
       },
       {
         # Full apply/destroy needs to create/modify/delete the resource
