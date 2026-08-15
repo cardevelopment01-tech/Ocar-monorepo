@@ -42,9 +42,9 @@ resource "grafana_synthetic_monitoring_check" "health" {
 
   settings {
     http {
-      method              = "GET"
-      ip_version          = "V4"
-      valid_status_codes  = [200]
+      method             = "GET"
+      ip_version         = "V4"
+      valid_status_codes = [200]
 
       # Check FAILS if the body does NOT contain this string -- i.e. this
       # asserts the body DOES contain "status":"ok". (There is no
@@ -58,6 +58,17 @@ resource "grafana_synthetic_monitoring_check" "health" {
 # Per-check alert thresholds -- verified against the grafana/grafana v3.25.9
 # provider schema (`terraform providers schema -json`): `alerts` is a set
 # attribute of {name, period, threshold} objects, not a repeatable block.
+#
+# UNVERIFIED (pending first apply): the provider schema only types `period`
+# and `name` as plain `string` -- it doesn't validate against real enum
+# values or confirm an empty `period` is accepted for a day-count-threshold
+# alert type like TLS-expiry (as opposed to duration-window alert types,
+# which presumably need a real duration string here). This can only be
+# confirmed against the live Grafana Cloud API. On first `apply`, confirm in
+# Synthetic Monitoring -> this check -> Alerting tab that a working 14-day
+# TLS-expiry alert shows up; if the apply errors or the alert doesn't
+# register, adjust `period`/`name` accordingly. Delete this comment once
+# verified.
 resource "grafana_synthetic_monitoring_check_alerts" "health" {
   check_id = grafana_synthetic_monitoring_check.health.id
   alerts = [
