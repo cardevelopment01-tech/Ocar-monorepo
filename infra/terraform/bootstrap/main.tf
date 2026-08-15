@@ -57,3 +57,24 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
+
+# Lets GitHub Actions authenticate to AWS with short-lived OIDC tokens
+# instead of static access keys. Account-wide singleton -- only one
+# provider can exist per issuer URL per AWS account -- moved here from
+# github-oidc.tf for the same reason the state bucket moved: every
+# prod/staging apply of the main config was trying (and failing) to
+# re-create this since it's not actually per-environment.
+data "tls_certificate" "github_actions" {
+  url = "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
+}
+
+resource "aws_iam_openid_connect_provider" "github_actions" {
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.github_actions.certificates[0].sha1_fingerprint]
+}
+
+output "github_actions_oidc_provider_arn" {
+  description = "ARN of the GitHub Actions OIDC provider -- referenced by the main config's data source"
+  value       = aws_iam_openid_connect_provider.github_actions.arn
+}
