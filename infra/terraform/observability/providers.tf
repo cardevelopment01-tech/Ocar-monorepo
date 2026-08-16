@@ -28,4 +28,14 @@ terraform {
 
 provider "grafana" {
   cloud_access_policy_token = var.grafana_auth
+
+  # Synthetic Monitoring authenticates via a separate token+URL pair from
+  # the main Access Policy token above -- generated from within the app
+  # itself (Testing & synthetics -> Synthetics -> Config tab -> "Generate
+  # access token"), not via cloud_access_policy_token. Verified against the
+  # grafana/grafana v3.25.9 provider schema (`terraform providers schema
+  # -json`): sm_access_token/sm_url are plain top-level optional arguments
+  # on this same provider block -- no aliased provider block required.
+  sm_access_token = var.sm_access_token
+  sm_url          = var.sm_url
 }
