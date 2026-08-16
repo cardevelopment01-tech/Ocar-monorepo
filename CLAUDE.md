@@ -446,6 +446,19 @@ this environment isn't meant to run continuously.
 
 ---
 
+## Terraform Bootstrap Module
+
+`infra/terraform/bootstrap/` holds account-wide singleton resources that
+don't belong to any one environment: the Terraform state bucket + its KMS
+key, and the GitHub Actions OIDC provider. Own state
+(`bootstrap/terraform.tfstate`, same bucket), applied once and almost never
+touched again -- the main prod/staging config only ever reads these via a
+`data` source, never creates or modifies them. If you ever need to touch
+this module: `cd infra/terraform/bootstrap && terraform init && terraform
+plan` (no `-var-file`/`-var="environment=..."` needed, it doesn't take one).
+
+---
+
 ## Pending Ops Actions
 
 - **cAdvisor + per-container resource limits shipped in code — needs a `terraform apply` plus a Grafana dashboard re-import to go live, same two-step rollout `postgres_exporter` needed.** `docker-compose.prod.yml` now runs `cadvisor` (per-container CPU/memory, since `node_exporter` is host-wide only) and sets a starting `mem_limit`/`mem_reservation`/`cpus` on `api` (2g/512m/1.5 — a safety net against an unbounded leak taking down the whole instance via the kernel OOM-killer picking an arbitrary victim container, not yet a tuned value). `user_data.sh.tpl` only applies compose changes at instance boot, so a rolling `terraform apply` is required to actually roll this out to the running ASG instances. `ocar-overview.json` has a new "Per-Container Resource Usage" row (working set, % of limit, CPU cores, OOM events by container) — needs the usual manual re-import. Once real/load-tested traffic exists, use that row's data to size `api`'s final `mem_limit`/`cpus` from observed p95/p99 usage instead of the current rough starting values. Delete this note once both steps are done.

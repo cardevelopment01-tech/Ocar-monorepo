@@ -2,14 +2,24 @@
 # static access keys stored as a repo secret -- the deploy job proves its
 # identity via a signed OIDC token GitHub itself issues per workflow run.
 
-data "tls_certificate" "github_actions" {
-  url = "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
+# This is a read-only lookup, not ownership -- the provider itself is
+# created/managed once in infra/terraform/bootstrap/ (see
+# docs/superpowers/plans/2026-08-15-terraform-bootstrap-singleton-split.md
+# for why). Every prod/staging apply just needs its ARN, never needs to
+# create or modify it.
+data "aws_iam_openid_connect_provider" "github_actions" {
+  url = "https://token.actions.githubusercontent.com"
 }
 
-resource "aws_iam_openid_connect_provider" "github_actions" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.github_actions.certificates[0].sha1_fingerprint]
+# Read-only lookups -- the state bucket and its KMS key are owned by
+# infra/terraform/bootstrap/, not this config. Same reasoning as the OIDC
+# provider data source above.
+data "aws_s3_bucket" "terraform_state" {
+  bucket = "ocar-terraform-state"
+}
+
+data "aws_kms_key" "terraform_state" {
+  key_id = "alias/ocar-terraform-state"
 }
 
 # Scoped to exactly this repo. The deploy job in deploy.yml declares
@@ -24,7 +34,7 @@ resource "aws_iam_role" "github_actions_deploy" {
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
-      Principal = { Federated = aws_iam_openid_connect_provider.github_actions.arn }
+      Principal = { Federated = data.aws_iam_openid_connect_provider.github_actions.arn }
       Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
@@ -98,7 +108,7 @@ resource "aws_iam_role" "github_actions_plan" {
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
-      Principal = { Federated = aws_iam_openid_connect_provider.github_actions.arn }
+      Principal = { Federated = data.aws_iam_openid_connect_provider.github_actions.arn }
       Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
@@ -126,12 +136,12 @@ resource "aws_iam_role_policy" "github_actions_plan_state" {
       {
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = "${aws_s3_bucket.terraform_state.arn}/prod/*"
+        Resource = "${data.aws_s3_bucket.terraform_state.arn}/prod/*"
       },
       {
         Effect   = "Allow"
         Action   = ["s3:ListBucket"]
-        Resource = aws_s3_bucket.terraform_state.arn
+        Resource = data.aws_s3_bucket.terraform_state.arn
       },
       {
         # state-bucket.tf makes the bucket itself (policy, versioning,
@@ -142,7 +152,7 @@ resource "aws_iam_role_policy" "github_actions_plan_state" {
         # (s3:GetBucketPolicy denied).
         Effect   = "Allow"
         Action   = ["s3:Get*", "s3:List*"]
-        Resource = aws_s3_bucket.terraform_state.arn
+        Resource = data.aws_s3_bucket.terraform_state.arn
       },
       {
         # State bucket moved to SSE-KMS (customer-managed key, see
@@ -153,7 +163,7 @@ resource "aws_iam_role_policy" "github_actions_plan_state" {
         # out insufficient.
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:DescribeKey", "kms:GenerateDataKey"]
-        Resource = aws_kms_key.terraform_state.arn
+        Resource = data.aws_kms_key.terraform_state.arn
       }
     ]
   })
@@ -213,7 +223,7 @@ resource "aws_iam_role" "github_actions_staging" {
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
-      Principal = { Federated = aws_iam_openid_connect_provider.github_actions.arn }
+      Principal = { Federated = data.aws_iam_openid_connect_provider.github_actions.arn }
       Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
@@ -243,17 +253,36 @@ resource "aws_iam_role_policy" "github_actions_staging" {
         # scoped to staging/* instead of prod/*.
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = "${aws_s3_bucket.terraform_state.arn}/staging/*"
+        Resource = "${data.aws_s3_bucket.terraform_state.arn}/staging/*"
       },
       {
+        # GetBucketLocation added alongside the others -- the
+        # data.aws_s3_bucket lookup this policy itself depends on (added
+        # when the state bucket moved to infra/terraform/bootstrap/) calls
+        # this, not just the s3:GetObject/PutObject actions above.
         Effect   = "Allow"
-        Action   = ["s3:ListBucket", "s3:GetBucketPolicy", "s3:GetBucketVersioning"]
-        Resource = aws_s3_bucket.terraform_state.arn
+        Action   = ["s3:ListBucket", "s3:GetBucketPolicy", "s3:GetBucketVersioning", "s3:GetBucketLocation"]
+        Resource = data.aws_s3_bucket.terraform_state.arn
       },
       {
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:DescribeKey", "kms:GenerateDataKey"]
-        Resource = aws_kms_key.terraform_state.arn
+        Resource = data.aws_kms_key.terraform_state.arn
+      },
+      {
+        # The data.aws_iam_openid_connect_provider lookup this policy's own
+        # role's trust relationship depends on (same bootstrap-module move)
+        # needs its own read permissions -- ListOpenIDConnectProviders
+        # doesn't support resource-level scoping (must be "*"),
+        # GetOpenIDConnectProvider does.
+        Effect   = "Allow"
+        Action   = ["iam:ListOpenIDConnectProviders"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iam:GetOpenIDConnectProvider"]
+        Resource = data.aws_iam_openid_connect_provider.github_actions.arn
       },
       {
         # Full apply/destroy needs to create/modify/delete the resource

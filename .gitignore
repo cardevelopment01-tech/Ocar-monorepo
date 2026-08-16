@@ -37,7 +37,7 @@ graphify-out/
 # Terraform local state, plugin cache, and plan files -- state can contain
 # secrets, plan files are throwaway. .terraform.lock.hcl IS committed
 # (that's the provider version lock, meant to be version-controlled).
-infra/terraform/.terraform/
+infra/terraform/**/.terraform/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.backup
 infra/terraform/*tfplan

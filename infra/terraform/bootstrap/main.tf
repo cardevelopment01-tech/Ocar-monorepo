@@ -1,8 +1,11 @@
-# The S3 bucket Terraform state itself will live in, once migrated off local
-# state. Bootstrapped with local state (can't use the S3 backend to create
-# the bucket that backend needs) -- apply this first, then flip the
-# commented-out backend block in providers.tf and run `terraform init
-# -migrate-state` to move the existing state file in.
+# infra/terraform/bootstrap/main.tf
+#
+# The S3 bucket Terraform state itself lives in. Originally bootstrapped
+# with local state (can't use the S3 backend to create the bucket that
+# backend needs), then applied once and never touched again in the
+# ordinary course of things -- this file moved here from the main
+# prod/staging config specifically because it's an account-wide singleton,
+# not a per-environment resource.
 
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "ocar-terraform-state"
@@ -53,4 +56,25 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+# Lets GitHub Actions authenticate to AWS with short-lived OIDC tokens
+# instead of static access keys. Account-wide singleton -- only one
+# provider can exist per issuer URL per AWS account -- moved here from
+# github-oidc.tf for the same reason the state bucket moved: every
+# prod/staging apply of the main config was trying (and failing) to
+# re-create this since it's not actually per-environment.
+data "tls_certificate" "github_actions" {
+  url = "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
+}
+
+resource "aws_iam_openid_connect_provider" "github_actions" {
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.github_actions.certificates[0].sha1_fingerprint]
+}
+
+output "github_actions_oidc_provider_arn" {
+  description = "ARN of the GitHub Actions OIDC provider -- referenced by the main config's data source"
+  value       = aws_iam_openid_connect_provider.github_actions.arn
 }
