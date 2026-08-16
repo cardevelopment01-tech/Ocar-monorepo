@@ -6,13 +6,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plane, Train, Building2, ShoppingBag,
   GraduationCap, X, Map,
-  ChevronDown, User, Clock, ArrowRightLeft,
+  ChevronDown, User, Clock, ArrowRightLeft, Home, Briefcase, MapPin,
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
 import BookingForSheet from '@/components/booking/BookingForSheet'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
+import { savedPlacesApi, type SavedPlace } from '@/lib/saved-places-api'
 import { useLocation } from '@/lib/location-context'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
@@ -112,6 +113,10 @@ function SearchContent() {
   const [riderPhone, setRiderPhone] = useState(() => sp.get('riderPhone') ?? '')
   const bookingForOther = riderName !== '' && riderPhone !== ''
   const [redirectToast, setRedirectToast] = useState<string | null>(null)
+
+  const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([])
+  // Supplementary quick-picks — a failed fetch must never block search, just show fewer rows.
+  useEffect(() => { savedPlacesApi.list().then(setSavedPlaces).catch(() => {}) }, [])
 
   // Mirror the shared GPS result — already requested once at app landing,
   // long before this page mounted — instead of firing a second independent
@@ -642,6 +647,43 @@ function SearchContent() {
               </div>
             )}
           </motion.div>
+        )}
+
+        {/* Saved places quick-picks, only when the user has any */}
+        {!showSuggestions && savedPlaces.length > 0 && (
+          <div className="mb-1">
+            {savedPlaces.map((p, i) => {
+              const SavedIcon = p.kind === 'home' ? Home : p.kind === 'work' ? Briefcase : MapPin
+              return (
+                <div key={p.id}>
+                  <motion.button
+                    onClick={() => {
+                      if (mode === 'origin') {
+                        setOriginLat(p.latitude); setOriginLng(p.longitude); setOriginAddress(p.address)
+                        switchMode('destination', true)
+                        if (confirmedDest) void navigateToRide(confirmedDest, p.latitude, p.longitude, p.address)
+                      } else {
+                        confirmDest(p.latitude, p.longitude, p.address)
+                      }
+                    }}
+                    className="w-full flex items-center gap-3 px-1 py-3 text-left"
+                    whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
+                  >
+                    <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+                      <SavedIcon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[13px] font-medium text-text-primary">{p.label}</span>
+                      <span className="block text-[11px] text-text-muted truncate mt-0.5">{p.address}</span>
+                    </span>
+                  </motion.button>
+                  {i < savedPlaces.length - 1 && (
+                    <div className="ml-12 border-t border-dashed border-border" />
+                  )}
+                </div>
+              )
+            })}
+          </div>
         )}
 
         {/* Popular list, single mounted instance, NEVER re-animates on mode switch */}
