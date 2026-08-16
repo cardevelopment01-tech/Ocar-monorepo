@@ -74,18 +74,28 @@ terraform {
 }
 
 provider "grafana" {
-  cloud_access_policy_token = var.grafana_auth
+  url  = var.grafana_url
+  auth = var.grafana_auth
 }
 ```
 
-`var.grafana_auth` comes from `TF_VAR_grafana_auth` (env var, never committed) — a Grafana Cloud
-access policy token scoped to alerting, SLO, and synthetic-monitoring write. Same pattern the
-project already uses for every other credential (env var / SSM `SecureString`, never hardcoded).
-`var.slack_webhook_url` follows the same convention (`TF_VAR_slack_webhook_url`).
+> **Errata (2026-08-16, after first real apply):** the snippet above originally showed
+> `cloud_access_policy_token = var.grafana_auth`. That's wrong — every resource in this module
+> (folders, contact points, alerting, SLOs) hits the classic in-stack Grafana REST API, which
+> rejects Cloud Access Policy tokens outright (401, even with the correct realm/scopes). It needs a
+> genuine **Service Account token** (Administration > Users and access > Service accounts, Admin
+> role — Editor lacked `folders:read`), passed as `auth`, plus `url` pointing at the specific stack.
+> A separate Cloud Access Policy token is still used, but only for `var.grafana_auth`'s
+> Synthetic-Monitoring-adjacent sibling variables, not this main provider block. See
+> `infra/terraform/observability/providers.tf`'s own comment for the authoritative version.
+
+`var.grafana_auth` comes from `TF_VAR_grafana_auth` (env var, never committed) — a Grafana stack
+Service Account token (see errata above). Same pattern the project already uses for every other
+credential (env var / SSM `SecureString`, never hardcoded). `var.slack_webhook_url` follows the
+same convention (`TF_VAR_slack_webhook_url`).
 
 **Prerequisite (blocking, needed from the user before `terraform apply`):**
-1. A Grafana Cloud access policy token with `alerting:write`, `slo:write`,
-   `synthetic-monitoring:write` scopes.
+1. A Grafana stack Service Account token (Admin role) — see errata above, not an access policy token.
 2. A Slack incoming webhook URL for the channel that should receive alerts.
 
 ---

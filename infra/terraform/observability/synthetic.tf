@@ -61,16 +61,9 @@ resource "grafana_synthetic_monitoring_check" "health" {
 # provider schema (`terraform providers schema -json`): `alerts` is a set
 # attribute of {name, period, threshold} objects, not a repeatable block.
 #
-# UNVERIFIED (pending first apply): the provider schema only types `period`
-# and `name` as plain `string` -- it doesn't validate against real enum
-# values or confirm an empty `period` is accepted for a day-count-threshold
-# alert type like TLS-expiry (as opposed to duration-window alert types,
-# which presumably need a real duration string here). This can only be
-# confirmed against the live Grafana Cloud API. On first `apply`, confirm in
-# Synthetic Monitoring -> this check -> Alerting tab that a working 14-day
-# TLS-expiry alert shows up; if the apply errors or the alert doesn't
-# register, adjust `period`/`name` accordingly. Delete this comment once
-# verified.
+# Verified 2026-08-16 on first real apply: `period = ""` and
+# `name = "TLSTargetCertificateCloseToExpiring"` are accepted as-is by the
+# live API -- resource applied cleanly, no adjustment needed.
 resource "grafana_synthetic_monitoring_check_alerts" "health" {
   check_id = grafana_synthetic_monitoring_check.health.id
   alerts = [

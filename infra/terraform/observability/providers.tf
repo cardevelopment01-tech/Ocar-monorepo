@@ -39,7 +39,7 @@ provider "grafana" {
   auth = var.grafana_auth
 
   # Synthetic Monitoring authenticates via a separate token+URL pair from
-  # the main Access Policy token above -- generated from within the app
+  # the main Service Account token above -- generated from within the app
   # itself (Testing & synthetics -> Synthetics -> Config tab -> "Generate
   # access token"), not via cloud_access_policy_token. Verified against the
   # grafana/grafana v3.25.9 provider schema (`terraform providers schema
