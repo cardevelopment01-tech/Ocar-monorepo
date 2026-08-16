@@ -26,7 +26,7 @@ export function signAccessToken(payload: AccessTokenPayload): string {
 }
 
 export function verifyAccessToken(token: string): DecodedAccessToken {
-  const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET) as DecodedAccessToken & { sub: string }
+  const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET, { algorithms: ['HS256'] }) as DecodedAccessToken & { sub: string }
   return decoded
 }
 
@@ -48,7 +48,7 @@ export function signPendingTotpToken(adminId: string): string {
 }
 
 export function verifyPendingTotpToken(token: string): { adminId: string } {
-  const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET) as { sub?: string; purpose?: string }
+  const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET, { algorithms: ['HS256'] }) as { sub?: string; purpose?: string }
   if (decoded.purpose !== PENDING_TOTP_PURPOSE || !decoded.sub) {
     throw new Error('Not a valid pending TOTP token')
   }

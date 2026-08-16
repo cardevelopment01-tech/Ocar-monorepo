@@ -3,6 +3,7 @@ import { authenticate } from '@/middleware/auth.middleware'
 import { config } from '@/config'
 import { client as redis } from '@/db/redis'
 import { walletTopupOrderKey } from '@/constants/redis-keys'
+import { verifyHmacSignature } from '@/lib/hash'
 import * as service from './payments.service'
 import * as packagesService from '@/modules/packages/packages.service'
 import * as packagesRepo from '@/modules/packages/packages.repository'
@@ -80,10 +81,9 @@ router.post('/wallet/driver/topup/verify', authenticate(), async (req, res, next
       res.status(400).json({ error: 'Order does not belong to this driver' }); return
     }
 
-    const { createHmac } = await import('crypto')
-    const expected = createHmac('sha256', config.RAZORPAY_KEY_SECRET)
-      .update(`${orderId}|${paymentId}`).digest('hex')
-    if (signature !== expected) { res.status(400).json({ error: 'Invalid payment signature' }); return }
+    if (!verifyHmacSignature(config.RAZORPAY_KEY_SECRET, `${orderId}|${paymentId}`, signature)) {
+      res.status(400).json({ error: 'Invalid payment signature' }); return
+    }
 
     // Never trust the client-supplied amount — fetch the captured amount
     // straight from Razorpay so a replayed/forged amount can't inflate the credit.
@@ -145,11 +145,8 @@ router.post('/webhook/razorpay', async (req, res, next) => {
       return
     }
 
-    const { createHmac } = await import('crypto')
-    const expected = createHmac('sha256', webhookSecret)
-      .update(req.rawBody ?? Buffer.from(JSON.stringify(req.body)))
-      .digest('hex')
-    if (signature !== expected) {
+    const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(req.body))
+    if (!verifyHmacSignature(webhookSecret, rawBody, signature)) {
       res.status(400).json({ error: 'Invalid signature', code: 'WEBHOOK_INVALID_SIGNATURE' })
       return
     }

@@ -5,6 +5,7 @@ import { ridePaymentOrderKey } from '@/constants/redis-keys'
 import { notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
 import { accrueDriverEarning } from '@/modules/payments/submodules/settlements/settlements.service'
 import { getConfigValue } from '@/lib/system-config'
+import { verifyHmacSignature } from '@/lib/hash'
 import { logger } from '@/lib/logger'
 import * as packagesService from '@/modules/packages/packages.service'
 import * as packagesRepo from '@/modules/packages/packages.repository'
@@ -416,11 +417,7 @@ export async function verifyRidePayment(
     throw Object.assign(new Error('Payment not found for this ride'), { httpStatus: 404 })
   }
 
-  const { createHmac } = await import('crypto')
-  const expected = createHmac('sha256', config.RAZORPAY_KEY_SECRET)
-    .update(`${input.orderId}|${input.paymentId}`)
-    .digest('hex')
-  if (input.signature !== expected) {
+  if (!verifyHmacSignature(config.RAZORPAY_KEY_SECRET, `${input.orderId}|${input.paymentId}`, input.signature)) {
     throw Object.assign(new Error('Invalid payment signature'), { httpStatus: 400 })
   }
 
