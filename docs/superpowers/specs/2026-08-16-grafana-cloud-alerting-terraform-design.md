@@ -22,7 +22,8 @@ so it's strictly better than hand-rolling API calls.
 ## Scope
 
 - New Terraform root module: `infra/terraform/observability/`.
-- Provisions: contact point (Slack + email), notification policy, 4 static-threshold alert rules,
+- Provisions: contact point (Slack + email), notification policy, 5 static-threshold alert rules
+  (4 signals, with the error-rate signal split into separate warning/critical rules),
   2 SLOs with generated burn-rate alerts (ride success rate, payment success rate), 3 billing/usage
   alerts, 1 synthetic HTTP check on `/health`.
 - No application code changes — every metric referenced already exists in
@@ -73,18 +74,28 @@ terraform {
 }
 
 provider "grafana" {
-  cloud_access_policy_token = var.grafana_auth
+  url  = var.grafana_url
+  auth = var.grafana_auth
 }
 ```
 
-`var.grafana_auth` comes from `TF_VAR_grafana_auth` (env var, never committed) — a Grafana Cloud
-access policy token scoped to alerting, SLO, and synthetic-monitoring write. Same pattern the
-project already uses for every other credential (env var / SSM `SecureString`, never hardcoded).
-`var.slack_webhook_url` follows the same convention (`TF_VAR_slack_webhook_url`).
+> **Errata (2026-08-16, after first real apply):** the snippet above originally showed
+> `cloud_access_policy_token = var.grafana_auth`. That's wrong — every resource in this module
+> (folders, contact points, alerting, SLOs) hits the classic in-stack Grafana REST API, which
+> rejects Cloud Access Policy tokens outright (401, even with the correct realm/scopes). It needs a
+> genuine **Service Account token** (Administration > Users and access > Service accounts, Admin
+> role — Editor lacked `folders:read`), passed as `auth`, plus `url` pointing at the specific stack.
+> A separate Cloud Access Policy token is still used, but only for `var.grafana_auth`'s
+> Synthetic-Monitoring-adjacent sibling variables, not this main provider block. See
+> `infra/terraform/observability/providers.tf`'s own comment for the authoritative version.
+
+`var.grafana_auth` comes from `TF_VAR_grafana_auth` (env var, never committed) — a Grafana stack
+Service Account token (see errata above). Same pattern the project already uses for every other
+credential (env var / SSM `SecureString`, never hardcoded). `var.slack_webhook_url` follows the
+same convention (`TF_VAR_slack_webhook_url`).
 
 **Prerequisite (blocking, needed from the user before `terraform apply`):**
-1. A Grafana Cloud access policy token with `alerting:write`, `slo:write`,
-   `synthetic-monitoring:write` scopes.
+1. A Grafana stack Service Account token (Admin role) — see errata above, not an access policy token.
 2. A Slack incoming webhook URL for the channel that should receive alerts.
 
 ---
@@ -178,7 +189,7 @@ resource "grafana_slo" "ride_success" {
 error budget) for both — reasonable starting point, not a value with real historical data behind it
 yet; revisit once real ride/payment volume exists to see if 98% is too strict or too loose. This is
 the exact same "assumes higher request volume" caveat the research flagged: at low absolute traffic
-these two SLOs may need retuning once real numbers come in, unlike the 4 static rules above which
+these two SLOs may need retuning once real numbers come in, unlike the static rules above which
 are safe at any volume.
 
 ---
