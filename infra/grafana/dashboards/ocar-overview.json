@@ -271,11 +271,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "topk(10, max by (queryid, query) ((rate(pg_stat_statements_seconds_total[5m]) / rate(pg_stat_statements_calls_total[5m])) * on(queryid) group_left(query) pg_stat_statements_query_id))",
+          "expr": "topk(10, max by (queryid, query) ((rate(pg_stat_statements_seconds_total[5m]) / rate(pg_stat_statements_calls_total[5m])) * on(queryid, host) group_left(query) pg_stat_statements_query_id))",
           "refId": "A", "format": "table", "instant": true
         }
       ],
-      "fieldConfig": { "defaults": {}, "overrides": [] }
+      "fieldConfig": { "defaults": {}, "overrides": [
+        { "matcher": { "id": "byName", "options": "Value" }, "properties": [ { "id": "unit", "value": "s" }, { "id": "decimals", "value": 2 } ] }
+      ] }
     },
     {
       "id": 14,
@@ -287,11 +289,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "topk(10, max by (queryid, query) (rate(pg_stat_statements_seconds_total[5m]) * on(queryid) group_left(query) pg_stat_statements_query_id))",
+          "expr": "topk(10, max by (queryid, query) (rate(pg_stat_statements_seconds_total[5m]) * on(queryid, host) group_left(query) pg_stat_statements_query_id))",
           "refId": "A", "format": "table", "instant": true
         }
       ],
-      "fieldConfig": { "defaults": {}, "overrides": [] }
+      "fieldConfig": { "defaults": {}, "overrides": [
+        { "matcher": { "id": "byName", "options": "Value" }, "properties": [ { "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 3 } ] }
+      ] }
     },
     {
       "id": 15,
