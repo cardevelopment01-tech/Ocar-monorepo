@@ -2,8 +2,13 @@
 
 variable "grafana_auth" {
   type        = string
-  description = "Grafana Cloud access policy token (alerting:write, slo:write, synthetic-monitoring:write). Set via TF_VAR_grafana_auth, never committed."
+  description = "Grafana stack Service Account token (Administration > Users and access > Service accounts), NOT a Cloud Access Policy token -- the classic in-stack REST API (folders, contact points, SLOs) rejects Access Policy tokens even with correct realm/scopes. Set via TF_VAR_grafana_auth, never committed."
   sensitive   = true
+}
+
+variable "grafana_url" {
+  type        = string
+  description = "URL of the Grafana Cloud stack every resource in this module targets, e.g. https://<stack-name>.grafana.net. Required alongside grafana_auth -- an access-policy token alone doesn't tell the provider which stack's HTTP API to call."
 }
 
 variable "slack_webhook_url" {

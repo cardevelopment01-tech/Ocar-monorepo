@@ -35,10 +35,12 @@ resource "grafana_synthetic_monitoring_check" "health" {
   frequency = 60000
   timeout   = 10000
 
-  # Enables Grafana's built-in per-check alerts (probe failures, TLS
-  # expiry, etc.) at medium sensitivity, routed through the same
-  # notification policy/contact point as everything else in this module.
-  alert_sensitivity = "medium"
+  # "none", not "medium" -- discovered at first real `apply`: this account
+  # has legacy per-check alerting disabled ("legacy alerts usage is
+  # forbidden", a 403 on check creation when alert_sensitivity != "none").
+  # Alerting is handled entirely by the separate
+  # grafana_synthetic_monitoring_check_alerts resource below instead.
+  alert_sensitivity = "none"
 
   settings {
     http {

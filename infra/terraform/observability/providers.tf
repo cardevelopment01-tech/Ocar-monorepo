@@ -27,7 +27,16 @@ terraform {
 }
 
 provider "grafana" {
-  cloud_access_policy_token = var.grafana_auth
+  # Every resource in this module (folders, contact points, alert rule
+  # groups, SLOs) hits the classic in-stack Grafana REST API, which wants a
+  # genuine Service Account token minted from inside that Grafana instance
+  # (Administration > Users and access > Service accounts), NOT a Cloud
+  # Access Policy token -- discovered at first real `apply`: both
+  # `cloud_access_policy_token` and an access-policy token passed as `auth`
+  # were rejected (401 Invalid API key / client-not-initialized) despite
+  # correct realm/scopes.
+  url  = var.grafana_url
+  auth = var.grafana_auth
 
   # Synthetic Monitoring authenticates via a separate token+URL pair from
   # the main Access Policy token above -- generated from within the app
