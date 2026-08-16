@@ -9,10 +9,9 @@ on:
 jobs:
   # workflow_run doesn't support `on.paths:` filtering (push/pull_request only)
   # -- so this job does it by hand: diff the exact commit CI just validated
-  # against its immediate parent (correct for both a squash-merge and a
-  # regular merge commit -- HEAD^ is "main's tip right before this PR
-  # landed" either way) and skip build/deploy entirely if nothing that
-  # actually feeds the Docker image changed. Otherwise every merge, even a
+  # against the last commit THIS WORKFLOW successfully deployed (not just
+  # HEAD^) and skip build/deploy entirely if nothing that actually feeds the
+  # Docker image changed since then. Otherwise every merge, even a
   # docs/Terraform-only one, would rebuild the image and restart the whole
   # ASG for no reason -- confirmed live: an infra/**-only PR (adding a new
   # IAM role, no app code touched) still triggered a real deploy under an
@@ -21,15 +20,23 @@ jobs:
   # api/Dockerfile directly: it only COPYs pnpm-lock.yaml/pnpm-workspace.yaml/
   # package.json and api/. infra/** and docker-compose.prod.yml changes are
   # applied by a completely separate, manual `terraform apply`, not by this
-  # workflow at all. Known gap, not fixed here: a direct push of multiple
-  # commits straight to main (no PR) only diffs against the last commit's
-  # parent, not the whole batch -- doesn't match how this repo has actually
-  # been used (every change goes through a PR merge), so not worth the extra
-  # complexity of tracking a separate "last deployed SHA" until it's a real problem.
+  # workflow at all.
+  #
+  # Diffing against the last deployed SHA (via the Deploy workflow's own run
+  # history) instead of HEAD^ is what makes this correct for a direct push of
+  # multiple commits straight to main, not just a single-commit PR merge --
+  # confirmed live: a 6-commit direct push to main where only the LAST commit
+  # was docs-only caused HEAD^..HEAD to see just that one commit and report
+  # "nothing relevant", silently skipping build/deploy for 5 preceding
+  # commits that touched api/. Falls back to HEAD^ only when no prior
+  # successful Deploy run exists (first run ever).
   changes:
     name: Detect relevant changes
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
     steps:
@@ -39,8 +46,17 @@ jobs:
           fetch-depth: 0
 
       - id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if git diff --name-only HEAD^ HEAD | grep -qE '^(api/|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|\.github/workflows/deploy\.yml)'; then
+          PREV_SHA=$(gh run list --workflow=deploy.yml --status=success --branch=main --limit=1 --json headSha --jq '.[0].headSha' 2>/dev/null || echo "")
+          if [ -z "$PREV_SHA" ] || ! git cat-file -e "$PREV_SHA" 2>/dev/null; then
+            BASE="HEAD^"
+          else
+            BASE="$PREV_SHA"
+          fi
+          echo "Diffing $BASE..HEAD"
+          if git diff --name-only "$BASE" HEAD | grep -qE '^(api/|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|\.github/workflows/deploy\.yml)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
