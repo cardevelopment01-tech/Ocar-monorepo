@@ -8,6 +8,7 @@ import { config } from '@/config'
 import { testConnection } from '@/db/client'
 import { testConnection as testRedis } from '@/db/redis'
 import { errorMiddleware } from '@/middleware/error.middleware'
+import { maintenanceCheck } from '@/middleware/maintenance.middleware'
 import { generalLimiter, authLimiter } from '@/middleware/rateLimit.middleware'
 import authRouter from '@/modules/auth/auth.routes'
 import driversRouter from '@/modules/drivers/drivers.routes'
@@ -25,6 +26,7 @@ import analyticsRouter  from '@/modules/analytics/analytics.routes'
 import notificationsRouter from '@/modules/notifications/notifications.routes'
 import templatesRouter from '@/modules/notifications/templates.routes'
 import systemConfigRouter from '@/modules/admin/system-config.routes'
+import maintenanceRouter from '@/modules/admin/maintenance.routes'
 import adminInvitesRouter from '@/modules/admin-invites/admin-invites.routes'
 import adminAuditRouter from '@/modules/admin-audit/admin-audit.routes'
 import adminTotpRouter from '@/modules/admin-totp/admin-totp.routes'
@@ -112,6 +114,12 @@ export function createApp(): Application {
     next()
   })
 
+  // 1c. Maintenance short-circuit — after logging/metrics (so blocked
+  // requests still show up there) but before rate-limiting/auth and every
+  // route below, both of which are Redis/DB-touching. /health and /metrics
+  // bypass it internally (see maintenance.middleware.ts).
+  app.use(maintenanceCheck)
+
   // 2. Security headers
   app.use(helmet())
 
@@ -174,6 +182,7 @@ apiRouter.use('/payments/settlements', settlementsRouter)
   apiRouter.use('/admin/analytics', analyticsRouter)
   apiRouter.use('/admin/notification-templates', templatesRouter)
   apiRouter.use('/admin/system-config', systemConfigRouter)
+  apiRouter.use('/admin/maintenance', maintenanceRouter)
   apiRouter.use('/admin/payouts', settlementsAdminRouter)
   apiRouter.use('/admin/audit-log', adminAuditRouter)
   apiRouter.use('/notifications', notificationsRouter)
