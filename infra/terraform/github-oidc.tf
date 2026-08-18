@@ -85,6 +85,34 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         Effect   = "Allow"
         Action   = ["autoscaling:DescribeInstanceRefreshes"]
         Resource = "*"
+      },
+      {
+        # Finds a live ASG instance to route the migration command to --
+        # RDS (rds.tf) isn't reachable from this GitHub-hosted runner
+        # directly, only from inside the VPC. No resource-level scoping
+        # possible before the instance exists (IDs are dynamic, replaced on
+        # every deploy).
+        Effect   = "Allow"
+        Action   = ["ec2:DescribeInstances"]
+        Resource = "*"
+      },
+      {
+        # Runs the migration container on that instance via SSM instead of
+        # `docker run` on this runner. Needs both the built-in document ARN
+        # and the target instance ARN allowed -- instance/* because, same as
+        # above, the specific instance ID isn't known ahead of time.
+        Effect = "Allow"
+        Action = ["ssm:SendCommand"]
+        Resource = [
+          "arn:aws:ssm:${data.aws_region.current.region}::document/AWS-RunShellScript",
+          "arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:instance/*",
+        ]
+      },
+      {
+        # Same non-scopability situation as DescribeInstanceRefreshes above.
+        Effect   = "Allow"
+        Action   = ["ssm:GetCommandInvocation"]
+        Resource = "*"
       }
     ]
   })

@@ -7,6 +7,7 @@ import { NotificationsProvider } from '@/lib/notifications-context'
 import { LocationProvider } from '@/lib/location-context'
 import SplashWrapper from '@/components/ui/SplashWrapper'
 import NotificationToast from '@/components/ui/NotificationToast'
+import MaintenanceProvider from '@/components/providers/MaintenanceProvider'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -33,14 +34,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <main className="min-h-[100dvh] bg-background">
           <div className="mx-auto max-w-[430px] min-h-[100dvh] bg-background relative">
-            <LocationProvider>
-              <AuthProvider>
-                <NotificationsProvider>
-                  <SplashWrapper>{children}</SplashWrapper>
-                  <NotificationToast />
-                </NotificationsProvider>
-              </AuthProvider>
-            </LocationProvider>
+            <MaintenanceProvider>
+              <LocationProvider>
+                <AuthProvider>
+                  <NotificationsProvider>
+                    <SplashWrapper>{children}</SplashWrapper>
+                    <NotificationToast />
+                  </NotificationsProvider>
+                </AuthProvider>
+              </LocationProvider>
+            </MaintenanceProvider>
           </div>
         </main>
       </body>

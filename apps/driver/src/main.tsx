@@ -5,9 +5,12 @@ import { motion } from 'framer-motion'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import SplashScreen from './components/ui/SplashScreen'
+import MaintenanceScreen from './components/ui/MaintenanceScreen'
+import { useMaintenanceStore } from './store/useMaintenanceStore'
 import './index.css'
 
 function Root() {
+  const maintenance = useMaintenanceStore()
   // Compute synchronously on first render to avoid a useLayoutEffect flash
   const willSplash = !sessionStorage.getItem('ocar_splash_shown')
 
@@ -19,6 +22,15 @@ function Root() {
     setShowSplash(false)
     setAppVisible(true)
   }, [])
+
+  if (maintenance.isUnderMaintenance) {
+    return (
+      <MaintenanceScreen
+        message={maintenance.message}
+        retryAfterSeconds={maintenance.retryAfterSeconds}
+      />
+    )
+  }
 
   return (
     <>

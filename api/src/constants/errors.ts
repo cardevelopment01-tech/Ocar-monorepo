@@ -165,4 +165,9 @@ export const AppErrors = {
     message: 'Internal server error',
     httpStatus: 500,
   },
+  MAINTENANCE_MODE: {
+    code: 'MAINTENANCE_MODE',
+    message: 'Service is under maintenance',
+    httpStatus: 503,
+  },
 } as const satisfies Record<string, AppError>

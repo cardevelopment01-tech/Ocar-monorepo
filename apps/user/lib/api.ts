@@ -1,5 +1,6 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios'
 import { clearAuth, getRefreshToken, storeTokens } from './auth'
+import { setMaintenance } from './maintenance-store'
 
 type RetriableRequest = InternalAxiosRequestConfig & { _retry?: boolean }
 
@@ -92,6 +93,16 @@ api.interceptors.response.use(
     const code = error.response?.data?.code
     const isTokenError = code === 'AUTH_UNAUTHORIZED' || code === 'AUTH_TOKEN_INVALID' || code === 'AUTH_TOKEN_EXPIRED'
     const original = error.config as RetriableRequest | undefined
+
+    if (error.response?.status === 503 && code === 'MAINTENANCE_MODE') {
+      const retryAfterHeader = Number(error.response.headers?.['retry-after'])
+      setMaintenance({
+        isUnderMaintenance: true,
+        message: error.response.data?.message,
+        retryAfterSeconds: Number.isFinite(retryAfterHeader) ? retryAfterHeader : undefined,
+      })
+      return Promise.reject(error)
+    }
 
     if (
       error.response?.status === 401 &&

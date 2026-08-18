@@ -5,6 +5,7 @@ import './globals.css'
 import { AdminAuthProvider } from '@/lib/auth-context'
 import { NotificationsProvider } from '@/lib/notifications-context'
 import GoogleMapsProvider from '@/components/GoogleMapsProvider'
+import MaintenanceBanner from '@/components/layout/MaintenanceBanner'
 
 const dmSans = DM_Sans({ subsets: ['latin'] })
 
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className={dmSans.className}>
+        <MaintenanceBanner />
         <GoogleMapsProvider>
           <AdminAuthProvider>
             <NotificationsProvider>
