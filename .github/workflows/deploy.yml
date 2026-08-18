@@ -142,19 +142,77 @@ jobs:
           role-to-assume: ${{ vars.GHA_DEPLOY_ROLE_ARN }}
           aws-region: ap-south-1
 
-      - name: Run migrations (new image, current instances still serving traffic)
+      - name: Find a running ASG instance
+        id: instance
         run: |
           set -e
-          # api/entrypoint.sh also runs migrate.js on every container start, so
-          # this ad-hoc run and each instance's own boot both invoke it -- safe
-          # only because migrate.js is idempotent (skips already-applied files,
-          # and pg_advisory_lock serializes concurrent runs). This run exists
-          # solely to gate the rollout on migrations succeeding.
-          docker run --rm \
-            -e MIGRATION_DATABASE_URL="${{ secrets.MIGRATION_DATABASE_URL }}" \
-            --entrypoint node \
-            ghcr.io/${{ github.repository_owner }}/ocar-api:$IMAGE_TAG \
-            dist/db/migrate.js
+          ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:aws:autoscaling:groupName,Values=$ASG_NAME" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          if [ -z "$ID" ] || [ "$ID" = "None" ]; then
+            echo "No running ASG instance found -- can't route the migration command anywhere" >&2
+            exit 1
+          fi
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+
+      - name: Run migrations (new image, current instances still serving traffic)
+        env:
+          MIGRATION_DB_URL_PARAM: /ocar/prod/migration-database-url
+          INSTANCE_ID: ${{ steps.instance.outputs.id }}
+        run: |
+          set -e
+          # Routed through SSM to a live ASG instance instead of a `docker run`
+          # on this GitHub-hosted runner -- RDS (infra/terraform/rds.tf) isn't
+          # publicly reachable, only the EC2 instances' security group can
+          # reach it. The instance already holds a GHCR login from its own
+          # boot script (user_data.sh.tpl) and reads the migration DB URL
+          # itself via its own IAM role (iam.tf), so no secret is embedded in
+          # the command text. api/entrypoint.sh also runs migrate.js on every
+          # container start, so this ad-hoc run and each instance's own boot
+          # both invoke it -- safe only because migrate.js is idempotent
+          # (skips already-applied files, pg_advisory_lock serializes
+          # concurrent runs). This run exists solely to gate the rollout on
+          # migrations succeeding.
+          cat > /tmp/ssm-commands.json <<'EOF'
+          {
+            "commands": [
+              "set -e",
+              "DB_URL=$(aws ssm get-parameter --name 'PARAM_PLACEHOLDER' --with-decryption --query Parameter.Value --output text)",
+              "docker run --rm -e MIGRATION_DATABASE_URL=\"$DB_URL\" --entrypoint node ghcr.io/OWNER_PLACEHOLDER/ocar-api:TAG_PLACEHOLDER dist/db/migrate.js"
+            ]
+          }
+          EOF
+          sed -i \
+            -e "s#PARAM_PLACEHOLDER#$MIGRATION_DB_URL_PARAM#" \
+            -e "s#OWNER_PLACEHOLDER#${{ github.repository_owner }}#" \
+            -e "s#TAG_PLACEHOLDER#$IMAGE_TAG#" \
+            /tmp/ssm-commands.json
+
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "ocar-api migration for $IMAGE_TAG" \
+            --parameters file:///tmp/ssm-commands.json \
+            --query 'Command.CommandId' --output text)
+
+          for i in $(seq 1 30); do
+            sleep 5
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+              --query 'Status' --output text 2>/dev/null || echo "Pending")
+            case "$STATUS" in
+              Success)
+                echo "Migrations applied."
+                exit 0 ;;
+              Failed|Cancelled|TimedOut)
+                echo "Migration command failed with status $STATUS" >&2
+                aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+                  --query '{stdout:StandardOutputContent,stderr:StandardErrorContent}' --output json >&2
+                exit 1 ;;
+            esac
+          done
+          echo "Timed out waiting for migration command" >&2
+          exit 1
 
       - name: Record previous image tag (for rollback)
         id: previous

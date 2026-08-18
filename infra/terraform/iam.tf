@@ -11,11 +11,19 @@ locals {
   image_tag_parameter_name  = "/${var.project_name}/${var.environment}/image-tag"
   ghcr_token_parameter_name = "/${var.project_name}/${var.environment}/ghcr-token"
   api_env_parameter_name    = "/${var.project_name}/${var.environment}/api-env"
+  # Hand-maintained (same as the three above -- no aws_ssm_parameter resource,
+  # seeded via `aws ssm put-parameter --type SecureString` once by hand). Read
+  # on-demand by the deploy workflow's SSM-routed migration step (deploy.yml),
+  # not at instance boot -- kept separate from api-env's DATABASE_URL because
+  # pre-RDS-cutover it's Neon's DIRECT (non-pooler) host while DATABASE_URL is
+  # pooled; post-cutover to RDS (no pooler) the two converge to the same value.
+  migration_db_url_parameter_name = "/${var.project_name}/${var.environment}/migration-database-url"
 
-  ssm_parameter_arn_prefix = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter"
-  image_tag_parameter_arn  = "${local.ssm_parameter_arn_prefix}${local.image_tag_parameter_name}"
-  ghcr_token_parameter_arn = "${local.ssm_parameter_arn_prefix}${local.ghcr_token_parameter_name}"
-  api_env_parameter_arn    = "${local.ssm_parameter_arn_prefix}${local.api_env_parameter_name}"
+  ssm_parameter_arn_prefix       = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter"
+  image_tag_parameter_arn        = "${local.ssm_parameter_arn_prefix}${local.image_tag_parameter_name}"
+  ghcr_token_parameter_arn       = "${local.ssm_parameter_arn_prefix}${local.ghcr_token_parameter_name}"
+  api_env_parameter_arn          = "${local.ssm_parameter_arn_prefix}${local.api_env_parameter_name}"
+  migration_db_url_parameter_arn = "${local.ssm_parameter_arn_prefix}${local.migration_db_url_parameter_name}"
 
   ssm_kms_key_arn = "arn:aws:kms:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:alias/aws/ssm"
 }
@@ -51,6 +59,7 @@ resource "aws_iam_role_policy" "read_boot_parameters" {
           local.image_tag_parameter_arn,
           local.ghcr_token_parameter_arn,
           local.api_env_parameter_arn,
+          local.migration_db_url_parameter_arn,
           aws_ssm_parameter.docker_compose_prod.arn,
           aws_ssm_parameter.alloy_config.arn,
         ]

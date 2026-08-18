@@ -74,3 +74,39 @@ variable "valkey_node_type" {
   description = "ElastiCache node type for the single Valkey node"
   default     = "cache.t4g.micro"
 }
+
+variable "db_engine_version" {
+  type        = string
+  description = "RDS Postgres engine version -- matches the PG18 used in local Docker (aws rds describe-db-engine-versions confirmed 18.4 is available)"
+  default     = "18.4"
+}
+
+variable "db_instance_class" {
+  type        = string
+  description = "RDS instance class -- t4g.small default gives ~225 max_connections, comfortable headroom over the ASG's current 100-connection peak (see docs on connection math)"
+  default     = "db.t4g.small"
+}
+
+variable "db_allocated_storage" {
+  type        = number
+  description = "Initial RDS storage in GB"
+  default     = 20
+}
+
+variable "db_max_allocated_storage" {
+  type        = number
+  description = "RDS storage autoscaling ceiling in GB"
+  default     = 100
+}
+
+variable "db_name" {
+  type        = string
+  description = "Default database name"
+  default     = "ocar"
+}
+
+variable "db_master_username" {
+  type        = string
+  description = "RDS master username"
+  default     = "ocar_admin"
+}
