@@ -78,14 +78,25 @@ function approxP95(meanMs, stddevMs) {
 async function snapshot(client) {
   const out = {}
   for (const q of CRITICAL_QUERIES) {
-    const res = await client.query(
-      `SELECT queryid, calls, mean_exec_time, stddev_exec_time
-         FROM pg_stat_statements
-        WHERE query LIKE $1
-        ORDER BY calls DESC
-        LIMIT 1`,
-      [q.match]
-    )
+    let res
+    try {
+      res = await client.query(
+        `SELECT queryid, calls, mean_exec_time, stddev_exec_time
+           FROM pg_stat_statements
+          WHERE query LIKE $1
+          ORDER BY calls DESC
+          LIMIT 1`,
+        [q.match]
+      )
+    } catch (err) {
+      if (err && (err.code === '42P01' || /pg_stat_statements/.test(err.message || ''))) {
+        console.error(
+          'pg_stat_statements is not enabled on this database. See README §2.4 for how to enable it.'
+        )
+        process.exit(2)
+      }
+      throw err
+    }
     const row = res.rows[0]
     out[q.name] = row
       ? {
@@ -111,6 +122,10 @@ async function main() {
 
   try {
     if (hasFlag('--reset')) {
+      console.warn(
+        '⚠ This resets pg_stat_statements for the ENTIRE database — not just the 4 tracked ' +
+        'queries. Anyone else profiling this DB will lose their stats window too.'
+      )
       await client.query('SELECT pg_stat_statements_reset()')
       console.log('pg_stat_statements reset — start your run/seed now.')
       return
@@ -137,14 +152,27 @@ async function main() {
     const baselinePath = arg('--baseline', 'baseline.json')
     const tolerance = Number(arg('--tolerance', '0.2'))    // 20% relative regression allowed
     const absP95 = Number(arg('--abs-p95-ms', '500'))      // hard ceiling regardless of baseline
-    const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'))
+    let baseline
+    try {
+      baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'))
+    } catch (err) {
+      console.error(
+        `Could not read/parse baseline file "${baselinePath}": ${err.message}. ` +
+        'Run --mode baseline first.'
+      )
+      process.exit(2)
+    }
 
     let failed = false
     for (const q of CRITICAL_QUERIES) {
       const before = baseline[q.name]
       const after = snap[q.name]
       if (!after) {
-        console.warn(`? ${q.name}: not observed in this window — cannot check`)
+        failed = true
+        console.warn(
+          `✗ ${q.name}: NOT OBSERVED in this check run — cannot validate, workload must ` +
+          'exercise this query'
+        )
         continue
       }
       if (!before) {

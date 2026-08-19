@@ -186,6 +186,8 @@ absolute ceiling:
 
 ```bash
 # reset + baseline at CURRENT volume, then seed, then check at NEW volume
+# NOTE: --reset wipes pg_stat_statements for the ENTIRE database, not just
+# these 4 tracked queries — anyone else profiling this DB loses their window too.
 DATABASE_URL=<staging> node verify/query-regression.js --reset
 #   ...run a representative workload (e.g. one main.js step)...
 DATABASE_URL=<staging> node verify/query-regression.js --mode baseline --out baseline.json
