@@ -54,6 +54,7 @@ describe('verifyInviteToken', () => {
     const result = await verifyInviteToken('good-token')
 
     expect(result).toEqual({ email: 'ops@ocar.example', role: 'ops_admin' })
+    expect(repo.redeemInvite).not.toHaveBeenCalled()
   })
 })
 
