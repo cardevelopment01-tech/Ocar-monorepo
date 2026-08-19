@@ -86,7 +86,22 @@ prometheus.scrape "postgres" {
 // what lets the dashboard tell api's usage apart from alloy's/postgres_exporter's.
 prometheus.scrape "cadvisor" {
   targets    = [{"__address__" = "cadvisor:8080", "host" = sys.env("ALLOY_HOSTNAME")}]
+  forward_to = [prometheus.relabel.cadvisor.receiver]
+}
+
+// Keep only the cadvisor families the dashboards actually query; drop the rest of
+// cadvisor's ~100 metric families so a rolling ASG replace duplicates far fewer
+// active series into Mimir during the deploy window (this is what tipped the
+// tenant active-series cap during a 2026-08-18 rolling deploy). Keep-list grepped
+// from infra/grafana/dashboards/ocar-overview.json.
+prometheus.relabel "cadvisor" {
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  rule {
+    source_labels = ["__name__"]
+    regex         = "container_(cpu_usage_seconds_total|memory_usage_bytes|memory_working_set_bytes|spec_memory_limit_bytes|oom_events_total)"
+    action        = "keep"
+  }
 }
 
 prometheus.remote_write "grafana_cloud" {
