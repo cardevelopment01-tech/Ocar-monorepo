@@ -34,6 +34,9 @@ graphify-out/
 # Git worktrees for isolated feature work
 .worktrees/
 
+# Load-test signed JWTs (staging-only, but still live credentials)
+load-tests/k6/tokens.json
+
 # Terraform local state, plugin cache, and plan files -- state can contain
 # secrets, plan files are throwaway. .terraform.lock.hcl IS committed
 # (that's the provider version lock, meant to be version-controlled).
