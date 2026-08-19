@@ -874,6 +874,16 @@ export async function acceptAssignment(
            accepted_at = now(),
            billing_mode_snapshot = $3
        WHERE id = $1 AND status = 'requested'
+         AND EXISTS (
+           -- Driver must have an outstanding offer for this ride. Not scoped
+           -- to expires_at: admin force-assign (rides.service.ts's
+           -- assignRideToDriver) creates its own 'offered' row with
+           -- expiresAt = now() (it doesn't wait on a driver ack window) and
+           -- accepts it immediately after — an expiry check here would
+           -- reject that legitimate path.
+           SELECT 1 FROM ride_assignments
+           WHERE ride_id = $1 AND driver_id = $2 AND status = 'offered'
+         )
        RETURNING id`,
       [rideId, driverId, billingMode]
     )
