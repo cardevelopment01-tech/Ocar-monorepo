@@ -10,9 +10,13 @@ export async function requestOtp(req: Request, res: Response, next: NextFunction
       purpose: 'login'
     }
     const result = await authService.requestOtp(phone, role, purpose)
-    // Return OTP in non-production so tests and development work without SMS
+    // Return OTP in non-production so tests and development work without SMS.
+    // DEMO_MODE must never override this in a real production deployment —
+    // it only widens the leak within non-production environments (e.g. a
+    // staging/demo VPS that also wants demo-force endpoints unlocked).
     const body: Record<string, unknown> = { message: 'OTP sent' }
-    if (process.env['NODE_ENV'] !== 'production' || process.env['DEMO_MODE'] === 'true') body['otp'] = result.otp
+    const isProduction = process.env['NODE_ENV'] === 'production'
+    if (!isProduction) body['otp'] = result.otp
     res.status(200).json(body)
   } catch (err) {
     next(err)
