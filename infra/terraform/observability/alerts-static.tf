@@ -143,7 +143,7 @@ resource "grafana_rule_group" "static_thresholds" {
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
     }
     labels         = { severity = "warning" }
-    no_data_state  = "Alerting"
+    no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
 
@@ -229,7 +229,7 @@ resource "grafana_rule_group" "static_thresholds" {
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
     }
     labels         = { severity = "warning" }
-    no_data_state  = "Alerting"
+    no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
 }
