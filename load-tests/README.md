@@ -79,6 +79,36 @@ Each step should look boring — steady latency, no error spikes. The first time
 
 ---
 
+### 4a. Soak / endurance run (catching leaks, not capacity)
+
+§4 proves the system survives the target *concurrency*. It does not prove it
+survives *time* — the max run above is ~40 min, too short to surface a slow
+connection leak, a Redis client that never gets released, or heap growth on the
+Node instances. A soak run is the same `main.js`, held for hours at a MODERATE
+load (not the peak — you're watching for drift over time, not a ceiling):
+
+```bash
+BASE_URL=... WS_URL=... CATEGORY_ID=<real> CITY_ID=<real> \
+MAX_DRIVERS=150 MAX_RIDERS=2000 BOOKING_RATE=10 \
+HOLD_DURATION=4h BOOKING_DURATION=4h30m \
+k6 run main.js
+```
+
+`HOLD_DURATION` drives both the socket-hold timeout and the ramp's hold stage,
+so no code change is needed. Set `BOOKING_DURATION` a little longer than
+`HOLD_DURATION` so the booking scenario doesn't stop before the sockets do.
+
+**What you're watching (over the whole window, per §5):** the trend lines, not
+the absolute numbers — Neon pooled-connection count (must be flat, not creeping),
+Redis connected-clients (must return to baseline as VUs cycle, not accumulate),
+per-instance memory / heap on the cAdvisor panel (flat, not a staircase), and
+`t3.medium` `CPUCreditBalance` (should reach steady state, not drain to zero over
+hours). A metric that trends up-and-to-the-right over a 4h hold with steady load
+is a leak — that's the entire point of running it long. Cross-reference against
+§6's triage buckets and clean up synthetic rows per §6.4 afterward.
+
+---
+
 ## 5. What to watch during the run (per the report's own §5 analysis)
 
 The report explicitly names what should strain first — **not app CPU**:
