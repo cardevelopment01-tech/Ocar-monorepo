@@ -172,13 +172,17 @@ jobs:
           # both invoke it -- safe only because migrate.js is idempotent
           # (skips already-applied files, pg_advisory_lock serializes
           # concurrent runs). This run exists solely to gate the rollout on
-          # migrations succeeding.
+          # migrations succeeding. --name db_migrate keeps this container out
+          # of the ocar_* naming convention cadvisor/Alloy filter on
+          # (infra/alloy/config.alloy) -- without it, cadvisor picked up a
+          # fresh randomly-named container on every deploy and permanently
+          # inflated Grafana Cloud's active-series count (2026-08-19 incident).
           cat > /tmp/ssm-commands.json <<'EOF'
           {
             "commands": [
               "set -e",
               "DB_URL=$(aws ssm get-parameter --name 'PARAM_PLACEHOLDER' --with-decryption --query Parameter.Value --output text)",
-              "docker run --rm -e MIGRATION_DATABASE_URL=\"$DB_URL\" --entrypoint node ghcr.io/OWNER_PLACEHOLDER/ocar-api:TAG_PLACEHOLDER dist/db/migrate.js"
+              "docker run --rm --name db_migrate -e MIGRATION_DATABASE_URL=\"$DB_URL\" --entrypoint node ghcr.io/OWNER_PLACEHOLDER/ocar-api:TAG_PLACEHOLDER dist/db/migrate.js"
             ]
           }
           EOF
