@@ -177,6 +177,27 @@ setup and `api/scripts/index-usage-audit.sql` earn their keep — run real admin
 queries (rides list, driver history, live-map bounding-box queries) against the seeded volume
 and check `EXPLAIN ANALYZE` output before drawing conclusions about pagination or partitioning.
 
+**Automating the regression check:** rather than eyeballing `EXPLAIN ANALYZE`,
+`verify/query-regression.js` snapshots `pg_stat_statements` for the named
+critical queries (rides list, driver history, live-map bounding box, ride
+creation) and fails if their approximate p95 (mean + 1.6449·stddev — true
+percentiles aren't stored) regresses past both a relative tolerance and an
+absolute ceiling:
+
+```bash
+# reset + baseline at CURRENT volume, then seed, then check at NEW volume
+DATABASE_URL=<staging> node verify/query-regression.js --reset
+#   ...run a representative workload (e.g. one main.js step)...
+DATABASE_URL=<staging> node verify/query-regression.js --mode baseline --out baseline.json
+DATABASE_URL=<staging> node seed/generate-bulk-ride-history.js --rides 1000000 --months 12
+#   ...re-run the same workload against the larger dataset...
+DATABASE_URL=<staging> node verify/query-regression.js --mode check --baseline baseline.json
+```
+
+A red result is the signal to open `EXPLAIN ANALYZE` on that query (a seq scan
+creeping in, an index stopping being used) — it points you at which query, so
+the manual dig above is targeted instead of a fishing expedition.
+
 ---
 
 ## 8. Catching real bugs, not just capacity limits
@@ -246,7 +267,8 @@ load-tests/
 │   └── generate-bulk-ride-history.js    — run second; seeds ~1M historical rides for
 │                                           query-performance testing (§7)
 ├── verify/
-│   └── reconcile.js                     — post-run DB correctness checks (§8)
+│   ├── reconcile.js                     — post-run DB correctness checks (§8)
+│   └── query-regression.js              — pg_stat_statements p95 regression gate (§7)
 └── k6/
     ├── lib/
     │   └── socketio.js             — hand-rolled Engine.IO v4 / Socket.io v4 client for k6
