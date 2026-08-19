@@ -69,6 +69,7 @@ const CTC = { lat: 20.4625, lng: 85.8830 }
 const gpsPingLatency = new Trend('gps_ping_latency_ms')
 const socketConnectFailures = new Counter('socket_connect_failures')
 const bookingFailures = new Counter('booking_failures')
+const adminDashboardFailures = new Counter('admin_dashboard_failures')
 
 function authHeaders(token) {
   return { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
@@ -136,6 +137,7 @@ export const options = {
     http_req_failed: ['rate<0.01'],
     socket_connect_failures: ['count<50'],
     gps_ping_latency_ms: ['p(95)<500'],
+    admin_dashboard_failures: ['count<20'],
   },
 }
 
@@ -323,22 +325,26 @@ export function adminDashboardPoll() {
   }
   const opts = { headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } }
 
+  // Unlike bookingFlow (which bails early after each step because the next
+  // step depends on the prior one's output, e.g. rideId), these 4 reads are
+  // independent with no shared state — continuing after one fails so the
+  // rest still get exercised is deliberate, not a missed early-return.
   group('admin_dashboard', function () {
     const stats = http.get(`${BASE_URL}/api/v1/admin/rides/stats`, opts)
-    check(stats, { 'admin ride stats 200': (r) => r.status === 200 })
+    if (!check(stats, { 'admin ride stats 200': (r) => r.status === 200 })) adminDashboardFailures.add(1)
 
     const list = http.get(`${BASE_URL}/api/v1/admin/rides?limit=20`, opts)
-    check(list, { 'admin rides list 200': (r) => r.status === 200 })
+    if (!check(list, { 'admin rides list 200': (r) => r.status === 200 })) adminDashboardFailures.add(1)
 
     // Active sessions = the live-map data source (getAdminActiveSessions).
     const sessions = http.get(`${BASE_URL}/api/v1/admin/sessions/active`, opts)
-    check(sessions, { 'admin active sessions 200': (r) => r.status === 200 })
+    if (!check(sessions, { 'admin active sessions 200': (r) => r.status === 200 })) adminDashboardFailures.add(1)
 
     // Driver ride history for one real driver from the token pool.
     if (tokens.drivers.length > 0) {
       const driverId = randOf(tokens.drivers).id
       const history = http.get(`${BASE_URL}/api/v1/admin/drivers/${driverId}/rides`, opts)
-      check(history, { 'admin driver history 200': (r) => r.status === 200 })
+      if (!check(history, { 'admin driver history 200': (r) => r.status === 200 })) adminDashboardFailures.add(1)
     }
   })
 }
