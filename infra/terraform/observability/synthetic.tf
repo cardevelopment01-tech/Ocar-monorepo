@@ -31,7 +31,7 @@ resource "grafana_synthetic_monitoring_check" "health" {
   job       = "ocar-api-health"
   target    = "https://ocar-api.clienttesting.in/health"
   enabled   = true
-  probes    = var.synthetic_probe_ids # Mumbai/Singapore -- closest to the Odisha user base
+  probes    = local.synthetic_probe_ids # Mumbai/Singapore -- closest to the Odisha user base
   frequency = 60000
   timeout   = 10000
 

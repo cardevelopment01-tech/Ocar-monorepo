@@ -35,7 +35,7 @@ resource "grafana_slo" "ride_success" {
   }
 
   destination_datasource {
-    uid = var.prometheus_datasource_uid
+    uid = local.prometheus_datasource_uid
   }
 
   label {
@@ -71,7 +71,7 @@ resource "grafana_slo" "payment_success" {
   }
 
   destination_datasource {
-    uid = var.prometheus_datasource_uid
+    uid = local.prometheus_datasource_uid
   }
 
   label {

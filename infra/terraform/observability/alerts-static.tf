@@ -25,7 +25,7 @@ resource "grafana_rule_group" "static_thresholds" {
 
     data {
       ref_id         = "A"
-      datasource_uid = var.prometheus_datasource_uid
+      datasource_uid = local.prometheus_datasource_uid
       relative_time_range {
         from = 300
         to   = 0
@@ -68,7 +68,7 @@ resource "grafana_rule_group" "static_thresholds" {
 
     data {
       ref_id         = "A"
-      datasource_uid = var.prometheus_datasource_uid
+      datasource_uid = local.prometheus_datasource_uid
       relative_time_range {
         from = 300
         to   = 0
@@ -111,7 +111,7 @@ resource "grafana_rule_group" "static_thresholds" {
 
     data {
       ref_id         = "A"
-      datasource_uid = var.prometheus_datasource_uid
+      datasource_uid = local.prometheus_datasource_uid
       relative_time_range {
         from = 60
         to   = 0
@@ -154,7 +154,7 @@ resource "grafana_rule_group" "static_thresholds" {
 
     data {
       ref_id         = "A"
-      datasource_uid = var.prometheus_datasource_uid
+      datasource_uid = local.prometheus_datasource_uid
       relative_time_range {
         from = 300
         to   = 0
@@ -197,7 +197,7 @@ resource "grafana_rule_group" "static_thresholds" {
 
     data {
       ref_id         = "A"
-      datasource_uid = var.prometheus_datasource_uid
+      datasource_uid = local.prometheus_datasource_uid
       relative_time_range {
         from = 60
         to   = 0

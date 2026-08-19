@@ -8,11 +8,11 @@ resource "grafana_contact_point" "default" {
   name = "ocar-alerts"
 
   slack {
-    url = var.slack_webhook_url
+    url = local.slack_webhook_url
   }
 
   email {
-    addresses = [var.alert_email]
+    addresses = [local.alert_email]
   }
 }
 

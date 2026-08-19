@@ -98,6 +98,32 @@ aws autoscaling start-instance-refresh \
   --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'
 ```
 
+## Updating an observability secret (Grafana Cloud alerting/SLO/synthetics)
+
+`infra/terraform/observability/` (alert rules, SLOs, synthetic monitoring —
+one account-wide Grafana Cloud stack, applied locally, not from CI) reads
+every credential/config value it needs from SSM under
+`/ocar/observability/*` — never from a local `.tfvars` file or `TF_VAR_*`
+env vars (a laptop-only tfvars file for this module got lost once already,
+2026-08-19, which is exactly the single point of failure this avoids).
+
+To change one (e.g. rotating the Grafana Service Account token):
+```bash
+aws ssm put-parameter --name /ocar/observability/grafana-auth \
+  --type SecureString --value "<new-value>" --overwrite
+```
+Same pattern for the other 8 parameters (`grafana-url`, `slack-webhook-url`,
+`alert-email`, `prometheus-datasource-uid`, `synthetic-probe-ids` —
+comma-separated numbers, e.g. `"39,44"`, `sm-access-token`, `sm-url`,
+`usage-insights-datasource-uid`) — use `--type String` for the non-secret
+ones. No instance refresh needed (Terraform reads SSM live at `plan`/`apply`
+time, unlike the boot-time-only params in `/ocar/prod/*`). Then:
+```bash
+cd infra/terraform/observability
+terraform plan   # no -var/-var-file needed, ever
+terraform apply
+```
+
 ## Stand up / tear down staging (load-test environment)
 
 Full manual-step runbook already written:
