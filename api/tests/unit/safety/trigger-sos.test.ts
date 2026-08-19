@@ -32,7 +32,7 @@ describe('triggerSos', () => {
     expect(repo.insertSosAlert).not.toHaveBeenCalled()
   })
 
-  it.each(['requested', 'accepted', 'completed', 'cancelled', 'no_drivers'])(
+  it.each(['requested', 'accepted', 'completed', 'cancelled', 'no_drivers', 'scheduled'])(
     'throws 400 RIDE_NOT_ACTIVE for ride status "%s" and inserts no alert',
     async (status) => {
       vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status, user_id: 1n } as never)
@@ -66,6 +66,33 @@ describe('triggerSos', () => {
 
     expect(alert.id).toBe(1n)
     expect(repo.markRideSosTriggered).toHaveBeenCalledWith(5n)
+  })
+
+  it('accepts a driver-triggered SOS: looks up the ride\'s own rider phone and tags triggeredBy as driver', async () => {
+    vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'in_progress', user_id: 7n } as never)
+    let emitted: unknown
+    vi.mocked(getIO).mockReturnValue({ to: () => ({ emit: (_event: string, payload: unknown) => { emitted = payload } }) } as never)
+
+    const alert = await triggerSos({ rideId: 5n, triggeredByDriverId: 42n })
+
+    expect(alert.id).toBe(1n)
+    expect(repo.insertSosAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ triggered_by_driver: 42n, triggered_by_user: null })
+    )
+    // triggeredUserId falls back to the ride's own user_id even for a driver-triggered SOS,
+    // so the phone lookup still runs against that rider.
+    expect(pool.query).toHaveBeenCalledWith(expect.any(String), [7n])
+    expect(emitted).toMatchObject({ triggeredBy: { role: 'driver', id: '42' } })
+  })
+
+  it('skips the phone lookup for a driver-triggered SOS when the ride has no user_id', async () => {
+    vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'in_progress', user_id: null } as never)
+    vi.mocked(getIO).mockReturnValue({ to: () => ({ emit: vi.fn() }) } as never)
+
+    const alert = await triggerSos({ rideId: 5n, triggeredByDriverId: 42n })
+
+    expect(alert.id).toBe(1n)
+    expect(pool.query).not.toHaveBeenCalled()
   })
 
   it('defaults severity to "medium" when not provided', async () => {
