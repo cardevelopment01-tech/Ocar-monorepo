@@ -69,8 +69,12 @@ export const options = {
       executor: 'ramping-arrival-rate',
       timeUnit: '1m',
       startRate: 0,
-      preAllocatedVUs: 50,
-      maxVUs: 300,
+      preAllocatedVUs: 100,
+      // ~2x preAllocated/max headroom over SPIKE_RATE: a degraded/slow moment
+      // (thresholds tolerate p95 up to 1500ms) is exactly what this test needs
+      // to observe accurately — a tight VU margin would instead silently drop
+      // iterations to VU exhaustion and understate the real failure rate.
+      maxVUs: 600,
       exec: 'bookingFlow',
       stages: [
         { duration: '10s', target: SPIKE_RATE }, // instant surge
