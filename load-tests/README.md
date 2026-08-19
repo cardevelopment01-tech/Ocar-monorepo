@@ -287,6 +287,55 @@ load-tests/
     ├── lib/
     │   └── socketio.js             — hand-rolled Engine.IO v4 / Socket.io v4 client for k6
     ├── smoke.js                    — 1-VU sanity check, run before every live session
-    ├── main.js                     — the real test: booking_flow + live_tracking + rider_watch
+    ├── main.js                     — the real test: booking_flow + live_tracking + rider_watch + admin_dashboard
+    ├── spike.js                    — instant 0->N spike + recovery test (Task 1)
     └── accept-race.js              — concurrency-correctness test for the ride-accept race (§8)
 ```
+
+---
+
+## 10. First live execution runbook
+
+The first time this suite touches real staging. Do it in this order; do not
+skip ahead. Each numbered item is a gate — if it isn't true, stop.
+
+**T-1 week — make staging real (the actual blocker, §2.1):**
+- [ ] Staging environment exists and is reachable at a stable `BASE_URL`/`WS_URL`
+      (resolves the §2.1 blocker: `staging.tfvars`, variable-ized ASG sizing).
+- [ ] `pg_stat_statements` enabled, `log_min_duration_statement=500`, DB URL uses
+      the `-pooler` host (§2.4) — required for query-regression (Task 3) and the
+      §5 "what strains first" analysis.
+- [ ] Grafana dashboards from §5 exist and Alloy is shipping recent metrics
+      (confirm live data, not just that panels exist).
+
+**T-2 days — seed and dry-run (§2, §3):**
+- [ ] `seed/generate-test-tokens.js --users 6000 --drivers 400 --expiry 3h` run;
+      `tokens.json` present; driver-count warning resolved.
+- [ ] Real `CATEGORY_ID`/`CITY_ID` confirmed from staging (don't trust `1`/`1`).
+- [ ] `ADMIN_TOKEN` minted for the `admin_dashboard` scenario (Task 4, §2.7).
+- [ ] `smoke.js` run alone and fully green (§3) — never let the live session be
+      the script's first contact with staging.
+- [ ] `accept-race.js` run once: all thresholds green, including
+      `accept_race_unauthorized_accept_succeeded` (the hijack regression guard,
+      §8) — proves the Plan A Task 0 fix holds on staging.
+
+**T-0 — the live ramp (§4), client watching, dashboards open (§5):**
+- [ ] Run the §4 ramp steps 1→4 in order (`MAX_DRIVERS`/`MAX_RIDERS`/`BOOKING_RATE`
+      as tabulated), each looking boring before advancing.
+- [ ] At the step-4 (target) run, also capture a query-regression baseline vs.
+      the bulk-seeded volume (Task 3) if data-volume testing is in scope for the
+      session.
+- [ ] For issues that surface, use §6's three-bucket triage out loud; do not
+      stop the run unless it's actively cascading.
+
+**After each run:**
+- [ ] `verify/reconcile.js --since-hours <window>` — data-correctness gate (§8);
+      exits non-zero if anything drifted.
+- [ ] `verify/query-regression.js --mode check` if a baseline was captured (Task 3).
+- [ ] Clean up synthetic rows and stuck sessions (§6.4).
+
+**Deliverable (§6.3):** the write-up comparing what strained first vs. the
+report's §5 prediction — that comparison, cross-referenced against the Grafana
+window, is the client deliverable, more than "it passed." Results and any
+follow-up tickets go where §6 already defines; this runbook does not introduce a
+separate location.
