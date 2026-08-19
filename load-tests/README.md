@@ -37,6 +37,18 @@ Three scenarios run **concurrently** in one `k6 run main.js` — that overlap (b
 4. **Neon dashboard steps from `docs/superpowers/specs/2026-07-26-db-loadtest-readiness-design.md`** (still open per `CLAUDE.md`): enable `pg_stat_statements`, set `log_min_duration_statement=500`, confirm `DATABASE_URL` uses the `-pooler` host. Do this before the test — it's the only way to get the query-level data the "what actually strains first" analysis needs afterward.
 5. **Grafana dashboards open and ready** — see monitoring plan below. Confirm Alloy is shipping metrics from the staging instances before starting (check for recent data, not just that the panel exists).
 6. **Run `smoke.js` in private, alone, at least a day before the live session** (§3). Never let a live k6 run in front of a client be the first time the script has touched staging.
+7. **Admin token for the `admin_dashboard` scenario (optional but recommended).**
+   `main.js` now includes a 4th scenario that polls the real admin read
+   endpoints (`/admin/rides/stats`, `/admin/rides`, `/admin/sessions/active`,
+   `/admin/drivers/:id/rides`) concurrently with the write load — the
+   read+write contention §7 otherwise only tests in isolation. Pass a real admin
+   JWT as `ADMIN_TOKEN=<jwt>` (mint one via the admin login flow on staging, or
+   extend `seed/generate-test-tokens.js` to emit one). If `ADMIN_TOKEN` is
+   unset, the scenario no-ops and the other three run unchanged. `/admin/rides/stats`
+   and `/admin/rides` accept `super_admin`/`ops_admin`/`support_admin` tokens;
+   `/admin/drivers/:id/rides` is narrower and needs `super_admin`/`ops_admin`
+   (`support_admin` gets a 403 there); `/admin/sessions/active` accepts any
+   admin role.
 
 ---
 
