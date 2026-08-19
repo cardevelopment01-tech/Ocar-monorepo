@@ -1,0 +1,9 @@
+{
+  "name": "ocar-load-tests",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "pg": "^8.11.0",
+    "jsonwebtoken": "^9.0.0"
+  }
+}
