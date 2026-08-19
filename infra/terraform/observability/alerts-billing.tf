@@ -21,7 +21,7 @@ resource "grafana_rule_group" "billing_usage" {
 
     data {
       ref_id         = "A"
-      datasource_uid = var.usage_insights_datasource_uid
+      datasource_uid = local.usage_insights_datasource_uid
       relative_time_range {
         from = 60
         to   = 0
@@ -64,7 +64,7 @@ resource "grafana_rule_group" "billing_usage" {
 
     data {
       ref_id         = "A"
-      datasource_uid = var.usage_insights_datasource_uid
+      datasource_uid = local.usage_insights_datasource_uid
       relative_time_range {
         from = 60
         to   = 0
@@ -107,7 +107,7 @@ resource "grafana_rule_group" "billing_usage" {
 
     data {
       ref_id         = "A"
-      datasource_uid = var.usage_insights_datasource_uid
+      datasource_uid = local.usage_insights_datasource_uid
       relative_time_range {
         from = 60
         to   = 0
