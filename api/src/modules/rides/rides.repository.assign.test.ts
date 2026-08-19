@@ -17,6 +17,7 @@ import {
   clearForceAssignGraceJob,
   revertForceAssign,
   expireAssignment,
+  acceptAssignment,
 } from './rides.repository'
 
 describe('getCityBillingMode', () => {
@@ -101,6 +102,51 @@ describe('expireAssignment', () => {
     mockQuery.mockResolvedValueOnce({ rows: [] })
     await expireAssignment(5n, 9n)
     expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("status = 'expired'"), [5n, 9n])
+  })
+})
+
+describe('acceptAssignment', () => {
+  beforeEach(() => {
+    mockQuery.mockReset()
+    mockConnect.mockReset()
+  })
+
+  it('rejects a driver with no offered ride_assignments row (no ride-hijack by ID guessing)', async () => {
+    const client = {
+      query: vi.fn()
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // UPDATE rides ... RETURNING id — EXISTS check fails
+        .mockResolvedValueOnce({}), // ROLLBACK
+      release: vi.fn(),
+    }
+    mockConnect.mockResolvedValueOnce(client)
+
+    const result = await acceptAssignment(5n, 9n, 'commission')
+
+    expect(result).toBe(false)
+    const [sql] = client.query.mock.calls[1] as [string, unknown[]]
+    expect(sql).toContain("status = 'offered'")
+    expect(sql).toContain('ride_assignments')
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK')
+  })
+
+  it('accepts a driver who does have an outstanding offer, and cancels rival offers', async () => {
+    const client = {
+      query: vi.fn()
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ id: '5' }] }) // UPDATE rides ... RETURNING id
+        .mockResolvedValueOnce({ rows: [] }) // SELECT driver_sessions (no online session, kept simple)
+        .mockResolvedValueOnce({ rows: [{ driver_id: '7' }] }) // UPDATE ride_assignments — cancel rivals
+        .mockResolvedValueOnce({}) // UPDATE ride_assignments — mark this one accepted
+        .mockResolvedValueOnce({}), // COMMIT
+      release: vi.fn(),
+    }
+    mockConnect.mockResolvedValueOnce(client)
+
+    const result = await acceptAssignment(5n, 9n, 'commission')
+
+    expect(result).toEqual(['7'])
+    expect(client.query).toHaveBeenCalledWith('COMMIT')
   })
 })
 
