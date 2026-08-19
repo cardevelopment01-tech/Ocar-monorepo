@@ -102,6 +102,26 @@ prometheus.relabel "cadvisor" {
     regex         = "container_(cpu_usage_seconds_total|memory_usage_bytes|memory_working_set_bytes|spec_memory_limit_bytes|oom_events_total)"
     action        = "keep"
   }
+
+  // Only the compose-managed services matter (matches ocar-overview.json's
+  // own {name=~"ocar_.*"} queries) -- drops any stray/ad-hoc container on
+  // the host, e.g. the CI migration's `docker run --name db_migrate`
+  // (deploy.yml), permanently and with no allowlist to maintain.
+  rule {
+    source_labels = ["name"]
+    regex         = "ocar_.*"
+    action        = "keep"
+  }
+
+  // Allowlist beats denylist: kills id/image churn (a new value every
+  // deploy -- id on every container recreate, image on every ocar_api
+  // deploy since its tag changes) *and* any current/future
+  // container_label_* noise (cadvisor's --store_container_labels
+  // defaults to true) in one rule, instead of maintaining a drop-list.
+  rule {
+    regex  = "__name__|name|host"
+    action = "labelkeep"
+  }
 }
 
 prometheus.remote_write "grafana_cloud" {
