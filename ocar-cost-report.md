@@ -14,7 +14,7 @@ Every paid service the codebase currently depends on, pulled from Terraform, Doc
 | Usage-based @ 10,000 rides/mo (example) | **$1,155 – $1,278** (≈ ₹1,10,451 – ₹1,22,222) |
 | **Estimated total @ 10,000 rides/mo** | **$1,322 – $1,572** (≈ ₹1,26,430 – ₹1,50,315) |
 
-*(Reflects the Neon→RDS database migration with RDS Proxy pooling (confirmed pricing), a single Vercel seat, and correcting SMS to reflect login/signup volume rather than ride volume — see notes below each section.)*
+*(Reflects the completed Neon→RDS database migration (cutover done 2026-08-20) with RDS Proxy pooling (confirmed pricing), a single Vercel seat, and correcting SMS to reflect login/signup volume rather than ride volume — see notes below each section.)*
 
 > **Read this first:** the usage-based column is a worked example at an assumed 10,000 rides/month (roughly what a single-city Bhubaneswar/Cuttack/Puri launch might see) — it is *not* a fixed bill. Payments, SMS, calls, and maps all scale with real ride volume; the per-unit rate card is in each section below so this can be recalculated at any volume. The fixed-infrastructure column is the floor: it's billed the same whether 0 or 10,000 rides happen.
 
@@ -37,15 +37,15 @@ The API runs on an auto-scaling EC2 fleet behind a load balancer. No NAT gateway
 
 | Service | Detail | Min/mo | Max/mo |
 |---|---|---:|---:|
-| AWS RDS — PostgreSQL 17 (`db.t4g.small`, single-AZ) — **planned, replacing Neon** | Confirmed via AWS Pricing Calculator: $0.034/hr Graviton, ap-south-1, single-AZ | $24.82 | $24.82 |
+| AWS RDS — PostgreSQL 18 (`db.t4g.small`, single-AZ) — **live, replaced Neon 2026-08-20** | Confirmed via AWS Pricing Calculator: $0.034/hr Graviton, ap-south-1, single-AZ | $24.82 | $24.82 |
 | AWS RDS storage (20GB gp3, storage autoscaling on) | $0.131/GB-month in Mumbai; range covers growth before the next right-sizing pass | $3 | $8 |
-| AWS RDS Proxy (connection pooling) | $0.015/vCPU-hr of the underlying instance — 2 vCPU × $0.015 × 730hr | $21.90 | $21.90 |
-| ~~Neon (managed Postgres)~~ | Current provider. No AWS region in India — closest is Singapore (ap-southeast-1), so every query today crosses a Mumbai↔Singapore hop. Kept here only until cutover | $15 | $60 |
+| AWS RDS Proxy (connection pooling) | $0.015/vCPU-hr of the underlying instance — 2 vCPU × $0.015 × 730hr — **not actually provisioned yet**, cutover shipped with a direct connection (`uselibpqcompat=true` to work around RDS's CA chain); add this if/when a pooler is actually set up | $21.90 | $21.90 |
+| ~~Neon (managed Postgres)~~ | Former provider (prod only — **staging still uses a Neon branch**, see `CLAUDE.md`'s Staging Environment section). No AWS region in India — closest is Singapore (ap-southeast-1), so every query crossed a Mumbai↔Singapore hop. Cutover completed 2026-08-20; kept here for cost comparison | $15 | $60 |
 | ~~Supabase~~ | Evaluated as a same-region managed alternative; not chosen — team opted to stay inside its own AWS VPC/account instead of a third-party platform | $25 | $75 |
 | AWS ElastiCache — Valkey | Single `cache.t4g.micro` node, no HA replica (deliberate — replaced an external Redis Cloud free tier that kept hitting its 30-connection cap) | $12 | $16 |
 | **Subtotal (post-cutover)** | | **$62** | **$71** |
 
-**Why the move:** latency, not cost or HA. Neon has no `ap-south-1` presence, so every DB round-trip already crosses an inter-region hop the rest of the stack doesn't have. RDS PostgreSQL puts the DB inside the same VPC as the EC2 fleet — no hop, no third-party platform, standard AWS billing. High availability was evaluated and explicitly **not** required at this stage, so this starts single-AZ; `multi_az = true` is a single Terraform attribute to flip later with zero data migration if that changes.
+**Why the move:** latency, not cost or HA. Neon had no `ap-south-1` presence, so every DB round-trip crossed an inter-region hop the rest of the stack doesn't have. RDS PostgreSQL puts the DB inside the same VPC as the EC2 fleet — no hop, no third-party platform, standard AWS billing. High availability was evaluated and explicitly **not** required at this stage, so this starts single-AZ; `multi_az = true` is a single Terraform attribute to flip later with zero data migration if that changes.
 
 **Two things RDS doesn't give you for free that Neon did:**
 1. **`pg_stat_statements` isn't enabled by default** — needs `shared_preload_libraries=pg_stat_statements` set via a custom DB parameter group, plus one reboot to take effect.

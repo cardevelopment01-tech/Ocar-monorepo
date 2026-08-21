@@ -112,6 +112,15 @@ resource "aws_db_parameter_group" "main" {
     name  = "rds.force_ssl"
     value = "1"
   }
+
+  # Same 500ms threshold the old Neon pending-ops note used. Dynamic parameter,
+  # no reboot needed. Ships to CloudWatch via enabled_cloudwatch_logs_exports
+  # on aws_db_instance.main -- without this set, that export has nothing
+  # duration-based to actually log.
+  parameter {
+    name  = "log_min_duration_statement"
+    value = "500"
+  }
 }
 
 output "rds_endpoint" {

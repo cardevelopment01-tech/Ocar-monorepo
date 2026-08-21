@@ -100,7 +100,7 @@ services:
   # DATA_SOURCE_NAME (not DATABASE_URL, which is what .env.prod actually has)
   # is what the exporter reads -- the entrypoint override maps one to the
   # other rather than duplicating the connection string under a second name.
-  # Runs on every instance identically: all instances share the same Neon DB,
+  # Runs on every instance identically: all instances share the same RDS DB,
   # so every instance's exporter reports the same pg_stat_statements numbers
   # -- harmless duplication (dashboard queries use max() not sum()), simpler
   # than standing up a dedicated instance just to avoid it.
@@ -109,7 +109,12 @@ services:
     container_name: ocar_postgres_exporter
     restart: unless-stopped
     env_file: .env.prod
-    entrypoint: ["sh", "-c", "DATA_SOURCE_NAME=\"$$DATABASE_URL\" exec /bin/postgres_exporter --collector.stat_statements --collector.stat_statements.include_query"]
+    # uselibpqcompat is a node-postgres-only connection-string flag (worked around
+    # RDS's non-public CA chain for the api container's Node client) -- Go's lib/pq
+    # driver here doesn't recognize it and forwards it straight to Postgres as a
+    # bogus runtime parameter, which the server rejects outright. lib/pq doesn't hit
+    # the cert-verification issue Node did, so plain sslmode=require is enough here.
+    entrypoint: ["sh", "-c", "DATA_SOURCE_NAME=\"$$(echo $$DATABASE_URL | sed 's/&uselibpqcompat=true//')\" exec /bin/postgres_exporter --collector.stat_statements --collector.stat_statements.include_query"]
     networks:
       - ocar_net
     logging:
