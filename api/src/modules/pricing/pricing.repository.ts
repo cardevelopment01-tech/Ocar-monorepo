@@ -1,9 +1,15 @@
 import { pool } from '@/db/client'
-import { cachedRead } from '@/lib/cache/reference-cache'
-import { client as redisClient } from '@/db/redis'
-import { rateCardKey, RATE_CARD_VERSION_KEY, stopChargeKey, rentalPackageKey } from '@/constants/redis-keys'
+import { cachedRead, invalidate } from '@/lib/cache/reference-cache'
+import { client as redisClient, getJSON, setWithTTL } from '@/db/redis'
+import { rateCardKey, RATE_CARD_VERSION_KEY, stopChargeKey, rentalPackageKey, surgeKey } from '@/constants/redis-keys'
 import { RATE_CARD_CACHE_TTL_SECONDS, STRUCTURAL_CACHE_TTL_SECONDS } from '@/constants/limits'
 import { logger } from '@/lib/logger'
+
+const SURGE_BASE_TTL_SECONDS = 300
+
+function secondsUntil(date: Date): number {
+  return Math.floor((date.getTime() - Date.now()) / 1000)
+}
 
 async function getRateCardVersion(): Promise<string> {
   try {
@@ -124,7 +130,43 @@ export async function getRentalPackagesByCategory(categoryId: number, cityId: nu
   return res.rows
 }
 
+// This does NOT use cachedRead: cachedRead needs a fixed ttlSeconds up front,
+// but the whole point here is a TTL clamped to the fetched row's own ends_at
+// (a naive fixed TTL would keep applying a surge multiplier past its actual
+// end, overcharging riders). The plan's literal snippet called
+// fetchActiveSurgeFromDb once unconditionally on every invocation (to compute
+// the clamp) and then again inside cachedRead on a miss -- that unconditional
+// outer call defeats caching entirely, since it hits the DB on every call
+// regardless of cache state. Instead: check the cache first, and only fetch
+// from the DB on a genuine miss, computing the clamp from that same fetched
+// row before writing it back.
+//
+// Deliberately NOT negative-caching the "no active surge" case (unlike
+// cachedRead's built-in negative caching) -- caching "no surge" at any TTL
+// would delay a newly-scheduled surge from taking effect until that TTL
+// expires, which is exactly the bug this task exists to avoid.
 export async function getActiveSurge(cityId: number, categoryId: number) {
+  const key = surgeKey(cityId, categoryId)
+  try {
+    const cached = await getJSON<Record<string, unknown>>(key)
+    if (cached !== null) return cached
+  } catch (err) {
+    logger.warn({ err, key }, 'reference-cache: surge cache read failed, falling through to DB')
+  }
+
+  const row = await fetchActiveSurgeFromDb(cityId, categoryId)
+  if (!row) return null
+
+  const ttl = Math.max(1, Math.min(SURGE_BASE_TTL_SECONDS, secondsUntil(new Date(row.ends_at))))
+  try {
+    await setWithTTL(key, JSON.stringify(row), ttl)
+  } catch (err) {
+    logger.warn({ err, key }, 'reference-cache: failed to populate surge cache, serving DB value')
+  }
+  return row
+}
+
+async function fetchActiveSurgeFromDb(cityId: number, categoryId: number) {
   const res = await pool.query(
     `SELECT * FROM surge_events
      WHERE city_id = $1
@@ -154,6 +196,27 @@ export async function getAllSurgeEvents() {
   return res.rows
 }
 
+// category_id IS NULL means "applies to all categories" (same NULL-fallback
+// convention as rate_cards' city_id) -- a write to that row can change the
+// winning surge for EVERY category's cache entry, not just one. surgeKey is
+// always built with a concrete categoryId (getActiveSurge is only ever called
+// with the requesting ride's actual category), so a null-category write can't
+// be expressed as a single key. Enumerate the small, mostly-static category
+// list and invalidate each one's key for this city rather than leaving the
+// other categories' entries to expire on their own TTL.
+async function invalidateSurgeCache(cityId: number, categoryId: number | null): Promise<void> {
+  if (categoryId !== null) {
+    await invalidate(surgeKey(cityId, categoryId))
+    return
+  }
+  try {
+    const res = await pool.query('SELECT id FROM vehicle_categories')
+    await invalidate(...res.rows.map((r) => surgeKey(cityId, Number(r.id))))
+  } catch (err) {
+    logger.warn({ err, cityId }, 'reference-cache: failed to enumerate categories for surge invalidation, will serve stale until TTL')
+  }
+}
+
 export async function createSurgeEvent(data: {
   cityId: number
   categoryId: number | null
@@ -174,7 +237,9 @@ export async function createSurgeEvent(data: {
       data.startsAt, data.endsAt, data.adminId,
     ]
   )
-  return res.rows[0]
+  const row = res.rows[0]
+  await invalidateSurgeCache(data.cityId, data.categoryId)
+  return row
 }
 
 export async function cancelSurgeEvent(id: number, adminId: number) {
@@ -188,7 +253,9 @@ export async function cancelSurgeEvent(id: number, adminId: number) {
      RETURNING *`,
     [id, adminId]
   )
-  return res.rows[0] ?? null
+  const row = res.rows[0] ?? null
+  if (row) await invalidateSurgeCache(Number(row.city_id), row.category_id === null ? null : Number(row.category_id))
+  return row
 }
 
 export async function createRateCard(data: {

@@ -52,6 +52,10 @@ export function notificationTemplateKey(slug: string, channel: string, locale: s
   return `ref:v1:notification_template:${slug}:${channel}:${locale}`
 }
 
+export function surgeKey(cityId: number, categoryId: number): string {
+  return `ref:v1:surge:${cityId}:${categoryId}`
+}
+
 export function rateCardKey(
   version: string,
   categoryId: number,
