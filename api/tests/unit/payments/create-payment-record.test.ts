@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
+// createPaymentRecord's commission-percent lookup now reads through
+// getConfigValue -> the system_config cache (@/lib/cache/reference-cache ->
+// @/db/redis) — without this mock it hits a real, reachable local Redis and
+// can skip a pool.query call on a cache hit, desyncing the mockResolvedValueOnce
+// sequence below (same fix as tests/unit/pricing/pricing.repository.test.ts).
+vi.mock('@/db/redis', () => ({
+  getJSON: vi.fn().mockResolvedValue(null),
+  setWithTTL: vi.fn().mockResolvedValue(undefined),
+  client: { del: vi.fn().mockResolvedValue(1) },
+}))
 
 import { pool } from '@/db/client'
 import { createPaymentRecord } from '@/modules/payments/payments.service'

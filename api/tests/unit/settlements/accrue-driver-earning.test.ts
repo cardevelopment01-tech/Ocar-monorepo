@@ -5,6 +5,17 @@ const poolQuery = vi.fn()
 vi.mock('@/db/client', () => ({
   pool: { query: (...args: unknown[]) => poolQuery(...args), connect: vi.fn(() => Promise.resolve(client)) },
 }))
+// accrueDriverEarning's payout_hold_hours lookup now reads through
+// getConfigValue -> the system_config cache (@/lib/cache/reference-cache ->
+// @/db/redis) — without this mock it hits a real, reachable local Redis and
+// can skip a poolQuery call on a cache hit, desyncing the scriptAccrue()
+// mockResolvedValueOnce sequence below (same fix as
+// tests/unit/pricing/pricing.repository.test.ts).
+vi.mock('@/db/redis', () => ({
+  getJSON: vi.fn().mockResolvedValue(null),
+  setWithTTL: vi.fn().mockResolvedValue(undefined),
+  client: { del: vi.fn().mockResolvedValue(1) },
+}))
 
 import { accrueDriverEarning } from '@/modules/payments/submodules/settlements/settlements.service'
 
