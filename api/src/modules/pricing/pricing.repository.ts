@@ -3,9 +3,18 @@ import { cachedRead } from '@/lib/cache/reference-cache'
 import { client as redisClient } from '@/db/redis'
 import { rateCardKey, RATE_CARD_VERSION_KEY } from '@/constants/redis-keys'
 import { RATE_CARD_CACHE_TTL_SECONDS } from '@/constants/limits'
+import { logger } from '@/lib/logger'
+
+async function getRateCardVersion(): Promise<string> {
+  try {
+    return (await redisClient.get(RATE_CARD_VERSION_KEY)) ?? '0'
+  } catch {
+    return '0'
+  }
+}
 
 export async function getCurrentRateCard(categoryId: number, rideType: string, cityId: number | null) {
-  const version = (await redisClient.get(RATE_CARD_VERSION_KEY)) ?? '0'
+  const version = await getRateCardVersion()
   const key = rateCardKey(version, categoryId, rideType, cityId)
   return cachedRead('rate_cards', key, RATE_CARD_CACHE_TTL_SECONDS, () =>
     fetchCurrentRateCardFromDb(categoryId, rideType, cityId)
@@ -229,7 +238,11 @@ export async function createRateCard(data: {
     )
 
     await client.query('COMMIT')
-    await redisClient.incr(RATE_CARD_VERSION_KEY)
+    try {
+      await redisClient.incr(RATE_CARD_VERSION_KEY)
+    } catch (err) {
+      logger.warn({ err }, 'reference-cache: failed to bump rate_card version, will serve stale until TTL')
+    }
     return res.rows[0]
   } catch (err) {
     await client.query('ROLLBACK')
