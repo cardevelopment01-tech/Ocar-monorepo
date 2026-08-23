@@ -1,4 +1,6 @@
 import { pool, withTransaction } from '@/db/client'
+import { client as redisClient } from '@/db/redis'
+import { RATE_CARD_VERSION_KEY } from '@/constants/redis-keys'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg'
 import { recordAuditLog } from '@/lib/audit-log'
@@ -1571,6 +1573,7 @@ export async function createAdminRateCard(data: {
     )
 
     await client.query('COMMIT')
+    await redisClient.incr(RATE_CARD_VERSION_KEY)
     return res.rows[0]
   } catch (err) {
     await client.query('ROLLBACK')

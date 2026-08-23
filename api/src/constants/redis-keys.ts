@@ -13,6 +13,17 @@ export const ridePaymentOrderKey = (orderId: string): string => `ride:payment_or
 
 export const activeRideByDriverKey = (driverId: string): string => `ride:active_by_driver:${driverId}`
 
+export const RATE_CARD_VERSION_KEY = 'ref:v1:rate_card:ver'
+
+export function rateCardKey(
+  version: string,
+  categoryId: number,
+  rideType: string,
+  cityId: number | null
+): string {
+  return `ref:v1:rate_card:${version}:${categoryId}:${rideType}:${cityId ?? 'global'}`
+}
+
 // Coordinates rounded to 4 decimal places (~11m precision) so nearby-identical
 // requests hit the same cache entry. Options are folded into the key since they
 // change the response shape (e.g. withSteps adds a steps array).

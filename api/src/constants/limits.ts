@@ -99,3 +99,5 @@ export const STALE_IN_PROGRESS_CEILING_HOURS = 12
 // end the session only after a much longer silence.
 export const IDLE_HEARTBEAT_PAUSE_SECONDS = 90
 export const IDLE_HEARTBEAT_OFFLINE_MINUTES = 10
+
+export const RATE_CARD_CACHE_TTL_SECONDS = 3600 // 1h — money-affecting, short backstop TTL
