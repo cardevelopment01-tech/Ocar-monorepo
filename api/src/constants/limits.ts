@@ -102,3 +102,4 @@ export const IDLE_HEARTBEAT_OFFLINE_MINUTES = 10
 
 export const RATE_CARD_CACHE_TTL_SECONDS = 3600 // 1h — money-affecting, short backstop TTL
 export const CONFIG_CACHE_TTL_SECONDS = 30 // kill switches — bounds worst-case staleness only; a real flip is invalidated immediately
+export const CITY_CACHE_TTL_SECONDS = 21600 // 6h — structural, changes are rare and deliberate

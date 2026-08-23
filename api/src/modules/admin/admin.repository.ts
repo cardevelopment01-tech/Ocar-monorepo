@@ -1,6 +1,7 @@
 import { pool, withTransaction } from '@/db/client'
 import { client as redisClient } from '@/db/redis'
-import { RATE_CARD_VERSION_KEY } from '@/constants/redis-keys'
+import { RATE_CARD_VERSION_KEY, CITIES_ALL_KEY, cityByIdKey } from '@/constants/redis-keys'
+import { invalidate } from '@/lib/cache/reference-cache'
 import { logger } from '@/lib/logger'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg'
@@ -999,7 +1000,9 @@ export async function createAdminCity(data: {
       data.created_by,
     ]
   )
-  return res.rows[0] as AdminCity
+  const row = res.rows[0] as AdminCity
+  await invalidate(CITIES_ALL_KEY, cityByIdKey(row.id))
+  return row
 }
 
 export async function updateAdminCity(
@@ -1036,6 +1039,7 @@ export async function updateAdminCity(
     `UPDATE cities SET ${sets.join(', ')} WHERE id = $${p} RETURNING ${ADMIN_CITY_COLS}`,
     values
   )
+  await invalidate(CITIES_ALL_KEY, cityByIdKey(id))
   return res.rows[0] ?? null
 }
 

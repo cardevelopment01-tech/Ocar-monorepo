@@ -1,4 +1,7 @@
 import { pool } from '@/db/client'
+import { cachedRead, invalidate } from '@/lib/cache/reference-cache'
+import { cityByIdKey, CITIES_ALL_KEY } from '@/constants/redis-keys'
+import { CITY_CACHE_TTL_SECONDS } from '@/constants/limits'
 import type { City, GpsTrackPayload } from './geo.types'
 
 const CITY_COLS = `
@@ -20,6 +23,10 @@ export async function getActiveCities(): Promise<City[]> {
 }
 
 export async function getAllCities(): Promise<City[]> {
+  return cachedRead('cities', CITIES_ALL_KEY, CITY_CACHE_TTL_SECONDS, fetchAllCitiesFromDb) as Promise<City[]>
+}
+
+async function fetchAllCitiesFromDb(): Promise<City[]> {
   const res = await pool.query(
     `SELECT ${CITY_COLS} FROM cities ORDER BY name`
   )
@@ -27,6 +34,12 @@ export async function getAllCities(): Promise<City[]> {
 }
 
 export async function getCityById(id: bigint): Promise<City | null> {
+  return cachedRead('cities', cityByIdKey(id), CITY_CACHE_TTL_SECONDS, () =>
+    fetchCityByIdFromDb(id)
+  )
+}
+
+async function fetchCityByIdFromDb(id: bigint): Promise<City | null> {
   const res = await pool.query(
     `SELECT ${CITY_COLS} FROM cities WHERE id = $1`,
     [id]
@@ -193,7 +206,9 @@ export async function createCity(data: {
       data.created_by,
     ]
   )
-  return res.rows[0] as City
+  const row = res.rows[0] as City
+  await invalidate(CITIES_ALL_KEY, cityByIdKey(row.id))
+  return row
 }
 
 export async function updateCity(
@@ -225,5 +240,6 @@ export async function updateCity(
     `UPDATE cities SET ${sets.join(', ')} WHERE id = $${p} RETURNING ${CITY_COLS}`,
     values
   )
+  await invalidate(CITIES_ALL_KEY, cityByIdKey(id))
   return res.rows[0] ?? null
 }
