@@ -1,4 +1,4 @@
-import { Registry, collectDefaultMetrics, Histogram, Gauge } from 'prom-client'
+import { Registry, collectDefaultMetrics, Histogram, Gauge, Counter } from 'prom-client'
 import { pool } from '@/db/client'
 import { queues } from '@/jobs/queues'
 import { logger } from '@/lib/logger'
@@ -13,6 +13,20 @@ export const httpRequestDuration = new Histogram({
   // an unmatched/unbounded path here would blow up Mimir's series count
   // exactly the way it would have blown up Loki's index.
   labelNames: ['method', 'route', 'status_code'],
+  registers: [register],
+})
+
+export const cacheHitsTotal = new Counter({
+  name: 'cache_hits_total',
+  help: 'Reference-data cache hits by table',
+  labelNames: ['table'],
+  registers: [register],
+})
+
+export const cacheMissesTotal = new Counter({
+  name: 'cache_misses_total',
+  help: 'Reference-data cache misses by table',
+  labelNames: ['table'],
   registers: [register],
 })
 
