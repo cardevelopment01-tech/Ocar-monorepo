@@ -5,6 +5,14 @@ const poolQuery = vi.fn()
 vi.mock('@/db/client', () => ({
   pool: { query: (...args: unknown[]) => poolQuery(...args), connect: vi.fn(() => Promise.resolve(client)) },
 }))
+// getConfigValue (system_config caching) reads through @/db/redis — without
+// this mock it hits a real, reachable local Redis and serves a value cached
+// by an earlier test/run instead of falling through to the pg mock above.
+vi.mock('@/db/redis', () => ({
+  getJSON: vi.fn().mockResolvedValue(null),
+  setWithTTL: vi.fn().mockResolvedValue(undefined),
+  client: { del: vi.fn().mockResolvedValue(1) },
+}))
 
 import { instantCashOut } from '@/modules/payments/submodules/settlements/settlements.service'
 
