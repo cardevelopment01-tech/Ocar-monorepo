@@ -7,6 +7,9 @@ vi.mock('@/db/client', () => ({
 vi.mock('@/modules/drivers/driver-verification.repository', () => ({
   getTodayStatus: vi.fn(() => Promise.resolve({ selfieDone: true, plateDone: true })),
 }))
+vi.mock('@/modules/drivers/drivers.repository', () => ({
+  hasApprovedRequiredDocs: vi.fn(() => Promise.resolve(true)),
+}))
 vi.mock('@/websocket/socket.server', () => ({ socketEvents: { sendAdminDriverUpdate: vi.fn() } }))
 vi.mock('@/modules/rides/rides.repository', () => ({
   getActiveSession: vi.fn(() => Promise.resolve(null)),

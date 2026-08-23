@@ -14,6 +14,10 @@ vi.mock('@/modules/drivers/driver-verification.repository', () => ({
   getTodayStatus: vi.fn(),
 }))
 
+vi.mock('@/modules/drivers/drivers.repository', () => ({
+  hasApprovedRequiredDocs: vi.fn(() => Promise.resolve(true)),
+}))
+
 vi.mock('@/modules/payments/payments.service', () => ({
   getDriverWallet:     vi.fn(),
   getMinWalletBalance: vi.fn(),
