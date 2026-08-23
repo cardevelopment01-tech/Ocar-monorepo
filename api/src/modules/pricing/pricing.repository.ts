@@ -1,5 +1,6 @@
 import { pool } from '@/db/client'
 import { cachedRead, invalidate } from '@/lib/cache/reference-cache'
+import { singleFlight } from '@/lib/cache/single-flight'
 import { client as redisClient, getJSON, setWithTTL } from '@/db/redis'
 import { rateCardKey, RATE_CARD_VERSION_KEY, stopChargeKey, rentalPackageKey, surgeKey } from '@/constants/redis-keys'
 import { RATE_CARD_CACHE_TTL_SECONDS, STRUCTURAL_CACHE_TTL_SECONDS } from '@/constants/limits'
@@ -147,23 +148,29 @@ export async function getRentalPackagesByCategory(categoryId: number, cityId: nu
 // expires, which is exactly the bug this task exists to avoid.
 export async function getActiveSurge(cityId: number, categoryId: number) {
   const key = surgeKey(cityId, categoryId)
-  try {
-    const cached = await getJSON<Record<string, unknown>>(key)
-    if (cached !== null) return cached
-  } catch (err) {
-    logger.warn({ err, key }, 'reference-cache: surge cache read failed, falling through to DB')
-  }
+  // singleFlight collapses concurrent misses for the same key into one DB
+  // query -- without it, every in-flight fare-estimate request at the instant
+  // a surge activates would miss cache simultaneously and all hit Postgres,
+  // which is exactly the thundering-herd this caching layer exists to avoid.
+  return singleFlight(key, async () => {
+    try {
+      const cached = await getJSON<Record<string, unknown>>(key)
+      if (cached !== null) return cached
+    } catch (err) {
+      logger.warn({ err, key }, 'reference-cache: surge cache read failed, falling through to DB')
+    }
 
-  const row = await fetchActiveSurgeFromDb(cityId, categoryId)
-  if (!row) return null
+    const row = await fetchActiveSurgeFromDb(cityId, categoryId)
+    if (!row) return null
 
-  const ttl = Math.max(1, Math.min(SURGE_BASE_TTL_SECONDS, secondsUntil(new Date(row.ends_at))))
-  try {
-    await setWithTTL(key, JSON.stringify(row), ttl)
-  } catch (err) {
-    logger.warn({ err, key }, 'reference-cache: failed to populate surge cache, serving DB value')
-  }
-  return row
+    const ttl = Math.max(1, Math.min(SURGE_BASE_TTL_SECONDS, secondsUntil(new Date(row.ends_at))))
+    try {
+      await setWithTTL(key, JSON.stringify(row), ttl)
+    } catch (err) {
+      logger.warn({ err, key }, 'reference-cache: failed to populate surge cache, serving DB value')
+    }
+    return row
+  })
 }
 
 async function fetchActiveSurgeFromDb(cityId: number, categoryId: number) {
