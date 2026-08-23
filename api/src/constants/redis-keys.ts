@@ -21,6 +21,8 @@ export const RATE_CARD_VERSION_KEY = 'ref:v1:rate_card:ver'
 
 export const CITIES_ALL_KEY = 'ref:v1:cities:all'
 
+export const VEHICLE_CATEGORIES_ALL_KEY = 'ref:v1:vehicle_categories:all'
+
 export function cityByIdKey(id: number | bigint): string {
   return `ref:v1:city:${id}`
 }

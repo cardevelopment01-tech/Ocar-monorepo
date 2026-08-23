@@ -1,7 +1,7 @@
 import { pool } from '@/db/client'
 import { cachedRead, invalidate } from '@/lib/cache/reference-cache'
 import { cityByIdKey, CITIES_ALL_KEY } from '@/constants/redis-keys'
-import { CITY_CACHE_TTL_SECONDS } from '@/constants/limits'
+import { STRUCTURAL_CACHE_TTL_SECONDS } from '@/constants/limits'
 import type { City, GpsTrackPayload } from './geo.types'
 
 const CITY_COLS = `
@@ -23,7 +23,7 @@ export async function getActiveCities(): Promise<City[]> {
 }
 
 export async function getAllCities(): Promise<City[]> {
-  return cachedRead('cities', CITIES_ALL_KEY, CITY_CACHE_TTL_SECONDS, fetchAllCitiesFromDb) as Promise<City[]>
+  return cachedRead('cities', CITIES_ALL_KEY, STRUCTURAL_CACHE_TTL_SECONDS, fetchAllCitiesFromDb) as Promise<City[]>
 }
 
 async function fetchAllCitiesFromDb(): Promise<City[]> {
@@ -34,7 +34,7 @@ async function fetchAllCitiesFromDb(): Promise<City[]> {
 }
 
 export async function getCityById(id: bigint): Promise<City | null> {
-  return cachedRead('cities', cityByIdKey(id), CITY_CACHE_TTL_SECONDS, () =>
+  return cachedRead('cities', cityByIdKey(id), STRUCTURAL_CACHE_TTL_SECONDS, () =>
     fetchCityByIdFromDb(id)
   )
 }

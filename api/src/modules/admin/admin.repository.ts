@@ -1,6 +1,6 @@
 import { pool, withTransaction } from '@/db/client'
 import { client as redisClient } from '@/db/redis'
-import { RATE_CARD_VERSION_KEY, CITIES_ALL_KEY, cityByIdKey } from '@/constants/redis-keys'
+import { RATE_CARD_VERSION_KEY, CITIES_ALL_KEY, cityByIdKey, VEHICLE_CATEGORIES_ALL_KEY } from '@/constants/redis-keys'
 import { invalidate } from '@/lib/cache/reference-cache'
 import { logger } from '@/lib/logger'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
@@ -618,6 +618,7 @@ export async function createCategory(data: {
     [data.slug, data.display_name, data.max_passengers, data.is_active]
   )
   const r = res.rows[0]
+  await invalidate(VEHICLE_CATEGORIES_ALL_KEY)
   return { id: String(r.id), slug: r.slug, display_name: r.display_name,
            max_passengers: r.max_passengers, is_active: r.is_active,
            created_at: r.created_at, driver_count: 0 }
@@ -642,6 +643,7 @@ export async function updateCategory(
   )
   if (!res.rows.length) return null
   const r = res.rows[0]
+  await invalidate(VEHICLE_CATEGORIES_ALL_KEY)
   return { id: String(r.id), slug: r.slug, display_name: r.display_name,
            max_passengers: r.max_passengers, is_active: r.is_active,
            created_at: r.created_at, driver_count: 0 }
