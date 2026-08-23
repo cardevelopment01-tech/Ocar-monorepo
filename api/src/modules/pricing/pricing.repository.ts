@@ -1,8 +1,8 @@
 import { pool } from '@/db/client'
 import { cachedRead } from '@/lib/cache/reference-cache'
 import { client as redisClient } from '@/db/redis'
-import { rateCardKey, RATE_CARD_VERSION_KEY } from '@/constants/redis-keys'
-import { RATE_CARD_CACHE_TTL_SECONDS } from '@/constants/limits'
+import { rateCardKey, RATE_CARD_VERSION_KEY, stopChargeKey, rentalPackageKey } from '@/constants/redis-keys'
+import { RATE_CARD_CACHE_TTL_SECONDS, STRUCTURAL_CACHE_TTL_SECONDS } from '@/constants/limits'
 import { logger } from '@/lib/logger'
 
 async function getRateCardVersion(): Promise<string> {
@@ -69,6 +69,15 @@ export async function getRateCardHistory() {
 }
 
 export async function getStopCharge(categoryId: number): Promise<number> {
+  return cachedRead(
+    'stop_charges',
+    stopChargeKey(categoryId),
+    STRUCTURAL_CACHE_TTL_SECONDS,
+    () => fetchStopChargeFromDb(categoryId)
+  ) as Promise<number>
+}
+
+async function fetchStopChargeFromDb(categoryId: number): Promise<number> {
   const res = await pool.query(
     `SELECT charge_per_stop FROM stop_charges WHERE category_id = $1`,
     [categoryId]
@@ -77,6 +86,15 @@ export async function getStopCharge(categoryId: number): Promise<number> {
 }
 
 export async function getRentalPackage(packageId: number) {
+  return cachedRead(
+    'rental_packages',
+    rentalPackageKey(packageId),
+    RATE_CARD_CACHE_TTL_SECONDS,
+    () => fetchRentalPackageFromDb(packageId)
+  )
+}
+
+async function fetchRentalPackageFromDb(packageId: number) {
   const res = await pool.query(
     `SELECT rp.*, vc.display_name AS category_name
      FROM rental_packages rp

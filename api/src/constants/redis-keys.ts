@@ -27,6 +27,31 @@ export function cityByIdKey(id: number | bigint): string {
   return `ref:v1:city:${id}`
 }
 
+export function rentalPackageKey(packageId: number): string {
+  return `ref:v1:rental_package:${packageId}`
+}
+
+export const PACKAGE_TIERS_ALL_KEY = 'ref:v1:package_tiers:all'
+
+// stop_charges and category_fallback_rules are both read scoped by a single
+// category_id, not as a flat list-all — key per category, not one _ALL_KEY.
+export function stopChargeKey(categoryId: number): string {
+  return `ref:v1:stop_charge:${categoryId}`
+}
+
+export function categoryFallbackKey(categoryId: number | bigint): string {
+  return `ref:v1:category_fallback:${categoryId}`
+}
+
+// rating_tag_definitions is read scoped by an optional applies_to filter.
+export function ratingTagsKey(appliesTo?: string): string {
+  return `ref:v1:rating_tags:${appliesTo ?? 'all'}`
+}
+
+export function notificationTemplateKey(slug: string, channel: string, locale: string): string {
+  return `ref:v1:notification_template:${slug}:${channel}:${locale}`
+}
+
 export function rateCardKey(
   version: string,
   categoryId: number,

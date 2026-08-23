@@ -1,8 +1,20 @@
 import { pool } from '@/db/client'
+import { cachedRead } from '@/lib/cache/reference-cache'
+import { ratingTagsKey } from '@/constants/redis-keys'
+import { STRUCTURAL_CACHE_TTL_SECONDS } from '@/constants/limits'
 
 // ── Rating tag definitions ────────────────────────────────────────
 
 export async function getTagDefinitions(appliesTo?: string) {
+  return cachedRead(
+    'rating_tag_definitions',
+    ratingTagsKey(appliesTo),
+    STRUCTURAL_CACHE_TTL_SECONDS,
+    () => fetchTagDefinitionsFromDb(appliesTo)
+  )
+}
+
+async function fetchTagDefinitionsFromDb(appliesTo?: string) {
   const params: unknown[] = []
   const where = appliesTo
     ? (params.push(appliesTo), `WHERE is_active = true AND (applies_to = $1 OR applies_to = 'both')`)

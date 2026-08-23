@@ -1,7 +1,11 @@
 import { pool, withTransaction } from '@/db/client'
 import { client as redisClient } from '@/db/redis'
-import { RATE_CARD_VERSION_KEY, CITIES_ALL_KEY, cityByIdKey, VEHICLE_CATEGORIES_ALL_KEY } from '@/constants/redis-keys'
-import { invalidate } from '@/lib/cache/reference-cache'
+import {
+  RATE_CARD_VERSION_KEY, CITIES_ALL_KEY, cityByIdKey, VEHICLE_CATEGORIES_ALL_KEY,
+  rentalPackageKey, PACKAGE_TIERS_ALL_KEY,
+} from '@/constants/redis-keys'
+import { invalidate, cachedRead } from '@/lib/cache/reference-cache'
+import { RATE_CARD_CACHE_TTL_SECONDS } from '@/constants/limits'
 import { logger } from '@/lib/logger'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg'
@@ -1364,12 +1368,16 @@ export async function updateAdminRentalPackage(
        is_active, city_id, updated_by, created_at, updated_at`,
     params,
   )
-  return res.rows[0] as AdminRentalPackage | undefined
+  const row = res.rows[0] as AdminRentalPackage | undefined
+  if (row) await invalidate(rentalPackageKey(Number(row.id)))
+  return row
 }
 
 export async function deleteAdminRentalPackage(id: bigint) {
   const res = await pool.query(`DELETE FROM rental_packages WHERE id = $1 RETURNING id`, [id])
-  return res.rows[0] as { id: bigint } | undefined
+  const row = res.rows[0] as { id: bigint } | undefined
+  if (row) await invalidate(rentalPackageKey(Number(row.id)))
+  return row
 }
 
 export async function createAdminRentalPackage(
@@ -1397,7 +1405,9 @@ export async function createAdminRentalPackage(
      fields.package_fare, fields.extra_per_km, fields.extra_per_min,
      fields.display_order ?? null, fields.city_id ?? null, adminId],
   )
-  return res.rows[0] as AdminRentalPackage
+  const row = res.rows[0] as AdminRentalPackage
+  await invalidate(rentalPackageKey(Number(row.id)))
+  return row
 }
 
 // ─── Users (admin listing + status update) ────────────────────────────────────
@@ -1756,6 +1766,15 @@ export async function getActiveDriverSessions(): Promise<ActiveDriverSession[]> 
 // ─── Package tiers (city billing_mode = 'package') ────────────────────────────
 
 export async function listPackageTiers(): Promise<PackageTier[]> {
+  return cachedRead(
+    'package_tiers',
+    PACKAGE_TIERS_ALL_KEY,
+    RATE_CARD_CACHE_TTL_SECONDS,
+    fetchPackageTiersFromDb
+  ) as Promise<PackageTier[]>
+}
+
+async function fetchPackageTiersFromDb(): Promise<PackageTier[]> {
   const res = await pool.query<PackageTier>(
     `SELECT id, label, price::text, threshold_value::text, is_active, created_at, updated_at
      FROM package_tiers ORDER BY price ASC`
@@ -1772,6 +1791,7 @@ export async function createPackageTier(data: {
      RETURNING id, label, price::text, threshold_value::text, is_active, created_at, updated_at`,
     [data.label, data.price, data.thresholdValue, data.createdBy]
   )
+  await invalidate(PACKAGE_TIERS_ALL_KEY)
   return res.rows[0]!
 }
 
@@ -1793,7 +1813,9 @@ export async function updatePackageTier(
      RETURNING id, label, price::text, threshold_value::text, is_active, created_at, updated_at`,
     values
   )
-  return res.rows[0] ?? null
+  const row = res.rows[0] ?? null
+  if (row) await invalidate(PACKAGE_TIERS_ALL_KEY)
+  return row
 }
 
 // ─── Driver package wallet / ledger (admin view) ──────────────────────────────

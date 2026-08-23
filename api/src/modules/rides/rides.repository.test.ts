@@ -4,6 +4,15 @@ const mockQuery = vi.fn()
 vi.mock('@/db/client', () => ({
   pool: { query: (...args: unknown[]) => mockQuery(...args) },
 }))
+// getEligibleDriverCategoryIds now reads through the category_fallback_rules cache
+// (@/lib/cache/reference-cache -> @/db/redis) — without this mock it hits a real,
+// reachable local Redis and can serve a value cached by an earlier test/run instead
+// of the pg mock above.
+vi.mock('@/db/redis', () => ({
+  getJSON: vi.fn().mockResolvedValue(null),
+  setWithTTL: vi.fn().mockResolvedValue(undefined),
+  client: { del: vi.fn().mockResolvedValue(1) },
+}))
 
 import { getEligibleDriverCategoryIds, findNearbyDrivers, findReturnCabDrivers, getCategoryDisplayName, getRideById } from './rides.repository'
 

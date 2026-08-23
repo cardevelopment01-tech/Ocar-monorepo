@@ -1,4 +1,6 @@
 import { pool } from '@/db/client'
+import { cachedRead } from '@/lib/cache/reference-cache'
+import { categoryFallbackKey } from '@/constants/redis-keys'
 import type { AssignCandidate, BillingMode, DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
 import {
   STALE_REQUESTED_MINUTES,
@@ -6,6 +8,7 @@ import {
   STALE_DRIVER_ARRIVED_HOURS,
   STALE_IN_PROGRESS_CEILING_HOURS,
   BACKGROUND_MATCH_GRACE_SECONDS,
+  STRUCTURAL_CACHE_TTL_SECONDS,
 } from '@/constants/limits'
 
 // ── Driver session queries ────────────────────────────────────
@@ -26,11 +29,24 @@ export async function getActiveSession(driverId: bigint): Promise<DriverSession 
 // the ride's own category, plus any category that lists it as an accepted
 // fallback tier (category_fallback_rules.accepts_category_id = rideCategoryId).
 export async function getEligibleDriverCategoryIds(rideCategoryId: bigint): Promise<bigint[]> {
+  // Cached value is string[], never bigint[] — JSON.stringify can't serialize
+  // a BigInt, so the DB fetch returns plain strings and we BigInt()-convert
+  // after the cache round-trip.
+  const fallbackIds = await cachedRead(
+    'category_fallback_rules',
+    categoryFallbackKey(rideCategoryId),
+    STRUCTURAL_CACHE_TTL_SECONDS,
+    () => fetchCategoryFallbackIdsFromDb(rideCategoryId)
+  )
+  return [rideCategoryId, ...(fallbackIds ?? []).map(id => BigInt(id))]
+}
+
+async function fetchCategoryFallbackIdsFromDb(rideCategoryId: bigint): Promise<string[]> {
   const res = await pool.query<{ category_id: string }>(
     `SELECT category_id FROM category_fallback_rules WHERE accepts_category_id = $1`,
     [rideCategoryId]
   )
-  return [rideCategoryId, ...res.rows.map(r => BigInt(r.category_id))]
+  return res.rows.map(r => r.category_id)
 }
 
 export async function getCategoryDisplayName(categoryId: bigint): Promise<string | null> {

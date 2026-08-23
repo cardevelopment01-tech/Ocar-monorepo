@@ -1,4 +1,7 @@
 import { pool } from '@/db/client'
+import { cachedRead, invalidate } from '@/lib/cache/reference-cache'
+import { notificationTemplateKey } from '@/constants/redis-keys'
+import { NOTIFICATION_TEMPLATE_CACHE_TTL_SECONDS } from '@/constants/limits'
 import type { NotifChannel } from './notifications.repository'
 
 export interface VariablesSchema {
@@ -60,6 +63,19 @@ export async function getActiveTemplate(
   channel: NotifChannel,
   locale = 'en'
 ): Promise<NotificationTemplate | null> {
+  return cachedRead(
+    'notification_templates',
+    notificationTemplateKey(slug, channel, locale),
+    NOTIFICATION_TEMPLATE_CACHE_TTL_SECONDS,
+    () => fetchActiveTemplateFromDb(slug, channel, locale)
+  )
+}
+
+async function fetchActiveTemplateFromDb(
+  slug: string,
+  channel: NotifChannel,
+  locale: string
+): Promise<NotificationTemplate | null> {
   const res = await pool.query<TemplateRow>(
     `SELECT ${TEMPLATE_COLUMNS} FROM notification_templates
      WHERE slug = $1 AND channel = $2 AND locale = $3 AND is_active
@@ -100,7 +116,10 @@ export async function updateTemplateContent(
     [id, params.subject, params.body, params.updatedBy]
   )
   const row = res.rows[0]
-  return row ? toTemplate(row) : null
+  if (!row) return null
+  const template = toTemplate(row)
+  await invalidate(notificationTemplateKey(template.slug, template.channel, template.locale))
+  return template
 }
 
 export async function setTemplateActive(id: bigint, isActive: boolean, updatedBy: bigint): Promise<NotificationTemplate | null> {
@@ -112,5 +131,8 @@ export async function setTemplateActive(id: bigint, isActive: boolean, updatedBy
     [id, isActive, updatedBy]
   )
   const row = res.rows[0]
-  return row ? toTemplate(row) : null
+  if (!row) return null
+  const template = toTemplate(row)
+  await invalidate(notificationTemplateKey(template.slug, template.channel, template.locale))
+  return template
 }
