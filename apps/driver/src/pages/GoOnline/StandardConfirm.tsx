@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Car, AlertCircle, Check, Zap } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import WalletGateCard from '@/components/ui/WalletGateCard'
+import DocumentGateCard from '@/components/ui/DocumentGateCard'
 import { motion, AnimatePresence } from 'framer-motion'
 import { driverRideApi } from '@/lib/ride-api'
 import { connectDriverSocket } from '@/lib/socket'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useWalletGate } from '@/lib/useWalletGate'
+import { useDocumentGate } from '@/lib/useDocumentGate'
 import { unlockRideSound } from '@/lib/rideSound'
 
 const CHECKLIST = [
@@ -40,6 +42,7 @@ export default function StandardConfirm() {
   const [error, setError] = useState<string | null>(null)
   const [locationWarning, setLocationWarning] = useState(false)
   const walletGate = useWalletGate()
+  const documentGate = useDocumentGate()
   const [checked, setChecked] = useState<Record<string, boolean>>(
     () => Object.fromEntries(CHECKLIST.map(item => [item, true]))
   )
@@ -119,6 +122,7 @@ export default function StandardConfirm() {
         </motion.div>
 
         <WalletGateCard {...walletGate} />
+        <DocumentGateCard {...documentGate} />
 
         {/* ── Hero vehicle card: dark slate ── */}
         <motion.div
@@ -300,7 +304,7 @@ export default function StandardConfirm() {
         />
         <button
           onClick={handleGoOnline}
-          disabled={goingOnline || loading || !vehicle || !walletGate.canGoOnline}
+          disabled={goingOnline || loading || !vehicle || !walletGate.canGoOnline || !documentGate.canGoOnline}
           style={{
             background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
             boxShadow: '0 4px 20px rgba(15,23,42,0.30)',

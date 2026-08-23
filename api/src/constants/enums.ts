@@ -18,6 +18,7 @@ export const DriverStatus = {
   ACTIVE: 'active',
   SUSPENDED: 'suspended',
   BANNED: 'banned',
+  DOCS_REJECTED: 'docs_rejected',
 } as const
 export type DriverStatus = (typeof DriverStatus)[keyof typeof DriverStatus]
 

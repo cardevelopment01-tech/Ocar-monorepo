@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router-dom'
 import { IndianRupee, Clock, Star, TrendingUp, Wallet, ChevronRight, LocateOff } from 'lucide-react'
 import OnlineToggle from '@/components/ui/OnlineToggle'
 import StatusBar from '@/components/ui/StatusBar'
+import DocumentGateCard from '@/components/ui/DocumentGateCard'
+import { useDocumentGate } from '@/lib/useDocumentGate'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useRideStore } from '@/store/useRideStore'
@@ -30,6 +32,7 @@ export default function Home() {
   const { isOnline, sessionId, mode, destinationCityName, setOffline, earningsToday, tripsToday, setEarnings } = useSessionStore()
   const activeRide = useRideStore(s => s.activeRide)
   const prefersReducedMotion = useReducedMotion()
+  const documentGate = useDocumentGate()
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const sheetRef            = useRef<HTMLDivElement | null>(null)
@@ -442,6 +445,8 @@ export default function Home() {
               </div>
               <OnlineToggle isOnline={isOnline} onToggle={handleToggle} disabled={checkingVerification} />
             </div>
+
+            <DocumentGateCard {...documentGate} />
 
             {/* ── Collapse anchor: sheet snaps to this point when minimised.
                  Placed right after the greeting+toggle row so the collapsed

@@ -7,6 +7,7 @@ import { getPresignedUrl } from '@/lib/storage'
 import { getConfigValue } from '@/lib/system-config'
 import * as repo from './rides.repository'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
+import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES, gpsFlushQueue } from '@/jobs/queues'
@@ -137,6 +138,10 @@ export async function goOnline(driverId: bigint, data: {
   const verification = await getTodayStatus(driverId)
   if (!verification.selfieDone || !verification.plateDone) {
     throw httpError(428, "Today's selfie and plate verification is required before going online", 'DAILY_CHECK_REQUIRED')
+  }
+
+  if (!(await hasApprovedRequiredDocs(driverId))) {
+    throw createHttpError(AppErrors.DRIVER_DOCS_REJECTED)
   }
 
   // Billing mode is fixed to the driver's assigned operating city

@@ -75,6 +75,11 @@ export const AppErrors = {
     message: 'Driver account is suspended',
     httpStatus: 403,
   },
+  DRIVER_DOCS_REJECTED: {
+    code: 'DRIVER_DOCS_REJECTED',
+    message: 'One or more of your documents was rejected or has expired — please resubmit it to continue',
+    httpStatus: 403,
+  },
   LOW_WALLET_BALANCE: {
     code: 'LOW_WALLET_BALANCE',
     message: 'Wallet balance is below the minimum required to receive rides',

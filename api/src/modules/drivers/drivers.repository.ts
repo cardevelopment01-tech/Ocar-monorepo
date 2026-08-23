@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg'
 import { query } from '@/db/client'
 import type {
   Driver,
@@ -334,4 +335,70 @@ export async function findVehicleDocuments(vehicleId: string): Promise<DriverVeh
     'SELECT * FROM driver_vehicle_documents WHERE vehicle_id = $1',
     [vehicleId]
   )
+}
+
+// True if none of the driver's identity/vehicle documents are rejected or an
+// expired-but-still-approved row (a document approved in the past whose
+// valid_until has since passed) — the live rollup goOnline() gates on.
+// Pass a transaction client when this must participate in a caller's lock
+// (see admin.repository.ts's syncDriverStatusAfterDocChange) — otherwise runs
+// through the shared pool.
+export async function hasApprovedRequiredDocs(driverId: bigint, client?: PoolClient): Promise<boolean> {
+  const sql = `SELECT EXISTS (
+       SELECT 1 FROM driver_documents
+       WHERE driver_id = $1
+         AND (status = 'rejected' OR (status = 'approved' AND valid_until < CURRENT_DATE))
+       UNION ALL
+       SELECT 1 FROM driver_vehicle_documents dvd
+       JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+       WHERE dv.driver_id = $1 AND dv.is_primary = true
+         AND (dvd.status = 'rejected' OR (dvd.status = 'approved' AND dvd.valid_until < CURRENT_DATE))
+     ) AS has_issue`
+  const params = [driverId.toString()]
+  const rows = client
+    ? (await client.query<{ has_issue: boolean }>(sql, params)).rows
+    : await query<{ has_issue: boolean }>(sql, params)
+  return !rows[0]!.has_issue
+}
+
+const EXPIRY_REMINDER_DAYS = [30, 15, 7, 1]
+
+export interface ExpiringDocNotice {
+  driverId: string
+  docType: string
+  daysRemaining: number
+  route: 'documents' | 'vehicle-docs'
+}
+
+// Approved documents landing on one of the reminder thresholds today, or
+// expiring today (daysRemaining 0) — driven by the daily sweep_document_expiry
+// job. Exact-day matching (not "<= N days") keeps each threshold a one-shot
+// notification instead of a repeat every day inside the window.
+export async function findDocsNeedingExpiryNotice(): Promise<ExpiringDocNotice[]> {
+  const thresholds = [...EXPIRY_REMINDER_DAYS, 0]
+  const rows = await query<{ driver_id: string; doc_type: string; days_remaining: number; route: 'documents' | 'vehicle-docs' }>(
+    `SELECT driver_id, doc_type, days_remaining, 'documents'::text AS route FROM (
+       SELECT driver_id::text, doc_type,
+              (valid_until - CURRENT_DATE) AS days_remaining
+       FROM driver_documents
+       WHERE status = 'approved' AND valid_until IS NOT NULL
+     ) d
+     WHERE days_remaining = ANY($1::int[])
+     UNION ALL
+     SELECT driver_id, doc_type, days_remaining, 'vehicle-docs'::text AS route FROM (
+       SELECT dv.driver_id::text AS driver_id, dvd.doc_type,
+              (dvd.valid_until - CURRENT_DATE) AS days_remaining
+       FROM driver_vehicle_documents dvd
+       JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+       WHERE dvd.status = 'approved' AND dvd.valid_until IS NOT NULL
+     ) v
+     WHERE days_remaining = ANY($1::int[])`,
+    [thresholds]
+  )
+  return rows.map(r => ({
+    driverId: r.driver_id,
+    docType: r.doc_type,
+    daysRemaining: r.days_remaining,
+    route: r.route,
+  }))
 }

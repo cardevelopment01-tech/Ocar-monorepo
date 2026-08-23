@@ -84,7 +84,13 @@ export async function notifyOwner(params: {
     await pushToTokens(tokens, {
       title: params.title,
       body: params.body,
-      data: { type: params.type, ...(params.rideId !== undefined ? { rideId: params.rideId.toString() } : {}) },
+      data: {
+        type: params.type,
+        ...(params.rideId !== undefined ? { rideId: params.rideId.toString() } : {}),
+        // FCM data payload values must all be strings — path/route are the only
+        // keys callers put in `payload` today, both already strings.
+        ...(params.payload as Record<string, string> | undefined),
+      },
       ...(params.tag !== undefined ? { tag: params.tag } : {}),
     })
   } catch (err) {
@@ -180,5 +186,48 @@ export async function notifyDriverLowWalletBalance(
     title: subject ?? 'Wallet balance low',
     body,
     payload: { path: '/wallet' },
+  })
+}
+
+// Staged reminder for an approved document nearing its valid_until date.
+// Called from the daily sweep_document_expiry scheduler job.
+export async function notifyDocumentExpiring(
+  driverId: bigint,
+  docLabel: string,
+  daysRemaining: number,
+  route: 'documents' | 'vehicle-docs'
+): Promise<void> {
+  const { subject, body } = await renderTemplate('document_expiring', 'push', {
+    docLabel,
+    daysRemaining: String(daysRemaining),
+  })
+  await notifyOwner({
+    ownerType: 'driver',
+    ownerId: driverId,
+    type: 'document_expiring',
+    title: subject ?? 'Document expiring soon',
+    body,
+    payload: { path: '/profile/documents' },
+    tag: `document_expiring:${route}:${docLabel}`,
+  })
+}
+
+// Fired once a document's valid_until has passed. hasApprovedRequiredDocs()
+// already blocks goOnline() for this driver the moment this is true — this
+// is the notification half, not the enforcement.
+export async function notifyDocumentExpired(
+  driverId: bigint,
+  docLabel: string,
+  route: 'documents' | 'vehicle-docs'
+): Promise<void> {
+  const { subject, body } = await renderTemplate('document_expired', 'push', { docLabel })
+  await notifyOwner({
+    ownerType: 'driver',
+    ownerId: driverId,
+    type: 'document_expired',
+    title: subject ?? 'Document expired',
+    body,
+    payload: { path: '/profile/documents' },
+    tag: `document_expired:${route}:${docLabel}`,
   })
 }

@@ -9,7 +9,7 @@ import { listMessages as listRideMessages } from '@/modules/ride-chat/ride-chat.
 import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { recordAuditLog } from '@/lib/audit-log'
 
-function docLabel(docType: string): string {
+export function docLabel(docType: string): string {
   return docType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
@@ -262,11 +262,12 @@ export async function unblacklistVehicle(vehicleId: bigint) {
 export async function listPendingVehicleDocs() { return repo.listPendingVehicleDocs() }
 
 export async function approveDriverDoc(docId: bigint, adminId: bigint, ipAddress: string | null) {
-  await repo.approveDriverDoc(docId, adminId)
+  const approved = await repo.approveDriverDoc(docId, adminId)
   await recordAuditLog({
     adminId, action: 'driver_documents.approve', targetTable: 'driver_documents', targetId: docId,
     afterState: { status: 'approved' }, ipAddress,
   })
+  if (approved) await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
 }
 
 export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: string, ipAddress: string | null) {
@@ -283,18 +284,20 @@ export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: stri
       type: 'document_rejected',
       title: 'Document Rejected',
       body: `Your ${docLabel(rejected.doc_type)} was rejected: ${note}. Please resubmit it to continue.`,
-      payload: { route: 'documents' },
+      payload: { path: '/profile/documents' },
     })
+    await repo.syncDriverStatusAfterDocChange(BigInt(rejected.driver_id), adminId)
   }
   return rejected
 }
 
 export async function approveVehicleDoc(docId: bigint, adminId: bigint, ipAddress: string | null) {
-  await repo.approveVehicleDoc(docId, adminId)
+  const approved = await repo.approveVehicleDoc(docId, adminId)
   await recordAuditLog({
     adminId, action: 'vehicle_documents.approve', targetTable: 'driver_vehicle_documents', targetId: docId,
     afterState: { status: 'approved' }, ipAddress,
   })
+  if (approved) await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
 }
 
 export async function rejectVehicleDoc(docId: bigint, adminId: bigint, note: string, ipAddress: string | null) {
@@ -311,8 +314,9 @@ export async function rejectVehicleDoc(docId: bigint, adminId: bigint, note: str
       type: 'document_rejected',
       title: 'Document Rejected',
       body: `Your ${docLabel(rejected.doc_type)} was rejected: ${note}. Please resubmit it to continue.`,
-      payload: { route: 'vehicle-docs' },
+      payload: { path: '/profile/documents' },
     })
+    await repo.syncDriverStatusAfterDocChange(BigInt(rejected.driver_id), adminId)
   }
   return rejected
 }

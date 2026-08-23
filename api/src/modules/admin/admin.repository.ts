@@ -1,4 +1,5 @@
-import { pool } from '@/db/client'
+import { pool, withTransaction } from '@/db/client'
+import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg'
 import { recordAuditLog } from '@/lib/audit-log'
 import type {
@@ -336,6 +337,62 @@ export async function updateDriverStatus(
     afterState,
     ipAddress: ipAddress ?? null,
   })
+}
+
+// Keeps drivers.status in sync with per-document approval state after a doc
+// approve/reject. The row lock has to cover the eligibility recheck, not just
+// the write -- two concurrent doc mutations on the same driver must serialize
+// on the DECISION, not just the write -- so this can't be built by calling
+// updateDriverStatus() above (it takes a pre-decided toStatus and opens its
+// own separate transaction, which would leave the same TOCTOU race).
+export async function syncDriverStatusAfterDocChange(driverId: bigint, adminId: bigint): Promise<void> {
+  let beforeStatus: string | null = null
+  let afterStatus: string | null = null
+
+  await withTransaction(async (client) => {
+    const { rows } = await client.query<{ status: string }>('SELECT status FROM drivers WHERE id = $1 FOR UPDATE', [driverId])
+    const currentStatus = rows[0]?.status
+    if (!currentStatus) return
+
+    const eligible = await hasApprovedRequiredDocs(driverId, client)
+    if (!eligible && currentStatus === 'active') {
+      beforeStatus = currentStatus
+      afterStatus = 'docs_rejected'
+      await client.query(
+        `UPDATE drivers SET status = 'docs_rejected', onboarding_step = 'documents', updated_at = now() WHERE id = $1`,
+        [driverId]
+      )
+      await client.query(
+        `INSERT INTO driver_status_history (driver_id, from_status, to_status, reason, changed_by)
+         VALUES ($1, $2, 'docs_rejected', 'Document rejected or expired', $3)`,
+        [driverId, currentStatus, adminId]
+      )
+    } else if (eligible && currentStatus === 'docs_rejected') {
+      beforeStatus = currentStatus
+      afterStatus = 'active'
+      await client.query(
+        `UPDATE drivers SET status = 'active', approved_by = $2, approved_at = now(), updated_at = now() WHERE id = $1`,
+        [driverId]
+      )
+      await client.query(
+        `INSERT INTO driver_status_history (driver_id, from_status, to_status, reason, changed_by)
+         VALUES ($1, 'docs_rejected', 'active', 'All documents re-approved', $2)`,
+        [driverId, adminId]
+      )
+    }
+  })
+
+  if (beforeStatus && afterStatus) {
+    await recordAuditLog({
+      adminId,
+      action: 'drivers.status_change',
+      targetTable: 'drivers',
+      targetId: driverId,
+      beforeState: { status: beforeStatus },
+      afterState: { status: afterStatus },
+      ipAddress: null,
+    })
+  }
 }
 
 // Full paginated ride history for the driver detail page's Rides tab — the
@@ -808,13 +865,16 @@ export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
   }))
 }
 
-export async function approveDriverDoc(docId: bigint, adminId: bigint): Promise<void> {
-  await pool.query(
+export async function approveDriverDoc(docId: bigint, adminId: bigint): Promise<{ driver_id: string } | null> {
+  const res = await pool.query(
     `UPDATE driver_documents
      SET status = 'approved', reviewed_by = $1, reviewed_at = now(), updated_at = now()
-     WHERE id = $2`,
+     WHERE id = $2
+     RETURNING driver_id`,
     [adminId, docId]
   )
+  const row = res.rows[0]
+  return row ? { driver_id: String(row.driver_id) } : null
 }
 
 export async function rejectDriverDoc(
@@ -831,13 +891,17 @@ export async function rejectDriverDoc(
   return row ? { driver_id: String(row.driver_id), doc_type: row.doc_type as string } : null
 }
 
-export async function approveVehicleDoc(docId: bigint, adminId: bigint): Promise<void> {
-  await pool.query(
-    `UPDATE driver_vehicle_documents
+export async function approveVehicleDoc(docId: bigint, adminId: bigint): Promise<{ driver_id: string } | null> {
+  const res = await pool.query(
+    `UPDATE driver_vehicle_documents dvd
      SET status = 'approved', reviewed_by = $1, reviewed_at = now(), updated_at = now()
-     WHERE id = $2`,
+     FROM driver_vehicles dv
+     WHERE dvd.id = $2 AND dv.id = dvd.vehicle_id
+     RETURNING dv.driver_id`,
     [adminId, docId]
   )
+  const row = res.rows[0]
+  return row ? { driver_id: String(row.driver_id) } : null
 }
 
 export async function rejectVehicleDoc(

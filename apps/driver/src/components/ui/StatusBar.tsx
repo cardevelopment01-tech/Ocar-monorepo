@@ -5,6 +5,7 @@ import { motion, useReducedMotion, useMotionValue, useTransform, animate } from 
 import OcarLogoMark from '@/components/ui/OcarLogoMark'
 import { useNotificationsStore } from '@/store/useNotificationsStore'
 import { useWalletGate } from '@/lib/useWalletGate'
+import { useDocumentGate } from '@/lib/useDocumentGate'
 import { GLASS } from '@/lib/constants'
 
 // One header, two skins. `solid` = flat fixed bar on content pages (Earnings/
@@ -189,6 +190,7 @@ export default function StatusBar({ isOnline, earningsToday, tripsToday = 0, sur
   const navigate = useNavigate()
   const { isFrozen, isLow } = useWalletGate()
   const walletWarning = isFrozen ? 'frozen' : isLow ? 'low' : null
+  const { hasRejected } = useDocumentGate()
 
   const floating = surface === 'floating'
 
@@ -249,6 +251,17 @@ export default function StatusBar({ isOnline, earningsToday, tripsToday = 0, sur
             <span className={`text-[10px] font-bold ${walletWarning === 'frozen' ? 'text-accent-red' : 'text-accent-amber'}`}>
               {walletWarning === 'frozen' ? 'Frozen' : 'Low balance'}
             </span>
+          </button>
+        )}
+
+        {!floating && hasRejected && (
+          <button
+            onClick={() => navigate('/profile/documents')}
+            className="flex items-center gap-1 rounded-full px-2.5 py-1.5 cursor-pointer"
+            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.20)' }}
+          >
+            <AlertTriangle size={12} className="text-accent-red" aria-hidden="true" />
+            <span className="text-[10px] font-bold text-accent-red">Document rejected</span>
           </button>
         )}
 

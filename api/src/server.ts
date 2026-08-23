@@ -71,6 +71,12 @@ async function start(): Promise<void> {
     {},
     { repeat: { every: 60_000 }, removeOnComplete: true, removeOnFail: true }
   )
+  // Once daily is enough — reminder thresholds are exact-day matches, not windows.
+  await schedulerQueue.add(
+    'sweep_document_expiry',
+    {},
+    { repeat: { pattern: '0 4 * * *' }, removeOnComplete: true, removeOnFail: true }
+  )
 
   void partitionMaintenanceWorker
   logger.info('partition maintenance worker started')

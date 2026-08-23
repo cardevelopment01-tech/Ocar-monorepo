@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, CornerUpLeft, ChevronDown, AlertCircle, Zap } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import WalletGateCard from '@/components/ui/WalletGateCard'
+import DocumentGateCard from '@/components/ui/DocumentGateCard'
 import { motion, AnimatePresence } from 'framer-motion'
 import { driverRideApi } from '@/lib/ride-api'
 import { connectDriverSocket } from '@/lib/socket'
 import { useSessionStore } from '@/store/useSessionStore'
 import { useWalletGate } from '@/lib/useWalletGate'
+import { useDocumentGate } from '@/lib/useDocumentGate'
 import api from '@/lib/api'
 import { unlockRideSound } from '@/lib/rideSound'
 
@@ -39,6 +41,7 @@ export default function ReturnCabSetup() {
   const [locationWarning, setLocationWarning] = useState(false)
   const [error,           setError]           = useState<string | null>(null)
   const walletGate = useWalletGate()
+  const documentGate = useDocumentGate()
 
   useEffect(() => {
     Promise.all([
@@ -121,6 +124,7 @@ export default function ReturnCabSetup() {
         </motion.div>
 
         <WalletGateCard {...walletGate} />
+        <DocumentGateCard {...documentGate} />
 
         {/* Hero icon */}
         <motion.div
@@ -240,7 +244,7 @@ export default function ReturnCabSetup() {
         />
         <button
           onClick={handleGoOnline}
-          disabled={goingOnline || loadingInit || !vehicle || !selectedCityId || !walletGate.canGoOnline}
+          disabled={goingOnline || loadingInit || !vehicle || !selectedCityId || !walletGate.canGoOnline || !documentGate.canGoOnline}
           style={{ minHeight: 56, borderRadius: 24 }}
           className="w-full flex items-center justify-center gap-2.5 text-white font-bold text-base cursor-pointer active:scale-[0.98] transition-transform duration-150 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 bg-gradient-to-br from-emerald-600 to-emerald-700 shadow-lg"
         >
