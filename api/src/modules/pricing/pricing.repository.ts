@@ -5,6 +5,7 @@ import { client as redisClient, getJSON, setWithTTL } from '@/db/redis'
 import { rateCardKey, RATE_CARD_VERSION_KEY, stopChargeKey, rentalPackageKey, surgeKey } from '@/constants/redis-keys'
 import { RATE_CARD_CACHE_TTL_SECONDS, STRUCTURAL_CACHE_TTL_SECONDS } from '@/constants/limits'
 import { logger } from '@/lib/logger'
+import { cacheHitsTotal, cacheMissesTotal } from '@/observability/metrics'
 
 const SURGE_BASE_TTL_SECONDS = 300
 
@@ -155,11 +156,15 @@ export async function getActiveSurge(cityId: number, categoryId: number) {
   return singleFlight(key, async () => {
     try {
       const cached = await getJSON<Record<string, unknown>>(key)
-      if (cached !== null) return cached
+      if (cached !== null) {
+        cacheHitsTotal.inc({ table: 'surge_events' })
+        return cached
+      }
     } catch (err) {
       logger.warn({ err, key }, 'reference-cache: surge cache read failed, falling through to DB')
     }
 
+    cacheMissesTotal.inc({ table: 'surge_events' })
     const row = await fetchActiveSurgeFromDb(cityId, categoryId)
     if (!row) return null
 
@@ -211,7 +216,7 @@ export async function getAllSurgeEvents() {
 // be expressed as a single key. Enumerate the small, mostly-static category
 // list and invalidate each one's key for this city rather than leaving the
 // other categories' entries to expire on their own TTL.
-async function invalidateSurgeCache(cityId: number, categoryId: number | null): Promise<void> {
+export async function invalidateSurgeCache(cityId: number, categoryId: number | null): Promise<void> {
   if (categoryId !== null) {
     await invalidate(surgeKey(cityId, categoryId))
     return

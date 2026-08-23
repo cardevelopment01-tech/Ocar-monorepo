@@ -11,8 +11,9 @@ vi.mock('@/db/redis', () => ({
 }))
 
 import { pool } from '@/db/client'
-import { getJSON, setWithTTL } from '@/db/redis'
-import { getActiveSurge } from '@/modules/pricing/pricing.repository'
+import { getJSON, setWithTTL, client } from '@/db/redis'
+import { getActiveSurge, invalidateSurgeCache } from '@/modules/pricing/pricing.repository'
+import { surgeKey } from '@/constants/redis-keys'
 
 const SURGE_ROW = {
   id: 1, city_id: 1, category_id: 10, multiplier: '1.5',
@@ -90,5 +91,36 @@ describe('getActiveSurge — cache + boundary-clamped TTL', () => {
     expect(result1).toEqual(SURGE_ROW)
     expect(result2).toEqual(SURGE_ROW)
     expect(pool.query).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('invalidateSurgeCache — write-path invalidation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('invalidates just that key for a concrete-category write', async () => {
+    await invalidateSurgeCache(7, 10)
+
+    expect(client.del).toHaveBeenCalledWith(surgeKey(7, 10))
+  })
+
+  it('enumerates categories and invalidates each one for a category_id IS NULL write', async () => {
+    vi.mocked(pool.query).mockResolvedValue({
+      rows: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      rowCount: 3,
+    } as never)
+
+    await invalidateSurgeCache(7, null)
+
+    expect(pool.query).toHaveBeenCalledWith('SELECT id FROM vehicle_categories')
+    expect(client.del).toHaveBeenCalledWith(surgeKey(7, 1), surgeKey(7, 2), surgeKey(7, 3))
+  })
+
+  it('logs and does not throw when the category-enumeration query fails', async () => {
+    vi.mocked(pool.query).mockRejectedValue(new Error('db down'))
+
+    await expect(invalidateSurgeCache(7, null)).resolves.toBeUndefined()
+    expect(client.del).not.toHaveBeenCalled()
   })
 })

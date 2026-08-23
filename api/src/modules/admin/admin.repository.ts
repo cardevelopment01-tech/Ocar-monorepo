@@ -2,12 +2,13 @@ import { pool, withTransaction } from '@/db/client'
 import { client as redisClient } from '@/db/redis'
 import {
   RATE_CARD_VERSION_KEY, CITIES_ALL_KEY, cityByIdKey, VEHICLE_CATEGORIES_ALL_KEY,
-  rentalPackageKey, PACKAGE_TIERS_ALL_KEY, surgeKey,
+  rentalPackageKey, PACKAGE_TIERS_ALL_KEY,
 } from '@/constants/redis-keys'
 import { invalidate, cachedRead } from '@/lib/cache/reference-cache'
 import { RATE_CARD_CACHE_TTL_SECONDS } from '@/constants/limits'
 import { logger } from '@/lib/logger'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
+import { invalidateSurgeCache } from '@/modules/pricing/pricing.repository'
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg'
 import { recordAuditLog } from '@/lib/audit-log'
 import type {
@@ -1098,24 +1099,9 @@ export async function listAdminSurgeEvents() {
 
 // Same dual-write trap as rate_cards/cities/system_config: this is a second,
 // independent write path to surge_events (pricing.repository.ts has its own
-// createSurgeEvent/cancelSurgeEvent), so it needs its own invalidation too.
-// category_id IS NULL ("applies to all categories") can't be expressed as a
-// single surgeKey (getActiveSurge always caches per concrete categoryId), so
-// enumerate the small category list and invalidate each one for this city --
-// see the matching comment on pricing.repository.ts's invalidateSurgeCache.
-async function invalidateSurgeCache(cityId: number, categoryId: number | null): Promise<void> {
-  if (categoryId !== null) {
-    await invalidate(surgeKey(cityId, categoryId))
-    return
-  }
-  try {
-    const res = await pool.query('SELECT id FROM vehicle_categories')
-    await invalidate(...res.rows.map((r) => surgeKey(cityId, Number(r.id))))
-  } catch (err) {
-    logger.warn({ err, cityId }, 'reference-cache: failed to enumerate categories for surge invalidation, will serve stale until TTL')
-  }
-}
-
+// createSurgeEvent/cancelSurgeEvent), so it needs its own invalidation too --
+// reuses pricing.repository.ts's invalidateSurgeCache rather than duplicating
+// its branching (null-category enumeration) logic here.
 export async function createAdminSurgeEvent(data: {
   cityId: number
   categoryId: number | null
