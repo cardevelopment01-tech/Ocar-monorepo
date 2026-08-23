@@ -1,11 +1,21 @@
 import { pool } from '@/db/client'
+import { cachedRead, invalidate } from '@/lib/cache/reference-cache'
+import { configKey } from '@/constants/redis-keys'
+import { CONFIG_CACHE_TTL_SECONDS } from '@/constants/limits'
 
 export async function getConfigValue(key: string, fallback: string): Promise<string> {
+  const value = await cachedRead('system_config', configKey(key), CONFIG_CACHE_TTL_SECONDS, () =>
+    fetchConfigValueFromDb(key)
+  )
+  return value ?? fallback
+}
+
+async function fetchConfigValueFromDb(key: string): Promise<string | null> {
   const res = await pool.query(
     `SELECT value FROM system_config WHERE key = $1 AND status = 'active'`,
     [key]
   )
-  return res.rows[0]?.value ?? fallback
+  return res.rows[0]?.value ?? null
 }
 
 export interface SystemConfigRow {
@@ -82,5 +92,7 @@ export async function updateConfigValue(id: bigint, value: string, updatedBy: bi
     [id, value, updatedBy]
   )
   const row = res.rows[0]
-  return row ? toConfig(row) : null
+  if (!row) return null
+  await invalidate(configKey(row.key))
+  return toConfig(row)
 }

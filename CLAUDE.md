@@ -471,9 +471,9 @@ plan` (no `-var-file`/`-var="environment=..."` needed, it doesn't take one).
   ```sql
   UPDATE system_config SET value = 'true' WHERE key = 'driver_payouts_enabled';
   ```
-  No deploy needed — read live on every request. Delete this note once flipped on for good.
+  No deploy needed — read live, cached 30s, invalidated immediately on admin update. Delete this note once flipped on for good.
 
-- **Driver ₹500 minimum-wallet-balance recharge gate — including the negative-balance (cash-dues) block — is temporarily disabled for client driver testing.** `system_config.driver_minimum_balance` should be `'-999999'` (was `'500'`, briefly `'0'`) — this is read live by `goOnline()`, ride-broadcast driver filtering, and `/return-cab-available`, so it needs no deploy either way. **Apply this SQL manually** — it was not run as part of this change (no local DB connection at the time):
+- **Driver ₹500 minimum-wallet-balance recharge gate — including the negative-balance (cash-dues) block — is temporarily disabled for client driver testing.** `system_config.driver_minimum_balance` should be `'-999999'` (was `'500'`, briefly `'0'`) — this is read live, cached 30s, invalidated immediately on admin update — no deploy needed, by `goOnline()`, ride-broadcast driver filtering, and `/return-cab-available`. **Apply this SQL manually** — it was not run as part of this change (no local DB connection at the time):
   ```sql
   UPDATE system_config SET value = '-999999' WHERE key = 'driver_minimum_balance';
   ```

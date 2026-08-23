@@ -8,7 +8,10 @@ vi.mock('@/db/client', () => ({
 
 // retryNeverSubmittedSettlement's dev-mode branch reads config directly,
 // same pattern as submit-processing-settlements.test.ts.
-vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '', RAZORPAYX_ACCOUNT_NUMBER: '' } }))
+// REDIS_URL must be present: settlements.service now transitively imports
+// @/lib/system-config -> @/lib/cache/reference-cache -> @/db/redis, which
+// builds a real Redis client from config.REDIS_URL at import time.
+vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '', RAZORPAYX_ACCOUNT_NUMBER: '', REDIS_URL: 'redis://localhost:6379', NODE_ENV: 'test' } }))
 
 import { listStuckSettlements, retryFailedSettlement, retryNeverSubmittedSettlement, getDriverTaxStatement } from '@/modules/payments/submodules/settlements/settlements.service'
 import { setBankAccountStatus, listUnverifiedBankAccounts } from '@/modules/payments/submodules/settlements/bank-accounts.service'

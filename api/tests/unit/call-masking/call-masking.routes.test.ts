@@ -5,7 +5,10 @@ import request from 'supertest'
 // Same pattern as tests/unit/middleware/error-middleware-logging.test.ts —
 // mount just the router under test on a bare express app instead of the
 // full app.ts (which needs a real DB/Redis at import time).
-vi.mock('@/config', () => ({ config: { EXOTEL_WEBHOOK_SECRET: 'sekret', EXOTEL_WAIT_AUDIO_URL: '', EXOTEL_STATUS_CALLBACK_URL: '' } }))
+// REDIS_URL must be present: call-masking.service also now imports
+// @/lib/cache/reference-cache directly (system_config caching) -> @/db/redis,
+// which builds a real Redis client from config.REDIS_URL at import time.
+vi.mock('@/config', () => ({ config: { EXOTEL_WEBHOOK_SECRET: 'sekret', EXOTEL_WAIT_AUDIO_URL: '', EXOTEL_STATUS_CALLBACK_URL: '', REDIS_URL: 'redis://localhost:6379', NODE_ENV: 'test' } }))
 vi.mock('@/modules/call-masking/call-masking.repository')
 vi.mock('@/modules/call-masking/call-masking.service')
 // call-masking.service now pulls in @/db/client and the notifications

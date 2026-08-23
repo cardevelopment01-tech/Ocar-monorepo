@@ -7,7 +7,10 @@ vi.mock('@/db/client', () => ({
 
 // config is read live; the dev-mode test below overrides it per-test via vi.mock,
 // same pattern as tests/unit/payments/create-ride-payment-order.test.ts.
-vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '', RAZORPAYX_ACCOUNT_NUMBER: '' } }))
+// REDIS_URL must be present: settlements.service now transitively imports
+// @/lib/system-config -> @/lib/cache/reference-cache -> @/db/redis, which
+// builds a real Redis client from config.REDIS_URL at import time.
+vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '', RAZORPAYX_ACCOUNT_NUMBER: '', REDIS_URL: 'redis://localhost:6379', NODE_ENV: 'test' } }))
 
 import { submitProcessingSettlements } from '@/modules/payments/submodules/settlements/settlements.service'
 
@@ -38,6 +41,11 @@ describe('submitProcessingSettlements (live gateway, keys configured)', () => {
         RAZORPAY_KEY_ID: 'rzp_test_live',
         RAZORPAY_KEY_SECRET: 'secret',
         RAZORPAYX_ACCOUNT_NUMBER: '2323230012345678',
+        // resetModules() forces a fresh import of settlements.service, which
+        // re-triggers @/lib/system-config -> @/lib/cache/reference-cache ->
+        // @/db/redis's eager `new URL(config.REDIS_URL)` at module load time.
+        REDIS_URL: 'redis://localhost:6379',
+        NODE_ENV: 'test',
       },
     }))
     vi.doMock('@/db/client', () => ({

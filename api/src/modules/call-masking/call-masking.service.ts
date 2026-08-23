@@ -1,6 +1,8 @@
 import { config } from '@/config'
 import { pool } from '@/db/client'
 import { getConfigValue } from '@/lib/system-config'
+import { invalidate } from '@/lib/cache/reference-cache'
+import { configKey } from '@/constants/redis-keys'
 import { getRideById } from '@/modules/rides/rides.repository'
 import { createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
@@ -108,6 +110,8 @@ export async function checkDailySpend(): Promise<void> {
      WHERE key = 'exotel_masking_enabled' AND value = 'true'`
   )
   if (!rowCount) return
+
+  await invalidate(configKey('exotel_masking_enabled'))
 
   await notifyAllAdmins({
     type: 'exotel_budget_exceeded',

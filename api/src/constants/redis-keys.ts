@@ -13,6 +13,10 @@ export const ridePaymentOrderKey = (orderId: string): string => `ride:payment_or
 
 export const activeRideByDriverKey = (driverId: string): string => `ride:active_by_driver:${driverId}`
 
+export function configKey(key: string): string {
+  return `ref:v1:config:${key}`
+}
+
 export const RATE_CARD_VERSION_KEY = 'ref:v1:rate_card:ver'
 
 export function rateCardKey(
