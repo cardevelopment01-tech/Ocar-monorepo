@@ -233,14 +233,14 @@ function ActiveRideCard({ ride, onOpen }: { ride: RideDetail; onOpen: () => void
 
 function SkeletonCard() {
   return (
-    <div className="bg-surface rounded-2xl border border-border p-4 animate-pulse">
+    <div className="bg-surface rounded-2xl border border-border p-4">
       <div className="flex justify-between mb-3">
-        <div className="h-5 w-24 bg-surface-2 rounded-full" />
-        <div className="h-5 w-16 bg-surface-2 rounded" />
+        <div className="skeleton h-5 w-24 rounded-full" />
+        <div className="skeleton h-5 w-16 rounded" />
       </div>
       <div className="space-y-2 mb-2">
-        <div className="h-4 bg-surface-2 rounded w-4/5" />
-        <div className="h-4 bg-surface-2 rounded w-2/3" />
+        <div className="skeleton h-4 rounded w-4/5" />
+        <div className="skeleton h-4 rounded w-2/3" />
       </div>
     </div>
   )

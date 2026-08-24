@@ -2,10 +2,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Tag, Pencil, Zap, AlertTriangle, ChevronDown, ChevronUp, History, Package, Plus } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
+import { motion, AnimatePresence } from 'framer-motion'
 import { pricingApi, type RateCard, type SurgeEvent } from '@/lib/pricing-api'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 import { SkeletonRows, inputCls, labelCls } from './shared'
 import RentalPackagesTab from './RentalPackagesTab'
+import SuccessToast from '@/components/ui/SuccessToast'
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
 
@@ -80,9 +82,26 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
           <Pencil size={13} />
         </button>
       </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[480px] max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-hover p-6 z-[60]">
+      <AnimatePresence>
+        {open && (
+          <Dialog.Portal forceMount>
+            <Dialog.Overlay asChild forceMount>
+              <motion.div
+                className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              />
+            </Dialog.Overlay>
+            <Dialog.Content asChild forceMount>
+              <motion.div
+                className="fixed left-1/2 top-1/2 w-full max-w-[480px] max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-hover p-6 z-[60]"
+                initial={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
+                animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }}
+                exit={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              >
           <Dialog.Title className="text-lg font-bold text-text-primary mb-1">
             Update {card.category_name} · {RIDE_TYPE_LABEL[card.ride_type]}
           </Dialog.Title>
@@ -169,8 +188,11 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
               </button>
             </div>
           </form>
-        </Dialog.Content>
-      </Dialog.Portal>
+              </motion.div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        )}
+      </AnimatePresence>
     </Dialog.Root>
   )
 }
@@ -235,9 +257,26 @@ function CreateRateCardDialog({
           <Plus size={14} />Add City Rate
         </button>
       </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[480px] max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-hover p-6 z-[60]">
+      <AnimatePresence>
+        {open && (
+          <Dialog.Portal forceMount>
+            <Dialog.Overlay asChild forceMount>
+              <motion.div
+                className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              />
+            </Dialog.Overlay>
+            <Dialog.Content asChild forceMount>
+              <motion.div
+                className="fixed left-1/2 top-1/2 w-full max-w-[480px] max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-hover p-6 z-[60]"
+                initial={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
+                animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }}
+                exit={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              >
           <Dialog.Title className="text-lg font-bold text-text-primary mb-1">Add City Rate Override</Dialog.Title>
           <p className="text-xs text-text-muted mb-5">
             Creates a city-specific rate that takes priority over the global default for that city only.
@@ -323,8 +362,11 @@ function CreateRateCardDialog({
               </button>
             </div>
           </form>
-        </Dialog.Content>
-      </Dialog.Portal>
+              </motion.div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        )}
+      </AnimatePresence>
     </Dialog.Root>
   )
 }
@@ -372,9 +414,26 @@ function CreateSurgeDialog({
           <Zap size={14} />Schedule Surge
         </button>
       </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[480px] max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-hover p-6 z-[60]">
+      <AnimatePresence>
+        {open && (
+          <Dialog.Portal forceMount>
+            <Dialog.Overlay asChild forceMount>
+              <motion.div
+                className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              />
+            </Dialog.Overlay>
+            <Dialog.Content asChild forceMount>
+              <motion.div
+                className="fixed left-1/2 top-1/2 w-full max-w-[480px] max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-hover p-6 z-[60]"
+                initial={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
+                animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }}
+                exit={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              >
           <Dialog.Title className="text-lg font-bold text-text-primary mb-5">Schedule Surge Event</Dialog.Title>
           <form onSubmit={submit} className="space-y-4">
             <div>
@@ -432,8 +491,11 @@ function CreateSurgeDialog({
               </button>
             </div>
           </form>
-        </Dialog.Content>
-      </Dialog.Portal>
+              </motion.div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        )}
+      </AnimatePresence>
     </Dialog.Root>
   )
 }
@@ -471,6 +533,7 @@ export default function RateCardsPage() {
   const [historyOpen,    setHistoryOpen]    = useState(false)
   const [history,        setHistory]        = useState<{ id: number; category_name: string; ride_type: string; rate_per_km: string; change_reason: string | null; created_at: string }[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [successMsg,     setSuccessMsg]     = useState<string | null>(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true); setError('')
@@ -518,6 +581,8 @@ export default function RateCardsPage() {
 
   return (
     <div className="space-y-5">
+      <SuccessToast message={successMsg} onDismiss={() => setSuccessMsg(null)} />
+
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -530,10 +595,10 @@ export default function RateCardsPage() {
           </div>
         </div>
         {activeTab === 'rate_cards' && (
-          <CreateRateCardDialog cities={cities} categories={categoryOptions} onCreated={fetchAll} />
+          <CreateRateCardDialog cities={cities} categories={categoryOptions} onCreated={() => { fetchAll(); setSuccessMsg('Rate card created') }} />
         )}
         {activeTab === 'surge' && (
-          <CreateSurgeDialog cities={cities} categories={categoryOptions} onCreated={fetchAll} />
+          <CreateSurgeDialog cities={cities} categories={categoryOptions} onCreated={() => { fetchAll(); setSuccessMsg('Surge event scheduled') }} />
         )}
       </div>
 
@@ -660,7 +725,7 @@ export default function RateCardsPage() {
                           <td className="!text-right font-mono text-text-muted">{card.km_per_day ?? '—'}</td>
                           <td className="!text-right font-mono text-text-muted">{fmt(card.driver_allowance_per_day)}</td>
                           <td className="!text-right">
-                            <UpdateRateDialog card={card} cities={cities} onUpdated={fetchAll} />
+                            <UpdateRateDialog card={card} cities={cities} onUpdated={() => { fetchAll(); setSuccessMsg('Rate updated') }} />
                           </td>
                         </tr>
                       ))}

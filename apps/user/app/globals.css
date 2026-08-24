@@ -4,7 +4,7 @@
 
 @layer base {
   html {
-    font-family: var(--font-inter), sans-serif;
+    font-family: var(--font-sans), sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -80,6 +80,14 @@
     @apply bg-surface rounded-2xl shadow-card p-4;
   }
 
+  /* ── Skeleton shimmer ── */
+  .skeleton {
+    @apply rounded-lg bg-surface-2;
+    background-image: linear-gradient(90deg, theme('colors.surface-2') 25%, theme('colors.border.light') 50%, theme('colors.surface-2') 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s infinite linear;
+  }
+
   .place-icon-badge {
     @apply w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0;
     background: rgba(10, 159, 176, 0.08);
@@ -132,7 +140,7 @@
 .leaflet-container {
   width: 100%;
   height: 100%;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Plus Jakarta Sans', sans-serif;
   z-index: 0 !important;
 }
 

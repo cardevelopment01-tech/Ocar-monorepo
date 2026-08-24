@@ -36,8 +36,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans:    ['Inter', 'sans-serif'],
-        display: ['Inter', 'sans-serif'],
+        sans:    ['Plus Jakarta Sans', 'sans-serif'],
+        display: ['Space Grotesk', 'sans-serif'],
       },
       borderRadius: {
         sm:    '8px',

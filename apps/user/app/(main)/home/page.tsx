@@ -21,10 +21,6 @@ import { rideApi, type RideHistoryItem } from '@/lib/ride-api'
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
-const HERO_BG  = 'linear-gradient(160deg, #0F0F23 0%, #1E1B4B 100%)'
-const ICON_CLR = '#0A9FB0'
-const SHADOW   = '0 2px 12px rgba(15,15,35,0.07)'
-
 // Fixed positions for particles, no Math.random() to avoid hydration mismatch
 const PARTICLES = [
   { top: '16%', left: '9%',  delay: 0,   dur: 2.6 },
@@ -108,12 +104,14 @@ export default function HomePage() {
   const [collapsed,   setCollapsed]   = useState(false)
   const [resolving,   setResolving]   = useState(false)
   const [recentTrips, setRecentTrips] = useState<RideHistoryItem[]>([])
+  const [tripsLoading, setTripsLoading] = useState(true)
   const [resumeRideId, setResumeRideId] = useState<string | null>(null)
 
   useEffect(() => {
     void rideApi.getHistory(1, 3)
       .then(r => setRecentTrips(r.rides.filter(t => t.status === 'completed').slice(0, 2)))
       .catch(() => {})
+      .finally(() => setTripsLoading(false))
   }, [])
 
   // Fallback for a failed/slow active-ride check in the layout (network blip,
@@ -230,9 +228,8 @@ export default function HomePage() {
 
       {/* ── Hero ──────────────────────────────────────────────── */}
       <motion.div
-        className="relative flex-shrink-0 px-5 pt-safe-top overflow-hidden"
+        className="relative flex-shrink-0 px-5 pt-safe-top overflow-hidden bg-gradient-hero"
         style={{
-          background:              HERO_BG,
           borderBottomLeftRadius:  28,
           borderBottomRightRadius: 28,
         }}
@@ -403,8 +400,8 @@ export default function HomePage() {
           <Search size={17} strokeWidth={2} className="text-text-muted flex-shrink-0" />
           <span className="flex-1 text-left text-sm font-medium text-text-muted">Where to?</span>
           <span
-            className="text-xs font-semibold text-white rounded-lg"
-            style={{ background: ICON_CLR, padding: '6px 12px' }}
+            className="text-xs font-semibold text-white rounded-lg bg-primary"
+            style={{ padding: '6px 12px' }}
           >
             Go
           </span>
@@ -437,8 +434,7 @@ export default function HomePage() {
           {resumeRideId && (
             <motion.button
               onClick={() => router.push(`/ride/${resumeRideId}`)}
-              className="gloss-sheen w-full flex items-center gap-3 bg-primary rounded-2xl px-4 py-3.5"
-              style={{ boxShadow: SHADOW }}
+              className="gloss-sheen w-full flex items-center gap-3 bg-primary rounded-2xl px-4 py-3.5 shadow-ambient"
               variants={section}
               whileTap={{ scale: 0.98 }}
               transition={SPRING}
@@ -468,7 +464,7 @@ export default function HomePage() {
                   transition={SPRING}
                 >
                   <span className="icon-badge-gradient w-10 h-10">
-                    <s.Icon size={18} strokeWidth={1.6} style={{ color: ICON_CLR }} />
+                    <s.Icon size={18} strokeWidth={1.6} className="text-primary" />
                   </span>
                   <span className="flex flex-col items-center gap-0.5 text-center">
                     <span className="text-xs font-semibold text-text-primary">{s.label}</span>
@@ -495,7 +491,7 @@ export default function HomePage() {
                   transition={SPRING}
                 >
                   <span className="icon-badge-gradient">
-                    <p.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
+                    <p.Icon size={15} strokeWidth={1.6} className="text-primary" />
                   </span>
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-semibold text-text-primary">{p.label}</span>
@@ -508,7 +504,22 @@ export default function HomePage() {
           </motion.div>
 
           {/* Go again */}
-          {recentTrips.length > 0 && (
+          {tripsLoading ? (
+            <motion.div variants={section} className="card-glossy p-0 overflow-hidden">
+              {[0, 1].map(i => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-3 px-4 py-3.5${i === 0 ? ' border-b border-border' : ''}`}
+                >
+                  <span className="skeleton w-9 h-9 rounded-xl flex-shrink-0" />
+                  <span className="flex-1 min-w-0 flex flex-col gap-1.5">
+                    <span className="skeleton h-3.5 w-2/3 rounded" />
+                    <span className="skeleton h-3 w-1/3 rounded" />
+                  </span>
+                </div>
+              ))}
+            </motion.div>
+          ) : recentTrips.length > 0 && (
             <motion.div variants={section}>
               <motion.div
                 className="card-glossy p-0 overflow-hidden"
@@ -559,8 +570,7 @@ export default function HomePage() {
                 <motion.button
                   key={`${r.from}-${r.to}`}
                   onClick={() => toRide(r.to, r.lat, r.lng)}
-                  className="gloss-sheen flex-shrink-0 flex items-center gap-2 bg-surface border border-border rounded-full px-4 py-2.5"
-                  style={{ boxShadow: SHADOW }}
+                  className="gloss-sheen flex-shrink-0 flex items-center gap-2 bg-surface border border-border rounded-full px-4 py-2.5 shadow-ambient"
                   initial={{ opacity: 0, x: 14 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.3 + i * 0.07, duration: 0.32, ease: EASE }}
@@ -577,8 +587,8 @@ export default function HomePage() {
           {/* Promo */}
           <motion.div variants={section}>
             <motion.button
-              className="gloss-sheen w-full text-left rounded-2xl px-5 py-5"
-              style={{ background: HERO_BG, boxShadow: '0 6px 24px rgba(15,15,35,0.22)' }}
+              className="gloss-sheen w-full text-left rounded-2xl px-5 py-5 bg-gradient-hero"
+              style={{ boxShadow: '0 6px 24px rgba(15,15,35,0.22)' }}
               whileTap={{ scale: 0.985 }}
               transition={SPRING}
             >

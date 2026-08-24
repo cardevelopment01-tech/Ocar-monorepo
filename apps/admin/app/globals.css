@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,7 +7,7 @@ html.overflow-hidden {
 }
 
 @layer base {
-  html { font-family: 'DM Sans', sans-serif; }
+  html { font-family: var(--font-sans), sans-serif; }
   body { background: #F8FAFF; color: #0F172A; }
   * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 }
@@ -29,13 +27,14 @@ html.overflow-hidden {
   /* ── Data table ── */
   .data-table { @apply w-full text-sm border-collapse; }
   .data-table th {
-    @apply px-4 py-3 text-left text-xs font-semibold text-text-muted uppercase tracking-wide
+    @apply sticky top-0 z-10 px-4 py-3 text-left text-xs font-semibold text-text-muted uppercase tracking-wide
            border-b border-border bg-surface-2;
   }
   .data-table td {
     @apply px-4 py-3.5 text-text-secondary border-b border-border-light transition-colors duration-150 align-middle;
   }
   .data-table tr { @apply cursor-pointer; }
+  .data-table tbody tr:nth-child(even) td { background-color: #FAFBFF; }
   .data-table tr:hover td { background-color: #F5F7FF; }
   .data-table tr:last-child td { @apply border-b-0; }
 

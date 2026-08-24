@@ -41,7 +41,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        sans: ['Plus Jakarta Sans', 'sans-serif'],
+        display: ['Space Grotesk', 'sans-serif'],
       },
       borderRadius: {
         sm: '8px',
@@ -60,10 +61,12 @@ const config: Config = {
         float: '0 4px 20px rgba(10, 159, 176, 0.12)',
         glow: '0 6px 32px rgba(10, 159, 176, 0.35)',
         topbar: '0 1px 0 rgba(10, 159, 176, 0.08)',
+        ambient: '0 2px 12px rgba(15,15,35,0.07)',
       },
       backgroundImage: {
         'gradient-primary': 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)',
         'gradient-primary-soft': 'linear-gradient(135deg, #22B8C9 0%, #E869B3 100%)',
+        'gradient-hero': 'linear-gradient(160deg, #0F0F23 0%, #1E1B4B 100%)',
       },
       animation: {
         'slide-up': 'slideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
@@ -72,6 +75,7 @@ const config: Config = {
         'scale-in': 'scaleIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
         'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
         'fade-up': 'fadeUp 0.22s cubic-bezier(0.22, 1, 0.36, 1)',
+        shimmer: 'shimmer 1.6s infinite linear',
       },
       keyframes: {
         slideUp: {
@@ -97,6 +101,10 @@ const config: Config = {
         pulseSoft: {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.5' },
+        },
+        shimmer: {
+          '0%':   { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0'  },
         },
       },
     },

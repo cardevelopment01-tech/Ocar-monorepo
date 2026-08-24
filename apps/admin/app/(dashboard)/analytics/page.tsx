@@ -2,6 +2,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Star } from 'lucide-react'
 import {
+  AreaChart, Area, BarChart, Bar, Cell, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer,
+} from 'recharts'
+import {
   adminAnalyticsApi,
   type AnalyticsSummary,
   type DailyRevenue,
@@ -23,7 +26,7 @@ const EMPTY: AnalyticsSummary = {
   category_breakdown: [],
 }
 
-// ── SVG line/area chart ───────────────────────────────────────────────────────
+// ── Revenue area chart ────────────────────────────────────────────────────────
 function RevenueChart({ data }: { data: DailyRevenue[] }) {
   if (!data.length) return (
     <div className="h-36 flex items-center justify-center text-sm text-text-muted">
@@ -31,64 +34,68 @@ function RevenueChart({ data }: { data: DailyRevenue[] }) {
     </div>
   )
 
-  const W = 600
-  const H = 120
-  const PAD = 8
-  const maxRev = Math.max(...data.map(d => d.revenue), 1)
-
-  const pts = data.map((d, i) => {
-    const x = PAD + (i / Math.max(data.length - 1, 1)) * (W - PAD * 2)
-    const y = PAD + (1 - d.revenue / maxRev) * (H - PAD * 2)
-    return [x, y] as [number, number]
-  })
-
-  const polyline = pts.map(([x, y]) => `${x},${y}`).join(' ')
-  const area     = polyline + ` ${pts[pts.length - 1]![0]},${H} ${pts[0]![0]},${H}`
-
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 140 }} aria-label="Revenue chart">
-      <defs>
-        <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="#4F46E5" stopOpacity="0.18" />
-          <stop offset="100%" stopColor="#4F46E5" stopOpacity="0"    />
-        </linearGradient>
-      </defs>
-      <polygon points={area} fill="url(#revFill)" />
-      <polyline
-        points={polyline}
-        fill="none"
-        stroke="#4F46E5"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {pts.map(([x, y], i) => (
-        <circle key={i} cx={x} cy={y} r="3" fill="#4F46E5" />
-      ))}
-    </svg>
+    <ResponsiveContainer width="100%" height={180}>
+      <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+        <defs>
+          <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="#4F46E5" stopOpacity={0.18} />
+            <stop offset="100%" stopColor="#4F46E5" stopOpacity={0}    />
+          </linearGradient>
+        </defs>
+        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
+        <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#5B6B85' }} axisLine={{ stroke: '#E2E8F0' }} tickLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: '#5B6B85' }} axisLine={false} tickLine={false} width={40} />
+        <Tooltip
+          formatter={(value) => [`₹${new Intl.NumberFormat('en-IN').format(Math.round(Number(value)))}`, 'Revenue']}
+          contentStyle={{ borderRadius: 8, borderColor: '#E2E8F0', fontSize: 12 }}
+        />
+        <Area
+          type="monotone"
+          dataKey="revenue"
+          stroke="#4F46E5"
+          strokeWidth={2}
+          fill="url(#revFill)"
+          dot={{ r: 3, fill: '#4F46E5', strokeWidth: 0 }}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
   )
 }
 
-// ── Horizontal progress bar ───────────────────────────────────────────────────
-function HBar({ label, value, max, subLabel, color = '#4F46E5' }: {
-  label: string; value: number; max: number; subLabel?: string; color?: string
+// ── Horizontal bar breakdown ──────────────────────────────────────────────────
+function HBarChart({ items }: {
+  items: { label: string; value: number; subLabel?: string; color?: string }[]
 }) {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0
   return (
-    <div className="mb-3 last:mb-0">
-      <div className="flex justify-between items-baseline mb-1">
-        <span className="text-text-secondary text-sm">{label}</span>
-        <span className="text-text-primary font-bold text-sm tabular-nums">
-          {subLabel ?? value.toLocaleString('en-IN')}
-        </span>
-      </div>
-      <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${pct}%`, background: color }}
+    <ResponsiveContainer width="100%" height={Math.max(items.length * 40, 80)}>
+      <BarChart
+        data={items}
+        layout="vertical"
+        margin={{ top: 0, right: 24, left: 0, bottom: 0 }}
+        barSize={14}
+      >
+        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" horizontal={false} />
+        <XAxis type="number" tick={{ fontSize: 11, fill: '#5B6B85' }} axisLine={false} tickLine={false} />
+        <YAxis
+          type="category"
+          dataKey="label"
+          tick={{ fontSize: 12, fill: '#475569' }}
+          axisLine={false}
+          tickLine={false}
+          width={90}
         />
-      </div>
-    </div>
+        <Tooltip
+          formatter={(value, _name, item) => [item.payload.subLabel ?? Number(value).toLocaleString('en-IN'), '']}
+          contentStyle={{ borderRadius: 8, borderColor: '#E2E8F0', fontSize: 12 }}
+        />
+        <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+          {items.map((item, i) => (
+            <Cell key={i} fill={item.color ?? '#4F46E5'} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
   )
 }
 
@@ -114,8 +121,6 @@ export default function AnalyticsPage() {
   const { funnel, top_drivers, city_breakdown, category_breakdown, daily_revenue } = data
 
   const totalRevenue = daily_revenue.reduce((s, d) => s + d.revenue, 0)
-  const maxCity      = Math.max(...city_breakdown.map(c => c.ride_count), 1)
-  const maxCat       = Math.max(...category_breakdown.map(c => c.ride_count), 1)
 
   return (
     <div className="space-y-5">
@@ -174,30 +179,27 @@ export default function AnalyticsPage() {
               {[1,2,3,4].map(i => <div key={i} className="skeleton h-8 rounded" />)}
             </div>
           ) : (
-            <div className="space-y-4">
-              <HBar label="Requested" value={funnel.requested} max={funnel.requested} color="#5B6B85" />
-              <HBar
-                label="Accepted"
-                value={funnel.accepted}
-                max={funnel.requested}
-                subLabel={`${funnel.accepted.toLocaleString('en-IN')} (${funnel.requested > 0 ? Math.round(funnel.accepted / funnel.requested * 100) : 0}%)`}
-                color="#4F46E5"
-              />
-              <HBar
-                label="Completed"
-                value={funnel.completed}
-                max={funnel.requested}
-                subLabel={`${funnel.completed.toLocaleString('en-IN')} (${funnel.requested > 0 ? Math.round(funnel.completed / funnel.requested * 100) : 0}%)`}
-                color="#10B981"
-              />
-              <HBar
-                label="Cancelled"
-                value={funnel.cancelled}
-                max={funnel.requested}
-                subLabel={`${funnel.cancelled.toLocaleString('en-IN')} (${funnel.requested > 0 ? Math.round(funnel.cancelled / funnel.requested * 100) : 0}%)`}
-                color="#EF4444"
-              />
-            </div>
+            <HBarChart items={[
+              { label: 'Requested', value: funnel.requested, color: '#5B6B85' },
+              {
+                label: 'Accepted',
+                value: funnel.accepted,
+                subLabel: `${funnel.accepted.toLocaleString('en-IN')} (${funnel.requested > 0 ? Math.round(funnel.accepted / funnel.requested * 100) : 0}%)`,
+                color: '#4F46E5',
+              },
+              {
+                label: 'Completed',
+                value: funnel.completed,
+                subLabel: `${funnel.completed.toLocaleString('en-IN')} (${funnel.requested > 0 ? Math.round(funnel.completed / funnel.requested * 100) : 0}%)`,
+                color: '#10B981',
+              },
+              {
+                label: 'Cancelled',
+                value: funnel.cancelled,
+                subLabel: `${funnel.cancelled.toLocaleString('en-IN')} (${funnel.requested > 0 ? Math.round(funnel.cancelled / funnel.requested * 100) : 0}%)`,
+                color: '#EF4444',
+              },
+            ]} />
           )}
         </div>
 
@@ -211,18 +213,12 @@ export default function AnalyticsPage() {
           ) : city_breakdown.length === 0 ? (
             <p className="text-sm text-text-muted text-center py-4">No data</p>
           ) : (
-            <div>
-              {city_breakdown.map(c => (
-                <HBar
-                  key={c.city_name}
-                  label={c.city_name}
-                  value={c.ride_count}
-                  max={maxCity}
-                  subLabel={`${c.ride_count} rides · ₹${new Intl.NumberFormat('en-IN').format(Math.round(c.revenue))}`}
-                  color="#4F46E5"
-                />
-              ))}
-            </div>
+            <HBarChart items={city_breakdown.map(c => ({
+              label: c.city_name,
+              value: c.ride_count,
+              subLabel: `${c.ride_count} rides · ₹${new Intl.NumberFormat('en-IN').format(Math.round(c.revenue))}`,
+              color: '#4F46E5',
+            }))} />
           )}
         </div>
 
@@ -236,21 +232,15 @@ export default function AnalyticsPage() {
           ) : category_breakdown.length === 0 ? (
             <p className="text-sm text-text-muted text-center py-4">No data</p>
           ) : (
-            <div>
-              {category_breakdown.map((c, i) => {
-                const colors = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
-                return (
-                  <HBar
-                    key={c.category_name}
-                    label={c.category_name}
-                    value={c.ride_count}
-                    max={maxCat}
-                    subLabel={`${c.ride_count} rides`}
-                    color={colors[i % colors.length]}
-                  />
-                )
-              })}
-            </div>
+            <HBarChart items={category_breakdown.map((c, i) => {
+              const colors = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
+              return {
+                label: c.category_name,
+                value: c.ride_count,
+                subLabel: `${c.ride_count} rides`,
+                color: colors[i % colors.length],
+              }
+            })} />
           )}
         </div>
       </div>

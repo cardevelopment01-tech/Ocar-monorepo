@@ -98,7 +98,7 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
 
   return (
     <aside
-      className="fixed top-0 left-0 h-full w-[240px] bg-sidebar flex flex-col z-40"
+      className="fixed top-0 left-0 h-full w-[240px] bg-sidebar/80 backdrop-blur-xl flex flex-col z-40"
       style={{ boxShadow: '1px 0 0 #E8EAFF' }}
     >
       {/* Logo */}

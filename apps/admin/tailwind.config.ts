@@ -48,7 +48,8 @@ const config: Config = {
         'border-light': '#F1F5F9',
       },
       fontFamily: {
-        sans: ['DM Sans', 'sans-serif'],
+        sans: ['Plus Jakarta Sans', 'sans-serif'],
+        display: ['Space Grotesk', 'sans-serif'],
       },
       fontSize: {
         xs:    ['11px', { lineHeight: '16px' }],

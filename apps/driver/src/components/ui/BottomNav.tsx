@@ -47,7 +47,7 @@ export default function BottomNav() {
             aria-label={label}
             aria-current={active ? 'page' : undefined}
           >
-            <div className="relative flex items-center justify-center" style={{ width: 34, height: 34 }}>
+            <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 44, height: 44 }}>
               {active && !prefersReducedMotion && (
                 <motion.div
                   layoutId="nav-badge"

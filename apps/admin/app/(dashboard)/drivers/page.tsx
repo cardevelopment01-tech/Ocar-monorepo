@@ -8,6 +8,7 @@ import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import ReasonDialog from '@/components/ui/ReasonDialog'
+import SuccessToast from '@/components/ui/SuccessToast'
 import { adminDriverApi, type DriverListItem } from '@/lib/admin-api'
 import { cn } from '@/lib/utils'
 import { InitialsAvatar, fmt } from './shared'
@@ -56,6 +57,7 @@ export default function DriversPage() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError]     = useState('')
+  const [successMsg, setSuccessMsg]       = useState<string | null>(null)
 
   // ── debounce search ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -92,6 +94,7 @@ export default function DriversPage() {
       if (type === 'ban')         await adminDriverApi.ban(driverId, reason!)
       setPendingAction(null)
       await fetchList()
+      setSuccessMsg(type === 'approve' ? 'Driver approved' : type === 'rejectDocs' ? 'Documents rejected' : 'Driver banned')
     } catch { setActionError('Action failed. Please try again.') }
     finally { setActionLoading(false) }
   }
@@ -152,6 +155,8 @@ export default function DriversPage() {
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
+      <SuccessToast message={successMsg} onDismiss={() => setSuccessMsg(null)} />
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Total Drivers"    value={total}                                                 change="All time"        changeType="neutral" icon={Users}    gradient="blue"   loading={listLoading} />

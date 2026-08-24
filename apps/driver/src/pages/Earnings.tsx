@@ -37,11 +37,16 @@ export default function Earnings() {
   const [trips, setTrips] = useState<TripHistoryItem[]>([])
   const [tripsLoading, setTripsLoading] = useState(true)
 
-  useEffect(() => {
+  const [summaryError, setSummaryError] = useState(false)
+
+  const loadSummary = () => {
+    setSummaryError(false)
     driverRideApi.getEarningsSummary(period)
       .then(data => setSummary(data))
-      .catch(() => setSummary(EMPTY_SUMMARY))
-  }, [period])
+      .catch(() => { setSummary(EMPTY_SUMMARY); setSummaryError(true) })
+  }
+
+  useEffect(loadSummary, [period])
 
   useEffect(() => {
     driverRideApi.getMyTrips(1, 10)
@@ -51,20 +56,28 @@ export default function Earnings() {
   }, [])
 
   const [payout, setPayout] = useState<DriverEarningsBalance | null>(null)
+  const [payoutError, setPayoutError] = useState(false)
   const [cashingOut, setCashingOut] = useState(false)
   const [cashOutError, setCashOutError] = useState<string | null>(null)
   const [bankAccounts, setBankAccounts] = useState<DriverBankAccount[]>([])
   const [bankAccountsLoading, setBankAccountsLoading] = useState(true)
+  const [bankAccountsError, setBankAccountsError] = useState(false)
 
   const loadBankAccounts = () => {
+    setBankAccountsError(false)
     driverPayoutApi.listBankAccounts()
       .then(setBankAccounts)
-      .catch(() => {})
+      .catch(() => setBankAccountsError(true))
       .finally(() => setBankAccountsLoading(false))
   }
 
+  const loadPayout = () => {
+    setPayoutError(false)
+    driverPayoutApi.getEarningsBalance().then(setPayout).catch(() => setPayoutError(true))
+  }
+
   useEffect(() => {
-    driverPayoutApi.getEarningsBalance().then(setPayout).catch(() => {})
+    loadPayout()
     loadBankAccounts()
   }, [])
 
@@ -143,31 +156,34 @@ export default function Earnings() {
           </p>
         </motion.div>
         <div className="flex gap-2 mt-3 flex-wrap">
-          <span
-            className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary"
-            style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}
-          >
+          <span className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary bg-border-light border border-border">
             {e.trip_count} trips
           </span>
-          <span
-            className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary"
-            style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}
-          >
+          <span className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary bg-border-light border border-border">
             {e.online_hours} online
           </span>
-          <span
-            className="rounded-full px-3 py-1 text-xs font-semibold flex items-center gap-1 text-text-secondary"
-            style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}
-          >
+          <span className="rounded-full px-3 py-1 text-xs font-semibold flex items-center gap-1 text-text-secondary bg-border-light border border-border">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/>
             </svg>
             {e.rating ?? '—'}
           </span>
         </div>
+        {summaryError && (
+          <p className="text-accent-red text-xs mt-3">
+            Failed to load earnings.{' '}
+            <button onClick={loadSummary} className="underline font-semibold cursor-pointer">Retry</button>
+          </p>
+        )}
       </div>
 
       {/* Payable balance + cash out */}
+      {payoutError && (
+        <div className="mx-5 bg-white rounded-3xl p-4 mb-4 border border-border text-center">
+          <p className="text-accent-red text-xs">Failed to load payout balance.</p>
+          <button onClick={loadPayout} className="text-primary text-xs font-semibold underline mt-1 cursor-pointer">Retry</button>
+        </div>
+      )}
       {payout && payout.payableBalance > 0 && (
         <div className="mx-5 bg-white rounded-3xl p-5 mb-4 border border-border">
           <div className="flex items-center justify-between gap-3">
@@ -199,6 +215,12 @@ export default function Earnings() {
         </div>
       )}
 
+      {bankAccountsError && (
+        <p className="mx-5 mb-4 text-accent-red text-xs text-center">
+          Failed to load bank accounts.{' '}
+          <button onClick={loadBankAccounts} className="underline font-semibold cursor-pointer">Retry</button>
+        </p>
+      )}
       <BankAccountSection account={primaryAccount} loading={bankAccountsLoading} onAdded={loadBankAccounts} />
 
       {/* Bar chart */}
@@ -214,10 +236,11 @@ export default function Earnings() {
               transition={{ duration: 0.28, delay: i * 0.03, ease: [0.16, 1, 0.3, 1] }}
               style={{ transformOrigin: 'bottom' }}
             >
-              <div
-                className="w-full rounded-t-md transition-all duration-500"
+              <motion.div
+                className="w-full rounded-t-md"
+                animate={{ height: `${(val / maxBar) * 100}%` }}
+                transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 30 }}
                 style={{
-                  height: `${(val / maxBar) * 100}%`,
                   minHeight: 4,
                   background: val > 0
                     ? 'linear-gradient(180deg, #FB923C 0%, #F97316 100%)'
