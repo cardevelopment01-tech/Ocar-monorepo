@@ -8,6 +8,20 @@ import { logger } from '@/lib/logger'
 
 const log = logger.child({ module: 'settlements-service' })
 
+// Static map of observed RazorpayX payout error reasons → stable, safe codes
+// returned by the admin API. Extend as new reasons show up in the Pino logs.
+export const FAILURE_CODE_MAP: Record<string, string> = {
+  invalid_account_number: 'PAYOUT_INVALID_ACCOUNT',
+  invalid_fund_account: 'PAYOUT_INVALID_ACCOUNT',
+  insufficient_balance: 'PAYOUT_INSUFFICIENT_PLATFORM_BALANCE',
+  beneficiary_bank_offline: 'PAYOUT_BANK_OFFLINE',
+}
+
+export function mapPayoutFailureCode(raw?: string | null): string {
+  if (!raw) return 'PAYOUT_FAILED'
+  return FAILURE_CODE_MAP[raw] ?? 'PAYOUT_FAILED'
+}
+
 function currentFyQuarter(now: Date): { fy: string; quarter: number } {
   // Indian FY: Apr 1 - Mar 31. Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar.
   const month = now.getUTCMonth() // 0-11
@@ -367,7 +381,14 @@ async function submitSettlementRow(row: ProcessingSettlementRow, devMode: boolea
     })
     if (!payoutRes.ok) {
       const errBody = await payoutRes.text()
-      throw new Error(`RazorpayX payout API returned ${payoutRes.status}: ${errBody}`)
+      let gatewayReason: string | undefined
+      try {
+        const parsed = JSON.parse(errBody) as { error?: { reason?: string; code?: string } }
+        gatewayReason = parsed.error?.reason ?? parsed.error?.code
+      } catch { /* non-JSON body — leave gatewayReason undefined → PAYOUT_FAILED */ }
+      throw Object.assign(new Error('RazorpayX payout failed'), {
+        gatewayReason, gatewayStatus: payoutRes.status, gatewayBody: errBody,
+      })
     }
     const payout = await payoutRes.json() as { id: string }
 
@@ -376,12 +397,15 @@ async function submitSettlementRow(row: ProcessingSettlementRow, devMode: boolea
       [row.id, payout.id]
     )
   } catch (err) {
+    const failureCode = mapPayoutFailureCode((err as { gatewayReason?: string }).gatewayReason)
+    // Full gateway detail (status + raw body) stays in structured logs ONLY —
+    // never persisted to a column the admin API returns (no error.message leak).
     log.error({ err, settlementId: row.id }, 'payout submit failed')
     await pool.query(
       `UPDATE settlements
-         SET status = 'failed', failed_at = now(), failure_reason = $2, razorpay_payout_id = NULL
+         SET status = 'failed', failed_at = now(), failure_code = $2, razorpay_payout_id = NULL
        WHERE id = $1`,
-      [row.id, err instanceof Error ? err.message : 'unknown error']
+      [row.id, failureCode]
     )
     await pool.query(
       `UPDATE driver_earnings SET status = 'cleared', settlement_id = NULL WHERE settlement_id = $1`,
@@ -418,7 +442,7 @@ export async function listSettlementBatches() {
 export async function getSettlementBatchDetail(periodFrom: string, periodTo: string) {
   const res = await pool.query(
     `SELECT s.id, s.driver_id, d.full_name AS driver_name, s.net_payout, s.fee,
-            s.status, s.mode, s.utr, s.razorpay_payout_id, s.failure_reason, s.created_at
+            s.status, s.mode, s.utr, s.razorpay_payout_id, s.failure_code, s.created_at
      FROM settlements s
      JOIN drivers d ON d.id = s.driver_id
      WHERE s.period_from = $1 AND s.period_to = $2

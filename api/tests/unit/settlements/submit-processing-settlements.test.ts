@@ -88,7 +88,7 @@ describe('submitProcessingSettlements (live gateway, keys configured)', () => {
   })
 
   it('failure: reverts settlement to failed with razorpay_payout_id cleared, and earnings back to cleared', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => 'Invalid fund account' })
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => '{"error":{"reason":"invalid_fund_account"}}' })
     vi.stubGlobal('fetch', fetchMock)
     poolQuery
       .mockResolvedValueOnce({ rows: [{ id: '901', driver_id: '42', net_payout: '850.00' }] }) // SELECT processing
@@ -105,8 +105,10 @@ describe('submitProcessingSettlements (live gateway, keys configured)', () => {
     const failUpdate = poolQuery.mock.calls[3]
     expect(failUpdate[0]).toContain("status = 'failed'")
     expect(failUpdate[0]).toContain('razorpay_payout_id = NULL')
+    expect(failUpdate[0]).toContain('failure_code = $2')
+    expect(failUpdate[0]).not.toContain('failure_reason')
     expect(failUpdate[1][0]).toBe('901')
-    expect(failUpdate[1][1]).toContain('Invalid fund account')
+    expect(failUpdate[1][1]).toBe('PAYOUT_INVALID_ACCOUNT') // mapped, not the raw body
 
     const earningsRevert = poolQuery.mock.calls[4]
     expect(earningsRevert[0]).toContain("status = 'cleared'")

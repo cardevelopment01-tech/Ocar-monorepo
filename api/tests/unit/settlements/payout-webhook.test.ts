@@ -6,6 +6,7 @@ vi.mock('@/db/client', () => ({
 }))
 vi.mock('@/modules/payments/submodules/settlements/settlements.service', () => ({
   accrueDriverEarning: vi.fn(),
+  mapPayoutFailureCode: (raw?: string | null) => (raw ? 'PAYOUT_FAILED' : 'PAYOUT_FAILED'),
 }))
 
 import { handleWebhookEvent } from '@/modules/payments/payments.service'
