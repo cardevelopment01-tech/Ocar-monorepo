@@ -1,5 +1,6 @@
 import { pool } from '@/db/client'
 import { cachedRead } from '@/lib/cache/reference-cache'
+import { logger } from '@/lib/logger'
 import { categoryFallbackKey } from '@/constants/redis-keys'
 import { docIssueExistsSql } from '@/modules/drivers/drivers.repository'
 import type { AssignCandidate, BillingMode, DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
@@ -1478,18 +1479,34 @@ export async function getDriverEarningsSummary(
  * this to one ride.
  */
 export async function getGpsTrackedDistanceKm(rideId: bigint, since: Date): Promise<number | null> {
-  const res = await pool.query<{ km: string | null }>(
+  const res = await pool.query<{ km: string | null; booked_km: string | null }>(
     `SELECT
        CASE WHEN count(*) >= 2
          THEN ST_Length(ST_MakeLine(location::geometry ORDER BY recorded_at)::geography) / 1000
          ELSE NULL
-       END AS km
+       END AS km,
+       (SELECT estimated_km FROM fare_snapshots WHERE ride_id = $1) AS booked_km
      FROM gps_tracks
      WHERE ride_id = $1 AND recorded_at >= $2`,
     [rideId, since]
   )
-  const km = res.rows[0]?.km
-  return km != null ? parseFloat(km) : null
+  const row = res.rows[0]
+  const km = row?.km != null ? parseFloat(row.km) : null
+  if (km == null) return null
+
+  // Plausibility ceiling: a noisy or jumpy GPS trail can inflate ST_Length far past
+  // any real route. Cap at 2.5x the booked distance (generous headroom for legit
+  // detours/reroutes); beyond that, return null so verifyEndOTP falls back to the
+  // client estimate — the same fallback the <2-points case already triggers.
+  const bookedKm = row?.booked_km != null ? parseFloat(row.booked_km) : null
+  if (bookedKm != null && bookedKm > 0 && km > bookedKm * 2.5) {
+    logger.warn(
+      { rideId, gpsKm: km, bookedKm, ceilingKm: bookedKm * 2.5 },
+      'GPS-tracked distance implausible, falling back to booked estimate'
+    )
+    return null
+  }
+  return km
 }
 
 // ── ETA accuracy instrumentation ────────────────────────────────
