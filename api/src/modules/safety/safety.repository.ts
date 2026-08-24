@@ -510,3 +510,42 @@ export async function getDriverStatus(driverId: bigint): Promise<string | null> 
   )
   return res.rows[0]?.status ?? null
 }
+
+// ── SLA ESCALATION SWEEPS (§03.4) ─────────────────────────────────
+
+// SOS alerts still 'triggered' (never acknowledged) past the staleness window
+// and not yet escalated. Bounded by the sos_alerts_status_idx partial index.
+export async function getStaleSosAlerts(olderThanMinutes: number) {
+  const res = await pool.query<{ id: string; ride_id: string; created_at: Date }>(
+    `SELECT id, ride_id, created_at
+     FROM sos_alerts
+     WHERE status = 'triggered'
+       AND escalated_at IS NULL
+       AND created_at < now() - make_interval(mins => $1)`,
+    [olderThanMinutes]
+  )
+  return res.rows
+}
+
+export async function markSosEscalated(id: bigint) {
+  await pool.query(`UPDATE sos_alerts SET escalated_at = now() WHERE id = $1`, [id])
+}
+
+// Disputes past their SLA deadline, not in a terminal state, not yet escalated.
+// Terminal states mirror disputes_status_idx's active-state list (open,
+// under_review, pending_info, escalated) — resolved/withdrawn are the only
+// terminal dispute_status values.
+export async function getBreachedDisputes() {
+  const res = await pool.query<{ id: string }>(
+    `SELECT id
+     FROM disputes
+     WHERE escalated_at IS NULL
+       AND sla_due_at < now()
+       AND status NOT IN ('resolved', 'withdrawn')`
+  )
+  return res.rows
+}
+
+export async function markDisputeSlaEscalated(id: bigint) {
+  await pool.query(`UPDATE disputes SET escalated_at = now() WHERE id = $1`, [id])
+}
