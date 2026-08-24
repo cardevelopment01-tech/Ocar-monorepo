@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq'
-import { redisConnection, QUEUE_NAMES, schedulerQueue } from '@/jobs/queues'
+import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import * as repo from '@/modules/rides/rides.repository'
 import {
   processDispatchScheduled,
@@ -69,18 +69,3 @@ export const schedulerWorker = new Worker(
 schedulerWorker.on('failed', (job, err) => {
   log.error({ err, jobId: job?.id, jobName: job?.name }, 'scheduler job failed')
 })
-
-// §03.4: register the two safety SLA sweeps on the same 5-minute cadence the
-// call-masking mask sweep uses. Kept in this file (not server.ts) to stay within
-// the safety-hardening plan's file scope; move alongside the other server.ts
-// registrations later if the team prefers them centralized.
-void schedulerQueue.add(
-  'sweep_stale_sos',
-  {},
-  { repeat: { every: 5 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
-)
-void schedulerQueue.add(
-  'sweep_dispute_sla',
-  {},
-  { repeat: { every: 5 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
-)
