@@ -870,7 +870,7 @@ export async function unblacklistVehicle(vehicleId: bigint): Promise<void> {
 export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
   const res = await pool.query(
     `SELECT dvd.id, dvd.vehicle_id, dvd.doc_type, dvd.file_url, dvd.doc_number,
-            dvd.status, dvd.created_at,
+            dvd.status, dvd.created_at, dvd.updated_at,
             dv.number_plate, dv.vehicle_name,
             d.full_name AS driver_name, d.code AS driver_code
      FROM driver_vehicle_documents dvd
@@ -883,6 +883,7 @@ export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
     id: String(r.id), vehicle_id: String(r.vehicle_id), doc_type: r.doc_type as string,
     file_url: r.file_url as string, doc_number: r.doc_number as string | null,
     status: r.status as string, created_at: r.created_at as string,
+    updated_at: r.updated_at as string,
     number_plate: r.number_plate as string | null, vehicle_name: r.vehicle_name as string | null,
     driver_name: r.driver_name as string | null, driver_code: r.driver_code as string,
   }))
