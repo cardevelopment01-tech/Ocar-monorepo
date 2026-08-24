@@ -77,6 +77,20 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '0 4 * * *' }, removeOnComplete: true, removeOnFail: true }
   )
+  // §03.4: page all admins for SOS alerts still unacknowledged 5+ minutes
+  // after being triggered.
+  await schedulerQueue.add(
+    'sweep_stale_sos',
+    {},
+    { repeat: { every: 5 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
+  )
+  // §03.4: page all admins for disputes past their sla_due_at that haven't
+  // been resolved/withdrawn.
+  await schedulerQueue.add(
+    'sweep_dispute_sla',
+    {},
+    { repeat: { every: 5 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
+  )
 
   void partitionMaintenanceWorker
   logger.info('partition maintenance worker started')

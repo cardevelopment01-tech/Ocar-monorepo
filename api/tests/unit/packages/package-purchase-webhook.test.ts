@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// confirmRidePayment's status flip now runs on a pool.connect() transaction
+// client (single-txn settlement refactor) — only exercised by the
+// "ride payment short-circuits" case below, which never gets far enough to
+// need a fully scripted client (the flip's 0-rowCount is never reached; the
+// SELECT on rideLookupHit already returns a match before that point).
+const fakeClient = { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }), release: vi.fn() }
 vi.mock('@/db/client', () => ({
-  pool: { query: vi.fn(), connect: vi.fn() },
+  pool: { query: vi.fn(), connect: vi.fn(() => Promise.resolve(fakeClient)) },
 }))
 vi.mock('@/db/redis', () => ({ client: { get: vi.fn(), set: vi.fn(), del: vi.fn() } }))
 vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '' } }))

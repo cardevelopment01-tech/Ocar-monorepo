@@ -5,6 +5,11 @@ export const OTP_MAX_ATTEMPTS = 10
 export const OTP_LOCK_DURATION_MINUTES = 5
 export const OTP_RATE_LIMIT_WINDOW_MINUTES = 5
 export const OTP_RATE_LIMIT_MAX_REQUESTS = 10
+// Ride OTP (4-digit, DB-stored) brute-force protection. Independent of the
+// login-OTP limiter (OTP_MAX_ATTEMPTS) — only the attempt COUNTER lives in
+// Redis; the OTP hash itself stays in rides.start_otp_hash/end_otp_hash.
+export const RIDE_OTP_MAX_ATTEMPTS = 5
+export const RIDE_OTP_LOCKOUT_SECONDS = 15 * 60
 
 export const JWT_ACCESS_EXPIRY = '15m'
 export const JWT_REFRESH_EXPIRY_USER = '30d'

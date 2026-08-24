@@ -376,6 +376,18 @@ export async function syncDriverStatusAfterDocChange(driverId: bigint, adminId: 
          VALUES ($1, $2, 'docs_rejected', 'Document rejected or expired', $3)`,
         [driverId, currentStatus, adminId]
       )
+      // Revocation must also revoke presence: ending the session inside this same
+      // FOR UPDATE transaction closes the window where a now-ineligible driver keeps
+      // a live 'online' session (misleading ops dashboards + a re-check race). The
+      // broadcast candidate query already excludes them from matching (see
+      // docIssueExistsSql), so this is the second half of "eligibility is an
+      // invariant of being online", not just a gate at go-online.
+      await client.query(
+        `UPDATE driver_sessions
+         SET status = 'offline', went_offline_at = now(), offline_reason = 'docs_revoked'
+         WHERE driver_id = $1 AND status = 'online'`,
+        [driverId]
+      )
     } else if (eligible && currentStatus === 'docs_rejected') {
       beforeStatus = currentStatus
       afterStatus = 'active'
@@ -858,7 +870,7 @@ export async function unblacklistVehicle(vehicleId: bigint): Promise<void> {
 export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
   const res = await pool.query(
     `SELECT dvd.id, dvd.vehicle_id, dvd.doc_type, dvd.file_url, dvd.doc_number,
-            dvd.status, dvd.created_at,
+            dvd.status, dvd.created_at, dvd.updated_at,
             dv.number_plate, dv.vehicle_name,
             d.full_name AS driver_name, d.code AS driver_code
      FROM driver_vehicle_documents dvd
@@ -871,18 +883,21 @@ export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
     id: String(r.id), vehicle_id: String(r.vehicle_id), doc_type: r.doc_type as string,
     file_url: r.file_url as string, doc_number: r.doc_number as string | null,
     status: r.status as string, created_at: r.created_at as string,
+    updated_at: r.updated_at as string,
     number_plate: r.number_plate as string | null, vehicle_name: r.vehicle_name as string | null,
     driver_name: r.driver_name as string | null, driver_code: r.driver_code as string,
   }))
 }
 
-export async function approveDriverDoc(docId: bigint, adminId: bigint): Promise<{ driver_id: string } | null> {
+export async function approveDriverDoc(
+  docId: bigint, adminId: bigint, verifiedValidUntil: string, seenUpdatedAt: string
+): Promise<{ driver_id: string } | null> {
   const res = await pool.query(
     `UPDATE driver_documents
-     SET status = 'approved', reviewed_by = $1, reviewed_at = now(), updated_at = now()
-     WHERE id = $2
+     SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
+     WHERE id = $3 AND updated_at = $4
      RETURNING driver_id`,
-    [adminId, docId]
+    [verifiedValidUntil, adminId, docId, seenUpdatedAt]
   )
   const row = res.rows[0]
   return row ? { driver_id: String(row.driver_id) } : null
@@ -902,14 +917,16 @@ export async function rejectDriverDoc(
   return row ? { driver_id: String(row.driver_id), doc_type: row.doc_type as string } : null
 }
 
-export async function approveVehicleDoc(docId: bigint, adminId: bigint): Promise<{ driver_id: string } | null> {
+export async function approveVehicleDoc(
+  docId: bigint, adminId: bigint, verifiedValidUntil: string, seenUpdatedAt: string
+): Promise<{ driver_id: string } | null> {
   const res = await pool.query(
     `UPDATE driver_vehicle_documents dvd
-     SET status = 'approved', reviewed_by = $1, reviewed_at = now(), updated_at = now()
+     SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
      FROM driver_vehicles dv
-     WHERE dvd.id = $2 AND dv.id = dvd.vehicle_id
+     WHERE dvd.id = $3 AND dvd.updated_at = $4 AND dv.id = dvd.vehicle_id
      RETURNING dv.driver_id`,
-    [adminId, docId]
+    [verifiedValidUntil, adminId, docId, seenUpdatedAt]
   )
   const row = res.rows[0]
   return row ? { driver_id: String(row.driver_id) } : null
@@ -932,17 +949,17 @@ export async function rejectVehicleDoc(
 
 export async function listExpiringDocs(daysAhead: number): Promise<ExpiringVehicleDoc[]> {
   const res = await pool.query(
-    `SELECT dvd.id, dvd.vehicle_id, dvd.doc_type, dvd.file_url, dvd.valid_until,
+    `SELECT dvd.id, dvd.vehicle_id, dvd.doc_type, dvd.file_url, dvd.verified_valid_until AS valid_until,
             dv.number_plate, dv.vehicle_name,
             d.full_name AS driver_name, d.phone AS driver_phone, d.code AS driver_code
      FROM driver_vehicle_documents dvd
      JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
      JOIN drivers d ON d.id = dv.driver_id
      WHERE dvd.status = 'approved'
-       AND dvd.valid_until IS NOT NULL
-       AND dvd.valid_until <= now() + ($1 || ' days')::interval
-       AND dvd.valid_until >= now()
-     ORDER BY dvd.valid_until ASC`,
+       AND dvd.verified_valid_until IS NOT NULL
+       AND dvd.verified_valid_until <= now() + ($1 || ' days')::interval
+       AND dvd.verified_valid_until >= now()
+     ORDER BY dvd.verified_valid_until ASC`,
     [daysAhead]
   )
   return res.rows.map(r => ({

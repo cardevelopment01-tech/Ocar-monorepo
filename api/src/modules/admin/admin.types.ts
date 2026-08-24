@@ -211,6 +211,7 @@ export interface PendingVehicleDoc {
   doc_number: string | null
   status: string
   created_at: string
+  updated_at: string
   number_plate: string | null
   vehicle_name: string | null
   driver_name: string | null

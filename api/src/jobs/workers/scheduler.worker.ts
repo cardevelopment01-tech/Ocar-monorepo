@@ -9,16 +9,21 @@ import { createWorkerLogger } from '@/lib/worker-logger'
 import { findDocsNeedingExpiryNotice } from '@/modules/drivers/drivers.repository'
 import { notifyDocumentExpiring, notifyDocumentExpired } from '@/modules/notifications/notifications.service'
 import { docLabel } from '@/modules/admin/admin.service'
+import { sweepStaleSosAlerts, sweepBreachedDisputeSlas } from '@/modules/safety/safety.sweeps'
 
 const log = createWorkerLogger('scheduler')
 
-// Three job types share this queue:
+// Five job types share this queue:
 //  - 'dispatch_scheduled_ride' — one-shot delayed job set at booking time, fires
 //    the moment a specific ride enters its dispatch buffer window
 //  - 'sweep_scheduled_rides'   — repeatable safety net (server restarts, delayed
 //    job loss, clock skew) that catches any ride the delayed job missed
 //  - 'sweep_document_expiry'   — daily reminder sweep for documents landing on a
 //    30/15/7/1-day-to-expiry threshold, or expiring today
+//  - 'sweep_stale_sos'         — §03.4: page all admins for SOS alerts still
+//    unacknowledged 5+ minutes after being triggered
+//  - 'sweep_dispute_sla'       — §03.4: page all admins for disputes past their
+//    sla_due_at that haven't been resolved/withdrawn
 export const schedulerWorker = new Worker(
   QUEUE_NAMES.SCHEDULER,
   async (job) => {
@@ -45,6 +50,17 @@ export const schedulerWorker = new Worker(
           await notifyDocumentExpiring(BigInt(notice.driverId), label, notice.daysRemaining, notice.route)
         }
       }
+      return
+    }
+
+    if (job.name === 'sweep_stale_sos') {
+      await sweepStaleSosAlerts()
+      return
+    }
+
+    if (job.name === 'sweep_dispute_sla') {
+      await sweepBreachedDisputeSlas()
+      return
     }
   },
   { connection: redisConnection }

@@ -1,6 +1,8 @@
 import { pool } from '@/db/client'
 import { cachedRead } from '@/lib/cache/reference-cache'
+import { logger } from '@/lib/logger'
 import { categoryFallbackKey } from '@/constants/redis-keys'
+import { docIssueExistsSql } from '@/modules/drivers/drivers.repository'
 import type { AssignCandidate, BillingMode, DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
 import {
   STALE_REQUESTED_MINUTES,
@@ -173,6 +175,7 @@ export async function findNearbyDrivers(params: {
        -- ds.status at 'online').
        OR (dls.is_available = false AND dls.updated_at > now() - ($7 || ' seconds')::interval)
      )
+       AND NOT ${docIssueExistsSql('ds.driver_id')}
        AND ds.status = 'online'
        AND ds.mode = 'standard'
        AND ds.category_id = ANY($3::bigint[])
@@ -262,6 +265,7 @@ export async function findReturnCabDrivers(params: {
        LIMIT 1
      ) drop_city ON true
      WHERE rcr.is_active = true
+       AND NOT ${docIssueExistsSql('rcr.driver_id')}
        AND ds.status = 'online'
        AND ds.category_id = ANY($5::bigint[])
        AND (
@@ -557,9 +561,9 @@ export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | n
   return res.rows[0] ?? null
 }
 
-export async function getRideById(rideId: bigint): Promise<Ride | null> {
-  const res = await pool.query<Ride>(
-    `SELECT
+// Shared SELECT/FROM/JOIN body (no WHERE) used by both getRideById and
+// getRideForDriverAction so they return identical computed columns.
+const RIDE_SELECT_SQL = `SELECT
        r.*,
        ST_Y(r.origin::geometry)      AS origin_lat,
        ST_X(r.origin::geometry)      AS origin_lng,
@@ -602,9 +606,24 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
      LEFT JOIN vehicle_categories bvc ON bvc.id = r.category_id
      LEFT JOIN vehicle_categories avc ON avc.id = dv.category_id
      LEFT JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
-     LEFT JOIN payments p          ON p.ride_id = r.id
-     WHERE r.id = $1`,
-    [rideId]
+     LEFT JOIN payments p          ON p.ride_id = r.id`
+
+export async function getRideById(rideId: bigint): Promise<Ride | null> {
+  const res = await pool.query<Ride>(`${RIDE_SELECT_SQL} WHERE r.id = $1`, [rideId])
+  return res.rows[0] ?? null
+}
+
+// Fail-closed-by-construction ownership: scoping the fetch by (id, driver_id)
+// makes "not your ride" indistinguishable from "no such ride" — a missing
+// ownership check becomes a missing row (existing 404 path) instead of a silent
+// IDOR. Used by every driver-scoped ride-action service function.
+export async function getRideForDriverAction(
+  rideId: bigint,
+  driverId: bigint
+): Promise<Ride | null> {
+  const res = await pool.query<Ride>(
+    `${RIDE_SELECT_SQL} WHERE r.id = $1 AND r.driver_id = $2`,
+    [rideId, driverId]
   )
   return res.rows[0] ?? null
 }
@@ -1460,18 +1479,34 @@ export async function getDriverEarningsSummary(
  * this to one ride.
  */
 export async function getGpsTrackedDistanceKm(rideId: bigint, since: Date): Promise<number | null> {
-  const res = await pool.query<{ km: string | null }>(
+  const res = await pool.query<{ km: string | null; booked_km: string | null }>(
     `SELECT
        CASE WHEN count(*) >= 2
          THEN ST_Length(ST_MakeLine(location::geometry ORDER BY recorded_at)::geography) / 1000
          ELSE NULL
-       END AS km
+       END AS km,
+       (SELECT estimated_km FROM fare_snapshots WHERE ride_id = $1) AS booked_km
      FROM gps_tracks
      WHERE ride_id = $1 AND recorded_at >= $2`,
     [rideId, since]
   )
-  const km = res.rows[0]?.km
-  return km != null ? parseFloat(km) : null
+  const row = res.rows[0]
+  const km = row?.km != null ? parseFloat(row.km) : null
+  if (km == null) return null
+
+  // Plausibility ceiling: a noisy or jumpy GPS trail can inflate ST_Length far past
+  // any real route. Cap at 2.5x the booked distance (generous headroom for legit
+  // detours/reroutes); beyond that, return null so verifyEndOTP falls back to the
+  // client estimate — the same fallback the <2-points case already triggers.
+  const bookedKm = row?.booked_km != null ? parseFloat(row.booked_km) : null
+  if (bookedKm != null && bookedKm > 0 && km > bookedKm * 2.5) {
+    logger.warn(
+      { rideId, gpsKm: km, bookedKm, ceilingKm: bookedKm * 2.5 },
+      'GPS-tracked distance implausible, falling back to booked estimate'
+    )
+    return null
+  }
+  return km
 }
 
 // ── ETA accuracy instrumentation ────────────────────────────────

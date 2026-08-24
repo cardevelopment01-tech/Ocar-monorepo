@@ -20,14 +20,15 @@ function mockPool(payment: Record<string, unknown>) {
     const sql = text as string
     if (sql.startsWith('SELECT user_id, channel, status, amount')) return { rows: [payment], rowCount: 1 } as never
     if (sql.includes("SET status='pending'")) return { rows: [], rowCount: 1 } as never       // reset UPDATE
-    if (sql.includes("SET status = 'completed'")) return { rows: [{ driver_id: 9, user_id: 42, amount: '500.00' }], rowCount: 1 } as never
     if (sql.includes('razorpay_order_id = $2')) return { rows: [], rowCount: 1 } as never       // order id write
     if (sql.includes('system_config')) return { rows: [], rowCount: 0 } as never                // getConfigValue → fallback
     return { rows: [], rowCount: 0 } as never
   })
 }
 
-// client.query (pool.connect) drives payFromUserWallet / deductCommission / creditCashback.
+// client.query (pool.connect) drives payFromUserWallet / confirmRidePayment's
+// shared-transaction flip + deductCommission + creditCashback — same fake
+// client instance every time pool.connect() is called, matched by SQL shape.
 function mockClient(balance: string) {
   client.query.mockReset()
   client.query.mockImplementation(async (text: unknown) => {
@@ -35,6 +36,8 @@ function mockClient(balance: string) {
     if (sql.includes('FROM user_wallets') && sql.includes('FOR UPDATE')) return { rows: [{ id: 5, balance }], rowCount: 1 } as never
     if (sql.includes('FROM driver_wallets') && sql.includes('FOR UPDATE')) return { rows: [{ id: 7, balance: '10000', is_frozen: false }], rowCount: 1 } as never
     if (sql.includes("entry_type = 'ride_debit'")) return { rows: [], rowCount: 0 } as never    // dedupe check
+    if (sql.includes("SET status = 'completed'")) return { rows: [{ driver_id: 9, user_id: 42, amount: '500.00' }], rowCount: 1 } as never
+    if (sql.includes('billing_mode_snapshot')) return { rows: [{ billing_mode_snapshot: null }], rowCount: 1 } as never
     return { rows: [], rowCount: 0 } as never
   })
 }
@@ -55,7 +58,7 @@ describe('retryRidePayment', () => {
     mockClient('1000.00')
     const result = await svc.retryRidePayment(BigInt(101), BigInt(42))
     expect(result).toEqual({ channel: 'wallet', paid: true })
-    expect(vi.mocked(pool.query).mock.calls.some(c => (c[0] as string).includes("SET status = 'completed'"))).toBe(true)
+    expect(client.query.mock.calls.some(c => (c[0] as string).includes("SET status = 'completed'"))).toBe(true)
   })
 
   it('wallet still insufficient → returns paid:false, does not confirm', async () => {

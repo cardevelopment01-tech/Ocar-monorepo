@@ -158,6 +158,30 @@ export async function markRideSosTriggered(rideId: bigint) {
   )
 }
 
+// Most-recent still-'triggered' alert for this ride created inside the dedup
+// window — used to collapse repeat SOS presses into the existing alert instead
+// of inserting a new row + re-paging admins.
+export async function getActiveSosForRide(rideId: bigint, withinSeconds: number) {
+  const res = await pool.query(
+    `SELECT * FROM sos_alerts
+     WHERE ride_id = $1
+       AND status = 'triggered'
+       AND created_at >= now() - make_interval(secs => $2)
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [rideId, withinSeconds]
+  )
+  return res.rows[0] ?? null
+}
+
+// ponytail: "touch" reuses updated_at (bumped by the set_updated_at trigger on
+// any UPDATE) rather than adding a dedicated last_triggered_at column — one
+// fewer migration. Add the column only if ops needs to distinguish "first
+// press" from "last press" time explicitly.
+export async function touchSosAlert(id: bigint) {
+  await pool.query(`UPDATE sos_alerts SET updated_at = now() WHERE id = $1`, [id])
+}
+
 export async function getSosAlerts(opts: {
   status?: string
   limit:   number
@@ -445,4 +469,83 @@ export async function insertRefund(data: {
     ]
   )
   return res.rows[0]
+}
+
+// ── DRIVER WARNINGS (§03.3) ───────────────────────────────────────
+
+// category/severity default to 'other'/'moderate' — a dispute-driven warning
+// isn't classified by the enum's specific categories (late_arrival, speeding,
+// …); those exist for admin-issued warnings. 'other' is the honest bucket here.
+export async function insertDriverWarning(data: {
+  driver_id:   bigint
+  issued_by:   bigint
+  description: string
+  ride_id:     bigint | null
+  dispute_id:  bigint
+}) {
+  const res = await pool.query(
+    `INSERT INTO driver_warnings
+       (driver_id, issued_by, category, severity, description, ride_id, dispute_id)
+     VALUES ($1,$2,'other','moderate',$3,$4,$5)
+     RETURNING *`,
+    [data.driver_id, data.issued_by, data.description, data.ride_id, data.dispute_id]
+  )
+  return res.rows[0]
+}
+
+export async function countRecentDriverWarnings(driverId: bigint, sinceDays: number): Promise<number> {
+  const res = await pool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+     FROM driver_warnings
+     WHERE driver_id = $1 AND created_at >= now() - make_interval(days => $2)`,
+    [driverId, sinceDays]
+  )
+  return Number(res.rows[0]?.count ?? '0')
+}
+
+export async function getDriverStatus(driverId: bigint): Promise<string | null> {
+  const res = await pool.query<{ status: string }>(
+    `SELECT status FROM drivers WHERE id = $1`,
+    [driverId]
+  )
+  return res.rows[0]?.status ?? null
+}
+
+// ── SLA ESCALATION SWEEPS (§03.4) ─────────────────────────────────
+
+// SOS alerts still 'triggered' (never acknowledged) past the staleness window
+// and not yet escalated. Bounded by the sos_alerts_status_idx partial index.
+export async function getStaleSosAlerts(olderThanMinutes: number) {
+  const res = await pool.query<{ id: string; ride_id: string; created_at: Date }>(
+    `SELECT id, ride_id, created_at
+     FROM sos_alerts
+     WHERE status = 'triggered'
+       AND escalated_at IS NULL
+       AND created_at < now() - make_interval(mins => $1)`,
+    [olderThanMinutes]
+  )
+  return res.rows
+}
+
+export async function markSosEscalated(id: bigint) {
+  await pool.query(`UPDATE sos_alerts SET escalated_at = now() WHERE id = $1`, [id])
+}
+
+// Disputes past their SLA deadline, not in a terminal state, not yet escalated.
+// Terminal states mirror disputes_status_idx's active-state list (open,
+// under_review, pending_info, escalated) — resolved/withdrawn are the only
+// terminal dispute_status values.
+export async function getBreachedDisputes() {
+  const res = await pool.query<{ id: string }>(
+    `SELECT id
+     FROM disputes
+     WHERE escalated_at IS NULL
+       AND sla_due_at < now()
+       AND status NOT IN ('resolved', 'withdrawn')`
+  )
+  return res.rows
+}
+
+export async function markDisputeSlaEscalated(id: bigint) {
+  await pool.query(`UPDATE disputes SET escalated_at = now() WHERE id = $1`, [id])
 }

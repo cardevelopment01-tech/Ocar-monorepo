@@ -1,9 +1,10 @@
+import type { PoolClient } from 'pg'
 import { pool } from '@/db/client'
 import { config } from '@/config'
 import { client as redis } from '@/db/redis'
 import { ridePaymentOrderKey } from '@/constants/redis-keys'
 import { notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
-import { accrueDriverEarning } from '@/modules/payments/submodules/settlements/settlements.service'
+import { accrueDriverEarning, mapPayoutFailureCode } from '@/modules/payments/submodules/settlements/settlements.service'
 import { getConfigValue } from '@/lib/system-config'
 import { verifyHmacSignature } from '@/lib/hash'
 import { logger } from '@/lib/logger'
@@ -80,21 +81,23 @@ export async function createPaymentRecord(
 
 export async function deductCommission(
   rideId: bigint,
-  driverId: bigint
-): Promise<void> {
+  driverId: bigint,
+  sharedClient?: PoolClient
+): Promise<{ newBalance: number } | null> {
   const payRes = await pool.query(
     `SELECT commission_amount FROM payments WHERE ride_id = $1`,
     [rideId]
   )
   const payment = payRes.rows[0]
-  if (!payment) return
+  if (!payment) return null
 
   const commission = parseFloat(payment.commission_amount)
   const minBalance = await getMinWalletBalance()
 
-  const client = await pool.connect()
+  const client = sharedClient ?? await pool.connect()
+  const owns = !sharedClient
   try {
-    await client.query('BEGIN')
+    if (owns) await client.query('BEGIN')
 
     await client.query(
       `INSERT INTO driver_wallets (driver_id, balance)
@@ -113,8 +116,8 @@ export async function deductCommission(
 
     const wallet = walletRes.rows[0]
     if (!wallet || wallet.is_frozen) {
-      await client.query('ROLLBACK')
-      return
+      if (owns) await client.query('ROLLBACK')
+      return null
     }
 
     const currentBalance = parseFloat(wallet.balance)
@@ -151,20 +154,26 @@ export async function deductCommission(
     // with it let a wallet top-up silently undo an unrelated admin suspension.
     const justCrossedBelowMin = currentBalance >= minBalance && newBalance < minBalance
 
-    await client.query('COMMIT')
-
-    if (justCrossedBelowMin) {
-      try {
-        await notifyDriverLowWalletBalance(driverId, newBalance, minBalance)
-      } catch (err) {
-        log.error({ err }, 'low-balance notify failed')
+    if (owns) {
+      await client.query('COMMIT')
+      if (justCrossedBelowMin) {
+        try {
+          await notifyDriverLowWalletBalance(driverId, newBalance, minBalance)
+        } catch (err) {
+          log.error({ err }, 'low-balance notify failed')
+        }
       }
+      return null
     }
+
+    // Shared transaction: the notify must wait until the caller commits, so
+    // hand the crossing info back instead of firing it inside an open txn.
+    return justCrossedBelowMin ? { newBalance } : null
   } catch (err) {
-    await client.query('ROLLBACK')
+    if (owns) await client.query('ROLLBACK')
     throw err
   } finally {
-    client.release()
+    if (owns) client.release()
   }
 }
 
@@ -173,7 +182,8 @@ export async function deductCommission(
 export async function creditCashback(
   rideId: bigint,
   userId: bigint,
-  fareAmount: number
+  fareAmount: number,
+  sharedClient?: PoolClient
 ): Promise<void> {
   const cashbackPct = await getCashbackPercent()
   const cashbackAmt = Math.round(fareAmount * cashbackPct) / 100
@@ -181,9 +191,10 @@ export async function creditCashback(
 
   const expiryDays = await getCashbackExpiryDays()
 
-  const client = await pool.connect()
+  const client = sharedClient ?? await pool.connect()
+  const owns = !sharedClient
   try {
-    await client.query('BEGIN')
+    if (owns) await client.query('BEGIN')
 
     await client.query(
       `INSERT INTO user_wallets (user_id, balance)
@@ -222,12 +233,12 @@ export async function creditCashback(
       ]
     )
 
-    await client.query('COMMIT')
+    if (owns) await client.query('COMMIT')
   } catch (err) {
-    await client.query('ROLLBACK')
+    if (owns) await client.query('ROLLBACK')
     throw err
   } finally {
-    client.release()
+    if (owns) client.release()
   }
 }
 
@@ -236,45 +247,82 @@ export async function creditCashback(
 // caller to flip pending→completed runs commission + cashback. Duplicate or
 // stale triggers hit zero rows and return false (no-op). Razorpay does not
 // guarantee webhook ordering, so this compare-before-write is mandatory.
+// The flip and the commission-path settlement steps (deductCommission,
+// accrueDriverEarning, creditCashback) now run on ONE transaction: a crash or
+// thrown error between steps rolls the status flip back too, so a retried
+// confirm re-enters this same guarded UPDATE as 'pending' instead of leaving
+// the payment 'completed' with half-applied earnings/cashback and no
+// reconciliation path.
 export async function confirmRidePayment(
   rideId: bigint,
   razorpayPaymentId?: string
 ): Promise<boolean> {
-  const params: unknown[] = [rideId]
-  let extraSet = ''
-  if (razorpayPaymentId !== undefined) {
-    params.push(razorpayPaymentId)
-    extraSet = ', razorpay_payment_id = $2'
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const params: unknown[] = [rideId]
+    let extraSet = ''
+    if (razorpayPaymentId !== undefined) {
+      params.push(razorpayPaymentId)
+      extraSet = ', razorpay_payment_id = $2'
+    }
+
+    const res = await client.query(
+      `UPDATE payments
+         SET status = 'completed', captured_at = now()${extraSet}
+       WHERE ride_id = $1 AND status = 'pending'
+       RETURNING driver_id, user_id, amount`,
+      params
+    )
+
+    if ((res.rowCount ?? 0) === 0) {
+      await client.query('ROLLBACK')
+      return false
+    }
+
+    const row = res.rows[0]
+    // billing_mode_snapshot is frozen on the ride at accept time (see acceptAssignment in
+    // rides.repository.ts), so a later admin change to a city's billing_mode doesn't
+    // retroactively change how an in-flight/already-accepted ride settles.
+    const rideRes = await client.query<{ billing_mode_snapshot: BillingMode | null }>(
+      `SELECT billing_mode_snapshot FROM rides WHERE id = $1`,
+      [rideId]
+    )
+    const billingMode = rideRes.rows[0]?.billing_mode_snapshot ?? 'commission'
+
+    let crossedBelowMin: { newBalance: number } | null = null
+    if (billingMode === 'package') {
+      // ponytail: consumePackageBalance lives in the packages module (out of this
+      // plan's scope) and manages its own connection, so it can't join this txn.
+      // It runs before COMMIT so a consume failure still rolls back the status
+      // flip and the ride re-enters settlement on retry. Follow-up: thread a
+      // shared client through consumePackageBalance to make package mode fully
+      // atomic too — commission mode (the else branch) is already fully atomic.
+      await packagesService.consumePackageBalance(rideId, BigInt(row.driver_id), parseFloat(row.amount))
+    } else {
+      crossedBelowMin = await deductCommission(rideId, BigInt(row.driver_id), client)
+    }
+    await accrueDriverEarning(rideId, BigInt(row.driver_id), client)
+    await creditCashback(rideId, BigInt(row.user_id), parseFloat(row.amount), client)
+
+    await client.query('COMMIT')
+
+    if (crossedBelowMin) {
+      try {
+        const minBalance = await getMinWalletBalance()
+        await notifyDriverLowWalletBalance(BigInt(row.driver_id), crossedBelowMin.newBalance, minBalance)
+      } catch (err) {
+        log.error({ err }, 'low-balance notify failed')
+      }
+    }
+    return true
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
   }
-
-  const res = await pool.query(
-    `UPDATE payments
-       SET status = 'completed', captured_at = now()${extraSet}
-     WHERE ride_id = $1 AND status = 'pending'
-     RETURNING driver_id, user_id, amount`,
-    params
-  )
-
-  if ((res.rowCount ?? 0) === 0) return false
-
-  const row = res.rows[0]
-  // billing_mode_snapshot is frozen on the ride at accept time (see acceptAssignment in
-  // rides.repository.ts), so a later admin change to a city's billing_mode doesn't
-  // retroactively change how an in-flight/already-accepted ride settles.
-  const rideRes = await pool.query<{ billing_mode_snapshot: BillingMode | null }>(
-    `SELECT billing_mode_snapshot FROM rides WHERE id = $1`,
-    [rideId]
-  )
-  const billingMode = rideRes.rows[0]?.billing_mode_snapshot ?? 'commission'
-
-  if (billingMode === 'package') {
-    await packagesService.consumePackageBalance(rideId, BigInt(row.driver_id), parseFloat(row.amount))
-  } else {
-    await deductCommission(rideId, BigInt(row.driver_id))
-  }
-  await accrueDriverEarning(rideId, BigInt(row.driver_id))
-  await creditCashback(rideId, BigInt(row.user_id), parseFloat(row.amount))
-  return true
 }
 
 // ── Pay for a ride from the user wallet (atomic debit) ──────────
@@ -567,7 +615,18 @@ export async function topUpDriverWallet(
       return
     }
 
-    const newBalance = Math.round((parseFloat(wallet.balance) + amount) * 100) / 100
+    const prevBalance = parseFloat(wallet.balance)
+    const newBalance = Math.round((prevBalance + amount) * 100) / 100
+
+    // Debt-first allocation: a negative balance means the driver owes the
+    // platform (dues). balance is a single signed column, so `prevBalance + amount`
+    // already zeroes the debt before any remainder becomes spendable — this makes
+    // that split explicit and auditable in the ledger note instead of hiding it.
+    const debtCleared = prevBalance < 0 ? Math.min(amount, -prevBalance) : 0
+    const spendable = Math.round((amount - debtCleared) * 100) / 100
+    const note = debtCleared > 0
+      ? `Wallet top-up ₹${amount} via Razorpay (₹${debtCleared} cleared dues, ₹${spendable} spendable)`
+      : 'Wallet top-up via Razorpay'
 
     await client.query(
       `UPDATE driver_wallets
@@ -581,8 +640,8 @@ export async function topUpDriverWallet(
       `INSERT INTO driver_wallet_ledger (
          wallet_id, driver_id, entry_type,
          amount, direction, balance_after, reference_id, note
-       ) VALUES ($1,$2,'topup',$3,'credit',$4,$5,'Wallet top-up via Razorpay')`,
-      [wallet.id, driverId, amount, newBalance, referenceId]
+       ) VALUES ($1,$2,'topup',$3,'credit',$4,$5,$6)`,
+      [wallet.id, driverId, amount, newBalance, referenceId, note]
     )
 
     // Ride eligibility is re-derived live from balance on every go-online/
@@ -702,11 +761,14 @@ export async function handleWebhookEvent(
     // successfully, so settlements.razorpay_payout_id already holds the real
     // gateway payout id here (not the pre-submit placeholder) — nothing to
     // reset on that column.
-    const failureReason = (entity as { failure_reason?: string }).failure_reason ?? event
+    const rawFailureReason = (entity as { failure_reason?: string }).failure_reason
+    const failureCode = mapPayoutFailureCode(rawFailureReason)
+    // Raw gateway reason stays in structured logs only, never in a returned column.
+    log.warn({ settlementId, rawFailureReason, event }, 'settlement payout failed (webhook)')
     const settlementUpdate = await pool.query(
-      `UPDATE settlements SET status = 'failed', failed_at = now(), failure_reason = $2
+      `UPDATE settlements SET status = 'failed', failed_at = now(), failure_code = $2
        WHERE id = $1 AND status != 'completed' AND razorpay_payout_id = $3`,
-      [settlementId, failureReason ?? null, eventId]
+      [settlementId, failureCode, eventId]
     )
     if ((settlementUpdate.rowCount ?? 0) > 0) {
       await pool.query(

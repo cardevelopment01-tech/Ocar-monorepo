@@ -58,6 +58,13 @@ vi.mock('@/modules/payments/payments.service', () => ({
   creditCashback:      vi.fn(),
 }))
 
+vi.mock('@/modules/geo/geo.service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/modules/geo/geo.service')>()),
+  // Return the exact client distance so the tolerance check is a no-op and the
+  // existing riderName/riderPhone assertions are unaffected.
+  getRoute: vi.fn(async () => ({ distanceKm: 65, durationMin: 90, polyline: '', source: 'google' as const })),
+}))
+
 // ── Import after mocks ─────────────────────────────────────────────────────────
 
 import * as repo    from '@/modules/rides/rides.repository'

@@ -283,15 +283,15 @@ export async function upsertDriverDocument(
   validUntil?: Date
 ): Promise<DriverDocument> {
   const rows = await query<DriverDocument>(
-    `INSERT INTO driver_documents (driver_id, doc_type, file_url, valid_from, valid_until)
+    `INSERT INTO driver_documents (driver_id, doc_type, file_url, valid_from, claimed_valid_until)
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (driver_id, doc_type)
      DO UPDATE SET
-       file_url    = EXCLUDED.file_url,
-       valid_from  = COALESCE(EXCLUDED.valid_from,  driver_documents.valid_from),
-       valid_until = COALESCE(EXCLUDED.valid_until, driver_documents.valid_until),
-       status      = 'pending',
-       updated_at  = now()
+       file_url            = EXCLUDED.file_url,
+       valid_from          = COALESCE(EXCLUDED.valid_from,          driver_documents.valid_from),
+       claimed_valid_until = COALESCE(EXCLUDED.claimed_valid_until, driver_documents.claimed_valid_until),
+       status              = 'pending',
+       updated_at          = now()
      RETURNING *`,
     [driverId.toString(), docType, fileUrl, validFrom ?? null, validUntil ?? null]
   )
@@ -315,15 +315,15 @@ export async function upsertVehicleDocument(
   validUntil?: Date
 ): Promise<DriverVehicleDocument> {
   const rows = await query<DriverVehicleDocument>(
-    `INSERT INTO driver_vehicle_documents (vehicle_id, doc_type, file_url, doc_number, valid_until)
+    `INSERT INTO driver_vehicle_documents (vehicle_id, doc_type, file_url, doc_number, claimed_valid_until)
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (vehicle_id, doc_type)
      DO UPDATE SET
-       file_url    = EXCLUDED.file_url,
-       doc_number  = COALESCE(EXCLUDED.doc_number, driver_vehicle_documents.doc_number),
-       valid_until = COALESCE(EXCLUDED.valid_until, driver_vehicle_documents.valid_until),
-       status      = 'pending',
-       updated_at  = now()
+       file_url            = EXCLUDED.file_url,
+       doc_number          = COALESCE(EXCLUDED.doc_number,          driver_vehicle_documents.doc_number),
+       claimed_valid_until = COALESCE(EXCLUDED.claimed_valid_until, driver_vehicle_documents.claimed_valid_until),
+       status              = 'pending',
+       updated_at          = now()
      RETURNING *`,
     [vehicleId, docType, fileUrl, docNumber ?? null, validUntil ?? null]
   )
@@ -337,23 +337,35 @@ export async function findVehicleDocuments(vehicleId: string): Promise<DriverVeh
   )
 }
 
+// Shared SQL fragment: does this driver have any required-doc issue — a rejected
+// row, or an approved row whose expiry has passed — across identity docs and the
+// primary vehicle's docs? `driverIdExpr` is ALWAYS a hardcoded SQL token ('$1' for
+// the single-driver rollup, or a column like 'ds.driver_id' for the broadcast
+// candidate queries) — never user input, so interpolating it is safe under the
+// "only hardcoded identifiers in dynamic SQL" rule. Both hasApprovedRequiredDocs
+// and the ride-broadcast candidate queries build on this so the eligibility rule
+// lives in exactly one place.
+export function docIssueExistsSql(driverIdExpr: string): string {
+  return `EXISTS (
+       SELECT 1 FROM driver_documents dd
+       WHERE dd.driver_id = ${driverIdExpr}
+         AND (dd.status = 'rejected' OR (dd.status = 'approved' AND dd.verified_valid_until < CURRENT_DATE))
+       UNION ALL
+       SELECT 1 FROM driver_vehicle_documents dvd
+       JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+       WHERE dv.driver_id = ${driverIdExpr} AND dv.is_primary = true
+         AND (dvd.status = 'rejected' OR (dvd.status = 'approved' AND dvd.verified_valid_until < CURRENT_DATE))
+     )`
+}
+
 // True if none of the driver's identity/vehicle documents are rejected or an
 // expired-but-still-approved row (a document approved in the past whose
-// valid_until has since passed) — the live rollup goOnline() gates on.
+// verified_valid_until has since passed) — the live rollup goOnline() gates on.
 // Pass a transaction client when this must participate in a caller's lock
 // (see admin.repository.ts's syncDriverStatusAfterDocChange) — otherwise runs
 // through the shared pool.
 export async function hasApprovedRequiredDocs(driverId: bigint, client?: PoolClient): Promise<boolean> {
-  const sql = `SELECT EXISTS (
-       SELECT 1 FROM driver_documents
-       WHERE driver_id = $1
-         AND (status = 'rejected' OR (status = 'approved' AND valid_until < CURRENT_DATE))
-       UNION ALL
-       SELECT 1 FROM driver_vehicle_documents dvd
-       JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
-       WHERE dv.driver_id = $1 AND dv.is_primary = true
-         AND (dvd.status = 'rejected' OR (dvd.status = 'approved' AND dvd.valid_until < CURRENT_DATE))
-     ) AS has_issue`
+  const sql = `SELECT ${docIssueExistsSql('$1')} AS has_issue`
   const params = [driverId.toString()]
   const rows = client
     ? (await client.query<{ has_issue: boolean }>(sql, params)).rows
@@ -379,18 +391,18 @@ export async function findDocsNeedingExpiryNotice(): Promise<ExpiringDocNotice[]
   const rows = await query<{ driver_id: string; doc_type: string; days_remaining: number; route: 'documents' | 'vehicle-docs' }>(
     `SELECT driver_id, doc_type, days_remaining, 'documents'::text AS route FROM (
        SELECT driver_id::text, doc_type,
-              (valid_until - CURRENT_DATE) AS days_remaining
+              (verified_valid_until - CURRENT_DATE) AS days_remaining
        FROM driver_documents
-       WHERE status = 'approved' AND valid_until IS NOT NULL
+       WHERE status = 'approved' AND verified_valid_until IS NOT NULL
      ) d
      WHERE days_remaining = ANY($1::int[])
      UNION ALL
      SELECT driver_id, doc_type, days_remaining, 'vehicle-docs'::text AS route FROM (
        SELECT dv.driver_id::text AS driver_id, dvd.doc_type,
-              (dvd.valid_until - CURRENT_DATE) AS days_remaining
+              (dvd.verified_valid_until - CURRENT_DATE) AS days_remaining
        FROM driver_vehicle_documents dvd
        JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
-       WHERE dvd.status = 'approved' AND dvd.valid_until IS NOT NULL
+       WHERE dvd.status = 'approved' AND dvd.verified_valid_until IS NOT NULL
      ) v
      WHERE days_remaining = ANY($1::int[])`,
     [thresholds]

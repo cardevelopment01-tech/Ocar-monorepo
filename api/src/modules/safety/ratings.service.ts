@@ -1,5 +1,6 @@
 import * as repo from './safety.repository'
 import type { SubmitRatingInput } from './safety.types'
+import { assertRideParticipant } from './safety.guards'
 
 export async function getRatingTags(direction: 'user_to_driver' | 'driver_to_user') {
   const appliesTo = direction === 'user_to_driver' ? 'driver' : 'user'
@@ -20,17 +21,17 @@ export async function submitRating(input: SubmitRatingInput) {
     throw Object.assign(new Error('Rating already submitted for this ride'), { httpStatus: 409, code: 'RATING_ALREADY_EXISTS' })
   }
 
-  if (input.direction === 'user_to_driver') {
-    if (!input.fromUserId) throw Object.assign(new Error('User auth required'), { httpStatus: 401 })
-    if (BigInt(ride.user_id) !== input.fromUserId) {
-      throw Object.assign(new Error('Not the user for this ride'), { httpStatus: 403 })
-    }
-  } else {
-    if (!input.fromDriverId) throw Object.assign(new Error('Driver auth required'), { httpStatus: 401 })
-    if (BigInt(ride.driver_id) !== input.fromDriverId) {
-      throw Object.assign(new Error('Not the driver for this ride'), { httpStatus: 403 })
-    }
+  // Auth-presence check stays here (401 = no principal on the request);
+  // the participant check itself is the shared guard (403).
+  const principal: { role: 'user' | 'driver'; id: bigint } | null =
+    input.direction === 'user_to_driver'
+      ? (input.fromUserId ? { role: 'user', id: input.fromUserId } : null)
+      : (input.fromDriverId ? { role: 'driver', id: input.fromDriverId } : null)
+  if (!principal) {
+    const authErrorMessage = input.direction === 'user_to_driver' ? 'User auth required' : 'Driver auth required'
+    throw Object.assign(new Error(authErrorMessage), { httpStatus: 401 })
   }
+  assertRideParticipant(ride, principal)
 
   // to_user_id/to_driver_id are derived from the verified ride row, never
   // taken from client input — the ride's user_id/driver_id are the only

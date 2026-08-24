@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 vi.mock('@/db/redis', () => ({ client: { del: vi.fn() } }))
-vi.mock('@/lib/otp', () => ({ generateOtp: vi.fn(() => '1234'), hashOtp: vi.fn(() => 'h') }))
+vi.mock('@/lib/otp', () => ({
+  generateOtp: vi.fn(() => '1234'),
+  hashOtp: vi.fn(() => 'h'),
+  checkRideOtpAttempts: vi.fn().mockResolvedValue(1),
+  clearRideOtpAttempts: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('@/websocket/socket.server', () => ({
   socketEvents: { sendRideStatusUpdate: vi.fn(), broadcastNewRide: vi.fn(), notifyUserRideUpdate: vi.fn() },
   getIO: vi.fn(() => ({ to: vi.fn(() => ({ emit: vi.fn() })) })),
@@ -14,6 +19,7 @@ vi.mock('@/jobs/queues', () => ({
 }))
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideById:              vi.fn(),
+  getRideForDriverAction:   vi.fn(),
   getRideStops:             vi.fn().mockResolvedValue([]),
   updateRideStatus:         vi.fn(),
   updateRideStatusCAS:      vi.fn(),
@@ -57,6 +63,11 @@ describe('verifyEndOTP — payment channel branch', () => {
     vi.mocked(repo.updateRideStatus).mockResolvedValue(undefined as never)
     vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
     vi.mocked(getConfigValue).mockResolvedValue('true')
+    // verifyEndOTP now fetches via getRideForDriverAction; mirror whatever each
+    // test set on getRideById so the existing per-test setups keep working.
+    vi.mocked(repo.getRideForDriverAction).mockImplementation(
+      ((rideId: bigint) => vi.mocked(repo.getRideById)(rideId)) as never
+    )
   })
 
   it('cash + kill switch ON (default): defers settlement, notifies driver app, no payment side-effects', async () => {

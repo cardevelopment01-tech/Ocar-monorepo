@@ -4,8 +4,14 @@ import { pool } from '@/db/client'
 import { notificationsQueue } from '@/jobs/queues'
 import type { TriggerSosInput } from './safety.types'
 import { logger } from '@/lib/logger'
+import { assertRideParticipant } from './safety.guards'
+import { client as redis } from '@/db/redis'
 
 const log = logger.child({ module: 'sos-service' })
+
+const SOS_DEDUP_WINDOW_SECONDS = 30
+const SOS_HOURLY_CAP = 5
+const SOS_HOURLY_WINDOW_SECONDS = 3600
 
 export async function triggerSos(input: TriggerSosInput) {
   const ride = await repo.getRideBasic(input.rideId)
@@ -15,6 +21,34 @@ export async function triggerSos(input: TriggerSosInput) {
   if (ride.status !== 'in_progress' && ride.status !== 'driver_arrived' && ride.status !== 'returning') {
     throw Object.assign(new Error('SOS can only be triggered during an active ride'), {
       httpStatus: 400, code: 'RIDE_NOT_ACTIVE',
+    })
+  }
+
+  const principal: { role: 'user' | 'driver'; id: bigint } =
+    input.triggeredByUserId != null
+      ? { role: 'user', id: input.triggeredByUserId }
+      : { role: 'driver', id: input.triggeredByDriverId! }
+  assertRideParticipant(ride, principal)
+
+  // Dedup: a repeat press on the SAME ride inside the window collapses into the
+  // existing alert — no new row, no re-page. Checked before the rate-limit
+  // counter so a panicking rider mashing the button doesn't burn their budget.
+  const existing = await repo.getActiveSosForRide(input.rideId, SOS_DEDUP_WINDOW_SECONDS)
+  if (existing) {
+    await repo.touchSosAlert(BigInt(existing.id))
+    return existing
+  }
+
+  // Per-principal hourly fixed-window counter (§07 pattern — same shape as the
+  // login-OTP limiter). Stops #03.1-enabled flooding across many rides, which
+  // per-ride dedup alone can't. Five genuine SOS events/hour from one person is
+  // already extreme and worth a human follow-up, not a real emergency we'd suppress.
+  const rlKey = `sos:hourly:${principal.role}:${principal.id}`
+  const count = await redis.incr(rlKey)
+  if (count === 1) await redis.expire(rlKey, SOS_HOURLY_WINDOW_SECONDS)
+  if (count > SOS_HOURLY_CAP) {
+    throw Object.assign(new Error('Too many safety alerts. Contact support directly if this is urgent.'), {
+      httpStatus: 429, code: 'SOS_RATE_LIMITED',
     })
   }
 
