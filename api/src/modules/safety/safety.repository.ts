@@ -470,3 +470,43 @@ export async function insertRefund(data: {
   )
   return res.rows[0]
 }
+
+// ── DRIVER WARNINGS (§03.3) ───────────────────────────────────────
+
+// category/severity default to 'other'/'moderate' — a dispute-driven warning
+// isn't classified by the enum's specific categories (late_arrival, speeding,
+// …); those exist for admin-issued warnings. 'other' is the honest bucket here.
+export async function insertDriverWarning(data: {
+  driver_id:   bigint
+  issued_by:   bigint
+  description: string
+  ride_id:     bigint | null
+  dispute_id:  bigint
+}) {
+  const res = await pool.query(
+    `INSERT INTO driver_warnings
+       (driver_id, issued_by, category, severity, description, ride_id, dispute_id)
+     VALUES ($1,$2,'other','moderate',$3,$4,$5)
+     RETURNING *`,
+    [data.driver_id, data.issued_by, data.description, data.ride_id, data.dispute_id]
+  )
+  return res.rows[0]
+}
+
+export async function countRecentDriverWarnings(driverId: bigint, sinceDays: number): Promise<number> {
+  const res = await pool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+     FROM driver_warnings
+     WHERE driver_id = $1 AND created_at >= now() - make_interval(days => $2)`,
+    [driverId, sinceDays]
+  )
+  return Number(res.rows[0]?.count ?? '0')
+}
+
+export async function getDriverStatus(driverId: bigint): Promise<string | null> {
+  const res = await pool.query<{ status: string }>(
+    `SELECT status FROM drivers WHERE id = $1`,
+    [driverId]
+  )
+  return res.rows[0]?.status ?? null
+}
