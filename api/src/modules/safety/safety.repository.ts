@@ -158,6 +158,30 @@ export async function markRideSosTriggered(rideId: bigint) {
   )
 }
 
+// Most-recent still-'triggered' alert for this ride created inside the dedup
+// window — used to collapse repeat SOS presses into the existing alert instead
+// of inserting a new row + re-paging admins.
+export async function getActiveSosForRide(rideId: bigint, withinSeconds: number) {
+  const res = await pool.query(
+    `SELECT * FROM sos_alerts
+     WHERE ride_id = $1
+       AND status = 'triggered'
+       AND created_at >= now() - make_interval(secs => $2)
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [rideId, withinSeconds]
+  )
+  return res.rows[0] ?? null
+}
+
+// ponytail: "touch" reuses updated_at (bumped by the set_updated_at trigger on
+// any UPDATE) rather than adding a dedicated last_triggered_at column — one
+// fewer migration. Add the column only if ops needs to distinguish "first
+// press" from "last press" time explicitly.
+export async function touchSosAlert(id: bigint) {
+  await pool.query(`UPDATE sos_alerts SET updated_at = now() WHERE id = $1`, [id])
+}
+
 export async function getSosAlerts(opts: {
   status?: string
   limit:   number
