@@ -1,6 +1,7 @@
 import { pool } from '@/db/client'
 import { cachedRead } from '@/lib/cache/reference-cache'
 import { categoryFallbackKey } from '@/constants/redis-keys'
+import { docIssueExistsSql } from '@/modules/drivers/drivers.repository'
 import type { AssignCandidate, BillingMode, DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
 import {
   STALE_REQUESTED_MINUTES,
@@ -173,6 +174,7 @@ export async function findNearbyDrivers(params: {
        -- ds.status at 'online').
        OR (dls.is_available = false AND dls.updated_at > now() - ($7 || ' seconds')::interval)
      )
+       AND NOT ${docIssueExistsSql('ds.driver_id')}
        AND ds.status = 'online'
        AND ds.mode = 'standard'
        AND ds.category_id = ANY($3::bigint[])
@@ -262,6 +264,7 @@ export async function findReturnCabDrivers(params: {
        LIMIT 1
      ) drop_city ON true
      WHERE rcr.is_active = true
+       AND NOT ${docIssueExistsSql('rcr.driver_id')}
        AND ds.status = 'online'
        AND ds.category_id = ANY($5::bigint[])
        AND (
