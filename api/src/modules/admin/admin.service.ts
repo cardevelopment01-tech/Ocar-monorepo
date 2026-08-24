@@ -271,12 +271,18 @@ export async function approveDriverDoc(
   if (!verifiedValidUntil) {
     throw httpError(422, 'Verified expiry date is required to approve a document.', 'VALIDATION_ERROR')
   }
+  if (!seenUpdatedAt) {
+    throw httpError(400, 'Missing document version. Refresh and try again.', 'VALIDATION_ERROR')
+  }
   const approved = await repo.approveDriverDoc(docId, adminId, verifiedValidUntil, seenUpdatedAt)
+  if (!approved) {
+    throw httpError(409, 'This document was modified since you last viewed it. Refresh and try again.', 'DOC_CHANGED')
+  }
   await recordAuditLog({
     adminId, action: 'driver_documents.approve', targetTable: 'driver_documents', targetId: docId,
     afterState: { status: 'approved', verified_valid_until: verifiedValidUntil }, ipAddress,
   })
-  if (approved) await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
+  await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
 }
 
 export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: string, ipAddress: string | null) {
@@ -310,12 +316,18 @@ export async function approveVehicleDoc(
   if (!verifiedValidUntil) {
     throw httpError(422, 'Verified expiry date is required to approve a document.', 'VALIDATION_ERROR')
   }
+  if (!seenUpdatedAt) {
+    throw httpError(400, 'Missing document version. Refresh and try again.', 'VALIDATION_ERROR')
+  }
   const approved = await repo.approveVehicleDoc(docId, adminId, verifiedValidUntil, seenUpdatedAt)
+  if (!approved) {
+    throw httpError(409, 'This document was modified since you last viewed it. Refresh and try again.', 'DOC_CHANGED')
+  }
   await recordAuditLog({
     adminId, action: 'vehicle_documents.approve', targetTable: 'driver_vehicle_documents', targetId: docId,
     afterState: { status: 'approved', verified_valid_until: verifiedValidUntil }, ipAddress,
   })
-  if (approved) await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
+  await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
 }
 
 export async function rejectVehicleDoc(docId: bigint, adminId: bigint, note: string, ipAddress: string | null) {
