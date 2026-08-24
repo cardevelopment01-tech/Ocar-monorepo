@@ -7,6 +7,7 @@ vi.mock('@/db/redis', () => ({
   getJSON: (...a: unknown[]) => mockGetJSON(...a),
   setWithTTL: (...a: unknown[]) => mockSetWithTTL(...a),
   client: { del: (...a: unknown[]) => mockDel(...a) },
+  withTimeout: (p: Promise<unknown>) => p,
 }))
 
 const mockHitsInc = vi.fn()
