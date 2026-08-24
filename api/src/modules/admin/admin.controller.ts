@@ -272,7 +272,13 @@ export async function getPendingVehicleDocs(req: Request, res: Response, next: N
 
 export async function approveDriverDoc(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await service.approveDriverDoc(BigInt(req.params['docId']!), req.admin!.id, req.ip ?? null)
+    await service.approveDriverDoc(
+      BigInt(req.params['docId']!),
+      req.admin!.id,
+      String(req.body.verified_valid_until ?? ''),
+      String(req.body.seen_updated_at ?? ''),
+      req.ip ?? null
+    )
     res.json({ success: true })
   } catch (err) { next(err) }
 }
@@ -288,7 +294,13 @@ export async function rejectDriverDoc(req: Request, res: Response, next: NextFun
 
 export async function approveVehicleDoc(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await service.approveVehicleDoc(BigInt(req.params['docId']!), req.admin!.id, req.ip ?? null)
+    await service.approveVehicleDoc(
+      BigInt(req.params['docId']!),
+      req.admin!.id,
+      String(req.body.verified_valid_until ?? ''),
+      String(req.body.seen_updated_at ?? ''),
+      req.ip ?? null
+    )
     res.json({ success: true })
   } catch (err) { next(err) }
 }

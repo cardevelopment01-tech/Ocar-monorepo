@@ -261,11 +261,20 @@ export async function unblacklistVehicle(vehicleId: bigint) {
 
 export async function listPendingVehicleDocs() { return repo.listPendingVehicleDocs() }
 
-export async function approveDriverDoc(docId: bigint, adminId: bigint, ipAddress: string | null) {
-  const approved = await repo.approveDriverDoc(docId, adminId)
+export async function approveDriverDoc(
+  docId: bigint,
+  adminId: bigint,
+  verifiedValidUntil: string,
+  seenUpdatedAt: string,
+  ipAddress: string | null
+) {
+  if (!verifiedValidUntil) {
+    throw httpError(422, 'Verified expiry date is required to approve a document.', 'VALIDATION_ERROR')
+  }
+  const approved = await repo.approveDriverDoc(docId, adminId, verifiedValidUntil, seenUpdatedAt)
   await recordAuditLog({
     adminId, action: 'driver_documents.approve', targetTable: 'driver_documents', targetId: docId,
-    afterState: { status: 'approved' }, ipAddress,
+    afterState: { status: 'approved', verified_valid_until: verifiedValidUntil }, ipAddress,
   })
   if (approved) await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
 }
@@ -291,11 +300,20 @@ export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: stri
   return rejected
 }
 
-export async function approveVehicleDoc(docId: bigint, adminId: bigint, ipAddress: string | null) {
-  const approved = await repo.approveVehicleDoc(docId, adminId)
+export async function approveVehicleDoc(
+  docId: bigint,
+  adminId: bigint,
+  verifiedValidUntil: string,
+  seenUpdatedAt: string,
+  ipAddress: string | null
+) {
+  if (!verifiedValidUntil) {
+    throw httpError(422, 'Verified expiry date is required to approve a document.', 'VALIDATION_ERROR')
+  }
+  const approved = await repo.approveVehicleDoc(docId, adminId, verifiedValidUntil, seenUpdatedAt)
   await recordAuditLog({
     adminId, action: 'vehicle_documents.approve', targetTable: 'driver_vehicle_documents', targetId: docId,
-    afterState: { status: 'approved' }, ipAddress,
+    afterState: { status: 'approved', verified_valid_until: verifiedValidUntil }, ipAddress,
   })
   if (approved) await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
 }

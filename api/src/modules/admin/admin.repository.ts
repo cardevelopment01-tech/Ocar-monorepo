@@ -888,13 +888,15 @@ export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
   }))
 }
 
-export async function approveDriverDoc(docId: bigint, adminId: bigint): Promise<{ driver_id: string } | null> {
+export async function approveDriverDoc(
+  docId: bigint, adminId: bigint, verifiedValidUntil: string, seenUpdatedAt: string
+): Promise<{ driver_id: string } | null> {
   const res = await pool.query(
     `UPDATE driver_documents
-     SET status = 'approved', reviewed_by = $1, reviewed_at = now(), updated_at = now()
-     WHERE id = $2
+     SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
+     WHERE id = $3 AND updated_at = $4
      RETURNING driver_id`,
-    [adminId, docId]
+    [verifiedValidUntil, adminId, docId, seenUpdatedAt]
   )
   const row = res.rows[0]
   return row ? { driver_id: String(row.driver_id) } : null
@@ -914,14 +916,16 @@ export async function rejectDriverDoc(
   return row ? { driver_id: String(row.driver_id), doc_type: row.doc_type as string } : null
 }
 
-export async function approveVehicleDoc(docId: bigint, adminId: bigint): Promise<{ driver_id: string } | null> {
+export async function approveVehicleDoc(
+  docId: bigint, adminId: bigint, verifiedValidUntil: string, seenUpdatedAt: string
+): Promise<{ driver_id: string } | null> {
   const res = await pool.query(
     `UPDATE driver_vehicle_documents dvd
-     SET status = 'approved', reviewed_by = $1, reviewed_at = now(), updated_at = now()
+     SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
      FROM driver_vehicles dv
-     WHERE dvd.id = $2 AND dv.id = dvd.vehicle_id
+     WHERE dvd.id = $3 AND dvd.updated_at = $4 AND dv.id = dvd.vehicle_id
      RETURNING dv.driver_id`,
-    [adminId, docId]
+    [verifiedValidUntil, adminId, docId, seenUpdatedAt]
   )
   const row = res.rows[0]
   return row ? { driver_id: String(row.driver_id) } : null
