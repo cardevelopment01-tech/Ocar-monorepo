@@ -14,6 +14,7 @@ vi.mock('@/jobs/queues', () => ({
 }))
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideById:              vi.fn(),
+  getRideForDriverAction:   vi.fn(),
   getRideStops:             vi.fn().mockResolvedValue([]),
   updateRideStatus:         vi.fn(),
   updateRideStatusCAS:      vi.fn(),
@@ -57,6 +58,11 @@ describe('verifyEndOTP — payment channel branch', () => {
     vi.mocked(repo.updateRideStatus).mockResolvedValue(undefined as never)
     vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
     vi.mocked(getConfigValue).mockResolvedValue('true')
+    // verifyEndOTP now fetches via getRideForDriverAction; mirror whatever each
+    // test set on getRideById so the existing per-test setups keep working.
+    vi.mocked(repo.getRideForDriverAction).mockImplementation(
+      ((rideId: bigint) => vi.mocked(repo.getRideById)(rideId)) as never
+    )
   })
 
   it('cash + kill switch ON (default): defers settlement, notifies driver app, no payment side-effects', async () => {

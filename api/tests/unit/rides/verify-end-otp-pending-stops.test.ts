@@ -12,7 +12,8 @@ vi.mock('@/jobs/queues', () => ({
   gpsFlushQueue: { add: vi.fn().mockResolvedValue(undefined) },
 }))
 vi.mock('@/modules/rides/rides.repository', () => ({
-  getRideById:      vi.fn(),
+  getRideById:            vi.fn(),
+  getRideForDriverAction: vi.fn(),
   getRideStops:     vi.fn(),
   getStopWaitTotal: vi.fn().mockResolvedValue(0),
   updateRideStatus: vi.fn().mockResolvedValue(undefined),
@@ -39,7 +40,7 @@ import { verifyEndOTP } from '@/modules/rides/rides.service'
 
 function baseRide(over: Record<string, unknown> = {}) {
   return {
-    id: BigInt(303), status: 'in_progress', end_otp_hash: 'HASH',
+    id: BigInt(303), driver_id: 9, status: 'in_progress', end_otp_hash: 'HASH',
     ride_type: 'one_way', user_id: 42, user_phone: null,
     origin_lat: 20.2961, origin_lng: 85.8245,
     ...over,
@@ -50,6 +51,11 @@ describe('verifyEndOTP — pending stops guard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(repo.getStopWaitTotal).mockResolvedValue(0)
+    // verifyEndOTP now fetches via getRideForDriverAction; mirror whatever each
+    // test set on getRideById so the existing per-test setups keep working.
+    vi.mocked(repo.getRideForDriverAction).mockImplementation(
+      ((rideId: bigint) => vi.mocked(repo.getRideById)(rideId)) as never
+    )
   })
 
   it('rejects with 409 when a stop is still pending', async () => {

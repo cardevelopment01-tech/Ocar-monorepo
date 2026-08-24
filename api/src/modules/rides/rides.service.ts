@@ -743,6 +743,12 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
 }
 
 export async function markArrived(driverId: bigint, rideId: bigint) {
+  const ride = await repo.getRideForDriverAction(rideId, driverId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  }
+
   const otp  = generateOtp(RIDE_OTP_LENGTH)
   const hash = hashOtp(otp)
 
@@ -765,14 +771,11 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
     status: 'driver_arrived',
   })
 
-  const ride = await repo.getRideById(rideId)
-  if (ride) {
-    // Rider-only channel: the OTP must never reach the driver's socket.
-    socketEvents.sendUserUpdate(ride.user_id.toString(), {
-      status:   'driver_arrived',
-      startOtp: otp,
-    })
-  }
+  // Rider-only channel: the OTP must never reach the driver's socket.
+  socketEvents.sendUserUpdate(ride.user_id.toString(), {
+    status:   'driver_arrived',
+    startOtp: otp,
+  })
 
   return { success: true }
 }
@@ -812,8 +815,11 @@ export async function startReturn(driverId: bigint, rideId: bigint) {
 }
 
 export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: string) {
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideForDriverAction(rideId, driverId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  }
   if (ride.status !== 'driver_arrived') {
     throw Object.assign(new Error('Ride not in correct state'), { httpStatus: 409 })
   }
@@ -1675,8 +1681,11 @@ export async function verifyEndOTP(
   actualEndLat?: number,
   actualEndLng?: number
 ) {
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideForDriverAction(rideId, driverId)
   if (!ride) throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
+  if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
+    throw httpError(403, 'Not your ride', 'FORBIDDEN')
+  }
   if (ride.status !== 'in_progress' && ride.status !== 'returning') {
     throw httpError(409, 'Ride not in progress', 'RIDE_NOT_IN_PROGRESS')
   }
