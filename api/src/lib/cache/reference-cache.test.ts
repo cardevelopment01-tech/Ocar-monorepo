@@ -7,6 +7,12 @@ vi.mock('@/db/redis', () => ({
   getJSON: (...a: unknown[]) => mockGetJSON(...a),
   setWithTTL: (...a: unknown[]) => mockSetWithTTL(...a),
   client: { del: (...a: unknown[]) => mockDel(...a) },
+  // withTimeout must be present even though this suite doesn't exercise its
+  // timeout behavior directly: accessing an export vitest's automock didn't
+  // see returned from the factory throws immediately (before any argument to
+  // withTimeout(...) is even evaluated), which silently prevented `del` from
+  // ever being called in `invalidate`.
+  withTimeout: (p: Promise<unknown>) => p,
 }))
 
 const mockHitsInc = vi.fn()

@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
-vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), child: vi.fn(() => ({ warn: vi.fn() })) } }))
+vi.mock('@/lib/logger', () => ({
+  logger: {
+    warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn(),
+    child: vi.fn(() => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() })),
+  },
+}))
 
 import { pool } from '@/db/client'
 import { getGpsTrackedDistanceKm } from '@/modules/rides/rides.repository'
