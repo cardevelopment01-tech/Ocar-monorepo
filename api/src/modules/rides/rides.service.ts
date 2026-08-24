@@ -12,7 +12,7 @@ import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.servi
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES, gpsFlushQueue } from '@/jobs/queues'
 import { socketEvents } from '@/websocket/socket.server'
-import { generateOtp, hashOtp } from '@/lib/otp'
+import { generateOtp, hashOtp, checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
 import {
   RIDE_OTP_LENGTH,
   ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES,
@@ -827,16 +827,20 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     throw Object.assign(new Error('Ride not in correct state'), { httpStatus: 409 })
   }
 
+  const attemptNumber = await checkRideOtpAttempts(rideId, 'start')
+
   const valid = ride.start_otp_hash != null && hashOtp(otp) === ride.start_otp_hash
 
   await pool.query(
     `INSERT INTO ride_otp_events
        (ride_id, otp_type, event, actor_role, attempt_number)
-     VALUES ($1,'trip_start',$2,'driver',1)`,
-    [rideId, valid ? 'verified' : 'failed']
+     VALUES ($1,'trip_start',$2,'driver',$3)`,
+    [rideId, valid ? 'verified' : 'failed', attemptNumber]
   )
 
   if (!valid) throw Object.assign(new Error('Invalid OTP'), { httpStatus: 422 })
+
+  await clearRideOtpAttempts(rideId, 'start')
 
   const endOtp  = generateOtp(RIDE_OTP_LENGTH)
   const endHash = hashOtp(endOtp)
@@ -1698,17 +1702,20 @@ export async function verifyEndOTP(
     throw httpError(409, 'Ride has pending stops', 'RIDE_HAS_PENDING_STOPS')
   }
 
+  const attemptNumber = await checkRideOtpAttempts(rideId, 'end')
+
   const valid = ride.end_otp_hash != null && hashOtp(otp) === ride.end_otp_hash
 
   await pool.query(
     `INSERT INTO ride_otp_events
        (ride_id, otp_type, event, actor_role, attempt_number)
-     VALUES ($1,'trip_end',$2,'driver',1)`,
-    [rideId, valid ? 'verified' : 'failed']
+     VALUES ($1,'trip_end',$2,'driver',$3)`,
+    [rideId, valid ? 'verified' : 'failed', attemptNumber]
   )
 
   if (!valid) throw httpError(422, 'Invalid OTP', 'INVALID_OTP')
 
+  await clearRideOtpAttempts(rideId, 'end')
   await redis.del(endOtpKey(rideId.toString()))
 
   const completedAt = new Date().toISOString()

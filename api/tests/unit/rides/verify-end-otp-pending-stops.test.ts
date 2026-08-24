@@ -33,9 +33,16 @@ vi.mock('@/modules/notifications/notifications.service', () => ({
   notifyAllAdmins:         vi.fn().mockResolvedValue(undefined),
   notifyOwner:             vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('@/lib/otp', () => ({ generateOtp: vi.fn(() => '1234'), hashOtp: vi.fn(() => 'HASH') }))
+vi.mock('@/lib/otp', () => ({
+  generateOtp: vi.fn(() => '1234'),
+  hashOtp: vi.fn(() => 'HASH'),
+  checkRideOtpAttempts: vi.fn().mockResolvedValue(1),
+  clearRideOtpAttempts: vi.fn().mockResolvedValue(undefined),
+}))
 
 import * as repo from '@/modules/rides/rides.repository'
+import * as otpLib from '@/lib/otp'
+import { pool } from '@/db/client'
 import { verifyEndOTP } from '@/modules/rides/rides.service'
 
 function baseRide(over: Record<string, unknown> = {}) {
@@ -88,5 +95,29 @@ describe('verifyEndOTP — pending stops guard', () => {
 
     const result = await verifyEndOTP(BigInt(9), BigInt(303), '1234')
     expect(result.success).toBe(true)
+  })
+
+  it('records the real attempt_number from the limiter and clears on success', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideStops).mockResolvedValue([] as never)
+    vi.mocked(otpLib.checkRideOtpAttempts).mockResolvedValueOnce(2)
+
+    await verifyEndOTP(BigInt(9), BigInt(303), '1234')
+
+    const insert = vi.mocked(pool.query).mock.calls.find(
+      c => /INSERT INTO ride_otp_events/.test(c[0] as string)
+    )
+    expect(insert![1]).toEqual([BigInt(303), 'verified', 2])
+    expect(otpLib.clearRideOtpAttempts).toHaveBeenCalledWith(BigInt(303), 'end')
+  })
+
+  it('lets a 429 lockout from the limiter propagate before any status change', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideStops).mockResolvedValue([] as never)
+    vi.mocked(otpLib.checkRideOtpAttempts).mockRejectedValueOnce(
+      Object.assign(new Error('locked'), { httpStatus: 429, appCode: 'RIDE_OTP_LOCKED' })
+    )
+    await expect(verifyEndOTP(BigInt(9), BigInt(303), '1234')).rejects.toMatchObject({ httpStatus: 429 })
+    expect(repo.updateRideStatus).not.toHaveBeenCalled()
   })
 })

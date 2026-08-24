@@ -33,6 +33,7 @@ vi.mock('@/modules/notifications/notifications.service', () => ({
 
 import * as repo from '@/modules/rides/rides.repository'
 import { pool } from '@/db/client'
+import * as otpLib from '@/lib/otp'
 import { verifyStartOTP } from '@/modules/rides/rides.service'
 
 function baseRide(over: Record<string, unknown> = {}) {
@@ -66,5 +67,30 @@ describe('verifyStartOTP — ownership', () => {
     const res = await verifyStartOTP(BigInt(9), BigInt(303), '1234')
     expect(res).toEqual({ success: true })
     expect(repo.updateRideStatus).toHaveBeenCalledWith(BigInt(303), 'in_progress', expect.anything())
+  })
+
+  it('locks out with 429 when the attempt limiter throws (over the cap)', async () => {
+    vi.mocked(repo.getRideForDriverAction).mockResolvedValue(baseRide() as never)
+    vi.mocked(otpLib.checkRideOtpAttempts).mockRejectedValueOnce(
+      Object.assign(new Error('Too many incorrect attempts. Try again later.'), {
+        httpStatus: 429, appCode: 'RIDE_OTP_LOCKED',
+      })
+    )
+    await expect(verifyStartOTP(BigInt(9), BigInt(303), '1234')).rejects.toMatchObject({ httpStatus: 429 })
+    // hash comparison / status flip must not happen once locked out
+    expect(repo.updateRideStatus).not.toHaveBeenCalled()
+  })
+
+  it('records the real attempt_number (from the limiter) in ride_otp_events, not a hardcoded 1', async () => {
+    vi.mocked(repo.getRideForDriverAction).mockResolvedValue(baseRide() as never)
+    vi.mocked(otpLib.checkRideOtpAttempts).mockResolvedValueOnce(3)
+    await verifyStartOTP(BigInt(9), BigInt(303), '1234')
+
+    const insert = vi.mocked(pool.query).mock.calls.find(
+      c => /INSERT INTO ride_otp_events/.test(c[0] as string)
+    )
+    expect(insert).toBeTruthy()
+    expect(insert![1]).toEqual([BigInt(303), 'verified', 3])
+    expect(otpLib.clearRideOtpAttempts).toHaveBeenCalledWith(BigInt(303), 'start')
   })
 })

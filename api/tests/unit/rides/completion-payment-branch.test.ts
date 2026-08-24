@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 vi.mock('@/db/redis', () => ({ client: { del: vi.fn() } }))
-vi.mock('@/lib/otp', () => ({ generateOtp: vi.fn(() => '1234'), hashOtp: vi.fn(() => 'h') }))
+vi.mock('@/lib/otp', () => ({
+  generateOtp: vi.fn(() => '1234'),
+  hashOtp: vi.fn(() => 'h'),
+  checkRideOtpAttempts: vi.fn().mockResolvedValue(1),
+  clearRideOtpAttempts: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('@/websocket/socket.server', () => ({
   socketEvents: { sendRideStatusUpdate: vi.fn(), broadcastNewRide: vi.fn(), notifyUserRideUpdate: vi.fn() },
   getIO: vi.fn(() => ({ to: vi.fn(() => ({ emit: vi.fn() })) })),
