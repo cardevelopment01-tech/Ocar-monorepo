@@ -21,6 +21,21 @@ function makeRedisOptions(): RedisOptions {
 
 export const client = new Redis(makeRedisOptions())
 
+// `client` is shared with BullMQ (see jobs/queues/index.ts), which relies on
+// long-blocking commands (BRPOPLPUSH etc.) that are SUPPOSED to wait for a
+// long time -- a client-wide commandTimeout would kill those and crash the
+// process. Bound only the ad-hoc cache commands this module issues instead.
+const CACHE_COMMAND_TIMEOUT_MS = 1000
+
+export function withTimeout<T>(promise: Promise<T>): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('redis command timeout')), CACHE_COMMAND_TIMEOUT_MS)
+    ),
+  ])
+}
+
 client.on('error', (err) => {
   logger.error({ err }, 'redis error')
 })
@@ -34,12 +49,12 @@ export async function setWithTTL(
   value: string,
   ttlSeconds: number
 ): Promise<void> {
-  await client.set(key, value, 'EX', ttlSeconds)
+  await withTimeout(client.set(key, value, 'EX', ttlSeconds))
 }
 
 export async function getJSON<T>(key: string): Promise<T | null> {
   try {
-    const value = await client.get(key)
+    const value = await withTimeout(client.get(key))
     if (value === null) return null
     return JSON.parse(value) as T
   } catch {

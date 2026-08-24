@@ -1,4 +1,4 @@
-import { getJSON, setWithTTL, client as redisClient } from '@/db/redis'
+import { getJSON, setWithTTL, client as redisClient, withTimeout } from '@/db/redis'
 import { logger } from '@/lib/logger'
 import { cacheHitsTotal, cacheMissesTotal } from '@/observability/metrics'
 import { singleFlight } from './single-flight'
@@ -59,7 +59,7 @@ export async function cachedRead<T>(
 export async function invalidate(...keys: string[]): Promise<void> {
   if (keys.length === 0) return
   try {
-    await redisClient.del(...keys)
+    await withTimeout(redisClient.del(...keys))
   } catch (err) {
     logger.warn({ err, keys }, 'reference-cache: failed to invalidate, will serve stale until TTL')
   }

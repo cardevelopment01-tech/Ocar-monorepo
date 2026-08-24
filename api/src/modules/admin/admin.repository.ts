@@ -1,5 +1,5 @@
 import { pool, withTransaction } from '@/db/client'
-import { client as redisClient } from '@/db/redis'
+import { client as redisClient, withTimeout } from '@/db/redis'
 import {
   RATE_CARD_VERSION_KEY, CITIES_ALL_KEY, cityByIdKey, VEHICLE_CATEGORIES_ALL_KEY,
   rentalPackageKey, PACKAGE_TIERS_ALL_KEY,
@@ -1601,7 +1601,7 @@ export async function createAdminRateCard(data: {
 
     await client.query('COMMIT')
     try {
-      await redisClient.incr(RATE_CARD_VERSION_KEY)
+      await withTimeout(redisClient.incr(RATE_CARD_VERSION_KEY))
     } catch (err) {
       logger.warn({ err }, 'reference-cache: failed to bump rate_card version, will serve stale until TTL')
     }

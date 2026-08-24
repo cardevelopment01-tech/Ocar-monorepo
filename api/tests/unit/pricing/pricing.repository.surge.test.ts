@@ -8,6 +8,7 @@ vi.mock('@/db/redis', () => ({
   getJSON: vi.fn().mockResolvedValue(null),
   setWithTTL: vi.fn().mockResolvedValue(undefined),
   client: { get: vi.fn(), del: vi.fn().mockResolvedValue(1) },
+  withTimeout: (p: Promise<unknown>) => p,
 }))
 
 import { pool } from '@/db/client'

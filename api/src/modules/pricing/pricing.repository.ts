@@ -1,7 +1,7 @@
 import { pool } from '@/db/client'
 import { cachedRead, invalidate } from '@/lib/cache/reference-cache'
 import { singleFlight } from '@/lib/cache/single-flight'
-import { client as redisClient, getJSON, setWithTTL } from '@/db/redis'
+import { client as redisClient, getJSON, setWithTTL, withTimeout } from '@/db/redis'
 import { rateCardKey, RATE_CARD_VERSION_KEY, stopChargeKey, rentalPackageKey, surgeKey } from '@/constants/redis-keys'
 import { RATE_CARD_CACHE_TTL_SECONDS, STRUCTURAL_CACHE_TTL_SECONDS } from '@/constants/limits'
 import { logger } from '@/lib/logger'
@@ -15,7 +15,7 @@ function secondsUntil(date: Date): number {
 
 async function getRateCardVersion(): Promise<string> {
   try {
-    return (await redisClient.get(RATE_CARD_VERSION_KEY)) ?? '0'
+    return (await withTimeout(redisClient.get(RATE_CARD_VERSION_KEY))) ?? '0'
   } catch {
     return '0'
   }
@@ -336,7 +336,7 @@ export async function createRateCard(data: {
 
     await client.query('COMMIT')
     try {
-      await redisClient.incr(RATE_CARD_VERSION_KEY)
+      await withTimeout(redisClient.incr(RATE_CARD_VERSION_KEY))
     } catch (err) {
       logger.warn({ err }, 'reference-cache: failed to bump rate_card version, will serve stale until TTL')
     }
