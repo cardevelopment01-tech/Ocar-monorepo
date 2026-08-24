@@ -1,4 +1,5 @@
 import { pool } from '@/db/client'
+import type { PoolClient } from 'pg'
 import { httpError, createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { client as redis } from '@/db/redis'
@@ -46,6 +47,11 @@ import { logger } from '@/lib/logger'
 import * as callMasking from '@/modules/call-masking/call-masking.service'
 
 const log = logger.child({ module: 'rides-service' })
+
+// Share of a collected cancellation fee that compensates the assigned driver for
+// the wasted trip toward the rider. ponytail: flat constant; promote to
+// system_config only if ops needs to tune it without a deploy.
+const DRIVER_COMPENSATION_SHARE = 0.7
 
 // Logs the routing engine's predicted ETA at the start of a leg (see
 // docs/PRODUCTION_NAVIGATION_SYSTEM_PLAN.md Phase 4) — instrumentation only,
@@ -1087,6 +1093,28 @@ function cancelStageFor(status: string): string {
   return 'before_acceptance'
 }
 
+// Reads the city/category-scoped cancellation fee off rate_cards, same
+// NULL-city-fallback lookup as pricing.repository.getCurrentRateCard. Runs on the
+// caller's transaction client so the read + charge are one atomic unit. Returns 0
+// when no fee is configured (NULL column or no matching row).
+async function readCancellationFee(
+  client: PoolClient,
+  categoryId: bigint,
+  rideType: string,
+  cityId: bigint | null,
+): Promise<number> {
+  const res = await client.query<{ cancellation_fee: string | null }>(
+    `SELECT cancellation_fee FROM rate_cards
+      WHERE category_id = $1 AND ride_type = $2 AND effective_to IS NULL
+        AND (city_id = $3 OR city_id IS NULL)
+      ORDER BY city_id NULLS LAST
+      LIMIT 1`,
+    [categoryId, rideType, cityId]
+  )
+  const raw = res.rows[0]?.cancellation_fee
+  return raw != null ? parseFloat(raw) : 0
+}
+
 export async function cancelRide(
   userId: bigint,
   rideId: bigint,
@@ -1116,11 +1144,86 @@ export async function cancelRide(
       throw Object.assign(new Error('Ride status changed — please refresh'), { httpStatus: 409 })
     }
 
+    // Charge the cancellation fee (was computed then discarded as 0). Sourced from
+    // rate_cards, collected atomically in this same transaction. All-or-nothing:
+    // user_wallets.balance has a >= 0 CHECK, so if the wallet can't cover the fee we
+    // record it as owed (fee_amount set, fee_waived false) rather than partial-debit —
+    // same posture as payFromUserWallet. Driver compensation is only credited from a
+    // fee we actually collected.
+    let feeAmount = 0
+    if (feeApplicable) {
+      feeAmount = await readCancellationFee(
+        client,
+        BigInt(ride.category_id),
+        ride.ride_type,
+        ride.origin_city_id != null ? BigInt(ride.origin_city_id) : null,
+      )
+      if (feeAmount > 0) {
+        await client.query(
+          `INSERT INTO user_wallets (user_id, balance) VALUES ($1, 0)
+           ON CONFLICT (user_id) DO NOTHING`,
+          [userId]
+        )
+        const wRes = await client.query<{ id: string; balance: string }>(
+          `SELECT id, balance FROM user_wallets WHERE user_id = $1 FOR UPDATE`,
+          [userId]
+        )
+        const wallet = wRes.rows[0]
+        const balance = wallet ? parseFloat(wallet.balance) : 0
+        if (wallet && balance >= feeAmount) {
+          const newBalance = Math.round((balance - feeAmount) * 100) / 100
+          await client.query(
+            `UPDATE user_wallets SET balance = $2, lifetime_spent = lifetime_spent + $3 WHERE id = $1`,
+            [wallet.id, newBalance, feeAmount]
+          )
+          await client.query(
+            `INSERT INTO user_wallet_ledger
+               (wallet_id, user_id, entry_type, amount, direction, balance_after, ride_id, note)
+             VALUES ($1, $2, 'adjustment_debit', $3, 'debit', $4, $5, $6)`,
+            [wallet.id, userId, feeAmount, newBalance, rideId, `Cancellation fee for ride #${rideId}`]
+          )
+
+          // Compensate the assigned driver for the wasted approach, from the collected fee.
+          if (ride.driver_id) {
+            const driverId = BigInt(ride.driver_id)
+            const compensation = Math.round(feeAmount * DRIVER_COMPENSATION_SHARE * 100) / 100
+            if (compensation > 0) {
+              await client.query(
+                `INSERT INTO driver_wallets (driver_id, balance) VALUES ($1, 0)
+                 ON CONFLICT (driver_id) DO NOTHING`,
+                [driverId]
+              )
+              const dRes = await client.query<{ id: string; balance: string; is_frozen: boolean }>(
+                `SELECT id, balance, is_frozen FROM driver_wallets WHERE driver_id = $1 FOR UPDATE`,
+                [driverId]
+              )
+              const dWallet = dRes.rows[0]
+              if (dWallet && !dWallet.is_frozen) {
+                const dNew = Math.round((parseFloat(dWallet.balance) + compensation) * 100) / 100
+                await client.query(
+                  `UPDATE driver_wallets SET balance = $2 WHERE id = $1`,
+                  [dWallet.id, dNew]
+                )
+                await client.query(
+                  `INSERT INTO driver_wallet_ledger
+                     (wallet_id, driver_id, entry_type, amount, direction, balance_after, ride_id, note)
+                   VALUES ($1, $2, 'adjustment_credit', $3, 'credit', $4, $5, $6)`,
+                  [dWallet.id, driverId, compensation, dNew, rideId, `Cancellation compensation for ride #${rideId}`]
+                )
+              }
+            }
+          }
+        } else {
+          log.warn({ userId, rideId, feeAmount, balance }, 'cancellation fee owed but wallet balance insufficient — recorded, not collected')
+        }
+      }
+    }
+
     await client.query(
       `INSERT INTO ride_cancellations
          (ride_id, actor, stage, cancelled_by_user_id, reason_code, reason, fee_applicable, fee_amount, fee_waived)
-       VALUES ($1, 'user', $2, $3, $4, $5, $6, 0, false)`,
-      [rideId, stage, userId, reasonCode ?? null, reason ?? null, feeApplicable]
+       VALUES ($1, 'user', $2, $3, $4, $5, $6, $7, false)`,
+      [rideId, stage, userId, reasonCode ?? null, reason ?? null, feeApplicable, feeAmount]
     )
 
     await client.query(
@@ -1175,6 +1278,23 @@ export async function cancelRide(
     for (const driverId of notifiedDriverIds) {
       socketEvents.sendRequestExpired(driverId, rideId.toString())
     }
+  }
+
+  // Per-user daily cancellation counter — the §07 fixed-window pattern (INCR + EXPIRE
+  // on first increment), same shape as ride-OTP lockout and SOS rate-limiting.
+  // Flags excessive cancellers for review; deliberately does NOT block the cancellation
+  // (a genuine repeat cancel must always succeed).
+  try {
+    const key = `cancel:daily:user:${userId}`
+    const count = await redis.incr(key)
+    if (count === 1) await redis.expire(key, 86400)
+    if (count > 5) {
+      // ponytail: a structured warn log IS the flag (queryable in Loki). Promote to a
+      // dedicated table / higher-fee tier only if ops needs richer reporting.
+      log.warn({ userId, count }, 'excessive cancellations in 24h — flagged for review')
+    }
+  } catch (err) {
+    log.warn({ err, userId }, 'cancellation counter update failed')
   }
 
   return { success: true }
