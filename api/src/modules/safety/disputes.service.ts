@@ -103,12 +103,25 @@ export async function resolveDispute(id: bigint, input: ResolveDisputeInput) {
       input.refundAmount > 0 &&
       (input.outcome === 'full_refund' || input.outcome === 'partial_refund' || input.outcome === 'fare_adjusted')
     ) {
+      // Lock the payment row for the duration of this txn so a concurrent
+      // resolve on the same ride can't race two refunds past the cap.
       const payRes = await client.query(
-        `SELECT id FROM payments WHERE ride_id = $1 LIMIT 1`,
+        `SELECT id, amount FROM payments WHERE ride_id = $1 LIMIT 1 FOR UPDATE`,
         [dispute.ride_id]
       )
       const payment = payRes.rows[0]
       if (payment) {
+        const refundedRes = await client.query(
+          `SELECT COALESCE(SUM(amount), 0) AS sum FROM refunds WHERE payment_id = $1`,
+          [payment.id]
+        )
+        const alreadyRefunded = parseFloat(refundedRes.rows[0].sum)
+        const remaining = Math.round((parseFloat(payment.amount) - alreadyRefunded) * 100) / 100
+        if (input.refundAmount > remaining) {
+          throw Object.assign(new Error('Refund amount exceeds the remaining refundable balance'), {
+            httpStatus: 400, code: 'REFUND_EXCEEDS_PAYMENT',
+          })
+        }
         await client.query(
           `INSERT INTO refunds
              (payment_id, ride_id, dispute_id, amount, reason, status, initiated_by)
