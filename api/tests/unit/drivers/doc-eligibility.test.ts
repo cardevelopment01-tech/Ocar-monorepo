@@ -15,8 +15,9 @@ describe('docIssueExistsSql', () => {
     expect(sql).toContain('driver_documents')
     expect(sql).toContain('driver_vehicle_documents')
     expect(sql).toContain('ds.driver_id')
-    // pre-Task-B: gating still reads valid_until (Task B re-points this to verified_valid_until)
-    expect(sql).toMatch(/valid_until < CURRENT_DATE/)
+    // gating reads the admin-verified expiry only, never the driver's claim
+    expect(sql).toContain('verified_valid_until < CURRENT_DATE')
+    expect(sql).not.toContain('claimed_valid_until')
   })
 
   it('accepts a bound-parameter expression for the single-driver rollup', () => {

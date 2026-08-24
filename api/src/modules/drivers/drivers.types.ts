@@ -67,7 +67,8 @@ export interface DriverVehicleDocument {
   doc_number: string | null
   status: string
   rejection_note: string | null
-  valid_until: string | null
+  claimed_valid_until: string | null
+  verified_valid_until: string | null
   created_at: Date
   updated_at: Date
 }

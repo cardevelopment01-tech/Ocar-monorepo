@@ -944,17 +944,17 @@ export async function rejectVehicleDoc(
 
 export async function listExpiringDocs(daysAhead: number): Promise<ExpiringVehicleDoc[]> {
   const res = await pool.query(
-    `SELECT dvd.id, dvd.vehicle_id, dvd.doc_type, dvd.file_url, dvd.valid_until,
+    `SELECT dvd.id, dvd.vehicle_id, dvd.doc_type, dvd.file_url, dvd.verified_valid_until AS valid_until,
             dv.number_plate, dv.vehicle_name,
             d.full_name AS driver_name, d.phone AS driver_phone, d.code AS driver_code
      FROM driver_vehicle_documents dvd
      JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
      JOIN drivers d ON d.id = dv.driver_id
      WHERE dvd.status = 'approved'
-       AND dvd.valid_until IS NOT NULL
-       AND dvd.valid_until <= now() + ($1 || ' days')::interval
-       AND dvd.valid_until >= now()
-     ORDER BY dvd.valid_until ASC`,
+       AND dvd.verified_valid_until IS NOT NULL
+       AND dvd.verified_valid_until <= now() + ($1 || ' days')::interval
+       AND dvd.verified_valid_until >= now()
+     ORDER BY dvd.verified_valid_until ASC`,
     [daysAhead]
   )
   return res.rows.map(r => ({

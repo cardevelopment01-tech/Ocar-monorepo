@@ -353,12 +353,12 @@ describe('M03 — Driver Onboarding', () => {
       expect(res.body.doc_type).toBe('driving_license_front')
       expect(res.body.status).toBe('pending')
 
-      const { rows } = await pool.query<{ doc_type: string; valid_until: string | null }>(
-        "SELECT doc_type, valid_until FROM driver_documents WHERE driver_id = $1 AND doc_type = 'driving_license_front'",
+      const { rows } = await pool.query<{ doc_type: string; claimed_valid_until: string | null }>(
+        "SELECT doc_type, claimed_valid_until FROM driver_documents WHERE driver_id = $1 AND doc_type = 'driving_license_front'",
         [driverId]
       )
       expect(rows).toHaveLength(1)
-      expect(rows[0]?.valid_until).not.toBeNull()
+      expect(rows[0]?.claimed_valid_until).not.toBeNull()
     })
 
     it('TC-M03-015: driving_license_back upload without expiry → 201, doc_type=driving_license_back', async () => {
