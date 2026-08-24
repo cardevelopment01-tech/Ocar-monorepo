@@ -745,6 +745,9 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
 export async function markArrived(driverId: bigint, rideId: bigint) {
   const ride = await repo.getRideForDriverAction(rideId, driverId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  // Defense-in-depth: getRideForDriverAction already scopes its query by driver_id,
+  // so a mismatched ride.driver_id can't occur via a real DB call today — this guard
+  // is a backstop against that scoping ever being loosened, not a reachable branch now.
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
   }
