@@ -69,7 +69,7 @@ describe('triggerSos', () => {
   })
 
   it('accepts a driver-triggered SOS: looks up the ride\'s own rider phone and tags triggeredBy as driver', async () => {
-    vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'in_progress', user_id: 7n } as never)
+    vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'in_progress', user_id: 7n, driver_id: 42n } as never)
     let emitted: unknown
     vi.mocked(getIO).mockReturnValue({ to: () => ({ emit: (_event: string, payload: unknown) => { emitted = payload } }) } as never)
 
@@ -86,7 +86,7 @@ describe('triggerSos', () => {
   })
 
   it('skips the phone lookup for a driver-triggered SOS when the ride has no user_id', async () => {
-    vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'in_progress', user_id: null } as never)
+    vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'in_progress', user_id: null, driver_id: 42n } as never)
     vi.mocked(getIO).mockReturnValue({ to: () => ({ emit: vi.fn() }) } as never)
 
     const alert = await triggerSos({ rideId: 5n, triggeredByDriverId: 42n })
@@ -102,5 +102,15 @@ describe('triggerSos', () => {
     await triggerSos({ rideId: 5n, triggeredByUserId: 1n })
 
     expect(repo.insertSosAlert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'medium' }))
+  })
+
+  it('throws 403 NOT_RIDE_PARTICIPANT when the caller is not on the ride', async () => {
+    vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'in_progress', user_id: 7n, driver_id: 42n } as never)
+    vi.mocked(getIO).mockReturnValue({ to: () => ({ emit: vi.fn() }) } as never)
+
+    await expect(triggerSos({ rideId: 5n, triggeredByUserId: 999n })).rejects.toMatchObject({
+      httpStatus: 403, code: 'NOT_RIDE_PARTICIPANT',
+    })
+    expect(repo.insertSosAlert).not.toHaveBeenCalled()
   })
 })

@@ -2,6 +2,7 @@ import { pool } from '@/db/client'
 import * as repo from './safety.repository'
 import type { CreateDisputeInput, ResolveDisputeInput } from './safety.types'
 import * as geoService from '@/modules/geo/geo.service'
+import { assertRideParticipant } from './safety.guards'
 
 export async function createDispute(input: CreateDisputeInput) {
   const ride = await repo.getRideBasic(input.rideId)
@@ -13,6 +14,12 @@ export async function createDispute(input: CreateDisputeInput) {
       httpStatus: 400, code: 'RIDE_NOT_COMPLETED',
     })
   }
+
+  const principal: { role: 'user' | 'driver'; id: bigint } =
+    input.initiatedByUserId != null
+      ? { role: 'user', id: input.initiatedByUserId }
+      : { role: 'driver', id: input.initiatedByDriverId! }
+  assertRideParticipant(ride, principal)
 
   const slaHours = input.priority && input.priority <= 2 ? 24 : 48
 

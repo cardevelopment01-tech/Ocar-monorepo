@@ -4,6 +4,7 @@ import { pool } from '@/db/client'
 import { notificationsQueue } from '@/jobs/queues'
 import type { TriggerSosInput } from './safety.types'
 import { logger } from '@/lib/logger'
+import { assertRideParticipant } from './safety.guards'
 
 const log = logger.child({ module: 'sos-service' })
 
@@ -17,6 +18,12 @@ export async function triggerSos(input: TriggerSosInput) {
       httpStatus: 400, code: 'RIDE_NOT_ACTIVE',
     })
   }
+
+  const principal: { role: 'user' | 'driver'; id: bigint } =
+    input.triggeredByUserId != null
+      ? { role: 'user', id: input.triggeredByUserId }
+      : { role: 'driver', id: input.triggeredByDriverId! }
+  assertRideParticipant(ride, principal)
 
   const alert = await repo.insertSosAlert({
     ride_id:             input.rideId,
