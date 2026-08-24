@@ -468,6 +468,45 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   // fare_snapshots.trip_hours records the same value used to compute the fare.
   const effectiveTripHours = clampTripHours(data.rideType, data.tripHours)
 
+  // Server-side distance bound. For one-way/rental, the client-supplied distanceKm
+  // IS the bill (total_final = total_estimated at completion), so a tampered client
+  // could low-ball the fare. Re-derive the route server-side and clamp the client
+  // value to a 15% tolerance band. Correct-don't-reject: minor client rounding or
+  // staleness is normal, so we overwrite with the server number rather than failing
+  // the booking. Skipped when stops exist (getRoute is point-to-point and can't
+  // cheaply bound a multi-stop detour) or when Google was unreachable (a 'fallback'
+  // route is itself a straight-line guess, no more trustworthy than the client).
+  // ponytail: point-to-point bound only; add a waypoint-aware getRoute overload
+  // here if multi-stop fare abuse ever shows up in the data.
+  if (
+    data.destinationLat !== undefined &&
+    data.destinationLng !== undefined &&
+    (data.stops?.length ?? 0) === 0
+  ) {
+    try {
+      const serverRoute = await getRoute(
+        data.originLat, data.originLng, data.destinationLat, data.destinationLng
+      )
+      if (serverRoute.source !== 'fallback') {
+        const tolerance = 0.15
+        const hi = serverRoute.distanceKm * (1 + tolerance)
+        const lo = serverRoute.distanceKm * (1 - tolerance)
+        if (data.distanceKm > hi || data.distanceKm < lo) {
+          log.warn(
+            { clientDistanceKm: data.distanceKm, serverDistanceKm: serverRoute.distanceKm },
+            'Booking distance outside server tolerance — using server value'
+          )
+          data.distanceKm  = serverRoute.distanceKm
+          data.durationMin = serverRoute.durationMin
+        }
+      }
+    } catch (err) {
+      // A routing outage must never block a booking — fall back to the client value,
+      // same posture as the 'fallback' source above.
+      log.warn({ err }, 'server route lookup failed during booking; using client distance')
+    }
+  }
+
   // originCityId is client-supplied and unverified (URL params are tamperable) — the
   // pickup coordinates are what the client actually can't fake without lying about GPS,
   // so re-derive the billing city from them instead of trusting data.originCityId.
