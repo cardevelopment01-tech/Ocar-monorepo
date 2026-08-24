@@ -557,9 +557,9 @@ export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | n
   return res.rows[0] ?? null
 }
 
-export async function getRideById(rideId: bigint): Promise<Ride | null> {
-  const res = await pool.query<Ride>(
-    `SELECT
+// Shared SELECT/FROM/JOIN body (no WHERE) used by both getRideById and
+// getRideForDriverAction so they return identical computed columns.
+const RIDE_SELECT_SQL = `SELECT
        r.*,
        ST_Y(r.origin::geometry)      AS origin_lat,
        ST_X(r.origin::geometry)      AS origin_lng,
@@ -602,9 +602,24 @@ export async function getRideById(rideId: bigint): Promise<Ride | null> {
      LEFT JOIN vehicle_categories bvc ON bvc.id = r.category_id
      LEFT JOIN vehicle_categories avc ON avc.id = dv.category_id
      LEFT JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
-     LEFT JOIN payments p          ON p.ride_id = r.id
-     WHERE r.id = $1`,
-    [rideId]
+     LEFT JOIN payments p          ON p.ride_id = r.id`
+
+export async function getRideById(rideId: bigint): Promise<Ride | null> {
+  const res = await pool.query<Ride>(`${RIDE_SELECT_SQL} WHERE r.id = $1`, [rideId])
+  return res.rows[0] ?? null
+}
+
+// Fail-closed-by-construction ownership: scoping the fetch by (id, driver_id)
+// makes "not your ride" indistinguishable from "no such ride" — a missing
+// ownership check becomes a missing row (existing 404 path) instead of a silent
+// IDOR. Used by every driver-scoped ride-action service function.
+export async function getRideForDriverAction(
+  rideId: bigint,
+  driverId: bigint
+): Promise<Ride | null> {
+  const res = await pool.query<Ride>(
+    `${RIDE_SELECT_SQL} WHERE r.id = $1 AND r.driver_id = $2`,
+    [rideId, driverId]
   )
   return res.rows[0] ?? null
 }
