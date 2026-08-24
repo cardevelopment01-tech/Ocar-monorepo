@@ -567,7 +567,18 @@ export async function topUpDriverWallet(
       return
     }
 
-    const newBalance = Math.round((parseFloat(wallet.balance) + amount) * 100) / 100
+    const prevBalance = parseFloat(wallet.balance)
+    const newBalance = Math.round((prevBalance + amount) * 100) / 100
+
+    // Debt-first allocation: a negative balance means the driver owes the
+    // platform (dues). balance is a single signed column, so `prevBalance + amount`
+    // already zeroes the debt before any remainder becomes spendable — this makes
+    // that split explicit and auditable in the ledger note instead of hiding it.
+    const debtCleared = prevBalance < 0 ? Math.min(amount, -prevBalance) : 0
+    const spendable = Math.round((amount - debtCleared) * 100) / 100
+    const note = debtCleared > 0
+      ? `Wallet top-up ₹${amount} via Razorpay (₹${debtCleared} cleared dues, ₹${spendable} spendable)`
+      : 'Wallet top-up via Razorpay'
 
     await client.query(
       `UPDATE driver_wallets
@@ -581,8 +592,8 @@ export async function topUpDriverWallet(
       `INSERT INTO driver_wallet_ledger (
          wallet_id, driver_id, entry_type,
          amount, direction, balance_after, reference_id, note
-       ) VALUES ($1,$2,'topup',$3,'credit',$4,$5,'Wallet top-up via Razorpay')`,
-      [wallet.id, driverId, amount, newBalance, referenceId]
+       ) VALUES ($1,$2,'topup',$3,'credit',$4,$5,$6)`,
+      [wallet.id, driverId, amount, newBalance, referenceId, note]
     )
 
     // Ride eligibility is re-derived live from balance on every go-online/
