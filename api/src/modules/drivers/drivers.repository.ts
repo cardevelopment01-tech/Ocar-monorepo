@@ -337,6 +337,27 @@ export async function findVehicleDocuments(vehicleId: string): Promise<DriverVeh
   )
 }
 
+// Shared SQL fragment: does this driver have any required-doc issue — a rejected
+// row, or an approved row whose expiry has passed — across identity docs and the
+// primary vehicle's docs? `driverIdExpr` is ALWAYS a hardcoded SQL token ('$1' for
+// the single-driver rollup, or a column like 'ds.driver_id' for the broadcast
+// candidate queries) — never user input, so interpolating it is safe under the
+// "only hardcoded identifiers in dynamic SQL" rule. Both hasApprovedRequiredDocs
+// and the ride-broadcast candidate queries build on this so the eligibility rule
+// lives in exactly one place.
+export function docIssueExistsSql(driverIdExpr: string): string {
+  return `EXISTS (
+       SELECT 1 FROM driver_documents dd
+       WHERE dd.driver_id = ${driverIdExpr}
+         AND (dd.status = 'rejected' OR (dd.status = 'approved' AND dd.valid_until < CURRENT_DATE))
+       UNION ALL
+       SELECT 1 FROM driver_vehicle_documents dvd
+       JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+       WHERE dv.driver_id = ${driverIdExpr} AND dv.is_primary = true
+         AND (dvd.status = 'rejected' OR (dvd.status = 'approved' AND dvd.valid_until < CURRENT_DATE))
+     )`
+}
+
 // True if none of the driver's identity/vehicle documents are rejected or an
 // expired-but-still-approved row (a document approved in the past whose
 // valid_until has since passed) — the live rollup goOnline() gates on.
@@ -344,16 +365,7 @@ export async function findVehicleDocuments(vehicleId: string): Promise<DriverVeh
 // (see admin.repository.ts's syncDriverStatusAfterDocChange) — otherwise runs
 // through the shared pool.
 export async function hasApprovedRequiredDocs(driverId: bigint, client?: PoolClient): Promise<boolean> {
-  const sql = `SELECT EXISTS (
-       SELECT 1 FROM driver_documents
-       WHERE driver_id = $1
-         AND (status = 'rejected' OR (status = 'approved' AND valid_until < CURRENT_DATE))
-       UNION ALL
-       SELECT 1 FROM driver_vehicle_documents dvd
-       JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
-       WHERE dv.driver_id = $1 AND dv.is_primary = true
-         AND (dvd.status = 'rejected' OR (dvd.status = 'approved' AND dvd.valid_until < CURRENT_DATE))
-     ) AS has_issue`
+  const sql = `SELECT ${docIssueExistsSql('$1')} AS has_issue`
   const params = [driverId.toString()]
   const rows = client
     ? (await client.query<{ has_issue: boolean }>(sql, params)).rows
