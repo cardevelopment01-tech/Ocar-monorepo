@@ -376,6 +376,18 @@ export async function syncDriverStatusAfterDocChange(driverId: bigint, adminId: 
          VALUES ($1, $2, 'docs_rejected', 'Document rejected or expired', $3)`,
         [driverId, currentStatus, adminId]
       )
+      // Revocation must also revoke presence: ending the session inside this same
+      // FOR UPDATE transaction closes the window where a now-ineligible driver keeps
+      // a live 'online' session (misleading ops dashboards + a re-check race). The
+      // broadcast candidate query already excludes them from matching (see
+      // docIssueExistsSql), so this is the second half of "eligibility is an
+      // invariant of being online", not just a gate at go-online.
+      await client.query(
+        `UPDATE driver_sessions
+         SET status = 'offline', went_offline_at = now(), offline_reason = 'docs_revoked'
+         WHERE driver_id = $1 AND status = 'online'`,
+        [driverId]
+      )
     } else if (eligible && currentStatus === 'docs_rejected') {
       beforeStatus = currentStatus
       afterStatus = 'active'
