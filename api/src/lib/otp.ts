@@ -7,8 +7,11 @@ import {
   OTP_LOCK_DURATION_MINUTES,
   OTP_RATE_LIMIT_WINDOW_MINUTES,
   OTP_RATE_LIMIT_MAX_REQUESTS,
+  RIDE_OTP_MAX_ATTEMPTS,
+  RIDE_OTP_LOCKOUT_SECONDS,
 } from '@/constants/limits'
 import { sha256 } from '@/lib/hash'
+import { httpError } from '@/lib/errors'
 import type { OtpPurpose, PrincipalRole } from '@/constants/enums'
 
 interface OtpState {
@@ -115,4 +118,30 @@ export async function checkRateLimit(
     allowed: count <= OTP_RATE_LIMIT_MAX_REQUESTS,
     remaining: Math.max(0, OTP_RATE_LIMIT_MAX_REQUESTS - count),
   }
+}
+
+// Ride OTP brute-force limiter. Same fixed-window-counter shape as
+// checkRateLimit above (INCR, EXPIRE only on the first increment) — one mental
+// model for "OTP attempt limiting" in this codebase. Unlike consumeOtp this
+// only tracks the COUNTER; the OTP hash stays in the rides row. Returns the
+// current attempt number so callers can record a truthful attempt_number in
+// ride_otp_events instead of a hardcoded 1.
+export async function checkRideOtpAttempts(
+  rideId: bigint,
+  otpType: 'start' | 'end'
+): Promise<number> {
+  const key = `ride:otp:attempts:${rideId}:${otpType}`
+  const attempts = await redis.incr(key)
+  if (attempts === 1) await redis.expire(key, RIDE_OTP_LOCKOUT_SECONDS)
+  if (attempts > RIDE_OTP_MAX_ATTEMPTS) {
+    throw httpError(429, 'Too many incorrect attempts. Try again later.', 'RIDE_OTP_LOCKED')
+  }
+  return attempts
+}
+
+export async function clearRideOtpAttempts(
+  rideId: bigint,
+  otpType: 'start' | 'end'
+): Promise<void> {
+  await redis.del(`ride:otp:attempts:${rideId}:${otpType}`)
 }
