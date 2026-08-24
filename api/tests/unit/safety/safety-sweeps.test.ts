@@ -51,4 +51,11 @@ describe('sweepBreachedDisputeSlas', () => {
     expect(repo.markDisputeSlaEscalated).toHaveBeenCalledWith(3n)
     expect(repo.markDisputeSlaEscalated).toHaveBeenCalledWith(4n)
   })
+
+  it('does nothing when there are no breached disputes', async () => {
+    vi.mocked(repo.getBreachedDisputes).mockResolvedValue([] as never)
+    await sweepBreachedDisputeSlas()
+    expect(notifyAllAdmins).not.toHaveBeenCalled()
+    expect(repo.markDisputeSlaEscalated).not.toHaveBeenCalled()
+  })
 })
