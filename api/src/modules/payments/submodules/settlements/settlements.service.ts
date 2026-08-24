@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg'
 import { pool } from '@/db/client'
 import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
@@ -21,7 +22,11 @@ function currentFyQuarter(now: Date): { fy: string; quarter: number } {
 // Called once per online/wallet-channel ride, right after commission
 // deduction. Cash rides never call this — the driver already holds the
 // cash, only commission recovery (existing deductCommission) applies.
-export async function accrueDriverEarning(rideId: bigint, driverId: bigint): Promise<void> {
+export async function accrueDriverEarning(
+  rideId: bigint,
+  driverId: bigint,
+  sharedClient?: PoolClient
+): Promise<void> {
   const payRes = await pool.query(
     `SELECT driver_earning, amount FROM payments WHERE ride_id = $1`,
     [rideId]
@@ -50,9 +55,10 @@ export async function accrueDriverEarning(rideId: bigint, driverId: bigint): Pro
   const tdsAmount = Math.round(grossFare * ratePct) / 100
   const { fy, quarter } = currentFyQuarter(new Date())
 
-  const client = await pool.connect()
+  const client = sharedClient ?? await pool.connect()
+  const owns = !sharedClient
   try {
-    await client.query('BEGIN')
+    if (owns) await client.query('BEGIN')
 
     await client.query(
       `INSERT INTO driver_earnings (
@@ -81,12 +87,12 @@ export async function accrueDriverEarning(rideId: bigint, driverId: bigint): Pro
       )
     }
 
-    await client.query('COMMIT')
+    if (owns) await client.query('COMMIT')
   } catch (err) {
-    await client.query('ROLLBACK')
+    if (owns) await client.query('ROLLBACK')
     throw err
   } finally {
-    client.release()
+    if (owns) client.release()
   }
 }
 

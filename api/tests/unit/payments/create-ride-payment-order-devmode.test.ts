@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn() } }))
+// confirmRidePayment's status flip now runs on a pool.connect() transaction
+// client, not directly on pool.query (see payments.service.ts's single-txn
+// settlement refactor) — the fake client's rowCount:0 default makes the
+// guarded flip a no-op, same intent as the old pool.query rowCount:0 mock.
+const fakeClient = { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }), release: vi.fn() }
+vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn(() => Promise.resolve(fakeClient)) } }))
 vi.mock('@/db/redis', () => ({ client: { set: vi.fn(), get: vi.fn(), del: vi.fn() } }))
 
 const ordersCreate = vi.fn()
@@ -24,13 +29,13 @@ describe('createRidePaymentOrder (keys not configured — dev mode)', () => {
     // rowCount 0 makes confirmRidePayment's guarded UPDATE a no-op, so it returns
     // early without touching deductCommission/creditCashback — keeps this test
     // focused on "did createRidePaymentOrder route through confirmRidePayment".
-    vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 0 } as never)
+    fakeClient.query.mockResolvedValue({ rows: [], rowCount: 0 } as never)
   })
 
   it('auto-confirms the ride payment and returns null without ever calling the gateway', async () => {
     const result = await createRidePaymentOrder(BigInt(101), BigInt(42), 500)
 
-    const confirmUpdate = vi.mocked(pool.query).mock.calls.find(
+    const confirmUpdate = fakeClient.query.mock.calls.find(
       (c) => (c[0] as string).includes("status = 'completed'")
     )
     expect(confirmUpdate, 'confirmRidePayment was not invoked').toBeTruthy()

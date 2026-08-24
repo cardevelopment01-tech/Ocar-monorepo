@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
+// confirmRidePayment's status flip now runs on a pool.connect() transaction
+// client (single-txn settlement refactor), not directly on pool.query.
+const fakeClient = { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }), release: vi.fn() }
+vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn(() => Promise.resolve(fakeClient)) } }))
 vi.mock('@/db/redis', () => ({ client: { get: vi.fn(), set: vi.fn(), del: vi.fn() } }))
 vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: 'rzp_test', RAZORPAY_KEY_SECRET: 'secret' } }))
 vi.mock('@/modules/notifications/notifications.service', () => ({ notifyRidePaymentFailed: vi.fn() }))
@@ -20,10 +23,13 @@ import { notifyRidePaymentFailed } from '@/modules/notifications/notifications.s
 // guarded `UPDATE payments SET status = 'completed' ... WHERE status = 'pending'`
 // that confirmRidePayment issues via pool.query.
 describe('reconcilePendingRidePayments', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    fakeClient.query.mockResolvedValue({ rows: [], rowCount: 0 } as never)
+  })
 
   function confirmingUpdateWasIssued(): boolean {
-    return vi.mocked(pool.query).mock.calls.some(
+    return fakeClient.query.mock.calls.some(
       (c) => (c[0] as string).includes("SET status = 'completed'")
     )
   }
@@ -34,10 +40,22 @@ describe('reconcilePendingRidePayments', () => {
       if (sql.includes("WHERE status = 'pending'") && sql.includes('razorpay_order_id IS NOT NULL')) {
         return { rows: [{ ride_id: 101, razorpay_order_id: 'order_1', user_id: 42, amount: '500.00' }], rowCount: 1 } as never
       }
-      if (sql.includes("SET status = 'completed'")) {
-        return { rows: [{ driver_id: 9, user_id: 42, amount: '500.00' }], rowCount: 1 } as never
-      }
       return { rows: [], rowCount: 0 } as never
+    })
+    fakeClient.query.mockImplementation((sql: string) => {
+      if (sql.includes("SET status = 'completed'")) {
+        return Promise.resolve({ rows: [{ driver_id: 9, user_id: 42, amount: '500.00' }], rowCount: 1 })
+      }
+      if (sql.includes('billing_mode_snapshot')) {
+        return Promise.resolve({ rows: [{ billing_mode_snapshot: null }], rowCount: 1 })
+      }
+      if (sql.includes('FROM driver_wallets') && sql.includes('FOR UPDATE')) {
+        return Promise.resolve({ rows: [{ id: 7, balance: '1000', is_frozen: false }], rowCount: 1 })
+      }
+      if (sql.includes('FROM user_wallets') && sql.includes('FOR UPDATE')) {
+        return Promise.resolve({ rows: [{ id: 5, balance: '0' }], rowCount: 1 })
+      }
+      return Promise.resolve({ rows: [], rowCount: 1 })
     })
     fetchPayments.mockResolvedValue({ items: [{ id: 'pay_9', status: 'captured' }] })
 

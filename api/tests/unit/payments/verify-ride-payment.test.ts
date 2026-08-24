@@ -44,16 +44,25 @@ describe('verifyRidePayment', () => {
       if (sql.includes('SELECT amount, razorpay_order_id FROM payments')) {
         return { rows: [{ amount: '500.00', razorpay_order_id: ORDER }], rowCount: 1 } as never
       }
-      if (sql.includes("SET status = 'completed'")) {
-        return { rows: [{ driver_id: 9, user_id: 42, amount: '500.00' }], rowCount: 1 } as never
-      }
       return { rows: [], rowCount: 0 } as never
+    })
+    // confirmRidePayment's status flip now runs on the pool.connect() transaction
+    // client (single-txn settlement refactor), not directly on pool.query.
+    fakeClient.query.mockImplementation((text: unknown) => {
+      const sql = text as string
+      if (sql.includes("SET status = 'completed'")) {
+        return Promise.resolve({ rows: [{ driver_id: 9, user_id: 42, amount: '500.00' }], rowCount: 1 })
+      }
+      if (sql.includes('billing_mode_snapshot')) {
+        return Promise.resolve({ rows: [{ billing_mode_snapshot: null }], rowCount: 1 })
+      }
+      return Promise.resolve({ rows: [{ id: 1, balance: '1000', is_frozen: false }], rowCount: 1 })
     })
     paymentsFetch.mockResolvedValue({ order_id: ORDER, status: 'captured', amount: 50000 })
   })
 
   function confirmingUpdateWasIssued(): boolean {
-    return vi.mocked(pool.query).mock.calls.some(
+    return fakeClient.query.mock.calls.some(
       (c) => (c[0] as string).includes("SET status = 'completed'")
     )
   }
@@ -84,7 +93,7 @@ describe('verifyRidePayment', () => {
 
   it('valid signature + captured + matching amount → confirms', async () => {
     await svc.verifyRidePayment(BigInt(101), BigInt(42), { orderId: ORDER, paymentId: PAYMENT, signature: goodSig })
-    const confirmCall = vi.mocked(pool.query).mock.calls.find(
+    const confirmCall = fakeClient.query.mock.calls.find(
       (c) => (c[0] as string).includes("SET status = 'completed'")
     )
     expect(confirmCall).toBeTruthy()
