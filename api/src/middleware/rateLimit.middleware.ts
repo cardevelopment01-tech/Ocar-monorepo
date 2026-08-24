@@ -2,7 +2,8 @@ import { rateLimit } from 'express-rate-limit'
 import { RedisStore, type RedisReply } from 'rate-limit-redis'
 import type { Request } from 'express'
 import { verifyAccessToken } from '@/lib/jwt'
-import { client as redis } from '@/db/redis'
+import { client as redis, withTimeout } from '@/db/redis'
+import { logger } from '@/lib/logger'
 
 // Redis-backed store so limits are shared across all ASG instances instead
 // of each instance counting independently -- an in-memory MemoryStore (the
@@ -15,12 +16,29 @@ import { client as redis } from '@/db/redis'
 // import this module -- unnecessary since skip: skipInTest already disables
 // rate limiting per-request in tests, and a single test process has no
 // multi-instance concern for the fallback MemoryStore to get wrong.
+//
+// sendCommand is bounded with withTimeout so a Redis outage rejects quickly
+// instead of hanging the request indefinitely (the same class of bug fixed
+// in the reference-data cache layer, but this runs on every request ahead
+// of any route handler, so an unbounded hang here is worse). Paired with
+// passOnStoreError below, a bounded rejection here becomes "allow the
+// request through, skip rate limiting for this one" rather than either a
+// hang or a hard failure -- rate limiting is an abuse-mitigation control,
+// not a correctness-critical path, so failing open is the right tradeoff.
 function redisStore(prefix: string): RedisStore | undefined {
   if (skipInTest()) return undefined
   return new RedisStore({
     prefix,
-    sendCommand: (...args: string[]) =>
-      redis.call(...(args as [string, ...string[]])) as Promise<RedisReply>,
+    sendCommand: async (...args: string[]) => {
+      try {
+        return (await withTimeout(
+          redis.call(...(args as [string, ...string[]]))
+        )) as RedisReply
+      } catch (err) {
+        logger.warn({ err, prefix }, 'rate-limit: redis command failed, allowing request through')
+        throw err
+      }
+    },
   })
 }
 
@@ -57,6 +75,7 @@ const generalLimiterOptions: Parameters<typeof rateLimit>[0] = {
   standardHeaders: true,
   legacyHeaders: false,
   skip: skipInTest,
+  passOnStoreError: true,
   keyGenerator: principalKey,
   message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
 }
@@ -71,6 +90,7 @@ const authLimiterOptions: Parameters<typeof rateLimit>[0] = {
   standardHeaders: true,
   legacyHeaders: false,
   skip: skipInTest,
+  passOnStoreError: true,
   message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
 }
 const authStore = redisStore('rl:auth:')
@@ -88,6 +108,7 @@ const chatMessageLimiterOptions: Parameters<typeof rateLimit>[0] = {
   standardHeaders: true,
   legacyHeaders: false,
   skip: skipInTest,
+  passOnStoreError: true,
   keyGenerator: (req) => `chat:${principalKey(req)}:${req.params['id'] ?? ''}`,
   message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
 }
@@ -103,6 +124,7 @@ const maskedCallLimiterOptions: Parameters<typeof rateLimit>[0] = {
   standardHeaders: true,
   legacyHeaders: false,
   skip: skipInTest,
+  passOnStoreError: true,
   keyGenerator: (req) => `call:${principalKey(req)}:${req.params['id'] ?? ''}`,
   message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
 }
