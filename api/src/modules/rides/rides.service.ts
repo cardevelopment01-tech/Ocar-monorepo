@@ -493,7 +493,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
         const lo = serverRoute.distanceKm * (1 - tolerance)
         if (data.distanceKm > hi || data.distanceKm < lo) {
           log.warn(
-            { clientDistanceKm: data.distanceKm, serverDistanceKm: serverRoute.distanceKm },
+            { userId, clientDistanceKm: data.distanceKm, serverDistanceKm: serverRoute.distanceKm },
             'Booking distance outside server tolerance — using server value'
           )
           data.distanceKm  = serverRoute.distanceKm
@@ -503,7 +503,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     } catch (err) {
       // A routing outage must never block a booking — fall back to the client value,
       // same posture as the 'fallback' source above.
-      log.warn({ err }, 'server route lookup failed during booking; using client distance')
+      log.warn({ err, userId }, 'server route lookup failed during booking; using client distance')
     }
   }
 
