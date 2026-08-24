@@ -25,7 +25,7 @@ import {
   FORCE_ASSIGN_GRACE_MINUTES,
 } from '@/constants/limits'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
-import type { BillingMode, BookingRequest, StopInput } from './rides.types'
+import type { BillingMode, BookingRequest, Ride, StopInput } from './rides.types'
 import {
   createPaymentRecord,
   deductCommission,
@@ -1115,6 +1115,86 @@ async function readCancellationFee(
   return raw != null ? parseFloat(raw) : 0
 }
 
+// Charges the cancellation fee (was computed then discarded as 0). Sourced from
+// rate_cards, collected atomically in this same transaction. All-or-nothing:
+// user_wallets.balance has a >= 0 CHECK, so if the wallet can't cover the fee we
+// record it as owed (fee_amount set, fee_waived false) rather than partial-debit —
+// same posture as payFromUserWallet. Driver compensation is only credited from a
+// fee we actually collected.
+async function chargeCancellationFee(
+  client: PoolClient,
+  ride: Ride,
+  userId: bigint,
+  rideId: bigint,
+): Promise<number> {
+  const feeAmount = await readCancellationFee(
+    client,
+    BigInt(ride.category_id),
+    ride.ride_type,
+    ride.origin_city_id != null ? BigInt(ride.origin_city_id) : null,
+  )
+  if (feeAmount > 0) {
+    await client.query(
+      `INSERT INTO user_wallets (user_id, balance) VALUES ($1, 0)
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userId]
+    )
+    const wRes = await client.query<{ id: string; balance: string }>(
+      `SELECT id, balance FROM user_wallets WHERE user_id = $1 FOR UPDATE`,
+      [userId]
+    )
+    const wallet = wRes.rows[0]
+    const balance = wallet ? parseFloat(wallet.balance) : 0
+    if (wallet && balance >= feeAmount) {
+      const newBalance = Math.round((balance - feeAmount) * 100) / 100
+      await client.query(
+        `UPDATE user_wallets SET balance = $2, lifetime_spent = lifetime_spent + $3 WHERE id = $1`,
+        [wallet.id, newBalance, feeAmount]
+      )
+      await client.query(
+        `INSERT INTO user_wallet_ledger
+           (wallet_id, user_id, entry_type, amount, direction, balance_after, ride_id, note)
+         VALUES ($1, $2, 'adjustment_debit', $3, 'debit', $4, $5, $6)`,
+        [wallet.id, userId, feeAmount, newBalance, rideId, `Cancellation fee for ride #${rideId}`]
+      )
+
+      // Compensate the assigned driver for the wasted approach, from the collected fee.
+      if (ride.driver_id) {
+        const driverId = BigInt(ride.driver_id)
+        const compensation = Math.round(feeAmount * DRIVER_COMPENSATION_SHARE * 100) / 100
+        if (compensation > 0) {
+          await client.query(
+            `INSERT INTO driver_wallets (driver_id, balance) VALUES ($1, 0)
+             ON CONFLICT (driver_id) DO NOTHING`,
+            [driverId]
+          )
+          const dRes = await client.query<{ id: string; balance: string; is_frozen: boolean }>(
+            `SELECT id, balance, is_frozen FROM driver_wallets WHERE driver_id = $1 FOR UPDATE`,
+            [driverId]
+          )
+          const dWallet = dRes.rows[0]
+          if (dWallet && !dWallet.is_frozen) {
+            const dNew = Math.round((parseFloat(dWallet.balance) + compensation) * 100) / 100
+            await client.query(
+              `UPDATE driver_wallets SET balance = $2 WHERE id = $1`,
+              [dWallet.id, dNew]
+            )
+            await client.query(
+              `INSERT INTO driver_wallet_ledger
+                 (wallet_id, driver_id, entry_type, amount, direction, balance_after, ride_id, note)
+               VALUES ($1, $2, 'adjustment_credit', $3, 'credit', $4, $5, $6)`,
+              [dWallet.id, driverId, compensation, dNew, rideId, `Cancellation compensation for ride #${rideId}`]
+            )
+          }
+        }
+      }
+    } else {
+      log.warn({ userId, rideId, feeAmount, balance }, 'cancellation fee owed but wallet balance insufficient — recorded, not collected')
+    }
+  }
+  return feeAmount
+}
+
 export async function cancelRide(
   userId: bigint,
   rideId: bigint,
@@ -1144,79 +1224,9 @@ export async function cancelRide(
       throw Object.assign(new Error('Ride status changed — please refresh'), { httpStatus: 409 })
     }
 
-    // Charge the cancellation fee (was computed then discarded as 0). Sourced from
-    // rate_cards, collected atomically in this same transaction. All-or-nothing:
-    // user_wallets.balance has a >= 0 CHECK, so if the wallet can't cover the fee we
-    // record it as owed (fee_amount set, fee_waived false) rather than partial-debit —
-    // same posture as payFromUserWallet. Driver compensation is only credited from a
-    // fee we actually collected.
     let feeAmount = 0
     if (feeApplicable) {
-      feeAmount = await readCancellationFee(
-        client,
-        BigInt(ride.category_id),
-        ride.ride_type,
-        ride.origin_city_id != null ? BigInt(ride.origin_city_id) : null,
-      )
-      if (feeAmount > 0) {
-        await client.query(
-          `INSERT INTO user_wallets (user_id, balance) VALUES ($1, 0)
-           ON CONFLICT (user_id) DO NOTHING`,
-          [userId]
-        )
-        const wRes = await client.query<{ id: string; balance: string }>(
-          `SELECT id, balance FROM user_wallets WHERE user_id = $1 FOR UPDATE`,
-          [userId]
-        )
-        const wallet = wRes.rows[0]
-        const balance = wallet ? parseFloat(wallet.balance) : 0
-        if (wallet && balance >= feeAmount) {
-          const newBalance = Math.round((balance - feeAmount) * 100) / 100
-          await client.query(
-            `UPDATE user_wallets SET balance = $2, lifetime_spent = lifetime_spent + $3 WHERE id = $1`,
-            [wallet.id, newBalance, feeAmount]
-          )
-          await client.query(
-            `INSERT INTO user_wallet_ledger
-               (wallet_id, user_id, entry_type, amount, direction, balance_after, ride_id, note)
-             VALUES ($1, $2, 'adjustment_debit', $3, 'debit', $4, $5, $6)`,
-            [wallet.id, userId, feeAmount, newBalance, rideId, `Cancellation fee for ride #${rideId}`]
-          )
-
-          // Compensate the assigned driver for the wasted approach, from the collected fee.
-          if (ride.driver_id) {
-            const driverId = BigInt(ride.driver_id)
-            const compensation = Math.round(feeAmount * DRIVER_COMPENSATION_SHARE * 100) / 100
-            if (compensation > 0) {
-              await client.query(
-                `INSERT INTO driver_wallets (driver_id, balance) VALUES ($1, 0)
-                 ON CONFLICT (driver_id) DO NOTHING`,
-                [driverId]
-              )
-              const dRes = await client.query<{ id: string; balance: string; is_frozen: boolean }>(
-                `SELECT id, balance, is_frozen FROM driver_wallets WHERE driver_id = $1 FOR UPDATE`,
-                [driverId]
-              )
-              const dWallet = dRes.rows[0]
-              if (dWallet && !dWallet.is_frozen) {
-                const dNew = Math.round((parseFloat(dWallet.balance) + compensation) * 100) / 100
-                await client.query(
-                  `UPDATE driver_wallets SET balance = $2 WHERE id = $1`,
-                  [dWallet.id, dNew]
-                )
-                await client.query(
-                  `INSERT INTO driver_wallet_ledger
-                     (wallet_id, driver_id, entry_type, amount, direction, balance_after, ride_id, note)
-                   VALUES ($1, $2, 'adjustment_credit', $3, 'credit', $4, $5, $6)`,
-                  [dWallet.id, driverId, compensation, dNew, rideId, `Cancellation compensation for ride #${rideId}`]
-                )
-              }
-            }
-          }
-        } else {
-          log.warn({ userId, rideId, feeAmount, balance }, 'cancellation fee owed but wallet balance insufficient — recorded, not collected')
-        }
-      }
+      feeAmount = await chargeCancellationFee(client, ride, userId, rideId)
     }
 
     await client.query(
