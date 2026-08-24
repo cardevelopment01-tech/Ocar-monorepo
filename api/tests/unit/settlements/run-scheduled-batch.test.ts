@@ -5,6 +5,17 @@ const poolQuery = vi.fn()
 vi.mock('@/db/client', () => ({
   pool: { query: (...args: unknown[]) => poolQuery(...args), connect: vi.fn(() => Promise.resolve(client)) },
 }))
+// runScheduledSettlementBatch reads settlement_auto_approve_limit through the
+// real reference-data cache — without this mock it hits a real, reachable
+// local Redis instead of the poolQuery.mockResolvedValueOnce below, and a
+// cached value would leave that queued mock response unconsumed to bleed
+// into a later, unrelated poolQuery call.
+vi.mock('@/db/redis', () => ({
+  getJSON: vi.fn().mockResolvedValue(null),
+  setWithTTL: vi.fn().mockResolvedValue(undefined),
+  client: { del: vi.fn().mockResolvedValue(1) },
+  withTimeout: (p: Promise<unknown>) => p,
+}))
 
 import { runScheduledSettlementBatch } from '@/modules/payments/submodules/settlements/settlements.service'
 
