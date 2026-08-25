@@ -20,6 +20,9 @@ WORKDIR /app/api
 RUN pnpm build
 # dist/db/migrate.js resolves migrations via path.join(__dirname, 'migrations')
 RUN cp -r src/db/migrations dist/db/migrations
+# client.ts/migrate.ts resolve the RDS CA bundle via path.join(__dirname, 'certs/...')
+# for TLS chain verification in iam/secrets-manager auth modes -- same pattern as migrations above
+RUN cp -r src/db/certs dist/db/certs
 
 # ── Production deps — use pnpm deploy for a symlink-free node_modules ────────
 FROM base AS prod-deps

@@ -1,4 +1,6 @@
 import { Pool, PoolClient, types } from 'pg'
+import fs from 'fs'
+import path from 'path'
 import { Signer } from '@aws-sdk/rds-signer'
 import { config } from '@/config'
 import { logger } from '@/lib/logger'
@@ -13,6 +15,16 @@ const iamSigner = config.DB_AUTH_MODE === 'iam'
   ? new Signer({ hostname: config.DB_HOST, port: config.DB_PORT, username: config.DB_USER, region: config.AWS_REGION })
   : null
 
+// AWS's official RDS CA bundle (https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem),
+// vendored rather than fetched at build/runtime for reproducible builds. Node's
+// default trust store doesn't include Amazon's RDS CA, so without this,
+// rejectUnauthorized: true fails every connection with SELF_SIGNED_CERT_IN_CHAIN
+// (confirmed via a real deploy failure). Loaded lazily (only when an auth mode
+// that needs it is active) so local dev / password mode never touches this file.
+function loadRdsCaBundle(): Buffer {
+  return fs.readFileSync(path.join(__dirname, 'certs/rds-global-bundle.pem'))
+}
+
 function buildPoolConfig() {
   if (config.DB_AUTH_MODE === 'iam' && iamSigner) {
     return {
@@ -21,7 +33,7 @@ function buildPoolConfig() {
       database: config.DB_NAME,
       user: config.DB_USER,
       password: () => iamSigner.getAuthToken(),
-      ssl: { rejectUnauthorized: true },
+      ssl: { ca: loadRdsCaBundle(), rejectUnauthorized: true },
     }
   }
   if (config.DB_AUTH_MODE === 'secrets-manager') {
@@ -31,7 +43,7 @@ function buildPoolConfig() {
       database: config.DB_NAME,
       user: config.DB_USER,
       password: () => getDbPassword(config.DB_SECRET_ARN),
-      ssl: { rejectUnauthorized: true },
+      ssl: { ca: loadRdsCaBundle(), rejectUnauthorized: true },
     }
   }
   return { connectionString: config.DATABASE_URL }

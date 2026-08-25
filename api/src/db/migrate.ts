@@ -18,6 +18,12 @@ const isFresh = process.argv.includes('--fresh')
 // with secretsmanager:GetSecretValue on that ARN, so no secret is passed in.
 const dbSecretArn = process.env['DB_SECRET_ARN']
 
+// AWS's official RDS CA bundle -- see client.ts's matching function for why
+// this is needed (Node's default trust store doesn't include Amazon's RDS CA).
+function loadRdsCaBundle(): Buffer {
+  return fs.readFileSync(path.join(__dirname, 'certs/rds-global-bundle.pem'))
+}
+
 const pool = dbSecretArn
   ? new Pool({
       host: process.env['DB_HOST'],
@@ -25,7 +31,7 @@ const pool = dbSecretArn
       database: process.env['DB_NAME'],
       user: process.env['DB_USER'],
       password: () => getDbPassword(dbSecretArn),
-      ssl: { rejectUnauthorized: true },
+      ssl: { ca: loadRdsCaBundle(), rejectUnauthorized: true },
     })
   : (() => {
       const databaseUrl = process.env['MIGRATION_DATABASE_URL'] || process.env['DATABASE_URL']
