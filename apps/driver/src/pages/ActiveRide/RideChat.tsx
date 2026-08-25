@@ -191,7 +191,7 @@ export default function RideChat() {
         <button
           onClick={() => navigate(-1)}
           aria-label="Back"
-          className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center active:scale-95 transition-transform flex-shrink-0"
+          className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center active:scale-[0.97] transition-transform flex-shrink-0"
         >
           <ChevronLeft size={18} className="text-text-primary" />
         </button>
@@ -238,7 +238,7 @@ export default function RideChat() {
               <button
                 key={reply}
                 onClick={() => void send(reply)}
-                className="flex-shrink-0 px-3.5 py-2 rounded-full text-[12.5px] font-medium whitespace-nowrap active:scale-95 transition-transform bg-surface-2 border border-border text-text-secondary"
+                className="flex-shrink-0 px-3.5 py-2 rounded-full text-[12.5px] font-medium whitespace-nowrap active:scale-[0.97] transition-transform bg-surface-2 border border-border text-text-secondary"
               >
                 {reply}
               </button>
@@ -260,7 +260,7 @@ export default function RideChat() {
             <motion.button
               type="submit"
               disabled={!input.trim()}
-              whileTap={{ scale: 0.95 }}
+              whileTap={{ scale: 0.97 }}
               aria-label="Send message"
               className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 disabled:opacity-40 shadow-button"
               style={{ background: 'linear-gradient(135deg, #0A9FB0 0%, #22B8C9 55%, #DC3E93 100%)' }}

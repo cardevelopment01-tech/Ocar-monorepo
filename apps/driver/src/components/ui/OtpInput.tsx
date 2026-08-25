@@ -54,7 +54,7 @@ export default function OtpInput({ length = 6, value, onChange, error = false }:
           onPaste={handlePaste}
           className={cn(
             'w-11 h-[60px] text-center text-2xl font-bold rounded-2xl border-2',
-            'transition-all duration-150 focus:outline-none caret-transparent select-none',
+            'transition-[color,background-color,border-color,transform] duration-150 focus:outline-none caret-transparent select-none',
             error
               ? 'border-accent-red bg-accent-red/5 text-accent-red animate-[shake_0.3s_ease]'
               : digit

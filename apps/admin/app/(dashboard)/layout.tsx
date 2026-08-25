@@ -67,7 +67,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         sosActive={sosCount > 0}
         onLogout={logout}
       />
-      <div className="flex-1 ml-[240px] flex flex-col h-full overflow-hidden">
+      <div className="flex-1 ml-16 md:ml-[240px] flex flex-col h-full overflow-hidden">
         <AdminTopBar
           title={meta.title}
           subtitle={meta.subtitle}

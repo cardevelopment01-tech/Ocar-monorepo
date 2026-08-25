@@ -157,7 +157,7 @@ export default function CollectCash() {
                 type="button"
                 onClick={confirmCustomAmount}
                 disabled={submitting || customAmount === ''}
-                className={`w-full py-3 rounded-2xl text-white text-sm font-semibold active:scale-95 transition-transform disabled:opacity-60 mb-3 ${pendingConfirm ? 'bg-accent-red' : 'bg-primary'}`}
+                className={`w-full py-3 rounded-2xl text-white text-sm font-semibold active:scale-[0.97] transition-transform disabled:opacity-60 mb-3 ${pendingConfirm ? 'bg-accent-red' : 'bg-primary'}`}
               >
                 {submitting
                   ? 'Saving…'
@@ -170,7 +170,7 @@ export default function CollectCash() {
                 type="button"
                 onClick={() => void submit({ notCollected: true })}
                 disabled={submitting}
-                className="w-full py-3 rounded-2xl border border-accent-red text-accent-red text-sm font-semibold active:scale-95 transition-transform disabled:opacity-60"
+                className="w-full py-3 rounded-2xl border border-accent-red text-accent-red text-sm font-semibold active:scale-[0.97] transition-transform disabled:opacity-60"
               >
                 Cash not collected
               </button>

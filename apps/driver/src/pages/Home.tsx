@@ -337,7 +337,7 @@ export default function Home() {
         >
           <button
             onClick={() => navigate(resumeRoute, { replace: true })}
-            className="gloss-sheen w-full flex items-center gap-3 rounded-2xl px-4 py-3 bg-primary active:scale-[0.98] transition-transform"
+            className="gloss-sheen w-full flex items-center gap-3 rounded-2xl px-4 py-3 bg-primary active:scale-[0.97] transition-transform"
             style={{ boxShadow: '0 4px 16px rgba(10, 159, 176,0.28)' }}
           >
             <span className="w-2 h-2 rounded-full bg-white flex-shrink-0 animate-pulse-soft" />
@@ -369,7 +369,10 @@ export default function Home() {
 
       {/* GPS error, floats below the header, above the map */}
       {!resumeRoute && geoError && (
-        <div
+        <motion.div
+          initial={prefersReducedMotion ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.15 }}
           className="absolute left-4 right-4"
           style={{ top: 'max(calc(env(safe-area-inset-top) + 80px), 96px)', zIndex: 10 }}
         >
@@ -386,7 +389,7 @@ export default function Home() {
                 : 'Location timed out. Ensure GPS is enabled'}
             </span>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* ── Bottom sheet: draggable snap sheet ──────────────────────────────── */}

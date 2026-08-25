@@ -19,7 +19,7 @@ const C = {
   surface:      '#0F172A',
   panel:        '#1E293B',
   text:         '#F8FAFC',
-  textMuted:    '#94A3B8',
+  textMuted:    '#64748B',
   textFaint:    '#64748B',
   divider:      '#475569',
   primary:      '#0A9FB0',
@@ -57,6 +57,10 @@ interface TripRequestCardProps {
   onAccept: () => void
   onDecline: () => void
 }
+
+// Stable reference so re-renders (the countdown ticks every second) don't
+// hand Framer Motion a new array identity for the same keyframe target.
+const URGENT_PULSE_SCALE = [1, 1.02, 1]
 
 const RIDE_TYPE_BADGE: Record<string, { label: string; bg: string; color: string } | undefined> = {
   round_trip: { label: 'Return',  bg: 'rgba(245,158,11,0.18)', color: C.warningSub },
@@ -368,9 +372,13 @@ export default function TripRequestCard({
             )}
           </AnimatePresence>
 
-          {/* [5] Actions: 30/70, accept-dominant, countdown ring wraps the Accept button */}
+          {/* [5] Actions: 30/70, accept-dominant, countdown ring wraps the Accept button.
+              Deliberately exempt from the header/eta/fare/route stagger above — the
+              countdown clock and accept-vibration start at mount, so staggering this
+              row in would silently shrink the driver's real reaction window (was
+              landing ~640-690ms after mount with the parent stagger applied). */}
           <motion.div
-            variants={childVar}
+            initial={false}
             animate={failed && !reduce ? { x: [0, -8, 8, -8, 8, 0] } : { x: 0 }}
             transition={failed ? { duration: 0.3 } : undefined}
             className="flex gap-3 px-5 pt-1 pb-8"
@@ -397,7 +405,7 @@ export default function TripRequestCard({
               <motion.button
                 onClick={onAccept}
                 disabled={expired || isAccepting || accepted || failed}
-                animate={!reduce && isUrgent && !isAccepting && !accepted && !failed ? { scale: [1, 1.02, 1] } : { scale: 1 }}
+                animate={!reduce && isUrgent && !isAccepting && !accepted && !failed ? { scale: URGENT_PULSE_SCALE } : { scale: 1 }}
                 transition={{ duration: 0.6, repeat: isUrgent && !reduce ? Infinity : 0, ease: 'easeInOut' }}
                 whileTap={reduce ? undefined : { scale: 0.97 }}
                 className="w-full h-full rounded-[13px] font-extrabold text-[15px] disabled:opacity-90 flex items-center justify-center gap-2 overflow-hidden"

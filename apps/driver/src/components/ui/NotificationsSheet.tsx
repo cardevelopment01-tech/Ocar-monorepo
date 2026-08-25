@@ -130,7 +130,7 @@ export default function NotificationsSheet() {
                 <button
                   aria-label="Close"
                   onClick={closeSheet}
-                  className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center active:scale-90 transition-transform"
+                  className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center active:scale-[0.9] transition-transform"
                 >
                   <X size={14} className="text-text-secondary" />
                 </button>

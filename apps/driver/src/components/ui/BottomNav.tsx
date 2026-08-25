@@ -43,7 +43,7 @@ export default function BottomNav() {
           <button
             key={path}
             onClick={() => navigate(path)}
-            className="flex-1 relative flex flex-col items-center justify-center gap-[3px] cursor-pointer active:scale-95 transition-transform duration-150 focus-visible:outline-none"
+            className="flex-1 relative flex flex-col items-center justify-center gap-[3px] cursor-pointer active:scale-[0.97] transition-transform duration-150 focus-visible:outline-none"
             aria-label={label}
             aria-current={active ? 'page' : undefined}
           >

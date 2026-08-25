@@ -44,7 +44,7 @@
   /* ── Primary CTA ── */
   .btn-primary {
     @apply w-full py-4 px-6 text-white font-bold text-base rounded-2xl cursor-pointer
-      active:scale-[0.98] transition-[transform,box-shadow] duration-150
+      active:scale-[0.97] transition-[transform,box-shadow] duration-150
       disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
     background: linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%);
     box-shadow: 0 4px 20px rgba(10, 159, 176,0.40);
@@ -59,7 +59,7 @@
   /* ── Orange CTA (go online) ── */
   .btn-go-online {
     @apply w-full py-4 px-6 text-white font-bold text-base rounded-2xl cursor-pointer
-      active:scale-[0.98] transition-[transform,box-shadow] duration-150
+      active:scale-[0.97] transition-[transform,box-shadow] duration-150
       disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
     background: linear-gradient(135deg, #FB923C 0%, #F97316 100%);
     box-shadow: 0 4px 14px rgba(249,115,22,0.35);
@@ -71,7 +71,7 @@
   /* ── Danger ── */
   .btn-danger {
     @apply w-full py-4 px-6 text-white font-bold text-base rounded-2xl cursor-pointer
-      active:scale-[0.98] transition-transform duration-150;
+      active:scale-[0.97] transition-transform duration-150;
     background: linear-gradient(135deg, #F87171 0%, #EF4444 100%);
     box-shadow: 0 4px 12px rgba(239,68,68,0.22);
   }
@@ -79,7 +79,7 @@
   /* ── Secondary ── */
   .btn-secondary {
     @apply w-full py-4 px-6 text-text-secondary font-semibold text-base rounded-2xl cursor-pointer
-      active:scale-[0.98] transition-[transform,background,box-shadow] duration-150
+      active:scale-[0.97] transition-[transform,background,box-shadow] duration-150
       border border-border;
     background: #F1F5F9;
   }
@@ -91,7 +91,7 @@
   /* ── Inputs ── */
   .input-light {
     @apply w-full px-4 py-4 text-text-primary placeholder-text-muted text-base rounded-xl
-      focus:outline-none transition-all duration-200 bg-white border border-border;
+      focus:outline-none transition-[border-color,box-shadow] duration-200 bg-white border border-border;
   }
   .input-light:focus {
     border-color: #0A9FB0;
@@ -178,7 +178,7 @@
     @apply status-pill;
     background: #F1F5F9;
     border: 1px solid #E2E8F0;
-    color: #94A3B8;
+    color: #64748B;
   }
 }
 

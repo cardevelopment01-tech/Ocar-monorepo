@@ -417,7 +417,7 @@ export default function NavigateToPickup() {
           <SOSButton
             rideId={activeRide?.id ?? ''}
             onSOS={handleSOS}
-            className="w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+            className="w-11 h-11 rounded-full flex items-center justify-center active:scale-[0.97] transition-transform"
             style={GLASS}
           />
         </div>
@@ -488,7 +488,7 @@ export default function NavigateToPickup() {
             disabled={arriving}
             animate={nearPickup && !arriving && !arrived ? { scale: [1, 1.03, 1] } : { scale: 1 }}
             transition={{ duration: 0.7, repeat: nearPickup && !arriving && !arrived ? Infinity : 0, ease: 'easeInOut' }}
-            className="btn-go w-full flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:active:scale-100"
+            className="btn-go w-full flex items-center justify-center gap-2 active:scale-[0.97] transition-transform disabled:active:scale-100"
             style={{ minHeight: 56, boxShadow: nearPickup ? '0 0 0 3px rgba(10, 159, 176,0.35)' : undefined }}
           >
             <AnimatePresence mode="wait" initial={false}>
@@ -590,14 +590,14 @@ export default function NavigateToPickup() {
                   <button
                     onClick={() => void handleCallRider()}
                     disabled={calling}
-                    className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform disabled:opacity-60"
+                    className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-[0.97] transition-transform disabled:opacity-60"
                     aria-label="Call rider"
                   >
                     {calling ? <OcarSpinner size={16} /> : <Phone size={18} className="text-text-secondary" />}
                   </button>
                 )}
                 <button
-                  className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform relative"
+                  className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-[0.97] transition-transform relative"
                   onClick={() => navigate('/ride/chat')}
                   aria-label="Message rider"
                 >
@@ -609,7 +609,7 @@ export default function NavigateToPickup() {
                   )}
                 </button>
                 <button
-                  className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-95 transition-transform"
+                  className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-[0.97] transition-transform"
                   onClick={() => openMapsNav(pickupPos[0], pickupPos[1])}
                 >
                   <Navigation size={18} className="text-text-inverse" />
@@ -646,7 +646,7 @@ export default function NavigateToPickup() {
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.2, ease: EASE }}
             onClick={handleRecenter}
-            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-4 py-2 active:scale-95 transition-transform"
+            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-4 py-2 active:scale-[0.97] transition-transform"
             style={{ bottom: `calc(env(safe-area-inset-bottom) + ${occlusion + 30}px)`, zIndex: 40, ...GLASS }}
           >
             <Locate size={14} className="text-primary" />
@@ -681,7 +681,7 @@ export default function NavigateToPickup() {
                 <button
                   onClick={() => setShowCancelSheet(false)}
                   disabled={cancellingRide}
-                  className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center active:scale-95 transition-transform"
+                  className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center active:scale-[0.97] transition-transform"
                 >
                   <X size={15} className="text-text-secondary" />
                 </button>
@@ -700,7 +700,7 @@ export default function NavigateToPickup() {
                   <button
                     key={r.code}
                     onClick={() => setCancelReason(r.code)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left active:scale-[0.98] transition-transform ${
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left active:scale-[0.97] transition-transform ${
                       cancelReason === r.code ? '' : 'bg-surface-2'
                     }`}
                     style={cancelReason === r.code
@@ -724,7 +724,7 @@ export default function NavigateToPickup() {
               <button
                 onClick={() => void handleCancelRide()}
                 disabled={!cancelReason || cancellingRide}
-                className="w-full py-3.5 rounded-2xl text-sm font-bold text-text-inverse mb-2.5 disabled:opacity-40 active:scale-[0.98] transition-transform"
+                className="w-full py-3.5 rounded-2xl text-sm font-bold text-text-inverse mb-2.5 disabled:opacity-40 active:scale-[0.97] transition-transform"
                 style={{ background: '#EF4444' }}
               >
                 {cancellingRide ? 'Cancelling…' : 'Confirm cancellation'}
@@ -732,7 +732,7 @@ export default function NavigateToPickup() {
               <button
                 onClick={() => setShowCancelSheet(false)}
                 disabled={cancellingRide}
-                className="w-full py-3 rounded-2xl text-sm font-semibold text-text-secondary disabled:opacity-50 active:scale-[0.98] transition-transform bg-surface-2 border border-border"
+                className="w-full py-3 rounded-2xl text-sm font-semibold text-text-secondary disabled:opacity-50 active:scale-[0.97] transition-transform bg-surface-2 border border-border"
               >
                 Keep my ride
               </button>

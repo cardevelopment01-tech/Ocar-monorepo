@@ -368,7 +368,7 @@ function RentalContent() {
           <motion.section {...fadeUp(0)} className="space-y-2">
             <div className="px-1">
               <p className="text-[12px] font-bold" style={{ color: '#0F172A' }}>Plan your stops · optional</p>
-              <p className="text-[11px] mt-0.5" style={{ color: '#94A3B8' }}>
+              <p className="text-[11px] mt-0.5" style={{ color: '#64748B' }}>
                 Tell your driver where you plan to go — you can always change your mind during the ride
               </p>
             </div>
@@ -394,7 +394,7 @@ function RentalContent() {
                         : 'bg-slate-50 border-slate-100 active:bg-slate-100'
                     )}
                   >
-                    <VehicleIcon slug={cat.slug} size={26} color={active ? '#0A9FB0' : '#94A3B8'} />
+                    <VehicleIcon slug={cat.slug} size={26} color={active ? '#0A9FB0' : '#64748B'} />
                     <span className={cn(
                       'text-[10px] font-semibold leading-none',
                       active ? 'text-violet-700' : 'text-slate-500'

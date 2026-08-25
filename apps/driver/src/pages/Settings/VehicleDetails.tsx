@@ -210,7 +210,7 @@ export default function VehicleDetails() {
             <div className="grid grid-cols-2 gap-2">
               {categories.map(c => (
                 <button key={c.id} onClick={() => setCategoryId(Number(c.id))}
-                  className={`py-3 rounded-xl border-2 font-semibold text-sm transition-all ${categoryId === Number(c.id) ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
+                  className={`py-3 rounded-xl border-2 font-semibold text-sm transition-colors ${categoryId === Number(c.id) ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
                   {c.display_name}
                 </button>
               ))}
@@ -273,7 +273,7 @@ export default function VehicleDetails() {
             <div className="grid grid-cols-4 gap-2">
               {FUEL_TYPES.map(f => (
                 <button key={f.value} onClick={() => setFuelType(f.value)}
-                  className={`py-3 rounded-xl border-2 font-semibold text-xs transition-all ${fuelType === f.value ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
+                  className={`py-3 rounded-xl border-2 font-semibold text-xs transition-colors ${fuelType === f.value ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
                   {f.label}
                 </button>
               ))}
@@ -285,7 +285,7 @@ export default function VehicleDetails() {
             <div className="flex flex-wrap gap-2">
               {COLORS.map(c => (
                 <button key={c} onClick={() => setColor(c)}
-                  className={`px-3 py-1.5 rounded-full border text-xs font-semibold transition-all ${color === c ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
+                  className={`px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors ${color === c ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
                   {c}
                 </button>
               ))}
@@ -307,7 +307,7 @@ export default function VehicleDetails() {
             <div className="flex gap-3">
               {[true, false].map(v => (
                 <button key={String(v)} onClick={() => setAc(v)}
-                  className={`flex-1 py-3 rounded-xl border-2 font-semibold text-sm transition-all ${ac === v ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
+                  className={`flex-1 py-3 rounded-xl border-2 font-semibold text-sm transition-colors ${ac === v ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary bg-surface-2'}`}>
                   {v ? 'AC Available' : 'Non-AC'}
                 </button>
               ))}
@@ -365,7 +365,7 @@ function Stepper({ value, min, max, unit, onChange }: {
           onClick={() => onChange(Math.max(min, value - 1))}
           disabled={value <= min}
           aria-label={`Decrease ${unit}`}
-          className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 border border-slate-200 text-blue-600 active:scale-90 transition-transform disabled:opacity-25 disabled:active:scale-100"
+          className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 border border-slate-200 text-blue-600 active:scale-[0.9] transition-transform disabled:opacity-25 disabled:active:scale-100"
         >
           <Minus size={14} />
         </button>
@@ -374,7 +374,7 @@ function Stepper({ value, min, max, unit, onChange }: {
           onClick={() => onChange(Math.min(max, value + 1))}
           disabled={value >= max}
           aria-label={`Increase ${unit}`}
-          className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 border border-slate-200 text-blue-600 active:scale-90 transition-transform disabled:opacity-25 disabled:active:scale-100"
+          className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 border border-slate-200 text-blue-600 active:scale-[0.9] transition-transform disabled:opacity-25 disabled:active:scale-100"
         >
           <Plus size={14} />
         </button>

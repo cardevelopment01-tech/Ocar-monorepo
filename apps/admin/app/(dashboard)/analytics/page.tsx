@@ -9,6 +9,7 @@ import {
   type AnalyticsSummary,
   type DailyRevenue,
 } from '@/lib/admin-api'
+import { COLORS } from '@/lib/colors'
 
 type Period = '7d' | '30d' | '90d'
 const PERIODS: { key: Period; label: string }[] = [
@@ -39,24 +40,24 @@ function RevenueChart({ data }: { data: DailyRevenue[] }) {
       <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="#4F46E5" stopOpacity={0.18} />
-            <stop offset="100%" stopColor="#4F46E5" stopOpacity={0}    />
+            <stop offset="0%"   stopColor={COLORS.primary} stopOpacity={0.18} />
+            <stop offset="100%" stopColor={COLORS.primary} stopOpacity={0}    />
           </linearGradient>
         </defs>
-        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#5B6B85' }} axisLine={{ stroke: '#E2E8F0' }} tickLine={false} />
-        <YAxis tick={{ fontSize: 11, fill: '#5B6B85' }} axisLine={false} tickLine={false} width={40} />
+        <CartesianGrid stroke={COLORS.border} strokeDasharray="3 3" vertical={false} />
+        <XAxis dataKey="day" tick={{ fontSize: 11, fill: COLORS.textMuted }} axisLine={{ stroke: COLORS.border }} tickLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: COLORS.textMuted }} axisLine={false} tickLine={false} width={40} />
         <Tooltip
           formatter={(value) => [`₹${new Intl.NumberFormat('en-IN').format(Math.round(Number(value)))}`, 'Revenue']}
-          contentStyle={{ borderRadius: 8, borderColor: '#E2E8F0', fontSize: 12 }}
+          contentStyle={{ borderRadius: 8, borderColor: COLORS.border, fontSize: 12 }}
         />
         <Area
           type="monotone"
           dataKey="revenue"
-          stroke="#4F46E5"
+          stroke={COLORS.primary}
           strokeWidth={2}
           fill="url(#revFill)"
-          dot={{ r: 3, fill: '#4F46E5', strokeWidth: 0 }}
+          dot={{ r: 3, fill: COLORS.primary, strokeWidth: 0 }}
         />
       </AreaChart>
     </ResponsiveContainer>
@@ -75,23 +76,23 @@ function HBarChart({ items }: {
         margin={{ top: 0, right: 24, left: 0, bottom: 0 }}
         barSize={14}
       >
-        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" horizontal={false} />
-        <XAxis type="number" tick={{ fontSize: 11, fill: '#5B6B85' }} axisLine={false} tickLine={false} />
+        <CartesianGrid stroke={COLORS.border} strokeDasharray="3 3" horizontal={false} />
+        <XAxis type="number" tick={{ fontSize: 11, fill: COLORS.textMuted }} axisLine={false} tickLine={false} />
         <YAxis
           type="category"
           dataKey="label"
-          tick={{ fontSize: 12, fill: '#475569' }}
+          tick={{ fontSize: 12, fill: COLORS.textSecondary }}
           axisLine={false}
           tickLine={false}
           width={90}
         />
         <Tooltip
           formatter={(value, _name, item) => [item.payload.subLabel ?? Number(value).toLocaleString('en-IN'), '']}
-          contentStyle={{ borderRadius: 8, borderColor: '#E2E8F0', fontSize: 12 }}
+          contentStyle={{ borderRadius: 8, borderColor: COLORS.border, fontSize: 12 }}
         />
         <Bar dataKey="value" radius={[0, 4, 4, 0]}>
           {items.map((item, i) => (
-            <Cell key={i} fill={item.color ?? '#4F46E5'} />
+            <Cell key={i} fill={item.color ?? COLORS.primary} />
           ))}
         </Bar>
       </BarChart>
@@ -180,24 +181,24 @@ export default function AnalyticsPage() {
             </div>
           ) : (
             <HBarChart items={[
-              { label: 'Requested', value: funnel.requested, color: '#5B6B85' },
+              { label: 'Requested', value: funnel.requested, color: COLORS.textMuted },
               {
                 label: 'Accepted',
                 value: funnel.accepted,
                 subLabel: `${funnel.accepted.toLocaleString('en-IN')} (${funnel.requested > 0 ? Math.round(funnel.accepted / funnel.requested * 100) : 0}%)`,
-                color: '#4F46E5',
+                color: COLORS.primary,
               },
               {
                 label: 'Completed',
                 value: funnel.completed,
                 subLabel: `${funnel.completed.toLocaleString('en-IN')} (${funnel.requested > 0 ? Math.round(funnel.completed / funnel.requested * 100) : 0}%)`,
-                color: '#10B981',
+                color: COLORS.success,
               },
               {
                 label: 'Cancelled',
                 value: funnel.cancelled,
                 subLabel: `${funnel.cancelled.toLocaleString('en-IN')} (${funnel.requested > 0 ? Math.round(funnel.cancelled / funnel.requested * 100) : 0}%)`,
-                color: '#EF4444',
+                color: COLORS.danger,
               },
             ]} />
           )}
@@ -217,7 +218,7 @@ export default function AnalyticsPage() {
               label: c.city_name,
               value: c.ride_count,
               subLabel: `${c.ride_count} rides · ₹${new Intl.NumberFormat('en-IN').format(Math.round(c.revenue))}`,
-              color: '#4F46E5',
+              color: COLORS.primary,
             }))} />
           )}
         </div>
@@ -233,7 +234,7 @@ export default function AnalyticsPage() {
             <p className="text-sm text-text-muted text-center py-4">No data</p>
           ) : (
             <HBarChart items={category_breakdown.map((c, i) => {
-              const colors = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
+              const colors = [COLORS.primary, COLORS.success, COLORS.warning, COLORS.danger, COLORS.purple]
               return {
                 label: c.category_name,
                 value: c.ride_count,

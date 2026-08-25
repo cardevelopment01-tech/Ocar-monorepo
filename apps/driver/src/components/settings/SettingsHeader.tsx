@@ -24,7 +24,7 @@ export default function SettingsHeader({ title, subtitle }: SettingsHeaderProps)
         <button
           onClick={() => navigate('/profile')}
           aria-label="Back to profile"
-          className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform"
+          className="w-11 h-11 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0 active:scale-[0.97] transition-transform"
         >
           <ArrowLeft size={20} className="text-text-secondary" />
         </button>

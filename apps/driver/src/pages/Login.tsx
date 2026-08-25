@@ -177,7 +177,7 @@ export default function Login() {
                   Mobile Number
                 </label>
                 <div
-                  className="flex items-center gap-2 rounded-xl px-4 h-[56px] bg-surface-2 border border-border transition-all duration-200 focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(10,159,176,0.12)]"
+                  className="flex items-center gap-2 rounded-xl px-4 h-[56px] bg-surface-2 border border-border transition-[border-color,box-shadow] duration-200 focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(10,159,176,0.12)]"
                 >
                   <span className="text-text-secondary font-bold text-sm select-none">+91</span>
                   <div className="w-px h-5 bg-border" />
@@ -236,7 +236,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => { setStep('phone'); setOtp(''); setError(''); setCountdown(0) }}
-                className="flex items-center gap-1 text-text-muted text-sm mb-6 hover:text-text-secondary transition-colors cursor-pointer"
+                className="flex items-center gap-1 text-text-muted text-sm hover:text-text-secondary transition-colors cursor-pointer min-h-[44px] py-3 -mt-3 mb-3"
                 aria-label="Back to phone number"
               >
                 <ChevronLeft size={16} aria-hidden="true" />

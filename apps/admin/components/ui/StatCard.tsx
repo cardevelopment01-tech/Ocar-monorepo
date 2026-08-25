@@ -2,17 +2,18 @@
 import { useState, useEffect, useRef } from 'react'
 import { TrendingUp, TrendingDown, Minus, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { COLORS } from '@/lib/colors'
 
 // Restrained tint-chip variants — same 6 semantic colors as before, expressed
 // as (light chip bg + saturated icon color) instead of full-bleed gradients,
 // mirroring overview's "Secondary stat row" pattern.
 const VARIANTS: Record<string, { bg: string; color: string }> = {
-  blue:   { bg: '#EEF2FF', color: '#4F46E5' },
-  green:  { bg: '#D1FAE5', color: '#10B981' },
-  amber:  { bg: '#FEF3C7', color: '#F59E0B' },
-  purple: { bg: '#EDE9FE', color: '#8B5CF6' },
-  pink:   { bg: '#FEE2E2', color: '#EF4444' },
-  cyan:   { bg: '#E0F2FE', color: '#0EA5E9' },
+  blue:   { bg: COLORS.primaryLight, color: COLORS.primary },
+  green:  { bg: COLORS.successLight, color: COLORS.success },
+  amber:  { bg: COLORS.warningLight, color: COLORS.warning },
+  purple: { bg: COLORS.purpleLight,  color: COLORS.purple },
+  pink:   { bg: COLORS.dangerLight,  color: COLORS.danger },
+  cyan:   { bg: COLORS.infoLight,    color: COLORS.info },
 }
 
 interface StatCardProps {

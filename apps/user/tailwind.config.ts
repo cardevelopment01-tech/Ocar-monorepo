@@ -26,7 +26,7 @@ const config: Config = {
         text: {
           primary: '#0F172A',
           secondary: '#475569',
-          muted: '#94A3B8',
+          muted: '#64748B',
           inverse: '#FFFFFF',
         },
         border: {

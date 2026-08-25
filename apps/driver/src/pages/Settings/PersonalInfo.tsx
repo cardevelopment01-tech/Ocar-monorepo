@@ -226,7 +226,7 @@ export default function PersonalInfo() {
                       key={g}
                       onClick={() => setGender(g)}
                       aria-pressed={gender === g}
-                      className={`py-3 min-h-[44px] rounded-xl border-2 font-semibold text-sm capitalize transition-all flex items-center justify-center gap-1.5 ${
+                      className={`py-3 min-h-[44px] rounded-xl border-2 font-semibold text-sm capitalize transition-colors flex items-center justify-center gap-1.5 ${
                         gender === g
                           ? 'border-primary text-primary bg-primary/10'
                           : 'border-border text-text-secondary bg-surface-2'
@@ -365,7 +365,7 @@ export default function PersonalInfo() {
                     onClick={() => setExperience(v => Math.max(0, (v ?? 0) - 1))}
                     disabled={experience !== null && experience <= 0}
                     aria-label="Decrease years"
-                    className="w-9 h-9 rounded-lg flex items-center justify-center bg-white border border-border text-primary active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100 flex-shrink-0"
+                    className="w-11 h-11 rounded-lg flex items-center justify-center bg-white border border-border text-primary active:scale-[0.97] transition-transform disabled:opacity-30 disabled:active:scale-100 flex-shrink-0"
                   >
                     <Minus size={16} />
                   </button>
@@ -383,7 +383,7 @@ export default function PersonalInfo() {
                     onClick={() => setExperience(v => Math.min(40, (v ?? 0) + 1))}
                     disabled={experience !== null && experience >= 40}
                     aria-label="Increase years"
-                    className="w-9 h-9 rounded-lg flex items-center justify-center bg-white border border-border text-primary active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100 flex-shrink-0"
+                    className="w-11 h-11 rounded-lg flex items-center justify-center bg-white border border-border text-primary active:scale-[0.97] transition-transform disabled:opacity-30 disabled:active:scale-100 flex-shrink-0"
                   >
                     <Plus size={16} />
                   </button>
@@ -398,7 +398,7 @@ export default function PersonalInfo() {
                       key={lang}
                       onClick={() => toggleLanguage(lang)}
                       aria-pressed={languages.includes(lang)}
-                      className={`px-4 py-2.5 min-h-[44px] rounded-full border text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                      className={`px-4 py-2.5 min-h-[44px] rounded-full border text-xs font-semibold transition-colors flex items-center gap-1.5 ${
                         languages.includes(lang)
                           ? 'border-primary text-primary bg-primary/10'
                           : 'border-border text-text-secondary bg-surface-2'
@@ -411,7 +411,7 @@ export default function PersonalInfo() {
                   {!showMoreLangs && INDIAN_LANGUAGES.length > VISIBLE_LANGS && (
                     <button
                       onClick={() => setShowMoreLangs(true)}
-                      className="px-4 py-2.5 min-h-[44px] rounded-full border border-dashed border-border text-xs font-semibold text-primary bg-primary/5 transition-all"
+                      className="px-4 py-2.5 min-h-[44px] rounded-full border border-dashed border-border text-xs font-semibold text-primary bg-primary/5 transition-colors"
                     >
                       +{INDIAN_LANGUAGES.length - VISIBLE_LANGS} more
                     </button>

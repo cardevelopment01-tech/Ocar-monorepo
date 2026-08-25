@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Users, UserCheck, Clock, ShieldOff } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
 import StatusPill from '@/components/ui/StatusPill'
@@ -166,39 +167,49 @@ export default function DriversPage() {
       </div>
 
       {/* Pending approval banner */}
-      {pending.length > 0 && (
-        <div className="bg-warning-light border border-warning/20 rounded-2xl p-4">
-          <p className="text-sm font-bold text-warning mb-3">
-            ⚡ {pending.length} driver{pending.length > 1 ? 's' : ''} awaiting approval
-          </p>
-          <table className="data-table">
-            <thead><tr><th>Driver</th><th>Phone</th><th>Vehicle</th><th>Applied</th><th>Actions</th></tr></thead>
-            <tbody>
-              {pending.map(d => (
-                <tr key={d.id} className="group">
-                  <td className="font-semibold text-text-primary">{d.full_name ?? '—'}</td>
-                  <td>{d.phone}</td>
-                  <td>{d.vehicle?.number_plate ?? '—'}</td>
-                  <td className="text-text-muted">{fmt(d.created_at)}</td>
-                  <td>
-                    <div className="flex gap-2">
-                      <button onClick={() => openAction('approve', d)} className="px-3 py-1 text-xs font-semibold bg-success text-white rounded-lg hover:bg-emerald-600 transition-colors">Approve</button>
-                      <button
-                        onClick={() => router.push(`/drivers/${d.id}?tab=documents`)}
-                        className="px-3 py-1 text-xs font-semibold border border-primary text-primary rounded-lg hover:bg-primary-light transition-colors"
-                      >
-                        Review Docs
-                      </button>
-                      <button onClick={() => openAction('rejectDocs', d)} className="px-3 py-1 text-xs font-semibold border border-warning text-warning rounded-lg hover:bg-warning/8 transition-colors">Reject Docs</button>
-                      <button onClick={() => openAction('ban', d)} className="px-3 py-1 text-xs font-semibold border border-danger text-danger rounded-lg hover:bg-danger-light transition-colors">Ban</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {pending.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="bg-warning-light border border-warning/20 rounded-2xl p-4">
+              <p className="text-sm font-bold text-warning mb-3">
+                ⚡ {pending.length} driver{pending.length > 1 ? 's' : ''} awaiting approval
+              </p>
+              <table className="data-table">
+                <thead><tr><th>Driver</th><th>Phone</th><th>Vehicle</th><th>Applied</th><th>Actions</th></tr></thead>
+                <tbody>
+                  {pending.map(d => (
+                    <tr key={d.id} className="group">
+                      <td className="font-semibold text-text-primary">{d.full_name ?? '—'}</td>
+                      <td>{d.phone}</td>
+                      <td>{d.vehicle?.number_plate ?? '—'}</td>
+                      <td className="text-text-muted">{fmt(d.created_at)}</td>
+                      <td>
+                        <div className="flex gap-2">
+                          <button onClick={() => openAction('approve', d)} className="px-3 py-1 text-xs font-semibold bg-success text-white rounded-lg hover:bg-emerald-600 transition-colors">Approve</button>
+                          <button
+                            onClick={() => router.push(`/drivers/${d.id}?tab=documents`)}
+                            className="px-3 py-1 text-xs font-semibold border border-primary text-primary rounded-lg hover:bg-primary-light transition-colors"
+                          >
+                            Review Docs
+                          </button>
+                          <button onClick={() => openAction('rejectDocs', d)} className="px-3 py-1 text-xs font-semibold border border-warning text-warning rounded-lg hover:bg-warning/8 transition-colors">Reject Docs</button>
+                          <button onClick={() => openAction('ban', d)} className="px-3 py-1 text-xs font-semibold border border-danger text-danger rounded-lg hover:bg-danger-light transition-colors">Ban</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main table */}
       <div className="admin-card">

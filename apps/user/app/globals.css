@@ -50,7 +50,6 @@
     @apply w-full py-4 px-6 bg-gradient-primary text-text-inverse font-semibold
       text-base rounded-full shadow-button
       active:scale-[0.98] active:shadow-button-press active:brightness-95
-      hover:shadow-glow
       transition-[transform,box-shadow,filter] duration-150 ease-out
       disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
   }
@@ -63,8 +62,19 @@
     @apply w-full py-4 px-6 bg-surface text-text-primary font-semibold
       text-base rounded-full border border-border
       active:scale-[0.98] active:bg-surface-2
-      hover:bg-surface-2
       transition-[transform,background-color] duration-150 ease-out;
+  }
+
+  /* Hover-only on devices that actually have a hover-capable pointer — on
+     touch-first mobile, `:hover` fires on tap and sticks until the next tap
+     elsewhere, so it must not apply unconditionally. */
+  @media (hover: hover) and (pointer: fine) {
+    .btn-primary:hover {
+      @apply shadow-glow;
+    }
+    .btn-secondary:hover {
+      @apply bg-surface-2;
+    }
   }
 
   .input-field {
@@ -93,47 +103,6 @@
     background: rgba(10, 159, 176, 0.08);
   }
 
-  /* Gradient icon badge, teal->pink wash + top inner highlight for more depth than a flat tint */
-  .icon-badge-gradient {
-    @apply w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0;
-    background: linear-gradient(135deg, rgba(10, 159, 176, 0.16) 0%, rgba(220, 62, 147, 0.10) 100%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  }
-
-  /* Glossy card: hairline gradient border (teal->pink) via double background-clip trick */
-  .card-glossy {
-    @apply rounded-2xl p-4;
-    position: relative;
-    background-image: linear-gradient(#fff, #fff), linear-gradient(135deg, rgba(10, 159, 176, 0.35), rgba(220, 62, 147, 0.35));
-    background-origin: border-box;
-    background-clip: padding-box, border-box;
-    border: 1px solid transparent;
-    box-shadow: 0 2px 16px rgba(10, 159, 176, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  }
-
-  /* CSS-only shine sweep on tap. Frequent interaction -> kept short (~450ms) per motion guidelines. */
-  .gloss-sheen {
-    position: relative;
-    overflow: hidden;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    .gloss-sheen::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.4) 47%, rgba(255, 255, 255, 0.6) 50%, rgba(255, 255, 255, 0.4) 53%, transparent 70%);
-      background-size: 250% 250%;
-      background-position: 130% 130%;
-      opacity: 0;
-      pointer-events: none;
-      transition: background-position 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease;
-    }
-    .gloss-sheen:active::after {
-      background-position: -30% -30%;
-      opacity: 1;
-      transition: background-position 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.15s ease;
-    }
-  }
 }
 
 /* Leaflet map reset */

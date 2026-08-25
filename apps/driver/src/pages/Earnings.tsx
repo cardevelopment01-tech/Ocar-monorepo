@@ -8,7 +8,7 @@ import {
   type TripHistoryItem, type EarningsSummary, type DriverEarningsBalance, type DriverBankAccount,
 } from '@/lib/ride-api'
 import { cn } from '@/lib/utils'
-import { Car } from 'lucide-react'
+import { Car, Check } from 'lucide-react'
 
 type Period = 'today' | 'week' | 'month'
 
@@ -59,6 +59,7 @@ export default function Earnings() {
   const [payoutError, setPayoutError] = useState(false)
   const [cashingOut, setCashingOut] = useState(false)
   const [cashOutError, setCashOutError] = useState<string | null>(null)
+  const [cashOutSuccess, setCashOutSuccess] = useState(false)
   const [bankAccounts, setBankAccounts] = useState<DriverBankAccount[]>([])
   const [bankAccountsLoading, setBankAccountsLoading] = useState(true)
   const [bankAccountsError, setBankAccountsError] = useState(false)
@@ -87,10 +88,12 @@ export default function Earnings() {
   async function handleCashOut() {
     setCashingOut(true)
     setCashOutError(null)
+    setCashOutSuccess(false)
     try {
       await driverPayoutApi.instantCashOut()
       const updated = await driverPayoutApi.getEarningsBalance()
       setPayout(updated)
+      setCashOutSuccess(true)
     } catch {
       setCashOutError('Cash out failed. Please try again.')
     } finally {
@@ -118,7 +121,7 @@ export default function Earnings() {
             key={p.key}
             onClick={() => setPeriod(p.key)}
             className={cn(
-              'relative flex-1 py-2 rounded-xl text-sm font-bold transition-all duration-200 cursor-pointer',
+              'relative flex-1 py-2 rounded-xl text-sm font-bold transition-colors duration-200 cursor-pointer',
               period === p.key
                 ? 'text-primary'
                 : 'text-text-muted hover:text-text-secondary'
@@ -211,7 +214,26 @@ export default function Earnings() {
               </p>
             )}
           </div>
-          {cashOutError && <p className="text-accent-red text-xs mt-2">{cashOutError}</p>}
+          {cashOutError && (
+            <motion.p
+              initial={prefersReducedMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.15 }}
+              className="text-accent-red text-xs mt-2"
+            >
+              {cashOutError}
+            </motion.p>
+          )}
+          {cashOutSuccess && !cashOutError && (
+            <motion.p
+              initial={prefersReducedMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.15 }}
+              className="text-accent-green text-xs mt-2 flex items-center gap-1"
+            >
+              <Check size={12} strokeWidth={2.5} /> Cash out successful
+            </motion.p>
+          )}
         </div>
       )}
 

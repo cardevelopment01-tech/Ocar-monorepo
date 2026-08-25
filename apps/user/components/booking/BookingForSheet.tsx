@@ -90,7 +90,7 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
                     <motion.button
                       {...enterRow(0.04)}
                       onClick={() => onClearToMyself()}
-                      whileTap={{ scale: 0.985 }}
+                      whileTap={{ scale: 0.97 }}
                       className="w-full flex items-center gap-3.5 px-6 py-3.5 text-left cursor-pointer active:bg-black/[0.02] transition-colors duration-150"
                       style={{ background: bookingForOther ? 'transparent' : '#E4F8FA' }}
                     >
@@ -119,7 +119,7 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
                       <motion.button
                         {...enterRow(0.08)}
                         onClick={() => { setNameDraft(riderName); setPhoneDraft(riderPhone.replace('+91', '')); goToForm() }}
-                        whileTap={{ scale: 0.985 }}
+                        whileTap={{ scale: 0.97 }}
                         className="w-full flex items-center gap-3.5 px-6 py-3.5 text-left cursor-pointer active:bg-black/[0.02] transition-colors duration-150"
                         style={{ background: '#E4F8FA' }}
                       >
@@ -146,7 +146,7 @@ export default function BookingForSheet({ open, onClose, riderName, riderPhone, 
                     <motion.button
                       {...enterRow(bookingForOther ? 0.12 : 0.08)}
                       onClick={() => { setNameDraft(''); setPhoneDraft(''); goToForm() }}
-                      whileTap={{ scale: 0.985 }}
+                      whileTap={{ scale: 0.97 }}
                       className="w-full flex items-center gap-3.5 px-6 py-3.5 text-left border-t cursor-pointer active:bg-black/[0.02] transition-colors duration-150"
                       style={{ borderColor: '#F1F5FF' }}
                     >

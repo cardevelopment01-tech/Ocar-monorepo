@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
+import { SHEET_SPRING } from '@/lib/motion'
 
 interface BottomSheetProps {
   isOpen: boolean
@@ -40,7 +41,7 @@ export default function BottomSheet({
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 32, stiffness: 320 }}
+            transition={SHEET_SPRING}
             drag="y"
             dragConstraints={{ top: 0 }}
             dragElastic={0.15}

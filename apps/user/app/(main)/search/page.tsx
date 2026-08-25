@@ -1,16 +1,16 @@
 'use client'
 
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plane, Train, Building2, ShoppingBag,
   GraduationCap, X, Map,
-  ChevronDown, User, Clock, ArrowRightLeft, Home, Briefcase, MapPin,
+  ChevronDown, User, Clock, Home, Briefcase, MapPin,
 } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
 import BookingForSheet from '@/components/booking/BookingForSheet'
+import RedirectToast from '@/components/ui/RedirectToast'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
 import { savedPlacesApi, type SavedPlace } from '@/lib/saved-places-api'
@@ -42,9 +42,6 @@ const POPULAR = [
   { Icon: Train,          label: 'Puri Railway Station',    address: 'Puri, Odisha',                     lat: 19.8014, lng: 85.8142 },
   { Icon: Building2,      label: 'Infocity, Bhubaneswar',  address: 'Infocity, Patia, Bhubaneswar',     lat: 20.3474, lng: 85.8197 },
 ]
-
-const ICON_BG  = '#F1F0FE'
-const ICON_CLR = '#0A9FB0'
 
 type EditMode = 'destination' | 'origin'
 
@@ -431,8 +428,8 @@ function SearchContent() {
         <div className="flex items-center gap-3 px-4 pt-2.5 pb-2">
           <motion.button
             onClick={() => router.back()}
-            className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0"
-            whileTap={{ scale: 0.88 }} transition={SPRING}
+            className="w-11 h-11 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0"
+            whileTap={{ scale: 0.9 }} transition={SPRING}
           >
             <ArrowLeft size={17} className="text-text-primary" strokeWidth={2} />
           </motion.button>
@@ -442,10 +439,10 @@ function SearchContent() {
           <motion.button
             onClick={() => setForMeOpen(true)}
             className="ml-auto flex items-center gap-1.5 h-11 pl-2.5 pr-2 rounded-full bg-surface border border-border max-w-[150px]"
-            whileTap={{ scale: 0.94 }} transition={SPRING}
+            whileTap={{ scale: 0.97 }} transition={SPRING}
           >
-            <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG }}>
-              <User size={11} strokeWidth={2} style={{ color: ICON_CLR }} />
+            <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 bg-primary-subtle">
+              <User size={11} strokeWidth={2} className="text-primary" />
             </span>
             <span className="text-xs font-semibold text-text-primary truncate">
               {bookingForOther ? riderName : 'For me'}
@@ -481,34 +478,46 @@ function SearchContent() {
               <motion.button
                 onClick={() => { if (mode !== 'origin') switchMode('origin') }}
                 className="w-full text-left px-3 py-2.5 border-b border-border"
-                whileTap={{ scale: 0.99 }} transition={SPRING}
+                whileTap={{ scale: 0.97 }} transition={SPRING}
               >
-                {mode === 'origin' ? (
-                  <div className="flex items-center gap-1">
-                    <input
-                      ref={originInputRef}
-                      value={query}
-                      onChange={e => handleQueryChange(e.target.value)}
-                      placeholder="Enter your pickup"
-                      className="flex-1 bg-transparent text-[14px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
-                      disabled={resolving}
-                    />
-                    {searching && <OcarSpinner size={13} variant="color" className="flex-shrink-0" />}
-                    {query && !searching && (
-                      <motion.button
-                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); setQuery(''); setSuggestions([]) }}
-                        whileTap={{ scale: 0.85 }}
-                        className="w-6 h-6 flex items-center justify-center"
-                      >
-                        <X size={12} className="text-text-muted" />
-                      </motion.button>
-                    )}
-                  </div>
-                ) : (
-                  <p className={`text-[14px] truncate ${gpsReady && originAddress ? 'font-semibold text-text-primary' : 'font-normal text-text-muted'}`}>
-                    {!gpsReady ? 'Detecting location…' : (originAddress || 'Set pickup location')}
-                  </p>
-                )}
+                <AnimatePresence initial={false}>
+                  {mode === 'origin' ? (
+                    <motion.div
+                      key="origin-input"
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                      transition={{ duration: 0.1 }}
+                      className="flex items-center gap-1"
+                    >
+                      <input
+                        ref={originInputRef}
+                        value={query}
+                        onChange={e => handleQueryChange(e.target.value)}
+                        placeholder="Enter your pickup"
+                        className="flex-1 bg-transparent text-[14px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
+                        disabled={resolving}
+                      />
+                      {searching && <OcarSpinner size={13} variant="color" className="flex-shrink-0" />}
+                      {query && !searching && (
+                        <motion.button
+                          onClick={(e: React.MouseEvent) => { e.stopPropagation(); setQuery(''); setSuggestions([]) }}
+                          whileTap={{ scale: 0.9 }}
+                          className="w-6 h-6 flex items-center justify-center"
+                        >
+                          <X size={12} className="text-text-muted" />
+                        </motion.button>
+                      )}
+                    </motion.div>
+                  ) : (
+                    <motion.p
+                      key="origin-display"
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                      transition={{ duration: 0.1 }}
+                      className={`text-[14px] truncate ${gpsReady && originAddress ? 'font-semibold text-text-primary' : 'font-normal text-text-muted'}`}
+                    >
+                      {!gpsReady ? 'Detecting location…' : (originAddress || 'Set pickup location')}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
               </motion.button>
 
               {/* TO row, single line, no label */}
@@ -522,41 +531,60 @@ function SearchContent() {
                   }
                 }}
               >
-                {confirmedDest ? (
-                  <div className="flex items-center gap-1">
-                    <p className="text-[14px] font-semibold text-text-primary truncate flex-1">{confirmedDest.address}</p>
-                    <motion.button
-                      onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConfirmedDest(null); switchMode('destination') }}
-                      whileTap={{ scale: 0.85 }}
-                      className="w-6 h-6 flex items-center justify-center flex-shrink-0"
+                <AnimatePresence initial={false}>
+                  {confirmedDest ? (
+                    <motion.div
+                      key="dest-confirmed"
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                      transition={{ duration: 0.1 }}
+                      className="flex items-center gap-1"
                     >
-                      <X size={12} className="text-text-muted" />
-                    </motion.button>
-                  </div>
-                ) : mode === 'destination' ? (
-                  <div className="flex items-center gap-1">
-                    <input
-                      ref={destInputRef}
-                      value={query}
-                      onChange={e => handleQueryChange(e.target.value)}
-                      placeholder="Where to?"
-                      className="flex-1 bg-transparent text-[14px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
-                      disabled={resolving}
-                    />
-                    {searching && <OcarSpinner size={13} variant="color" className="flex-shrink-0" />}
-                    {query && !searching && (
+                      <p className="text-[14px] font-semibold text-text-primary truncate flex-1">{confirmedDest.address}</p>
                       <motion.button
-                        onClick={() => { setQuery(''); setSuggestions([]) }}
-                        whileTap={{ scale: 0.85 }}
-                        className="w-6 h-6 flex items-center justify-center"
+                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConfirmedDest(null); switchMode('destination') }}
+                        whileTap={{ scale: 0.9 }}
+                        className="w-6 h-6 flex items-center justify-center flex-shrink-0"
                       >
                         <X size={12} className="text-text-muted" />
                       </motion.button>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-[14px] text-text-muted font-normal">Where to?</p>
-                )}
+                    </motion.div>
+                  ) : mode === 'destination' ? (
+                    <motion.div
+                      key="dest-input"
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                      transition={{ duration: 0.1 }}
+                      className="flex items-center gap-1"
+                    >
+                      <input
+                        ref={destInputRef}
+                        value={query}
+                        onChange={e => handleQueryChange(e.target.value)}
+                        placeholder="Where to?"
+                        className="flex-1 bg-transparent text-[14px] font-semibold text-text-primary placeholder:text-text-muted placeholder:font-normal outline-none"
+                        disabled={resolving}
+                      />
+                      {searching && <OcarSpinner size={13} variant="color" className="flex-shrink-0" />}
+                      {query && !searching && (
+                        <motion.button
+                          onClick={() => { setQuery(''); setSuggestions([]) }}
+                          whileTap={{ scale: 0.9 }}
+                          className="w-6 h-6 flex items-center justify-center"
+                        >
+                          <X size={12} className="text-text-muted" />
+                        </motion.button>
+                      )}
+                    </motion.div>
+                  ) : (
+                    <motion.p
+                      key="dest-placeholder"
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                      transition={{ duration: 0.1 }}
+                      className="text-[14px] text-text-muted font-normal"
+                    >
+                      Where to?
+                    </motion.p>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           </div>
@@ -569,7 +597,7 @@ function SearchContent() {
             className="flex-1 h-9 rounded-full flex items-center justify-center gap-1.5 border border-slate-200 bg-white"
             whileTap={{ scale: 0.97 }} transition={SPRING}
           >
-            <Map size={14} strokeWidth={1.8} style={{ color: ICON_CLR }} />
+            <Map size={14} strokeWidth={1.8} className="text-primary" />
             <span className="text-[13px] font-semibold text-slate-700">Select on map</span>
           </motion.button>
           <PickupTimeChip
@@ -670,7 +698,7 @@ function SearchContent() {
                     whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
                   >
                     <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-                      <SavedIcon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
+                      <SavedIcon size={15} strokeWidth={1.6} className="text-primary" />
                     </span>
                     <span className="flex-1 min-w-0">
                       <span className="block text-[13px] font-medium text-text-primary">{p.label}</span>
@@ -700,7 +728,7 @@ function SearchContent() {
                   whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
                 >
                   <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-                    <d.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
+                    <d.Icon size={15} strokeWidth={1.6} className="text-primary" />
                   </span>
                   <span className="flex-1 min-w-0">
                     <span className="block text-[13px] font-medium text-text-primary">{d.label}</span>
@@ -727,43 +755,7 @@ function SearchContent() {
       />
 
       {/* Ride-type mismatch redirect toast */}
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {redirectToast && (
-            <motion.div
-              key="redirect-toast"
-              role="status"
-              aria-live="polite"
-              initial={{ opacity: 0, y: 16, scale: 0.92 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.95 }}
-              transition={{ duration: 0.24, ease: EASE }}
-              className="fixed left-1/2 z-[999] flex flex-col gap-2 px-5 py-3.5 rounded-2xl text-white overflow-hidden pointer-events-none"
-              style={{
-                bottom: 'max(84px, calc(env(safe-area-inset-bottom, 0px) + 76px))',
-                x: '-50%',
-                maxWidth: 'calc(100vw - 32px)',
-                background: 'linear-gradient(135deg, #0A9FB0 0%, #1E1B4B 100%)',
-                boxShadow: '0 8px 32px rgba(10, 159, 176,0.35), 0 2px 8px rgba(0,0,0,0.2)',
-              }}
-            >
-              <div className="flex items-center gap-2.5">
-                <ArrowRightLeft size={15} strokeWidth={2.2} className="flex-shrink-0" />
-                <span className="text-[13px] font-semibold">{redirectToast}</span>
-              </div>
-              <div className="h-[3px] rounded-full bg-white/20 overflow-hidden">
-                <motion.div
-                  className="h-full bg-white/80 rounded-full"
-                  initial={{ width: '100%' }}
-                  animate={{ width: '0%' }}
-                  transition={{ duration: 1.5, ease: 'linear' }}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body,
-      )}
+      <RedirectToast message={redirectToast} />
     </div>
   )
 }

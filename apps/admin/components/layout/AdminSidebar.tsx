@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
 import { DEMO_MODE } from '@/lib/demo'
 import {
   LayoutDashboard, Map, Car, Truck, Users, User, AlertTriangle, Shield,
@@ -98,16 +99,16 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
 
   return (
     <aside
-      className="fixed top-0 left-0 h-full w-[240px] bg-sidebar/80 backdrop-blur-xl flex flex-col z-40"
+      className="fixed top-0 left-0 h-full w-16 md:w-[240px] bg-sidebar/80 backdrop-blur-xl flex flex-col z-40"
       style={{ boxShadow: '1px 0 0 #E8EAFF' }}
     >
       {/* Logo */}
-      <div className="px-5 pt-5 pb-4">
-        <div className="flex items-center gap-2.5 mb-1">
+      <div className="px-3 md:px-5 pt-5 pb-4">
+        <div className="flex items-center justify-center md:justify-start gap-2.5 mb-1">
           <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center flex-shrink-0">
             <span className="text-white font-black text-sm tracking-tight">O</span>
           </div>
-          <div>
+          <div className="hidden md:block">
             <span className="text-text-primary font-black text-lg leading-none">car</span>
             <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary-light text-primary">
               Admin
@@ -119,13 +120,13 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
       <div className="mx-4 border-b border-sidebar-border mb-2" />
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 space-y-4 pb-4">
+      <nav className="flex-1 overflow-y-auto px-2 md:px-3 space-y-4 pb-4">
         {NAV.map(group => {
           const visible = group.items.filter(i => i.roles.includes(role) && !(DEMO_MODE && i.demo))
           if (!visible.length) return null
           return (
             <div key={group.label}>
-              <p className="text-[11px] font-semibold text-text-muted px-3 mb-1.5">
+              <p className="hidden md:block text-[11px] font-semibold text-text-muted px-3 mb-1.5">
                 {group.label}
               </p>
               {visible.map(item => {
@@ -134,13 +135,22 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={cn('nav-item', active && 'active')}
+                    title={item.label}
+                    className={cn('nav-item justify-center md:justify-start', active && 'active')}
                   >
                     <item.icon size={15} className={active ? 'text-white' : 'text-text-muted'} />
-                    <span className="flex-1">{item.label}</span>
-                    {item.label === 'SOS Alerts' && sosActive && (
-                      <span className="w-2 h-2 rounded-full bg-danger animate-pulse" />
-                    )}
+                    <span className="hidden md:block flex-1">{item.label}</span>
+                    <AnimatePresence>
+                      {item.label === 'SOS Alerts' && sosActive && (
+                        <motion.span
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          transition={{ duration: 0.15 }}
+                          className="w-2 h-2 rounded-full bg-danger animate-pulse"
+                        />
+                      )}
+                    </AnimatePresence>
                   </Link>
                 )
               })}
@@ -151,11 +161,11 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
 
       {/* Bottom profile */}
       <div className="border-t border-sidebar-border mx-4 pt-4 pb-5">
-        <div className="flex items-center gap-3 px-2">
+        <div className="flex items-center justify-center md:justify-start gap-3 px-0 md:px-2">
           <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center flex-shrink-0">
             <span className="text-white text-xs font-bold">{adminInitials}</span>
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="hidden md:block flex-1 min-w-0">
             <p className="text-text-primary text-xs font-semibold truncate">{adminName}</p>
             <p className="text-text-muted text-xs truncate capitalize">{role.replace('_', ' ')}</p>
           </div>

@@ -195,7 +195,7 @@ function RoundTripContent() {
           <p className="text-[15px] font-bold leading-tight" style={{ color: '#0F172A', letterSpacing: '-0.01em' }}>
             Round Trip
           </p>
-          <p className="text-[11px] font-medium mt-0.5" style={{ color: '#94A3B8' }}>
+          <p className="text-[11px] font-medium mt-0.5" style={{ color: '#64748B' }}>
             Driver stays and brings you back
           </p>
         </div>
@@ -221,15 +221,15 @@ function RoundTripContent() {
             {/* Route meta */}
             {hasDestination && distanceKm !== null && durationMin !== null && (
               <motion.div {...fadeUp(0.05)} className="flex items-center gap-1.5 px-1 mt-2 flex-wrap">
-                <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>2 × {distanceKm} km = {distanceKm * 2} km total</span>
+                <span className="text-[11px] font-medium" style={{ color: '#64748B' }}>2 × {distanceKm} km = {distanceKm * 2} km total</span>
                 <span style={{ color: '#B8E9EE' }}>·</span>
-                <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>{Math.round(durationMin)} min</span>
+                <span className="text-[11px] font-medium" style={{ color: '#64748B' }}>{Math.round(durationMin)} min</span>
                 <span style={{ color: '#B8E9EE' }}>·</span>
                 <span className="text-[11px] font-bold" style={{ color: '#0A9FB0' }}>both legs covered</span>
                 {stops.length > 0 && (
                   <>
                     <span style={{ color: '#B8E9EE' }}>·</span>
-                    <span className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>
+                    <span className="text-[11px] font-medium" style={{ color: '#64748B' }}>
                       {stops.length} {stops.length === 1 ? 'stop' : 'stops'}
                     </span>
                   </>
@@ -237,7 +237,7 @@ function RoundTripContent() {
               </motion.div>
             )}
             {stops.length > 0 && (
-              <motion.p {...fadeUp(0.06)} className="text-[11px] font-medium px-1 mt-1.5" style={{ color: '#94A3B8' }}>
+              <motion.p {...fadeUp(0.06)} className="text-[11px] font-medium px-1 mt-1.5" style={{ color: '#64748B' }}>
                 Stops are visited in this order
               </motion.p>
             )}
@@ -260,7 +260,7 @@ function RoundTripContent() {
                       <motion.button
                         key={h}
                         onClick={() => setSelectedHours(h)}
-                        whileTap={{ scale: 0.93 }}
+                        whileTap={{ scale: 0.97 }}
                         className="flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-all"
                         style={{
                           background: active ? '#0A9FB0' : '#E4F8FA',
@@ -273,7 +273,7 @@ function RoundTripContent() {
                     )
                   })}
                 </div>
-                <p className="text-[11px] mt-3" style={{ color: '#94A3B8' }}>
+                <p className="text-[11px] mt-3" style={{ color: '#64748B' }}>
                   Minimum 4 hours · Driver stays with you throughout
                 </p>
               </div>

@@ -451,7 +451,7 @@ export default function ReferenceSelfie() {
             <div className="bg-black pt-6 pb-10 flex flex-col items-center gap-3">
               <motion.button
                 onClick={capture}
-                whileTap={{ scale: 0.92 }}
+                whileTap={{ scale: 0.9 }}
                 disabled={!cameraReady}
                 aria-label="Capture selfie"
                 className="relative flex items-center justify-center disabled:opacity-40"

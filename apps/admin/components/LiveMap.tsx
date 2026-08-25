@@ -6,6 +6,7 @@ import { adminSessionsApi, type ActiveDriverSession } from '@/lib/admin-api'
 import { getAdminSocket } from '@/lib/socket'
 import api from '@/lib/api'
 import { decodePolyline } from '@/lib/polyline'
+import { COLORS } from '@/lib/colors'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ function useSmoothedLatLng(lat: number, lng: number): { lat: number; lng: number
 // update, since `onClick`'s identity would defeat the default shallow compare.
 const DriverDot = memo(function DriverDot({ session, onClick }: { session: ActiveDriverSession; onClick: () => void }) {
   const isOnTrip = session.session_status === 'on_trip'
-  const color = isOnTrip ? '#4F46E5' : '#10B981'
+  const color = isOnTrip ? COLORS.primary : COLORS.success
   const pos = useSmoothedLatLng(session.lat!, session.lng!)
 
   return (
@@ -252,7 +253,7 @@ export default function LiveMap() {
               />
               <Polyline
                 path={tripRoutePath}
-                strokeColor="#4F46E5"
+                strokeColor={COLORS.primary}
                 strokeWeight={4}
                 strokeOpacity={0.9}
                 zIndex={2}

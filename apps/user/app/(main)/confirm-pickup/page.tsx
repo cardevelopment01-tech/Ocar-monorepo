@@ -196,7 +196,7 @@ function ConfirmPickupContent() {
               router.replace(qs ? `/search?${qs}` : '/search')
             }}
             className="w-11 h-11 rounded-full bg-surface shadow-card flex items-center justify-center"
-            whileTap={{ scale: 0.88 }} transition={SPRING}
+            whileTap={{ scale: 0.9 }} transition={SPRING}
           >
             <ArrowLeft size={18} className="text-text-primary" strokeWidth={2} />
           </motion.button>
@@ -218,7 +218,7 @@ function ConfirmPickupContent() {
           onClick={locateMe}
           disabled={locating}
           className="w-12 h-12 rounded-full bg-surface shadow-card flex items-center justify-center"
-          whileTap={{ scale: 0.88 }} transition={SPRING}
+          whileTap={{ scale: 0.9 }} transition={SPRING}
           aria-label="Use current location"
         >
           {locating

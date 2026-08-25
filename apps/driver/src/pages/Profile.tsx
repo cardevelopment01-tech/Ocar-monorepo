@@ -104,7 +104,7 @@ export default function Profile() {
   const displayName  = driver?.full_name ?? driver?.code ?? 'Driver'
   const displayPhone = driver?.phone?.replace('+91', '').trim() ?? '—'
   const initial      = displayName.charAt(0).toUpperCase()
-  const statusStyle  = STATUS_COLORS[driver?.status ?? ''] ?? { bg: '#F1F5F9', text: '#94A3B8' }
+  const statusStyle  = STATUS_COLORS[driver?.status ?? ''] ?? { bg: '#F1F5F9', text: '#64748B' }
 
   function openEdit() {
     setEditName(driver?.full_name ?? '')
@@ -193,7 +193,7 @@ export default function Profile() {
                 <button
                   onClick={openEdit}
                   aria-label="Edit profile"
-                  className="w-9 h-9 rounded-xl flex items-center justify-center bg-surface-2 text-text-secondary cursor-pointer active:scale-95 transition-transform"
+                  className="w-9 h-9 rounded-xl flex items-center justify-center bg-surface-2 text-text-secondary cursor-pointer active:scale-[0.97] transition-transform"
                 >
                   <Pencil size={14} />
                 </button>
@@ -259,7 +259,7 @@ export default function Profile() {
         <div className="mx-5">
           <button
             onClick={() => setShowSignOutConfirm(true)}
-            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-accent-red font-bold text-base border border-accent-red/30 bg-accent-red/5 hover:bg-accent-red/10 transition-colors cursor-pointer active:scale-[0.98]"
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-accent-red font-bold text-base border border-accent-red/30 bg-accent-red/5 hover:bg-accent-red/10 transition-colors cursor-pointer active:scale-[0.97]"
             style={{ minHeight: 52 }}
           >
             <LogOut size={17} aria-hidden="true" />

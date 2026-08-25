@@ -18,6 +18,7 @@ import { openRidePaymentCheckout } from '@/lib/razorpay-checkout'
 import CancelSheet from './CancelSheet'
 import SOSButton from '@/components/ui/SOSButton'
 import AddStopSheet, { type PickedStop } from '@/components/route/AddStopSheet'
+import { SHEET_SPRING } from '@/lib/motion'
 
 const RideMapScene = dynamic(() => import('@/components/map/RideMapScene'), { ssr: false })
 
@@ -80,8 +81,7 @@ function SearchingDots() {
       {[0, 1, 2].map(i => (
         <motion.div
           key={i}
-          className="w-1.5 h-1.5 rounded-full"
-          style={{ background: '#F59E0B' }}
+          className="w-1.5 h-1.5 rounded-full bg-status-warning"
           animate={{ opacity: [0.3, 1, 0.3] }}
           transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
         />
@@ -96,28 +96,28 @@ function SearchingDots() {
 // the "No Eyebrow Rule").
 function RouteRow({ ride, fare, status }: { ride: RideDetail | null; fare: string | null; status?: string }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3.5 rounded-2xl" style={{ background: '#F5F7FF', border: '1px solid #E8EEFF' }}>
+    <div className="flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-background border border-border">
       <div className="flex flex-col items-center gap-1 flex-shrink-0">
-        <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#0A9FB0' }} />
-        <div className="w-px flex-1" style={{ background: '#E8EEFF', height: 20 }} />
-        <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#0F172A' }} />
+        <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+        <div className="w-px flex-1 bg-border" style={{ height: 20 }} />
+        <div className="w-2.5 h-2.5 rounded-full bg-text-primary" />
       </div>
       <div className="flex-1 min-w-0 space-y-2">
         <div>
-          <p className="text-[12px] font-medium" style={{ color: '#94A3B8' }}>Pickup</p>
-          <p className="text-sm font-medium truncate" style={{ color: '#0F172A' }}>{ride?.origin_address ?? 'Your location'}</p>
+          <p className="text-[12px] font-medium text-text-muted">Pickup</p>
+          <p className="text-sm font-medium truncate text-text-primary">{ride?.origin_address ?? 'Your location'}</p>
         </div>
         <div>
-          <p className="text-[12px] font-medium" style={{ color: '#94A3B8' }}>
+          <p className="text-[12px] font-medium text-text-muted">
             {ride?.ride_type === 'round_trip' ? 'Drop & return' : ride?.ride_type === 'rental' ? 'Route' : 'Drop'}
           </p>
-          <p className="text-sm font-medium truncate" style={{ color: '#0F172A' }}>
+          <p className="text-sm font-medium truncate text-text-primary">
             {ride?.ride_type === 'rental'
               ? (ride.trip_hours ? `${ride.trip_hours}h rental · flexible` : 'Hourly rental · flexible')
               : (ride?.destination_address ?? 'Destination')}
           </p>
           {ride?.ride_type === 'round_trip' && ride.return_at && (
-            <p className="text-[12px] font-medium mt-0.5" style={{ color: '#DC3E93' }}>
+            <p className="text-[12px] font-medium mt-0.5 text-accent">
               {status === 'returning' ? 'Driver is heading back · ' : ''}Back by {formatReturnAt(ride.return_at)}
             </p>
           )}
@@ -125,8 +125,8 @@ function RouteRow({ ride, fare, status }: { ride: RideDetail | null; fare: strin
       </div>
       {fare && (
         <div className="flex-shrink-0 text-right">
-          <p className="text-[12px] font-medium" style={{ color: '#94A3B8' }}>Est. fare</p>
-          <p className="text-base font-bold" style={{ color: '#0F172A' }}>{fare}</p>
+          <p className="text-[12px] font-medium text-text-muted">Est. fare</p>
+          <p className="text-base font-bold text-text-primary">{fare}</p>
         </div>
       )}
     </div>
@@ -159,7 +159,7 @@ function DriverMiniRow({ ride, rideId, router, unreadChatCount, rideStatus }: { 
   }
 
   return (
-    <div className="flex items-center gap-2.5 flex-1 min-w-0 px-3 py-2 rounded-2xl relative" style={{ background: '#F5F7FF', border: '1px solid #E8EEFF' }}>
+    <div className="flex items-center gap-2.5 flex-1 min-w-0 px-3 py-2 rounded-2xl relative bg-background border border-border">
       {callError && (
         <span className="absolute -top-7 right-0 px-2.5 py-1 rounded-lg bg-red-50 text-[11px] font-medium text-red-600 shadow-sm whitespace-nowrap">
           {callError}
@@ -174,36 +174,34 @@ function DriverMiniRow({ ride, rideId, router, unreadChatCount, rideStatus }: { 
         />
       ) : (
         <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-[12px] font-bold"
-          style={{ background: 'linear-gradient(135deg, #0A9FB0, #DC3E93)' }}
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-[12px] font-bold bg-gradient-primary"
         >
           {ride?.driver_name ? getInitials(ride.driver_name) : '?'}
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-[13px] leading-tight truncate" style={{ color: '#0F172A' }}>{ride?.driver_name ?? 'Your Driver'}</p>
+        <p className="font-semibold text-[13px] leading-tight truncate text-text-primary">{ride?.driver_name ?? 'Your Driver'}</p>
         <div className="flex items-center gap-1 mt-0.5">
           {ride?.driver_rating ? (
             <>
               <span className="text-amber-400 text-[10px]">★</span>
-              <span className="text-[11px] font-medium" style={{ color: '#475569' }}>{Number(ride.driver_rating).toFixed(1)}</span>
+              <span className="text-[11px] font-medium text-text-secondary">{Number(ride.driver_rating).toFixed(1)}</span>
             </>
           ) : (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: '#D1FAE5', color: '#10B981' }}>New</span>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-money-light text-status-success">New</span>
           )}
           {ride?.vehicle_number_plate && (
             <>
-              <span className="text-[10px]" style={{ color: '#E8EEFF' }}>·</span>
-              <span className="text-[11px] font-semibold tracking-wide truncate" style={{ color: '#475569' }}>{ride.vehicle_number_plate}</span>
+              <span className="text-[10px] text-border">·</span>
+              <span className="text-[11px] font-semibold tracking-wide truncate text-text-secondary">{ride.vehicle_number_plate}</span>
             </>
           )}
           {ride?.booked_category_name && ride?.assigned_category_name && ride.booked_category_name !== ride.assigned_category_name && (
             <>
-              <span className="text-[10px]" style={{ color: '#E8EEFF' }}>·</span>
+              <span className="text-[10px] text-border">·</span>
               <span
                 title={`You booked ${ride.booked_category_name} — upgraded to ${ride.assigned_category_name} at no extra cost.`}
-                className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                style={{ background: '#D1FAE5', color: '#059669' }}
+                className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 bg-money-light text-money"
               >
                 Upgraded
               </span>
@@ -220,11 +218,10 @@ function DriverMiniRow({ ride, rideId, router, unreadChatCount, rideStatus }: { 
         <button
           onClick={handleCall}
           disabled={calling}
-          className="relative w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 disabled:opacity-50 before:absolute before:-inset-1 before:content-['']"
-          style={{ background: '#E4F8FA' }}
+          className="w-11 h-11 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 disabled:opacity-50 bg-primary-subtle"
           aria-label="Call driver"
         >
-          <Phone size={14} style={{ color: '#0A9FB0' }} />
+          <Phone size={14} className="text-primary" />
         </button>
       )}
       {/* Chat doesn't need the driver's raw phone number (maskRideContacts nulls
@@ -232,15 +229,13 @@ function DriverMiniRow({ ride, rideId, router, unreadChatCount, rideStatus }: { 
           only rendered once hasDriver is true, so no extra gate needed here. */}
       <button
         onClick={() => router.push(`/ride/${rideId}/chat`)}
-        className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 relative before:absolute before:-inset-1 before:content-['']"
-        style={{ background: '#E4F8FA' }}
+        className="w-11 h-11 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 relative bg-primary-subtle"
         aria-label="Message driver"
       >
-        <MessageCircle size={14} style={{ color: '#0A9FB0' }} />
+        <MessageCircle size={14} className="text-primary" />
         {unreadChatCount > 0 && (
           <span
-            className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
-            style={{ background: '#DC2626' }}
+            className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-red-600"
           >
             {unreadChatCount > 9 ? '9+' : unreadChatCount}
           </span>
@@ -254,25 +249,26 @@ function DriverMiniRow({ ride, rideId, router, unreadChatCount, rideStatus }: { 
 // phase). No copy affordance: this code is read aloud to the driver, never
 // shared or sent, so there's nothing to copy it into.
 function OtpBadge({ otp, phase }: { otp: string | null; phase: 'start' | 'end' }) {
-  const accent = phase === 'start' ? '#10B981' : '#DC3E93'
-  const bg     = phase === 'start' ? '#D1FAE5' : '#FBE0EE'
+  const accentClass = phase === 'start' ? 'text-status-success' : 'text-accent'
+  const borderAccentClass = phase === 'start' ? 'border-status-success' : 'border-accent'
+  const bgClass      = phase === 'start' ? 'bg-money-light' : 'bg-accent-light'
   const label  = phase === 'start' ? 'Trip OTP' : 'End OTP'
 
   if (!otp) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 rounded-xl flex-shrink-0" style={{ background: '#F5F7FF', border: '1px solid #E8EEFF' }}>
-        <div className="w-3 h-3 rounded-full border-2 border-t-transparent animate-spin flex-shrink-0" style={{ borderColor: accent, borderTopColor: 'transparent' }} />
-        <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: '#475569' }}>Generating…</span>
+      <div className="flex items-center gap-2 px-3 py-2 rounded-xl flex-shrink-0 bg-background border border-border">
+        <div className={`w-3 h-3 rounded-full border-2 border-t-transparent animate-spin flex-shrink-0 ${borderAccentClass}`} style={{ borderTopColor: 'transparent' }} />
+        <span className="text-[12px] font-medium whitespace-nowrap text-text-secondary">Generating…</span>
       </div>
     )
   }
 
   return (
-    <div className="flex items-center gap-2.5 pl-2.5 pr-3.5 py-2 rounded-xl flex-shrink-0" style={{ background: bg }}>
-      <Shield size={14} style={{ color: accent }} className="flex-shrink-0" />
+    <div className={`flex items-center gap-2.5 pl-2.5 pr-3.5 py-2 rounded-xl flex-shrink-0 ${bgClass}`}>
+      <Shield size={14} className={`flex-shrink-0 ${accentClass}`} />
       <div className="flex flex-col leading-none gap-1">
-        <span className="text-[11px] font-medium" style={{ color: accent }}>{label}</span>
-        <span className="text-lg font-bold tabular-nums" style={{ color: '#0F172A', letterSpacing: '0.14em' }}>{otp}</span>
+        <span className={`text-[11px] font-medium ${accentClass}`}>{label}</span>
+        <span className="text-lg font-bold tabular-nums text-text-primary" style={{ letterSpacing: '0.14em' }}>{otp}</span>
       </div>
     </div>
   )
@@ -295,7 +291,7 @@ function StopWaitBadge({ stop, nowMs }: { stop: RideStop; nowMs: number }) {
         <span className="text-[11px] font-medium whitespace-nowrap" style={{ color: accent }}>
           Waiting · Stop {stop.sequence}
         </span>
-        <span className="text-sm font-bold tabular-nums" style={{ color: '#0F172A' }}>
+        <span className="text-sm font-bold tabular-nums text-text-primary">
           {fmtClock(elapsedSec)}
           <span className="font-medium" style={{ color: accent }}>
             {' · '}{freeLeftSec > 0 ? `${fmtClock(freeLeftSec)} free left` : 'extra time added to fare'}
@@ -856,7 +852,7 @@ export default function RidePage() {
       <motion.div
         initial={{ y: 60, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 300, delay: 0.08 }}
+        transition={{ ...SHEET_SPRING, delay: 0.08 }}
         className="bg-background rounded-t-[28px] shadow-[0_-4px_32px_rgba(0,0,0,0.10)]"
         style={{ flexShrink: 0 }}
       >
@@ -876,7 +872,7 @@ export default function RidePage() {
         )}
 
         {/* ── Status badge row ── */}
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           <motion.div
             key={status}
             initial={{ opacity: 0, y: 6 }}
@@ -986,8 +982,7 @@ export default function RidePage() {
 
               {ride?.ride_type === 'round_trip' && ride.return_at && (
                 <div
-                  className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-3"
-                  style={{ background: '#E4F8FA', border: '1px solid #B8E9EE' }}
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-3 bg-primary-subtle border border-primary-light"
                 >
                   <RotateCcw size={13} className="text-violet-500 flex-shrink-0" />
                   <div>
@@ -1030,8 +1025,7 @@ export default function RidePage() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.22, ease: EASE }}
-                className="mx-4 mb-2 px-3 py-2 rounded-xl text-[12px] font-semibold"
-                style={{ background: '#D1FAE5', color: '#059669' }}
+                className="mx-4 mb-2 px-3 py-2 rounded-xl text-[12px] font-semibold bg-money-light text-money"
               >
                 You&apos;ve been upgraded to {ride.assigned_category_name} — same fare, more room.
               </motion.div>
@@ -1058,8 +1052,8 @@ export default function RidePage() {
                   <div className="flex items-center justify-between gap-2">
                     {rideStatus === 'accepted' && fare && (
                       <div className="px-1">
-                        <p className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>Fare</p>
-                        <p className="text-sm font-bold" style={{ color: '#0F172A' }}>{fare}</p>
+                        <p className="text-[11px] font-medium text-text-muted">Fare</p>
+                        <p className="text-sm font-bold text-text-primary">{fare}</p>
                       </div>
                     )}
                     {rideStatus === 'driver_arrived' && <OtpBadge otp={startOtp} phase="start" />}
@@ -1134,11 +1128,11 @@ export default function RidePage() {
                             if (pendingIdx === -1) return null
                             const cur = ride.stops[pendingIdx]!
                             return (
-                              <div className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={{ background: '#E4F8FA', border: '1px solid #B8E9EE' }}>
-                                <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#0A9FB0', color: '#fff' }}>
+                              <div className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-primary-subtle border border-primary-light">
+                                <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 bg-primary text-white">
                                   Stop {pendingIdx + 1} of {ride.stops.length}
                                 </span>
-                                <span className="text-[13px] font-semibold truncate" style={{ color: '#0F172A' }}>{cur.address ?? `Stop ${pendingIdx + 1}`}</span>
+                                <span className="text-[13px] font-semibold truncate text-text-primary">{cur.address ?? `Stop ${pendingIdx + 1}`}</span>
                               </div>
                             )
                           })()}

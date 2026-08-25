@@ -134,7 +134,7 @@ export default function SelectSheet({
                     value={query}
                     onChange={e => setQuery(e.target.value)}
                     placeholder={`Search ${label.toLowerCase()}…`}
-                    className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                    className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-[border-color,box-shadow]"
                   />
                 </div>
               )}

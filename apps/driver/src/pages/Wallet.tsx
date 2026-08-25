@@ -191,7 +191,10 @@ export default function Wallet() {
           </motion.div>
 
           {isLow && (
-            <div
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
               className="mx-5 rounded-2xl px-4 py-3 flex items-center gap-3 mb-4"
               style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.20)' }}
               role="alert"
@@ -203,11 +206,14 @@ export default function Wallet() {
                   Add ₹{(MIN_BALANCE - balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })} to avoid service interruption
                 </p>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {wallet?.is_frozen && (
-            <div
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
               className="mx-5 rounded-2xl px-4 py-3 flex items-center gap-3 mb-4"
               style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.18)' }}
               role="alert"
@@ -217,7 +223,7 @@ export default function Wallet() {
                 <p className="text-accent-red font-bold text-sm">Wallet Frozen</p>
                 <p className="text-text-secondary text-xs mt-0.5">Contact support to unfreeze your wallet</p>
               </div>
-            </div>
+            </motion.div>
           )}
         </>
       )}

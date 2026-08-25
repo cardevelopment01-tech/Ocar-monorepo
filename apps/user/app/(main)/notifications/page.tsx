@@ -53,7 +53,7 @@ function NotificationRow({ item, index, onRead, onOpen }: { item: NotificationIt
         drag={unread && !prefersReducedMotion ? 'x' : false}
         dragConstraints={{ left: -72, right: 0 }}
         dragElastic={0.15}
-        whileTap={{ scale: 0.99 }}
+        whileTap={{ scale: 0.97 }}
         onDragEnd={(_e, info) => {
           if (info.offset.x < -48 || info.velocity.x < -400) onRead(item.id)
           animate(x, 0, { type: 'spring', stiffness: 400, damping: 40 })
@@ -140,7 +140,7 @@ export default function NotificationsPage() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              whileTap={{ scale: 0.94 }}
+              whileTap={{ scale: 0.97 }}
               transition={TAP_SPRING}
               className="text-[12px] font-semibold text-primary"
             >
@@ -202,7 +202,7 @@ export default function NotificationsPage() {
         )}
 
         <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest px-4 pt-6 pb-3">Preferences</p>
-        <div className="card-glossy p-0 overflow-hidden mx-4">
+        <div className="card p-0 overflow-hidden mx-4">
           {[
             { Icon: Bell,          label: 'Push notifications', sub: 'Ride updates, offers & alerts' },
             { Icon: MessageSquare, label: 'SMS alerts',         sub: 'OTP and booking confirmations' },

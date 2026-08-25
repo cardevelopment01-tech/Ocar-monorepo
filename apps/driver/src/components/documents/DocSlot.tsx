@@ -68,7 +68,7 @@ export default function DocSlot({ slot, state, inputRef, onTrigger, onFileChange
         <button
           type="button"
           onClick={!isUploading ? onTrigger : undefined}
-          className={`w-full rounded-xl border-2 border-dashed aspect-[4/3] flex flex-col items-center justify-center gap-1.5 transition-all ${
+          className={`w-full rounded-xl border-2 border-dashed aspect-[4/3] flex flex-col items-center justify-center gap-1.5 transition-colors ${
             isUploading ? 'border-primary/40 bg-primary/5 cursor-default'
             : isError   ? 'border-accent-red/40 bg-accent-red/5'
             :             'border-border hover:border-primary/40 active:bg-primary/5'

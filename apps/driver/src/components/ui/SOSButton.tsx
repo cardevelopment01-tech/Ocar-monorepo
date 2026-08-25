@@ -16,7 +16,7 @@ interface SOSButtonProps {
 
 export default function SOSButton({
   rideId: _rideId, onSOS,
-  className = 'fixed w-12 h-12 rounded-full bg-surface border border-border flex items-center justify-center active:scale-95 transition-transform',
+  className = 'fixed w-12 h-12 rounded-full bg-surface border border-border flex items-center justify-center active:scale-[0.97] transition-transform',
   style,
 }: SOSButtonProps) {
   const [confirming, setConfirming] = useState(false)

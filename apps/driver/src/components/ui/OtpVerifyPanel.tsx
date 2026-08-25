@@ -56,7 +56,7 @@ export default function OtpVerifyPanel({
       <button
         onClick={() => void handleSubmit()}
         disabled={otp.length !== length || phase !== 'idle'}
-        className="btn-go w-full mt-5 flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:active:scale-100"
+        className="btn-go w-full mt-5 flex items-center justify-center gap-2 active:scale-[0.97] transition-transform disabled:active:scale-100"
         style={{ minHeight: 56 }}
       >
         <AnimatePresence mode="wait" initial={false}>

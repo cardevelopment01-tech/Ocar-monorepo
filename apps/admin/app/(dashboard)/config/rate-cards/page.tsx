@@ -678,7 +678,9 @@ export default function RateCardsPage() {
             </div>
           ) : loading ? (
             <div className="admin-card !p-0 overflow-hidden">
-              <table className="data-table"><tbody><SkeletonRows cols={9} n={6} /></tbody></table>
+              <div className="overflow-x-auto">
+                <table className="data-table min-w-[900px]"><tbody><SkeletonRows cols={9} n={6} /></tbody></table>
+              </div>
             </div>
           ) : filteredCards.length === 0 ? (
             <div className="admin-card text-center py-8 text-text-muted text-sm">
@@ -695,42 +697,44 @@ export default function RateCardsPage() {
                     <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                     <h3 className="text-sm font-semibold text-text-primary">{catName}</h3>
                   </div>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>City</th>
-                        <th>Ride Type</th>
-                        <th className="!text-right">Per KM</th>
-                        <th className="!text-right">Per Min</th>
-                        <th className="!text-right">Min Fare</th>
-                        <th className="!text-right">Return Rate</th>
-                        <th className="!text-right">KM/day</th>
-                        <th className="!text-right">Driver Allowance/day</th>
-                        <th className="!text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map(card => (
-                        <tr key={card.id} className="cursor-default">
-                          <td>
-                            {card.city_name
-                              ? <span className="pill-info">{card.city_name}</span>
-                              : <span className="pill-muted">Global</span>}
-                          </td>
-                          <td><StatusPillRideType type={card.ride_type} /></td>
-                          <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.rate_per_km)}</td>
-                          <td className="!text-right font-mono">{fmt(card.rate_per_min)}</td>
-                          <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.min_fare)}</td>
-                          <td className="!text-right font-mono text-text-muted">{fmt(card.return_rate_per_km)}</td>
-                          <td className="!text-right font-mono text-text-muted">{card.km_per_day ?? '—'}</td>
-                          <td className="!text-right font-mono text-text-muted">{fmt(card.driver_allowance_per_day)}</td>
-                          <td className="!text-right">
-                            <UpdateRateDialog card={card} cities={cities} onUpdated={() => { fetchAll(); setSuccessMsg('Rate updated') }} />
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="data-table min-w-[900px]">
+                      <thead>
+                        <tr>
+                          <th>City</th>
+                          <th>Ride Type</th>
+                          <th className="!text-right">Per KM</th>
+                          <th className="!text-right">Per Min</th>
+                          <th className="!text-right">Min Fare</th>
+                          <th className="!text-right">Return Rate</th>
+                          <th className="!text-right">KM/day</th>
+                          <th className="!text-right">Driver Allowance/day</th>
+                          <th className="!text-right">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {rows.map(card => (
+                          <tr key={card.id} className="cursor-default">
+                            <td>
+                              {card.city_name
+                                ? <span className="pill-info">{card.city_name}</span>
+                                : <span className="pill-muted">Global</span>}
+                            </td>
+                            <td><StatusPillRideType type={card.ride_type} /></td>
+                            <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.rate_per_km)}</td>
+                            <td className="!text-right font-mono">{fmt(card.rate_per_min)}</td>
+                            <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.min_fare)}</td>
+                            <td className="!text-right font-mono text-text-muted">{fmt(card.return_rate_per_km)}</td>
+                            <td className="!text-right font-mono text-text-muted">{card.km_per_day ?? '—'}</td>
+                            <td className="!text-right font-mono text-text-muted">{fmt(card.driver_allowance_per_day)}</td>
+                            <td className="!text-right">
+                              <UpdateRateDialog card={card} cities={cities} onUpdated={() => { fetchAll(); setSuccessMsg('Rate updated') }} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )
             })
@@ -750,14 +754,14 @@ export default function RateCardsPage() {
             </button>
             {historyOpen && (
               historyLoading ? (
-                <div className="border-t border-border">
-                  <table className="data-table"><tbody><SkeletonRows cols={5} n={4} /></tbody></table>
+                <div className="border-t border-border overflow-x-auto">
+                  <table className="data-table min-w-[600px]"><tbody><SkeletonRows cols={5} n={4} /></tbody></table>
                 </div>
               ) : history.length === 0 ? (
                 <p className="border-t border-border px-5 py-8 text-center text-text-muted text-sm">No rate changes recorded yet.</p>
               ) : (
-                <div className="border-t border-border">
-                  <table className="data-table">
+                <div className="border-t border-border overflow-x-auto">
+                  <table className="data-table min-w-[600px]">
                     <thead>
                       <tr><th>Category</th><th>Ride Type</th><th>Per KM</th><th>Reason</th><th>Changed</th></tr>
                     </thead>
@@ -801,32 +805,34 @@ export default function RateCardsPage() {
                 No surge events scheduled. Use the button above to create one.
               </p>
             ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>{['City', 'Category', 'Multiplier', 'Reason', 'Status', 'Starts', 'Ends', ''].map(h => <th key={h}>{h}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {surges.map(s => (
-                    <tr key={s.id} className="cursor-default">
-                      <td className="font-medium text-text-primary">{s.city_name}</td>
-                      <td>{s.category_name ?? 'All'}</td>
-                      <td><span className="font-mono font-bold text-warning">{parseFloat(s.multiplier).toFixed(2)}×</span></td>
-                      <td className="max-w-[160px] truncate">{s.reason ?? '—'}</td>
-                      <td><span className={SURGE_STATUS_CLS[s.status] ?? 'pill-muted'}>{s.status.charAt(0).toUpperCase() + s.status.slice(1)}</span></td>
-                      <td className="text-xs">{new Date(s.starts_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-                      <td className="text-xs">{new Date(s.ends_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-                      <td>
-                        {(s.status === 'scheduled' || s.status === 'active') && (
-                          <button onClick={() => cancelSurge(s.id)}
-                            className="text-xs text-danger font-semibold px-2.5 py-1 rounded-lg hover:bg-danger-light transition-colors">
-                            Cancel
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="data-table min-w-[800px]">
+                  <thead>
+                    <tr>{['City', 'Category', 'Multiplier', 'Reason', 'Status', 'Starts', 'Ends', ''].map(h => <th key={h}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {surges.map(s => (
+                      <tr key={s.id} className="cursor-default">
+                        <td className="font-medium text-text-primary">{s.city_name}</td>
+                        <td>{s.category_name ?? 'All'}</td>
+                        <td><span className="font-mono font-bold text-warning">{parseFloat(s.multiplier).toFixed(2)}×</span></td>
+                        <td className="max-w-[160px] truncate">{s.reason ?? '—'}</td>
+                        <td><span className={SURGE_STATUS_CLS[s.status] ?? 'pill-muted'}>{s.status.charAt(0).toUpperCase() + s.status.slice(1)}</span></td>
+                        <td className="text-xs">{new Date(s.starts_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className="text-xs">{new Date(s.ends_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                        <td>
+                          {(s.status === 'scheduled' || s.status === 'active') && (
+                            <button onClick={() => cancelSurge(s.id)}
+                              className="text-xs text-danger font-semibold px-2.5 py-1 rounded-lg hover:bg-danger-light transition-colors">
+                              Cancel
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>

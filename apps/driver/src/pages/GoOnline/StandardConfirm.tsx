@@ -204,7 +204,7 @@ export default function StandardConfirm() {
                   onClick={() => toggleItem(item)}
                   className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors"
                   style={{ background: isChecked ? 'rgba(15,23,42,0.03)' : 'rgba(100,116,139,0.04)' }}
-                  whileTap={{ scale: 0.98 }}
+                  whileTap={{ scale: 0.97 }}
                   initial={{ opacity: 0, x: -6 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.15 + i * 0.05, duration: 0.28, ease: EASE }}
@@ -311,7 +311,7 @@ export default function StandardConfirm() {
             minHeight: 56,
             borderRadius: 24,
           }}
-          className="w-full flex items-center justify-center gap-2.5 text-white font-bold text-base cursor-pointer active:scale-[0.98] transition-transform duration-150 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+          className="w-full flex items-center justify-center gap-2.5 text-white font-bold text-base cursor-pointer active:scale-[0.97] transition-transform duration-150 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
         >
           {goingOnline ? (
             <>

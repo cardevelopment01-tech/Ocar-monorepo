@@ -270,7 +270,7 @@ export default function RideReceiptPage() {
             </div>
           )
         ) : (
-          <div className="card-glossy">
+          <div className="card">
             <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-3">{totalLabel} breakdown</p>
             <div className="space-y-2">
               {FARE_LINES.map(({ key, label }) => {

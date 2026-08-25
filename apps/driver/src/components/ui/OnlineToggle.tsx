@@ -28,7 +28,7 @@ export default function OnlineToggle({ isOnline, onToggle, disabled = false }: O
         aria-pressed={isOnline}
         className={cn(
           'relative w-[72px] h-[72px] rounded-full flex flex-col items-center justify-center gap-1 cursor-pointer',
-          'active:scale-95 transition-[transform,box-shadow] duration-200',
+          'active:scale-[0.97] transition-[transform,box-shadow] duration-200',
           'disabled:opacity-50 disabled:cursor-not-allowed',
         )}
         style={isOnline ? {

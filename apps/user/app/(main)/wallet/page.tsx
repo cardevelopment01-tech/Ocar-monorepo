@@ -153,7 +153,7 @@ export default function WalletPage() {
 
         {!error && (
           loading ? (
-            <div className="card-glossy p-0 overflow-hidden">
+            <div className="card p-0 overflow-hidden">
               {[1, 2, 3].map(i => (
                 <div key={i} className="flex items-center gap-3 px-4 py-4 border-b border-border last:border-0 animate-pulse">
                   <div className="w-9 h-9 rounded-xl bg-surface-2 flex-shrink-0" />
@@ -167,7 +167,7 @@ export default function WalletPage() {
             </div>
           ) : ledger.length > 0 && (
             <motion.div
-              className="card-glossy p-0 overflow-hidden"
+              className="card p-0 overflow-hidden"
               variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
               initial="hidden"
               animate="show"

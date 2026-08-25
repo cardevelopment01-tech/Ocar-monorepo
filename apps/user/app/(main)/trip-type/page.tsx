@@ -159,7 +159,7 @@ function TripTypeContent() {
               aria-label="Go back"
               className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'rgba(255,255,255,0.10)' }}
-              whileTap={{ scale: 0.88 }} transition={SPRING}
+              whileTap={{ scale: 0.9 }} transition={SPRING}
             >
               <ArrowLeft size={16} strokeWidth={2} color="rgba(255,255,255,0.85)" />
             </motion.button>

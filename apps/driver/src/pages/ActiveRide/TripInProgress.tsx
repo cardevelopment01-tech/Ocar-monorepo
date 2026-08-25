@@ -532,7 +532,7 @@ export default function TripInProgress() {
               <button
                 aria-label="Open in Google Maps"
                 style={{ position: 'absolute', left: 16, bottom: `calc(env(safe-area-inset-bottom) + ${occlusion + 64}px)`, zIndex: 5 }}
-                className="w-12 h-12 rounded-2xl bg-surface border border-border shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+                className="w-12 h-12 rounded-2xl bg-surface border border-border shadow-lg flex items-center justify-center active:scale-[0.97] transition-transform"
                 onClick={() => openMapsNav(dropPos[0], dropPos[1])}
               >
                 <Navigation size={20} className="text-primary" />
@@ -549,7 +549,7 @@ export default function TripInProgress() {
         style={{ zIndex: 10, paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}
       >
         <div className="rounded-3xl overflow-hidden" style={GLASS}>
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="popLayout">
             {nearTarget ? (
               <motion.div
                 key="arrived-banner"
@@ -579,7 +579,7 @@ export default function TripInProgress() {
             )}
           </AnimatePresence>
           <div className="flex items-center gap-3 px-4 py-3 border-t border-border">
-            <div className="w-2.5 h-2.5 rounded-full bg-accent-red flex-shrink-0 animate-pulse" />
+            <div className="w-2.5 h-2.5 rounded-full bg-accent-red flex-shrink-0 animate-pulse-soft" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <p className="text-accent-red text-xs font-bold uppercase tracking-wider">Trip in Progress</p>
@@ -610,7 +610,7 @@ export default function TripInProgress() {
           <SOSButton
             rideId={activeRide?.id ?? ''}
             onSOS={handleSOS}
-            className="w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+            className="w-11 h-11 rounded-full flex items-center justify-center active:scale-[0.97] transition-transform"
             style={GLASS}
           />
         </div>
@@ -618,7 +618,13 @@ export default function TripInProgress() {
         {/* GPS-loss warning — safety-critical here (mid-navigation), not just
             informational like the Home screen's version of this banner. */}
         {gpsError && (
-          <div className="flex items-center gap-2.5 rounded-2xl px-4 py-3 mt-3" style={GLASS}>
+          <motion.div
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.15 }}
+            className="flex items-center gap-2.5 rounded-2xl px-4 py-3 mt-3"
+            style={GLASS}
+          >
             <LocateOff size={14} className="text-red-500 flex-shrink-0" />
             <span className="text-red-600 text-[12px] font-semibold">
               {gpsError.code === 1
@@ -627,7 +633,7 @@ export default function TripInProgress() {
                 ? 'GPS signal unavailable. Check device location settings'
                 : 'Location timed out. Ensure GPS is enabled'}
             </span>
-          </div>
+          </motion.div>
         )}
       </div>
 
@@ -718,14 +724,14 @@ export default function TripInProgress() {
                     <button
                       onClick={() => void handleCallRider()}
                       disabled={calling}
-                      className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-95 transition-transform disabled:opacity-60"
+                      className="w-11 h-11 rounded-full bg-surface-3 border border-border flex items-center justify-center active:scale-[0.97] transition-transform disabled:opacity-60"
                       aria-label="Call rider"
                     >
                       {calling ? <OcarSpinner size={16} /> : <Phone size={18} className="text-text-secondary" />}
                     </button>
                   )}
                   <button
-                    className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-95 transition-transform relative"
+                    className="w-11 h-11 rounded-full bg-primary flex items-center justify-center shadow-button active:scale-[0.97] transition-transform relative"
                     onClick={() => navigate('/ride/chat')}
                     aria-label="Message rider"
                   >
@@ -856,7 +862,7 @@ export default function TripInProgress() {
                             <button
                               onClick={() => handleStopAction(stop.sequence, 'reached')}
                               disabled={isPending}
-                              className="text-[11px] font-bold text-white rounded-full px-3 py-1.5 active:scale-95 transition-transform disabled:opacity-60"
+                              className="text-[11px] font-bold text-white rounded-full px-3 py-1.5 active:scale-[0.97] transition-transform disabled:opacity-60"
                               style={{ background: '#0A9FB0' }}
                             >
                               {isPending ? '…' : 'Reached'}
@@ -918,7 +924,7 @@ export default function TripInProgress() {
                 </div>
                 <button
                   onClick={() => { setShowEndOtp(false); setOtp(''); setOtpError(false) }}
-                  className="w-9 h-9 rounded-full bg-surface-3 flex items-center justify-center active:scale-95 transition-transform"
+                  className="w-9 h-9 rounded-full bg-surface-3 flex items-center justify-center active:scale-[0.97] transition-transform"
                   aria-label="Close"
                 >
                   <X size={16} className="text-text-secondary" />
@@ -969,7 +975,7 @@ export default function TripInProgress() {
                 <button
                   onClick={() => setShowEndEarlySheet(false)}
                   disabled={endingEarly}
-                  className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center active:scale-95 transition-transform"
+                  className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center active:scale-[0.97] transition-transform"
                 >
                   <X size={15} className="text-text-secondary" />
                 </button>
@@ -988,7 +994,7 @@ export default function TripInProgress() {
                   <button
                     key={r.code}
                     onClick={() => setEndEarlyReason(r.code)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left active:scale-[0.98] transition-transform ${
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left active:scale-[0.97] transition-transform ${
                       endEarlyReason === r.code ? '' : 'bg-surface-2'
                     }`}
                     style={endEarlyReason === r.code
@@ -1013,7 +1019,7 @@ export default function TripInProgress() {
               <button
                 onClick={() => void handleEndEarly()}
                 disabled={!endEarlyReason || endingEarly}
-                className="w-full py-3.5 rounded-2xl text-sm font-bold text-text-inverse mb-2.5 disabled:opacity-40 active:scale-[0.98] transition-transform"
+                className="w-full py-3.5 rounded-2xl text-sm font-bold text-text-inverse mb-2.5 disabled:opacity-40 active:scale-[0.97] transition-transform"
                 style={{ background: '#EF4444' }}
               >
                 {endingEarly ? 'Ending trip…' : 'End trip now'}
@@ -1021,7 +1027,7 @@ export default function TripInProgress() {
               <button
                 onClick={() => setShowEndEarlySheet(false)}
                 disabled={endingEarly}
-                className="w-full py-3 rounded-2xl text-sm font-semibold text-text-secondary disabled:opacity-50 active:scale-[0.98] transition-transform bg-surface-2 border border-border"
+                className="w-full py-3 rounded-2xl text-sm font-semibold text-text-secondary disabled:opacity-50 active:scale-[0.97] transition-transform bg-surface-2 border border-border"
               >
                 Continue trip
               </button>
@@ -1045,7 +1051,7 @@ export default function TripInProgress() {
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.2, ease: EASE }}
             onClick={handleRecenter}
-            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-4 py-2 active:scale-95 transition-transform"
+            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-4 py-2 active:scale-[0.97] transition-transform"
             style={{ bottom: `calc(env(safe-area-inset-bottom) + ${occlusion + 30}px)`, zIndex: 40, ...GLASS }}
           >
             <Locate size={14} className="text-primary" />

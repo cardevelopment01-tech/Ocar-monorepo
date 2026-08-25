@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { SHEET_SPRING } from '@/lib/motion'
 
 interface SOSButtonProps {
   onSOS: () => void | Promise<void>
@@ -53,7 +54,7 @@ export default function SOSButton({ onSOS, className }: SOSButtonProps) {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 350 }}
+              transition={SHEET_SPRING}
               className="relative w-full max-w-[430px] bg-white rounded-t-[28px] px-6 pt-6 shadow-[0_-8px_40px_rgba(0,0,0,0.14)]"
               style={{ paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}
             >

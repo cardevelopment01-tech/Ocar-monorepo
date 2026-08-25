@@ -55,7 +55,7 @@ export default function SavedPlacesPage() {
         ) : (
           <>
             <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Your places</p>
-            <div className="card-glossy p-0 overflow-hidden">
+            <div className="card p-0 overflow-hidden">
               <PlaceRow
                 Icon={Home}
                 label="Home"
@@ -108,7 +108,7 @@ function PlaceRow({
   return (
     <button
       onClick={onClick}
-      className={`gloss-sheen w-full flex items-center gap-3 px-4 py-3.5 text-left${divider ? ' border-t border-border' : ''}`}
+      className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${divider ? ' border-t border-border' : ''}`}
     >
       <span className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0">
         <Icon size={15} strokeWidth={1.6} className="text-text-muted" />

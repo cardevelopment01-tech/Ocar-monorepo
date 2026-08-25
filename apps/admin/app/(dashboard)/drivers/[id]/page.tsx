@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Pencil, Layers, AlertCircle, AlertTriangle } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -51,18 +52,24 @@ function AlertStrip({ d }: { d: DriverDetail }) {
   if (alerts.length === 0) return null
   return (
     <div className="flex flex-wrap gap-2">
-      {alerts.map((a, i) => (
-        <span
-          key={i}
-          className={cn(
-            'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full',
-            a.tone === 'danger' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning'
-          )}
-        >
-          <AlertTriangle size={12} />
-          {a.text}
-        </span>
-      ))}
+      <AnimatePresence initial={false}>
+        {alerts.map(a => (
+          <motion.span
+            key={a.text}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className={cn(
+              'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full',
+              a.tone === 'danger' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning'
+            )}
+          >
+            <AlertTriangle size={12} />
+            {a.text}
+          </motion.span>
+        ))}
+      </AnimatePresence>
     </div>
   )
 }

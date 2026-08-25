@@ -235,7 +235,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => { setStep('phone'); setOtp(''); setError(''); setCountdown(0) }}
                 className="flex items-center gap-2 text-text-secondary text-sm mb-6 -ml-1 cursor-pointer"
-                whileTap={{ scale: 0.94 }}
+                whileTap={{ scale: 0.9 }}
                 transition={SPRING}
               >
                 <div className="w-8 h-8 rounded-xl bg-surface-2 flex items-center justify-center">

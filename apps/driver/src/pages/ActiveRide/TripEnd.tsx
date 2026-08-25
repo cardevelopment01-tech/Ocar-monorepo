@@ -246,7 +246,7 @@ export default function TripEnd() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.4 }}
         onClick={handleBackHome}
-        className="btn-go w-full flex items-center justify-center gap-2 active:scale-95 transition-transform"
+        className="btn-go w-full flex items-center justify-center gap-2 active:scale-[0.97] transition-transform"
         style={{ minHeight: 56 }}
       >
         Back to Home <ArrowRight size={18} />
@@ -336,7 +336,7 @@ export default function TripEnd() {
                       type="button"
                       onClick={() => void submitRiderRating()}
                       disabled={ratingSubmitting}
-                      className="w-full mt-3 py-3 rounded-2xl bg-primary text-white text-sm font-semibold active:scale-95 transition-transform disabled:opacity-60"
+                      className="w-full mt-3 py-3 rounded-2xl bg-primary text-white text-sm font-semibold active:scale-[0.97] transition-transform disabled:opacity-60"
                     >
                       {ratingSubmitting ? 'Submitting…' : 'Submit rating'}
                     </button>

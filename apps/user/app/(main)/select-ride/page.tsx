@@ -1,9 +1,8 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
-import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, ArrowRightLeft, ChevronRight, Users, Zap, Clock, CreditCard, RotateCcw } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard, RotateCcw } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -18,6 +17,7 @@ import { geoApi } from '@/lib/geo-api'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
+import RedirectToast from '@/components/ui/RedirectToast'
 
 const SelectRideMapScene = dynamic(() => import('@/components/map/SelectRideMapScene'), { ssr: false })
 
@@ -566,7 +566,12 @@ function SelectRideContent() {
 
         {/* No drivers banner */}
         {allUnavailable && (
-          <div className="mx-4 mb-1 flex items-center gap-2 rounded-xl px-3 py-2 bg-amber-50 border border-amber-200">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15 }}
+            className="mx-4 mb-1 flex items-center gap-2 rounded-xl px-3 py-2 bg-amber-50 border border-amber-200"
+          >
             <Clock size={14} className="text-amber-600 flex-shrink-0" />
             <p className="text-[12px] font-semibold text-amber-800 flex-1">No drivers nearby. Try again in a few minutes.</p>
             <button
@@ -575,7 +580,7 @@ function SelectRideContent() {
             >
               Schedule instead
             </button>
-          </div>
+          </motion.div>
         )}
 
         {/* Ride list, scrollable */}
@@ -584,7 +589,7 @@ function SelectRideContent() {
           {/* ── Stops itinerary — up to 3 waypoints; one-way prices the detour, round trip a flat per-stop fee ── */}
           {!isReturnCab && (
             <div className="mx-4 mt-0 mb-1">
-              <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#94A3B8' }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#64748B' }}>
                 Your route
               </p>
               <RouteTimeline nodes={stopNodes} />
@@ -593,14 +598,24 @@ function SelectRideContent() {
 
           {/* Wait-charge disclosure — Bolt-style "shown before you confirm" */}
           {detourPriced && (
-            <p className="mx-4 mb-1 text-[11px] font-medium leading-relaxed" style={{ color: '#94A3B8' }}>
-              Each stop includes <span className="font-semibold" style={{ color: '#475569' }}>10 min free wait</span>. Longer waits are billed per minute and added to your final fare.
-            </p>
+            <motion.p
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.15 }}
+              className="mx-4 mb-1 text-[11px] font-medium leading-relaxed text-text-muted"
+            >
+              Each stop includes <span className="font-semibold text-text-secondary">10 min free wait</span>. Longer waits are billed per minute and added to your final fare.
+            </motion.p>
           )}
           {rideType === 'round_trip' && (
-            <p className="mx-4 mb-1 text-[11px] font-medium leading-relaxed" style={{ color: '#94A3B8' }}>
-              Your package includes a <span className="font-semibold" style={{ color: '#475569' }}>guaranteed daily km allowance</span>. Extra km or an extra day are billed at completion.
-            </p>
+            <motion.p
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.15 }}
+              className="mx-4 mb-1 text-[11px] font-medium leading-relaxed text-text-muted"
+            >
+              Your package includes a <span className="font-semibold text-text-secondary">guaranteed daily km allowance</span>. Extra km or an extra day are billed at completion.
+            </motion.p>
           )}
 
           {/* ── Return Cab section (one_way only, when available) ── */}
@@ -774,52 +789,52 @@ function SelectRideContent() {
           {/* Round trip fare breakdown */}
           {rideType === 'round_trip' && estimates[selected] && tripHours !== undefined && (
             <div
-              className="mx-4 mt-1 mb-2 rounded-2xl px-3 py-2.5 space-y-1"
-              style={{ background: '#E4F8FA', border: '1px solid #B8E9EE', boxShadow: '0 2px 8px rgba(10, 159, 176, 0.08)' }}
+              className="mx-4 mt-1 mb-2 rounded-2xl px-3 py-2.5 space-y-1 bg-primary-subtle border border-primary-light"
+              style={{ boxShadow: '0 2px 8px rgba(10, 159, 176, 0.08)' }}
             >
               <div className="flex justify-between text-[11px]">
-                <span style={{ color: '#22B8C9' }}>Base fare</span>
+                <span className="text-primary-bright">Base fare</span>
                 <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.base_fare))}</span>
               </div>
               <div className="flex justify-between text-[11px]">
-                <span style={{ color: '#22B8C9' }}>Distance</span>
+                <span className="text-primary-bright">Distance</span>
                 <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.distance_fare))}</span>
               </div>
               <div className="flex justify-between text-[11px]">
-                <span style={{ color: '#22B8C9' }}>Travel time</span>
+                <span className="text-primary-bright">Travel time</span>
                 <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.time_fare))}</span>
               </div>
               {stops.length > 0 && Number(estimates[selected]!.breakdown.stop_fare) > 0 && (
                 <div className="flex justify-between text-[11px]">
-                  <span style={{ color: '#22B8C9' }}>Stops ({stops.length} × ₹{Math.round(Number(estimates[selected]!.breakdown.stop_fare) / stops.length)})</span>
+                  <span className="text-primary-bright">Stops ({stops.length} × ₹{Math.round(Number(estimates[selected]!.breakdown.stop_fare) / stops.length)})</span>
                   <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.stop_fare))}</span>
                 </div>
               )}
               {Number(estimates[selected]!.breakdown.hour_surcharge) > 0 && (
                 <div className="flex justify-between text-[11px]">
-                  <span style={{ color: '#22B8C9' }}>Driver allowance</span>
+                  <span className="text-primary-bright">Driver allowance</span>
                   <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.hour_surcharge))}</span>
                 </div>
               )}
               {Number(estimates[selected]!.breakdown.overage_km ?? 0) > 0 && (
                 <div className="flex justify-between text-[11px]">
-                  <span style={{ color: '#F59E0B' }}>Extra km ({estimates[selected]!.breakdown.overage_km} km)</span>
+                  <span className="text-status-warning">Extra km ({estimates[selected]!.breakdown.overage_km} km)</span>
                   <span className="font-semibold" style={{ color: '#1E1B4B' }}>₹{Math.round(Number(estimates[selected]!.breakdown.overage_fare))}</span>
                 </div>
               )}
               {Number(estimates[selected]!.breakdown.surge_fare) > 0 && (
                 <>
                   <div className="flex justify-between text-[11px]">
-                    <span style={{ color: '#F59E0B' }}>Surge ({estimates[selected]!.surge_multiplier}×) — high demand</span>
+                    <span className="text-status-warning">Surge ({estimates[selected]!.surge_multiplier}×) — high demand</span>
                     <span className="font-semibold" style={{ color: '#0F172A' }}>₹{Math.round(Number(estimates[selected]!.breakdown.surge_fare))}</span>
                   </div>
-                  <p className="text-[10px] font-medium" style={{ color: '#94A3B8' }}>This fare is locked in once you book.</p>
+                  <p className="text-[10px] font-medium text-text-muted">This fare is locked in once you book.</p>
                 </>
               )}
-              <div className="h-px" style={{ background: '#B8E9EE' }} />
+              <div className="h-px bg-primary-light" />
               <div className="flex justify-between items-baseline">
-                <span className="text-[12px] font-bold" style={{ color: '#0F172A' }}>Total</span>
-                <span className="text-[15px] font-black tabular-nums" style={{ color: '#0A9FB0' }}>₹{Math.round(Number(estimates[selected]!.breakdown.total))}</span>
+                <span className="text-[12px] font-bold text-text-primary">Total</span>
+                <span className="text-[15px] font-black tabular-nums text-primary">₹{Math.round(Number(estimates[selected]!.breakdown.total))}</span>
               </div>
             </div>
           )}
@@ -872,43 +887,7 @@ function SelectRideContent() {
       </div>
 
       {/* In-city redirect toast */}
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {redirectToast && (
-            <motion.div
-              key="redirect-toast"
-              role="status"
-              aria-live="polite"
-              initial={{ opacity: 0, y: 16, scale: 0.92 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.95 }}
-              transition={{ duration: 0.24, ease: EASE }}
-              className="fixed left-1/2 z-[999] flex flex-col gap-2 px-5 py-3.5 rounded-2xl text-white overflow-hidden pointer-events-none"
-              style={{
-                bottom: 'max(84px, calc(env(safe-area-inset-bottom, 0px) + 76px))',
-                x: '-50%',
-                maxWidth: 'calc(100vw - 32px)',
-                background: 'linear-gradient(135deg, #0A9FB0 0%, #1E1B4B 100%)',
-                boxShadow: '0 8px 32px rgba(10, 159, 176,0.35), 0 2px 8px rgba(0,0,0,0.2)',
-              }}
-            >
-              <div className="flex items-center gap-2.5">
-                <ArrowRightLeft size={15} strokeWidth={2.2} className="flex-shrink-0" />
-                <span className="text-[13px] font-semibold">{redirectToast}</span>
-              </div>
-              <div className="h-[3px] rounded-full bg-white/20 overflow-hidden">
-                <motion.div
-                  className="h-full bg-white/80 rounded-full"
-                  initial={{ width: '100%' }}
-                  animate={{ width: '0%' }}
-                  transition={{ duration: 1.5, ease: 'linear' }}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body,
-      )}
+      <RedirectToast message={redirectToast} />
 
       <AddStopSheet
         open={addStopOpen}

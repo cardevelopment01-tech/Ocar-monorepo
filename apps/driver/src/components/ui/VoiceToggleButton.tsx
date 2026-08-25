@@ -19,7 +19,7 @@ export default function VoiceToggleButton({ style }: VoiceToggleButtonProps) {
         }
         setVoiceEnabled(!voiceEnabled)
       }}
-      className="w-12 h-12 rounded-2xl bg-surface border border-border shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+      className="w-12 h-12 rounded-2xl bg-surface border border-border shadow-lg flex items-center justify-center active:scale-[0.97] transition-transform"
       style={{ position: 'fixed', zIndex: 50, minHeight: 48, minWidth: 48, ...style }}
     >
       {voiceEnabled

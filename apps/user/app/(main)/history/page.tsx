@@ -74,9 +74,9 @@ function RideCard({ ride, onOpen }: { ride: RideHistoryItem; onOpen: () => void 
       type="button"
       onClick={onOpen}
       variants={cardVariant}
-      whileTap={{ scale: 0.98 }}
+      whileTap={{ scale: 0.97 }}
       transition={SPRING}
-      className="card-glossy gloss-sheen w-full text-left"
+      className="card w-full text-left"
     >
       <div className="flex items-start justify-between mb-3">
         <StatusBadge status={ride.status} />
@@ -127,7 +127,7 @@ function UpcomingCard({
   return (
     <motion.div
       variants={cardVariant}
-      className="card-glossy"
+      className="card"
     >
       <div className="flex items-start justify-between mb-3">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-status-info/10 text-status-info">
@@ -146,7 +146,7 @@ function UpcomingCard({
       <motion.button
         type="button"
         onClick={onOpen}
-        whileTap={{ scale: 0.98 }}
+        whileTap={{ scale: 0.97 }}
         transition={SPRING}
         className="flex gap-3 items-center mb-3 w-full text-left"
       >
@@ -187,7 +187,7 @@ function ActiveRideCard({ ride, onOpen }: { ride: RideDetail; onOpen: () => void
       type="button"
       onClick={onOpen}
       variants={cardVariant}
-      whileTap={{ scale: 0.98 }}
+      whileTap={{ scale: 0.97 }}
       transition={SPRING}
       className="w-full text-left bg-primary/[0.04] rounded-2xl border border-primary/20 p-4 shadow-float"
     >
@@ -270,7 +270,7 @@ function EmptyState({
         <motion.button
           type="button"
           onClick={cta.onClick}
-          whileTap={{ scale: 0.96 }}
+          whileTap={{ scale: 0.97 }}
           transition={SPRING}
           className="mt-2 inline-flex items-center gap-1.5 bg-primary text-white text-sm font-semibold px-5 py-2.5 rounded-full shadow-button"
         >
@@ -295,7 +295,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
       <motion.button
         type="button"
         onClick={onRetry}
-        whileTap={{ scale: 0.96 }}
+        whileTap={{ scale: 0.97 }}
         transition={SPRING}
         className="mt-1 inline-flex items-center px-5 py-2.5 rounded-full text-sm font-semibold text-primary bg-surface-2"
       >
@@ -405,7 +405,7 @@ function HistoryContent() {
                   ? 'bg-primary text-white'
                   : 'bg-surface-2 text-text-muted'
               )}
-              whileTap={{ scale: 0.94 }}
+              whileTap={{ scale: 0.97 }}
               transition={SPRING}
             >
               {t.label}
@@ -542,7 +542,7 @@ function HistoryContent() {
                     disabled={page <= 1}
                     onClick={() => void fetchHistory(page - 1)}
                     className="inline-flex items-center gap-1 pl-2.5 pr-4 py-2 rounded-full text-sm font-semibold text-primary bg-surface-2 disabled:opacity-30"
-                    whileTap={{ scale: 0.95 }}
+                    whileTap={{ scale: 0.97 }}
                   >
                     <ChevronLeft size={16} strokeWidth={2.5} /> Prev
                   </motion.button>
@@ -551,7 +551,7 @@ function HistoryContent() {
                     disabled={page >= pages}
                     onClick={() => void fetchHistory(page + 1)}
                     className="inline-flex items-center gap-1 pl-4 pr-2.5 py-2 rounded-full text-sm font-semibold text-primary bg-surface-2 disabled:opacity-30"
-                    whileTap={{ scale: 0.95 }}
+                    whileTap={{ scale: 0.97 }}
                   >
                     Next <ChevronRight size={16} strokeWidth={2.5} />
                   </motion.button>

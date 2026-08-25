@@ -160,7 +160,7 @@ export default function ReturnCabSetup() {
                 style={{
                   background: '#F8FAFF',
                   border: '1.5px solid #E2E8F0',
-                  color: selectedCityId ? '#0F172A' : '#94A3B8',
+                  color: selectedCityId ? '#0F172A' : '#64748B',
                 }}
               >
                 <option value="">Select destination city</option>
@@ -246,7 +246,7 @@ export default function ReturnCabSetup() {
           onClick={handleGoOnline}
           disabled={goingOnline || loadingInit || !vehicle || !selectedCityId || !walletGate.canGoOnline || !documentGate.canGoOnline}
           style={{ minHeight: 56, borderRadius: 24 }}
-          className="w-full flex items-center justify-center gap-2.5 text-white font-bold text-base cursor-pointer active:scale-[0.98] transition-transform duration-150 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 bg-gradient-to-br from-emerald-600 to-emerald-700 shadow-lg"
+          className="w-full flex items-center justify-center gap-2.5 text-white font-bold text-base cursor-pointer active:scale-[0.97] transition-transform duration-150 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 bg-gradient-to-br from-emerald-600 to-emerald-700 shadow-lg"
         >
           {goingOnline ? (
             <>

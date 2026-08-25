@@ -51,12 +51,12 @@ export default function HelpPage() {
 
       <div className="flex-1 overflow-y-auto scrollbar-none px-4 pt-5 pb-28">
         <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">FAQs</p>
-        <div className="card-glossy p-0 overflow-hidden mb-5">
+        <div className="card p-0 overflow-hidden mb-5">
           {FAQS.map((faq, i) => (
             <div key={i} className={i < FAQS.length - 1 ? 'border-b border-border' : ''}>
               <button
                 onClick={() => setOpen(open === i ? null : i)}
-                className="gloss-sheen w-full flex items-center gap-3 px-4 py-3.5 text-left"
+                className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
               >
                 <span className="flex-1 text-sm font-semibold text-text-primary">{faq.q}</span>
                 <ChevronDown
@@ -75,7 +75,7 @@ export default function HelpPage() {
         <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Contact</p>
         <a
           href={rideId ? `mailto:support@ocar.in?subject=${encodeURIComponent(`Help with ride #${rideId}`)}` : 'mailto:support@ocar.in'}
-          className="card-glossy gloss-sheen flex items-center gap-3 py-3.5"
+          className="card flex items-center gap-3 py-3.5"
         >
           <span className="w-9 h-9 rounded-xl bg-surface-2 flex items-center justify-center flex-shrink-0">
             <Mail size={15} strokeWidth={1.6} className="text-text-muted" />

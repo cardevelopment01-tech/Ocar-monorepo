@@ -167,7 +167,7 @@ function NotificationBell({ surface }: { surface: Surface }) {
     <button
       aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
       onClick={openSheet}
-      className="relative rounded-full flex items-center justify-center cursor-pointer transition-transform active:scale-90"
+      className="relative rounded-full flex items-center justify-center cursor-pointer transition-transform active:scale-[0.9]"
       style={{ width: 44, height: 44, ...chip }}
     >
       <Bell size={20} className="text-text-secondary" strokeWidth={1.8} />

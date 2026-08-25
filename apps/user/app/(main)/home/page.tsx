@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useNotifications } from '@/lib/notifications-context'
 import { useLocation } from '@/lib/location-context'
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Bell, User,
   Home, Briefcase, Car, RotateCcw, Clock,
@@ -20,18 +20,6 @@ import { rideApi, type RideHistoryItem } from '@/lib/ride-api'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
-
-// Fixed positions for particles, no Math.random() to avoid hydration mismatch
-const PARTICLES = [
-  { top: '16%', left: '9%',  delay: 0,   dur: 2.6 },
-  { top: '28%', left: '80%', delay: 0.9, dur: 3.2 },
-  { top: '55%', left: '24%', delay: 1.8, dur: 2.4 },
-  { top: '70%', left: '68%', delay: 0.4, dur: 3.8 },
-  { top: '12%', left: '52%', delay: 2.1, dur: 2.9 },
-  { top: '82%', left: '42%', delay: 1.3, dur: 3.4 },
-  { top: '44%', left: '91%', delay: 0.6, dur: 2.7 },
-  { top: '90%', left: '15%', delay: 2.5, dur: 3.1 },
-]
 
 // ─── motion variants ──────────────────────────────────────────────────────────
 
@@ -95,7 +83,6 @@ export default function HomePage() {
   const { user } = useAuth()
   const { unreadCount } = useNotifications()
   const name     = user?.name?.split(' ')[0] ?? 'there'
-  const reduce   = useReducedMotion()
 
   // GPS was already requested as early as the app can run JS (root layout,
   // before this page even mounted) — read the shared result instead of
@@ -228,7 +215,7 @@ export default function HomePage() {
 
       {/* ── Hero ──────────────────────────────────────────────── */}
       <motion.div
-        className="relative flex-shrink-0 px-5 pt-safe-top overflow-hidden bg-gradient-hero"
+        className="relative flex-shrink-0 px-5 pt-safe-top overflow-hidden bg-primary-dark"
         style={{
           borderBottomLeftRadius:  28,
           borderBottomRightRadius: 28,
@@ -238,72 +225,6 @@ export default function HomePage() {
         animate={collapsed ? 'collapsed' : 'expanded'}
         transition={{ duration: 0.5, ease: EASE }}
       >
-        {/* ── Decorative layer ── */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
-
-          {/* Orb 1, large indigo blob, top-right */}
-          <motion.div
-            className="absolute rounded-full"
-            style={{
-              width: 220, height: 220,
-              top: -70, right: -50,
-              background: 'radial-gradient(circle, rgba(99,102,241,0.45) 0%, transparent 68%)',
-              filter: 'blur(48px)',
-            }}
-            animate={reduce ? {} : { x: [0, 18, -8, 0], y: [0, -14, 8, 0] }}
-            transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
-          />
-
-          {/* Orb 2, purple blob, bottom-left */}
-          <motion.div
-            className="absolute rounded-full"
-            style={{
-              width: 180, height: 180,
-              bottom: -50, left: -30,
-              background: 'radial-gradient(circle, rgba(220, 62, 147,0.40) 0%, transparent 68%)',
-              filter: 'blur(42px)',
-            }}
-            animate={reduce ? {} : { x: [0, -12, 16, 0], y: [0, 10, -10, 0] }}
-            transition={{ duration: 11, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
-          />
-
-          {/* Orb 3, faint teal accent, mid-right */}
-          <motion.div
-            className="absolute rounded-full"
-            style={{
-              width: 120, height: 120,
-              top: '40%', right: '10%',
-              background: 'radial-gradient(circle, rgba(56,189,248,0.18) 0%, transparent 68%)',
-              filter: 'blur(32px)',
-            }}
-            animate={reduce ? { opacity: 0.6 } : { y: [0, -20, 12, 0], opacity: [0.6, 1, 0.6] }}
-            transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 3 }}
-          />
-
-          {/* Twinkling particles */}
-          {PARTICLES.map((p, i) => (
-            <motion.span
-              key={i}
-              className="absolute rounded-full bg-white"
-              style={{ top: p.top, left: p.left, width: 2, height: 2 }}
-              animate={reduce ? { opacity: 0.2 } : { opacity: [0.08, 0.55, 0.08], scale: [1, 1.4, 1] }}
-              transition={{ duration: p.dur, repeat: Infinity, delay: p.delay, ease: 'easeInOut' }}
-            />
-          ))}
-
-          {/* Subtle grid overlay */}
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage: 'radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)',
-              backgroundSize: '28px 28px',
-            }}
-          />
-        </div>
-
-        {/* ── Real content, sits above decorative layer ── */}
-        <div className="relative z-10">
-
         {/* Top bar */}
         <div className="flex items-center justify-between mb-4">
           <motion.div
@@ -322,9 +243,9 @@ export default function HomePage() {
             <motion.button
               onClick={() => router.push('/notifications')}
               aria-label="Notifications"
-              className="relative w-9 h-9 rounded-full flex items-center justify-center"
+              className="relative w-11 h-11 rounded-full flex items-center justify-center"
               style={{ background: 'rgba(255,255,255,0.10)' }}
-              whileTap={{ scale: 0.86 }}
+              whileTap={{ scale: 0.9 }}
               transition={SPRING}
             >
               <Bell size={16} strokeWidth={1.6} color="rgba(255,255,255,0.85)" />
@@ -345,9 +266,9 @@ export default function HomePage() {
             <motion.button
               onClick={() => router.push('/profile')}
               aria-label="Profile"
-              className="w-9 h-9 rounded-full flex items-center justify-center"
+              className="w-11 h-11 rounded-full flex items-center justify-center"
               style={{ background: 'rgba(255,255,255,0.10)' }}
-              whileTap={{ scale: 0.86 }}
+              whileTap={{ scale: 0.9 }}
               transition={SPRING}
             >
               <User size={16} strokeWidth={1.6} color="rgba(255,255,255,0.85)" />
@@ -392,10 +313,10 @@ export default function HomePage() {
           onClick={() => toSearch()}
           className="w-full flex items-center gap-3 bg-white rounded-2xl px-4"
           style={{ paddingTop: 14, paddingBottom: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.26)' }}
-          initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, filter: 'blur(4px)' }}
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          transition={{ delay: 0.3, duration: 0.45, ease: EASE }}
-          whileTap={{ scale: 0.985 }}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.2, ease: EASE }}
+          whileTap={{ scale: 0.97 }}
         >
           <Search size={17} strokeWidth={2} className="text-text-muted flex-shrink-0" />
           <span className="flex-1 text-left text-sm font-medium text-text-muted">Where to?</span>
@@ -412,8 +333,6 @@ export default function HomePage() {
           animate={{ height: collapsed ? 14 : 6 }}
           transition={SPRING}
         />
-
-        </div>{/* end relative z-10 */}
       </motion.div>
 
       {/* ── Content ───────────────────────────────────────────── */}
@@ -434,9 +353,9 @@ export default function HomePage() {
           {resumeRideId && (
             <motion.button
               onClick={() => router.push(`/ride/${resumeRideId}`)}
-              className="gloss-sheen w-full flex items-center gap-3 bg-primary rounded-2xl px-4 py-3.5 shadow-ambient"
+              className="w-full flex items-center gap-3 bg-primary rounded-2xl px-4 py-3.5 shadow-ambient"
               variants={section}
-              whileTap={{ scale: 0.98 }}
+              whileTap={{ scale: 0.97 }}
               transition={SPRING}
             >
               <span className="w-2 h-2 rounded-full bg-white flex-shrink-0 animate-pulse" />
@@ -458,12 +377,12 @@ export default function HomePage() {
                     s.id === 'roundtrip' ? toRoundTrip :
                     toOneWay
                   }
-                  className="card-glossy gloss-sheen flex flex-col items-center gap-2 py-4"
+                  className="card flex flex-col items-center gap-2 py-4"
                   variants={cardV}
-                  whileTap={{ scale: 0.93 }}
+                  whileTap={{ scale: 0.97 }}
                   transition={SPRING}
                 >
-                  <span className="icon-badge-gradient w-10 h-10">
+                  <span className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-primary-subtle">
                     <s.Icon size={18} strokeWidth={1.6} className="text-primary" />
                   </span>
                   <span className="flex flex-col items-center gap-0.5 text-center">
@@ -478,19 +397,19 @@ export default function HomePage() {
           {/* Saved places */}
           <motion.div variants={section}>
             <motion.div
-              className="card-glossy p-0 overflow-hidden"
+              className="card p-0 overflow-hidden"
               variants={sectionList} initial="hidden" animate="show"
             >
               {SAVED.map((p, i) => (
                 <motion.button
                   key={p.label}
                   onClick={() => toRide(p.sub, p.lat, p.lng)}
-                  className={`gloss-sheen w-full flex items-center gap-3 px-4 py-3.5 text-left${i < SAVED.length - 1 ? ' border-b border-border' : ''}`}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < SAVED.length - 1 ? ' border-b border-border' : ''}`}
                   variants={row}
                   whileTap={{ backgroundColor: '#F8FAFF' }}
                   transition={SPRING}
                 >
-                  <span className="icon-badge-gradient">
+                  <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-primary-subtle">
                     <p.Icon size={15} strokeWidth={1.6} className="text-primary" />
                   </span>
                   <span className="flex-1 min-w-0">
@@ -505,7 +424,7 @@ export default function HomePage() {
 
           {/* Go again */}
           {tripsLoading ? (
-            <motion.div variants={section} className="card-glossy p-0 overflow-hidden">
+            <motion.div variants={section} className="card p-0 overflow-hidden">
               {[0, 1].map(i => (
                 <div
                   key={i}
@@ -522,7 +441,7 @@ export default function HomePage() {
           ) : recentTrips.length > 0 && (
             <motion.div variants={section}>
               <motion.div
-                className="card-glossy p-0 overflow-hidden"
+                className="card p-0 overflow-hidden"
                 variants={sectionList} initial="hidden" animate="show"
               >
                 {recentTrips.map((r, i) => {
@@ -542,7 +461,7 @@ export default function HomePage() {
                         }
                         router.push(`/search?${params.toString()}`)
                       }}
-                      className={`gloss-sheen w-full flex items-center gap-3 px-4 py-3.5 text-left${i < recentTrips.length - 1 ? ' border-b border-border' : ''}`}
+                      className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < recentTrips.length - 1 ? ' border-b border-border' : ''}`}
                       variants={row}
                       whileTap={{ backgroundColor: '#F8FAFF' }}
                       transition={SPRING}
@@ -570,11 +489,11 @@ export default function HomePage() {
                 <motion.button
                   key={`${r.from}-${r.to}`}
                   onClick={() => toRide(r.to, r.lat, r.lng)}
-                  className="gloss-sheen flex-shrink-0 flex items-center gap-2 bg-surface border border-border rounded-full px-4 py-2.5 shadow-ambient"
+                  className="flex-shrink-0 flex items-center gap-2 bg-surface border border-border rounded-full px-4 py-2.5 shadow-ambient"
                   initial={{ opacity: 0, x: 14 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.3 + i * 0.07, duration: 0.32, ease: EASE }}
-                  whileTap={{ scale: 0.93 }}
+                  whileTap={{ scale: 0.97 }}
                 >
                   <span className="text-xs font-medium text-text-secondary whitespace-nowrap">{r.from}</span>
                   <ArrowRight size={10} strokeWidth={2.5} className="text-text-muted flex-shrink-0" />
@@ -587,26 +506,18 @@ export default function HomePage() {
           {/* Promo */}
           <motion.div variants={section}>
             <motion.button
-              className="gloss-sheen w-full text-left rounded-2xl px-5 py-5 bg-gradient-hero"
-              style={{ boxShadow: '0 6px 24px rgba(15,15,35,0.22)' }}
-              whileTap={{ scale: 0.985 }}
+              className="card w-full text-left flex items-center justify-between gap-4"
+              whileTap={{ scale: 0.97 }}
               transition={SPRING}
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="text-base font-bold text-white leading-snug">20% off your first ride</p>
-                  <p className="text-xs font-medium mt-1" style={{ color: 'rgba(255,255,255,0.50)' }}>
-                    New to Ocar? Use code at checkout
-                  </p>
-                  <div
-                    className="inline-flex items-center mt-3 rounded-lg px-3 py-1.5"
-                    style={{ background: 'rgba(255,255,255,0.10)' }}
-                  >
-                    <span className="text-[11px] font-bold tracking-widest" style={{ color: '#A5B4FC' }}>OCAR20</span>
-                  </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-text-primary leading-snug">20% off your first ride</p>
+                <p className="text-xs text-text-muted mt-0.5">New to Ocar? Use code at checkout</p>
+                <div className="inline-flex items-center mt-2.5 rounded-lg px-3 py-1.5 bg-primary-subtle">
+                  <span className="text-[11px] font-bold tracking-widest text-primary-dark">OCAR20</span>
                 </div>
-                <span className="text-4xl leading-none flex-shrink-0">🎉</span>
               </div>
+              <span className="text-3xl leading-none flex-shrink-0">🎉</span>
             </motion.button>
           </motion.div>
 

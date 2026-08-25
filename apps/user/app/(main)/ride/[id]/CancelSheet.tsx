@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, AlertCircle } from 'lucide-react'
+import { SHEET_SPRING } from '@/lib/motion'
 
 const BEFORE_REASONS = [
   { code: 'changed_mind',       label: 'Changed my mind' },
@@ -54,7 +55,7 @@ export default function CancelSheet({ feeWarning, onConfirm, onClose }: Props) {
       <motion.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
-        transition={{ type: 'spring', damping: 30, stiffness: 350 }}
+        transition={SHEET_SPRING}
         className="relative w-full bg-white rounded-t-[28px] px-5 pt-5 shadow-[0_-8px_40px_rgba(0,0,0,0.14)]"
         style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}
       >

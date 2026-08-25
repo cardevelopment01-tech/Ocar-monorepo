@@ -88,7 +88,7 @@ export default function InlineSelect({
         type="button"
         onClick={toggle}
         disabled={isDisabled}
-        className="w-full flex items-center justify-between gap-2 px-4 py-3.5 rounded-xl border text-left transition-all duration-150"
+        className="w-full flex items-center justify-between gap-2 px-4 py-3.5 rounded-xl border text-left transition-[background-color,border-color,box-shadow] duration-150"
         style={{
           minHeight: 52,
           background: open ? '#E4F8FA' : '#FFFFFF',
@@ -137,7 +137,7 @@ export default function InlineSelect({
                   value={query}
                   onChange={e => setQuery(e.target.value)}
                   placeholder="Search…"
-                  className="w-full pl-8 pr-8 py-2 text-sm rounded-lg bg-slate-50 border border-slate-200 text-slate-700 placeholder-slate-400 outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-all"
+                  className="w-full pl-8 pr-8 py-2 text-sm rounded-lg bg-slate-50 border border-slate-200 text-slate-700 placeholder-slate-400 outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-[border-color,box-shadow]"
                 />
                 {query && (
                   <button

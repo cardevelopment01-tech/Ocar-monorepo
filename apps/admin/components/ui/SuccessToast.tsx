@@ -21,6 +21,10 @@ export default function SuccessToast({ message, onDismiss }: { message: string |
           initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}
+          // Intentionally NOT the shared { stiffness: 300, damping: 30 } spring used
+          // by SlideOver/ConfirmDialog/ReasonDialog — a toast that pops in and out
+          // corner-of-eye, several times a session, reads better with a quick,
+          // settled ease-out than a bouncy spring overshoot.
           transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
           className="fixed top-4 right-6 z-[80] flex items-center gap-2.5 rounded-2xl bg-surface border border-border px-4 py-3 text-sm font-semibold text-text-primary"
           style={{ boxShadow: '0 8px 32px rgba(15,23,42,0.16), 0 0 0 1px #E8EAFF' }}

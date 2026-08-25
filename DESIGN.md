@@ -17,7 +17,7 @@ colors:
   surface-3: "#EEF0FF"
   ink-900: "#0F172A"
   ink-600: "#475569"
-  ink-400: "#94A3B8"
+  ink-400: "#64748B"
   ink-inverse: "#FFFFFF"
   border: "#E8EEFF"
   border-light: "#F1F5FF"
@@ -32,34 +32,34 @@ colors:
   splash-bg: "#0F0D1A"
 typography:
   display:
-    fontFamily: "Inter, sans-serif"
+    fontFamily: "Space Grotesk, sans-serif"
     fontSize: "28px"
     fontWeight: 700
     lineHeight: 1.2
     letterSpacing: "-0.03em"
   headline:
-    fontFamily: "Inter, sans-serif"
+    fontFamily: "Space Grotesk, sans-serif"
     fontSize: "22px"
     fontWeight: 700
     lineHeight: 1.3
     letterSpacing: "-0.02em"
   title:
-    fontFamily: "Inter, sans-serif"
+    fontFamily: "Plus Jakarta Sans, sans-serif"
     fontSize: "18px"
     fontWeight: 600
     lineHeight: 1.4
   body:
-    fontFamily: "Inter, sans-serif"
+    fontFamily: "Plus Jakarta Sans, sans-serif"
     fontSize: "16px"
     fontWeight: 400
     lineHeight: 1.6
   label:
-    fontFamily: "Inter, sans-serif"
+    fontFamily: "Plus Jakarta Sans, sans-serif"
     fontSize: "13px"
     fontWeight: 500
     lineHeight: 1.4
   caption:
-    fontFamily: "Inter, sans-serif"
+    fontFamily: "Plus Jakarta Sans, sans-serif"
     fontSize: "12px"
     fontWeight: 400
     lineHeight: 1.5
@@ -161,7 +161,7 @@ The three apps share one visual grammar but serve three different contexts. The 
 **Key Characteristics:**
 - Indigo-tinted ambient shadows: brand color in the shadow, never neutral gray
 - Full-pill buttons for user CTAs; 2xl-rounded for driver CTAs; never mixed on the same screen
-- Inter carries all type: one family, multiple weights, no display/body pairing
+- Space Grotesk carries Display/Headline; Plus Jakarta Sans carries Title/Body/Label/Caption — one deliberate display/body pairing, identical across all three apps
 - Orange (#F97316) is operational, never decorative. Driver and admin only.
 - `prefers-reduced-motion` respected everywhere, including the brand splash screen
 
@@ -191,7 +191,7 @@ A restrained palette anchored by one saturated indigo. The accent only appears w
 - **Surface 3** (`#EEF0FF`): Stronger indigo-tinted fill for selected states, active tabs, and highlighted rows.
 - **Ink 900** (`#0F172A`): Primary text: headlines, body, labels. Near-black with a cool undertone.
 - **Ink 600** (`#475569`): Secondary text: supporting labels, metadata, form hints. Passes 4.5:1 on white.
-- **Ink 400** (`#94A3B8`): Muted text: placeholders, disabled labels, nav items at rest. Use on white/surface only; verify contrast against any tinted background.
+- **Ink 400** (`#64748B`): Muted text: placeholders, disabled labels, nav items at rest. Passes 4.5:1 on white/surface (the prior `#94A3B8` value only reached ~2.6:1 and failed WCAG AA — corrected). Still verify contrast against any tinted background.
 - **Border** (`#E8EEFF`): Default border with an indigo tint, separating surfaces without adding visual weight. **Divergence:** admin and driver's `tailwind.config.ts` both define `border: '#E2E8F0'` (plain slate, no indigo tint) instead, an unintentional drift, not a documented per-app choice. New work in those apps should move to `#E8EEFF`.
 - **Border Light** (`#F1F5FF`): The lightest divider, for internal row separators inside cards.
 - **Splash Background** (`#0F0D1A`): The near-black used only on the brand splash screen. A deep indigo-dark that lets the gradient logomark glow.
@@ -211,11 +211,12 @@ A restrained palette anchored by one saturated indigo. The accent only appears w
 
 ## 3. Typography
 
-**Display / Body / Label Font:** Inter (system fallback: `system-ui, -apple-system, sans-serif`)
+**Display / Headline Font:** Space Grotesk (system fallback: `sans-serif`)
+**Title / Body / Label / Caption Font:** Plus Jakarta Sans (system fallback: `sans-serif`)
 
-**Character:** A single family across all three apps. Inter's geometric skeleton reads technical precision; its humanist details keep it warm enough for a local service. One font, multiple weights, no decorative pairing, no display/body contrast axis. The hierarchy is carried entirely by weight and size.
+**Character:** A deliberate two-family pairing, identical across all three apps. Space Grotesk's geometric, slightly technical letterforms carry Display and Headline — screen titles, section headers, the brand wordmark, fare/earnings numerals. Plus Jakarta Sans, a warmer humanist sans, carries everything else — body copy, labels, captions, UI chrome. The pairing gives real display/body contrast without introducing a decorative or unrelated typeface; hierarchy below Headline is still carried by weight and size within the Plus Jakarta Sans family, not further typeface swaps.
 
-**Known Divergences (verified against `tailwind.config.ts` in each app):** The admin app's entire default sans-serif is DM Sans (`apps/admin/app/globals.css` L1, `apps/admin/tailwind.config.ts` L48), not a partial or heading-only override, the whole app. The driver app does **not** load Poppins; it is 100% Inter (`apps/driver/tailwind.config.ts` L39-40). The Poppins claim was stale and has been corrected. All new work uses Inter; admin's DM Sans divergence should be resolved at the next refactor pass per the user's direction.
+**Resolved divergence:** Inter (user/driver) and DM Sans (admin) previously carried all type, each app having drifted to a different single family — the exact fragmentation the old One Font Rule was meant to prevent, just one level up (three apps, three different "one fonts"). Both were replaced by this same Space Grotesk + Plus Jakarta Sans pairing across all three apps, which is more consistent across the system than the prior state, not less.
 
 ### Hierarchy
 - **Display** (700, 28px, lh 1.2, ls -0.03em): Screen-level titles and the brand wordmark. Appears once per screen maximum. Used in the splash screen wordmark and auth page headlines.
@@ -226,7 +227,7 @@ A restrained palette anchored by one saturated indigo. The accent only appears w
 - **Caption** (400, 12px, lh 1.5): Timestamps, fine-print, secondary metadata under a primary label. Use sparingly; do not use for anything the user needs to act on.
 
 ### Named Rules
-**The One Font Rule.** Inter carries all three apps. Introducing a second family, even a complementary one, fragments the visual system across three separate codebases that already diverge. If a screen needs hierarchy emphasis, use weight (400 to 700) and size, not a typeface swap.
+**The Two Font Rule.** Space Grotesk (Display/Headline) and Plus Jakarta Sans (everything else) carry all three apps — no third family, no per-app substitutions. If a screen needs hierarchy emphasis within a single role (e.g. two body-weight labels), use weight (400 to 700) and size, not a typeface swap.
 
 **The No Eyebrow Rule.** Ocar does not use small-caps tracked eyebrow labels above section headings. The primary action is the label. Supporting context uses Label weight (500, 13px) as plain text, not as a decorative typography treatment.
 
@@ -318,7 +319,7 @@ Ocar's component vocabulary is conservative. The same button shape appears consi
 
 - **Ring:** 270-degree arc path `M 78.284 78.284 A 40 40 0 1 0 21.716 78.284`, `stroke-width: 7.5`, `stroke-linecap: round`. Gradient: `#4F46E5` to `#7C3AED`.
 - **Dot:** `cx=78.284 cy=78.284 r=8`. Same gradient. Sits at the open end of the arc, the "speed ring" visual.
-- **Wordmark:** "ocar" lowercase, Inter 700, `letter-spacing: -0.03em`, `font-size: 22px`. Color: Ink 900 on light surfaces, white on dark.
+- **Wordmark:** "ocar" lowercase, Space Grotesk 700, `letter-spacing: -0.03em`, `font-size: 22px`. Color: Ink 900 on light surfaces, white on dark.
 - **Sizes:** sm (20px ring), md (28px), lg (40px), xl (64px).
 - **Variants:** `color` (gradient, default), `white` (solid white stroke/fill), `mono` (Ink 900 stroke/fill).
 
@@ -352,8 +353,8 @@ A comet-taper arc: a 120-degree rotating arc with a gradient from opaque head to
 - Use Indigo Subtle (`#EEF2FF`) for selected/active states that shouldn't carry the full primary weight
 
 **Typography**
-- Use Inter for all new text; no new font imports from any app
-- Set `letter-spacing: -0.03em` on Display; `letter-spacing: -0.02em` on Headline. Tight tracking is what makes Inter feel premium at display sizes.
+- Use Space Grotesk for Display/Headline and Plus Jakarta Sans for everything else; no new font imports from any app
+- Set `letter-spacing: -0.03em` on Display; `letter-spacing: -0.02em` on Headline. Tight tracking is what makes Space Grotesk feel premium at display sizes.
 - Use `font-weight: 700` for the brand wordmark; `font-weight: 600` for UI headlines
 
 **Buttons**

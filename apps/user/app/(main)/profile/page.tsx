@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { userApi } from '@/lib/auth'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import { SHEET_SPRING } from '@/lib/motion'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -110,7 +111,7 @@ export default function ProfilePage() {
       {/* ── Header ── */}
       <div className="flex-shrink-0 px-5 pt-safe-top pb-2">
         <motion.div
-          className="card-glossy mt-4 rounded-3xl p-5"
+          className="card mt-4 rounded-3xl p-5"
           initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, ease: EASE }}
@@ -133,7 +134,7 @@ export default function ProfilePage() {
             <motion.button
               onClick={openEdit}
               className="text-xs font-semibold rounded-xl px-3 py-1.5 bg-primary-subtle text-primary"
-              whileTap={{ scale: 0.92 }}
+              whileTap={{ scale: 0.97 }}
               transition={SPRING}
             >
               Edit
@@ -174,17 +175,17 @@ export default function ProfilePage() {
         {/* Menu */}
         <motion.div variants={fadeUp}>
           <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-3">Account</p>
-          <div className="card-glossy p-0 overflow-hidden">
+          <div className="card p-0 overflow-hidden">
             {MENU.map((item, i) => (
               <motion.button
                 key={item.label}
                 onClick={() => router.push(item.href)}
-                className={`gloss-sheen w-full flex items-center gap-3 px-4 py-3.5 text-left${i < MENU.length - 1 ? ' border-b border-border' : ''}`}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left${i < MENU.length - 1 ? ' border-b border-border' : ''}`}
                 whileTap={{ backgroundColor: '#F8FAFF' }}
                 transition={SPRING}
               >
-                <span className="icon-badge-gradient">
-                  <item.Icon size={15} strokeWidth={1.6} style={{ color: ICON_CLR }} />
+                <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-primary-subtle">
+                  <item.Icon size={15} strokeWidth={1.6} className="text-primary" />
                 </span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-semibold text-text-primary">{item.label}</span>
@@ -201,7 +202,7 @@ export default function ProfilePage() {
           <motion.button
             onClick={() => setShowSignOut(true)}
             className="w-full flex items-center justify-center gap-2 bg-surface border border-border rounded-2xl py-3.5 text-sm font-semibold text-status-error shadow-card"
-            whileTap={{ scale: 0.98 }}
+            whileTap={{ scale: 0.97 }}
             transition={SPRING}
           >
             <LogOut size={15} strokeWidth={1.8} />
@@ -227,6 +228,7 @@ export default function ProfilePage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
+            whileTap={{ opacity: 0.85, transition: { duration: 0.09 } }}
             onClick={() => setShowSignOut(false)}
           >
             <motion.div
@@ -234,7 +236,7 @@ export default function ProfilePage() {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+              transition={SHEET_SPRING}
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
               <div className="w-10 h-1 bg-border rounded-full mx-auto mb-5" />
@@ -273,6 +275,7 @@ export default function ProfilePage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
+            whileTap={{ opacity: 0.85, transition: { duration: 0.09 } }}
             onClick={(e: React.MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget) setEditing(false) }}
           >
             <motion.div
@@ -280,7 +283,7 @@ export default function ProfilePage() {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+              transition={SHEET_SPRING}
             >
               <div className="w-10 h-1 bg-border rounded-full mx-auto mb-5" />
               <div className="flex items-center justify-between mb-5">
@@ -327,7 +330,7 @@ export default function ProfilePage() {
                 onClick={() => void saveEdit()}
                 disabled={saving || editName.trim().length < 2}
                 className="btn-primary w-full flex items-center justify-center gap-2"
-                whileTap={{ scale: 0.98 }}
+                whileTap={{ scale: 0.97 }}
                 transition={SPRING}
               >
                 {saving
