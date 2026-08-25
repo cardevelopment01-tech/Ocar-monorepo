@@ -92,9 +92,24 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/ocar-api
+          # metadata-action's `version` output (used below as IMAGE_TAG, and
+          # everywhere downstream: the image-tag SSM parameter, the migration
+          # container, docker-compose.prod.yml's ${IMAGE_TAG} substitution) is
+          # picked by type priority, not tag order -- type=raw defaults to a
+          # HIGHER priority (200) than type=sha (100), so without an explicit
+          # override `version` always resolved to "latest" even though the
+          # sha tag was pushed correctly alongside it. That made every deploy
+          # indistinguishable from the last, so the "Record previous image
+          # tag" step below always saw PREV == IMAGE_TAG ("latest" == "latest")
+          # and rollback's "is there a distinct previous tag" check was always
+          # false -- see the P0 action item in
+          # docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md. Explicit priority
+          # makes the sha tag win instead; `latest` is still pushed as a
+          # convenience tag for manual pulls, it just never drives anything
+          # below this step.
           tags: |
-            type=sha,prefix=sha-,format=short
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short,priority=900
+            type=raw,value=latest,enable={{is_default_branch}},priority=200
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

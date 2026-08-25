@@ -24,6 +24,26 @@ function loadRdsCaBundle(): Buffer {
   return fs.readFileSync(path.join(__dirname, 'certs/rds-global-bundle.pem'))
 }
 
+// See client.ts's matching function for why this exists: pg's own
+// connectionString parser overwrites an explicit `ssl` option with whatever
+// `sslmode` says, and `sslmode=require` alone means encrypted-but-unverified.
+// Only upgrades when `sslmode` is actually present (never set for local
+// dev/CI's plain DATABASE_URL), and only vendors the RDS CA bundle for an
+// actual RDS host -- a Neon host (e.g. MIGRATION_DATABASE_URL pointed at
+// staging) already chains to a public CA already in Node's default trust store.
+function upgradedPasswordModeConfig(databaseUrl: string) {
+  const url = new URL(databaseUrl)
+  if (!url.searchParams.has('sslmode')) {
+    return { connectionString: databaseUrl }
+  }
+  url.searchParams.delete('sslmode')
+  const isRds = url.hostname.endsWith('.rds.amazonaws.com')
+  return {
+    connectionString: url.toString(),
+    ssl: isRds ? { ca: loadRdsCaBundle(), rejectUnauthorized: true } : { rejectUnauthorized: true },
+  }
+}
+
 const pool = dbSecretArn
   ? new Pool({
       host: process.env['DB_HOST'],
@@ -39,7 +59,7 @@ const pool = dbSecretArn
         console.error('DATABASE_URL environment variable is not set')
         process.exit(1)
       }
-      return new Pool({ connectionString: databaseUrl })
+      return new Pool(upgradedPasswordModeConfig(databaseUrl))
     })()
 
 // Arbitrary fixed key — any two migrate.ts processes contend for the same

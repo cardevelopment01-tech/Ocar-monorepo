@@ -30,6 +30,18 @@ export const cacheMissesTotal = new Counter({
   registers: [register],
 })
 
+// SQLSTATE is a small, bounded code set (unlike a raw error message), so this
+// carries no unbounded-cardinality risk. Added after
+// docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md, where a full auth outage
+// (28P01) was only caught by a human reading logs -- 28P01 (invalid_password)
+// and 28000 (invalid_authorization_specification) are the codes to alert on.
+export const pgQueryErrorsTotal = new Counter({
+  name: 'pg_query_errors_total',
+  help: 'Postgres query errors by SQLSTATE error code',
+  labelNames: ['code'],
+  registers: [register],
+})
+
 new Gauge({
   name: 'pg_pool_connections',
   help: 'pg.Pool connection counts by state',

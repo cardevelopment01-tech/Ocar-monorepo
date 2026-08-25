@@ -5,6 +5,7 @@ import { Signer } from '@aws-sdk/rds-signer'
 import { config } from '@/config'
 import { logger } from '@/lib/logger'
 import { getDbPassword } from '@/lib/db-secret'
+import { pgQueryErrorsTotal } from '@/observability/metrics'
 
 // IAM auth token is a local SigV4-signed string (no network call) and is only
 // requested once per new physical connection, not per query — pg calls this
@@ -23,6 +24,37 @@ const iamSigner = config.DB_AUTH_MODE === 'iam'
 // that needs it is active) so local dev / password mode never touches this file.
 function loadRdsCaBundle(): Buffer {
   return fs.readFileSync(path.join(__dirname, 'certs/rds-global-bundle.pem'))
+}
+
+// pg's own connection-string parser (ConnectionParameters, in the `pg` package)
+// does `config = Object.assign({}, config, parse(config.connectionString))` --
+// the URL's own `sslmode` OVERWRITES any `ssl` object passed alongside
+// `connectionString`, not the other way round. So an explicit `ssl` key next to
+// `connectionString: url` is silently clobbered whenever the URL has a
+// `sslmode` param. And `sslmode=require` alone (pg-connection-string, no
+// `sslrootcert`) resolves to `{ rejectUnauthorized: false }` -- encrypted but
+// unverified, same weaker posture the iam/secrets-manager modes above used to
+// have before the RDS CA bundle fix. Password mode never got that fix. Only
+// `sslmode` presence (never set for the plain local/CI Postgres in
+// api/.env.example) triggers this branch, so local dev/CI is untouched.
+// Hostname decides which trust anchor to verify against: an RDS host needs
+// the vendored bundle (Node's default trust store doesn't include Amazon's
+// self-signed RDS CA); anything else with sslmode=require (e.g. staging's
+// Neon branch, see CLAUDE.md) already chains to a public CA already in
+// Node's default trust store, so turning on verification needs no bundle at
+// all there -- vendoring the RDS bundle for a Neon host would just fail
+// verification against the wrong root.
+function upgradedPasswordModeConfig(databaseUrl: string) {
+  const url = new URL(databaseUrl)
+  if (!url.searchParams.has('sslmode')) {
+    return { connectionString: databaseUrl }
+  }
+  url.searchParams.delete('sslmode')
+  const isRds = url.hostname.endsWith('.rds.amazonaws.com')
+  return {
+    connectionString: url.toString(),
+    ssl: isRds ? { ca: loadRdsCaBundle(), rejectUnauthorized: true } : { rejectUnauthorized: true },
+  }
 }
 
 function buildPoolConfig() {
@@ -46,7 +78,7 @@ function buildPoolConfig() {
       ssl: { ca: loadRdsCaBundle(), rejectUnauthorized: true },
     }
   }
-  return { connectionString: config.DATABASE_URL }
+  return upgradedPasswordModeConfig(config.DATABASE_URL)
 }
 
 // DATE columns (oid 1082 — date_of_birth, valid_until, license_expiry, verified_for,
@@ -99,7 +131,8 @@ export async function query<T extends object>(
     }
     return result.rows
   } catch (err) {
-    const error = err as Error
+    const error = err as Error & { code?: string }
+    if (error.code) pgQueryErrorsTotal.inc({ code: error.code })
     error.message = `${error.message} — query: ${text}`
     throw error
   }

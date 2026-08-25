@@ -232,4 +232,101 @@ resource "grafana_rule_group" "static_thresholds" {
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
+
+  # Added after docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md -- a full DB
+  # auth outage (28P01) was only caught by a human reading logs, not this
+  # rule group. api/src/observability/metrics.ts's pg_query_errors_total
+  # counter (added in the same change as this rule) is what makes this
+  # queryable at all -- 1m/>0 because a real auth break means every single
+  # query fails immediately and repeatedly, not an occasional blip.
+  rule {
+    name      = "Postgres auth errors (28P01/28000)"
+    condition = "C"
+    for       = "1m"
+
+    data {
+      ref_id         = "A"
+      datasource_uid = local.prometheus_datasource_uid
+      relative_time_range {
+        from = 60
+        to   = 0
+      }
+      model = jsonencode({
+        refId   = "A"
+        instant = true
+        expr    = "sum(increase(pg_query_errors_total{code=~\"28P01|28000\"}[1m]))"
+      })
+    }
+
+    data {
+      ref_id         = "C"
+      datasource_uid = "__expr__"
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+      model = jsonencode({
+        refId      = "C"
+        type       = "threshold"
+        expression = "A"
+        conditions = [{ evaluator = { type = "gt", params = [0] } }]
+      })
+    }
+
+    annotations = {
+      summary     = "Postgres rejected a query with an auth error (28P01 invalid_password or 28000 invalid_authorization_specification) -- check DB_AUTH_MODE and the credential source before assuming it's transient"
+      runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md"
+    }
+    labels         = { severity = "critical" }
+    no_data_state  = "OK"
+    exec_err_state = "Alerting"
+  }
+
+  # scheduler is a real BullMQ queue name (api/src/jobs/queues/index.ts) --
+  # this reuses the existing bullmq_queue_job_counts gauge, no app change
+  # needed. gt 2 / for 10m mirrors this file's own tolerance elsewhere
+  # (disk usage) for a background job class where an isolated retry isn't
+  # actionable but a sustained pile-up is.
+  rule {
+    name      = "BullMQ scheduler job failures"
+    condition = "C"
+    for       = "10m"
+
+    data {
+      ref_id         = "A"
+      datasource_uid = local.prometheus_datasource_uid
+      relative_time_range {
+        from = 60
+        to   = 0
+      }
+      model = jsonencode({
+        refId   = "A"
+        instant = true
+        expr    = "bullmq_queue_job_counts{queue=\"scheduler\", state=\"failed\"}"
+      })
+    }
+
+    data {
+      ref_id         = "C"
+      datasource_uid = "__expr__"
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+      model = jsonencode({
+        refId      = "C"
+        type       = "threshold"
+        expression = "A"
+        conditions = [{ evaluator = { type = "gt", params = [2] } }]
+      })
+    }
+
+    annotations = {
+      summary     = "The BullMQ scheduler queue has more than 2 failed jobs sustained for 10m"
+      runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
+    }
+    labels         = { severity = "warning" }
+    no_data_state  = "OK"
+    exec_err_state = "Alerting"
+  }
 }
