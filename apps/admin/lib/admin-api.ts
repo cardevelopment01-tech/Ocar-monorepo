@@ -188,6 +188,12 @@ export const adminDriverApi = {
     return res.data as { entries: DriverAuditLogEntry[]; pagination: { total: number; page: number; limit: number; pages: number } }
   },
 
+  // Irreversible — deletes the driver and every ride/payment/rating/session
+  // row tied to them. confirmPhone must match the driver's own phone number.
+  remove: async (id: string, reason: string, confirmPhone: string): Promise<void> => {
+    await api.delete(`/api/v1/admin/drivers/${id}`, { data: { reason, confirm_phone: confirmPhone } })
+  },
+
   approveVehicleDoc: async (docId: string): Promise<void> => {
     await api.patch(`/api/v1/admin/vehicles/documents/${docId}/approve`)
   },

@@ -43,6 +43,22 @@ export async function updateDriverStatus(req: Request, res: Response, next: Next
   }
 }
 
+export async function deleteDriver(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const driverId = BigInt(req.params['id']!)
+    await service.deleteDriver(
+      driverId,
+      req.admin!.id,
+      String(req.body.reason ?? ''),
+      String(req.body.confirm_phone ?? ''),
+      req.ip ?? null
+    )
+    res.json({ success: true })
+  } catch (err) {
+    next(err)
+  }
+}
+
 const PROFILE_STRING_FIELDS = [
   'full_name', 'email', 'gender', 'date_of_birth', 'residential_address',
   'state', 'city', 'pincode', 'emergency_contact', 'aadhaar_number', 'license_number',

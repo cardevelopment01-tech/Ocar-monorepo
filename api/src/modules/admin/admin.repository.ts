@@ -9,6 +9,7 @@ import { RATE_CARD_CACHE_TTL_SECONDS } from '@/constants/limits'
 import { logger } from '@/lib/logger'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { invalidateSurgeCache } from '@/modules/pricing/pricing.repository'
+import { deleteFile } from '@/lib/storage'
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg'
 import { recordAuditLog } from '@/lib/audit-log'
 import type {
@@ -345,6 +346,159 @@ export async function updateDriverStatus(
     beforeState,
     afterState,
     ipAddress: ipAddress ?? null,
+  })
+}
+
+// Hard-deletes a driver and every row that references it. Most of these FKs
+// are NO ACTION (only driver_documents/driver_vehicles/driver_status_history
+// CASCADE, driver_audit_logs SET NULL — see CLAUDE.md pending-ops history),
+// so this walks the dependency graph bottom-up by hand inside one
+// transaction rather than relying on the DB to do it. Order matters: each
+// DELETE below must run after every table that still holds a NO ACTION FK
+// into it. Deliberately sequential (not a multi-CTE statement) — Postgres
+// does not guarantee execution order between independent data-modifying
+// CTEs in the same WITH, which would silently reintroduce the exact FK
+// ordering bug this function exists to avoid.
+export async function deleteDriver(
+  driverId: bigint,
+  adminId: bigint,
+  reason: string,
+  ipAddress: string | null
+): Promise<void> {
+  const client = await pool.connect()
+  let beforeState: Record<string, unknown> | null = null
+  let docUrls: string[] = []
+  try {
+    await client.query('BEGIN')
+
+    const driverRes = await client.query('SELECT * FROM drivers WHERE id = $1 FOR UPDATE', [driverId])
+    beforeState = driverRes.rows[0] ?? null
+    if (!beforeState) {
+      await client.query('ROLLBACK')
+      return
+    }
+
+    const docsRes = await client.query(
+      `SELECT file_url FROM driver_documents WHERE driver_id = $1
+       UNION ALL
+       SELECT dvd.file_url FROM driver_vehicle_documents dvd
+       JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+       WHERE dv.driver_id = $1`,
+      [driverId]
+    )
+    docUrls = docsRes.rows.map(r => r['file_url'] as string)
+
+    // dispute-scoped children (disputes deleted further down)
+    await client.query(
+      `DELETE FROM dispute_actions WHERE dispute_id IN
+       (SELECT id FROM disputes WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR initiated_by_driver = $1)`,
+      [driverId]
+    )
+    await client.query(
+      `DELETE FROM dispute_evidence WHERE dispute_id IN
+       (SELECT id FROM disputes WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR initiated_by_driver = $1)
+       OR uploaded_by_driver = $1`,
+      [driverId]
+    )
+    await client.query('DELETE FROM driver_warnings WHERE driver_id = $1', [driverId])
+    await client.query(
+      `DELETE FROM refunds WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1)
+       OR payment_id IN (SELECT id FROM payments WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR driver_id = $1)
+       OR dispute_id IN (SELECT id FROM disputes WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR initiated_by_driver = $1)`,
+      [driverId]
+    )
+    await client.query(
+      `DELETE FROM payment_gateway_events WHERE payment_id IN
+       (SELECT id FROM payments WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR driver_id = $1)`,
+      [driverId]
+    )
+    await client.query('DELETE FROM driver_earnings WHERE driver_id = $1', [driverId])
+    await client.query(
+      `DELETE FROM disputes WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR initiated_by_driver = $1`,
+      [driverId]
+    )
+
+    // ride-scoped children
+    await client.query(
+      `DELETE FROM exotel_call_events WHERE ride_call_mask_id IN
+       (SELECT id FROM ride_call_masks WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1))`,
+      [driverId]
+    )
+    for (const table of [
+      'ride_messages', 'ride_otp_events', 'ride_stops', 'ride_call_masks',
+      'ride_eta_snapshots', 'ride_status_history',
+    ]) {
+      await client.query(`DELETE FROM ${table} WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1)`, [driverId])
+    }
+    await client.query('DELETE FROM sos_alerts WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR triggered_by_driver = $1', [driverId])
+    // rating_tags is a child of ratings — must clear before the ratings delete below
+    await client.query(
+      `DELETE FROM rating_tags WHERE rating_id IN
+       (SELECT id FROM ratings WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR from_driver_id = $1 OR to_driver_id = $1)`,
+      [driverId]
+    )
+    await client.query('DELETE FROM ratings WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR from_driver_id = $1 OR to_driver_id = $1', [driverId])
+    await client.query('DELETE FROM ride_cancellations WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR cancelled_by_driver_id = $1', [driverId])
+    await client.query('DELETE FROM ride_advance_meta WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR claimed_by_driver_id = $1', [driverId])
+    await client.query('DELETE FROM ride_assignments WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR driver_id = $1', [driverId])
+    await client.query('DELETE FROM tax_deductions WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR driver_id = $1', [driverId])
+    // speed_alert_log.ride_id is a NO ACTION FK into rides — must clear before the rides delete below
+    await client.query('DELETE FROM speed_alert_log WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR driver_id = $1', [driverId])
+    await client.query('DELETE FROM user_wallet_ledger WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1)', [driverId])
+    // wallet ledgers hold ride_id FKs too — must clear before the rides delete below
+    await client.query('DELETE FROM driver_wallet_ledger WHERE wallet_id IN (SELECT id FROM driver_wallets WHERE driver_id = $1) OR driver_id = $1', [driverId])
+    await client.query('DELETE FROM driver_package_ledger WHERE wallet_id IN (SELECT id FROM driver_package_wallets WHERE driver_id = $1) OR driver_id = $1', [driverId])
+    await client.query('DELETE FROM settlements WHERE driver_id = $1', [driverId])
+    // payments must go before fare_snapshots — payments.fare_snapshot_id is a NO ACTION FK into it
+    await client.query('DELETE FROM payments WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1) OR driver_id = $1', [driverId])
+    await client.query('DELETE FROM fare_snapshots WHERE ride_id IN (SELECT id FROM rides WHERE driver_id = $1)', [driverId])
+    await client.query('DELETE FROM rides WHERE driver_id = $1', [driverId])
+
+    // session/vehicle-scoped
+    await client.query('DELETE FROM return_cab_routes WHERE session_id IN (SELECT id FROM driver_sessions WHERE driver_id = $1) OR driver_id = $1', [driverId])
+    await client.query('DELETE FROM driver_location_snapshots WHERE session_id IN (SELECT id FROM driver_sessions WHERE driver_id = $1) OR driver_id = $1', [driverId])
+    await client.query('DELETE FROM driver_session_history WHERE session_id IN (SELECT id FROM driver_sessions WHERE driver_id = $1) OR driver_id = $1', [driverId])
+    await client.query('DELETE FROM driver_sessions WHERE driver_id = $1', [driverId])
+    await client.query('DELETE FROM driver_verifications WHERE driver_id = $1', [driverId])
+    await client.query('DELETE FROM gps_tracks WHERE driver_id = $1', [driverId]) // partitioned parent — PG routes to the right monthly partition
+
+    // wallets (ledgers already cleared above, before the rides delete)
+    await client.query('DELETE FROM driver_wallets WHERE driver_id = $1', [driverId])
+    await client.query('DELETE FROM driver_package_wallets WHERE driver_id = $1', [driverId])
+    await client.query('DELETE FROM package_purchase_orders WHERE driver_id = $1', [driverId])
+    await client.query('DELETE FROM driver_payout_holds WHERE driver_id = $1', [driverId])
+    await client.query('DELETE FROM driver_bank_accounts WHERE driver_id = $1', [driverId])
+    await client.query('DELETE FROM driver_tax_profile WHERE driver_id = $1', [driverId])
+
+    // Finally the driver row — cascades to driver_documents, driver_vehicles
+    // (which cascades to driver_vehicle_documents), driver_status_history;
+    // driver_audit_logs.driver_id is SET NULL, keeping the audit trail intact.
+    await client.query('DELETE FROM drivers WHERE id = $1', [driverId])
+
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+
+  // Only after COMMIT succeeds: best-effort S3 cleanup (DB is the source of
+  // truth; a stray orphaned object is a cost issue, not a correctness one)
+  // and the audit log entry.
+  await Promise.all(docUrls.map(url => deleteFile(url).catch(err =>
+    logger.warn({ err, url, driverId: driverId.toString() }, 'driver delete: failed to remove S3 object')
+  )))
+
+  await recordAuditLog({
+    adminId,
+    action: 'drivers.delete',
+    targetTable: 'drivers',
+    targetId: driverId,
+    beforeState,
+    afterState: null,
+    ipAddress: ipAddress ?? null,
+    reason,
   })
 }
 

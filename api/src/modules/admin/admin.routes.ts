@@ -28,6 +28,8 @@ router.patch('/drivers/:id/vehicle', requireAdmin('super_admin', 'ops_admin'), c
 router.get('/drivers/:id/rides',     requireAdmin('super_admin', 'ops_admin'), controller.getDriverRides)
 router.get('/drivers/:id/payments',  requireAdmin('super_admin', 'ops_admin'), controller.getDriverPayments)
 router.get('/drivers/:id/audit-log', requireAdmin('super_admin', 'ops_admin'), controller.getDriverAuditLog)
+// Irreversible — cascades to all of the driver's rides/payments/ratings/sessions. super_admin only.
+router.delete('/drivers/:id', requireAdmin('super_admin'), controller.deleteDriver)
 
 // ─── Vehicle categories ───────────────────────────────────────────────────────
 router.get('/vehicles/categories',       requireAdmin('super_admin', 'ops_admin'), controller.getCategories)

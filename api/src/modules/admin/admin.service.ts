@@ -90,6 +90,28 @@ export async function updateDriverStatus(
   await repo.updateDriverStatus(driverId, adminId, currentStatus, payload.status, payload.reason, onboardingStep, ipAddress)
 }
 
+// Hard delete — irreversible, cascades to every ride/payment/rating/session
+// row the driver ever touched (see repo.deleteDriver for the full table
+// list). Requires the admin to retype the driver's own phone number as a
+// deliberate speed bump against fat-fingering the wrong row in the list.
+export async function deleteDriver(
+  driverId: bigint,
+  adminId: bigint,
+  reason: string,
+  confirmPhone: string,
+  ipAddress: string | null
+): Promise<void> {
+  if (!reason || reason.trim().length < 10) {
+    throw httpError(422, 'A reason (at least 10 characters) is required to delete a driver', AppErrors.VALIDATION_ERROR.code)
+  }
+  const driver = await repo.getDriverById(driverId)
+  if (!driver) throw createHttpError(AppErrors.NOT_FOUND)
+  if (confirmPhone !== driver.phone) {
+    throw httpError(422, "Confirmation phone number doesn't match this driver.", AppErrors.VALIDATION_ERROR.code)
+  }
+  await repo.deleteDriver(driverId, adminId, reason.trim(), ipAddress)
+}
+
 export async function updateDriverProfile(
   driverId: bigint,
   adminId: bigint,

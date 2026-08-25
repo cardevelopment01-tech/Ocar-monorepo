@@ -1,8 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import * as Dialog from '@radix-ui/react-dialog'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Pencil, Layers, AlertCircle, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Pencil, Layers, AlertCircle, AlertTriangle, Trash2 } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import ReasonDialog from '@/components/ui/ReasonDialog'
@@ -103,6 +104,14 @@ export default function DriverDetailPage() {
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError]     = useState('')
+
+  // Hard delete — irreversible, wipes every ride/payment/rating tied to this
+  // driver. Gated behind retyping the driver's own phone number.
+  const [deleteOpen, setDeleteOpen]         = useState(false)
+  const [deleteReason, setDeleteReason]     = useState('')
+  const [deleteConfirm, setDeleteConfirm]   = useState('')
+  const [deleteLoading, setDeleteLoading]   = useState(false)
+  const [deleteError, setDeleteError]       = useState('')
 
   const [reviewOpen, setReviewOpen]       = useState(false)
   const [reviewInitIdx, setReviewInitIdx] = useState(0)
@@ -340,6 +349,24 @@ export default function DriverDetailPage() {
     finally { setActionLoading(false) }
   }
 
+  async function handleDeleteDriver() {
+    if (!detail) return
+    if (deleteReason.trim().length < 10) {
+      setDeleteError('A reason (at least 10 characters) is required.')
+      return
+    }
+    if (deleteConfirm.trim() !== detail.phone) {
+      setDeleteError("Phone number doesn't match — type it exactly as shown above to confirm.")
+      return
+    }
+    setDeleteLoading(true); setDeleteError('')
+    try {
+      await adminDriverApi.remove(detail.id, deleteReason.trim(), deleteConfirm.trim())
+      router.push('/drivers')
+    } catch { setDeleteError('Could not delete driver. Please try again.') }
+    finally { setDeleteLoading(false) }
+  }
+
   async function handleModalDriverAction(type: ActionType, reason?: string) {
     if (!detail) return
     if (type === 'approve')     await adminDriverApi.approve(detail.id)
@@ -468,6 +495,13 @@ export default function DriverDetailPage() {
             {d.status === 'suspended' && (
               <button onClick={() => openAction('reinstate')} className="px-4 py-2 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 transition-colors">Reinstate</button>
             )}
+            <button
+              onClick={() => { setDeleteReason(''); setDeleteConfirm(''); setDeleteError(''); setDeleteOpen(true) }}
+              className="px-4 py-2 border border-danger text-danger font-semibold rounded-xl text-sm hover:bg-danger/6 transition-colors flex items-center gap-1.5"
+              title="Permanently delete this driver — for removing fake/test accounts before launch"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
           </div>
         </div>
 
@@ -1153,6 +1187,47 @@ export default function DriverDetailPage() {
         variant="success"
         onConfirm={() => { if (!payoutActionLoading) releaseHold() }}
       />
+
+      {deleteOpen && (
+        <Dialog.Root open={deleteOpen} onOpenChange={v => { if (!v && !deleteLoading) setDeleteOpen(false) }}>
+          <Dialog.Portal forceMount>
+            <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
+            <Dialog.Content className="fixed left-1/2 top-1/2 z-[60] -translate-x-1/2 -translate-y-1/2 bg-surface rounded-2xl shadow-hover p-6 w-full max-w-[440px]">
+              <Dialog.Title className="text-lg font-bold text-danger mb-2">Delete Driver</Dialog.Title>
+              <Dialog.Description className="text-sm text-text-secondary mb-4 leading-relaxed">
+                This permanently deletes {d.full_name ?? d.phone} and every ride, payment, rating, and document
+                on their account. There is no undo — use only for fake/test accounts before launch.
+              </Dialog.Description>
+              <textarea
+                value={deleteReason} onChange={e => setDeleteReason(e.target.value)}
+                placeholder="Reason for deletion (minimum 10 characters)…" rows={2}
+                className="w-full border border-border rounded-xl px-3 py-2 text-sm text-text-primary bg-surface-2 resize-none focus:outline-none focus:ring-2 focus:ring-danger/30 placeholder:text-text-muted mb-3"
+              />
+              <label className="block text-xs font-semibold text-text-secondary mb-1">
+                Type the driver&apos;s phone number ({d.phone}) to confirm
+              </label>
+              <input
+                value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)}
+                placeholder={d.phone}
+                className="w-full border border-border rounded-xl px-3 py-2 text-sm font-mono text-text-primary bg-surface-2 focus:outline-none focus:ring-2 focus:ring-danger/30 placeholder:text-text-muted mb-1"
+              />
+              {deleteError && <p className="text-xs text-danger mt-2">{deleteError}</p>}
+              <div className="flex gap-3 justify-end mt-5">
+                <button onClick={() => setDeleteOpen(false)} disabled={deleteLoading} className="px-4 py-2 text-sm font-medium text-text-secondary border border-border rounded-xl hover:bg-surface-2 transition-colors disabled:opacity-50">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteDriver}
+                  disabled={deleteLoading || deleteReason.trim().length < 10 || deleteConfirm.trim() !== d.phone}
+                  className="px-4 py-2 text-sm font-semibold rounded-xl transition-colors bg-danger text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleteLoading ? 'Deleting…' : 'Delete Driver'}
+                </button>
+              </div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+      )}
 
       {reviewOpen && (
         <DocReviewModal
