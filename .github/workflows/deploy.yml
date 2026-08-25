@@ -181,7 +181,6 @@ jobs:
           DB_NAME=$(echo "$DB_INFO" | jq -r .Name)
           DB_USER=$(echo "$DB_INFO" | jq -r .User)
           DB_SECRET_ARN=$(echo "$DB_INFO" | jq -r .SecretArn)
-          echo "Resolved: DB_HOST=[$DB_HOST] DB_PORT=[$DB_PORT] DB_NAME=[$DB_NAME] DB_USER=[$DB_USER] DB_SECRET_ARN=[$DB_SECRET_ARN]"
 
           # Routed through SSM to a live ASG instance instead of a `docker run`
           # on this GitHub-hosted runner -- RDS (infra/terraform/rds.tf) isn't
@@ -196,23 +195,25 @@ jobs:
           # (infra/alloy/config.alloy) -- without it, cadvisor picked up a
           # fresh randomly-named container on every deploy and permanently
           # inflated Grafana Cloud's active-series count (2026-08-19 incident).
-          # AWS-RunShellScript executes via /bin/sh (dash), which doesn't
-          # support bash's `set -H`/`+H` at all ("Illegal option -H",
-          # confirmed via a real deploy failure) -- history expansion was
-          # never the issue, since dash never does it in the first place.
-          # DB_SECRET_ARN still arrives empty in the container for reasons
-          # unconfirmed -- this wraps the command in `sh -c` with an explicit
-          # env dump first so the NEXT failure (if any) shows exactly what
-          # the container actually received, instead of guessing again.
+          # --pull always: this instance has been running ocar-api:latest
+          # continuously and already has an old copy of that mutable tag
+          # cached locally -- `docker run` does not re-pull an image that
+          # already exists locally under the same tag, so without this flag
+          # the migration container silently ran stale, pre-this-deploy code
+          # (confirmed via a real deploy failure: DB_SECRET_ARN correctly
+          # reached the container's shell env, but migrate.js still hit the
+          # OLD code's "DATABASE_URL environment variable is not set" error,
+          # meaning it never saw the DB_SECRET_ARN branch added in this
+          # deploy at all). Brand-new instances at boot don't have this
+          # problem -- they have nothing cached yet, so entrypoint.sh's own
+          # migrate.js run is unaffected.
           cat > /tmp/ssm-commands.json <<EOF
           {
             "commands": [
-              "docker run --rm --name db_migrate -e DB_HOST=$DB_HOST -e DB_PORT=$DB_PORT -e DB_NAME=$DB_NAME -e DB_USER=$DB_USER -e DB_SECRET_ARN=$DB_SECRET_ARN -e AWS_REGION=$AWS_REGION --entrypoint sh ghcr.io/${{ github.repository_owner }}/ocar-api:$IMAGE_TAG -c 'echo CONTAINER_SAW: DB_SECRET_ARN=[\$DB_SECRET_ARN] DB_HOST=[\$DB_HOST]; node dist/db/migrate.js'"
+              "docker run --rm --pull always --name db_migrate -e DB_HOST=$DB_HOST -e DB_PORT=$DB_PORT -e DB_NAME=$DB_NAME -e DB_USER=$DB_USER -e DB_SECRET_ARN=$DB_SECRET_ARN -e AWS_REGION=$AWS_REGION --entrypoint node ghcr.io/${{ github.repository_owner }}/ocar-api:$IMAGE_TAG dist/db/migrate.js"
             ]
           }
           EOF
-          echo "Generated ssm-commands.json:"
-          cat /tmp/ssm-commands.json
 
           CMD_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
