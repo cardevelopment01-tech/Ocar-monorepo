@@ -181,6 +181,7 @@ jobs:
           DB_NAME=$(echo "$DB_INFO" | jq -r .Name)
           DB_USER=$(echo "$DB_INFO" | jq -r .User)
           DB_SECRET_ARN=$(echo "$DB_INFO" | jq -r .SecretArn)
+          echo "Resolved: DB_HOST=[$DB_HOST] DB_PORT=[$DB_PORT] DB_NAME=[$DB_NAME] DB_USER=[$DB_USER] DB_SECRET_ARN=[$DB_SECRET_ARN]"
 
           # Routed through SSM to a live ASG instance instead of a `docker run`
           # on this GitHub-hosted runner -- RDS (infra/terraform/rds.tf) isn't
@@ -202,6 +203,8 @@ jobs:
             ]
           }
           EOF
+          echo "Generated ssm-commands.json:"
+          cat /tmp/ssm-commands.json
 
           CMD_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
