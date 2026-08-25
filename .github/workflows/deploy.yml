@@ -196,9 +196,18 @@ jobs:
           # (infra/alloy/config.alloy) -- without it, cadvisor picked up a
           # fresh randomly-named container on every deploy and permanently
           # inflated Grafana Cloud's active-series count (2026-08-19 incident).
+          # set +H disables bash history expansion -- RDS-managed secret ARNs
+          # always have an "rds!<id>" prefix, and the `!` mid-word triggers
+          # history expansion under an interactive-like bash (which SSM's
+          # AWS-RunShellScript document uses), silently corrupting everything
+          # after it before docker ever sees the value. Confirmed via a real
+          # deploy failure (DB_SECRET_ARN arrived empty in the container
+          # despite the exact same value being correctly resolved and
+          # embedded in this JSON, verified via debug output on a prior run).
           cat > /tmp/ssm-commands.json <<EOF
           {
             "commands": [
+              "set +H",
               "docker run --rm --name db_migrate -e DB_HOST=$DB_HOST -e DB_PORT=$DB_PORT -e DB_NAME=$DB_NAME -e DB_USER=$DB_USER -e DB_SECRET_ARN=$DB_SECRET_ARN -e AWS_REGION=$AWS_REGION --entrypoint node ghcr.io/${{ github.repository_owner }}/ocar-api:$IMAGE_TAG dist/db/migrate.js"
             ]
           }
