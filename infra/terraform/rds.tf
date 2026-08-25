@@ -55,6 +55,20 @@ resource "aws_db_instance" "main" {
   # incident where the hand-maintained api-env SSM copy of the Secrets-Manager
   # password went stale after a rotation and took prod down. Any DB user still
   # needs `GRANT rds_iam TO <user>` before it can actually use this.
+  #
+  # GOTCHA (learned the hard way during that same incident): granting rds_iam
+  # to a role is NOT additive. It changes which pg_hba.conf rule matches that
+  # role's connections, which REPLACES password auth for it, not adds IAM auth
+  # alongside it. Granting it to ocar_admin (the RDS master user) locked out
+  # every password-based connection instance-wide the moment it was granted,
+  # with no clean way to have both auth methods live for the same role at
+  # once -- recovery required `aws rds modify-db-instance
+  # --no-enable-iam-database-authentication --apply-immediately` to restore
+  # password auth. Never grant rds_iam to the master role again. If IAM auth
+  # is wanted for the app, create a DEDICATED non-master DB role for it first,
+  # and test the full grant/revoke/connect cycle in staging before touching
+  # prod. See docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md for the full
+  # timeline.
   iam_database_authentication_enabled = true
 
   db_subnet_group_name   = aws_db_subnet_group.main.name

@@ -70,7 +70,7 @@ Three independent, compounding issues, not one:
 | P1 | Decide deliberately, outside incident pressure, whether to retry RDS IAM database authentication. If yes: create a dedicated non-master DB role for the app's connections (never grant `rds_iam` to `ocar_admin` again), test the full grant/revoke/connect cycle in staging first, and convert `migrate.ts` to the same auth mode so there's no password-based path left to drift. | Eng |
 | P1 | Add a scheduled check (even a simple cron/Lambda) that diffs `migration-database-url` and `api-env`'s `DATABASE_URL` host against the actual current RDS endpoint and Secrets Manager value, alerting on any mismatch — closes the exact gap that caused root causes #1 and #2. | Ops |
 | P2 | Rotate the RDS master password again as routine hygiene, given it was pasted into a chat transcript during this incident. | Ops |
-| P2 | Document the RDS Postgres IAM-auth-changes-pg_hba-routing behavior somewhere durable (this doc, plus a code comment in `rds.tf`) so it isn't rediscovered the hard way again. | Eng |
+| P2 | ~~Document the RDS Postgres IAM-auth-changes-pg_hba-routing behavior somewhere durable (this doc, plus a code comment in `rds.tf`) so it isn't rediscovered the hard way again.~~ **Done** — this doc already had it (Root Causes #3); added the matching comment directly on `iam_database_authentication_enabled` in `infra/terraform/rds.tf` on 2026-08-25. | Eng |
 | P3 | Consider replacing the hand-maintained SSM `SecureString` workflow with a real secrets manager (already an open item in `CLAUDE.md`'s pending-ops notes) — this incident is the second concrete instance of that gap causing a real production mistake, after the 2026-08-12 Redis→Valkey cutover edit. | Eng |
 
 ## Addendum: Permanent Fix
