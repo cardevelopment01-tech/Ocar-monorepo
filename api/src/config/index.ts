@@ -7,14 +7,19 @@ const envSchema = z.object({
   // 'password' (default): connect via DATABASE_URL, as today. 'iam': connect via
   // a short-lived signed token (@aws-sdk/rds-signer) using DB_HOST/PORT/NAME/USER
   // below instead of a stored password — see infra/terraform/rds.tf's
-  // iam_database_authentication_enabled comment for why. Local dev / Docker
-  // Postgres has no IAM auth support, so this stays 'password' there.
-  DB_AUTH_MODE: z.enum(['password', 'iam']).default('password'),
+  // iam_database_authentication_enabled comment for why. 'secrets-manager': read
+  // the RDS master password directly from Secrets Manager (DB_SECRET_ARN) instead
+  // of copying it into a static env var — see
+  // docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md for why 'iam' isn't safe for
+  // the master user. Local dev / Docker Postgres supports none of these, so this
+  // stays 'password' there.
+  DB_AUTH_MODE: z.enum(['password', 'iam', 'secrets-manager']).default('password'),
   DATABASE_URL: z.string().default(''),
   DB_HOST: z.string().default(''),
   DB_PORT: z.coerce.number().default(5432),
   DB_NAME: z.string().default(''),
   DB_USER: z.string().default(''),
+  DB_SECRET_ARN: z.string().default(''),
   DATABASE_POOL_MIN: z.coerce.number().default(2),
   // Request-handler pool. The high-rate workers (gps-flush @ concurrency 20, etc.)
   // now run on their own workerPool (WORKER_POOL_MAX below), so this no longer has to
@@ -78,6 +83,11 @@ const envSchema = z.object({
   // Storage
   S3_BUCKET_NAME: z.string().min(1),
   S3_REGION: z.string().default('ap-south-1'),
+  // AWS SDK v3 does not auto-detect region from EC2 instance metadata the way
+  // it does credentials — every client that doesn't take S3_REGION (rds-signer,
+  // secrets-manager) needs this passed explicitly or it throws "region is
+  // missing" at first use, not at boot.
+  AWS_REGION: z.string().default('ap-south-1'),
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
 
@@ -115,6 +125,9 @@ const envSchemaChecked = envSchema.superRefine((env, ctx) => {
   }
   if (env.DB_AUTH_MODE === 'iam' && (!env.DB_HOST || !env.DB_NAME || !env.DB_USER)) {
     ctx.addIssue({ code: 'custom', path: ['DB_HOST'], message: 'DB_HOST, DB_NAME, DB_USER all required when DB_AUTH_MODE=iam' })
+  }
+  if (env.DB_AUTH_MODE === 'secrets-manager' && (!env.DB_HOST || !env.DB_NAME || !env.DB_USER || !env.DB_SECRET_ARN)) {
+    ctx.addIssue({ code: 'custom', path: ['DB_SECRET_ARN'], message: 'DB_HOST, DB_NAME, DB_USER, DB_SECRET_ARN all required when DB_AUTH_MODE=secrets-manager' })
   }
 })
 

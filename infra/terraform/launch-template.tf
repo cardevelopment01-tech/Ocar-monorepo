@@ -29,7 +29,14 @@ resource "aws_launch_template" "api" {
   }
 
   metadata_options {
-    http_tokens = "required" # IMDSv2 only
+    http_tokens                 = "required" # IMDSv2 only
+    # Default hop limit (1) only reaches the host itself -- a container on
+    # Docker's bridge network is one hop further away and can't reach IMDS to
+    # inherit the instance's IAM role, which the api and postgres_exporter
+    # containers (docker-compose.prod.yml) and the ad-hoc migration container
+    # (deploy.yml) all now need for secretsmanager:GetSecretValue /
+    # rds-db:connect. 2 is the standard value for "host + one container hop".
+    http_put_response_hop_limit = 2
   }
 
   block_device_mappings {

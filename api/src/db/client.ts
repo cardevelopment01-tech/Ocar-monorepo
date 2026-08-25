@@ -2,6 +2,7 @@ import { Pool, PoolClient, types } from 'pg'
 import { Signer } from '@aws-sdk/rds-signer'
 import { config } from '@/config'
 import { logger } from '@/lib/logger'
+import { getDbPassword } from '@/lib/db-secret'
 
 // IAM auth token is a local SigV4-signed string (no network call) and is only
 // requested once per new physical connection, not per query — pg calls this
@@ -9,7 +10,7 @@ import { logger } from '@/lib/logger'
 // Tokens are valid 15 minutes; requesting a fresh one per new connection avoids
 // needing our own expiry/refresh-timer bookkeeping.
 const iamSigner = config.DB_AUTH_MODE === 'iam'
-  ? new Signer({ hostname: config.DB_HOST, port: config.DB_PORT, username: config.DB_USER })
+  ? new Signer({ hostname: config.DB_HOST, port: config.DB_PORT, username: config.DB_USER, region: config.AWS_REGION })
   : null
 
 function buildPoolConfig() {
@@ -20,6 +21,16 @@ function buildPoolConfig() {
       database: config.DB_NAME,
       user: config.DB_USER,
       password: () => iamSigner.getAuthToken(),
+      ssl: { rejectUnauthorized: true },
+    }
+  }
+  if (config.DB_AUTH_MODE === 'secrets-manager') {
+    return {
+      host: config.DB_HOST,
+      port: config.DB_PORT,
+      database: config.DB_NAME,
+      user: config.DB_USER,
+      password: () => getDbPassword(config.DB_SECRET_ARN),
       ssl: { rejectUnauthorized: true },
     }
   }

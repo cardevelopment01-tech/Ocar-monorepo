@@ -1,6 +1,7 @@
 import { Pool } from 'pg'
 import fs from 'fs'
 import path from 'path'
+import { getDbPassword } from '@/lib/db-secret'
 
 const isFresh = process.argv.includes('--fresh')
 // Migrations need a direct (non-pooled) connection — pg_advisory_lock is
@@ -9,14 +10,31 @@ const isFresh = process.argv.includes('--fresh')
 // that can orphan the lock forever, hanging every future migration run.
 // MIGRATION_DATABASE_URL is optional: unset in local dev/CI, where DATABASE_URL
 // already points at a plain, unpooled Postgres with no pooler in the mix.
-const databaseUrl = process.env['MIGRATION_DATABASE_URL'] || process.env['DATABASE_URL']
+//
+// DB_SECRET_ARN, when set, reads the RDS master password directly from
+// Secrets Manager instead of a hand-copied MIGRATION_DATABASE_URL — see
+// docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md. The instance running this
+// (or the ad-hoc migration container in deploy.yml) already has an IAM role
+// with secretsmanager:GetSecretValue on that ARN, so no secret is passed in.
+const dbSecretArn = process.env['DB_SECRET_ARN']
 
-if (!databaseUrl) {
-  console.error('DATABASE_URL environment variable is not set')
-  process.exit(1)
-}
-
-const pool = new Pool({ connectionString: databaseUrl })
+const pool = dbSecretArn
+  ? new Pool({
+      host: process.env['DB_HOST'],
+      port: Number(process.env['DB_PORT'] ?? 5432),
+      database: process.env['DB_NAME'],
+      user: process.env['DB_USER'],
+      password: () => getDbPassword(dbSecretArn),
+      ssl: { rejectUnauthorized: true },
+    })
+  : (() => {
+      const databaseUrl = process.env['MIGRATION_DATABASE_URL'] || process.env['DATABASE_URL']
+      if (!databaseUrl) {
+        console.error('DATABASE_URL environment variable is not set')
+        process.exit(1)
+      }
+      return new Pool({ connectionString: databaseUrl })
+    })()
 
 // Arbitrary fixed key — any two migrate.ts processes contend for the same
 // session-level lock, so only one can run migrations at a time. Prevents the

@@ -157,40 +157,51 @@ jobs:
 
       - name: Run migrations (new image, current instances still serving traffic)
         env:
-          MIGRATION_DB_URL_PARAM: /ocar/prod/migration-database-url
+          # ocar-prod-db is Terraform's stable "${project_name}-${environment}-db"
+          # identifier (infra/terraform/rds.tf) -- not a secret, doesn't rotate,
+          # safe to hardcode here same as it is throughout rds.tf itself.
+          DB_INSTANCE_ID: ocar-prod-db
           INSTANCE_ID: ${{ steps.instance.outputs.id }}
         run: |
           set -e
+          # DB host/port/name/user/secret-ARN are all queried live from RDS at
+          # deploy time instead of being copied into a hand-maintained SSM
+          # parameter -- see docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md for
+          # why a copied value (the old migration-database-url parameter) went
+          # stale and caused an outage. None of these values are secrets; the
+          # actual password is fetched by migrate.js itself, inside the
+          # container, directly from Secrets Manager via the instance's IAM role
+          # (iam.tf's rds_secret_read policy) -- nothing sensitive crosses into
+          # this workflow at all.
+          DB_INFO=$(aws rds describe-db-instances --db-instance-identifier "$DB_INSTANCE_ID" \
+            --query "DBInstances[0].{Host:Endpoint.Address,Port:Endpoint.Port,Name:DBName,User:MasterUsername,SecretArn:MasterUserSecret.SecretArn}" \
+            --output json)
+          DB_HOST=$(echo "$DB_INFO" | jq -r .Host)
+          DB_PORT=$(echo "$DB_INFO" | jq -r .Port)
+          DB_NAME=$(echo "$DB_INFO" | jq -r .Name)
+          DB_USER=$(echo "$DB_INFO" | jq -r .User)
+          DB_SECRET_ARN=$(echo "$DB_INFO" | jq -r .SecretArn)
+
           # Routed through SSM to a live ASG instance instead of a `docker run`
           # on this GitHub-hosted runner -- RDS (infra/terraform/rds.tf) isn't
           # publicly reachable, only the EC2 instances' security group can
-          # reach it. The instance already holds a GHCR login from its own
-          # boot script (user_data.sh.tpl) and reads the migration DB URL
-          # itself via its own IAM role (iam.tf), so no secret is embedded in
-          # the command text. api/entrypoint.sh also runs migrate.js on every
-          # container start, so this ad-hoc run and each instance's own boot
-          # both invoke it -- safe only because migrate.js is idempotent
-          # (skips already-applied files, pg_advisory_lock serializes
-          # concurrent runs). This run exists solely to gate the rollout on
-          # migrations succeeding. --name db_migrate keeps this container out
-          # of the ocar_* naming convention cadvisor/Alloy filter on
+          # reach it. api/entrypoint.sh also runs migrate.js on every container
+          # start, so this ad-hoc run and each instance's own boot both invoke
+          # it -- safe only because migrate.js is idempotent (skips
+          # already-applied files, pg_advisory_lock serializes concurrent
+          # runs). This run exists solely to gate the rollout on migrations
+          # succeeding. --name db_migrate keeps this container out of the
+          # ocar_* naming convention cadvisor/Alloy filter on
           # (infra/alloy/config.alloy) -- without it, cadvisor picked up a
           # fresh randomly-named container on every deploy and permanently
           # inflated Grafana Cloud's active-series count (2026-08-19 incident).
-          cat > /tmp/ssm-commands.json <<'EOF'
+          cat > /tmp/ssm-commands.json <<EOF
           {
             "commands": [
-              "set -e",
-              "DB_URL=$(aws ssm get-parameter --name 'PARAM_PLACEHOLDER' --with-decryption --query Parameter.Value --output text)",
-              "docker run --rm --name db_migrate -e MIGRATION_DATABASE_URL=\"$DB_URL\" --entrypoint node ghcr.io/OWNER_PLACEHOLDER/ocar-api:TAG_PLACEHOLDER dist/db/migrate.js"
+              "docker run --rm --name db_migrate -e DB_HOST=$DB_HOST -e DB_PORT=$DB_PORT -e DB_NAME=$DB_NAME -e DB_USER=$DB_USER -e DB_SECRET_ARN=$DB_SECRET_ARN -e AWS_REGION=$AWS_REGION --entrypoint node ghcr.io/${{ github.repository_owner }}/ocar-api:$IMAGE_TAG dist/db/migrate.js"
             ]
           }
           EOF
-          sed -i \
-            -e "s#PARAM_PLACEHOLDER#$MIGRATION_DB_URL_PARAM#" \
-            -e "s#OWNER_PLACEHOLDER#${{ github.repository_owner }}#" \
-            -e "s#TAG_PLACEHOLDER#$IMAGE_TAG#" \
-            /tmp/ssm-commands.json
 
           CMD_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
