@@ -1,6 +1,30 @@
 import { Pool, PoolClient, types } from 'pg'
+import { Signer } from '@aws-sdk/rds-signer'
 import { config } from '@/config'
 import { logger } from '@/lib/logger'
+
+// IAM auth token is a local SigV4-signed string (no network call) and is only
+// requested once per new physical connection, not per query — pg calls this
+// function to obtain the "password" whenever it opens a fresh connection.
+// Tokens are valid 15 minutes; requesting a fresh one per new connection avoids
+// needing our own expiry/refresh-timer bookkeeping.
+const iamSigner = config.DB_AUTH_MODE === 'iam'
+  ? new Signer({ hostname: config.DB_HOST, port: config.DB_PORT, username: config.DB_USER })
+  : null
+
+function buildPoolConfig() {
+  if (config.DB_AUTH_MODE === 'iam' && iamSigner) {
+    return {
+      host: config.DB_HOST,
+      port: config.DB_PORT,
+      database: config.DB_NAME,
+      user: config.DB_USER,
+      password: () => iamSigner.getAuthToken(),
+      ssl: { rejectUnauthorized: true },
+    }
+  }
+  return { connectionString: config.DATABASE_URL }
+}
 
 // DATE columns (oid 1082 — date_of_birth, valid_until, license_expiry, verified_for,
 // etc.) have no time component, but pg's default parser builds a JS Date at LOCAL
@@ -11,7 +35,7 @@ import { logger } from '@/lib/logger'
 types.setTypeParser(1082, (val) => val)
 
 export const pool = new Pool({
-  connectionString: config.DATABASE_URL,
+  ...buildPoolConfig(),
   min: config.DATABASE_POOL_MIN,
   max: config.DATABASE_POOL_MAX,
   idleTimeoutMillis: 30000,
@@ -30,7 +54,7 @@ export const pool = new Pool({
 // request pool as a documented ceiling — revisit (thread an executor through the repos)
 // only if a load test proves request-pool starvation from dispatch.
 export const workerPool = new Pool({
-  connectionString: config.DATABASE_URL,
+  ...buildPoolConfig(),
   min: 1,
   max: config.WORKER_POOL_MAX,
   idleTimeoutMillis: 30000,

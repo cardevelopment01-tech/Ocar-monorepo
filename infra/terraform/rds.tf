@@ -50,6 +50,13 @@ resource "aws_db_instance" "main" {
   username                    = var.db_master_username
   manage_master_user_password = true
 
+  # Lets IAM-authenticated connections (rds-db:connect, see iam.tf) request a
+  # short-lived signed token instead of a password -- the fix for the 2026-08-25
+  # incident where the hand-maintained api-env SSM copy of the Secrets-Manager
+  # password went stale after a rotation and took prod down. Any DB user still
+  # needs `GRANT rds_iam TO <user>` before it can actually use this.
+  iam_database_authentication_enabled = true
+
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
@@ -131,4 +138,9 @@ output "rds_endpoint" {
 output "rds_master_user_secret_arn" {
   description = "Secrets Manager ARN holding the master password -- aws secretsmanager get-secret-value --secret-id <this> --query SecretString"
   value       = aws_db_instance.main.master_user_secret[0].secret_arn
+}
+
+output "rds_resource_id" {
+  description = "RDS instance resource ID -- the dbi-XXXX identifier used to build rds-db:connect ARNs (see iam.tf), distinct from the instance identifier"
+  value       = aws_db_instance.main.resource_id
 }

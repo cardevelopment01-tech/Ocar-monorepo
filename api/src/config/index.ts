@@ -4,7 +4,17 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
   // Database
-  DATABASE_URL: z.string().min(1),
+  // 'password' (default): connect via DATABASE_URL, as today. 'iam': connect via
+  // a short-lived signed token (@aws-sdk/rds-signer) using DB_HOST/PORT/NAME/USER
+  // below instead of a stored password — see infra/terraform/rds.tf's
+  // iam_database_authentication_enabled comment for why. Local dev / Docker
+  // Postgres has no IAM auth support, so this stays 'password' there.
+  DB_AUTH_MODE: z.enum(['password', 'iam']).default('password'),
+  DATABASE_URL: z.string().default(''),
+  DB_HOST: z.string().default(''),
+  DB_PORT: z.coerce.number().default(5432),
+  DB_NAME: z.string().default(''),
+  DB_USER: z.string().default(''),
   DATABASE_POOL_MIN: z.coerce.number().default(2),
   // Request-handler pool. The high-rate workers (gps-flush @ concurrency 20, etc.)
   // now run on their own workerPool (WORKER_POOL_MAX below), so this no longer has to
@@ -99,9 +109,18 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 })
 
+const envSchemaChecked = envSchema.superRefine((env, ctx) => {
+  if (env.DB_AUTH_MODE === 'password' && !env.DATABASE_URL) {
+    ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: 'required when DB_AUTH_MODE=password' })
+  }
+  if (env.DB_AUTH_MODE === 'iam' && (!env.DB_HOST || !env.DB_NAME || !env.DB_USER)) {
+    ctx.addIssue({ code: 'custom', path: ['DB_HOST'], message: 'DB_HOST, DB_NAME, DB_USER all required when DB_AUTH_MODE=iam' })
+  }
+})
+
 function loadConfig() {
   try {
-    return envSchema.parse(process.env)
+    return envSchemaChecked.parse(process.env)
   } catch (err) {
     // console here (not logger) — this fires before config exists, and the
     // logger needs config.LOG_LEVEL to construct. Fatal boot-time failure; process exits right after.

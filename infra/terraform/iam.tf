@@ -78,6 +78,25 @@ resource "aws_iam_instance_profile" "ec2" {
   role = aws_iam_role.ec2.name
 }
 
+# Lets the app request a short-lived signed auth token (via @aws-sdk/rds-signer)
+# instead of storing a password -- see rds.tf's iam_database_authentication_enabled
+# comment for why. Scoped to the single DB user the app actually connects as;
+# rds-db:connect ARNs use the RDS instance's resource_id (dbi-XXXX), NOT its
+# identifier -- see rds.tf's rds_resource_id output.
+resource "aws_iam_role_policy" "rds_iam_connect" {
+  name = "${var.project_name}-${var.environment}-rds-iam-connect"
+  role = aws_iam_role.ec2.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "rds-db:connect"
+      Resource = "arn:aws:rds-db:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.main.resource_id}/${var.db_master_username}"
+    }]
+  })
+}
+
 # TEMPORARY: debugging why targets are failing health checks -- lets us
 # `aws ssm start-session` into an instance without opening SSH. Remove this
 # attachment once the boot script is confirmed working; it's broader than
