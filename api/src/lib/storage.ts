@@ -4,12 +4,18 @@ import { config } from '@/config'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
 
+// requestChecksumCalculation defaults to WHEN_SUPPORTED as of SDK v3.729+,
+// which makes getSignedUrl() sign a checksum computed over an empty body
+// (presigning happens before any file bytes exist). Real uploads with a
+// non-empty body then fail checksum validation, surfacing to the browser as
+// an opaque CORS-looking failure. WHEN_REQUIRED restores pre-3.729 behavior.
 const s3 = new S3Client({
   region: config.S3_REGION,
   credentials: {
     accessKeyId: config.S3_ACCESS_KEY,
     secretAccessKey: config.S3_SECRET_KEY,
   },
+  requestChecksumCalculation: 'WHEN_REQUIRED',
 })
 
 const S3_URL_PREFIX = `https://${config.S3_BUCKET_NAME}.s3.${config.S3_REGION}.amazonaws.com/`
