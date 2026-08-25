@@ -3,6 +3,7 @@ import type { QueryResultRow } from 'pg'
 import type {
   DailyRevenue, RideFunnel, TopDriver,
   CityBreakdown, CategoryBreakdown, EtaAccuracy,
+  DriverOnboardingFunnel, DriverAvailability,
 } from './analytics.types'
 
 // Analytics are heavy GROUP-BY scans that legitimately exceed the 10s OLTP
@@ -176,4 +177,82 @@ export async function getEtaAccuracy(days: number): Promise<EtaAccuracy[]> {
     mae_min:          parseFloat(r.mae_min as string),
     mape_pct:         r.mape_pct == null ? null : parseFloat(r.mape_pct as string),
   }))
+}
+
+// Onboarding stages come from driver_status_history — every transition is
+// already logged there, no dedicated timestamp columns needed on drivers.
+export async function getDriverOnboardingFunnel(days: number): Promise<DriverOnboardingFunnel[]> {
+  const rows = await analyticsQuery<QueryResultRow>(
+    `SELECT
+       COALESCE(c.name, 'Unassigned')                             AS city_name,
+       COUNT(*)                                                   AS signed_up,
+       COUNT(*) FILTER (WHERE docs.driver_id IS NOT NULL)         AS docs_submitted,
+       COUNT(*) FILTER (WHERE active.driver_id IS NOT NULL)       AS activated,
+       COUNT(*) FILTER (WHERE d.status IN ('suspended','banned')) AS rejected_or_banned,
+       AVG(EXTRACT(EPOCH FROM (active.activated_at - d.created_at)) / 3600)
+         FILTER (WHERE active.driver_id IS NOT NULL)              AS avg_hours_to_active
+     FROM drivers d
+     LEFT JOIN cities c ON c.id = d.city_id
+     LEFT JOIN LATERAL (
+       SELECT DISTINCT ON (h.driver_id) h.driver_id
+       FROM driver_status_history h
+       WHERE h.driver_id = d.id AND h.to_status = 'pending_approval'
+     ) docs ON true
+     LEFT JOIN LATERAL (
+       SELECT h.driver_id, h.created_at AS activated_at
+       FROM driver_status_history h
+       WHERE h.driver_id = d.id AND h.to_status = 'active'
+       ORDER BY h.created_at
+       LIMIT 1
+     ) active ON true
+     WHERE d.created_at >= NOW() - ($1 || ' days')::INTERVAL
+     GROUP BY c.name
+     ORDER BY signed_up DESC`,
+    [days]
+  )
+  return rows.map(r => {
+    const signed_up = parseInt(r.signed_up as string, 10)
+    const activated = parseInt(r.activated as string, 10)
+    return {
+      city_name:            r.city_name as string,
+      signed_up,
+      docs_submitted:       parseInt(r.docs_submitted as string, 10),
+      activated,
+      rejected_or_banned:   parseInt(r.rejected_or_banned as string, 10),
+      avg_hours_to_active:  r.avg_hours_to_active == null ? null : parseFloat(r.avg_hours_to_active as string),
+      conversion_pct:       signed_up > 0 ? (activated / signed_up) * 100 : 0,
+    }
+  })
+}
+
+// Live snapshot, not period-scoped — "is this driver actually on the road
+// right now", not a historical count.
+export async function getDriverAvailability(): Promise<DriverAvailability[]> {
+  const rows = await analyticsQuery<QueryResultRow>(
+    `SELECT
+       COALESCE(c.name, 'Unassigned')                  AS city_name,
+       COUNT(*) FILTER (WHERE d.status = 'active')      AS total_active,
+       COUNT(*) FILTER (WHERE ds.id IS NOT NULL)         AS online_now,
+       COUNT(*) FILTER (WHERE dls.is_available = true)   AS available_now
+     FROM drivers d
+     LEFT JOIN cities c ON c.id = d.city_id
+     LEFT JOIN driver_sessions ds
+       ON ds.driver_id = d.id AND ds.status IN ('online','on_trip') AND ds.went_offline_at IS NULL
+     LEFT JOIN driver_location_snapshots dls ON dls.driver_id = d.id
+     WHERE d.status = 'active'
+     GROUP BY c.name
+     ORDER BY total_active DESC`,
+    []
+  )
+  return rows.map(r => {
+    const total_active = parseInt(r.total_active as string, 10)
+    const available_now = parseInt(r.available_now as string, 10)
+    return {
+      city_name:         r.city_name as string,
+      total_active,
+      online_now:        parseInt(r.online_now as string, 10),
+      available_now,
+      availability_pct:  total_active > 0 ? (available_now / total_active) * 100 : 0,
+    }
+  })
 }

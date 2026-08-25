@@ -46,4 +46,36 @@ router.get(
   }
 )
 
+router.get(
+  '/drivers/onboarding',
+  authenticate(),
+  requireAdmin('super_admin', 'ops_admin', 'finance_admin'),
+  async (req, res, next) => {
+    try {
+      const periodKey = (req.query['period'] as string) ?? '30d'
+      const days = VALID_PERIODS[periodKey]
+      if (days === undefined) {
+        res.status(400).json({ error: 'period must be 7d, 30d, or 90d' })
+        return
+      }
+      res.json(await service.getDriverOnboardingFunnel(days))
+    } catch (err) {
+      next(err)
+    }
+  }
+)
+
+router.get(
+  '/drivers/availability',
+  authenticate(),
+  requireAdmin('super_admin', 'ops_admin', 'finance_admin'),
+  async (_req, res, next) => {
+    try {
+      res.json(await service.getDriverAvailability())
+    } catch (err) {
+      next(err)
+    }
+  }
+)
+
 export default router

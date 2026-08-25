@@ -41,6 +41,24 @@ export interface EtaAccuracy {
   mape_pct: number | null
 }
 
+export interface DriverOnboardingFunnel {
+  city_name: string
+  signed_up: number
+  docs_submitted: number
+  activated: number
+  rejected_or_banned: number
+  avg_hours_to_active: number | null
+  conversion_pct: number
+}
+
+export interface DriverAvailability {
+  city_name: string
+  total_active: number
+  online_now: number
+  available_now: number
+  availability_pct: number
+}
+
 export interface AnalyticsSummary {
   period_days: number
   daily_revenue: DailyRevenue[]

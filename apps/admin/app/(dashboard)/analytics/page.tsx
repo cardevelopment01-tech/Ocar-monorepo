@@ -8,6 +8,8 @@ import {
   adminAnalyticsApi,
   type AnalyticsSummary,
   type DailyRevenue,
+  type DriverOnboardingFunnel,
+  type DriverAvailability,
 } from '@/lib/admin-api'
 import { COLORS } from '@/lib/colors'
 
@@ -100,10 +102,21 @@ function HBarChart({ items }: {
   )
 }
 
+function availabilityColor(pct: number): string {
+  if (pct < 30) return COLORS.danger
+  if (pct < 50) return COLORS.warning
+  return COLORS.success
+}
+
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<Period>('30d')
   const [data, setData]     = useState<AnalyticsSummary>(EMPTY)
   const [loading, setLoading] = useState(true)
+
+  const [onboarding, setOnboarding]         = useState<DriverOnboardingFunnel[]>([])
+  const [onboardingLoading, setOnboardingLoading] = useState(true)
+  const [availability, setAvailability]     = useState<DriverAvailability[]>([])
+  const [availabilityLoading, setAvailabilityLoading] = useState(true)
 
   const load = useCallback(async (p: Period) => {
     setLoading(true)
@@ -117,7 +130,37 @@ export default function AnalyticsPage() {
     }
   }, [])
 
+  const loadOnboarding = useCallback(async (p: Period) => {
+    setOnboardingLoading(true)
+    try {
+      setOnboarding(await adminAnalyticsApi.getDriverOnboarding(p))
+    } catch {
+      setOnboarding([])
+    } finally {
+      setOnboardingLoading(false)
+    }
+  }, [])
+
+  const loadAvailability = useCallback(async () => {
+    setAvailabilityLoading(true)
+    try {
+      setAvailability(await adminAnalyticsApi.getDriverAvailability())
+    } catch {
+      setAvailability([])
+    } finally {
+      setAvailabilityLoading(false)
+    }
+  }, [])
+
   useEffect(() => { void load(period) }, [period, load])
+  useEffect(() => { void loadOnboarding(period) }, [period, loadOnboarding])
+  // Availability is a live snapshot, not period-scoped — poll instead of
+  // reacting to the period selector.
+  useEffect(() => {
+    void loadAvailability()
+    const id = setInterval(() => { void loadAvailability() }, 60_000)
+    return () => clearInterval(id)
+  }, [loadAvailability])
 
   const { funnel, top_drivers, city_breakdown, category_breakdown, daily_revenue } = data
 
@@ -242,6 +285,90 @@ export default function AnalyticsPage() {
                 color: colors[i % colors.length],
               }
             })} />
+          )}
+        </div>
+      </div>
+
+      {/* ── Driver onboarding & availability ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        {/* Onboarding funnel by city */}
+        <div className="admin-card">
+          <h2 className="text-sm font-bold text-text-primary mb-1">Driver Onboarding by City</h2>
+          <p className="text-xs text-text-muted mb-4">Signups this period, sorted by volume — low conversion % flags where onboarding is stalling</p>
+          {onboardingLoading ? (
+            <div className="space-y-2">
+              {[1,2,3].map(i => <div key={i} className="skeleton h-8 rounded" />)}
+            </div>
+          ) : onboarding.length === 0 ? (
+            <p className="text-sm text-text-muted text-center py-4">No signups in this period</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>City</th>
+                  <th>Signed up</th>
+                  <th>Docs in</th>
+                  <th>Activated</th>
+                  <th>Conversion</th>
+                  <th>Avg. hrs to active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {onboarding.map(row => (
+                  <tr key={row.city_name}>
+                    <td className="font-semibold text-text-primary">{row.city_name}</td>
+                    <td>{row.signed_up}</td>
+                    <td>{row.docs_submitted}</td>
+                    <td>{row.activated}</td>
+                    <td style={{ color: availabilityColor(row.conversion_pct) }} className="font-semibold">
+                      {row.conversion_pct.toFixed(0)}%
+                    </td>
+                    <td className="text-text-muted">
+                      {row.avg_hours_to_active == null ? '—' : `${row.avg_hours_to_active.toFixed(0)}h`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Live availability by city */}
+        <div className="admin-card">
+          <h2 className="text-sm font-bold text-text-primary mb-1">Driver Availability by City</h2>
+          <p className="text-xs text-text-muted mb-4">Live snapshot — active drivers who are actually online and on the road right now</p>
+          {availabilityLoading ? (
+            <div className="space-y-2">
+              {[1,2,3].map(i => <div key={i} className="skeleton h-8 rounded" />)}
+            </div>
+          ) : availability.length === 0 ? (
+            <p className="text-sm text-text-muted text-center py-4">No active drivers</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>City</th>
+                  <th>Active</th>
+                  <th>Online now</th>
+                  <th>Available now</th>
+                  <th>Availability</th>
+                </tr>
+              </thead>
+              <tbody>
+                {availability.map(row => (
+                  <tr key={row.city_name}>
+                    <td className="font-semibold text-text-primary">{row.city_name}</td>
+                    <td>{row.total_active}</td>
+                    <td>{row.online_now}</td>
+                    <td>{row.available_now}</td>
+                    <td style={{ color: availabilityColor(row.availability_pct) }} className="font-semibold">
+                      {row.availability_pct.toFixed(0)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       </div>

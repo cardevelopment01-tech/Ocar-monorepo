@@ -489,9 +489,35 @@ export interface AnalyticsSummary {
   category_breakdown: CategoryBreakdown[]
 }
 
+export interface DriverOnboardingFunnel {
+  city_name: string
+  signed_up: number
+  docs_submitted: number
+  activated: number
+  rejected_or_banned: number
+  avg_hours_to_active: number | null
+  conversion_pct: number
+}
+
+export interface DriverAvailability {
+  city_name: string
+  total_active: number
+  online_now: number
+  available_now: number
+  availability_pct: number
+}
+
 export const adminAnalyticsApi = {
   getSummary: async (period: '7d' | '30d' | '90d'): Promise<AnalyticsSummary> => {
     const res = await api.get('/api/v1/admin/analytics/summary', { params: { period } })
     return res.data as AnalyticsSummary
+  },
+  getDriverOnboarding: async (period: '7d' | '30d' | '90d'): Promise<DriverOnboardingFunnel[]> => {
+    const res = await api.get('/api/v1/admin/analytics/drivers/onboarding', { params: { period } })
+    return res.data as DriverOnboardingFunnel[]
+  },
+  getDriverAvailability: async (): Promise<DriverAvailability[]> => {
+    const res = await api.get('/api/v1/admin/analytics/drivers/availability')
+    return res.data as DriverAvailability[]
   },
 }
