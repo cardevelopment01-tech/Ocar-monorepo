@@ -45,6 +45,17 @@ function loadRdsCaBundle(): Buffer {
 // all there -- vendoring the RDS bundle for a Neon host would just fail
 // verification against the wrong root.
 function upgradedPasswordModeConfig(databaseUrl: string) {
+  // `new URL('')`/`new URL(undefined)` throws -- this runs eagerly at module
+  // load (`export const pool = new Pool({...buildPoolConfig()})`), so a
+  // missing/empty DATABASE_URL must fall through unchanged rather than crash
+  // the whole module on import. Real usage is already guarded (config's own
+  // superRefine requires DATABASE_URL when DB_AUTH_MODE is 'password'); this
+  // guard exists for test files that partially mock '@/config' without a
+  // DATABASE_URL, which import client.ts for real (not mocked) and previously
+  // got an inert `{ connectionString: undefined }` here, not a crash.
+  if (!databaseUrl) {
+    return { connectionString: databaseUrl }
+  }
   const url = new URL(databaseUrl)
   if (!url.searchParams.has('sslmode')) {
     return { connectionString: databaseUrl }
