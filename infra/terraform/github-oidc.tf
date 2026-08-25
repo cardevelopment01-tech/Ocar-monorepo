@@ -113,6 +113,16 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         Effect   = "Allow"
         Action   = ["ssm:GetCommandInvocation"]
         Resource = "*"
+      },
+      {
+        # Reads DB host/port/name/user/secret-ARN live from RDS at deploy
+        # time instead of a hand-maintained SSM parameter -- see
+        # docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md. Confirmed via a
+        # real CI failure (AccessDenied) the first time this step ran.
+        # Scoped to the one instance this config manages, not "*".
+        Effect   = "Allow"
+        Action   = ["rds:DescribeDBInstances"]
+        Resource = aws_db_instance.main.arn
       }
     ]
   })
