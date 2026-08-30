@@ -126,7 +126,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    name: Deploy to ASG
+    name: Deploy to ASG (blue/green)
     needs: [changes, build-push]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
@@ -140,9 +140,14 @@ jobs:
       packages: read
     env:
       IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
-      IMAGE_TAG_PARAM: /ocar/prod/image-tag
-      ASG_NAME: ${{ vars.ASG_NAME }}
+      PROJECT: ocar
+      ENVIRONMENT: prod
+      ACTIVE_COLOR_PARAM: /ocar/prod/active-color
       ALB_DNS_NAME: ${{ vars.ALB_DNS_NAME }}
+      ALB_NAME: ocar-prod-alb
+      BAKE_SECONDS: 600
+      BAKE_POLL_INTERVAL: 30
+      MAX_5XX_PER_POLL: 5
     steps:
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -157,37 +162,44 @@ jobs:
           role-to-assume: ${{ vars.GHA_DEPLOY_ROLE_ARN }}
           aws-region: ap-south-1
 
-      - name: Find a running ASG instance
+      - name: Read active color, compute idle color and resource names
+        id: colors
+        run: |
+          set -e
+          ACTIVE=$(aws ssm get-parameter --name "$ACTIVE_COLOR_PARAM" --query 'Parameter.Value' --output text)
+          if [ "$ACTIVE" != "blue" ] && [ "$ACTIVE" != "green" ]; then
+            echo "Unexpected active-color value: '$ACTIVE'" >&2
+            exit 1
+          fi
+          if [ "$ACTIVE" = "blue" ]; then IDLE="green"; else IDLE="blue"; fi
+          echo "active=$ACTIVE" >> "$GITHUB_OUTPUT"
+          echo "idle=$IDLE" >> "$GITHUB_OUTPUT"
+          echo "active_asg=${PROJECT}-${ENVIRONMENT}-asg-$ACTIVE" >> "$GITHUB_OUTPUT"
+          echo "idle_asg=${PROJECT}-${ENVIRONMENT}-asg-$IDLE" >> "$GITHUB_OUTPUT"
+          echo "idle_tg_name=${PROJECT}-${ENVIRONMENT}-api-tg-$IDLE" >> "$GITHUB_OUTPUT"
+          echo "active_tg_name=${PROJECT}-${ENVIRONMENT}-api-tg-$ACTIVE" >> "$GITHUB_OUTPUT"
+          echo "idle_image_tag_param=/${PROJECT}/${ENVIRONMENT}/$IDLE/image-tag" >> "$GITHUB_OUTPUT"
+          echo "Active: $ACTIVE / Idle: $IDLE"
+
+      - name: Find a running instance on the currently-active color (for migrations)
         id: instance
         run: |
           set -e
           ID=$(aws ec2 describe-instances \
-            --filters "Name=tag:aws:autoscaling:groupName,Values=$ASG_NAME" "Name=instance-state-name,Values=running" \
+            --filters "Name=tag:aws:autoscaling:groupName,Values=${{ steps.colors.outputs.active_asg }}" "Name=instance-state-name,Values=running" \
             --query 'Reservations[0].Instances[0].InstanceId' --output text)
           if [ -z "$ID" ] || [ "$ID" = "None" ]; then
-            echo "No running ASG instance found -- can't route the migration command anywhere" >&2
+            echo "No running instance on the active color (${{ steps.colors.outputs.active_asg }}) -- can't route the migration command anywhere" >&2
             exit 1
           fi
           echo "id=$ID" >> "$GITHUB_OUTPUT"
 
-      - name: Run migrations (new image, current instances still serving traffic)
+      - name: Run migrations (new image, current color still serving all traffic)
         env:
-          # ocar-prod-db is Terraform's stable "${project_name}-${environment}-db"
-          # identifier (infra/terraform/rds.tf) -- not a secret, doesn't rotate,
-          # safe to hardcode here same as it is throughout rds.tf itself.
           DB_INSTANCE_ID: ocar-prod-db
           INSTANCE_ID: ${{ steps.instance.outputs.id }}
         run: |
           set -e
-          # DB host/port/name/user/secret-ARN are all queried live from RDS at
-          # deploy time instead of being copied into a hand-maintained SSM
-          # parameter -- see docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md for
-          # why a copied value (the old migration-database-url parameter) went
-          # stale and caused an outage. None of these values are secrets; the
-          # actual password is fetched by migrate.js itself, inside the
-          # container, directly from Secrets Manager via the instance's IAM role
-          # (iam.tf's rds_secret_read policy) -- nothing sensitive crosses into
-          # this workflow at all.
           DB_INFO=$(aws rds describe-db-instances --db-instance-identifier "$DB_INSTANCE_ID" \
             --query "DBInstances[0].{Host:Endpoint.Address,Port:Endpoint.Port,Name:DBName,User:MasterUsername,SecretArn:MasterUserSecret.SecretArn}" \
             --output json)
@@ -197,31 +209,6 @@ jobs:
           DB_USER=$(echo "$DB_INFO" | jq -r .User)
           DB_SECRET_ARN=$(echo "$DB_INFO" | jq -r .SecretArn)
 
-          # Routed through SSM to a live ASG instance instead of a `docker run`
-          # on this GitHub-hosted runner -- RDS (infra/terraform/rds.tf) isn't
-          # publicly reachable, only the EC2 instances' security group can
-          # reach it. api/entrypoint.sh also runs migrate.js on every container
-          # start, so this ad-hoc run and each instance's own boot both invoke
-          # it -- safe only because migrate.js is idempotent (skips
-          # already-applied files, pg_advisory_lock serializes concurrent
-          # runs). This run exists solely to gate the rollout on migrations
-          # succeeding. --name db_migrate keeps this container out of the
-          # ocar_* naming convention cadvisor/Alloy filter on
-          # (infra/alloy/config.alloy) -- without it, cadvisor picked up a
-          # fresh randomly-named container on every deploy and permanently
-          # inflated Grafana Cloud's active-series count (2026-08-19 incident).
-          # --pull always: this instance has been running ocar-api:latest
-          # continuously and already has an old copy of that mutable tag
-          # cached locally -- `docker run` does not re-pull an image that
-          # already exists locally under the same tag, so without this flag
-          # the migration container silently ran stale, pre-this-deploy code
-          # (confirmed via a real deploy failure: DB_SECRET_ARN correctly
-          # reached the container's shell env, but migrate.js still hit the
-          # OLD code's "DATABASE_URL environment variable is not set" error,
-          # meaning it never saw the DB_SECRET_ARN branch added in this
-          # deploy at all). Brand-new instances at boot don't have this
-          # problem -- they have nothing cached yet, so entrypoint.sh's own
-          # migrate.js run is unaffected.
           cat > /tmp/ssm-commands.json <<EOF
           {
             "commands": [
@@ -256,70 +243,50 @@ jobs:
           echo "Timed out waiting for migration command" >&2
           exit 1
 
-      - name: Record previous image tag (for rollback)
-        id: previous
+      - name: Write new image tag to the idle color's own parameter only
         run: |
-          PREV=$(aws ssm get-parameter --name "$IMAGE_TAG_PARAM" --query 'Parameter.Value' --output text 2>/dev/null || echo "")
-          echo "tag=$PREV" >> "$GITHUB_OUTPUT"
+          aws ssm put-parameter --name "${{ steps.colors.outputs.idle_image_tag_param }}" --type String --value "$IMAGE_TAG" --overwrite
 
-      - name: Update image-tag parameter
+      - name: Suspend the idle color's scaling policy before waking it up
         run: |
-          aws ssm put-parameter --name "$IMAGE_TAG_PARAM" --type String --value "$IMAGE_TAG" --overwrite
+          # Target-tracking scaling reacts to ALBRequestCountPerTarget, which
+          # is near-zero for the idle color right up until cutover (only the
+          # header-preview smoke test hits it). Without this, the policy
+          # scales the idle color straight back down to min_size=0 seconds
+          # after the next step sets desired_capacity=2, and the idle color
+          # never actually comes up. Resumed on whichever color ends up
+          # active after cutover, a few steps down.
+          aws autoscaling suspend-processes --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --scaling-processes AlarmNotification
 
-      - name: Start instance refresh
-        id: refresh
+      - name: Scale the idle color up
         run: |
-          ID=$(aws autoscaling start-instance-refresh \
-            --auto-scaling-group-name "$ASG_NAME" \
-            --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}' \
-            --query 'InstanceRefreshId' --output text)
-          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 2
 
-      - name: Wait for instance refresh to complete
+      - name: Wait for the idle color's targets to pass health checks
         id: wait
         run: |
           set +e
-          for i in $(seq 1 60); do
-            STATUS=$(aws autoscaling describe-instance-refreshes \
-              --auto-scaling-group-name "$ASG_NAME" \
-              --instance-refresh-ids "${{ steps.refresh.outputs.id }}" \
-              --query 'InstanceRefreshes[0].Status' --output text)
-            echo "status: $STATUS"
-            if [ "$STATUS" = "Successful" ]; then
+          IDLE_TG_ARN=$(aws elbv2 describe-target-groups --names "${{ steps.colors.outputs.idle_tg_name }}" --query 'TargetGroups[0].TargetGroupArn' --output text)
+          echo "idle_tg_arn=$IDLE_TG_ARN" >> "$GITHUB_OUTPUT"
+          for i in $(seq 1 30); do
+            HEALTHY=$(aws elbv2 describe-target-health --target-group-arn "$IDLE_TG_ARN" \
+              --query "length(TargetHealthDescriptions[?TargetHealth.State=='healthy'])" --output text)
+            echo "healthy targets: $HEALTHY/2"
+            if [ "$HEALTHY" -ge 2 ] 2>/dev/null; then
               echo "result=success" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ]; then
-              echo "result=failed" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            sleep 30
-          done
-          echo "result=timeout" >> "$GITHUB_OUTPUT"
-
-      - name: Health-check the ALB
-        id: health
-        if: steps.wait.outputs.result == 'success'
-        run: |
-          set +e
-          for i in 1 2 3 4 5 6 7 8; do
-            CODE=$(curl -sk --max-time 5 -o /dev/null -w "%{http_code}" \
-              -H "Host: ocar-api.clienttesting.in" "https://$ALB_DNS_NAME/health")
-            if [ "$CODE" = "200" ]; then
-              echo "result=success" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            sleep 5
+            sleep 20
           done
           echo "result=failed" >> "$GITHUB_OUTPUT"
 
-      - name: Smoke-test a real DB-backed route
+      - name: Smoke-test the idle color directly through the ALB (preview header)
         id: smoke
-        if: steps.health.outputs.result == 'success'
+        if: steps.wait.outputs.result == 'success'
         run: |
           set +e
           for i in 1 2 3; do
-            if curl -sk --max-time 5 -H "Host: ocar-api.clienttesting.in" \
+            if curl -sk --max-time 5 -H "Host: ocar-api.clienttesting.in" -H "X-Deploy-Preview: ${{ steps.colors.outputs.idle }}" \
                  "https://$ALB_DNS_NAME/api/v1/geo/cities" | grep -q '"slug"'; then
               echo "result=success" >> "$GITHUB_OUTPUT"
               exit 0
@@ -328,18 +295,80 @@ jobs:
           done
           echo "result=failed" >> "$GITHUB_OUTPUT"
 
-      - name: Roll back on failure
-        if: steps.wait.outputs.result != 'success' || steps.health.outputs.result != 'success' || steps.smoke.outputs.result != 'success'
+      - name: Roll back idle color on failed health-check/smoke-test (nothing user-facing ever changed)
+        if: steps.wait.outputs.result != 'success' || steps.smoke.outputs.result != 'success'
         run: |
-          PREV="${{ steps.previous.outputs.tag }}"
-          if [ -n "$PREV" ] && [ "$PREV" != "$IMAGE_TAG" ]; then
-            echo "Rolling back image-tag parameter to $PREV"
-            aws ssm put-parameter --name "$IMAGE_TAG_PARAM" --type String --value "$PREV" --overwrite
-            aws autoscaling start-instance-refresh \
-              --auto-scaling-group-name "$ASG_NAME" \
-              --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'
-            echo "Rolled back. NOTE: any migrations $IMAGE_TAG applied are NOT reverted (forward-only migrations) -- if the migration itself is the problem, it must be fixed forward, not rolled back."
-          else
-            echo "No distinct previous tag found -- nothing to roll back to. Manual intervention required."
-          fi
+          echo "Idle color (${{ steps.colors.outputs.idle }}) failed to come up cleanly -- scaling it back down, active color was never touched." >&2
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 0
           exit 1
+
+      - name: Flip the listener to the idle color
+        id: flip
+        if: steps.smoke.outputs.result == 'success'
+        run: |
+          set -e
+          ALB_ARN=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text)
+          LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query "Listeners[?Port==\`443\`].ListenerArn | [0]" --output text)
+          aws elbv2 modify-listener --listener-arn "$LISTENER_ARN" \
+            --default-actions "Type=forward,TargetGroupArn=${{ steps.wait.outputs.idle_tg_arn }}"
+          aws ssm put-parameter --name "$ACTIVE_COLOR_PARAM" --type String --value "${{ steps.colors.outputs.idle }}" --overwrite
+          echo "Listener flipped: ${{ steps.colors.outputs.active }} -> ${{ steps.colors.outputs.idle }} is now live."
+
+      - name: Resume scaling on the new active color, suspend it on the old one
+        if: steps.flip.conclusion == 'success'
+        run: |
+          # The color that just went live should scale normally with real
+          # traffic again. The color that just went inactive must NOT let
+          # its own target-tracking policy scale it down mid-bake -- it's
+          # being kept warm on purpose for instant rollback (next step).
+          aws autoscaling resume-processes --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --scaling-processes AlarmNotification
+          aws autoscaling suspend-processes --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --scaling-processes AlarmNotification
+
+      - name: Bake period -- watch the new active color's error rate
+        id: bake
+        if: steps.flip.conclusion == 'success'
+        run: |
+          set +e
+          ALB_ARN_SUFFIX=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text | sed 's#.*loadbalancer/##')
+          IDLE_TG_ARN_SUFFIX=$(echo "${{ steps.wait.outputs.idle_tg_arn }}" | sed 's#.*targetgroup/##')
+          ITERATIONS=$((BAKE_SECONDS / BAKE_POLL_INTERVAL))
+          for i in $(seq 1 "$ITERATIONS"); do
+            sleep "$BAKE_POLL_INTERVAL"
+            END=$(date -u +%Y-%m-%dT%H:%M:%S)
+            START=$(date -u -d "-${BAKE_POLL_INTERVAL} seconds" +%Y-%m-%dT%H:%M:%S)
+            ERRORS=$(aws cloudwatch get-metric-statistics --namespace AWS/ApplicationELB \
+              --metric-name HTTPCode_Target_5XX_Count \
+              --dimensions Name=LoadBalancer,Value="$ALB_ARN_SUFFIX" Name=TargetGroup,Value="$IDLE_TG_ARN_SUFFIX" \
+              --start-time "${START}Z" --end-time "${END}Z" --period "$BAKE_POLL_INTERVAL" --statistics Sum \
+              --query 'Datapoints[0].Sum' --output text)
+            [ "$ERRORS" = "None" ] && ERRORS=0
+            ERRORS_INT=${ERRORS%.*}
+            echo "bake check $i/$ITERATIONS: $ERRORS_INT 5xx in the last ${BAKE_POLL_INTERVAL}s"
+            if [ "$ERRORS_INT" -gt "$MAX_5XX_PER_POLL" ] 2>/dev/null; then
+              echo "result=failed" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "result=success" >> "$GITHUB_OUTPUT"
+
+      - name: Bake failed -- flip back to the old color instantly
+        if: steps.flip.conclusion == 'success' && steps.bake.outputs.result == 'failed'
+        run: |
+          ALB_ARN=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text)
+          LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query "Listeners[?Port==\`443\`].ListenerArn | [0]" --output text)
+          OLD_TG_ARN=$(aws elbv2 describe-target-groups --names "${{ steps.colors.outputs.active_tg_name }}" --query 'TargetGroups[0].TargetGroupArn' --output text)
+          aws elbv2 modify-listener --listener-arn "$LISTENER_ARN" --default-actions "Type=forward,TargetGroupArn=$OLD_TG_ARN"
+          aws ssm put-parameter --name "$ACTIVE_COLOR_PARAM" --type String --value "${{ steps.colors.outputs.active }}" --overwrite
+          # Swap the suspend/resume back too -- the pre-deploy color is live
+          # again and should scale normally; the bad color goes back to
+          # being kept warm-but-suspended in case someone wants to inspect
+          # it before scaling it down by hand.
+          aws autoscaling resume-processes --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --scaling-processes AlarmNotification
+          echo "Rolled back to ${{ steps.colors.outputs.active }}. NOTE: any migrations $IMAGE_TAG applied are NOT reverted (forward-only) -- if the migration itself is the problem, fix forward, don't roll it back." >&2
+          exit 1
+
+      - name: Bake clean -- scale the old color down
+        if: steps.flip.conclusion == 'success' && steps.bake.outputs.result == 'success'
+        run: |
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --min-size 0 --desired-capacity 0
+          echo "Deploy complete. ${{ steps.colors.outputs.idle }} is live, ${{ steps.colors.outputs.active }} scaled to 0."
