@@ -89,12 +89,17 @@ resource "aws_autoscaling_group" "api" {
     propagate_at_launch = true
   }
 
-  # min_size and desired_capacity are both flipped at runtime by the deploy
-  # workflow as part of the blue/green cutover -- Terraform must not revert
-  # either on the next plan/apply, same reasoning as the listener's
-  # default_action below in alb.tf.
+  # min_size, desired_capacity, and suspended_processes are all flipped at
+  # runtime by the deploy workflow as part of the blue/green cutover --
+  # Terraform must not revert any of them on the next plan/apply, same
+  # reasoning as the listener's default_action below in alb.tf.
+  # suspended_processes specifically: the idle color's AlarmNotification
+  # stays suspended indefinitely between deploys (steady-state, not just
+  # mid-cutover) -- without ignoring it here, any unrelated apply (e.g. an
+  # AMI bump) silently resumes it, discovered live while unpinning the
+  # AMI pin from this same file.
   lifecycle {
-    ignore_changes = [min_size, desired_capacity]
+    ignore_changes = [min_size, desired_capacity, suspended_processes]
   }
 }
 
