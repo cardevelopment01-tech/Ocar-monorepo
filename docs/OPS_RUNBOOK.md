@@ -11,39 +11,134 @@ Terraform 1.15.8, repo checked out, working directory `infra/terraform`.
 
 ## Deploy new API code
 
-Fully automatic — merge to `main` triggers `.github/workflows/ci.yml`, which
-on success triggers `.github/workflows/deploy.yml`: builds the image, pushes
-to GHCR, runs migrations, writes the new tag to SSM
-(`/ocar/prod/image-tag`), does a rolling `instance_refresh` on the ASG
-(100/100 min/max healthy — zero downtime), then health-checks `/health` and
-smoke-tests `/api/v1/geo/cities`. Auto-rolls-back the image tag + triggers
-another refresh if any check fails.
+Fully automatic, **blue/green** (changed 2026-08-30, see
+`docs/superpowers/specs/2026-08-28-blue-green-deployment-design.md` and
+`docs/superpowers/plans/2026-08-30-blue-green-deployment-implementation.md`
+for the full design/implementation history) — merge to `main` triggers
+`.github/workflows/ci.yml`, which on success triggers
+`.github/workflows/deploy.yml`: builds the image, pushes to GHCR, runs
+migrations against the shared RDS instance, then cuts over to the idle
+color instead of doing an in-place rolling refresh:
+
+1. Reads `/ocar/prod/active-color` (SSM) to find which color is currently
+   live, computes the other one as idle.
+2. Writes the new image tag to the idle color's own SSM parameter
+   (`/ocar/prod/{blue,green}/image-tag`) — the live color's parameter is
+   untouched.
+3. Scales the idle color's ASG up, health-checks it, then smoke-tests it
+   directly through the ALB via a preview header
+   (`X-Deploy-Preview: blue`/`green`) — no live traffic reaches it until
+   this passes.
+4. Flips the ALB listener's default target group to the idle color — the
+   one atomic moment traffic actually moves.
+5. Bakes for 10 minutes watching `HTTPCode_Target_5XX_Count` on the new
+   active color. Instant listener-flip rollback if it trips.
+6. Scales the old color down to 0 once the bake is clean.
+
+Both colors' ASGs exist in Terraform at all times with `min_size` /
+`desired_capacity` runtime-controlled by the pipeline, not Terraform (see
+`asg.tf`'s `lifecycle.ignore_changes`). **Blue kept its exact
+pre-blue/green resource names** (`ocar-prod-asg`, `ocar-prod-api-tg`, no
+color suffix) — renaming a live ASG/target group forces AWS to
+destroy-and-recreate it, so blue never got the new `-blue` suffix; green
+uses the clean `ocar-prod-asg-green` / `ocar-prod-api-tg-green` naming.
+This asymmetry is permanent and intentional, not a bug — see
+`asg.tf`/`alb.tf`'s comments on it.
+
+Find which color is live right now:
+```bash
+aws ssm get-parameter --name /ocar/prod/active-color --query 'Parameter.Value' --output text
+```
 
 **No manual step needed for a normal deploy.** Only touch this if the
 pipeline itself is broken.
 
-**Manual rollback** (if auto-rollback didn't fire, or you need to go back
-further than one version):
+**Manual rollback** (if the automatic bake-window rollback didn't fire, or
+you need to go back further than the immediately-preceding deploy). This
+mirrors exactly what `deploy.yml`'s own "Flip the listener" /
+"Resume scaling" steps do — copy-pasteable as-is:
 ```bash
-aws ssm put-parameter --name /ocar/prod/image-tag --type String \
-  --value "<previous-good-tag>" --overwrite
-aws autoscaling start-instance-refresh \
-  --auto-scaling-group-name <ASG_NAME> \
-  --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'
+ACTIVE=$(aws ssm get-parameter --name /ocar/prod/active-color --query 'Parameter.Value' --output text)
+if [ "$ACTIVE" = "blue" ]; then IDLE="green"; else IDLE="blue"; fi
+if [ "$IDLE" = "blue" ]; then IDLE_ASG="ocar-prod-asg"; IDLE_TG="ocar-prod-api-tg"; else IDLE_ASG="ocar-prod-asg-green"; IDLE_TG="ocar-prod-api-tg-green"; fi
+echo "Rolling back: $ACTIVE (currently live) -> $IDLE"
+
+# Bring the target color back up if it had already been scaled to 0 (harmless no-op if it's still at 2)
+aws autoscaling update-auto-scaling-group --auto-scaling-group-name "$IDLE_ASG" --min-size 2 --desired-capacity 2
+
+# Wait until it's healthy before flipping -- poll this until targets show "healthy"
+IDLE_TG_ARN=$(aws elbv2 describe-target-groups --names "$IDLE_TG" --query 'TargetGroups[0].TargetGroupArn' --output text)
+aws elbv2 describe-target-health --target-group-arn "$IDLE_TG_ARN"
+
+# Flip the listener
+LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn \
+  "$(aws elbv2 describe-load-balancers --names ocar-prod-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text)" \
+  --query "Listeners[?Port==\`443\`].ListenerArn | [0]" --output text)
+aws elbv2 modify-listener --listener-arn "$LISTENER_ARN" --default-actions "Type=forward,TargetGroupArn=$IDLE_TG_ARN"
+aws ssm put-parameter --name /ocar/prod/active-color --type String --value "$IDLE" --overwrite
+
+# Restore the redundancy floor on the color that's now live, drop it on the one going idle
+aws autoscaling update-auto-scaling-group --auto-scaling-group-name "$IDLE_ASG" --min-size 2
+aws autoscaling resume-processes --auto-scaling-group-name "$IDLE_ASG" --scaling-processes AlarmNotification
+OLD_ASG=$([ "$ACTIVE" = "blue" ] && echo "ocar-prod-asg" || echo "ocar-prod-asg-green")
+aws autoscaling update-auto-scaling-group --auto-scaling-group-name "$OLD_ASG" --min-size 0
+aws autoscaling suspend-processes --auto-scaling-group-name "$OLD_ASG" --scaling-processes AlarmNotification
 ```
-Migrations are forward-only — rolling back the image does **not** undo a
+Migrations are forward-only — rolling back the color does **not** undo a
 migration. If a bad migration is the actual problem, fix it forward with a
 new migration file, don't try to revert.
 
+## Diagnose a failed blue/green deploy
+
+Real failure modes hit during the initial rollout (2026-08-30), kept here
+because they're exactly what you'll see again if they recur:
+
+- **`AccessDenied` on `elasticloadbalancing:Describe*` calls in the deploy
+  workflow logs.** ELBv2 `Describe*` actions (`DescribeTargetHealth`,
+  `DescribeTargetGroups`, `DescribeListeners`, `DescribeLoadBalancers`) do
+  **not** support resource-level IAM scoping — they need `Resource: "*"`.
+  If someone re-scopes them to a specific ARN in `github-oidc.tf`'s
+  `github_actions_deploy` policy (looks tempting, "least privilege"), every
+  poll fails and the deploy times out after burning its full retry budget.
+  Check `aws_iam_role_policy.github_actions_deploy` in
+  `infra/terraform/github-oidc.tf` first if you see this.
+- **The live color quietly drops to 1 instance (or fewer) during a quiet
+  traffic period, with no deploy running.** The redundancy floor
+  (`min_size=2` on whichever color is active) is runtime-managed by
+  `deploy.yml`, not Terraform — if `asg.tf`'s `lifecycle.ignore_changes`
+  ever loses `min_size` (e.g. someone "simplifies" it), the next
+  unrelated `terraform apply` silently resets it to 0, and the
+  pre-existing request-count-tracking policy is then free to scale the
+  live color down with nothing stopping it. Check
+  `aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names
+  ocar-prod-asg ocar-prod-asg-green --query 'AutoScalingGroups[].{Name:AutoScalingGroupName,Min:MinSize,Desired:DesiredCapacity}'`
+  — whichever is currently active per `/ocar/prod/active-color` should
+  always show `Min: 2`.
+- **Terraform wants to destroy/recreate `ocar-prod-asg` (or the target
+  group / launch template / scaling policy) on an unrelated `plan`.**
+  Their `name`/`name_prefix` is immutable — if that diff ever appears,
+  something changed blue's naming away from its legacy unsuffixed form.
+  Do not apply; fix the naming back to match live state first (see the
+  comments in `asg.tf`/`alb.tf`/`launch-template.tf` explaining why blue is
+  asymmetric).
+
 ## Scale capacity (more/fewer instances)
 
-Within the existing 2–4 range, nothing to do — the ASG's target-tracking
-policy (`aws_autoscaling_policy.request_count_tracking` in `asg.tf`) already
-adds/removes instances on `ALBRequestCountPerTarget`.
+Within the existing 2–4 range, nothing to do for whichever color is
+currently active — its target-tracking policy
+(`aws_autoscaling_policy.request_count_tracking` in `asg.tf`, one per
+color) already adds/removes instances on `ALBRequestCountPerTarget`
+between 2 and 4. The **floor of 2 is load-bearing** (redundancy, not
+cost-driven) and is enforced by `min_size`, which is runtime-managed by
+`deploy.yml` on whichever color is active — see "Diagnose a failed
+blue/green deploy" above if you ever see it drop below 2 unexpectedly.
 
-To change the range itself (e.g. raise `max_size` past 4, or raise the
-`t3.medium` baseline), edit `infra/terraform/asg.tf` (`min_size` /
-`desired_capacity` / `max_size`) or `instance_type` in `variables.tf`, then:
+To change the range itself (e.g. raise `max_size` past 4, change the
+redundancy floor, or raise the `t3.medium` baseline), edit
+`infra/terraform/asg.tf` (`min_size` / `desired_capacity` / `max_size` —
+both colors' `for_each`-generated resources share the same expressions,
+you're editing the formula, not a per-color value) or `instance_type` in
+`variables.tf`, then:
 ```bash
 pnpm infra:prod:init   # only needed once per terminal session / after switching envs
 pnpm infra:prod:plan   # review the diff
@@ -70,9 +165,13 @@ aren't cheaply reversible the way an app deploy is).
   instance) — logs, `pg_pool_connections`, `http_request_duration_seconds`,
   `bullmq_queue_job_counts`, per-container CPU/memory (cAdvisor row on the
   `ocar-overview` dashboard), BullMQ queue depth.
-- AWS Console → EC2 → Auto Scaling Groups → `<ASG_NAME>` for instance
-  count/health, or `aws autoscaling describe-auto-scaling-groups
-  --auto-scaling-group-names <ASG_NAME>`.
+- AWS Console → EC2 → Auto Scaling Groups → `ocar-prod-asg` (blue) or
+  `ocar-prod-asg-green` (green) for instance count/health, or
+  `aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names
+  ocar-prod-asg ocar-prod-asg-green`. Check `/ocar/prod/active-color`
+  (SSM) first if you only care about the one actually serving traffic.
+- The `Color` tag (`blue`/`green`) on every ASG/instance/target-group lets
+  Grafana dashboards split metrics by color during a deploy.
 
 ## Rotate a secret (DB URL, JWT secret, Razorpay keys, etc.)
 
@@ -90,11 +189,14 @@ aws ssm put-parameter --name /ocar/prod/api-env --type SecureString \
   --value "$(cat api-env.txt)" --overwrite
 rm api-env.txt   # don't leave decrypted secrets on disk
 ```
-Then roll the fleet so running instances pick it up (they only read SSM at
-boot):
+Then roll whichever color currently has running instances so they pick it
+up (they only read SSM at boot) — normally just the active one, since the
+idle color sits at 0 instances between deploys:
 ```bash
+ACTIVE=$(aws ssm get-parameter --name /ocar/prod/active-color --query 'Parameter.Value' --output text)
+ACTIVE_ASG=$([ "$ACTIVE" = "blue" ] && echo "ocar-prod-asg" || echo "ocar-prod-asg-green")
 aws autoscaling start-instance-refresh \
-  --auto-scaling-group-name <ASG_NAME> \
+  --auto-scaling-group-name "$ACTIVE_ASG" \
   --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'
 ```
 

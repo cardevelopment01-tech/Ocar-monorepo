@@ -401,20 +401,30 @@ cd api && npx tsc --noEmit
 
 ## CI/CD
 
-Single workflow: `.github/workflows/ci-cd.yml` (consolidated from the old, independent `ci.yml` +
-`deploy-api.yml` — those two are deleted). Six check jobs run on every push/PR: `lint`,
-`typecheck-api`, `test-api`, `typecheck-user`, `typecheck-driver`, `typecheck-admin`.
+Two workflows, not one — `.github/workflows/ci.yml` (six check jobs on every push/PR: `lint`,
+`typecheck-api`, `test-api`, `typecheck-user`, `typecheck-driver`, `typecheck-admin`) and
+`.github/workflows/deploy.yml` (triggered by `workflow_run` off `ci.yml` completing on `main`).
+A `changes` job in `deploy.yml` (hand-rolled SHA diff, not `dorny/paths-filter` — see the job's own
+comment for why) gates `build-push`/`deploy` so they only run when the diff since the last
+successful deploy touches `api/**`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, or
+`deploy.yml` itself.
 
-`build-push` and `deploy` declare `needs:` on all six check jobs — this is the core fix a red CI
-run now structurally blocks build/deploy, which the old two-workflow setup did not do. A `changes`
-job (`dorny/paths-filter@v3`) additionally gates `build-push`/`deploy` so they only run on a push to
-`main` that touches `api/**`, `docker-compose.prod.yml`, `infra/**`, or the workflow file itself.
-
-Deploy does: pull new image → run migrations (gates cutover on migrations succeeding) → cut over
-container → `/health` check (8 retries) → smoke-test `GET /api/v1/geo/cities` (real HTTP 200 + a
-`"slug"` field in the body) → auto-rollback to the previous image tag if either check fails.
-Rollback does NOT revert migrations (forward-only) — a bad migration must be fixed forward, not
-rolled back.
+**Deploy is blue/green** (changed 2026-08-30 — see
+`docs/superpowers/specs/2026-08-28-blue-green-deployment-design.md` and
+`docs/superpowers/plans/2026-08-30-blue-green-deployment-implementation.md`, and
+`docs/OPS_RUNBOOK.md`'s "Deploy new API code" for the operational reference). No longer an
+in-place rolling `instance_refresh` on one shared ASG — two full ASG/target-group pairs
+(`blue`/`green`) exist at all times, `min_size=0` on both, Terraform-managed shape but
+runtime-managed capacity. Each deploy: builds/pushes the image → runs migrations against the
+shared RDS instance → scales up whichever color is currently idle → health-checks it → smoke-tests
+it through the ALB via a preview header (`X-Deploy-Preview: blue`/`green`) with zero live traffic
+routed to it yet → flips the ALB listener's default target group to it (the one atomic cutover
+moment) → bakes 10 minutes watching `HTTPCode_Target_5XX_Count` → scales the old color down once
+the bake is clean, or flips the listener back instantly if it isn't. Rollback (whichever stage
+triggers it) does NOT revert migrations (forward-only) — a bad migration must be fixed forward, not
+rolled back. `/ocar/prod/active-color` (SSM) is the source of truth for which color is currently
+live; blue kept its pre-blue/green resource names (`ocar-prod-asg`, `ocar-prod-api-tg`, no color
+suffix) since renaming a live ASG/target group forces a destroy/recreate — see `asg.tf`'s comment.
 
 The `deploy` job's YAML references `environment: production`, but no GitHub Environment protection
 rule is configured, so this is currently inert for gating — it only tags the deploy for GitHub's
@@ -489,7 +499,7 @@ plan` (no `-var-file`/`-var="environment=..."` needed, it doesn't take one).
   3. Confirm the app's `DATABASE_URL` uses the `-pooler` host (see `api/.env.example`).
   After the test, run `api/scripts/index-usage-audit.sql` to find unused indexes, dead-tuple pressure, and the slowest query shapes — that data decides whether to build keyset pagination and `ride_status_history` partitioning (both deliberately deferred until proven necessary — see `docs/superpowers/specs/2026-07-26-db-loadtest-readiness-design.md`). `ride_messages` (rider-driver in-app chat, added in 081_ride_chat.sql) should be included in the same test — it's the same one-row-per-event/high-write/read-by-`ride_id` shape as `ride_status_history`, so it should get the same partitioning decision from the same data, not bespoke scaling work.
 
-- **No `production` GitHub Environment / required-reviewer approval gate on deploy.** The `deploy` job already references `environment: production` in `.github/workflows/ci-cd.yml`, but the environment itself was never created, so it's currently inert (deploys run immediately once checks pass, no human approval pause). Skipped because the `gh` account used to build this pipeline has `push`/`triage` on the repo but not `admin` (confirmed via `gh api repos/cardevelopment01-tech/Ocar-monorepo --jq '.permissions'` → `{"admin":false,...}`), and creating an environment protection rule requires admin. Whoever has admin rights should run:
+- **No `production` GitHub Environment / required-reviewer approval gate on deploy.** The `deploy` job already references `environment: production` in `.github/workflows/deploy.yml`, but the environment itself was never created, so it's currently inert (deploys run immediately once checks pass, no human approval pause). Skipped because the `gh` account used to build this pipeline has `push`/`triage` on the repo but not `admin` (confirmed via `gh api repos/cardevelopment01-tech/Ocar-monorepo --jq '.permissions'` → `{"admin":false,...}`), and creating an environment protection rule requires admin. Whoever has admin rights should run:
   ```bash
   gh api --method PUT repos/:owner/:repo/environments/production
   REVIEWER_ID=$(gh api users/<your-github-username> --jq .id)
