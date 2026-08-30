@@ -121,6 +121,34 @@ because they're exactly what you'll see again if they recur:
   Do not apply; fix the naming back to match live state first (see the
   comments in `asg.tf`/`alb.tf`/`launch-template.tf` explaining why blue is
   asymmetric).
+- **An unrelated `terraform apply` (e.g. an AMI bump) wants to flip a
+  color's `suspended_processes` back to empty.** Same root cause as the
+  `min_size` gap above — `AlarmNotification` is suspended on whichever
+  color is currently idle (deliberately, indefinitely, not just mid-cutover)
+  by `deploy.yml`'s runtime calls, not by Terraform. If `asg.tf`'s
+  `lifecycle.ignore_changes` ever loses `suspended_processes`, the next
+  apply silently re-enables scaling on the idle color. Not usually harmful
+  on its own (the idle color has 0 instances anyway), but it means the
+  ASG's scaling behavior no longer matches what the deploy workflow assumes.
+- **Grafana dashboards/alerts show empty or stale data despite the fleet
+  being healthy (e.g. "Live Instances" shows 0).** Check
+  `docker logs ocar_alloy --tail 100` on a live instance (via
+  `aws ssm send-command`, no SSH) for repeated `429 Too Many Requests` /
+  `err-mimir-max-active-series` or `err-mimir-tenant-max-ingestion-rate`
+  errors. Hit for real during the 2026-08-30 blue/green rollout:
+  `node_exporter` shipped ~500-700 unfiltered series/host, and four
+  instance refreshes in ~2 hours (each replacing every host identity)
+  pushed Grafana Cloud's 15,000 active-series tenant cap over the edge —
+  every remote_write got rejected, so nothing showed up anywhere, even
+  though `/health` and the ALB were completely fine the whole time. Now
+  filtered (`config.alloy`'s `prometheus.relabel "node"` keeps ~15 families;
+  `docker-compose.prod.yml`'s `--collector.netdev.device-exclude` drops
+  Docker's ephemeral veth/docker/br/cni interfaces at the source) — if this
+  recurs, it's either another unusually rapid burst of instance churn (should
+  self-resolve in 15-30 min as stale series age out) or a new metrics source
+  that also needs the same two-layer filtering treatment (`postgres_exporter`
+  and the API's own `http_request_duration_seconds` are both real
+  contributors that were deliberately left unfiltered this round).
 
 ## Scale capacity (more/fewer instances)
 
