@@ -362,8 +362,21 @@ jobs:
           LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query "Listeners[?Port==\`443\`].ListenerArn | [0]" --output text)
           aws elbv2 modify-listener --listener-arn "$LISTENER_ARN" \
             --default-actions "Type=forward,TargetGroupArn=${{ steps.wait.outputs.idle_tg_arn }}"
-          aws ssm put-parameter --name "$ACTIVE_COLOR_PARAM" --type String --value "${{ steps.colors.outputs.idle }}" --overwrite
-          echo "Listener flipped: ${{ steps.colors.outputs.active }} -> ${{ steps.colors.outputs.idle }} is now live."
+          # Traffic is now on the idle color -- the SSM write below just
+          # records that fact. If it fails after a real cutover, don't leave
+          # active-color pointing at the wrong color for the NEXT deploy (it
+          # would misidentify idle vs. live and needlessly cycle the
+          # actually-live color). Retry a few times before giving up loudly.
+          for i in 1 2 3 4 5; do
+            if aws ssm put-parameter --name "$ACTIVE_COLOR_PARAM" --type String --value "${{ steps.colors.outputs.idle }}" --overwrite; then
+              echo "Listener flipped: ${{ steps.colors.outputs.active }} -> ${{ steps.colors.outputs.idle }} is now live."
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "CRITICAL: listener flipped to ${{ steps.colors.outputs.idle }} but active-color SSM parameter update failed after retries." >&2
+          echo "Manually run: aws ssm put-parameter --name $ACTIVE_COLOR_PARAM --type String --value ${{ steps.colors.outputs.idle }} --overwrite" >&2
+          exit 1
 
       - name: Resume scaling on the new active color, suspend it on the old one
         if: steps.flip.conclusion == 'success'
@@ -432,3 +445,10 @@ jobs:
         run: |
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --min-size 0 --desired-capacity 0
           echo "Deploy complete. ${{ steps.colors.outputs.idle }} is live, ${{ steps.colors.outputs.active }} scaled to 0."
+
+      - name: Cleanup if something failed before cutover
+        if: failure() && steps.flip.outcome != 'success'
+        run: |
+          echo "Job failed before the listener flip -- best-effort cleanup of the idle color." >&2
+          aws autoscaling resume-processes --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --scaling-processes AlarmNotification || true
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 0 || true
