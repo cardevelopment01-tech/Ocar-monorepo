@@ -357,13 +357,11 @@ resource "aws_iam_role_policy" "github_actions_staging" {
         # exists (unlike EC2/ELB/ASG). Scoped to only the staging-prefixed
         # role this config itself creates (the EC2 role at iam.tf:24,
         # `${var.project_name}-staging-ec2-role`) -- not every role in the
-        # account. AttachRolePolicy/DetachRolePolicy are required for
-        # aws_iam_role_policy_attachment.ssm_session_manager_debug (iam.tf).
+        # account.
         Effect = "Allow"
         Action = [
           "iam:GetRole", "iam:CreateRole", "iam:DeleteRole", "iam:TagRole",
           "iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy",
-          "iam:AttachRolePolicy", "iam:DetachRolePolicy",
         ]
         Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-staging-*"
       },

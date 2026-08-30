@@ -55,13 +55,15 @@ resource "aws_iam_role_policy" "read_boot_parameters" {
       {
         Effect = "Allow"
         Action = ["ssm:GetParameter"]
-        Resource = [
-          local.image_tag_parameter_arn,
-          local.ghcr_token_parameter_arn,
-          local.api_env_parameter_arn,
-          aws_ssm_parameter.docker_compose_prod.arn,
-          aws_ssm_parameter.alloy_config.arn,
-        ]
+        Resource = concat(
+          [for c in local.colors : local.image_tag_parameter_arns[c]],
+          [
+            local.ghcr_token_parameter_arn,
+            local.api_env_parameter_arn,
+            aws_ssm_parameter.docker_compose_prod.arn,
+            aws_ssm_parameter.alloy_config.arn,
+          ]
+        )
       },
       {
         Effect   = "Allow"
@@ -114,14 +116,4 @@ resource "aws_iam_role_policy" "rds_secret_read" {
       Resource = aws_db_instance.main.master_user_secret[0].secret_arn
     }]
   })
-}
-
-# TEMPORARY: debugging why targets are failing health checks -- lets us
-# `aws ssm start-session` into an instance without opening SSH. Remove this
-# attachment once the boot script is confirmed working; it's broader than
-# the app needs long-term (adds Session Manager access on top of the scoped
-# parameter-read policy above).
-resource "aws_iam_role_policy_attachment" "ssm_session_manager_debug" {
-  role       = aws_iam_role.ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
