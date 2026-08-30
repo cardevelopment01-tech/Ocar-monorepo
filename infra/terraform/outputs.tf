@@ -12,9 +12,9 @@ output "public_subnet_ids" {
   value       = aws_subnet.public[*].id
 }
 
-output "autoscaling_group_name" {
-  description = "ASG name -- needed for the future deploy-api.yml change (start-instance-refresh)"
-  value       = aws_autoscaling_group.api.name
+output "autoscaling_group_names" {
+  description = "ASG name per color -- deploy.yml computes these itself by the same naming convention ($${var.project_name}-$${var.environment}-asg-<color>); this output is just for a human to sanity-check after apply"
+  value       = { for c in local.colors : c => aws_autoscaling_group.api[c].name }
 }
 
 output "ec2_security_group_id" {

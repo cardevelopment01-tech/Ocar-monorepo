@@ -63,44 +63,60 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter", "ssm:PutParameter"]
-        Resource = local.image_tag_parameter_arn
-      },
-      {
         Effect = "Allow"
-        Action = [
-          "autoscaling:StartInstanceRefresh",
-          "autoscaling:CancelInstanceRefresh",
-        ]
-        Resource = aws_autoscaling_group.api.arn
+        Action = ["ssm:GetParameter", "ssm:PutParameter"]
+        Resource = concat(
+          [for c in local.colors : local.image_tag_parameter_arns[c]],
+          [local.active_color_parameter_arn]
+        )
       },
       {
-        # DescribeInstanceRefreshes doesn't support resource-level
-        # permissions at all (confirmed via AWS's own IAM docs) -- scoping
-        # it to the ASG ARN like the write actions above silently denies it
-        # regardless of which resource is targeted. Confirmed via a real CI
-        # failure after StartInstanceRefresh (correctly resource-scoped)
-        # succeeded but the very next step's Describe call was denied.
+        # Scale the idle color up before cutover, scale the old color down
+        # after the bake window, and suspend/resume each color's own
+        # target-tracking policy around those windows so it can't fight the
+        # deploy workflow's manual desired_capacity changes -- see
+        # deploy.yml's "Suspend"/"Resume" steps for why this is needed.
         Effect   = "Allow"
-        Action   = ["autoscaling:DescribeInstanceRefreshes"]
+        Action   = ["autoscaling:UpdateAutoScalingGroup", "autoscaling:SuspendProcesses", "autoscaling:ResumeProcesses"]
+        Resource = [for c in local.colors : aws_autoscaling_group.api[c].arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["elasticloadbalancing:DescribeTargetHealth", "elasticloadbalancing:DescribeTargetGroups"]
+        Resource = [for c in local.colors : aws_lb_target_group.api[c].arn]
+      },
+      {
+        # The one atomic cutover action -- flips the listener's default
+        # target group from the old color to the new one, and back again on
+        # a failed bake.
+        Effect   = "Allow"
+        Action   = ["elasticloadbalancing:ModifyListener", "elasticloadbalancing:DescribeListeners"]
+        Resource = aws_lb_listener.https.arn
+      },
+      {
+        # DescribeLoadBalancers doesn't support resource-level scoping.
+        # Needed to resolve the ALB's own ARN before the listener lookup
+        # above (the workflow only knows the ALB's name/DNS, not its ARN).
+        Effect   = "Allow"
+        Action   = ["elasticloadbalancing:DescribeLoadBalancers"]
         Resource = "*"
       },
       {
-        # Finds a live ASG instance to route the migration command to --
-        # RDS (rds.tf) isn't reachable from this GitHub-hosted runner
-        # directly, only from inside the VPC. No resource-level scoping
-        # possible before the instance exists (IDs are dynamic, replaced on
-        # every deploy).
+        # Bake-window monitoring (HTTPCode_Target_5XX_Count) -- CloudWatch
+        # read actions don't support resource-level scoping.
+        Effect   = "Allow"
+        Action   = ["cloudwatch:GetMetricStatistics"]
+        Resource = "*"
+      },
+      {
+        # Finds a live instance on the currently-active color to route the
+        # migration command to. No resource-level scoping possible before
+        # the instance exists (IDs are dynamic).
         Effect   = "Allow"
         Action   = ["ec2:DescribeInstances"]
         Resource = "*"
       },
       {
-        # Runs the migration container on that instance via SSM instead of
-        # `docker run` on this runner. Needs both the built-in document ARN
-        # and the target instance ARN allowed -- instance/* because, same as
-        # above, the specific instance ID isn't known ahead of time.
         Effect = "Allow"
         Action = ["ssm:SendCommand"]
         Resource = [
@@ -109,17 +125,11 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         ]
       },
       {
-        # Same non-scopability situation as DescribeInstanceRefreshes above.
         Effect   = "Allow"
         Action   = ["ssm:GetCommandInvocation"]
         Resource = "*"
       },
       {
-        # Reads DB host/port/name/user/secret-ARN live from RDS at deploy
-        # time instead of a hand-maintained SSM parameter -- see
-        # docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md. Confirmed via a
-        # real CI failure (AccessDenied) the first time this step ran.
-        # Scoped to the one instance this config manages, not "*".
         Effect   = "Allow"
         Action   = ["rds:DescribeDBInstances"]
         Resource = aws_db_instance.main.arn
