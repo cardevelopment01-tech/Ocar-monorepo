@@ -31,7 +31,7 @@ resource "aws_launch_template" "api" {
   }
 
   metadata_options {
-    http_tokens                 = "required" # IMDSv2 only
+    http_tokens = "required" # IMDSv2 only
     # Default hop limit (1) only reaches the host itself -- a container on
     # Docker's bridge network is one hop further away and can't reach IMDS to
     # inherit the instance's IAM role, which the api and postgres_exporter
