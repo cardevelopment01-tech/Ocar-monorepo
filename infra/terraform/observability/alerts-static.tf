@@ -233,6 +233,277 @@ resource "grafana_rule_group" "static_thresholds" {
     exec_err_state = "Alerting"
   }
 
+  # These 6 rules cover the node_exporter families added to config.alloy's
+  # keep-list on 2026-08-30 specifically for incident/audit value -- without
+  # an alert, that data only helps someone actively watching a dashboard
+  # during a test, not passive daily monitoring. runbook_url points at
+  # OPS_RUNBOOK.md's troubleshooting section (not the general alerting design
+  # doc) since that's where the actual response steps for these live.
+  rule {
+    name      = "Host swap in use"
+    condition = "C"
+    for       = "10m"
+
+    data {
+      ref_id         = "A"
+      datasource_uid = local.prometheus_datasource_uid
+      relative_time_range {
+        from = 60
+        to   = 0
+      }
+      model = jsonencode({
+        refId   = "A"
+        instant = true
+        expr    = "node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes"
+      })
+    }
+
+    data {
+      ref_id         = "C"
+      datasource_uid = "__expr__"
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+      model = jsonencode({
+        refId      = "C"
+        type       = "threshold"
+        expression = "A"
+        # 50MB -- any real swap usage on a t3.medium api host is already a
+        # bad sign, not a threshold that needs tuning up from real traffic.
+        conditions = [{ evaluator = { type = "gt", params = [52428800] } }]
+      })
+    }
+
+    annotations = {
+      summary     = "Host has used >50MB of swap for 10m -- memory pressure"
+      runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
+    }
+    labels         = { severity = "warning" }
+    no_data_state  = "OK"
+    exec_err_state = "Alerting"
+  }
+
+  rule {
+    name      = "Disk I/O saturation"
+    condition = "C"
+    for       = "10m"
+
+    data {
+      ref_id         = "A"
+      datasource_uid = local.prometheus_datasource_uid
+      relative_time_range {
+        from = 300
+        to   = 0
+      }
+      model = jsonencode({
+        refId   = "A"
+        instant = true
+        expr    = "rate(node_disk_io_time_seconds_total[5m])"
+      })
+    }
+
+    data {
+      ref_id         = "C"
+      datasource_uid = "__expr__"
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+      model = jsonencode({
+        refId      = "C"
+        type       = "threshold"
+        expression = "A"
+        # A device spending >=90% of the last 5m actually busy servicing
+        # I/O -- the standard USE "saturation" reading for disks.
+        conditions = [{ evaluator = { type = "gt", params = [0.9] } }]
+      })
+    }
+
+    annotations = {
+      summary     = "A disk device was >=90% busy servicing I/O for 10m"
+      runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
+    }
+    labels         = { severity = "warning" }
+    no_data_state  = "OK"
+    exec_err_state = "Alerting"
+  }
+
+  rule {
+    name      = "Network errors or drops"
+    condition = "C"
+    for       = "5m"
+
+    data {
+      ref_id         = "A"
+      datasource_uid = local.prometheus_datasource_uid
+      relative_time_range {
+        from = 300
+        to   = 0
+      }
+      model = jsonencode({
+        refId   = "A"
+        instant = true
+        expr    = "rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m]) + rate(node_network_receive_drop_total[5m]) + rate(node_network_transmit_drop_total[5m])"
+      })
+    }
+
+    data {
+      ref_id         = "C"
+      datasource_uid = "__expr__"
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+      model = jsonencode({
+        refId      = "C"
+        type       = "threshold"
+        expression = "A"
+        conditions = [{ evaluator = { type = "gt", params = [0] } }]
+      })
+    }
+
+    annotations = {
+      summary     = "Real network interface errors or drops sustained for 5m (ephemeral Docker interfaces are already excluded at the source)"
+      runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
+    }
+    labels         = { severity = "warning" }
+    no_data_state  = "OK"
+    exec_err_state = "Alerting"
+  }
+
+  rule {
+    name      = "Host inode usage"
+    condition = "C"
+    for       = "10m"
+
+    data {
+      ref_id         = "A"
+      datasource_uid = local.prometheus_datasource_uid
+      relative_time_range {
+        from = 60
+        to   = 0
+      }
+      model = jsonencode({
+        refId   = "A"
+        instant = true
+        expr    = "100 - ((node_filesystem_files_free{mountpoint=\"/\"} * 100) / node_filesystem_files{mountpoint=\"/\"})"
+      })
+    }
+
+    data {
+      ref_id         = "C"
+      datasource_uid = "__expr__"
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+      model = jsonencode({
+        refId      = "C"
+        type       = "threshold"
+        expression = "A"
+        # Same 85% convention as "Host disk usage" -- inode exhaustion can
+        # happen with plenty of free bytes still showing, a classic gap this
+        # rule specifically closes.
+        conditions = [{ evaluator = { type = "gt", params = [85] } }]
+      })
+    }
+
+    annotations = {
+      summary     = "Host inode usage exceeded 85% for 10m -- disk can still show free space while writes fail"
+      runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
+    }
+    labels         = { severity = "warning" }
+    no_data_state  = "OK"
+    exec_err_state = "Alerting"
+  }
+
+  rule {
+    name      = "Filesystem remounted read-only"
+    condition = "C"
+    for       = "1m"
+
+    data {
+      ref_id         = "A"
+      datasource_uid = local.prometheus_datasource_uid
+      relative_time_range {
+        from = 60
+        to   = 0
+      }
+      model = jsonencode({
+        refId   = "A"
+        instant = true
+        expr    = "node_filesystem_readonly{mountpoint=\"/\"}"
+      })
+    }
+
+    data {
+      ref_id         = "C"
+      datasource_uid = "__expr__"
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+      model = jsonencode({
+        refId      = "C"
+        type       = "threshold"
+        expression = "A"
+        conditions = [{ evaluator = { type = "gt", params = [0] } }]
+      })
+    }
+
+    annotations = {
+      summary     = "Root filesystem was remounted read-only -- almost always follows an unrecovered disk error, not a config change"
+      runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
+    }
+    labels         = { severity = "critical" }
+    no_data_state  = "OK"
+    exec_err_state = "Alerting"
+  }
+
+  rule {
+    name      = "File descriptor exhaustion"
+    condition = "C"
+    for       = "5m"
+
+    data {
+      ref_id         = "A"
+      datasource_uid = local.prometheus_datasource_uid
+      relative_time_range {
+        from = 60
+        to   = 0
+      }
+      model = jsonencode({
+        refId   = "A"
+        instant = true
+        expr    = "node_filefd_allocated / node_filefd_maximum"
+      })
+    }
+
+    data {
+      ref_id         = "C"
+      datasource_uid = "__expr__"
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+      model = jsonencode({
+        refId      = "C"
+        type       = "threshold"
+        expression = "A"
+        conditions = [{ evaluator = { type = "gt", params = [0.85] } }]
+      })
+    }
+
+    annotations = {
+      summary     = "Host file descriptor usage exceeded 85% for 5m -- classic Node.js failure mode under connection/file-handle leaks"
+      runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
+    }
+    labels         = { severity = "warning" }
+    no_data_state  = "OK"
+    exec_err_state = "Alerting"
+  }
+
   # Added after docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md -- a full DB
   # auth outage (28P01) was only caught by a human reading logs, not this
   # rule group. api/src/observability/metrics.ts's pg_query_errors_total
