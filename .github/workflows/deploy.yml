@@ -176,12 +176,23 @@ jobs:
             exit 1
           fi
           if [ "$ACTIVE" = "blue" ]; then IDLE="green"; else IDLE="blue"; fi
+
+          # "blue" is the pre-existing ASG/target-group from before blue/green
+          # existed -- its real AWS name has no color suffix (name is
+          # immutable on these resource types, so renaming it would force a
+          # destroy/recreate of a live, traffic-serving resource; see
+          # infra/terraform/asg.tf's matching comment). "green" is brand new
+          # and always uses the clean "-<color>" convention. This asymmetry
+          # is permanent, not just a one-time migration artifact.
+          asg_name() { if [ "$1" = "blue" ]; then echo "${PROJECT}-${ENVIRONMENT}-asg"; else echo "${PROJECT}-${ENVIRONMENT}-asg-$1"; fi; }
+          tg_name()  { if [ "$1" = "blue" ]; then echo "${PROJECT}-${ENVIRONMENT}-api-tg"; else echo "${PROJECT}-${ENVIRONMENT}-api-tg-$1"; fi; }
+
           echo "active=$ACTIVE" >> "$GITHUB_OUTPUT"
           echo "idle=$IDLE" >> "$GITHUB_OUTPUT"
-          echo "active_asg=${PROJECT}-${ENVIRONMENT}-asg-$ACTIVE" >> "$GITHUB_OUTPUT"
-          echo "idle_asg=${PROJECT}-${ENVIRONMENT}-asg-$IDLE" >> "$GITHUB_OUTPUT"
-          echo "idle_tg_name=${PROJECT}-${ENVIRONMENT}-api-tg-$IDLE" >> "$GITHUB_OUTPUT"
-          echo "active_tg_name=${PROJECT}-${ENVIRONMENT}-api-tg-$ACTIVE" >> "$GITHUB_OUTPUT"
+          echo "active_asg=$(asg_name "$ACTIVE")" >> "$GITHUB_OUTPUT"
+          echo "idle_asg=$(asg_name "$IDLE")" >> "$GITHUB_OUTPUT"
+          echo "idle_tg_name=$(tg_name "$IDLE")" >> "$GITHUB_OUTPUT"
+          echo "active_tg_name=$(tg_name "$ACTIVE")" >> "$GITHUB_OUTPUT"
           echo "idle_image_tag_param=/${PROJECT}/${ENVIRONMENT}/$IDLE/image-tag" >> "$GITHUB_OUTPUT"
           echo "Active: $ACTIVE / Idle: $IDLE"
 

@@ -20,7 +20,11 @@ data "aws_ami" "ubuntu" {
 resource "aws_launch_template" "api" {
   for_each = local.colors
 
-  name_prefix   = "${var.project_name}-${var.environment}-${each.key}-"
+  # Same "blue keeps its legacy name" reasoning as asg.tf's ASG --
+  # name_prefix is also immutable (AWS generates the actual unique name
+  # from it once, at creation), and "ocar-prod-" is what the live launch
+  # template was already created under.
+  name_prefix   = each.key == "blue" ? "${var.project_name}-${var.environment}-" : "${var.project_name}-${var.environment}-${each.key}-"
   image_id      = data.aws_ami.ubuntu.id
   instance_type = var.instance_type
 

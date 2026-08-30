@@ -14,7 +14,13 @@
 resource "aws_autoscaling_group" "api" {
   for_each = local.colors
 
-  name                = "${var.project_name}-${var.environment}-asg-${each.key}"
+  # "blue" keeps its exact pre-blue/green name ("ocar-prod-asg") -- name is
+  # immutable on an ASG, so giving it the new "-blue" suffix here would
+  # force-replace the live, traffic-serving ASG (a destroy-then-create
+  # replacement, meaning a real capacity-to-zero window). "green" has no
+  # such constraint (nothing exists yet) and uses the clean convention.
+  # Asymmetric on purpose -- mirrored in deploy.yml's own name computation.
+  name                = each.key == "blue" ? "${var.project_name}-${var.environment}-asg" : "${var.project_name}-${var.environment}-asg-${each.key}"
   vpc_zone_identifier = aws_subnet.public[*].id
   target_group_arns   = [aws_lb_target_group.api[each.key].arn]
 
@@ -88,7 +94,9 @@ resource "aws_autoscaling_group" "api" {
 resource "aws_autoscaling_policy" "request_count_tracking" {
   for_each = local.colors
 
-  name                   = "${var.project_name}-${var.environment}-request-tracking-${each.key}"
+  # Same "blue keeps its legacy name" reasoning as the ASG above --
+  # scaling-policy name is also immutable.
+  name                   = each.key == "blue" ? "${var.project_name}-${var.environment}-request-tracking" : "${var.project_name}-${var.environment}-request-tracking-${each.key}"
   autoscaling_group_name = aws_autoscaling_group.api[each.key].name
   policy_type            = "TargetTrackingScaling"
 

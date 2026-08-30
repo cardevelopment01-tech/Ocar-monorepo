@@ -29,7 +29,9 @@ resource "aws_lb" "main" {
 resource "aws_lb_target_group" "api" {
   for_each = local.colors
 
-  name        = "${var.project_name}-${var.environment}-api-tg-${each.key}"
+  # Same "blue keeps its legacy name" reasoning as asg.tf's ASG -- target
+  # group name is also immutable, and "ocar-prod-api-tg" is already live.
+  name        = each.key == "blue" ? "${var.project_name}-${var.environment}-api-tg" : "${var.project_name}-${var.environment}-api-tg-${each.key}"
   port        = var.api_port
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
