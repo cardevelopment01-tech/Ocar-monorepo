@@ -7,6 +7,11 @@
 
 locals {
   free_tier_bytes_50gb = 50 * 1024 * 1024 * 1024
+  # Confirmed against the account's real configured limit, seen directly in
+  # a live 429 (err-mimir-max-active-series) during the 2026-08-30 incident
+  # ("...tenant exceeded the active series limit, set to 15000...") -- the
+  # 10,000 figure this alert previously divided by didn't match reality.
+  free_tier_active_series = 15000
 }
 
 resource "grafana_rule_group" "billing_usage" {
@@ -29,7 +34,7 @@ resource "grafana_rule_group" "billing_usage" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "grafanacloud_org_metrics_instance_active_series / 10000"
+        expr    = "grafanacloud_org_metrics_instance_active_series / ${local.free_tier_active_series}"
       })
     }
 
@@ -49,7 +54,7 @@ resource "grafana_rule_group" "billing_usage" {
     }
 
     annotations = {
-      summary     = "Active series usage is at or above 85% of the 10,000-series free-tier cap"
+      summary     = "Active series usage is at or above 85% of the ${local.free_tier_active_series}-series free-tier cap"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
     }
     labels         = { severity = "warning" }
