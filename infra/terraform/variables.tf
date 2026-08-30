@@ -110,3 +110,14 @@ variable "db_master_username" {
   description = "RDS master username"
   default     = "ocar_admin"
 }
+
+variable "active_color" {
+  type        = string
+  description = "Which color's ASG starts at desired_capacity=2 and is the listener's initial default_action target -- only consulted on first apply / full recreate. Every deploy after that flips the live color via the deploy workflow's own active-color SSM parameter and a direct modify-listener call, never by re-applying Terraform with a different value here."
+  default     = "blue"
+
+  validation {
+    condition     = contains(["blue", "green"], var.active_color)
+    error_message = "active_color must be \"blue\" or \"green\"."
+  }
+}
