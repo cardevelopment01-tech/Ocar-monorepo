@@ -88,27 +88,33 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         Resource = [for c in local.colors : aws_autoscaling_group.api[c].arn]
       },
       {
-        # Polls the idle color's target health before cutover and the bake
-        # window's health after, for both target groups.
-        Effect   = "Allow"
-        Action   = ["elasticloadbalancing:DescribeTargetHealth", "elasticloadbalancing:DescribeTargetGroups"]
-        Resource = [for c in local.colors : aws_lb_target_group.api[c].arn]
+        # elasticloadbalancing:Describe* actions do NOT support
+        # resource-level IAM scoping at all (confirmed the hard way live in
+        # production: DescribeTargetHealth/DescribeTargetGroups scoped to
+        # specific target-group ARNs returned AccessDenied on every single
+        # call, mid-deploy, because a scoped Resource simply never matches
+        # for an action that requires "*"). Every Describe* action this
+        # workflow calls -- target health/target groups (polling before
+        # cutover and during bake), listeners (resolving the listener ARN
+        # before flipping it), load balancers (resolving the ALB's own ARN
+        # from its name) -- must be "*", full stop.
+        Effect = "Allow"
+        Action = [
+          "elasticloadbalancing:DescribeTargetHealth",
+          "elasticloadbalancing:DescribeTargetGroups",
+          "elasticloadbalancing:DescribeListeners",
+          "elasticloadbalancing:DescribeLoadBalancers",
+        ]
+        Resource = "*"
       },
       {
         # The one atomic cutover action -- flips the listener's default
         # target group from the old color to the new one, and back again on
-        # a failed bake.
+        # a failed bake. Unlike the Describe* actions above, ModifyListener
+        # is a mutating action and does support resource-level scoping.
         Effect   = "Allow"
-        Action   = ["elasticloadbalancing:ModifyListener", "elasticloadbalancing:DescribeListeners"]
+        Action   = ["elasticloadbalancing:ModifyListener"]
         Resource = aws_lb_listener.https.arn
-      },
-      {
-        # DescribeLoadBalancers doesn't support resource-level scoping.
-        # Needed to resolve the ALB's own ARN before the listener lookup
-        # above (the workflow only knows the ALB's name/DNS, not its ARN).
-        Effect   = "Allow"
-        Action   = ["elasticloadbalancing:DescribeLoadBalancers"]
-        Resource = "*"
       },
       {
         # Bake-window monitoring (HTTPCode_Target_5XX_Count) -- CloudWatch
@@ -355,13 +361,17 @@ resource "aws_iam_role_policy" "github_actions_staging" {
       {
         # Full apply/destroy needs to create/modify/delete the resource
         # *types* this config manages -- VPC networking, the ALB, the ASG +
-        # launch template, ElastiCache, and ACM. Deliberate full-service
+        # launch template, ElastiCache, ACM, and RDS. Deliberate full-service
         # wildcards: unlike the narrower per-action lists on the plan/deploy
         # roles above (which only ever do a handful of specific things),
-        # this role genuinely needs broad access to these 4 services since
+        # this role genuinely needs broad access to these services since
         # this config exclusively manages them in this region/account, and
-        # EC2/ELB/ASG/ElastiCache resources don't support useful ARN-based
-        # scoping before the first apply creates them anyway.
+        # EC2/ELB/ASG/ElastiCache/RDS resources don't support useful
+        # ARN-based scoping before the first apply creates them anyway.
+        # rds:* added to close G-02 -- staging's `terraform apply` was
+        # failing at the RDS resources without it (never caught earlier
+        # since staging hadn't actually been applied since this role's
+        # policy was last written).
         Effect = "Allow"
         Action = [
           "ec2:*Vpc*", "ec2:*Subnet*", "ec2:*RouteTable*", "ec2:*InternetGateway*",
@@ -371,8 +381,29 @@ resource "aws_iam_role_policy" "github_actions_staging" {
           "autoscaling:*",
           "elasticache:*",
           "acm:*",
+          "rds:*",
         ]
         Resource = "*"
+      },
+      {
+        # rds.tf's aws_db_instance uses manage_master_user_password = true --
+        # RDS creates/rotates the master password as a Secrets Manager secret
+        # on the CALLER's behalf, which means the caller (this role, during
+        # `terraform apply`) needs its own secretsmanager permissions, not
+        # just the EC2 instance role's read-only access (iam.tf's
+        # rds_secret_read policy, a separate and already-correct concern).
+        # Scoped to RDS-managed secrets' fixed naming convention
+        # (`rds!db-<uuid>`) rather than "*" -- narrower than the wildcard
+        # block above because secretsmanager, unlike EC2/ELB/ASG/RDS, does
+        # support this kind of prefix-pattern scoping.
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:CreateSecret", "secretsmanager:DeleteSecret",
+          "secretsmanager:PutSecretValue", "secretsmanager:UpdateSecretVersionStage",
+          "secretsmanager:GetSecretValue", "secretsmanager:TagResource",
+          "secretsmanager:DescribeSecret",
+        ]
+        Resource = "arn:aws:secretsmanager:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:secret:rds!*"
       },
       {
         # SSM parameters, unlike the EC2/networking actions above, DO support
