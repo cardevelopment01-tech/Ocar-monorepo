@@ -389,6 +389,18 @@ jobs:
           echo "Manually run: aws ssm put-parameter --name $ACTIVE_COLOR_PARAM --type String --value ${{ steps.colors.outputs.idle }} --overwrite" >&2
           exit 1
 
+      - name: Annotate cutover in Grafana
+        if: steps.flip.conclusion == 'success'
+        run: |
+          set +e
+          GRAFANA_URL=$(aws ssm get-parameter --name /ocar/observability/grafana-url --query 'Parameter.Value' --output text)
+          GRAFANA_AUTH=$(aws ssm get-parameter --name /ocar/observability/grafana-auth --with-decryption --query 'Parameter.Value' --output text)
+          curl -sS --max-time 5 -X POST "$GRAFANA_URL/api/annotations" \
+            -H "Authorization: Bearer $GRAFANA_AUTH" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg text "Blue/green cutover: ${{ steps.colors.outputs.active }} -> ${{ steps.colors.outputs.idle }} (image $IMAGE_TAG)" \
+                 '{time: (now*1000|floor), tags: ["deploy","blue-green","cutover"], text: $text}')" \
+            || echo "Grafana annotation failed (non-fatal, deploy already succeeded)" >&2
+
       - name: Resume scaling on the new active color, suspend it on the old one
         if: steps.flip.conclusion == 'success'
         run: |
@@ -463,6 +475,17 @@ jobs:
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --min-size 2
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0
           echo "Rolled back to ${{ steps.colors.outputs.active }}. NOTE: any migrations $IMAGE_TAG applied are NOT reverted (forward-only) -- if the migration itself is the problem, fix forward, don't roll it back." >&2
+          # Best-effort from here -- an annotation failure must not mask the
+          # rollback itself (which already succeeded above); the final exit 1
+          # is what actually fails the job, not whatever happens below.
+          set +e
+          GRAFANA_URL=$(aws ssm get-parameter --name /ocar/observability/grafana-url --query 'Parameter.Value' --output text)
+          GRAFANA_AUTH=$(aws ssm get-parameter --name /ocar/observability/grafana-auth --with-decryption --query 'Parameter.Value' --output text)
+          curl -sS --max-time 5 -X POST "$GRAFANA_URL/api/annotations" \
+            -H "Authorization: Bearer $GRAFANA_AUTH" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg text "Blue/green ROLLBACK: bake failed on ${{ steps.colors.outputs.idle }}, reverted to ${{ steps.colors.outputs.active }}" \
+                 '{time: (now*1000|floor), tags: ["deploy","blue-green","rollback"], text: $text}')" \
+            || echo "Grafana annotation failed (non-fatal)" >&2
           exit 1
 
       - name: Bake clean -- scale the old color down

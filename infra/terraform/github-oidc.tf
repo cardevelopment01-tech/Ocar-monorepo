@@ -78,6 +78,26 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         )
       },
       {
+        # Reads the Grafana Cloud Service Account token + URL to push a
+        # deploy annotation at cutover/rollback -- marks exactly when a
+        # test/incident happened on the dashboards. Read-only; hardcoded
+        # /ocar/observability/ path (not var.environment-scoped) because
+        # this is the one account-wide Grafana Cloud stack
+        # (infra/terraform/observability/), same credentials whether this
+        # role belongs to prod or staging.
+        Effect = "Allow"
+        Action = ["ssm:GetParameter"]
+        Resource = [
+          "${local.ssm_parameter_arn_prefix}/ocar/observability/grafana-auth",
+          "${local.ssm_parameter_arn_prefix}/ocar/observability/grafana-url",
+        ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = local.ssm_kms_key_arn
+      },
+      {
         # Scale the idle color up before cutover, scale the old color down
         # after the bake window, and suspend/resume each color's own
         # target-tracking policy around those windows so it can't fight the
