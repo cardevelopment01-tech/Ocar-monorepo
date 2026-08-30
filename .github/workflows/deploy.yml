@@ -452,3 +452,23 @@ jobs:
           echo "Job failed before the listener flip -- best-effort cleanup of the idle color." >&2
           aws autoscaling resume-processes --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --scaling-processes AlarmNotification || true
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 0 || true
+
+      - name: Reconcile scaling state if the job died between flip and a clean bake verdict
+        # The listener already flipped successfully (traffic is correctly on
+        # the new color), but the job died before the "Bake period" step ever
+        # produced a result -- most likely the "Resume scaling..." step above
+        # failed partway through its two AWS calls, possibly leaving one ASG
+        # resumed/suspended and the other not. steps.bake.outcome is
+        # 'skipped' in that case (it never got a chance to run, since its own
+        # `if:` is implicitly ANDed with success()); it's 'success' if bake
+        # ran to completion (that step always exits 0 by design, using its
+        # `result` output rather than its exit code to signal pass/fail) --
+        # excluding both 'success' and 'failure' here is the general form of
+        # "never got a clean verdict", so this doesn't double-fire alongside
+        # "Bake failed -- flip back" (which only fires when bake actually ran
+        # and reported result=failed) and doesn't fire when bake ran cleanly.
+        if: failure() && steps.flip.outcome == 'success' && steps.bake.outcome != 'success' && steps.bake.outcome != 'failure'
+        run: |
+          echo "Job failed after the listener flip succeeded but before the bake step could produce a result. Traffic is correctly on the new color (${{ steps.colors.outputs.idle }}) -- NOT rolling back the listener. The failure most likely happened in the resume/suspend step, so scaling state may be inconsistent between the two ASGs. Reconciling defensively by re-running both calls (both are idempotent, safe to repeat): resuming AlarmNotification on the new active color (${{ steps.colors.outputs.idle_asg }}), suspending it on the new idle color (${{ steps.colors.outputs.active_asg }})." >&2
+          aws autoscaling resume-processes --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --scaling-processes AlarmNotification || true
+          aws autoscaling suspend-processes --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --scaling-processes AlarmNotification || true
