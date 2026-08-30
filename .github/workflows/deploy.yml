@@ -398,6 +398,14 @@ jobs:
           # being kept warm on purpose for instant rollback (next step).
           aws autoscaling resume-processes --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --scaling-processes AlarmNotification
           aws autoscaling suspend-processes --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --scaling-processes AlarmNotification
+          # min_size is the redundancy floor, separate from desired_capacity
+          # -- the color now serving live traffic needs it restored to 2 so
+          # the target-tracking policy above can never take it below 2 on a
+          # quiet-traffic window (this happened for real during the initial
+          # migration and had to be fixed by hand on production). The color
+          # going idle gets its floor dropped to 0 so it can reach 0 later.
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 2
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --min-size 0
 
       - name: Bake period -- watch the new active color's error rate
         id: bake
@@ -448,6 +456,12 @@ jobs:
           # being kept warm-but-suspended in case someone wants to inspect
           # it before scaling it down by hand.
           aws autoscaling resume-processes --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --scaling-processes AlarmNotification
+          # Swap the min_size redundancy floor back too, same reasoning as
+          # the "Resume scaling..." step -- whichever color is actually live
+          # needs the floor, not whichever color the deploy was trying to
+          # promote.
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --min-size 2
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0
           echo "Rolled back to ${{ steps.colors.outputs.active }}. NOTE: any migrations $IMAGE_TAG applied are NOT reverted (forward-only) -- if the migration itself is the problem, fix forward, don't roll it back." >&2
           exit 1
 
@@ -480,6 +494,8 @@ jobs:
         # and reported result=failed) and doesn't fire when bake ran cleanly.
         if: failure() && steps.flip.outcome == 'success' && steps.bake.outcome != 'success' && steps.bake.outcome != 'failure'
         run: |
-          echo "Job failed after the listener flip succeeded but before the bake step could produce a result. Traffic is correctly on the new color (${{ steps.colors.outputs.idle }}) -- NOT rolling back the listener. The failure most likely happened in the resume/suspend step, so scaling state may be inconsistent between the two ASGs. Reconciling defensively by re-running both calls (both are idempotent, safe to repeat): resuming AlarmNotification on the new active color (${{ steps.colors.outputs.idle_asg }}), suspending it on the new idle color (${{ steps.colors.outputs.active_asg }})." >&2
+          echo "Job failed after the listener flip succeeded but before the bake step could produce a result. Traffic is correctly on the new color (${{ steps.colors.outputs.idle }}) -- NOT rolling back the listener. The failure most likely happened in the resume/suspend step, so scaling state may be inconsistent between the two ASGs. Reconciling defensively by re-running all four calls (all idempotent, safe to repeat): resuming AlarmNotification + restoring the min_size=2 redundancy floor on the new active color (${{ steps.colors.outputs.idle_asg }}), suspending AlarmNotification + dropping the floor to 0 on the new idle color (${{ steps.colors.outputs.active_asg }})." >&2
           aws autoscaling resume-processes --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --scaling-processes AlarmNotification || true
           aws autoscaling suspend-processes --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --scaling-processes AlarmNotification || true
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 2 || true
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --min-size 0 || true

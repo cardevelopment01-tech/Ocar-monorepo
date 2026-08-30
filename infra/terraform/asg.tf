@@ -4,12 +4,19 @@
 # that reacts to load before CPU saturates on a request-heavy API.
 #
 # One ASG per color (blue/green) -- both exist all the time so the idle
-# color is instantly available for the next deploy. min_size is 0 for both
-# so a bare `terraform apply` never fights the deploy workflow's runtime
-# scaling; desired_capacity is only used to seed the *active* color with 2
-# instances on first apply (see var.active_color) -- every deploy after
-# that flips capacity via `aws autoscaling update-auto-scaling-group`
-# from .github/workflows/deploy.yml, not by re-applying Terraform.
+# color is instantly available for the next deploy. min_size/desired_capacity
+# below only seed the *active* color with a 2-instance redundancy floor on
+# first apply (see var.active_color) -- every deploy after that flips both
+# at runtime via `aws autoscaling update-auto-scaling-group` from
+# .github/workflows/deploy.yml, not by re-applying Terraform (see
+# lifecycle.ignore_changes below). The min_size floor matters on its own,
+# separately from desired_capacity: without it, the pre-existing
+# request-count-tracking policy (below) is free to scale the *live* color
+# down to 1 instance (or lower) whenever real traffic is low, silently
+# removing the redundancy this ASG exists for in the first place -- this
+# happened for real during the blue/green migration and had to be fixed by
+# hand on production. min_size=2 on whichever color is actually live is not
+# optional.
 
 resource "aws_autoscaling_group" "api" {
   for_each = local.colors
@@ -24,7 +31,7 @@ resource "aws_autoscaling_group" "api" {
   vpc_zone_identifier = aws_subnet.public[*].id
   target_group_arns   = [aws_lb_target_group.api[each.key].arn]
 
-  min_size         = 0
+  min_size         = each.key == var.active_color ? 2 : 0
   desired_capacity = each.key == var.active_color ? 2 : 0
   max_size         = 4
 
@@ -82,12 +89,12 @@ resource "aws_autoscaling_group" "api" {
     propagate_at_launch = true
   }
 
-  # desired_capacity is flipped at runtime by the deploy workflow as part of
-  # the blue/green cutover -- Terraform must not revert that on the next
-  # plan/apply, same reasoning as the listener's default_action below in
-  # alb.tf.
+  # min_size and desired_capacity are both flipped at runtime by the deploy
+  # workflow as part of the blue/green cutover -- Terraform must not revert
+  # either on the next plan/apply, same reasoning as the listener's
+  # default_action below in alb.tf.
   lifecycle {
-    ignore_changes = [desired_capacity]
+    ignore_changes = [min_size, desired_capacity]
   }
 }
 
