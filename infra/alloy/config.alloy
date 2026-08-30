@@ -79,7 +79,32 @@ prometheus.scrape "api" {
 
 prometheus.scrape "node" {
   targets    = [{"__address__" = "node_exporter:9100", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
+  forward_to = [prometheus.relabel.node.receiver]
+}
+
+// node_exporter ships ~500-700 series per host unfiltered (Grafana Labs'
+// own sizing guide) -- this tipped the tenant's 15k active-series cap
+// during 2026-08-30's blue/green rollout (repeated instance churn each
+// left its full series set "active" in Mimir until it aged out). Keep-list
+// chosen for real incident/audit value, not just what ocar-overview.json
+// currently queries (cpu/memory/filesystem) -- swap, inodes, disk I/O, and
+// network errors/drops are exactly the signals a postmortem reaches for
+// that a narrower "only what's dashboarded" list would have missed.
+// device-exclude on the exporter itself (docker-compose.prod.yml) already
+// keeps node_network_* bounded to real interfaces -- this keep-list is the
+// second layer, same two-layer approach as prometheus.relabel "cadvisor"
+// below.
+prometheus.relabel "node" {
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  // Flat enumeration, not clever suffix-combining -- node_filesystem_files/
+  // _files_free/_readonly have no _bytes suffix (unlike _size/_avail), and
+  // getting that wrong silently drops the metric instead of erroring.
+  rule {
+    source_labels = ["__name__"]
+    regex = "node_(cpu_seconds_total|load1|load5|load15|memory_MemTotal_bytes|memory_MemAvailable_bytes|memory_SwapTotal_bytes|memory_SwapFree_bytes|memory_Dirty_bytes|memory_Writeback_bytes|filesystem_size_bytes|filesystem_avail_bytes|filesystem_files|filesystem_files_free|filesystem_readonly|disk_io_time_seconds_total|disk_read_bytes_total|disk_written_bytes_total|network_receive_bytes_total|network_transmit_bytes_total|network_receive_errs_total|network_transmit_errs_total|network_receive_drop_total|network_transmit_drop_total|filefd_allocated|filefd_maximum|boot_time_seconds)"
+    action = "keep"
+  }
 }
 
 // Every instance's exporter reports the same pg_stat_statements/pg_stat_database

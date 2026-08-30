@@ -84,6 +84,13 @@ services:
     restart: unless-stopped
     command:
       - '--path.rootfs=/host'
+      # Docker creates a new virtual interface per container (veth*) and per
+      # network (docker*/br-*/cni*) -- unfiltered, node_network_* churns a
+      # fresh set of series on every container recreate, the same problem
+      # cadvisor's label allowlist (config.alloy) already solved for
+      # container id/image labels. Filtering at the exporter (not just
+      # downstream in Alloy) means these never get collected at all.
+      - '--collector.netdev.device-exclude=^(lo|veth.*|docker.*|br-.*|cni.*)$$'
     volumes:
       - /:/host:ro,rslave
     networks:
