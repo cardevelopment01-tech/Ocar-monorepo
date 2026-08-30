@@ -15,6 +15,19 @@ data "aws_ami" "ubuntu" {
     name   = "virtualization-type"
     values = ["hvm"]
   }
+
+  # TEMPORARY: pinned to the exact AMI blue's live instances are already
+  # running (ami-07e5ce642bbc48c0d) so today's blue/green migration apply
+  # doesn't also trigger an incidental rolling instance refresh from an
+  # unrelated AMI patch that happened to become "most_recent" in the time
+  # since state was last refreshed -- isolates this apply to exactly one
+  # change. Remove this filter in a separate, deliberate follow-up apply
+  # once blue/green is confirmed stable, to let both colors pick up the
+  # latest AMI normally again.
+  filter {
+    name   = "image-id"
+    values = ["ami-07e5ce642bbc48c0d"]
+  }
 }
 
 resource "aws_launch_template" "api" {
