@@ -146,7 +146,11 @@ jobs:
       ALB_DNS_NAME: ${{ vars.ALB_DNS_NAME }}
       ALB_NAME: ocar-prod-alb
       BAKE_SECONDS: 600
-      BAKE_POLL_INTERVAL: 30
+      # Must stay a multiple of 60: HTTPCode_Target_5XX_Count is a
+      # standard-resolution ALB metric, and CloudWatch's GetMetricStatistics
+      # requires --period to be a multiple of 60 for standard-resolution
+      # metrics -- a finer-grained value makes the bake-window query fail.
+      BAKE_POLL_INTERVAL: 60
       MAX_5XX_PER_POLL: 5
     steps:
       - name: Log in to GHCR
@@ -196,10 +200,22 @@ jobs:
 
       - name: Run migrations (new image, current color still serving all traffic)
         env:
+          # ocar-prod-db is Terraform's stable "${project_name}-${environment}-db"
+          # identifier (infra/terraform/rds.tf) -- not a secret, doesn't rotate,
+          # safe to hardcode here same as it is throughout rds.tf itself.
           DB_INSTANCE_ID: ocar-prod-db
           INSTANCE_ID: ${{ steps.instance.outputs.id }}
         run: |
           set -e
+          # DB host/port/name/user/secret-ARN are all queried live from RDS at
+          # deploy time instead of being copied into a hand-maintained SSM
+          # parameter -- see docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md for
+          # why a copied value (the old migration-database-url parameter) went
+          # stale and caused an outage. None of these values are secrets; the
+          # actual password is fetched by migrate.js itself, inside the
+          # container, directly from Secrets Manager via the instance's IAM role
+          # (iam.tf's rds_secret_read policy) -- nothing sensitive crosses into
+          # this workflow at all.
           DB_INFO=$(aws rds describe-db-instances --db-instance-identifier "$DB_INSTANCE_ID" \
             --query "DBInstances[0].{Host:Endpoint.Address,Port:Endpoint.Port,Name:DBName,User:MasterUsername,SecretArn:MasterUserSecret.SecretArn}" \
             --output json)
@@ -209,6 +225,32 @@ jobs:
           DB_USER=$(echo "$DB_INFO" | jq -r .User)
           DB_SECRET_ARN=$(echo "$DB_INFO" | jq -r .SecretArn)
 
+          # Routed through SSM to a live instance on the active color instead
+          # of a `docker run` on this GitHub-hosted runner -- RDS
+          # (infra/terraform/rds.tf) isn't publicly reachable, only the EC2
+          # instances' security group can reach it. api/entrypoint.sh also
+          # runs migrate.js on every container start, so this ad-hoc run and
+          # each instance's own boot both invoke it -- safe only because
+          # migrate.js is idempotent (skips already-applied files,
+          # pg_advisory_lock serializes concurrent runs). This run exists
+          # solely to gate the rollout on migrations succeeding. --name
+          # db_migrate keeps this container out of the ocar_* naming
+          # convention cadvisor/Alloy filter on (infra/alloy/config.alloy) --
+          # without it, cadvisor picked up a fresh randomly-named container on
+          # every deploy and permanently inflated Grafana Cloud's
+          # active-series count (2026-08-19 incident). --pull always: the
+          # active color's instances have been running this same image tag
+          # continuously and already have an old copy of a mutable tag cached
+          # locally -- `docker run` does not re-pull an image that already
+          # exists locally under the same tag, so without this flag the
+          # migration container could silently run stale, pre-this-deploy
+          # code (confirmed via a real deploy failure: DB_SECRET_ARN correctly
+          # reached the container's shell env, but migrate.js still hit the
+          # OLD code's "DATABASE_URL environment variable is not set" error,
+          # meaning it never saw the DB_SECRET_ARN branch added in that
+          # deploy at all). Brand-new instances at boot don't have this
+          # problem -- they have nothing cached yet, so entrypoint.sh's own
+          # migrate.js run is unaffected.
           cat > /tmp/ssm-commands.json <<EOF
           {
             "commands": [
@@ -260,6 +302,15 @@ jobs:
 
       - name: Scale the idle color up
         run: |
+          # Scale to 0 first, then to 2 -- if the previous deploy attempt's
+          # bake failed, this ASG was deliberately left at desired=2 (kept
+          # warm for inspection), so a straight "set desired=2" would be a
+          # no-op and the health-check/smoke-test below would validate those
+          # already-running, previously-bad instances instead of the new
+          # image tag just written above. Forcing 0 first guarantees fresh
+          # instances boot with the current image tag every time. Harmless
+          # no-op in the normal case (idle color already at 0).
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 0
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 2
 
       - name: Wait for the idle color's targets to pass health checks
@@ -341,6 +392,15 @@ jobs:
               --dimensions Name=LoadBalancer,Value="$ALB_ARN_SUFFIX" Name=TargetGroup,Value="$IDLE_TG_ARN_SUFFIX" \
               --start-time "${START}Z" --end-time "${END}Z" --period "$BAKE_POLL_INTERVAL" --statistics Sum \
               --query 'Datapoints[0].Sum' --output text)
+            CW_STATUS=$?
+            if [ "$CW_STATUS" -ne 0 ]; then
+              # Fail closed, not open: a broken metrics query must not read
+              # as "zero errors" -- that's exactly the bug that let this
+              # bake window silently no-op regardless of real 5xx volume.
+              echo "cloudwatch get-metric-statistics failed (exit $CW_STATUS) -- treating as a bake failure" >&2
+              echo "result=failed" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             [ "$ERRORS" = "None" ] && ERRORS=0
             ERRORS_INT=${ERRORS%.*}
             echo "bake check $i/$ITERATIONS: $ERRORS_INT 5xx in the last ${BAKE_POLL_INTERVAL}s"
