@@ -35,6 +35,13 @@ discovery.relabel "containers" {
     target_label = "host"
     replacement   = sys.env("ALLOY_HOSTNAME")
   }
+
+  // Which blue/green color this instance belongs to -- lets dashboards split
+  // by color during a deploy (matches the EC2 Color tag in asg.tf).
+  rule {
+    target_label = "color"
+    replacement   = sys.env("ALLOY_COLOR")
+  }
 }
 
 loki.source.docker "containers" {
@@ -62,15 +69,16 @@ loki.write "grafana_cloud" {
 // host label matches what the logs pipeline already tags each line with --
 // without it, every instance's series arrive under the same identity and
 // can't be told apart in a query or dashboard (see docs/superpowers/specs/
-// 2026-08-08-observability-stack-design.md).
+// 2026-08-08-observability-stack-design.md). color likewise matches the logs
+// pipeline's color label -- lets dashboards split metrics by blue/green.
 prometheus.scrape "api" {
-  targets       = [{"__address__" = "api:4000", "host" = sys.env("ALLOY_HOSTNAME")}]
+  targets       = [{"__address__" = "api:4000", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   metrics_path  = "/metrics"
   forward_to    = [prometheus.remote_write.grafana_cloud.receiver]
 }
 
 prometheus.scrape "node" {
-  targets    = [{"__address__" = "node_exporter:9100", "host" = sys.env("ALLOY_HOSTNAME")}]
+  targets    = [{"__address__" = "node_exporter:9100", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 }
 
@@ -78,14 +86,14 @@ prometheus.scrape "node" {
 // numbers (they all connect to the same shared Neon DB) -- harmless
 // duplication, dashboard queries use max() rather than sum() where that matters.
 prometheus.scrape "postgres" {
-  targets    = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME")}]
+  targets    = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 }
 
 // Per-container CPU/memory -- node_exporter above is host-wide only, this is
 // what lets the dashboard tell api's usage apart from alloy's/postgres_exporter's.
 prometheus.scrape "cadvisor" {
-  targets    = [{"__address__" = "cadvisor:8080", "host" = sys.env("ALLOY_HOSTNAME")}]
+  targets    = [{"__address__" = "cadvisor:8080", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   forward_to = [prometheus.relabel.cadvisor.receiver]
 }
 
@@ -119,7 +127,7 @@ prometheus.relabel "cadvisor" {
   // container_label_* noise (cadvisor's --store_container_labels
   // defaults to true) in one rule, instead of maintaining a drop-list.
   rule {
-    regex  = "__name__|name|host"
+    regex  = "__name__|name|host|color"
     action = "labelkeep"
   }
 }

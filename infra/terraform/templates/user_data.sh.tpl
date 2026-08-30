@@ -47,13 +47,18 @@ cd /opt/ocar
 # .env.prod: injected into the api/alloy containers via docker-compose.prod.yml's
 # own `env_file: .env.prod` -- filename matches exactly what that (unmodified)
 # committed file already expects. ALLOY_HOSTNAME is unique per instance (that's
-# the whole point -- see config.alloy's per-target host label); everything
-# else in this file (DB/JWT/Redis creds, GRAFANA_CLOUD_* creds) is shared
-# across instances and comes straight from the api-env parameter.
+# the whole point -- see config.alloy's per-target host label); ALLOY_COLOR is
+# the same for every instance in this launch template (blue or green, baked in
+# at Terraform render time -- there's no runtime way to ask "which color am I"
+# otherwise) and is what lets Grafana dashboards actually split by color during
+# a deploy, matching the EC2 Color tag asg.tf already sets. Everything else in
+# this file (DB/JWT/Redis creds, GRAFANA_CLOUD_* creds) is shared across
+# instances and comes straight from the api-env parameter.
 aws ssm get-parameter --region "$REGION" --name "${api_env_parameter_name}" --with-decryption --query 'Parameter.Value' --output text > .env.prod
 {
   echo "ALLOY_HOSTNAME=$INSTANCE_ID"
   echo "ALLOY_ENV=${environment}"
+  echo "ALLOY_COLOR=${color}"
 } >> .env.prod
 
 # .env: Compose's own auto-loaded substitution file (unrelated to env_file
