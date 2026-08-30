@@ -18,7 +18,9 @@ data "aws_ami" "ubuntu" {
 }
 
 resource "aws_launch_template" "api" {
-  name_prefix   = "${var.project_name}-${var.environment}-"
+  for_each = local.colors
+
+  name_prefix   = "${var.project_name}-${var.environment}-${each.key}-"
   image_id      = data.aws_ami.ubuntu.id
   instance_type = var.instance_type
 
@@ -50,7 +52,7 @@ resource "aws_launch_template" "api" {
   user_data = base64encode(templatefile("${path.module}/templates/user_data.sh.tpl", {
     region                        = var.aws_region
     environment                   = var.environment
-    image_tag_parameter_name      = local.image_tag_parameter_name
+    image_tag_parameter_name      = local.image_tag_parameter_names[each.key]
     ghcr_token_parameter_name     = local.ghcr_token_parameter_name
     api_env_parameter_name        = local.api_env_parameter_name
     docker_compose_parameter_name = aws_ssm_parameter.docker_compose_prod.name
@@ -61,7 +63,8 @@ resource "aws_launch_template" "api" {
   tag_specifications {
     resource_type = "instance"
     tags = {
-      Name = "${var.project_name}-${var.environment}-api"
+      Name  = "${var.project_name}-${var.environment}-api-${each.key}"
+      Color = each.key
     }
   }
 
