@@ -52,9 +52,13 @@ resource "aws_iam_role" "github_actions_deploy" {
   }
 }
 
-# Least privilege: only what the deploy job actually does -- update the
-# image-tag parameter and trigger/monitor an ASG instance refresh. No EC2,
-# no IAM, no broader SSM access.
+# Least privilege: only what the blue/green deploy job actually does --
+# read/write the per-color image-tag + active-color SSM params, scale the
+# idle color up and the old color down (suspending/resuming each color's own
+# scaling policy around that window so it can't fight the manual capacity
+# change), flip the ALB listener at cutover, and watch the bake window via
+# CloudWatch -- plus the pre-existing migration-routing permissions (find a
+# live instance, run the migration over SSM, read RDS connection info).
 resource "aws_iam_role_policy" "github_actions_deploy" {
   name = "${var.project_name}-${var.environment}-gha-deploy-policy"
   role = aws_iam_role.github_actions_deploy.id
@@ -63,6 +67,9 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
     Version = "2012-10-17"
     Statement = [
       {
+        # Reads/writes the per-color image-tag params (which color to deploy
+        # which image to) and the active-color param (which color is
+        # currently live).
         Effect = "Allow"
         Action = ["ssm:GetParameter", "ssm:PutParameter"]
         Resource = concat(
@@ -81,6 +88,8 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         Resource = [for c in local.colors : aws_autoscaling_group.api[c].arn]
       },
       {
+        # Polls the idle color's target health before cutover and the bake
+        # window's health after, for both target groups.
         Effect   = "Allow"
         Action   = ["elasticloadbalancing:DescribeTargetHealth", "elasticloadbalancing:DescribeTargetGroups"]
         Resource = [for c in local.colors : aws_lb_target_group.api[c].arn]
@@ -117,6 +126,10 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         Resource = "*"
       },
       {
+        # Runs the migration container on that instance via SSM instead of
+        # `docker run` on this runner. Needs both the built-in document ARN
+        # and the target instance ARN allowed -- instance/* because, same as
+        # above, the specific instance ID isn't known ahead of time.
         Effect = "Allow"
         Action = ["ssm:SendCommand"]
         Resource = [
@@ -125,11 +138,18 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         ]
       },
       {
+        # Same non-scopability situation as DescribeInstanceRefreshes used to
+        # be -- GetCommandInvocation doesn't support resource-level scoping.
         Effect   = "Allow"
         Action   = ["ssm:GetCommandInvocation"]
         Resource = "*"
       },
       {
+        # Reads DB host/port/name/user/secret-ARN live from RDS at deploy
+        # time instead of a hand-maintained SSM parameter -- see
+        # docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md. Confirmed via a
+        # real CI failure (AccessDenied) the first time this step ran.
+        # Scoped to the one instance this config manages, not "*".
         Effect   = "Allow"
         Action   = ["rds:DescribeDBInstances"]
         Resource = aws_db_instance.main.arn
