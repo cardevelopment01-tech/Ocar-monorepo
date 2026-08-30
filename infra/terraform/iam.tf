@@ -1,8 +1,16 @@
 # IAM role EC2 instances assume so their boot script (user_data, step 6) can
 # read the current Docker image tag, the GHCR pull token, and the API's env
-# file from SSM Parameter Store -- scoped to exactly those three parameters,
-# not the broad AmazonSSMManagedInstanceCore managed policy (that also grants
-# full Session Manager access, which nothing here needs).
+# file from SSM Parameter Store -- scoped to exactly those three parameters.
+# AmazonSSMManagedInstanceCore (below) is also attached -- it's broader than
+# just this boot-parameter read (it also grants full Session Manager shell
+# access), but it's load-bearing, not optional: the deploy workflow routes
+# database migrations to a live instance via `aws ssm send-command`, which
+# only works against an instance whose SSM Agent has registered as a managed
+# instance -- a capability this policy alone doesn't grant. Removing it
+# breaks every deploy. Do not remove without replacing it with an equivalent
+# scoped policy (ssmmessages:*Channel actions + ssm:UpdateInstanceInformation
+# at minimum) AND updating deploy.yml's migration step to a different
+# transport.
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
@@ -77,6 +85,18 @@ resource "aws_iam_role_policy" "read_boot_parameters" {
 resource "aws_iam_instance_profile" "ec2" {
   name = "${var.project_name}-${var.environment}-ec2-profile"
   role = aws_iam_role.ec2.name
+}
+
+# Required for the SSM Agent to register the instance as a managed instance
+# and to receive `aws ssm send-command` calls -- see the load-bearing note on
+# this role above. Not the broadest option available (that would be granting
+# full AdministratorAccess-adjacent Session Manager plugins on top), but it
+# is the AWS-maintained, correctly-scoped policy for exactly this capability
+# -- a hand-rolled inline replacement risks quietly missing one of the
+# several ssmmessages/ec2messages actions the agent needs across versions.
+resource "aws_iam_role_policy_attachment" "ssm_managed_instance_core" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
 # Lets the app request a short-lived signed auth token (via @aws-sdk/rds-signer)
