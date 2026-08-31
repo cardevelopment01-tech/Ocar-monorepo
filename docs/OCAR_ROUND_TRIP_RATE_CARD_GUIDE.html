@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Ocar — Round-Trip Rate Card Guide</title>
+<style>
+@page { size: A4; margin: 18mm 16mm 16mm 16mm;
+  @bottom-center { content: counter(page) " / " counter(pages);
+    font-family: "DejaVu Sans"; font-size: 7.5pt; color: #8a94a0; } }
+@page :first { @bottom-center { content: ""; } }
+* { box-sizing: border-box; }
+body { font-family: "DejaVu Sans", sans-serif; font-size: 9.1pt; line-height: 1.5;
+  color: #1c2530; margin: 0; }
+h1 { font-size: 20pt; margin: 0 0 2mm; color: #0f172a; letter-spacing: -0.4pt; }
+h2 { font-size: 12.5pt; margin: 8mm 0 2.5mm; color: #0e4f6b; letter-spacing: -0.2pt;
+  border-bottom: 1.6pt solid #0e7490; padding-bottom: 1.4mm; }
+h3 { font-size: 10pt; margin: 5mm 0 1.8mm; color: #1c2530; }
+p { margin: 0 0 2.6mm; text-align: justify; }
+code { font-family: "DejaVu Sans Mono"; font-size: 8.2pt; background: #eef2f6;
+  padding: 0.4mm 1mm; border-radius: 1.2mm; }
+table { width: 100%; border-collapse: collapse; margin: 3mm 0 4mm; font-size: 8.4pt; }
+th { background: #0e4f6b; color: #fff; text-align: left; padding: 1.7mm 2mm;
+  font-weight: bold; font-size: 8pt; }
+td { padding: 1.6mm 2mm; border-bottom: 0.4pt solid #dde3ea; vertical-align: top; }
+tr:nth-child(even) td { background: #f7f9fb; }
+.num { text-align: right; font-family: "DejaVu Sans Mono"; font-size: 8.2pt; }
+.ctr { text-align: center; }
+.cover { border-left: 4pt solid #0e7490; padding: 0 0 0 5mm; margin: 0 0 7mm; }
+.sub { color: #5b6b7d; font-size: 9.5pt; margin: 0; }
+.meta { font-size: 8pt; color: #8a94a0; margin-top: 2.5mm; }
+.box { border: 0.7pt solid #cfd8e0; border-left: 3.2pt solid #0e7490; background: #f6fafb;
+  padding: 3mm 4mm; margin: 4mm 0; border-radius: 0 1.5mm 1.5mm 0; }
+.warn { border-color: #d9c9a0; border-left-color: #b8860b; background: #fdfaf1; }
+.bad  { border-color: #e6c9c9; border-left-color: #9b2226; background: #fdf4f4; }
+.good { border-color: #c2ddc8; border-left-color: #16794a; background: #f4faf6; }
+.box p:last-child { margin-bottom: 0; }
+.lbl { font-weight: bold; font-size: 8.3pt; text-transform: uppercase;
+  letter-spacing: 0.5pt; color: #0e4f6b; display: block; margin-bottom: 1.5mm; }
+.warn .lbl { color: #8a6508; } .bad .lbl { color: #9b2226; } .good .lbl { color: #16794a; }
+.same { color: #9b2226; font-weight: bold; }
+.diff { color: #16794a; font-weight: bold; }
+.mono { font-family: "DejaVu Sans Mono"; font-size: 8.3pt; }
+ol, ul { margin: 0 0 3mm; padding-left: 5.5mm; }
+li { margin-bottom: 1.6mm; }
+.step { background:#0e7490; color:#fff; border-radius:50%; display:inline-block;
+  width:5mm; height:5mm; text-align:center; font-size:7.5pt; font-weight:bold; }
+.formula { background:#0f172a; color:#e8eef4; font-family:"DejaVu Sans Mono";
+  font-size:8.3pt; padding:4mm 5mm; border-radius:2mm; margin:3.5mm 0; line-height:1.65; }
+.formula .k { color:#7dd3fc; } .formula .c { color:#94a3b8; } .formula .h { color:#fcd34d; }
+.foot { font-size:7.6pt; color:#5b6b7d; border-top:0.5pt solid #dde3ea;
+  padding-top:2mm; margin-top:3mm; }
+.nb { page-break-inside: avoid; }
+</style></head><body>
+<div class="cover">
+<h1>Round-Trip Rate Cards</h1>
+<p class="sub">Why every nearby outstation destination is currently priced the same,
+and how to correct it from the admin portal.</p>
+<p class="meta">Ocar &middot; Prepared for operations and pricing &middot; 31 August 2026<br>
+Formula verified against <span class="mono">api/src/lib/fare.ts</span> (round-trip branch);
+seeded values against <span class="mono">016_seed.sql</span> and
+<span class="mono">074_round_trip_package_billing.sql</span>.</p>
+</div>
+
+<div class="box bad nb">
+<span class="lbl">Reported issue</span>
+<p>&ldquo;Round trip Outstation ride fares showing same for Bhubaneswar and Puri also.
+So it&rsquo;s not calculating properly.&rdquo;</p>
+</div>
+
+<div class="box good nb">
+<span class="lbl">Summary</span>
+<p><b>The calculation is correct. The configuration is not.</b> Round trips are billed on a
+guaranteed-minimum-kilometre package &mdash; the same model Ola Outstation and comparable
+operators use. That package is currently set to <b>250&nbsp;km per day for every vehicle
+category</b>, a placeholder inserted during setup and never replaced with real numbers.
+The practical effect: <b>every destination within roughly 125&nbsp;km of the pickup point
+returns an identical fare</b>, because the whole round trip fits inside the package.
+<b>The fix is a data change in the admin portal &mdash; no code change, no deployment.</b></p>
+</div>
+
+<h2>1. Which ride type covers which journey</h2>
+
+<p>This document concerns <b>round trips only</b>. Ocar has three ride types and they serve
+different journeys, so it is worth being precise about the boundary before looking at fares.</p>
+
+<table class="nb">
+<tr><th style="width:20%">Ride type</th><th style="width:26%">Serves</th><th>Billing basis</th></tr>
+<tr><td><b>Rental</b></td><td>Journeys that begin and end inside the same city zone</td>
+    <td>Hourly/kilometre packages from <span class="mono">rental_packages</span> &mdash; a
+    separate configuration, not covered here.</td></tr>
+<tr><td><b>One way</b></td><td>Intercity, single leg</td>
+    <td>Per kilometre plus per minute.</td></tr>
+<tr><td><b>Round trip</b></td><td>Intercity, out and back</td>
+    <td>Guaranteed-minimum-kilometre package plus driver allowance. <b>This document.</b></td></tr>
+</table>
+
+<p>A journey is treated as intercity only when pickup and drop do <i>not</i> both fall inside the
+same city boundary. That check lives in <span class="mono">classifyTrip()</span>, which returns
+either <span class="mono">in_city</span> or <span class="mono">outstation</span>.</p>
+
+<div class="box nb">
+<span class="lbl">Bhubaneswar, Cuttack and Khordha are one zone</span>
+<p>These three are deliberately configured as a <b>single merged city boundary</b>, not three
+separate cities. Any journey between them therefore classifies as <span class="mono">in_city</span>
+and is served by <b>rental</b>, not by round trip. They are consequently <b>not used as examples
+anywhere in this document</b> &mdash; a Bhubaneswar&ndash;Cuttack round trip is not an outstation
+booking and is not priced by the rate cards discussed here.</p>
+<p>Every route used below is a genuine outstation destination: a separately configured city
+outside that merged zone.</p>
+</div>
+
+<h2>2. How a round-trip fare is built</h2>
+
+<p>A round-trip outstation booking is not billed purely per kilometre driven. It is billed as a
+<b>package</b>: a guaranteed minimum distance per day that the customer pays for whether or not
+they travel that far, plus a flat daily allowance for the driver, plus any distance driven
+<i>beyond</i> the package (&ldquo;overage&rdquo;).</p>
+
+<p>The package exists to protect the driver. A driver who commits a full day to an outstation
+trip should not be paid as though it were a short hop. The package sets a floor under that
+day&rsquo;s earnings.</p>
+
+<div class="formula">
+<span class="c"># api/src/lib/fare.ts &mdash; round_trip branch</span><br><br>
+<span class="k">days</span>          = max(1, ceil(trip_hours / 24))       <span class="c">// trip_hours is floored at 4 upstream</span><br>
+<span class="k">packageKm</span>     = days &times; <span class="h">km_per_day</span><br>
+<span class="k">overageKm</span>     = max(0, estimated_km &minus; packageKm)<br><br>
+distance_fare = packageKm &times; <span class="h">rate_per_km</span><br>
+overage_fare  = overageKm &times; <span class="h">rate_per_km</span><br>
+<span class="k">metered</span>       = distance_fare + overage_fare<br>
+<span class="k">floored</span>       = max(metered, <span class="h">min_fare</span>)<br>
+<span class="k">subtotal</span>      = floored + stop_fare + (days &times; <span class="h">driver_allowance_per_day</span>)<br>
+<span class="k">total</span>         = subtotal &times; surge_multiplier<br><br>
+<span class="c"># The two metered lines reduce to a single idea:</span><br>
+<span class="c">#   metered = max(estimated_km, packageKm) &times; rate_per_km</span><br>
+<span class="c"># You pay for the package, or for the real distance &mdash; whichever is larger.</span>
+</div>
+
+<p>Two details that matter and are easy to miss:</p>
+<ul>
+<li><b><span class="mono">estimated_km</span> is the total to-and-fro distance</b>, not the
+one-way leg. Puri is a 64&nbsp;km leg, so <span class="mono">estimated_km</span> = 128. The
+doubling happens in <span class="mono">pricing.service.ts</span> before the fare engine runs.</li>
+<li><b>Surge multiplies the whole subtotal</b>, including the driver allowance &mdash; not just
+the distance component.</li>
+</ul>
+
+<h2>3. Why nearby destinations all return the same fare</h2>
+
+<p>With <span class="mono">km_per_day = 250</span> on a single-day trip, the package is
+250&nbsp;km of <i>round-trip</i> distance. That covers any destination up to <b>125&nbsp;km
+away</b>. Puri, Jajpur and Paradeep are all inside that radius, so all three are billed for the
+full 250&nbsp;km package, none generates overage, and the actual distance never enters the
+calculation.</p>
+
+<table class="nb">
+<tr><th style="width:30%">Sedan &middot; single day</th>
+    <th class="num">Puri<br>64 km each way</th>
+    <th class="num">Jajpur<br>98 km each way</th>
+    <th class="num">Paradeep<br>105 km each way</th></tr>
+<tr><td>Actual distance (to and fro)</td><td class="num">128 km</td><td class="num">196 km</td><td class="num">210 km</td></tr>
+<tr><td>Package (1 day &times; 250 km)</td><td class="num">250 km</td><td class="num">250 km</td><td class="num">250 km</td></tr>
+<tr><td>Overage beyond package</td><td class="num">0 km</td><td class="num">0 km</td><td class="num">0 km</td></tr>
+<tr><td>Distance fare (250 &times; &#8377;13)</td><td class="num">&#8377;3,250</td><td class="num">&#8377;3,250</td><td class="num">&#8377;3,250</td></tr>
+<tr><td>Overage fare</td><td class="num">&#8377;0</td><td class="num">&#8377;0</td><td class="num">&#8377;0</td></tr>
+<tr><td>Driver allowance (1 &times; &#8377;300)</td><td class="num">&#8377;300</td><td class="num">&#8377;300</td><td class="num">&#8377;300</td></tr>
+<tr><td><b>Total charged</b></td>
+    <td class="num same">&#8377;3,550</td><td class="num same">&#8377;3,550</td><td class="num same">&#8377;3,550</td></tr>
+</table>
+
+<p>The same collapse happens in every vehicle category. Balasore is included as a control: at
+392&nbsp;km round trip it exceeds the package, so it does price differently &mdash; which
+confirms the engine works correctly and only the package size is wrong.</p>
+
+<table class="nb">
+<tr><th>Category</th><th class="num">Rate/km</th>
+    <th class="num">Puri<br>128 km</th><th class="num">Jajpur<br>196 km</th>
+    <th class="num">Paradeep<br>210 km</th><th class="num">Balasore<br>392 km</th></tr>
+<tr><td>Hatchback</td><td class="num">&#8377;10</td><td class="num same">&#8377;2,800</td><td class="num same">&#8377;2,800</td><td class="num same">&#8377;2,800</td><td class="num diff">&#8377;4,220</td></tr>
+<tr><td>Sedan</td><td class="num">&#8377;13</td><td class="num same">&#8377;3,550</td><td class="num same">&#8377;3,550</td><td class="num same">&#8377;3,550</td><td class="num diff">&#8377;5,396</td></tr>
+<tr><td>SUV</td><td class="num">&#8377;17</td><td class="num same">&#8377;4,550</td><td class="num same">&#8377;4,550</td><td class="num same">&#8377;4,550</td><td class="num diff">&#8377;6,964</td></tr>
+<tr><td>Luxury</td><td class="num">&#8377;25</td><td class="num same">&#8377;6,550</td><td class="num same">&#8377;6,550</td><td class="num same">&#8377;6,550</td><td class="num diff">&#8377;10,100</td></tr>
+<tr><td>Van</td><td class="num">&#8377;16</td><td class="num same">&#8377;4,300</td><td class="num same">&#8377;4,300</td><td class="num same">&#8377;4,300</td><td class="num diff">&#8377;6,572</td></tr>
+</table>
+
+<p class="foot">Round-trip distances are twice the approximate one-way road distance. Single-day
+bookings, no stops, no surge. Produced by executing the formula above. Approximate road distances
+are for illustration; the platform bills the actual routed distance.</p>
+
+<h2>4. Is this pricing model correct?</h2>
+
+<p>Yes. The guaranteed-minimum-kilometre package is the standard commercial model for outstation
+cabs in India, not an invention of this platform. Ola Outstation bills a
+<b>minimum of 250&nbsp;km per day</b> for sedans at roughly &#8377;11&ndash;15/km, with a
+mandatory driver allowance (<i>batta</i>) of &#8377;300&ndash;500 per day on top, plus GST and
+surge. Savaari and other established operators price the same way.</p>
+
+<div class="box warn nb">
+<span class="lbl">The distinction that matters</span>
+<p>The 250&nbsp;km/day figure is genuine industry practice &mdash; <b>for the trips it was
+designed for</b>. It protects a driver on a long interstate run of 400&nbsp;km or more, often
+spanning several days. It was never intended for a 64&nbsp;km regional hop. Ocar inherited the
+number without inheriting the context: <b>the model is right, the parameter is wrong for this
+market.</b> Odisha&rsquo;s coastal corridor puts most demand well inside a 125&nbsp;km radius,
+which is precisely the range the current setting flattens.</p>
+</div>
+
+<h3>Cross-check against the live market</h3>
+
+<p>Published fares for a Bhubaneswar&ndash;Puri same-day round trip by sedan sit in the
+<b>&#8377;1,700&ndash;&#8377;2,200</b> band. Ocar currently quotes &#8377;3,550 &mdash; roughly
+60&ndash;100&nbsp;% above the market.</p>
+
+<table class="nb">
+<tr><th>Source</th><th>Vehicle</th><th class="num">Puri round-trip fare</th></tr>
+<tr><td>MakeMyTrip</td><td>Sedan</td><td class="num">&#8377;1,714</td></tr>
+<tr><td>CabBazar (same-day return, 10&ndash;12 h)</td><td>Sedan</td><td class="num">&#8377;2,180</td></tr>
+<tr><td>CabBazar (same-day return, 10&ndash;12 h)</td><td>SUV</td><td class="num">&#8377;3,021</td></tr>
+<tr><td><b>Ocar today</b></td><td>Sedan</td><td class="num same">&#8377;3,550</td></tr>
+<tr><td><b>Ocar after correction</b></td><td>Sedan</td><td class="num diff">&#8377;1,964</td></tr>
+</table>
+
+<p>So the misconfiguration is not only collapsing price differences between destinations &mdash;
+it is also pricing the platform out of its own market on its single busiest route.</p>
+
+<h2>5. Choosing the right package size</h2>
+
+<p>The rule: <b>the package must be smaller than the shortest round trip you actually sell.</b>
+Only then does real distance drive the price. If the package is larger, every trip beneath it
+collapses to the same fare. Ocar&rsquo;s shortest outstation round trip is Puri at 128&nbsp;km,
+so the package must sit below 128.</p>
+
+<table class="nb">
+<tr><th class="num">km_per_day</th><th class="num">Puri<br>128 km</th>
+    <th class="num">Jajpur<br>196 km</th><th class="num">Paradeep<br>210 km</th>
+    <th class="num">Balasore<br>392 km</th><th>Distinct prices</th></tr>
+<tr><td class="num">250 <i>(today)</i></td><td class="num">&#8377;3,550</td><td class="num">&#8377;3,550</td><td class="num">&#8377;3,550</td><td class="num">&#8377;5,396</td><td class="same">2 of 4</td></tr>
+<tr><td class="num">210</td><td class="num">&#8377;3,030</td><td class="num">&#8377;3,030</td><td class="num">&#8377;3,030</td><td class="num">&#8377;5,396</td><td class="same">2 of 4</td></tr>
+<tr><td class="num">196</td><td class="num">&#8377;2,848</td><td class="num">&#8377;2,848</td><td class="num">&#8377;3,030</td><td class="num">&#8377;5,396</td><td style="color:#b8860b">3 of 4</td></tr>
+<tr><td class="num">150</td><td class="num">&#8377;2,250</td><td class="num">&#8377;2,848</td><td class="num">&#8377;3,030</td><td class="num">&#8377;5,396</td><td class="diff">4 of 4</td></tr>
+<tr><td class="num">128</td><td class="num">&#8377;1,964</td><td class="num">&#8377;2,848</td><td class="num">&#8377;3,030</td><td class="num">&#8377;5,396</td><td class="diff">4 of 4</td></tr>
+<tr><td class="num">64</td><td class="num">&#8377;1,964</td><td class="num">&#8377;2,848</td><td class="num">&#8377;3,030</td><td class="num">&#8377;5,396</td><td class="diff">4 of 4</td></tr>
+<tr><td class="num">40</td><td class="num">&#8377;1,964</td><td class="num">&#8377;2,848</td><td class="num">&#8377;3,030</td><td class="num">&#8377;5,396</td><td class="diff">4 of 4</td></tr>
+</table>
+
+<div class="box nb">
+<span class="lbl">Read this table carefully</span>
+<p>At or below 128&nbsp;km the fares stop changing. Once the package is smaller than every real
+route, actual distance is doing all the work and the exact package value no longer affects these
+trips. Its only remaining job is to protect the driver on an unusually short booking. That means
+<b>you do not need to find a precise number</b> &mdash; you need a number safely below your
+shortest sellable round trip.</p>
+<p>Note also that <b>Balasore never moves</b>: &#8377;5,396 at every setting. Long trips already
+bill on real distance and are unaffected by this change.</p>
+</div>
+
+<div class="box warn nb">
+<span class="lbl">A trap worth avoiding</span>
+<p>Lowering the package from 250 to 200 would look like a fix and would not be one. Puri, Jajpur
+and Paradeep would <i>still</i> all fall inside a 200&nbsp;km package and still bill identically
+&mdash; the original complaint, reproduced at a lower price. Even 196 leaves Puri and Jajpur
+tied. Always check a proposed value against your <b>shortest</b> route, not your longest.</p>
+</div>
+
+<h2>6. Suggested values</h2>
+
+<p>These are a defensible starting point, not a commercial instruction. They place every category
+well below the shortest live route while keeping a meaningful floor for short bookings. Final
+numbers are a pricing decision for the business.</p>
+
+<table class="nb">
+<tr><th>Category</th><th class="num">Package KM/day<br>now &rarr; suggested</th>
+    <th class="num">Driver<br>Allowance/day</th>
+    <th class="num">Puri</th><th class="num">Jajpur</th>
+    <th class="num">Paradeep</th><th class="num">Balasore</th></tr>
+<tr><td>Hatchback</td><td class="num">250 &rarr; <b>40</b></td><td class="num">&#8377;300</td><td class="num">&#8377;1,580</td><td class="num">&#8377;2,260</td><td class="num">&#8377;2,400</td><td class="num">&#8377;4,220</td></tr>
+<tr><td>Sedan</td><td class="num">250 &rarr; <b>40</b></td><td class="num">&#8377;300</td><td class="num">&#8377;1,964</td><td class="num">&#8377;2,848</td><td class="num">&#8377;3,030</td><td class="num">&#8377;5,396</td></tr>
+<tr><td>SUV</td><td class="num">250 &rarr; <b>40</b></td><td class="num">&#8377;350</td><td class="num">&#8377;2,526</td><td class="num">&#8377;3,682</td><td class="num">&#8377;3,920</td><td class="num">&#8377;7,014</td></tr>
+<tr><td>Luxury</td><td class="num">250 &rarr; <b>40</b></td><td class="num">&#8377;400</td><td class="num">&#8377;3,600</td><td class="num">&#8377;5,300</td><td class="num">&#8377;5,650</td><td class="num">&#8377;10,200</td></tr>
+<tr><td>Van</td><td class="num">250 &rarr; <b>40</b></td><td class="num">&#8377;300</td><td class="num">&#8377;2,348</td><td class="num">&#8377;3,436</td><td class="num">&#8377;3,660</td><td class="num">&#8377;6,572</td></tr>
+</table>
+
+<p class="foot">A single package value of 40&nbsp;km across all categories is deliberate: below the
+differentiation threshold the value stops affecting these routes, so varying it per category adds
+configuration surface without changing any price. Category differentiation comes from
+<span class="mono">rate_per_km</span> and the driver allowance, which is where it belongs.
+Only the allowances for SUV and Luxury are proposed to change.</p>
+
+<div class="box bad nb">
+<span class="lbl">This is a revenue change, not only a bug fix</span>
+<p>Correcting the package cuts the quoted sedan Puri fare from &#8377;3,550 to &#8377;1,964
+&mdash; about 45&nbsp;% lower &mdash; and Puri is likely the highest-volume outstation route on
+the platform. That is the intended outcome, since the current figure is well above market and was
+never deliberately chosen. It should nonetheless be signed off by whoever owns pricing before it
+is applied, not treated as a silent technical correction.</p>
+</div>
+
+<h2>7. How to change it</h2>
+
+<p>The values live in the <span class="mono">rate_cards</span> table and are editable from the
+admin portal. No deployment, no migration, no engineering involvement.</p>
+
+<ol>
+<li>Sign in to the admin portal and open <b>Config &rarr; Rate Cards</b>
+    (<span class="mono">/config/rate-cards</span>).</li>
+<li>Find the row for the vehicle category you want, with ride type <b>Round Trip</b>, and open it.
+    The dialog is titled <span class="mono">Update &lt;Category&gt; &middot; Round Trip</span>.</li>
+<li>Leave <b>City</b> as <i>All Cities (Global Default)</i> unless you specifically want a
+    single-city override &mdash; see the caution below.</li>
+<li>Edit <b>Package KM/day</b>. This is <span class="mono">km_per_day</span>. The field shows the
+    current value beneath it as <i>was 250</i>.</li>
+<li>Adjust <b>Driver Allowance/day (&#8377;)</b> if required. This is
+    <span class="mono">driver_allowance_per_day</span>.</li>
+<li>Fill in <b>Change Reason</b> &mdash; mandatory, and written to the rate-card history as the
+    audit record for this change.</li>
+<li>Save. Repeat for each of the five categories.</li>
+</ol>
+
+<div class="box nb">
+<span class="lbl">What happens when you save</span>
+<p>Nothing is overwritten. Rate cards are versioned: saving expires the current row and inserts a
+new one, so previous pricing stays on record. The dialog states this directly &mdash;
+<i>&ldquo;Creates a new rate card and expires the current one. All future rides use the new
+rate.&rdquo;</i></p>
+<p><b>Rides already booked are unaffected.</b> Every booking freezes its own fare breakdown in a
+fare snapshot at the moment of booking, so in-flight and completed rides keep the price the
+customer agreed to. Only estimates requested after the save use the new values.</p>
+</div>
+
+<div class="box warn nb">
+<span class="lbl">Caution: a city override will not solve this</span>
+<p>The <b>City</b> dropdown scopes a rate card to a single city, and it is matched on the
+<b>pickup</b> city only &mdash; the destination is not part of the lookup. A Bhubaneswar override
+therefore applies identically to a Bhubaneswar&ndash;Puri trip and a Bhubaneswar&ndash;Balasore
+trip. City overrides answer <i>&ldquo;fares starting in Berhampur differ from fares starting in
+Bhubaneswar&rdquo;</i>, not <i>&ldquo;further destinations should cost more&rdquo;</i>. Distance
+already handles the second case once the package is set correctly.</p>
+</div>
+
+<h2>8. What to expect afterwards</h2>
+
+<table class="nb">
+<tr><th style="width:36%">Change</th><th>Effect</th></tr>
+<tr><td>Nearby destinations price distinctly</td>
+    <td>The reported symptom disappears. Puri, Jajpur and Paradeep separate in proportion to real
+    distance instead of collapsing to one figure.</td></tr>
+<tr><td>Short outstation trips get cheaper</td>
+    <td>Puri was being charged for 250 km against an actual 128 km. This is the largest single
+    correction and affects the highest-volume route.</td></tr>
+<tr><td>Long trips do not move at all</td>
+    <td>Balasore stays at &#8377;5,396. Anything already exceeding the package was always billing
+    on real distance.</td></tr>
+<tr><td>Very short bookings still hit a floor</td>
+    <td>A trip under the package still bills at the package. Deliberate driver protection, not a
+    residual bug.</td></tr>
+<tr><td>Nothing changes retroactively</td>
+    <td>Completed and in-progress rides keep their snapshotted fares.</td></tr>
+<tr><td>Rental pricing is untouched</td>
+    <td>In-city journeys are billed from <span class="mono">rental_packages</span> and are not
+    affected by any change described here.</td></tr>
+</table>
+
+<h3>How to verify the fix</h3>
+<ol>
+<li>Save the new values for one category &mdash; Sedan is easiest to check.</li>
+<li>In the rider app, request round-trip estimates to <b>two different outstation
+    destinations</b> at clearly different distances &mdash; for example Puri and Paradeep.</li>
+<li>Confirm they now return different fares, and that Puri lands near the &#8377;1,964 shown
+    above. Small differences are expected: the real routed distance will not be exactly 128 km,
+    and any active surge multiplies the total.</li>
+<li>Repeat for the remaining categories.</li>
+</ol>
+
+<div class="box nb">
+<span class="lbl">One related item, listed separately</span>
+<p>The second issue reported the same day &mdash; Khordha pickups classifying as outstation rather
+than in-city &mdash; is a <b>different and unrelated fault</b>, caused by a city-boundary migration
+overwriting an earlier deliberate merged boundary. It requires a code change and a deployment, and
+is not affected by anything in this document. Once corrected, Khordha journeys to Bhubaneswar or
+Cuttack return to being in-city and are served by rental rather than round trip.</p>
+</div>
+
+<p class="foot" style="margin-top:6mm">All fares were produced by executing the round-trip branch
+of <span class="mono">api/src/lib/fare.ts</span> against the seeded rate-card values, for
+single-day bookings with no stops and no surge active. One-way road distances are approximate and
+used only to illustrate; the platform bills actual routed distance. Market comparison figures are
+published third-party fares at the time of writing and will move.</p>
+
+</body></html>

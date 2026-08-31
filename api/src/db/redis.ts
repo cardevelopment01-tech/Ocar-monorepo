@@ -25,7 +25,7 @@ export const client = new Redis(makeRedisOptions())
 // long-blocking commands (BRPOPLPUSH etc.) that are SUPPOSED to wait for a
 // long time -- a client-wide commandTimeout would kill those and crash the
 // process. Bound only the ad-hoc cache commands this module issues instead.
-const CACHE_COMMAND_TIMEOUT_MS = 1000
+const CACHE_COMMAND_TIMEOUT_MS = 200
 
 export function withTimeout<T>(promise: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout>

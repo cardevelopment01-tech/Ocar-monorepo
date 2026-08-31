@@ -64,15 +64,32 @@ existing record). Once it propagates, the apply finishes and outputs
 `staging.ocar-api.clienttesting.in` -> that ALB DNS name (DNS only, not
 proxied -- proxying would break the ALB's own TLS termination).
 
-## 3. Neon database branch
+## 3. Staging RDS instance (restored from a production snapshot)
 
-In the Neon console, create a branch off the production database
-specifically for this load test. Branching is copy-on-write, so it starts
-with production's real data volume (needed for realistic PostGIS
-query-planner/index behavior under load) without being a second full copy
-you pay for or a live connection to prod. Copy the branch's connection
-string (use the `-pooler` host, same as prod's convention documented in
-`api/.env.example`).
+Correction (this step originally described a Neon branch — production runs
+RDS, Neon is stale/unused, so staging's DB must be provisioned the RDS-native
+way to actually satisfy `LOAD_TEST_PLAN.md` §1's "infrastructure-identical to
+production" requirement for the database tier too):
+
+1. Take a manual RDS snapshot of the production DB instance (same action as
+   client task list item 1 — "take a DB backup"; this snapshot **is** that
+   backup, not a separate step):
+   `aws rds create-db-snapshot --db-instance-identifier <prod-instance-id> --db-snapshot-identifier ocar-staging-seed-<date>`
+2. Restore a new staging instance from that snapshot, same region
+   (`ap-south-1`) and same instance class as production:
+   `aws rds restore-db-instance-from-db-snapshot --db-instance-identifier ocar-staging-db --db-snapshot-identifier ocar-staging-seed-<date> --db-instance-class <same-as-prod>`
+3. Place it in the staging VPC/subnet group (not prod's), confirm its
+   security group only allows traffic from staging's ASG, and note its
+   endpoint (`-pooler`-equivalent convention doesn't apply to RDS — use the
+   instance endpoint directly, same as prod's `DATABASE_URL` convention in
+   `api/.env.example` minus the pooler suffix).
+
+This instance already contains production's real data volume (drivers,
+vehicles, cities, rate cards, etc.) — no separate driver/reference-data
+seeding needed on top, only the synthetic rider/ride seed
+(`api/scripts/seed-load-test-data.sql`) plus the synthetic driver top-up
+noted in `LOAD_TEST_PLAN.md` §3's amendment (production currently has ~200
+active drivers, short of the 400-driver concurrent target).
 
 ## 4. Razorpay test-mode keys
 
