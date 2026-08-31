@@ -25,7 +25,18 @@ export const client = new Redis(makeRedisOptions())
 // long-blocking commands (BRPOPLPUSH etc.) that are SUPPOSED to wait for a
 // long time -- a client-wide commandTimeout would kill those and crash the
 // process. Bound only the ad-hoc cache commands this module issues instead.
-const CACHE_COMMAND_TIMEOUT_MS = 200
+//
+// 200ms was tried and reverted (2026-08-31): steady-state ElastiCache RTT is
+// ~1-2ms (measured via ioredis PING from a warm production connection), but
+// transit_encryption_enabled=true (elasticache.tf) means a FRESH connection
+// pays a TLS handshake before its first command completes -- on a cold-boot
+// instance with several connections (request pool + worker pool) negotiating
+// at once, that handshake routinely exceeded 200ms, causing constant
+// "redis command timeout" failures on newly-launched ASG instances (seen in
+// the rate-limit store's sendCommand) that never showed up on a long-running
+// instance. 1000ms keeps the fail-fast intent while giving a cold TLS
+// handshake enough room to complete.
+const CACHE_COMMAND_TIMEOUT_MS = 1000
 
 export function withTimeout<T>(promise: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
