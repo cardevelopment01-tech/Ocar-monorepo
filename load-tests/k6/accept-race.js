@@ -133,7 +133,7 @@ export default function () {
     authHeaders(user.token)
   )
   if (!check(bookRes, { 'race: ride created 201': (r) => r.status === 201 })) return
-  const rideId = bookRes.json('id')
+  const rideId = bookRes.json('rideId')
 
   sleep(BROADCAST_WAIT_S) // let broadcast_ride round 1 actually run through BullMQ
 

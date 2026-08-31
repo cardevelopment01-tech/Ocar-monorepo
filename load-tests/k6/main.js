@@ -195,7 +195,7 @@ export function bookingFlow() {
     const bookOk = check(bookRes, { 'create booking 201': (r) => r.status === 201 })
     if (!bookOk) { bookingFailures.add(1); return }
 
-    const rideId = bookRes.json('id')
+    const rideId = bookRes.json('rideId')
 
     sleep(1) // roughly how long a rider looks at the confirmation screen
 
@@ -252,7 +252,10 @@ export function driverGpsPing() {
     WS_URL,
     driver.token,
     function (conn) {
-      const interval = conn.raw.setInterval(function () {
+      // k6's ws.Socket has setInterval but no clearInterval — its intervals
+      // are tied to the socket's own local event loop and stop automatically
+      // when the socket closes, so conn.close() below is sufficient cleanup.
+      conn.raw.setInterval(function () {
         // small random walk, not a teleporting driver
         lat += (Math.random() - 0.5) * 0.002
         lng += (Math.random() - 0.5) * 0.002
@@ -274,7 +277,6 @@ export function driverGpsPing() {
       // clean up. gracefulRampDown on the executor also allows this to close
       // naturally when the scenario winds down.
       conn.raw.setTimeout(function () {
-        conn.raw.clearInterval(interval)
         conn.close()
       }, durationToMs(__ENV.HOLD_DURATION || '15m'))
     },

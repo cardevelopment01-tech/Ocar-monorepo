@@ -61,7 +61,7 @@ export default function () {
   check(book, { 'create booking 201': (r) => r.status === 201 })
   if (book.status !== 201) { console.error('booking body: ' + book.body) }
   else {
-    const rideId = book.json('id')
+    const rideId = book.json('rideId')
     const cancel = http.post(`${BASE_URL}/api/v1/rides/${rideId}/cancel`, JSON.stringify({ reasonCode: 'load_test', reason: 'smoke test' }), userOpts)
     check(cancel, { 'cancel 200': (r) => r.status === 200 })
   }

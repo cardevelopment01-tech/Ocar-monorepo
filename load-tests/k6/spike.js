@@ -149,7 +149,7 @@ export function bookingFlow() {
     if (!bookOk) { bookingFailures.add(1); return }
 
     // Cancel so a spike doesn't leave thousands of unmatched 'requested' rides.
-    const rideId = bookRes.json('id')
+    const rideId = bookRes.json('rideId')
     const cancelRes = http.post(
       `${BASE_URL}/api/v1/rides/${rideId}/cancel`,
       JSON.stringify({ reasonCode: 'load_test', reason: 'spike cleanup' }),
