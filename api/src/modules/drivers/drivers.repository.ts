@@ -390,7 +390,7 @@ export async function findDocsNeedingExpiryNotice(): Promise<ExpiringDocNotice[]
   const thresholds = [...EXPIRY_REMINDER_DAYS, 0]
   const rows = await query<{ driver_id: string; doc_type: string; days_remaining: number; route: 'documents' | 'vehicle-docs' }>(
     `SELECT driver_id, doc_type, days_remaining, 'documents'::text AS route FROM (
-       SELECT driver_id::text, doc_type,
+       SELECT driver_id::text, doc_type::text AS doc_type,
               (verified_valid_until - CURRENT_DATE) AS days_remaining
        FROM driver_documents
        WHERE status = 'approved' AND verified_valid_until IS NOT NULL
@@ -398,7 +398,7 @@ export async function findDocsNeedingExpiryNotice(): Promise<ExpiringDocNotice[]
      WHERE days_remaining = ANY($1::int[])
      UNION ALL
      SELECT driver_id, doc_type, days_remaining, 'vehicle-docs'::text AS route FROM (
-       SELECT dv.driver_id::text AS driver_id, dvd.doc_type,
+       SELECT dv.driver_id::text AS driver_id, dvd.doc_type::text AS doc_type,
               (dvd.verified_valid_until - CURRENT_DATE) AS days_remaining
        FROM driver_vehicle_documents dvd
        JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
