@@ -34,7 +34,7 @@ resource "grafana_rule_group" "billing_usage" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "grafanacloud_org_metrics_instance_active_series / ${local.free_tier_active_series}"
+        expr    = "grafanacloud_instance_active_series / ${local.free_tier_active_series}"
       })
     }
 
@@ -77,7 +77,7 @@ resource "grafana_rule_group" "billing_usage" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "grafanacloud_org_logs_usage_bytes / (${local.free_tier_bytes_50gb})"
+        expr    = "grafanacloud_logs_instance_usage / (${local.free_tier_bytes_50gb})"
       })
     }
 
@@ -120,7 +120,7 @@ resource "grafana_rule_group" "billing_usage" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "grafanacloud_org_traces_usage_bytes / (${local.free_tier_bytes_50gb})"
+        expr    = "grafanacloud_traces_instance_usage / (${local.free_tier_bytes_50gb})"
       })
     }
 
