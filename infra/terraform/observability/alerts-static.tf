@@ -433,7 +433,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "node_filesystem_readonly{mountpoint=\"/\"}"
+        expr    = "node_filesystem_readonly{mountpoint=\"/\"} and (time() - node_boot_time_seconds) > 300"
       })
     }
 
