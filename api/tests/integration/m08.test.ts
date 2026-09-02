@@ -38,6 +38,10 @@ const WEBHOOK_SECRET = process.env['RAZORPAY_WEBHOOK_SECRET']
 const PHONES = {
   payer: '+919700000021',
   onlineDriver: '+919700000022',
+  walletSufficient: '+919700000031',
+  walletInsufficient: '+919700000032',
+  walletDriverSufficient: '+919700000033',
+  walletDriverInsufficient: '+919700000034',
 } as const
 
 let categoryId: number
@@ -85,6 +89,94 @@ async function waitForPendingOnlinePayment(rideId: string) {
     await new Promise((r) => setTimeout(r, 100))
   }
   throw new Error(`Timed out waiting for pending online payment with razorpay_order_id for ride ${rideId}`)
+}
+
+/**
+ * Drives an already-booked ride through accept -> arrived -> start-otp -> end-otp,
+ * same lifecycle as the webhook test above. Extracted here (not into the shared
+ * fixture) since it's only needed by this describe block's two tests.
+ */
+async function driveRideToCompletion(
+  rideId: string,
+  driver: { accessToken: string; categoryId: number },
+  userToken: string
+) {
+  await processBroadcast({
+    rideId,
+    categoryId: String(driver.categoryId),
+    originLat: DEFAULT_BOOKING.originLat,
+    originLng: DEFAULT_BOOKING.originLng,
+    rideType: DEFAULT_BOOKING.rideType,
+    isReturnCab: false,
+    broadcastRound: 1,
+  })
+
+  const acceptRes = await request(app)
+    .post(`/api/v1/rides/${rideId}/accept`)
+    .set('Authorization', `Bearer ${driver.accessToken}`)
+  expect(acceptRes.status, JSON.stringify(acceptRes.body)).toBe(200)
+
+  const arrivedRes = await request(app)
+    .post(`/api/v1/rides/${rideId}/arrived`)
+    .set('Authorization', `Bearer ${driver.accessToken}`)
+  expect(arrivedRes.status, JSON.stringify(arrivedRes.body)).toBe(200)
+
+  const rideAsUser1 = await request(app)
+    .get(`/api/v1/rides/${rideId}`)
+    .set('Authorization', `Bearer ${userToken}`)
+  const startOtp = rideAsUser1.body.startOtp as string
+
+  const startOtpRes = await request(app)
+    .post(`/api/v1/rides/${rideId}/start-otp`)
+    .set('Authorization', `Bearer ${driver.accessToken}`)
+    .send({ otp: startOtp })
+  expect(startOtpRes.status, JSON.stringify(startOtpRes.body)).toBe(200)
+
+  const rideAsUser2 = await request(app)
+    .get(`/api/v1/rides/${rideId}`)
+    .set('Authorization', `Bearer ${userToken}`)
+  const endOtp = rideAsUser2.body.endOtp as string
+
+  const endOtpRes = await request(app)
+    .post(`/api/v1/rides/${rideId}/end-otp`)
+    .set('Authorization', `Bearer ${driver.accessToken}`)
+    .send({ otp: endOtp, actual_distance_km: DEFAULT_BOOKING.distanceKm, actual_duration_min: DEFAULT_BOOKING.durationMin })
+  expect(endOtpRes.status, JSON.stringify(endOtpRes.body)).toBe(200)
+}
+
+/** Wallet channel's settleRideCompletionPayment (rides.service.ts) is also
+ * fire-and-forget after end-otp — poll for the payment to reach 'completed'. */
+async function waitForWalletPaymentCompleted(rideId: string) {
+  for (let i = 0; i < 20; i++) {
+    const { rows } = await pool.query<{ id: string; status: string; amount: string }>(
+      `SELECT id, status, amount FROM payments WHERE ride_id = $1 AND channel = 'platform_wallet'`, [rideId]
+    )
+    if (rows[0]?.status === 'completed') return rows[0]
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  throw new Error(`Timed out waiting for completed wallet payment for ride ${rideId}`)
+}
+
+/**
+ * When the wallet balance is insufficient, settleRideCompletionPayment leaves
+ * the payment 'pending' (same status it starts in) — there's no status
+ * transition to poll for. notifyRidePaymentFailed's in-app feed row is the
+ * one observable side effect that only happens once the insufficient-balance
+ * branch has finished running, so it's the reliable "settlement is done"
+ * signal for this case.
+ */
+async function waitForPaymentFailedNotification(rideId: string, userId: string) {
+  for (let i = 0; i < 20; i++) {
+    const { rows } = await pool.query<{ id: string }>(
+      `SELECT id FROM notification_logs
+       WHERE owner_type = 'user' AND owner_id = $1 AND type = 'payment_failed' AND ride_id = $2
+       LIMIT 1`,
+      [userId, rideId]
+    )
+    if (rows[0]) return rows[0]
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  throw new Error(`Timed out waiting for payment_failed notification for ride ${rideId}`)
 }
 
 describe('M08 — Payments', () => {
@@ -211,6 +303,97 @@ describe('M08 — Payments', () => {
         .send(JSON.stringify(eventPayload))
       expect(res.status).toBe(400)
       expect(res.body.code).toBe('WEBHOOK_INVALID_SIGNATURE')
+    })
+  })
+
+  describe('Wallet payment', () => {
+    it('TC-M08-005: wallet debit succeeds when balance sufficient', async () => {
+      const driver = await setupOnlineDriver(app, pool, redis, PHONES.walletDriverSufficient)
+      const { accessToken, userId } = await loginUser(app, redis, PHONES.walletSufficient)
+      await pool.query(
+        `INSERT INTO user_wallets (user_id, balance) VALUES ($1, 5000)
+         ON CONFLICT (user_id) DO UPDATE SET balance = 5000`,
+        [userId]
+      )
+
+      const bookRes = await request(app)
+        .post('/api/v1/rides')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ categoryId: driver.categoryId, ...DEFAULT_BOOKING, paymentChannel: 'wallet' })
+      expect(bookRes.status, JSON.stringify(bookRes.body)).toBe(201)
+      const rideId = bookRes.body.rideId as string
+
+      // Wallet debit only happens at ride completion (settleRideCompletionPayment,
+      // rides.service.ts), not at booking time — same as the online-payment flow above.
+      await driveRideToCompletion(rideId, driver, accessToken)
+
+      const payment = await waitForWalletPaymentCompleted(rideId)
+      expect(payment.status).toBe('completed')
+
+      // Use the amount actually captured on the payment row (set by
+      // createPaymentRecord from the fare snapshot at settlement time) rather
+      // than re-deriving from fare_snapshots — it's the authoritative figure
+      // payFromUserWallet was invoked with.
+      const fareAmount = parseFloat(payment.amount)
+      expect(fareAmount).toBeGreaterThan(0)
+
+      // confirmRidePayment (payments.service.ts) also credits a cashback ledger
+      // entry on every successful ride payment regardless of channel, so the
+      // wallet's *final* balance isn't simply `5000 - fareAmount` — it's that
+      // minus the debit, plus a subsequent cashback credit. Assert the debit
+      // itself via the ride_debit ledger row's own balance_after (the balance
+      // immediately after the debit, before cashback lands), which isolates
+      // exactly what payFromUserWallet did.
+      const { rows: debitRows } = await pool.query<{ amount: string; balance_after: string }>(
+        `SELECT amount, balance_after FROM user_wallet_ledger
+         WHERE ride_id = $1 AND entry_type = 'ride_debit'`,
+        [rideId]
+      )
+      expect(debitRows).toHaveLength(1)
+      expect(parseFloat(debitRows[0]!.amount)).toBeCloseTo(fareAmount, 2)
+      expect(parseFloat(debitRows[0]!.balance_after)).toBeCloseTo(5000 - fareAmount, 2)
+    })
+
+    it('TC-M08-006: wallet debit is skipped and payment stays pending when balance insufficient', async () => {
+      const driver = await setupOnlineDriver(app, pool, redis, PHONES.walletDriverInsufficient)
+      const { accessToken, userId } = await loginUser(app, redis, PHONES.walletInsufficient)
+      await pool.query(
+        `INSERT INTO user_wallets (user_id, balance) VALUES ($1, 1)
+         ON CONFLICT (user_id) DO UPDATE SET balance = 1`,
+        [userId]
+      )
+
+      const bookRes = await request(app)
+        .post('/api/v1/rides')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ categoryId: driver.categoryId, ...DEFAULT_BOOKING, paymentChannel: 'wallet' })
+      expect(bookRes.status, JSON.stringify(bookRes.body)).toBe(201)
+      const rideId = bookRes.body.rideId as string
+
+      // payFromUserWallet (payments.service.ts) rejects the debit entirely when
+      // balance < fare — no partial debit, payment stays 'pending', and the rider
+      // is proactively notified (notifyRidePaymentFailed) so they can retry.
+      // end-otp itself still returns 200: settlement runs fire-and-forget after
+      // the ride is already marked completed.
+      await driveRideToCompletion(rideId, driver, accessToken)
+
+      await waitForPaymentFailedNotification(rideId, userId)
+
+      const { rows: paymentRows } = await pool.query<{ status: string }>(
+        `SELECT status FROM payments WHERE ride_id = $1 AND channel = 'platform_wallet'`, [rideId]
+      )
+      expect(paymentRows[0]?.status).toBe('pending')
+
+      const { rows: walletRows } = await pool.query<{ balance: string }>(
+        `SELECT balance FROM user_wallets WHERE user_id = $1`, [userId]
+      )
+      expect(parseFloat(walletRows[0]!.balance)).toBe(1)
+
+      const { rows: ledgerRows } = await pool.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM user_wallet_ledger WHERE ride_id = $1 AND entry_type = 'ride_debit'`,
+        [rideId]
+      )
+      expect(ledgerRows[0]?.n).toBe(0)
     })
   })
 })
