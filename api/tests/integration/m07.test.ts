@@ -89,7 +89,7 @@ describe('M07 — Ride Lifecycle', () => {
       expect(rows[0]?.status).toBe('cancelled')
     })
 
-    it('TC-M07-007: no drivers available after all rounds sets no_drivers', async () => {
+    it('TC-M07-007a: booking with no nearby drivers still succeeds as requested (no_drivers transition covered in Task 3)', async () => {
       // No driver seeded online anywhere near this origin — pick a coordinate
       // far outside Bhubaneswar/Cuttack so round-3's 20km radius still finds nobody.
       const { accessToken } = await loginUser(app, redis, PHONES.noDriversUser)
