@@ -58,7 +58,10 @@ export async function seedActiveDriverWithVehicle(
   const categorySlug = opts.categorySlug ?? 'sedan'
   const brandName = opts.brandName ?? 'Maruti Suzuki'
   const citySlug = opts.citySlug ?? 'bhubaneswar'
-  const plate = opts.plate ?? `OD02${Math.floor(1000 + Math.random() * 8999)}`
+  // Derived from driverId (always unique) rather than Math.random() over a
+  // ~9000-value pool, which was observed to collide on driver_vehicles'
+  // UNIQUE(number_plate) constraint once enough tests had run.
+  const plate = opts.plate ?? `OD02${driverId}`
   const walletBalance = opts.walletBalance ?? 10000
 
   const { rows: cats } = await pool.query<{ id: string }>(
