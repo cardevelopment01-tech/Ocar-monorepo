@@ -166,6 +166,12 @@ export const DEFAULT_BOOKING = {
  * payment/wallet/webhook side effects) — not for tests whose actual point
  * is asserting on each intermediate status transition (see m07.test.ts's
  * "Full ride progression" test, which stays inline for that reason).
+ *
+ * Takes the driver offline as its last step: findNearbyDrivers
+ * (broadcast.processor.ts) caps a broadcast round at BROADCAST_MAX_DRIVERS
+ * (5, constants/limits.ts), and every driver this fixture logs online would
+ * otherwise stay 'online' forever with no ride, silently eating a broadcast
+ * slot from every later test's driver that shares the same lat/lng.
  */
 export async function driveRideToCompletion(
   app: Express,
@@ -222,6 +228,11 @@ export async function driveRideToCompletion(
   if (endOtpRes.status !== 200) {
     throw new Error(`End OTP failed for ride ${rideId}: ${JSON.stringify(endOtpRes.body)}`)
   }
+
+  await request(app)
+    .post('/api/v1/rides/sessions/offline')
+    .set('Authorization', `Bearer ${driver.accessToken}`)
+    .send({})
 
   return { startOtp, endOtp }
 }
