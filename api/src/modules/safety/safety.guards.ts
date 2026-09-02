@@ -3,6 +3,8 @@
 // here so the three cannot drift (they did before — ratings enforced it,
 // SOS/disputes did not: an IDOR gap, see 2026-08-24 hardening design §03.1).
 
+import { httpError } from '@/lib/errors'
+
 export interface RideParties {
   user_id: bigint | number | string | null
   driver_id: bigint | number | string | null
@@ -19,9 +21,6 @@ export function assertRideParticipant(ride: RideParties, principal: RidePrincipa
     (principal.role === 'driver' && ride.driver_id != null && BigInt(ride.driver_id) === principal.id)
 
   if (!isParticipant) {
-    throw Object.assign(new Error('You are not a participant on this ride.'), {
-      httpStatus: 403,
-      code: 'NOT_RIDE_PARTICIPANT',
-    })
+    throw httpError(403, 'You are not a participant on this ride.', 'NOT_RIDE_PARTICIPANT')
   }
 }

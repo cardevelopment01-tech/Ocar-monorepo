@@ -1,6 +1,7 @@
 import * as repo from './safety.repository'
 import type { SubmitRatingInput } from './safety.types'
 import { assertRideParticipant } from './safety.guards'
+import { httpError } from '@/lib/errors'
 
 export async function getRatingTags(direction: 'user_to_driver' | 'driver_to_user') {
   const appliesTo = direction === 'user_to_driver' ? 'driver' : 'user'
@@ -10,15 +11,15 @@ export async function getRatingTags(direction: 'user_to_driver' | 'driver_to_use
 export async function submitRating(input: SubmitRatingInput) {
   const ride = await repo.getRideBasic(input.rideId)
   if (!ride) {
-    throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+    throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
   }
   if (ride.status !== 'completed') {
-    throw Object.assign(new Error('Ride must be completed before rating'), { httpStatus: 400, code: 'RIDE_NOT_COMPLETED' })
+    throw httpError(400, 'Ride must be completed before rating', 'RIDE_NOT_COMPLETED')
   }
 
   const duplicate = await repo.ratingExists(input.rideId, input.direction)
   if (duplicate) {
-    throw Object.assign(new Error('Rating already submitted for this ride'), { httpStatus: 409, code: 'RATING_ALREADY_EXISTS' })
+    throw httpError(409, 'Rating already submitted for this ride', 'RATING_ALREADY_EXISTS')
   }
 
   // Auth-presence check stays here (401 = no principal on the request);
@@ -29,7 +30,7 @@ export async function submitRating(input: SubmitRatingInput) {
       : (input.fromDriverId ? { role: 'driver', id: input.fromDriverId } : null)
   if (!principal) {
     const authErrorMessage = input.direction === 'user_to_driver' ? 'User auth required' : 'Driver auth required'
-    throw Object.assign(new Error(authErrorMessage), { httpStatus: 401 })
+    throw httpError(401, authErrorMessage, 'AUTH_REQUIRED')
   }
   assertRideParticipant(ride, principal)
 
