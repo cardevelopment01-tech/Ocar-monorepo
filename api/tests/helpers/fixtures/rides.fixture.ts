@@ -163,6 +163,24 @@ export const DEFAULT_BOOKING = {
 }
 
 /**
+ * settleRideCompletionPayment (rides.service.ts) runs fire-and-forget after
+ * end-otp verification for wallet-channel rides — poll for the payment to
+ * reach 'completed' rather than assuming it landed synchronously. Was
+ * duplicated verbatim in m08.test.ts and m09.test.ts before being promoted
+ * here; both now share this one copy.
+ */
+export async function waitForWalletPaymentCompleted(pool: Pool, rideId: string) {
+  for (let i = 0; i < 20; i++) {
+    const { rows } = await pool.query<{ id: string; status: string; amount: string }>(
+      `SELECT id, status, amount FROM payments WHERE ride_id = $1 AND channel = 'platform_wallet'`, [rideId]
+    )
+    if (rows[0]?.status === 'completed') return rows[0]
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  throw new Error(`Timed out waiting for completed wallet payment for ride ${rideId}`)
+}
+
+/**
  * Drives an already-booked ride through broadcast -> accept -> arrived ->
  * start-otp -> end-otp. Shared by any test that only needs a `completed`
  * ride as *setup* for something else (e.g. asserting on the resulting

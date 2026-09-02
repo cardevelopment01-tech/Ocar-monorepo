@@ -6,6 +6,7 @@ import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import {
   loginUser, setupOnlineDriver, cleanupRideAndDriverData, DEFAULT_BOOKING, driveRideToCompletion,
+  waitForWalletPaymentCompleted,
 } from '../helpers/fixtures/rides.fixture'
 
 // Real order-creation flow (payments.service.ts::createRidePaymentOrder) only takes
@@ -96,19 +97,6 @@ async function waitForPendingOnlinePayment(rideId: string) {
     await new Promise((r) => setTimeout(r, 100))
   }
   throw new Error(`Timed out waiting for pending online payment with razorpay_order_id for ride ${rideId}`)
-}
-
-/** Wallet channel's settleRideCompletionPayment (rides.service.ts) is also
- * fire-and-forget after end-otp — poll for the payment to reach 'completed'. */
-async function waitForWalletPaymentCompleted(rideId: string) {
-  for (let i = 0; i < 20; i++) {
-    const { rows } = await pool.query<{ id: string; status: string; amount: string }>(
-      `SELECT id, status, amount FROM payments WHERE ride_id = $1 AND channel = 'platform_wallet'`, [rideId]
-    )
-    if (rows[0]?.status === 'completed') return rows[0]
-    await new Promise((r) => setTimeout(r, 100))
-  }
-  throw new Error(`Timed out waiting for completed wallet payment for ride ${rideId}`)
 }
 
 /**
@@ -290,7 +278,7 @@ describe('M08 — Payments', () => {
       // rides.service.ts), not at booking time — same as the online-payment flow above.
       await driveRideToCompletion(app, rideId, driver, accessToken)
 
-      const payment = await waitForWalletPaymentCompleted(rideId)
+      const payment = await waitForWalletPaymentCompleted(pool, rideId)
       expect(payment.status).toBe('completed')
 
       // Use the amount actually captured on the payment row (set by

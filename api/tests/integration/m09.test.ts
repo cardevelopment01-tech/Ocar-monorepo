@@ -6,6 +6,7 @@ import { client as redis } from '@/db/redis'
 import { hashPassword } from '@/lib/hash'
 import {
   loginUser, setupOnlineDriver, driveRideToCompletion, driveRideToInProgress, cleanupRideAndDriverData, DEFAULT_BOOKING,
+  waitForWalletPaymentCompleted,
 } from '../helpers/fixtures/rides.fixture'
 import { loginAdmin } from '../helpers/fixtures/safety.fixture'
 
@@ -140,18 +141,7 @@ async function bookAndCompleteRideWithWallet(userPhone: string, driverPhone: str
   const rideId = bookRes.body.rideId as string
   await driveRideToCompletion(app, rideId, driver, userToken)
 
-  // settleRideCompletionPayment (rides.service.ts) runs fire-and-forget after
-  // end-otp verification, same timing gap m08.test.ts's
-  // waitForWalletPaymentCompleted documents — poll rather than assume.
-  let payment: { id: string; status: string; amount: string } | undefined
-  for (let i = 0; i < 20; i++) {
-    const { rows } = await pool.query<{ id: string; status: string; amount: string }>(
-      `SELECT id, status, amount FROM payments WHERE ride_id = $1 AND channel = 'platform_wallet'`, [rideId]
-    )
-    if (rows[0]?.status === 'completed') { payment = rows[0]; break }
-    await new Promise((r) => setTimeout(r, 100))
-  }
-  if (!payment) throw new Error(`Timed out waiting for completed wallet payment for ride ${rideId}`)
+  const payment = await waitForWalletPaymentCompleted(pool, rideId)
 
   return { rideId, userToken, userId, driver, payment }
 }
