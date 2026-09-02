@@ -167,6 +167,82 @@ export const DEFAULT_BOOKING = {
  * disputes, so they must be deleted before payments/disputes, which in turn
  * must be deleted before rides.
  */
+// Full FK graph (confirmed against information_schema, not just grep) of every
+// table that references rides(id) with NO ON DELETE CASCADE, in dependency order —
+// grandchildren (referencing payments/ratings/disputes/ride_call_masks, not rides
+// directly) first, then the direct rides children, then rides itself. This list is
+// deliberately exhaustive: a missing entry here doesn't fail loudly in normal app
+// use (nothing deletes a ride in production), it only surfaces as a test-teardown
+// FK violation, which is easy to mistake for test flakiness instead of a real gap.
+async function deleteRideAndDescendantsOnce(pool: Pool, rideIds: string[]) {
+  await pool.query(
+    `DELETE FROM payment_gateway_events WHERE payment_id IN (SELECT id FROM payments WHERE ride_id = ANY($1))`,
+    [rideIds]
+  )
+  await pool.query(
+    `DELETE FROM rating_tags WHERE rating_id IN (SELECT id FROM ratings WHERE ride_id = ANY($1))`,
+    [rideIds]
+  )
+  await pool.query(
+    `DELETE FROM dispute_evidence WHERE dispute_id IN (SELECT id FROM disputes WHERE ride_id = ANY($1))`,
+    [rideIds]
+  )
+  await pool.query(
+    `DELETE FROM dispute_actions WHERE dispute_id IN (SELECT id FROM disputes WHERE ride_id = ANY($1))`,
+    [rideIds]
+  )
+  await pool.query(
+    `DELETE FROM exotel_call_events WHERE ride_call_mask_id IN (SELECT id FROM ride_call_masks WHERE ride_id = ANY($1))`,
+    [rideIds]
+  )
+  await pool.query('DELETE FROM driver_warnings WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM refunds WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM driver_earnings WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM driver_wallet_ledger WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM user_wallet_ledger WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM driver_package_ledger WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM tax_deductions WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM payments WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM ratings WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM sos_alerts WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM disputes WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM ride_call_masks WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM ride_messages WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM ride_status_history WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM ride_otp_events WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM ride_cancellations WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM ride_assignments WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM ride_stops WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM fare_snapshots WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM ride_eta_snapshots WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM speed_alert_log WHERE ride_id = ANY($1)', [rideIds])
+  await pool.query('DELETE FROM ride_advance_meta WHERE ride_id = ANY($1)', [rideIds])
+  // driver_session_history.ride_id is ON DELETE SET NULL — no explicit delete needed.
+  await pool.query('DELETE FROM rides WHERE id = ANY($1)', [rideIds])
+}
+
+/**
+ * `insertEtaSnapshot` (rides.repository.ts) is deliberately fire-and-forget from
+ * acceptRide/verifyStartOTP ("best-effort, never blocks the ride flow") — a test
+ * that drives a ride through accept/start doesn't wait for that write, so it can
+ * land after this cleanup's own ride_eta_snapshots delete but before the final
+ * rides delete. Retry the whole descendant-delete pass a few times on FK failure
+ * rather than chasing down every possible fire-and-forget writer individually.
+ */
+async function deleteRideAndDescendants(pool: Pool, rideIds: string[]) {
+  if (!rideIds.length) return
+  const MAX_ATTEMPTS = 3
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await deleteRideAndDescendantsOnce(pool, rideIds)
+      return
+    } catch (err) {
+      if (attempt === MAX_ATTEMPTS) throw err
+      await new Promise((resolve) => setTimeout(resolve, 150 * attempt))
+    }
+  }
+}
+
 export async function cleanupRideAndDriverData(pool: Pool, phones: string[]) {
   const { rows: driverRows } = await pool.query<{ id: string }>(
     'SELECT id FROM drivers WHERE phone = ANY($1)', [phones]
@@ -177,98 +253,11 @@ export async function cleanupRideAndDriverData(pool: Pool, phones: string[]) {
   )
   const userIds = userRows.map((r) => r.id)
 
-  if (driverIds.length || userIds.length) {
-    // payment_gateway_events -> refunds -> payments (refunds also FKs rides + disputes,
-    // so it must go before both payments and disputes); ratings/sos_alerts/disputes/
-    // ride_messages all FK rides directly with no ON DELETE CASCADE.
-    await pool.query(
-      `DELETE FROM payment_gateway_events WHERE payment_id IN (
-         SELECT id FROM payments WHERE ride_id IN (
-           SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-         )
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM refunds WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM payments WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM ratings WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM sos_alerts WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM disputes WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM ride_messages WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM ride_status_history WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM ride_otp_events WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM ride_cancellations WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM ride_assignments WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM ride_stops WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM fare_snapshots WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query(
-      `DELETE FROM ride_eta_snapshots WHERE ride_id IN (
-         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
-       )`,
-      [userIds, driverIds]
-    )
-    await pool.query('DELETE FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)', [userIds, driverIds])
-  }
+  const { rows: rideRows } = await pool.query<{ id: string }>(
+    'SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)', [userIds, driverIds]
+  )
+  await deleteRideAndDescendants(pool, rideRows.map((r) => r.id))
+
   if (driverIds.length) {
     await pool.query('DELETE FROM driver_wallet_ledger WHERE driver_id = ANY($1)', [driverIds])
     await pool.query('DELETE FROM driver_wallets WHERE driver_id = ANY($1)', [driverIds])
@@ -276,6 +265,12 @@ export async function cleanupRideAndDriverData(pool: Pool, phones: string[]) {
     await pool.query('DELETE FROM driver_sessions WHERE driver_id = ANY($1)', [driverIds])
     await pool.query('DELETE FROM driver_verifications WHERE driver_id = ANY($1)', [driverIds])
     await pool.query('DELETE FROM driver_vehicles WHERE driver_id = ANY($1)', [driverIds])
+  }
+  if (userIds.length) {
+    // user_wallets.user_id is UNIQUE — any remaining ledger rows (not ride-scoped,
+    // e.g. referral bonuses) must go before the wallet row itself.
+    await pool.query('DELETE FROM user_wallet_ledger WHERE user_id = ANY($1)', [userIds])
+    await pool.query('DELETE FROM user_wallets WHERE user_id = ANY($1)', [userIds])
   }
   await pool.query('DELETE FROM users WHERE phone = ANY($1)', [phones])
   await pool.query('DELETE FROM drivers WHERE phone = ANY($1)', [phones])
