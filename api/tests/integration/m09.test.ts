@@ -17,11 +17,20 @@ vi.mock('@/lib/storage', () => ({
   getPresignedUrl: vi.fn().mockImplementation((url: string) => Promise.resolve(url)),
 }))
 
+vi.mock('@/modules/geo/geo.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/modules/geo/geo.service')>()
+  return {
+    ...actual,
+    getRoute: vi.fn().mockResolvedValue({ polyline: 'mock_encoded_polyline' }),
+  }
+})
+
 const app = createApp()
 
 // phone ranges: m07 uses 001-011, m08 uses 021-048, m09's ratings tests use
-// 051-056, SOS tests use 057-060, disputes tests use 061-066 — bump past the
-// highest existing number when adding a new integration test file.
+// 051-056, SOS tests use 057-060, disputes tests use 061-068, trip-replay
+// uses 069-070 — bump past the highest existing number when adding a new
+// integration test file.
 const PHONES = {
   ratingUser1: '+919700000051',
   ratingDriver1: '+919700000052',
@@ -41,6 +50,8 @@ const PHONES = {
   disputeDriver3: '+919700000066',
   disputeUser4: '+919700000067',
   disputeDriver4: '+919700000068',
+  replayUser: '+919700000069',
+  replayDriver: '+919700000070',
 } as const
 
 const SOS_ADMIN_EMAIL = 'm09-safety-admin@ocar.app'
@@ -410,6 +421,40 @@ describe('M09 — Safety', () => {
       expect(rows[0]?.description).toBe('Warned for rude behaviour')
     })
 
-    it.todo('TC-M09-009: dispute trip-replay returns actual GPS trail and planned route')
+    it('TC-M09-009: dispute trip-replay returns actual GPS trail and planned route', async () => {
+      const { rideId, userToken, driver } = await bookAndCompleteRide(PHONES.replayUser, PHONES.replayDriver)
+
+      // Seed real gps_tracks points for this ride — driveRideToCompletion doesn't
+      // generate GPS breadcrumbs on its own (that's a separate driver-app
+      // location-ping flow, not part of the OTP-driven test sequence). ride_id/
+      // session_id/driver_id are all NOT NULL on gps_tracks (no FK on ride_id —
+      // see rides.fixture.ts's cleanup comment — but driver_id DOES FK drivers(id)).
+      await pool.query(
+        `INSERT INTO gps_tracks (ride_id, driver_id, session_id, location, speed_kmph, heading, recorded_at)
+         VALUES
+           ($1, $2, $3, ST_SetSRID(ST_MakePoint(85.82, 20.29), 4326)::geography, 20, 90, now() - interval '10 minutes'),
+           ($1, $2, $3, ST_SetSRID(ST_MakePoint(85.85, 20.35), 4326)::geography, 25, 95, now() - interval '5 minutes')`,
+        [rideId, driver.driverId, driver.sessionId]
+      )
+
+      const disputeRes = await request(app)
+        .post('/api/v1/safety/disputes')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ rideId, type: 'trip_manipulation', description: 'Route looked wrong', priority: 1 })
+      expect(disputeRes.status, JSON.stringify(disputeRes.body)).toBe(201)
+      const disputeId = disputeRes.body.id as string
+
+      const admin = await loginAdmin(app, SOS_ADMIN_EMAIL, SOS_ADMIN_PASSWORD)
+      const replayRes = await request(app)
+        .get(`/api/v1/admin/safety/disputes/${disputeId}/trip-replay`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+      expect(replayRes.status, JSON.stringify(replayRes.body)).toBe(200)
+      expect(Array.isArray(replayRes.body.actualTrail)).toBe(true)
+      expect(replayRes.body.actualTrail.length).toBeGreaterThanOrEqual(2)
+      // plannedRoute depends on the ride having non-null origin/destination lat/lng
+      // (DEFAULT_BOOKING sets both) — getTripReplay reads these off rides.origin/
+      // destination via getDisputeById's join, not off the dispute row itself.
+      expect(replayRes.body.plannedRoute).toEqual({ polyline: 'mock_encoded_polyline' })
+    })
   })
 })

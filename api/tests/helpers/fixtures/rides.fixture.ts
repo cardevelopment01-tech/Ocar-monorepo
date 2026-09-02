@@ -323,6 +323,12 @@ async function deleteRideAndDescendantsOnce(pool: Pool, rideIds: string[]) {
   await pool.query('DELETE FROM ride_eta_snapshots WHERE ride_id = ANY($1)', [rideIds])
   await pool.query('DELETE FROM speed_alert_log WHERE ride_id = ANY($1)', [rideIds])
   await pool.query('DELETE FROM ride_advance_meta WHERE ride_id = ANY($1)', [rideIds])
+  // gps_tracks.ride_id has NO FK to rides(id) — deliberate, per 005_m3_geo.sql's
+  // own comment (FK checks on a partitioned parent would lock on every insert
+  // at 450k rows/day; the app enforces integrity instead). So this delete isn't
+  // needed to avoid an FK violation, only to avoid leaking orphaned breadcrumb
+  // rows across test runs — nothing else ever cleans them up.
+  await pool.query('DELETE FROM gps_tracks WHERE ride_id = ANY($1)', [rideIds])
   // driver_session_history.ride_id is ON DELETE SET NULL — no explicit delete needed.
   await pool.query('DELETE FROM rides WHERE id = ANY($1)', [rideIds])
 }
