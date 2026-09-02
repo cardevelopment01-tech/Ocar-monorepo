@@ -4,9 +4,8 @@ import crypto from 'crypto'
 import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
-import { processBroadcast } from '@/jobs/processors/broadcast.processor'
 import {
-  loginUser, setupOnlineDriver, cleanupRideAndDriverData, DEFAULT_BOOKING,
+  loginUser, setupOnlineDriver, cleanupRideAndDriverData, DEFAULT_BOOKING, driveRideToCompletion,
 } from '../helpers/fixtures/rides.fixture'
 
 // Real order-creation flow (payments.service.ts::createRidePaymentOrder) only takes
@@ -91,59 +90,6 @@ async function waitForPendingOnlinePayment(rideId: string) {
   throw new Error(`Timed out waiting for pending online payment with razorpay_order_id for ride ${rideId}`)
 }
 
-/**
- * Drives an already-booked ride through accept -> arrived -> start-otp -> end-otp,
- * same lifecycle as the webhook test above. Extracted here (not into the shared
- * fixture) since it's only needed by this describe block's two tests.
- */
-async function driveRideToCompletion(
-  rideId: string,
-  driver: { accessToken: string; categoryId: number },
-  userToken: string
-) {
-  await processBroadcast({
-    rideId,
-    categoryId: String(driver.categoryId),
-    originLat: DEFAULT_BOOKING.originLat,
-    originLng: DEFAULT_BOOKING.originLng,
-    rideType: DEFAULT_BOOKING.rideType,
-    isReturnCab: false,
-    broadcastRound: 1,
-  })
-
-  const acceptRes = await request(app)
-    .post(`/api/v1/rides/${rideId}/accept`)
-    .set('Authorization', `Bearer ${driver.accessToken}`)
-  expect(acceptRes.status, JSON.stringify(acceptRes.body)).toBe(200)
-
-  const arrivedRes = await request(app)
-    .post(`/api/v1/rides/${rideId}/arrived`)
-    .set('Authorization', `Bearer ${driver.accessToken}`)
-  expect(arrivedRes.status, JSON.stringify(arrivedRes.body)).toBe(200)
-
-  const rideAsUser1 = await request(app)
-    .get(`/api/v1/rides/${rideId}`)
-    .set('Authorization', `Bearer ${userToken}`)
-  const startOtp = rideAsUser1.body.startOtp as string
-
-  const startOtpRes = await request(app)
-    .post(`/api/v1/rides/${rideId}/start-otp`)
-    .set('Authorization', `Bearer ${driver.accessToken}`)
-    .send({ otp: startOtp })
-  expect(startOtpRes.status, JSON.stringify(startOtpRes.body)).toBe(200)
-
-  const rideAsUser2 = await request(app)
-    .get(`/api/v1/rides/${rideId}`)
-    .set('Authorization', `Bearer ${userToken}`)
-  const endOtp = rideAsUser2.body.endOtp as string
-
-  const endOtpRes = await request(app)
-    .post(`/api/v1/rides/${rideId}/end-otp`)
-    .set('Authorization', `Bearer ${driver.accessToken}`)
-    .send({ otp: endOtp, actual_distance_km: DEFAULT_BOOKING.distanceKm, actual_duration_min: DEFAULT_BOOKING.durationMin })
-  expect(endOtpRes.status, JSON.stringify(endOtpRes.body)).toBe(200)
-}
-
 /** Wallet channel's settleRideCompletionPayment (rides.service.ts) is also
  * fire-and-forget after end-otp — poll for the payment to reach 'completed'. */
 async function waitForWalletPaymentCompleted(rideId: string) {
@@ -195,47 +141,7 @@ describe('M08 — Payments', () => {
       // Drive the ride to completion — createRidePaymentOrder (and thus a pending
       // payment with a real razorpay_order_id) is only created by
       // settleRideCompletionPayment on ride completion, not at booking time.
-      await processBroadcast({
-        rideId,
-        categoryId: String(driver.categoryId),
-        originLat: DEFAULT_BOOKING.originLat,
-        originLng: DEFAULT_BOOKING.originLng,
-        rideType: DEFAULT_BOOKING.rideType,
-        isReturnCab: false,
-        broadcastRound: 1,
-      })
-
-      const acceptRes = await request(app)
-        .post(`/api/v1/rides/${rideId}/accept`)
-        .set('Authorization', `Bearer ${driver.accessToken}`)
-      expect(acceptRes.status, JSON.stringify(acceptRes.body)).toBe(200)
-
-      const arrivedRes = await request(app)
-        .post(`/api/v1/rides/${rideId}/arrived`)
-        .set('Authorization', `Bearer ${driver.accessToken}`)
-      expect(arrivedRes.status, JSON.stringify(arrivedRes.body)).toBe(200)
-
-      const rideAsUser1 = await request(app)
-        .get(`/api/v1/rides/${rideId}`)
-        .set('Authorization', `Bearer ${userToken}`)
-      const startOtp = rideAsUser1.body.startOtp as string
-
-      const startOtpRes = await request(app)
-        .post(`/api/v1/rides/${rideId}/start-otp`)
-        .set('Authorization', `Bearer ${driver.accessToken}`)
-        .send({ otp: startOtp })
-      expect(startOtpRes.status, JSON.stringify(startOtpRes.body)).toBe(200)
-
-      const rideAsUser2 = await request(app)
-        .get(`/api/v1/rides/${rideId}`)
-        .set('Authorization', `Bearer ${userToken}`)
-      const endOtp = rideAsUser2.body.endOtp as string
-
-      const endOtpRes = await request(app)
-        .post(`/api/v1/rides/${rideId}/end-otp`)
-        .set('Authorization', `Bearer ${driver.accessToken}`)
-        .send({ otp: endOtp, actual_distance_km: DEFAULT_BOOKING.distanceKm, actual_duration_min: DEFAULT_BOOKING.durationMin })
-      expect(endOtpRes.status, JSON.stringify(endOtpRes.body)).toBe(200)
+      await driveRideToCompletion(app, rideId, driver, userToken)
 
       const payment = await waitForPendingOnlinePayment(rideId)
       expect(payment.status).toBe('pending')
@@ -325,7 +231,7 @@ describe('M08 — Payments', () => {
 
       // Wallet debit only happens at ride completion (settleRideCompletionPayment,
       // rides.service.ts), not at booking time — same as the online-payment flow above.
-      await driveRideToCompletion(rideId, driver, accessToken)
+      await driveRideToCompletion(app, rideId, driver, accessToken)
 
       const payment = await waitForWalletPaymentCompleted(rideId)
       expect(payment.status).toBe('completed')
@@ -375,7 +281,7 @@ describe('M08 — Payments', () => {
       // is proactively notified (notifyRidePaymentFailed) so they can retry.
       // end-otp itself still returns 200: settlement runs fire-and-forget after
       // the ride is already marked completed.
-      await driveRideToCompletion(rideId, driver, accessToken)
+      await driveRideToCompletion(app, rideId, driver, accessToken)
 
       await waitForPaymentFailedNotification(rideId, userId)
 

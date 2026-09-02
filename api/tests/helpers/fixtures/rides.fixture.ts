@@ -2,6 +2,7 @@ import type { Express } from 'express'
 import request from 'supertest'
 import type { Pool } from 'pg'
 import type { Redis } from 'ioredis'
+import { processBroadcast } from '@/jobs/processors/broadcast.processor'
 
 async function login(app: Express, redis: Redis, phone: string, role: 'user' | 'driver') {
   // Real key format is `otp_rate:{role}:{phone}:{purpose}` (api/src/lib/otp.ts:37) —
@@ -156,6 +157,73 @@ export const DEFAULT_BOOKING = {
   distanceKm: 18,
   durationMin: 30,
   paymentChannel: 'cash' as const,
+}
+
+/**
+ * Drives an already-booked ride through broadcast -> accept -> arrived ->
+ * start-otp -> end-otp. Shared by any test that only needs a `completed`
+ * ride as *setup* for something else (e.g. asserting on the resulting
+ * payment/wallet/webhook side effects) — not for tests whose actual point
+ * is asserting on each intermediate status transition (see m07.test.ts's
+ * "Full ride progression" test, which stays inline for that reason).
+ */
+export async function driveRideToCompletion(
+  app: Express,
+  rideId: string,
+  driver: { accessToken: string; categoryId: number },
+  userToken: string
+) {
+  await processBroadcast({
+    rideId,
+    categoryId: String(driver.categoryId),
+    originLat: DEFAULT_BOOKING.originLat,
+    originLng: DEFAULT_BOOKING.originLng,
+    rideType: DEFAULT_BOOKING.rideType,
+    isReturnCab: false,
+    broadcastRound: 1,
+  })
+
+  const acceptRes = await request(app)
+    .post(`/api/v1/rides/${rideId}/accept`)
+    .set('Authorization', `Bearer ${driver.accessToken}`)
+  if (acceptRes.status !== 200) {
+    throw new Error(`Accept failed for ride ${rideId}: ${JSON.stringify(acceptRes.body)}`)
+  }
+
+  const arrivedRes = await request(app)
+    .post(`/api/v1/rides/${rideId}/arrived`)
+    .set('Authorization', `Bearer ${driver.accessToken}`)
+  if (arrivedRes.status !== 200) {
+    throw new Error(`Arrived failed for ride ${rideId}: ${JSON.stringify(arrivedRes.body)}`)
+  }
+
+  const rideAsUser1 = await request(app)
+    .get(`/api/v1/rides/${rideId}`)
+    .set('Authorization', `Bearer ${userToken}`)
+  const startOtp = rideAsUser1.body.startOtp as string
+
+  const startOtpRes = await request(app)
+    .post(`/api/v1/rides/${rideId}/start-otp`)
+    .set('Authorization', `Bearer ${driver.accessToken}`)
+    .send({ otp: startOtp })
+  if (startOtpRes.status !== 200) {
+    throw new Error(`Start OTP failed for ride ${rideId}: ${JSON.stringify(startOtpRes.body)}`)
+  }
+
+  const rideAsUser2 = await request(app)
+    .get(`/api/v1/rides/${rideId}`)
+    .set('Authorization', `Bearer ${userToken}`)
+  const endOtp = rideAsUser2.body.endOtp as string
+
+  const endOtpRes = await request(app)
+    .post(`/api/v1/rides/${rideId}/end-otp`)
+    .set('Authorization', `Bearer ${driver.accessToken}`)
+    .send({ otp: endOtp, actual_distance_km: DEFAULT_BOOKING.distanceKm, actual_duration_min: DEFAULT_BOOKING.durationMin })
+  if (endOtpRes.status !== 200) {
+    throw new Error(`End OTP failed for ride ${rideId}: ${JSON.stringify(endOtpRes.body)}`)
+  }
+
+  return { startOtp, endOtp }
 }
 
 // Full FK graph (confirmed against information_schema, not just grep) of every
