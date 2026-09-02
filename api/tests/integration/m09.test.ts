@@ -5,10 +5,9 @@ import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import { hashPassword } from '@/lib/hash'
 import {
-  loginUser, setupOnlineDriver, driveRideToCompletion, cleanupRideAndDriverData, DEFAULT_BOOKING,
+  loginUser, setupOnlineDriver, driveRideToCompletion, driveRideToInProgress, cleanupRideAndDriverData, DEFAULT_BOOKING,
 } from '../helpers/fixtures/rides.fixture'
 import { loginAdmin } from '../helpers/fixtures/safety.fixture'
-import { processBroadcast } from '@/jobs/processors/broadcast.processor'
 
 vi.mock('@/lib/storage', () => ({
   getUploadUrl: vi.fn().mockResolvedValue('https://storage.test/put-url'),
@@ -84,15 +83,15 @@ async function bookAndCompleteRide(userPhone: string, driverPhone: string) {
 }
 
 /**
- * Books a ride and drives it to `in_progress` (accept -> arrived -> start-otp),
- * stopping short of end-otp. SOS can only be triggered on an active ride
- * ('in_progress' | 'driver_arrived' | 'returning' — see sos.service.ts), so
- * the fixture's driveRideToCompletion (which also completes the ride and
- * takes the driver offline) can't be reused here.
+ * Books a ride and drives it to `in_progress` via the shared
+ * driveRideToInProgress fixture, stopping short of end-otp. SOS can only be
+ * triggered on an active ride ('in_progress' | 'driver_arrived' | 'returning'
+ * — see sos.service.ts), so the fixture's driveRideToCompletion (which also
+ * completes the ride and takes the driver offline) can't be reused here.
  *
- * Local to this file for now — whether this belongs in the shared fixture
- * is a call better made once the disputes tests (which also need an active
- * ride) show what they need too.
+ * The "book" half stays local to this file for now — whether it belongs in
+ * the shared fixture is a call better made once the disputes tests (which
+ * also need an active ride) show what they need too.
  */
 async function bookAndDriveToInProgress(userPhone: string, driverPhone: string) {
   const driver = await setupOnlineDriver(app, pool, redis, driverPhone, { categorySlug: 'sedan' })
@@ -104,36 +103,7 @@ async function bookAndDriveToInProgress(userPhone: string, driverPhone: string) 
   if (bookRes.status !== 201) throw new Error(`Booking failed: ${JSON.stringify(bookRes.body)}`)
   const rideId = bookRes.body.rideId as string
 
-  await processBroadcast({
-    rideId,
-    categoryId: String(driver.categoryId),
-    originLat: DEFAULT_BOOKING.originLat,
-    originLng: DEFAULT_BOOKING.originLng,
-    rideType: DEFAULT_BOOKING.rideType,
-    isReturnCab: false,
-    broadcastRound: 1,
-  })
-
-  const acceptRes = await request(app)
-    .post(`/api/v1/rides/${rideId}/accept`)
-    .set('Authorization', `Bearer ${driver.accessToken}`)
-  if (acceptRes.status !== 200) throw new Error(`Accept failed for ride ${rideId}: ${JSON.stringify(acceptRes.body)}`)
-
-  const arrivedRes = await request(app)
-    .post(`/api/v1/rides/${rideId}/arrived`)
-    .set('Authorization', `Bearer ${driver.accessToken}`)
-  if (arrivedRes.status !== 200) throw new Error(`Arrived failed for ride ${rideId}: ${JSON.stringify(arrivedRes.body)}`)
-
-  const rideAsUser = await request(app)
-    .get(`/api/v1/rides/${rideId}`)
-    .set('Authorization', `Bearer ${userToken}`)
-  const startOtp = rideAsUser.body.startOtp as string
-
-  const startOtpRes = await request(app)
-    .post(`/api/v1/rides/${rideId}/start-otp`)
-    .set('Authorization', `Bearer ${driver.accessToken}`)
-    .send({ otp: startOtp })
-  if (startOtpRes.status !== 200) throw new Error(`Start OTP failed for ride ${rideId}: ${JSON.stringify(startOtpRes.body)}`)
+  await driveRideToInProgress(app, rideId, driver, userToken)
 
   return { rideId, userToken, userId, driver }
 }

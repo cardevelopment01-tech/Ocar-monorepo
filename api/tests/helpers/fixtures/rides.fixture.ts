@@ -176,7 +176,11 @@ export const DEFAULT_BOOKING = {
  * otherwise stay 'online' forever with no ride, silently eating a broadcast
  * slot from every later test's driver that shares the same lat/lng.
  */
-export async function driveRideToCompletion(
+// Drives a booked ride through accept -> arrived -> start-otp, stopping at
+// `in_progress`. Shared by driveRideToCompletion below and by any test that
+// needs an active ride without finishing it (e.g. SOS, which can only be
+// triggered on an active ride).
+export async function driveRideToInProgress(
   app: Express,
   rideId: string,
   driver: { accessToken: string; categoryId: number },
@@ -218,6 +222,17 @@ export async function driveRideToCompletion(
   if (startOtpRes.status !== 200) {
     throw new Error(`Start OTP failed for ride ${rideId}: ${JSON.stringify(startOtpRes.body)}`)
   }
+
+  return { startOtp }
+}
+
+export async function driveRideToCompletion(
+  app: Express,
+  rideId: string,
+  driver: { accessToken: string; categoryId: number },
+  userToken: string
+) {
+  const { startOtp } = await driveRideToInProgress(app, rideId, driver, userToken)
 
   const rideAsUser2 = await request(app)
     .get(`/api/v1/rides/${rideId}`)
