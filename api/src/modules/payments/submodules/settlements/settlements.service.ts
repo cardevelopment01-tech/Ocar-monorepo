@@ -96,7 +96,7 @@ export async function accrueDriverEarning(
            driver_id, ride_id, section, taxable_base, rate_pct, tds_amount, pan_at_deduction, fy, quarter
          ) VALUES ($1,$2,'194O',$3,$4,$5,
            (SELECT pan_enc FROM driver_tax_profile WHERE driver_id = $1), $6, $7)
-         ON CONFLICT (ride_id) DO NOTHING`,
+         ON CONFLICT (ride_id) WHERE ride_id IS NOT NULL DO NOTHING`,
         [driverId, rideId, grossFare, ratePct, tdsAmount, fy, quarter]
       )
     }
