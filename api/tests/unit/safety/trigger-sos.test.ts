@@ -45,7 +45,7 @@ describe('triggerSos', () => {
       vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status, user_id: 1n } as never)
 
       await expect(triggerSos({ rideId: 5n, triggeredByUserId: 1n })).rejects.toMatchObject({
-        httpStatus: 400, code: 'RIDE_NOT_ACTIVE',
+        httpStatus: 400, appCode: 'RIDE_NOT_ACTIVE',
       })
       expect(repo.insertSosAlert).not.toHaveBeenCalled()
     }
@@ -116,7 +116,7 @@ describe('triggerSos', () => {
     vi.mocked(getIO).mockReturnValue({ to: () => ({ emit: vi.fn() }) } as never)
 
     await expect(triggerSos({ rideId: 5n, triggeredByUserId: 999n })).rejects.toMatchObject({
-      httpStatus: 403, code: 'NOT_RIDE_PARTICIPANT',
+      httpStatus: 403, appCode: 'NOT_RIDE_PARTICIPANT',
     })
     expect(repo.insertSosAlert).not.toHaveBeenCalled()
   })
@@ -151,7 +151,7 @@ describe('triggerSos', () => {
     vi.mocked(redis.incr).mockResolvedValue(6 as never)
 
     await expect(triggerSos({ rideId: 5n, triggeredByUserId: 1n })).rejects.toMatchObject({
-      httpStatus: 429, code: 'SOS_RATE_LIMITED',
+      httpStatus: 429, appCode: 'SOS_RATE_LIMITED',
     })
     expect(repo.insertSosAlert).not.toHaveBeenCalled()
     expect(redis.expire).not.toHaveBeenCalled() // count 6 !== 1, no TTL reset

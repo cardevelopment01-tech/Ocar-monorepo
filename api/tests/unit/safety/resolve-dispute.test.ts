@@ -52,7 +52,7 @@ describe('resolveDispute — refund cap', () => {
     scriptClient('500.00', '0')
     await expect(
       resolveDispute(10n, { ...base, outcome: 'full_refund', refundAmount: 600 })
-    ).rejects.toMatchObject({ httpStatus: 400, code: 'REFUND_EXCEEDS_PAYMENT' })
+    ).rejects.toMatchObject({ httpStatus: 400, appCode: 'REFUND_EXCEEDS_PAYMENT' })
 
     const sqls = fakeClient.query.mock.calls.map(c => c[0] as string)
     expect(sqls.some(s => s.includes('INSERT INTO refunds'))).toBe(false)
@@ -64,7 +64,7 @@ describe('resolveDispute — refund cap', () => {
     scriptClient('500.00', '400') // only ₹100 left refundable
     await expect(
       resolveDispute(10n, { ...base, outcome: 'partial_refund', refundAmount: 150 })
-    ).rejects.toMatchObject({ httpStatus: 400, code: 'REFUND_EXCEEDS_PAYMENT' })
+    ).rejects.toMatchObject({ httpStatus: 400, appCode: 'REFUND_EXCEEDS_PAYMENT' })
   })
 
   it('refund exactly at the remaining balance → allowed', async () => {

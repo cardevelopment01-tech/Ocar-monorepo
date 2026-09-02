@@ -320,14 +320,13 @@ describe('M09 — Safety', () => {
         .set('Authorization', `Bearer ${userToken}`)
         .send({ rideId: inProgressRideId, type: 'other', description: 'Ride not finished' })
       expect(badRes.status, JSON.stringify(badRes.body)).toBe(400)
-      // NOT `badRes.body.code` — confirmed app bug (reported, not patched here):
-      // disputes.service.ts throws `Object.assign(new Error(...), { httpStatus, code: '...' })`,
-      // but error.middleware.ts's httpStatus branch reads `appErr.appCode`, not `.code`
-      // (the real convention, from lib/errors.ts's `httpError()`). Every disputes.service.ts
-      // and safety.guards.ts thrown error's machine-readable code is silently dropped —
-      // the client only ever sees `code: undefined` on these paths. Asserting the message
-      // text instead documents the real (buggy) response shape rather than masking it.
-      expect(badRes.body.code).toBeUndefined()
+      // disputes.service.ts/safety.guards.ts previously threw
+      // Object.assign(new Error(...), { httpStatus, code }) — a field-name
+      // mismatch against error.middleware.ts's `appErr.appCode` read, so every
+      // machine-readable code from this module silently came back as
+      // `undefined`. Fixed to use lib/errors.ts's httpError() convention;
+      // this now asserts the real, correct code.
+      expect(badRes.body.code).toBe('RIDE_NOT_COMPLETED')
       expect(badRes.body.error).toBe('Disputes can only be raised on completed rides')
     })
 
@@ -371,8 +370,8 @@ describe('M09 — Safety', () => {
         .set('Authorization', `Bearer ${admin.accessToken}`)
         .send({ outcome: 'partial_refund', note: 'Trying to over-refund', refundAmount: remaining + 10 })
       expect(overRes.status, JSON.stringify(overRes.body)).toBe(400)
-      // Same appCode/code bug as TC-M09-006's negative case — assert the message instead.
-      expect(overRes.body.code).toBeUndefined()
+      // Same appCode/code fix as TC-M09-006's negative case.
+      expect(overRes.body.code).toBe('REFUND_EXCEEDS_PAYMENT')
       expect(overRes.body.error).toBe('Refund amount exceeds the remaining refundable balance')
 
       // The rejected second attempt rolled back entirely (thrown before COMMIT) —
