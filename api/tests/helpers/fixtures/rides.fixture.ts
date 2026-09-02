@@ -261,6 +261,12 @@ export async function cleanupRideAndDriverData(pool: Pool, phones: string[]) {
        )`,
       [userIds, driverIds]
     )
+    await pool.query(
+      `DELETE FROM ride_eta_snapshots WHERE ride_id IN (
+         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
+       )`,
+      [userIds, driverIds]
+    )
     await pool.query('DELETE FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)', [userIds, driverIds])
   }
   if (driverIds.length) {

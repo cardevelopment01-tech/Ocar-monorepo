@@ -3,6 +3,7 @@ import request from 'supertest'
 import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
+import { processBroadcast } from '@/jobs/processors/broadcast.processor'
 import {
   loginUser, loginDriver, setupOnlineDriver, cleanupRideAndDriverData, DEFAULT_BOOKING,
 } from '../helpers/fixtures/rides.fixture'
@@ -20,6 +21,7 @@ const PHONES = {
   bookerUser: '+919700000001',
   cancelUser: '+919700000002',
   noDriversUser: '+919700000003',
+  secondBookerUser: '+919700000004',
   onlineDriver1: '+919700000011',
 } as const
 const ALL_PHONES = Object.values(PHONES)
@@ -111,13 +113,86 @@ describe('M07 — Ride Lifecycle', () => {
       expect(rows[0]?.status).toBe('requested')
     })
 
-    it.todo('TC-M07-002: broadcast finds nearby active drivers')
-    it.todo('TC-M07-003: driver accepts ride changes status to accepted')
-    it.todo('TC-M07-004: driver arrived changes status to driver_arrived')
-    it.todo('TC-M07-005: trip start OTP verified changes status to in_progress')
-    it.todo('TC-M07-006: trip end OTP verified changes status to completed')
     it.todo('TC-M07-009: GPS track batch flush writes to gps_tracks table')
     it.todo('TC-M07-010: advance booking dispatches 15 min before pickup')
     it.todo('TC-M07-011: return cab route matching finds eligible drivers')
+  })
+
+  describe('Full ride progression', () => {
+    it('TC-M07-002 + TC-M07-003 + TC-M07-004 + TC-M07-005 + TC-M07-006: book → broadcast → accept → arrive → start → complete', async () => {
+      const driver = await setupOnlineDriver(app, pool, redis, PHONES.onlineDriver1)
+      const { accessToken: userToken } = await loginUser(app, redis, PHONES.secondBookerUser)
+
+      const bookRes = await request(app)
+        .post('/api/v1/rides')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ categoryId: driver.categoryId, ...DEFAULT_BOOKING })
+      expect(bookRes.status, JSON.stringify(bookRes.body)).toBe(201)
+      const rideId = bookRes.body.rideId as string
+
+      // TC-M07-002: run the broadcast processor directly against real DB/Redis —
+      // it's a plain async function taking a BroadcastJobData object, no BullMQ
+      // Job wrapper needed (confirmed against broadcast.processor.test.ts).
+      await processBroadcast({
+        rideId,
+        categoryId: String(driver.categoryId),
+        originLat: DEFAULT_BOOKING.originLat,
+        originLng: DEFAULT_BOOKING.originLng,
+        rideType: DEFAULT_BOOKING.rideType,
+        isReturnCab: false,
+        broadcastRound: 1,
+      })
+      const { rows: assignmentRows } = await pool.query<{ driver_id: string }>(
+        'SELECT driver_id FROM ride_assignments WHERE ride_id = $1', [rideId]
+      )
+      expect(assignmentRows.some(r => r.driver_id === driver.driverId)).toBe(true)
+
+      // TC-M07-003: driver accepts
+      const acceptRes = await request(app)
+        .post(`/api/v1/rides/${rideId}/accept`)
+        .set('Authorization', `Bearer ${driver.accessToken}`)
+      expect(acceptRes.status, JSON.stringify(acceptRes.body)).toBe(200)
+      let { rows } = await pool.query<{ status: string }>('SELECT status FROM rides WHERE id = $1', [rideId])
+      expect(rows[0]?.status).toBe('accepted')
+
+      // TC-M07-004: driver marks arrived — generates start OTP
+      const arrivedRes = await request(app)
+        .post(`/api/v1/rides/${rideId}/arrived`)
+        .set('Authorization', `Bearer ${driver.accessToken}`)
+      expect(arrivedRes.status, JSON.stringify(arrivedRes.body)).toBe(200)
+      ;({ rows } = await pool.query('SELECT status FROM rides WHERE id = $1', [rideId]))
+      expect(rows[0]?.status).toBe('driver_arrived')
+
+      // Read the start OTP back as the rider (route exposes startOtp to the ride owner)
+      const rideAsUser = await request(app)
+        .get(`/api/v1/rides/${rideId}`)
+        .set('Authorization', `Bearer ${userToken}`)
+      const startOtp = rideAsUser.body.startOtp as string
+      expect(startOtp).toMatch(/^\d{4}$/)
+
+      // TC-M07-005: verify start OTP
+      const startOtpRes = await request(app)
+        .post(`/api/v1/rides/${rideId}/start-otp`)
+        .set('Authorization', `Bearer ${driver.accessToken}`)
+        .send({ otp: startOtp })
+      expect(startOtpRes.status, JSON.stringify(startOtpRes.body)).toBe(200)
+      ;({ rows } = await pool.query('SELECT status FROM rides WHERE id = $1', [rideId]))
+      expect(rows[0]?.status).toBe('in_progress')
+
+      // TC-M07-006: verify end OTP
+      const rideAsUser2 = await request(app)
+        .get(`/api/v1/rides/${rideId}`)
+        .set('Authorization', `Bearer ${userToken}`)
+      const endOtp = rideAsUser2.body.endOtp as string
+      expect(endOtp).toMatch(/^\d{4}$/)
+
+      const endOtpRes = await request(app)
+        .post(`/api/v1/rides/${rideId}/end-otp`)
+        .set('Authorization', `Bearer ${driver.accessToken}`)
+        .send({ otp: endOtp, actual_distance_km: DEFAULT_BOOKING.distanceKm, actual_duration_min: DEFAULT_BOOKING.durationMin })
+      expect(endOtpRes.status, JSON.stringify(endOtpRes.body)).toBe(200)
+      ;({ rows } = await pool.query('SELECT status FROM rides WHERE id = $1', [rideId]))
+      expect(rows[0]?.status).toBe('completed')
+    })
   })
 })
