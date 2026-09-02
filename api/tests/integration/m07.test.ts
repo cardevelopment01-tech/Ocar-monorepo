@@ -113,9 +113,10 @@ describe('M07 — Ride Lifecycle', () => {
       expect(rows[0]?.status).toBe('requested')
     })
 
-    it.todo('TC-M07-009: GPS track batch flush writes to gps_tracks table')
-    it.todo('TC-M07-010: advance booking dispatches 15 min before pickup')
-    it.todo('TC-M07-011: return cab route matching finds eligible drivers')
+    // Deferred — see docs/superpowers/plans/2026-09-02-m07-m08-integration-tests.md Task 4.
+    it.todo('TC-M07-009: GPS track batch flush writes to gps_tracks table — needs geo module route path')
+    it.todo('TC-M07-010: advance booking dispatches 15 min before pickup — needs BullMQ delayed-job test strategy')
+    it.todo('TC-M07-011: return cab route matching finds eligible drivers — needs findReturnCabDrivers query shape')
   })
 
   describe('Full ride progression', () => {
