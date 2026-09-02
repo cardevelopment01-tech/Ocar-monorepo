@@ -19,8 +19,8 @@ vi.mock('@/lib/storage', () => ({
 const app = createApp()
 
 // phone ranges: m07 uses 001-011, m08 uses 021-048, m09's ratings tests use
-// 051-056, SOS tests use 057-060 — bump past the highest existing number
-// when adding a new integration test file.
+// 051-056, SOS tests use 057-060, disputes tests use 061-066 — bump past the
+// highest existing number when adding a new integration test file.
 const PHONES = {
   ratingUser1: '+919700000051',
   ratingDriver1: '+919700000052',
@@ -32,6 +32,14 @@ const PHONES = {
   sosDriver1: '+919700000058',
   sosUser2: '+919700000059',
   sosDriver2: '+919700000060',
+  disputeUser1: '+919700000061',
+  disputeDriver1: '+919700000062',
+  disputeUser2: '+919700000063',
+  disputeDriver2: '+919700000064',
+  disputeUser3: '+919700000065',
+  disputeDriver3: '+919700000066',
+  disputeUser4: '+919700000067',
+  disputeDriver4: '+919700000068',
 } as const
 
 const SOS_ADMIN_EMAIL = 'm09-safety-admin@ocar.app'
@@ -106,6 +114,46 @@ async function bookAndDriveToInProgress(userPhone: string, driverPhone: string) 
   await driveRideToInProgress(app, rideId, driver, userToken)
 
   return { rideId, userToken, userId, driver }
+}
+
+/**
+ * Disputes' refund-cap test needs a real `payments` row to check refund
+ * amounts against — `bookAndCompleteRide` books with the default 'cash'
+ * channel, which (per m08.test.ts's TC-M08-001 finding) does NOT create a
+ * payments row on completion, only on an explicit /collect-cash call. Wallet
+ * channel settles automatically on end-otp, same pattern m08.test.ts uses
+ * for its own wallet tests.
+ */
+async function bookAndCompleteRideWithWallet(userPhone: string, driverPhone: string) {
+  const driver = await setupOnlineDriver(app, pool, redis, driverPhone, { categorySlug: 'sedan' })
+  const { accessToken: userToken, userId } = await loginUser(app, redis, userPhone)
+  await pool.query(
+    `INSERT INTO user_wallets (user_id, balance) VALUES ($1, 5000)
+     ON CONFLICT (user_id) DO UPDATE SET balance = 5000`,
+    [userId]
+  )
+  const bookRes = await request(app)
+    .post('/api/v1/rides')
+    .set('Authorization', `Bearer ${userToken}`)
+    .send({ categoryId, ...DEFAULT_BOOKING, paymentChannel: 'wallet' })
+  if (bookRes.status !== 201) throw new Error(`Booking failed: ${JSON.stringify(bookRes.body)}`)
+  const rideId = bookRes.body.rideId as string
+  await driveRideToCompletion(app, rideId, driver, userToken)
+
+  // settleRideCompletionPayment (rides.service.ts) runs fire-and-forget after
+  // end-otp verification, same timing gap m08.test.ts's
+  // waitForWalletPaymentCompleted documents — poll rather than assume.
+  let payment: { id: string; status: string; amount: string } | undefined
+  for (let i = 0; i < 20; i++) {
+    const { rows } = await pool.query<{ id: string; status: string; amount: string }>(
+      `SELECT id, status, amount FROM payments WHERE ride_id = $1 AND channel = 'platform_wallet'`, [rideId]
+    )
+    if (rows[0]?.status === 'completed') { payment = rows[0]; break }
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  if (!payment) throw new Error(`Timed out waiting for completed wallet payment for ride ${rideId}`)
+
+  return { rideId, userToken, userId, driver, payment }
 }
 
 describe('M09 — Safety', () => {
@@ -234,9 +282,145 @@ describe('M09 — Safety', () => {
   })
 
   describe('Disputes', () => {
-    it.todo('TC-M09-006: dispute created with evidence uploads')
-    it.todo('TC-M09-007: dispute resolution applies fare adjustment')
-    it.todo('TC-M09-008: driver warning issued increments warning count')
+    // Original plan text named this "dispute created with evidence uploads" —
+    // research confirmed there is no endpoint anywhere in the app that inserts
+    // into `dispute_evidence` (the table exists, nothing writes to it), so
+    // this only covers dispute creation itself.
+    it('TC-M09-006: dispute created on a completed ride, rejected on a non-completed one', async () => {
+      const { rideId, userToken, userId } = await bookAndCompleteRide(PHONES.disputeUser1, PHONES.disputeDriver1)
+
+      const res = await request(app)
+        .post('/api/v1/safety/disputes')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ rideId, type: 'fare_overcharge', description: 'Charged more than the estimate' })
+      expect(res.status, JSON.stringify(res.body)).toBe(201)
+      expect(res.body.type).toBe('fare_overcharge')
+      expect(res.body.status).toBe('open')
+      // priority defaults to 2 (createDispute's `input.priority ?? 2`), but
+      // slaHours is computed off the *raw* input.priority before that default
+      // is applied (`input.priority && input.priority <= 2 ? 24 : 48`) — with
+      // no priority passed, that's undefined, so sla_hours lands on 48 even
+      // though the stored priority is 2. Asserting both locks in the real
+      // (if slightly surprising) behavior rather than the doc's simplified summary.
+      expect(res.body.priority).toBe(2)
+      expect(res.body.sla_hours).toBe(48)
+
+      const { rows } = await pool.query(
+        'SELECT ride_id, initiator, initiated_by_user, type FROM disputes WHERE id = $1', [res.body.id]
+      )
+      expect(rows).toHaveLength(1)
+      expect(String(rows[0]?.ride_id)).toBe(String(rideId))
+      expect(rows[0]?.initiator).toBe('user')
+      expect(String(rows[0]?.initiated_by_user)).toBe(String(userId))
+
+      // Negative case: disputing a non-completed ride must 400.
+      const { rideId: inProgressRideId } = await bookAndDriveToInProgress(PHONES.disputeUser2, PHONES.disputeDriver2)
+      const badRes = await request(app)
+        .post('/api/v1/safety/disputes')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ rideId: inProgressRideId, type: 'other', description: 'Ride not finished' })
+      expect(badRes.status, JSON.stringify(badRes.body)).toBe(400)
+      // NOT `badRes.body.code` — confirmed app bug (reported, not patched here):
+      // disputes.service.ts throws `Object.assign(new Error(...), { httpStatus, code: '...' })`,
+      // but error.middleware.ts's httpStatus branch reads `appErr.appCode`, not `.code`
+      // (the real convention, from lib/errors.ts's `httpError()`). Every disputes.service.ts
+      // and safety.guards.ts thrown error's machine-readable code is silently dropped —
+      // the client only ever sees `code: undefined` on these paths. Asserting the message
+      // text instead documents the real (buggy) response shape rather than masking it.
+      expect(badRes.body.code).toBeUndefined()
+      expect(badRes.body.error).toBe('Disputes can only be raised on completed rides')
+    })
+
+    it('TC-M09-007: dispute resolution applies a partial refund, capped at the remaining balance', async () => {
+      const { rideId, userToken, payment } = await bookAndCompleteRideWithWallet(
+        PHONES.disputeUser3, PHONES.disputeDriver3
+      )
+
+      const disputeRes = await request(app)
+        .post('/api/v1/safety/disputes')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ rideId, type: 'fare_overcharge', description: 'Overcharged on distance', priority: 1 })
+      expect(disputeRes.status, JSON.stringify(disputeRes.body)).toBe(201)
+      const disputeId = disputeRes.body.id as string
+
+      const admin = await loginAdmin(app, SOS_ADMIN_EMAIL, SOS_ADMIN_PASSWORD)
+      const fareAmount = parseFloat(payment.amount)
+      const partialRefund = Math.round((fareAmount / 2) * 100) / 100
+
+      const resolveRes = await request(app)
+        .patch(`/api/v1/admin/safety/disputes/${disputeId}/resolve`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ outcome: 'partial_refund', note: 'Partial refund for overcharge', refundAmount: partialRefund })
+      expect(resolveRes.status, JSON.stringify(resolveRes.body)).toBe(200)
+      expect(resolveRes.body.status).toBe('resolved')
+      expect(resolveRes.body.outcome).toBe('partial_refund')
+
+      const { rows: refundRows } = await pool.query<{ amount: string; status: string }>(
+        'SELECT amount, status FROM refunds WHERE dispute_id = $1', [disputeId]
+      )
+      expect(refundRows).toHaveLength(1)
+      expect(parseFloat(refundRows[0]!.amount)).toBeCloseTo(partialRefund, 2)
+      expect(refundRows[0]!.status).toBe('requested')
+
+      // Second resolve on the SAME dispute, refundAmount exceeding what's left
+      // (fareAmount - partialRefund) — proves the FOR UPDATE remaining-balance
+      // cap actually rejects, not just that the happy path inserts a row.
+      const remaining = Math.round((fareAmount - partialRefund) * 100) / 100
+      const overRes = await request(app)
+        .patch(`/api/v1/admin/safety/disputes/${disputeId}/resolve`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ outcome: 'partial_refund', note: 'Trying to over-refund', refundAmount: remaining + 10 })
+      expect(overRes.status, JSON.stringify(overRes.body)).toBe(400)
+      // Same appCode/code bug as TC-M09-006's negative case — assert the message instead.
+      expect(overRes.body.code).toBeUndefined()
+      expect(overRes.body.error).toBe('Refund amount exceeds the remaining refundable balance')
+
+      // The rejected second attempt rolled back entirely (thrown before COMMIT) —
+      // still exactly one refund row, and the dispute's note is still the first one's.
+      const { rows: refundRowsAfter } = await pool.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM refunds WHERE dispute_id = $1', [disputeId]
+      )
+      expect(refundRowsAfter[0]?.n).toBe(1)
+      const { rows: disputeRows } = await pool.query<{ outcome_note: string }>(
+        'SELECT outcome_note FROM disputes WHERE id = $1', [disputeId]
+      )
+      expect(disputeRows[0]?.outcome_note).toBe('Partial refund for overcharge')
+    })
+
+    it('TC-M09-008: driver warning issued inserts a driver_warnings row', async () => {
+      const { rideId, userToken, driver } = await bookAndCompleteRide(PHONES.disputeUser4, PHONES.disputeDriver4)
+
+      const disputeRes = await request(app)
+        .post('/api/v1/safety/disputes')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ rideId, type: 'driver_behaviour', description: 'Driver was rude', priority: 1 })
+      expect(disputeRes.status, JSON.stringify(disputeRes.body)).toBe(201)
+      const disputeId = disputeRes.body.id as string
+
+      const admin = await loginAdmin(app, SOS_ADMIN_EMAIL, SOS_ADMIN_PASSWORD)
+
+      const resolveRes = await request(app)
+        .patch(`/api/v1/admin/safety/disputes/${disputeId}/resolve`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ outcome: 'driver_warned', note: 'Warned for rude behaviour' })
+      expect(resolveRes.status, JSON.stringify(resolveRes.body)).toBe(200)
+      expect(resolveRes.body.outcome).toBe('driver_warned')
+
+      // applyDisputeOutcomeConsequences is awaited (wrapped in try/catch so its
+      // own errors don't surface as a resolve failure, but not fire-and-forget)
+      // before resolveDispute returns — no poll needed, assert immediately.
+      const { rows } = await pool.query(
+        `SELECT driver_id, category, severity, dispute_id, ride_id, description
+         FROM driver_warnings WHERE dispute_id = $1`, [disputeId]
+      )
+      expect(rows).toHaveLength(1)
+      expect(String(rows[0]?.driver_id)).toBe(String(driver.driverId))
+      expect(rows[0]?.category).toBe('other')
+      expect(rows[0]?.severity).toBe('moderate')
+      expect(String(rows[0]?.ride_id)).toBe(String(rideId))
+      expect(rows[0]?.description).toBe('Warned for rude behaviour')
+    })
+
     it.todo('TC-M09-009: dispute trip-replay returns actual GPS trail and planned route')
   })
 })
