@@ -158,15 +158,6 @@ export const DEFAULT_BOOKING = {
   paymentChannel: 'cash' as const,
 }
 
-/**
- * Deletes rows referencing rides/drivers, in FK-safe order. Most of these tables
- * have no ON DELETE CASCADE from rides/drivers so explicit deletion is required;
- * driver_vehicles is the one exception (CASCADEs from drivers) but deleting it
- * explicitly first is still correct and harmless. payment_gateway_events and
- * refunds reference payments (not rides) directly, and refunds also references
- * disputes, so they must be deleted before payments/disputes, which in turn
- * must be deleted before rides.
- */
 // Full FK graph (confirmed against information_schema, not just grep) of every
 // table that references rides(id) with NO ON DELETE CASCADE, in dependency order —
 // grandchildren (referencing payments/ratings/disputes/ride_call_masks, not rides
@@ -229,6 +220,8 @@ async function deleteRideAndDescendantsOnce(pool: Pool, rideIds: string[]) {
  * rides delete. Retry the whole descendant-delete pass a few times on FK failure
  * rather than chasing down every possible fire-and-forget writer individually.
  */
+const POSTGRES_FOREIGN_KEY_VIOLATION = '23503'
+
 async function deleteRideAndDescendants(pool: Pool, rideIds: string[]) {
   if (!rideIds.length) return
   const MAX_ATTEMPTS = 3
@@ -237,7 +230,8 @@ async function deleteRideAndDescendants(pool: Pool, rideIds: string[]) {
       await deleteRideAndDescendantsOnce(pool, rideIds)
       return
     } catch (err) {
-      if (attempt === MAX_ATTEMPTS) throw err
+      const isForeignKeyViolation = (err as { code?: string }).code === POSTGRES_FOREIGN_KEY_VIOLATION
+      if (!isForeignKeyViolation || attempt === MAX_ATTEMPTS) throw err
       await new Promise((resolve) => setTimeout(resolve, 150 * attempt))
     }
   }
@@ -259,6 +253,12 @@ export async function cleanupRideAndDriverData(pool: Pool, phones: string[]) {
   await deleteRideAndDescendants(pool, rideRows.map((r) => r.id))
 
   if (driverIds.length) {
+    // ride_assignments.driver_id/session_id: broadcast can offer a ride to this
+    // driver as a candidate without them ever accepting, so the ride itself may
+    // belong to a different user/driver pair than the one being cleaned up here
+    // and never gets caught by the ride_id-scoped delete above. Must run before
+    // driver_sessions is deleted (ride_assignments.session_id FKs driver_sessions).
+    await pool.query('DELETE FROM ride_assignments WHERE driver_id = ANY($1)', [driverIds])
     await pool.query('DELETE FROM driver_wallet_ledger WHERE driver_id = ANY($1)', [driverIds])
     await pool.query('DELETE FROM driver_wallets WHERE driver_id = ANY($1)', [driverIds])
     await pool.query('DELETE FROM driver_location_snapshots WHERE driver_id = ANY($1)', [driverIds])
