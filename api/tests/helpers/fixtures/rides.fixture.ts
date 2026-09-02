@@ -3,19 +3,19 @@ import request from 'supertest'
 import type { Pool } from 'pg'
 import type { Redis } from 'ioredis'
 
-export async function loginUser(app: Express, redis: Redis, phone: string) {
+async function login(app: Express, redis: Redis, phone: string, role: 'user' | 'driver') {
   // Real key format is `otp_rate:{role}:{phone}:{purpose}` (api/src/lib/otp.ts:37) —
   // NOT `otp_rate:{phone}:{purpose}` as m02.test.ts's own cleanup uses (a latent bug
   // there: its del() never matches the real key, found while verifying this plan's
   // baseline). Do not copy m02's version.
-  await redis.del(`otp_rate:user:${phone}:login`)
-  await redis.del(`otp:user:${phone}:login`)
-  const otpRes = await request(app).post('/api/v1/auth/otp/request').send({ phone, role: 'user' })
+  await redis.del(`otp_rate:${role}:${phone}:login`)
+  await redis.del(`otp:${role}:${phone}:login`)
+  const otpRes = await request(app).post('/api/v1/auth/otp/request').send({ phone, role })
   if (otpRes.status !== 200) {
     throw new Error(`OTP request failed for ${phone}: ${JSON.stringify(otpRes.body)}`)
   }
   const { otp } = otpRes.body as { otp: string }
-  const verifyRes = await request(app).post('/api/v1/auth/otp/verify').send({ phone, otp, role: 'user' })
+  const verifyRes = await request(app).post('/api/v1/auth/otp/verify').send({ phone, otp, role })
   if (verifyRes.status < 200 || verifyRes.status >= 300) {
     throw new Error(`OTP verify failed for ${phone}: ${JSON.stringify(verifyRes.body)}`)
   }
@@ -23,26 +23,17 @@ export async function loginUser(app: Express, redis: Redis, phone: string) {
     tokens: { accessToken: string }
     principal: { id: string }
   }
-  return { accessToken: tokens.accessToken, userId: principal.id }
+  return { accessToken: tokens.accessToken, id: principal.id }
+}
+
+export async function loginUser(app: Express, redis: Redis, phone: string) {
+  const { accessToken, id } = await login(app, redis, phone, 'user')
+  return { accessToken, userId: id }
 }
 
 export async function loginDriver(app: Express, redis: Redis, phone: string) {
-  await redis.del(`otp_rate:driver:${phone}:login`)
-  await redis.del(`otp:driver:${phone}:login`)
-  const otpRes = await request(app).post('/api/v1/auth/otp/request').send({ phone, role: 'driver' })
-  if (otpRes.status !== 200) {
-    throw new Error(`OTP request failed for ${phone}: ${JSON.stringify(otpRes.body)}`)
-  }
-  const { otp } = otpRes.body as { otp: string }
-  const verifyRes = await request(app).post('/api/v1/auth/otp/verify').send({ phone, otp, role: 'driver' })
-  if (verifyRes.status < 200 || verifyRes.status >= 300) {
-    throw new Error(`OTP verify failed for ${phone}: ${JSON.stringify(verifyRes.body)}`)
-  }
-  const { tokens, principal } = verifyRes.body as {
-    tokens: { accessToken: string }
-    principal: { id: string }
-  }
-  return { accessToken: tokens.accessToken, driverId: principal.id }
+  const { accessToken, id } = await login(app, redis, phone, 'driver')
+  return { accessToken, driverId: id }
 }
 
 /**
@@ -110,10 +101,16 @@ export async function completeDailyVerification(app: Express, accessToken: strin
     .post('/api/v1/drivers/daily-verification/upload-init')
     .set('Authorization', `Bearer ${accessToken}`)
     .send({ kind: 'selfie', content_type: 'image/jpeg', content_length: 1024 })
+  if (selfieInit.status !== 200) {
+    throw new Error(`Selfie upload-init failed: ${JSON.stringify(selfieInit.body)}`)
+  }
   const plateInit = await request(app)
     .post('/api/v1/drivers/daily-verification/upload-init')
     .set('Authorization', `Bearer ${accessToken}`)
     .send({ kind: 'plate', content_type: 'image/jpeg', content_length: 1024 })
+  if (plateInit.status !== 200) {
+    throw new Error(`Plate upload-init failed: ${JSON.stringify(plateInit.body)}`)
+  }
   const res = await request(app)
     .post('/api/v1/drivers/daily-verification')
     .set('Authorization', `Bearer ${accessToken}`)
@@ -165,7 +162,10 @@ export const DEFAULT_BOOKING = {
  * Deletes rows referencing rides/drivers, in FK-safe order. Most of these tables
  * have no ON DELETE CASCADE from rides/drivers so explicit deletion is required;
  * driver_vehicles is the one exception (CASCADEs from drivers) but deleting it
- * explicitly first is still correct and harmless.
+ * explicitly first is still correct and harmless. payment_gateway_events and
+ * refunds reference payments (not rides) directly, and refunds also references
+ * disputes, so they must be deleted before payments/disputes, which in turn
+ * must be deleted before rides.
  */
 export async function cleanupRideAndDriverData(pool: Pool, phones: string[]) {
   const { rows: driverRows } = await pool.query<{ id: string }>(
@@ -178,6 +178,53 @@ export async function cleanupRideAndDriverData(pool: Pool, phones: string[]) {
   const userIds = userRows.map((r) => r.id)
 
   if (driverIds.length || userIds.length) {
+    // payment_gateway_events -> refunds -> payments (refunds also FKs rides + disputes,
+    // so it must go before both payments and disputes); ratings/sos_alerts/disputes/
+    // ride_messages all FK rides directly with no ON DELETE CASCADE.
+    await pool.query(
+      `DELETE FROM payment_gateway_events WHERE payment_id IN (
+         SELECT id FROM payments WHERE ride_id IN (
+           SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
+         )
+       )`,
+      [userIds, driverIds]
+    )
+    await pool.query(
+      `DELETE FROM refunds WHERE ride_id IN (
+         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
+       )`,
+      [userIds, driverIds]
+    )
+    await pool.query(
+      `DELETE FROM payments WHERE ride_id IN (
+         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
+       )`,
+      [userIds, driverIds]
+    )
+    await pool.query(
+      `DELETE FROM ratings WHERE ride_id IN (
+         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
+       )`,
+      [userIds, driverIds]
+    )
+    await pool.query(
+      `DELETE FROM sos_alerts WHERE ride_id IN (
+         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
+       )`,
+      [userIds, driverIds]
+    )
+    await pool.query(
+      `DELETE FROM disputes WHERE ride_id IN (
+         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
+       )`,
+      [userIds, driverIds]
+    )
+    await pool.query(
+      `DELETE FROM ride_messages WHERE ride_id IN (
+         SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
+       )`,
+      [userIds, driverIds]
+    )
     await pool.query(
       `DELETE FROM ride_status_history WHERE ride_id IN (
          SELECT id FROM rides WHERE user_id = ANY($1) OR driver_id = ANY($2)
