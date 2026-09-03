@@ -1,7 +1,16 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, afterAll, vi } from 'vitest'
 import request from 'supertest'
 import { createApp } from '@/app'
 import { pool } from '@/db/client'
+
+const TEST_PLACE_ID = 'ChIJTestPlaceId12345'
+
+afterAll(async () => {
+  // Runs regardless of test outcome — a failed assertion mid-test must not
+  // leak this row and permanently wedge the next run's cache-miss assumption.
+  await pool.query('DELETE FROM place_geocode_cache WHERE normalized_address = $1', [`place:${TEST_PLACE_ID}`])
+  await pool.end()
+})
 
 vi.mock('@/modules/geo/providers/google.provider', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/modules/geo/providers/google.provider')>()
@@ -39,7 +48,7 @@ describe('M05 — Geo & Spatial', () => {
 
   describe('Geocode cache', () => {
     it('TC-M05-005: geocode cache hit avoids the external Google call on repeat lookup', async () => {
-      const placeId = 'ChIJTestPlaceId12345'
+      const placeId = TEST_PLACE_ID
 
       const google = await import('@/modules/geo/providers/google.provider')
 
@@ -60,10 +69,8 @@ describe('M05 — Geo & Spatial', () => {
       const { rows: afterRows } = await pool.query(
         'SELECT hit_count FROM place_geocode_cache WHERE normalized_address = $1', [`place:${placeId}`]
       )
+      expect(afterRows).toHaveLength(1)
       expect(afterRows[0]?.hit_count).toBeGreaterThan(cacheRows[0]?.hit_count as number)
-
-      await pool.query('DELETE FROM place_geocode_cache WHERE normalized_address = $1', [`place:${placeId}`])
-      await pool.end()
     })
   })
 })
