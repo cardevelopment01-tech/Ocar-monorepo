@@ -3,7 +3,7 @@ import request from 'supertest'
 import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
-import { setupOnlineDriver, cleanupRideAndDriverData } from '../helpers/fixtures/rides.fixture'
+import { setupOnlineDriver, loginDriver, cleanupRideAndDriverData } from '../helpers/fixtures/rides.fixture'
 import { loginAdmin, seedAdmin, cleanupAdmins } from '../helpers/fixtures/safety.fixture'
 
 // setupOnlineDriver drives completeDailyVerification, which needs S3 mocked
@@ -176,14 +176,7 @@ describe('M04 — Vehicle Management', () => {
 
     it('TC-M04-003: admin approves driver — pending_approval to active', async () => {
       // Fresh login creates the driver row at onboarding_step=personal_info/status=pending_docs.
-      const loginRes = await request(app)
-        .post('/api/v1/auth/otp/request')
-        .send({ phone: PHONES.driverApprovalDriver, role: 'driver' })
-      const { otp } = loginRes.body as { otp: string }
-      const verifyRes = await request(app)
-        .post('/api/v1/auth/otp/verify')
-        .send({ phone: PHONES.driverApprovalDriver, otp, role: 'driver' })
-      const realDriverId = (verifyRes.body.principal.id as string)
+      const { driverId: realDriverId } = await loginDriver(app, redis, PHONES.driverApprovalDriver)
 
       await pool.query(`UPDATE drivers SET status = 'pending_approval' WHERE id = $1`, [realDriverId])
 
