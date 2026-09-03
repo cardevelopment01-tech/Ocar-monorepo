@@ -13,8 +13,8 @@ const OPS_ADMIN_EMAIL = 'm11-ops-admin@ocar.app'
 const ADMIN_PASSWORD = 'Admin@1234'
 
 const PHONES = {
-  SUSPEND_USER: '+919700000301',
-}
+  suspendUser: '+919700000301',
+} as const
 
 beforeAll(async () => {
   await seedAdmin(pool, SUPER_ADMIN_EMAIL, 'super_admin', ADMIN_PASSWORD)
@@ -96,7 +96,7 @@ describe('M11 — Admin Panel', () => {
     })
 
     it('TC-M11-005: admin suspends a user, changing their status', async () => {
-      const { userId } = await loginUser(app, redis, PHONES.SUSPEND_USER)
+      const { userId } = await loginUser(app, redis, PHONES.suspendUser)
       const superAdmin = await loginAdmin(app, SUPER_ADMIN_EMAIL, ADMIN_PASSWORD)
 
       const res = await request(app)
@@ -109,11 +109,14 @@ describe('M11 — Admin Panel', () => {
       const { rows } = await pool.query('SELECT status FROM users WHERE id = $1', [userId])
       expect(rows[0]?.status).toBe('suspended')
 
-      // Restore so this user isn't left suspended if any later test reuses the phone.
-      await request(app)
+      // Restore, asserted (not fire-and-forget) — catches a regression in the
+      // restore path itself (e.g. status:'active' breaking) rather than letting
+      // it surface as a confusing downstream failure.
+      const restoreRes = await request(app)
         .patch(`/api/v1/admin/users/${userId}/status`)
         .set('Authorization', `Bearer ${superAdmin.accessToken}`)
         .send({ status: 'active' })
+      expect(restoreRes.status, JSON.stringify(restoreRes.body)).toBe(200)
     })
   })
 
