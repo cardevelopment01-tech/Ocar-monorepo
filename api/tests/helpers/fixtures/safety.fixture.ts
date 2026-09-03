@@ -63,6 +63,7 @@ export async function cleanupAdmins(pool: Pool, emails: string[]) {
     { table: 'notification_templates', column: 'created_by' },
     { table: 'rate_cards', column: 'created_by' },
     { table: 'rate_card_history', column: 'changed_by' },
+    { table: 'system_config', column: 'updated_by' },
   ]
   for (const { table, column } of adminOwnedColumns) {
     await pool.query(
