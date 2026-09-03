@@ -51,18 +51,24 @@ export async function cleanupAdmins(pool: Pool, emails: string[]) {
     'DELETE FROM admin_audit_log WHERE admin_id = ANY(SELECT id FROM admins WHERE email = ANY($1))',
     [emails]
   )
-  // notification_templates.created_by/updated_by are the same shape — nullable
-  // FKs with no ON DELETE action. A test that edits a shared seeded template
-  // (e.g. TC-M10-005) leaves updated_by pointing at the test admin.
-  await pool.query(
-    `UPDATE notification_templates SET updated_by = NULL
-     WHERE updated_by = ANY(SELECT id FROM admins WHERE email = ANY($1))`,
-    [emails]
-  )
-  await pool.query(
-    `UPDATE notification_templates SET created_by = NULL
-     WHERE created_by = ANY(SELECT id FROM admins WHERE email = ANY($1))`,
-    [emails]
-  )
+  // Same shape recurs across every table an admin writes to: nullable FKs with
+  // no ON DELETE action, so a test that edits/creates a row through the admin
+  // API leaves that admin as an unremovable creator/editor. Centralized here
+  // rather than reimplemented per test file — this list has grown by one each
+  // time a new admin-authored table showed up in a task (M04's driver-doc
+  // approval, M06's rate cards, M10's notification templates); add the next
+  // one here too instead of inlining it in a test file's own cleanup.
+  const adminOwnedColumns: Array<{ table: string; column: string }> = [
+    { table: 'notification_templates', column: 'updated_by' },
+    { table: 'notification_templates', column: 'created_by' },
+    { table: 'rate_cards', column: 'created_by' },
+    { table: 'rate_card_history', column: 'changed_by' },
+  ]
+  for (const { table, column } of adminOwnedColumns) {
+    await pool.query(
+      `UPDATE ${table} SET ${column} = NULL WHERE ${column} = ANY(SELECT id FROM admins WHERE email = ANY($1))`,
+      [emails]
+    )
+  }
   await pool.query('DELETE FROM admins WHERE email = ANY($1)', [emails])
 }

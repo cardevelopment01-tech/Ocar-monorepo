@@ -182,14 +182,8 @@ describe('M06 — Pricing', () => {
           .set('Authorization', `Bearer ${admin.accessToken}`)
           .send({ category_id: categoryId, ride_type: 'one_way', rate_per_km: 13, rate_per_min: 2, min_fare: 250, return_rate_per_km: 11 })
         expect(restoreRes.status, JSON.stringify(restoreRes.body)).toBe(201)
-
-        // rate_cards.created_by and rate_card_history.changed_by both REFERENCE
-        // admins(id) with no ON DELETE action, and this test's admin is the
-        // creator/changer on every rate card + history row it just wrote
-        // (including the restore above) — cleanupAdmins() in afterAll would
-        // otherwise fail with a FK violation trying to delete this admin row.
-        await pool.query('UPDATE rate_cards SET created_by = NULL WHERE created_by = $1', [admin.adminId])
-        await pool.query('UPDATE rate_card_history SET changed_by = NULL WHERE changed_by = $1', [admin.adminId])
+        // rate_cards.created_by/rate_card_history.changed_by nulling for this
+        // admin is handled centrally by cleanupAdmins() in afterAll.
       }
     })
   })
