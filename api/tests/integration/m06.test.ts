@@ -97,24 +97,22 @@ describe('M06 — Pricing', () => {
       expect(res.body.breakdown.total).toBeCloseTo(parseFloat(pkgRows[0].package_fare), 1)
     })
 
-    it('TC-M06-003: highway rate applies for highway zone segments', async () => {
-      // Deferred — no highway-rate concept exists anywhere in pricing.service.ts
-      // or @/lib/fare. Nothing to test against.
-    })
+    // Deferred — no highway-rate concept exists anywhere in pricing.service.ts
+    // or @/lib/fare. Nothing to test against.
+    it.todo('TC-M06-003: highway rate applies for highway zone segments — no highway-rate concept implemented')
 
-    it('TC-M06-007: surge activator job activates scheduled surge on time', async () => {
-      // Deferred — confirmed via source read: no scanner/job exists anywhere under
-      // api/src/jobs/** that transitions surge_events.status from 'scheduled' to
-      // 'active'. createSurgeEvent (pricing.repository.ts) always inserts status
-      // 'scheduled'; getActiveSurge only ever reads WHERE status = 'active' directly
-      // and never itself flips a row's status. dispatch-scheduled.processor.ts's one
-      // "surge" match is an unrelated comment about recomputing fare at ride
-      // completion, not surge activation.
-      // FLAG: this looks like a real product gap — a surge scheduled with a future
-      // starts_at will sit at status='scheduled' forever and never actually apply,
-      // even after its starts_at has passed, unless something else out-of-repo (a
-      // cron, a manual admin action) flips it. Surfaced to the user per this
-      // session's process for real bugs found during test-writing; not fixed here.
-    })
+    // Deferred — confirmed via source read: no scanner/job exists anywhere under
+    // api/src/jobs/** that transitions surge_events.status from 'scheduled' to
+    // 'active'. createSurgeEvent (pricing.repository.ts) always inserts status
+    // 'scheduled'; getActiveSurge only ever reads WHERE status = 'active' directly
+    // and never itself flips a row's status. dispatch-scheduled.processor.ts's one
+    // "surge" match is an unrelated comment about recomputing fare at ride
+    // completion, not surge activation.
+    // FLAG: this looks like a real product gap — a surge scheduled with a future
+    // starts_at will sit at status='scheduled' forever and never actually apply,
+    // even after its starts_at has passed, unless something else out-of-repo (a
+    // cron, a manual admin action) flips it. Surfaced to the user per this
+    // session's process for real bugs found during test-writing; not fixed here.
+    it.todo('TC-M06-007: surge activator job activates scheduled surge on time — no such job exists, possible real gap')
   })
 })
