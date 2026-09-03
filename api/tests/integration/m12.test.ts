@@ -59,6 +59,24 @@ describe('M12 — Analytics', () => {
     )
     expect(totalOnline).toBeGreaterThanOrEqual(1)
 
+    // Snapshot summary BEFORE this ride exists, so revenue/city-breakdown can be
+    // asserted as an exact delta rather than "at least 1" — the shared test DB
+    // means other files' rides may already be in the 7-day window, and a floor
+    // assertion alone can't tell correct aggregation from double-counting (e.g.
+    // a duplicate settlement inflating both ride_count and revenue would still
+    // pass a "greater than 0" check).
+    const beforeSummaryRes = await request(app)
+      .get('/api/v1/admin/analytics/summary?period=7d')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+    const beforeBhubaneswar = beforeSummaryRes.body.city_breakdown.find(
+      (c: { city_name: string }) => c.city_name === 'Bhubaneswar'
+    )
+    const beforeCityRideCount = Number(beforeBhubaneswar?.ride_count ?? 0)
+    const beforeCityRevenue = Number(beforeBhubaneswar?.revenue ?? 0)
+    const beforeTotalRevenue = beforeSummaryRes.body.daily_revenue.reduce(
+      (sum: number, row: { revenue: number }) => sum + Number(row.revenue), 0
+    )
+
     // TC-M12-001/002/005: complete a ride+payment, then confirm it's reflected
     // in the funnel/revenue/city-breakdown fields of the summary endpoint.
     const { accessToken: userToken } = await loginUser(app, redis, PHONES.analyticsUser)
@@ -95,20 +113,22 @@ describe('M12 — Analytics', () => {
     expect(summaryRes.body.funnel.requested).toBeGreaterThanOrEqual(summaryRes.body.funnel.completed)
 
     // TC-M12-002: revenue — cash-channel ride settles a `payments` row with
-    // status 'completed', which daily_revenue's LEFT JOIN sums.
+    // status 'completed', which daily_revenue's LEFT JOIN sums. Exact delta
+    // against the pre-ride snapshot, not just "greater than 0" — catches
+    // double-counting a floor assertion would miss.
     const totalRevenue = summaryRes.body.daily_revenue.reduce(
       (sum: number, row: { revenue: number }) => sum + Number(row.revenue), 0
     )
-    expect(totalRevenue).toBeGreaterThan(0)
+    expect(totalRevenue - beforeTotalRevenue).toBeCloseTo(fare, 2)
 
     // TC-M12-005: city breakdown — DEFAULT_BOOKING's origin coords resolve to
-    // Bhubaneswar (seeded city).
+    // Bhubaneswar (seeded city). Exact delta for the same double-counting reason.
     const bhubaneswarRow = summaryRes.body.city_breakdown.find(
       (c: { city_name: string }) => c.city_name === 'Bhubaneswar'
     )
     expect(bhubaneswarRow).toBeTruthy()
-    expect(Number(bhubaneswarRow.ride_count)).toBeGreaterThanOrEqual(1)
-    expect(Number(bhubaneswarRow.revenue)).toBeGreaterThan(0)
+    expect(Number(bhubaneswarRow.ride_count) - beforeCityRideCount).toBe(1)
+    expect(Number(bhubaneswarRow.revenue) - beforeCityRevenue).toBeCloseTo(fare, 2)
   })
 
   it.todo('TC-M12-004: analytics endpoint returns paginated data — no pagination exists on any analytics endpoint (summary, eta-accuracy, drivers/onboarding, drivers/availability all return full unpaginated arrays/objects)')
