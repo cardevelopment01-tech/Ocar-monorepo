@@ -3,9 +3,8 @@ import request from 'supertest'
 import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
-import { hashPassword } from '@/lib/hash'
 import { setupOnlineDriver, cleanupRideAndDriverData } from '../helpers/fixtures/rides.fixture'
-import { loginAdmin } from '../helpers/fixtures/safety.fixture'
+import { loginAdmin, seedAdmin, cleanupAdmins } from '../helpers/fixtures/safety.fixture'
 
 // setupOnlineDriver drives completeDailyVerification, which needs S3 mocked
 // (see rides.fixture.ts's comment) — same pattern as m07/m08/m09.test.ts.
@@ -26,12 +25,7 @@ const ADMIN_EMAIL = 'm04-vehicles-admin@ocar.app'
 const ADMIN_PASSWORD = 'Admin@1234'
 
 beforeAll(async () => {
-  const hash = await hashPassword(ADMIN_PASSWORD)
-  await pool.query(`
-    INSERT INTO admins (email, password_hash, role)
-    VALUES ($1, $2, 'super_admin')
-    ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
-  `, [ADMIN_EMAIL, hash])
+  await seedAdmin(pool, ADMIN_EMAIL, 'super_admin', ADMIN_PASSWORD)
 })
 
 afterAll(async () => {
@@ -40,7 +34,7 @@ afterAll(async () => {
     await redis.del(`otp_rate:driver:${p}:login`)
     await redis.del(`otp:driver:${p}:login`)
   }
-  await pool.query(`DELETE FROM admins WHERE email = $1`, [ADMIN_EMAIL])
+  await cleanupAdmins(pool, [ADMIN_EMAIL])
   await pool.end()
   redis.disconnect()
 })
