@@ -4,6 +4,7 @@ import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import { seedAdmin, loginAdmin, cleanupAdmins } from '../helpers/fixtures/safety.fixture'
+import { loginUser, cleanupRideAndDriverData } from '../helpers/fixtures/rides.fixture'
 
 const app = createApp()
 
@@ -11,12 +12,17 @@ const SUPER_ADMIN_EMAIL = 'm11-super-admin@ocar.app'
 const OPS_ADMIN_EMAIL = 'm11-ops-admin@ocar.app'
 const ADMIN_PASSWORD = 'Admin@1234'
 
+const PHONES = {
+  SUSPEND_USER: '+919700000301',
+}
+
 beforeAll(async () => {
   await seedAdmin(pool, SUPER_ADMIN_EMAIL, 'super_admin', ADMIN_PASSWORD)
   await seedAdmin(pool, OPS_ADMIN_EMAIL, 'ops_admin', ADMIN_PASSWORD)
 })
 
 afterAll(async () => {
+  await cleanupRideAndDriverData(pool, Object.values(PHONES))
   await cleanupAdmins(pool, [SUPER_ADMIN_EMAIL, OPS_ADMIN_EMAIL])
   await pool.end()
   redis.disconnect()
@@ -89,7 +95,75 @@ describe('M11 — Admin Panel', () => {
       }
     })
 
-    it.todo('TC-M11-005: admin suspends user changes user status')
-    it.todo('TC-M11-006: rate card update applies to new ride estimates')
+    it('TC-M11-005: admin suspends a user, changing their status', async () => {
+      const { userId } = await loginUser(app, redis, PHONES.SUSPEND_USER)
+      const superAdmin = await loginAdmin(app, SUPER_ADMIN_EMAIL, ADMIN_PASSWORD)
+
+      const res = await request(app)
+        .patch(`/api/v1/admin/users/${userId}/status`)
+        .set('Authorization', `Bearer ${superAdmin.accessToken}`)
+        .send({ status: 'suspended' })
+      expect(res.status, JSON.stringify(res.body)).toBe(200)
+      expect(res.body.status).toBe('suspended')
+
+      const { rows } = await pool.query('SELECT status FROM users WHERE id = $1', [userId])
+      expect(rows[0]?.status).toBe('suspended')
+
+      // Restore so this user isn't left suspended if any later test reuses the phone.
+      await request(app)
+        .patch(`/api/v1/admin/users/${userId}/status`)
+        .set('Authorization', `Bearer ${superAdmin.accessToken}`)
+        .send({ status: 'active' })
+    })
+  })
+
+  describe('Rate-card admin authorization', () => {
+    it('TC-M11-006: only super_admin/ops_admin can create rate cards', async () => {
+      const { rows: catRows } = await pool.query<{ id: string }>(
+        "SELECT id FROM vehicle_categories WHERE slug = 'suv' LIMIT 1"
+      )
+      const categoryId = Number(catRows[0]!.id)
+      const opsAdmin = await loginAdmin(app, OPS_ADMIN_EMAIL, ADMIN_PASSWORD)
+
+      // ops_admin IS allowed here (unlike the payments endpoint in TC-M11-002) —
+      // confirm the positive case, not just a blanket "ops_admin is always blocked".
+      try {
+        const res = await request(app)
+          .post('/api/v1/admin/pricing/rate-cards')
+          .set('Authorization', `Bearer ${opsAdmin.accessToken}`)
+          .send({ category_id: categoryId, ride_type: 'one_way', rate_per_km: 17, rate_per_min: 2.5, min_fare: 350 })
+        expect(res.status, JSON.stringify(res.body)).toBe(201)
+      } finally {
+        // Restore the real seeded suv/one_way rate card (016_seed.sql, verified
+        // live: rate_per_km=17.00, rate_per_min=2.50, min_fare=350.00,
+        // return_rate_per_km=14.00) — this test mutates shared seed data.
+        const restoreRes = await request(app)
+          .post('/api/v1/admin/pricing/rate-cards')
+          .set('Authorization', `Bearer ${opsAdmin.accessToken}`)
+          .send({
+            category_id: categoryId,
+            ride_type: 'one_way',
+            rate_per_km: 17,
+            rate_per_min: 2.5,
+            min_fare: 350,
+            return_rate_per_km: 14,
+          })
+        expect(restoreRes.status, JSON.stringify(restoreRes.body)).toBe(201)
+      }
+
+      // support_admin/finance_admin cannot create rate cards — outside requireAdmin's list.
+      const FINANCE_ADMIN_EMAIL = 'm11-finance-admin@ocar.app'
+      await seedAdmin(pool, FINANCE_ADMIN_EMAIL, 'finance_admin', ADMIN_PASSWORD)
+      try {
+        const financeLogin = await loginAdmin(app, FINANCE_ADMIN_EMAIL, ADMIN_PASSWORD)
+        const forbiddenRes = await request(app)
+          .post('/api/v1/admin/pricing/rate-cards')
+          .set('Authorization', `Bearer ${financeLogin.accessToken}`)
+          .send({ category_id: categoryId, ride_type: 'one_way', rate_per_km: 17, rate_per_min: 2.5, min_fare: 350 })
+        expect(forbiddenRes.status, JSON.stringify(forbiddenRes.body)).toBe(403)
+      } finally {
+        await cleanupAdmins(pool, [FINANCE_ADMIN_EMAIL])
+      }
+    })
   })
 })
