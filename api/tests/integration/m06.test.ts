@@ -30,38 +30,47 @@ describe('M06 — Pricing', () => {
       expect(res.body.breakdown.total).toBeGreaterThan(0)
       // sedan seed rate (verified live in ocar_test): 13/km, 2/min, min_fare 250 —
       // 10km*13 + 20min*2 = 170, floored against min_fare 250, so total is exactly 250.
-      expect(res.body.breakdown.total).toBeCloseTo(250, 1)
-      expect(res.body.breakdown.time_fare).toBeCloseTo(40, 1) // 20min * 2/min
-      expect(res.body.breakdown.distance_fare).toBeCloseTo(130, 1) // 10km * 13/km
+      // All inputs are fixed 2-decimal seed values with no division anywhere in this
+      // path (round2() in @/lib/fare rounds to the cent), so equality is exact, not
+      // approximate — toBeCloseTo would silently pass a cent-level regression.
+      expect(res.body.breakdown.total).toBe(250)
+      expect(res.body.breakdown.time_fare).toBe(40) // 20min * 2/min
+      expect(res.body.breakdown.distance_fare).toBe(130) // 10km * 13/km
     })
 
     it('TC-M06-002: active surge multiplies the fare', async () => {
       // Seed an active surge directly (admin HTTP creation is covered in Task 6;
       // this test isolates fare-calculation behavior from admin-authorization concerns).
-      const { rows: surgeRows } = await pool.query<{ id: string }>(
-        `INSERT INTO surge_events (city_id, category_id, multiplier, status, starts_at, ends_at)
-         VALUES ($1, $2, 1.5, 'active', now() - interval '5 minutes', now() + interval '1 hour')
-         RETURNING id`,
-        [cityId, categoryId]
-      )
-      // getActiveSurge caches its result in Redis (up to 5 min TTL) and only the
-      // repository's own create/cancel paths invalidate that cache -- this test
-      // inserts/deletes via raw SQL, so a prior run's cached surge (or this run's,
-      // for the delete below) would otherwise leak into the next request.
-      await invalidateSurgeCache(cityId, categoryId)
-
+      // Insert, cache-invalidate, and cleanup all live inside the try/finally now —
+      // if the invalidate call itself throws (e.g. a Redis blip), the finally still
+      // runs and the inserted row doesn't leak into the next test run.
+      let surgeId: string | undefined
       try {
+        const { rows: surgeRows } = await pool.query<{ id: string }>(
+          `INSERT INTO surge_events (city_id, category_id, multiplier, status, starts_at, ends_at)
+           VALUES ($1, $2, 1.5, 'active', now() - interval '5 minutes', now() + interval '1 hour')
+           RETURNING id`,
+          [cityId, categoryId]
+        )
+        surgeId = surgeRows[0]!.id
+        // getActiveSurge caches its result in Redis (up to 5 min TTL) and only the
+        // repository's own create/cancel paths invalidate that cache -- this test
+        // inserts/deletes via raw SQL, so a prior run's cached surge (or this run's,
+        // for the delete below) would otherwise leak into the next request.
+        await invalidateSurgeCache(cityId, categoryId)
+
         const res = await request(app)
           .post('/api/v1/pricing/estimate')
           .send({ category_id: categoryId, ride_type: 'one_way', distance_km: 10, duration_min: 20, city_id: cityId })
         expect(res.status, JSON.stringify(res.body)).toBe(200)
         expect(res.body.surge_multiplier).toBe(1.5)
-        expect(res.body.surge_event_id).toBe(surgeRows[0]!.id)
+        expect(res.body.surge_event_id).toBe(surgeId)
         expect(res.body.breakdown.surge_fare).toBeGreaterThan(0)
-        // subtotal floors at 250 (same as TC-M06-001), surge adds 50% on top.
-        expect(res.body.breakdown.total).toBeCloseTo(375, 1)
+        // subtotal floors at exactly 250 (same as TC-M06-001), surge adds 50% on top —
+        // exact equality for the same reason: fixed-precision seed inputs, no division.
+        expect(res.body.breakdown.total).toBe(375)
       } finally {
-        await pool.query('DELETE FROM surge_events WHERE id = $1', [surgeRows[0]!.id])
+        if (surgeId) await pool.query('DELETE FROM surge_events WHERE id = $1', [surgeId])
         await invalidateSurgeCache(cityId, categoryId)
       }
     })
@@ -76,10 +85,10 @@ describe('M06 — Pricing', () => {
       // packageKm = 1 * km_per_day(250) = 250; distance_km sent is doubled to 30,
       // which is under the 250km package floor, so overage is 0 and distance_fare
       // is billed at the full package km (250 * 13/km = 3250).
-      expect(res.body.breakdown.distance_fare).toBeCloseTo(3250, 1)
-      expect(res.body.breakdown.overage_fare).toBeCloseTo(0, 1)
+      expect(res.body.breakdown.distance_fare).toBe(3250)
+      expect(res.body.breakdown.overage_fare).toBe(0)
       // driver allowance: 1 day * 300/day = 300 (surfaced via hour_surcharge field).
-      expect(res.body.breakdown.hour_surcharge).toBeCloseTo(300, 1)
+      expect(res.body.breakdown.hour_surcharge).toBe(300)
     })
 
     it('TC-M06-006: rental estimate uses the matched rental package fare', async () => {
@@ -94,7 +103,16 @@ describe('M06 — Pricing', () => {
         .send({ category_id: categoryId, ride_type: 'rental', distance_km: 10, duration_min: 60, rental_package_id: Number(pkgRows[0].id) })
       expect(res.status, JSON.stringify(res.body)).toBe(200)
       expect(res.body.rental_hours).toBe(Math.round(pkgRows[0].duration_minutes / 60))
-      expect(res.body.breakdown.total).toBeCloseTo(parseFloat(pkgRows[0].package_fare), 1)
+      expect(res.body.breakdown.total).toBe(parseFloat(pkgRows[0].package_fare))
+    })
+
+    it('rejects with 422 when no rate card matches the category/ride_type combo', async () => {
+      // pricing.routes.ts has no request-schema validation; the only guard is
+      // pricing.service.ts's 422 when getCurrentRateCard finds nothing.
+      const res = await request(app)
+        .post('/api/v1/pricing/estimate')
+        .send({ category_id: 999999, ride_type: 'one_way', distance_km: 10, duration_min: 20 })
+      expect(res.status, JSON.stringify(res.body)).toBe(422)
     })
 
     // Deferred — no highway-rate concept exists anywhere in pricing.service.ts
