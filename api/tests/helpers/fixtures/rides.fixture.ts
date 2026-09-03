@@ -126,10 +126,12 @@ export async function completeDailyVerification(app: Express, accessToken: strin
 
 export async function goOnline(
   app: Express, accessToken: string, vehicleId: string, categoryId: number,
-  lat = 20.29, lng = 85.82,
-  opts: { mode?: 'standard' | 'return_cab'; destinationCityId?: number } = {}
+  opts: { lat?: number; lng?: number; mode?: 'standard' | 'return_cab'; destinationCityId?: number } = {}
 ) {
-  const body: Record<string, unknown> = { mode: opts.mode ?? 'standard', vehicleId: Number(vehicleId), categoryId, lat, lng }
+  const body: Record<string, unknown> = {
+    mode: opts.mode ?? 'standard', vehicleId: Number(vehicleId), categoryId,
+    lat: opts.lat ?? 20.29, lng: opts.lng ?? 85.82,
+  }
   if (opts.destinationCityId !== undefined) body['destinationCityId'] = opts.destinationCityId
   return request(app)
     .post('/api/v1/rides/sessions/online')
@@ -141,12 +143,12 @@ export async function goOnline(
 export async function setupOnlineDriver(
   app: Express, pool: Pool, redis: Redis, phone: string,
   opts: Parameters<typeof seedActiveDriverWithVehicle>[2] = {},
-  goOnlineOpts: Parameters<typeof goOnline>[6] = {}
+  goOnlineOpts: Parameters<typeof goOnline>[4] = {}
 ) {
   const { accessToken, driverId } = await loginDriver(app, redis, phone)
   const { vehicleId, categoryId, cityId } = await seedActiveDriverWithVehicle(pool, driverId, opts)
   await completeDailyVerification(app, accessToken)
-  const onlineRes = await goOnline(app, accessToken, vehicleId, categoryId, 20.29, 85.82, goOnlineOpts)
+  const onlineRes = await goOnline(app, accessToken, vehicleId, categoryId, goOnlineOpts)
   if (onlineRes.status !== 200) {
     throw new Error(`Go-online failed: ${JSON.stringify(onlineRes.body)}`)
   }

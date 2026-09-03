@@ -3,15 +3,12 @@ import request from 'supertest'
 import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
-import {
-  loginUser, setupOnlineDriver, cleanupRideAndDriverData, DEFAULT_BOOKING,
-} from '../helpers/fixtures/rides.fixture'
+import { setupOnlineDriver, cleanupRideAndDriverData } from '../helpers/fixtures/rides.fixture'
 
 const TEST_PLACE_ID = 'ChIJTestPlaceId12345'
 
 const PHONES = {
   gpsDriver: '+919700000105',
-  gpsUser: '+919700000106',
   nearDriver: '+919700000107',
   farDriver: '+919700000108',
 } as const
@@ -102,32 +99,20 @@ describe('M05 — Geo & Spatial', () => {
   })
 
   describe('GPS tracking and driver search', () => {
-    it('TC-M05-003: GPS track flush writes valid points and drops low-accuracy ones', async () => {
+    // TC-M05-003's happy path (flush writes valid points, drops low-accuracy
+    // ones) is already exercised end-to-end by m07.test.ts's TC-M07-009 —
+    // not duplicated here (the two tests were previously byte-identical).
+    // This test instead covers the validation-error path that TC-M07-009
+    // doesn't touch: an empty tracks array.
+    it('TC-M05-003: GPS track flush rejects an empty tracks array', async () => {
       const driver = await setupOnlineDriver(app, pool, redis, PHONES.gpsDriver, { categorySlug: 'sedan' })
-      const { accessToken: userToken } = await loginUser(app, redis, PHONES.gpsUser)
-      const bookRes = await request(app)
-        .post('/api/v1/rides')
-        .set('Authorization', `Bearer ${userToken}`)
-        .send({ categoryId: driver.categoryId, ...DEFAULT_BOOKING })
-      expect(bookRes.status, JSON.stringify(bookRes.body)).toBe(201)
-      const rideId = bookRes.body.rideId as string
 
-      const flushRes = await request(app)
+      const res = await request(app)
         .post('/api/v1/geo/tracks/flush')
         .set('Authorization', `Bearer ${driver.accessToken}`)
-        .send({
-          tracks: [
-            { ride_id: Number(rideId), session_id: Number(driver.sessionId), latitude: 20.29, longitude: 85.82, speed_kmph: 20, accuracy_metres: 10, recorded_at: new Date().toISOString() },
-            { ride_id: Number(rideId), session_id: Number(driver.sessionId), latitude: 20.30, longitude: 85.83, speed_kmph: 22, accuracy_metres: 999, recorded_at: new Date().toISOString() },
-          ],
-        })
-      expect(flushRes.status, JSON.stringify(flushRes.body)).toBe(200)
-      expect(flushRes.body.written).toBe(1)
-
-      const { rows } = await pool.query('SELECT count(*)::int AS n FROM gps_tracks WHERE ride_id = $1', [rideId])
-      expect(rows[0]?.n).toBe(1)
-
-      await pool.query('DELETE FROM gps_tracks WHERE ride_id = $1', [rideId])
+        .send({ tracks: [] })
+      expect(res.status, JSON.stringify(res.body)).toBe(422)
+      expect(res.body.code).toBe('VALIDATION_ERROR')
     })
 
     it('TC-M05-004: nearby-drivers search only returns drivers within radius', async () => {
@@ -142,7 +127,9 @@ describe('M05 — Geo & Spatial', () => {
         [farDriver.driverId]
       )
 
-      const res = await request(app).get('/api/v1/rides/nearby-drivers?lat=20.29&lng=85.82&categoryId=' + nearDriver.categoryId)
+      // No categoryId param — rides.routes.ts's nearby-drivers handler only
+      // reads lat/lng/radius, it doesn't filter by category at all.
+      const res = await request(app).get('/api/v1/rides/nearby-drivers?lat=20.29&lng=85.82')
       expect(res.status, JSON.stringify(res.body)).toBe(200)
       const ids = (res.body.drivers as Array<{ driver_id: string }>).map((d) => String(d.driver_id))
       expect(ids).toContain(String(nearDriver.driverId))
