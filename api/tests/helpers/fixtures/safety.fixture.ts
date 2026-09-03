@@ -51,5 +51,18 @@ export async function cleanupAdmins(pool: Pool, emails: string[]) {
     'DELETE FROM admin_audit_log WHERE admin_id = ANY(SELECT id FROM admins WHERE email = ANY($1))',
     [emails]
   )
+  // notification_templates.created_by/updated_by are the same shape — nullable
+  // FKs with no ON DELETE action. A test that edits a shared seeded template
+  // (e.g. TC-M10-005) leaves updated_by pointing at the test admin.
+  await pool.query(
+    `UPDATE notification_templates SET updated_by = NULL
+     WHERE updated_by = ANY(SELECT id FROM admins WHERE email = ANY($1))`,
+    [emails]
+  )
+  await pool.query(
+    `UPDATE notification_templates SET created_by = NULL
+     WHERE created_by = ANY(SELECT id FROM admins WHERE email = ANY($1))`,
+    [emails]
+  )
   await pool.query('DELETE FROM admins WHERE email = ANY($1)', [emails])
 }

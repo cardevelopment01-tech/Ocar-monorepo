@@ -4,10 +4,12 @@ import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import { loginUser, cleanupRideAndDriverData } from '../helpers/fixtures/rides.fixture'
+import { seedAdmin, loginAdmin, cleanupAdmins } from '../helpers/fixtures/safety.fixture'
 
 const app = createApp()
 
 const PHONES = { notifUser: '+919700000201', notifUser2: '+919700000202' } as const
+const TEMPLATES_ADMIN_EMAIL = 'm10-templates-admin@ocar.app'
 
 afterAll(async () => {
   await cleanupRideAndDriverData(pool, [...Object.values(PHONES)])
@@ -15,6 +17,7 @@ afterAll(async () => {
     await redis.del(`otp_rate:user:${p}:login`)
     await redis.del(`otp:user:${p}:login`)
   }
+  await cleanupAdmins(pool, [TEMPLATES_ADMIN_EMAIL])
   await pool.end()
   redis.disconnect()
 })
@@ -145,4 +148,64 @@ describe('M10 — Notifications', () => {
 
   // TC-M10-005 (template rendering) is Task 8's job — see the "Admin
   // notification templates" describe block added there.
+
+  describe('Admin notification templates', () => {
+    it('TC-M10-005: editing a template content and toggling active status both propagate correctly', async () => {
+      await seedAdmin(pool, TEMPLATES_ADMIN_EMAIL, 'super_admin')
+      const admin = await loginAdmin(app, TEMPLATES_ADMIN_EMAIL)
+
+      const listRes = await request(app)
+        .get('/api/v1/admin/notification-templates')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+      expect(listRes.status, JSON.stringify(listRes.body)).toBe(200)
+      const template = listRes.body.templates.find((t: { slug: string }) => t.slug === 'ride_accepted')
+      if (!template) throw new Error('ride_accepted template not found in seed data — check 036_notification_templates.sql')
+
+      const originalBody: string = template.body
+      const originalSubject: string | null = template.subject
+
+      try {
+        const editRes = await request(app)
+          .patch(`/api/v1/admin/notification-templates/${template.id}`)
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+          .send({ body: 'Your ride has been accepted by {{driverName}} — TEST EDIT' })
+        expect(editRes.status, JSON.stringify(editRes.body)).toBe(200)
+        expect(editRes.body.template.version).toBe(template.version + 1)
+
+        // Confirm renderTemplate reflects the edit despite the Redis cache layer —
+        // this is the real test of the invalidate(notificationTemplateKey(...))-on-write behavior.
+        const { renderTemplate } = await import('@/modules/notifications/templates.service')
+        const rendered = await renderTemplate('ride_accepted', template.channel, { driverName: 'Test Driver' })
+        expect(rendered.body).toContain('TEST EDIT')
+
+        const toggleRes = await request(app)
+          .patch(`/api/v1/admin/notification-templates/${template.id}/active`)
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+          .send({ isActive: false })
+        expect(toggleRes.status, JSON.stringify(toggleRes.body)).toBe(200)
+        expect(toggleRes.body.template.isActive).toBe(false)
+        // Toggling active must NOT bump version (per repository code — only content edits do).
+        expect(toggleRes.body.template.version).toBe(template.version + 1)
+      } finally {
+        // Restore both mutations so this template's real seeded copy isn't left broken.
+        await request(app)
+          .patch(`/api/v1/admin/notification-templates/${template.id}`)
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+          .send({ subject: originalSubject, body: originalBody })
+        await request(app)
+          .patch(`/api/v1/admin/notification-templates/${template.id}/active`)
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+          .send({ isActive: true })
+
+        // Confirm the restore genuinely landed — read back via the API, not just
+        // trust that the restore calls above returned 200.
+        const verifyRes = await request(app)
+          .get('/api/v1/admin/notification-templates')
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+        const restored = verifyRes.body.templates.find((t: { id: string }) => t.id === template.id)
+        expect(restored?.body).toBe(originalBody)
+        expect(restored?.isActive).toBe(true)
+      }
+    })
+  })
 })
