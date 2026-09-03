@@ -3,20 +3,26 @@ import request from 'supertest'
 import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { invalidateSurgeCache } from '@/modules/pricing/pricing.repository'
+import { loginAdmin, seedAdmin, cleanupAdmins } from '../helpers/fixtures/safety.fixture'
 
 const app = createApp()
 
 let categoryId: number
 let cityId: number
 
+const ADMIN_EMAIL = 'm06-pricing-admin@ocar.app'
+const ADMIN_PASSWORD = 'Admin@1234'
+
 beforeAll(async () => {
   const { rows: cats } = await pool.query<{ id: string }>("SELECT id FROM vehicle_categories WHERE slug = 'sedan' LIMIT 1")
   categoryId = Number(cats[0]!.id)
   const { rows: cities } = await pool.query<{ id: string }>("SELECT id FROM cities WHERE slug = 'bhubaneswar' LIMIT 1")
   cityId = Number(cities[0]!.id)
+  await seedAdmin(pool, ADMIN_EMAIL, 'super_admin', ADMIN_PASSWORD)
 })
 
 afterAll(async () => {
+  await cleanupAdmins(pool, [ADMIN_EMAIL])
   await pool.end()
 })
 
@@ -132,5 +138,59 @@ describe('M06 — Pricing', () => {
     // cron, a manual admin action) flips it. Surfaced to the user per this
     // session's process for real bugs found during test-writing; not fixed here.
     it.todo('TC-M06-007: surge activator job activates scheduled surge on time — no such job exists, possible real gap')
+  })
+
+  // Placed as a separate, LAST describe block (after Fare estimate closes) because
+  // this test mutates the real shared sedan/one_way rate card that every test above
+  // reads. try/finally guarantees the restore runs even if an assertion throws
+  // mid-test, so a failure here can't leave every other M06 test (or other files
+  // sharing this rate card) permanently broken.
+  describe('Admin rate-card CRUD', () => {
+    it('rate card update is immediately reflected in new fare estimates', async () => {
+      const admin = await loginAdmin(app, ADMIN_EMAIL, ADMIN_PASSWORD)
+
+      try {
+        const beforeRes = await request(app)
+          .post('/api/v1/pricing/estimate')
+          .send({ category_id: categoryId, ride_type: 'one_way', distance_km: 50, duration_min: 60 })
+        expect(beforeRes.status, JSON.stringify(beforeRes.body)).toBe(200)
+        const beforeTotal = beforeRes.body.breakdown.total as number
+
+        const createRes = await request(app)
+          .post('/api/v1/admin/pricing/rate-cards')
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+          .send({ category_id: categoryId, ride_type: 'one_way', rate_per_km: 999, rate_per_min: 5, min_fare: 100 })
+        expect(createRes.status, JSON.stringify(createRes.body)).toBe(201)
+
+        const afterRes = await request(app)
+          .post('/api/v1/pricing/estimate')
+          .send({ category_id: categoryId, ride_type: 'one_way', distance_km: 50, duration_min: 60 })
+        expect(afterRes.status, JSON.stringify(afterRes.body)).toBe(200)
+        expect(afterRes.body.breakdown.total).toBeGreaterThan(beforeTotal)
+        expect(afterRes.body.rate_card_id).toBe(createRes.body.id)
+
+        const historyRes = await request(app)
+          .get('/api/v1/admin/pricing/rate-cards/history')
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+        expect(historyRes.status, JSON.stringify(historyRes.body)).toBe(200)
+      } finally {
+        // Restore the original sedan one_way rate card (016_seed.sql:
+        // rate_per_km=13.00, rate_per_min=2.00, min_fare=250.00, return_rate_per_km=11.00)
+        // so later tests/tasks in this plan aren't left with a mutated shared rate.
+        const restoreRes = await request(app)
+          .post('/api/v1/admin/pricing/rate-cards')
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+          .send({ category_id: categoryId, ride_type: 'one_way', rate_per_km: 13, rate_per_min: 2, min_fare: 250, return_rate_per_km: 11 })
+        expect(restoreRes.status, JSON.stringify(restoreRes.body)).toBe(201)
+
+        // rate_cards.created_by and rate_card_history.changed_by both REFERENCE
+        // admins(id) with no ON DELETE action, and this test's admin is the
+        // creator/changer on every rate card + history row it just wrote
+        // (including the restore above) — cleanupAdmins() in afterAll would
+        // otherwise fail with a FK violation trying to delete this admin row.
+        await pool.query('UPDATE rate_cards SET created_by = NULL WHERE created_by = $1', [admin.adminId])
+        await pool.query('UPDATE rate_card_history SET changed_by = NULL WHERE changed_by = $1', [admin.adminId])
+      }
+    })
   })
 })
