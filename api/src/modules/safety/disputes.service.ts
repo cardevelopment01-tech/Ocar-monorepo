@@ -8,18 +8,17 @@ import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { getConfigValue } from '@/lib/system-config'
 import type { DriverStatus } from '@/modules/admin/admin.types'
 import { logger } from '@/lib/logger'
+import { httpError } from '@/lib/errors'
 
 const log = logger.child({ module: 'disputes-service' })
 
 export async function createDispute(input: CreateDisputeInput) {
   const ride = await repo.getRideBasic(input.rideId)
   if (!ride) {
-    throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+    throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
   }
   if (ride.status !== 'completed') {
-    throw Object.assign(new Error('Disputes can only be raised on completed rides'), {
-      httpStatus: 400, code: 'RIDE_NOT_COMPLETED',
-    })
+    throw httpError(400, 'Disputes can only be raised on completed rides', 'RIDE_NOT_COMPLETED')
   }
 
   const principal: { role: 'user' | 'driver'; id: bigint } =
@@ -55,14 +54,14 @@ export async function listDisputes(opts: {
 
 export async function getDispute(id: bigint) {
   const dispute = await repo.getDisputeById(id)
-  if (!dispute) throw Object.assign(new Error('Dispute not found'), { httpStatus: 404 })
+  if (!dispute) throw httpError(404, 'Dispute not found', 'DISPUTE_NOT_FOUND')
   const actions = await repo.getDisputeActions(id)
   return { ...dispute, actions }
 }
 
 export async function assignDispute(id: bigint, adminId: bigint) {
   const dispute = await repo.getDisputeById(id)
-  if (!dispute) throw Object.assign(new Error('Dispute not found'), { httpStatus: 404 })
+  if (!dispute) throw httpError(404, 'Dispute not found', 'DISPUTE_NOT_FOUND')
 
   const updated = await repo.updateDisputeStatus(id, 'under_review', adminId)
 
@@ -78,7 +77,7 @@ export async function assignDispute(id: bigint, adminId: bigint) {
 
 export async function resolveDispute(id: bigint, input: ResolveDisputeInput) {
   const dispute = await repo.getDisputeById(id)
-  if (!dispute) throw Object.assign(new Error('Dispute not found'), { httpStatus: 404 })
+  if (!dispute) throw httpError(404, 'Dispute not found', 'DISPUTE_NOT_FOUND')
 
   const client = await pool.connect()
   try {
@@ -118,9 +117,7 @@ export async function resolveDispute(id: bigint, input: ResolveDisputeInput) {
         const alreadyRefunded = parseFloat(refundedRes.rows[0].sum)
         const remaining = Math.round((parseFloat(payment.amount) - alreadyRefunded) * 100) / 100
         if (input.refundAmount > remaining) {
-          throw Object.assign(new Error('Refund amount exceeds the remaining refundable balance'), {
-            httpStatus: 400, code: 'REFUND_EXCEEDS_PAYMENT',
-          })
+          throw httpError(400, 'Refund amount exceeds the remaining refundable balance', 'REFUND_EXCEEDS_PAYMENT')
         }
         await client.query(
           `INSERT INTO refunds
@@ -206,7 +203,7 @@ export async function applyDisputeOutcomeConsequences(
 
 export async function getTripReplay(id: bigint) {
   const dispute = await repo.getDisputeById(id)
-  if (!dispute) throw Object.assign(new Error('Dispute not found'), { httpStatus: 404 })
+  if (!dispute) throw httpError(404, 'Dispute not found', 'DISPUTE_NOT_FOUND')
 
   const actualTrail = await repo.getGpsTrailForRide(dispute.ride_id)
 

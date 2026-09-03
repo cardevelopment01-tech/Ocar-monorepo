@@ -14,12 +14,12 @@ describe('assertRideParticipant', () => {
 
   it('rejects a different user with 403 NOT_RIDE_PARTICIPANT', () => {
     expect(() => assertRideParticipant(ride, { role: 'user', id: 8n }))
-      .toThrowError(expect.objectContaining({ httpStatus: 403, code: 'NOT_RIDE_PARTICIPANT' }))
+      .toThrowError(expect.objectContaining({ httpStatus: 403, appCode: 'NOT_RIDE_PARTICIPANT' }))
   })
 
   it('rejects a different driver with 403', () => {
     expect(() => assertRideParticipant(ride, { role: 'driver', id: 99n }))
-      .toThrowError(expect.objectContaining({ httpStatus: 403, code: 'NOT_RIDE_PARTICIPANT' }))
+      .toThrowError(expect.objectContaining({ httpStatus: 403, appCode: 'NOT_RIDE_PARTICIPANT' }))
   })
 
   it('rejects when the ride has no driver assigned and a driver claims it', () => {

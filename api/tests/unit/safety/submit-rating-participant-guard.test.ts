@@ -30,7 +30,7 @@ describe('submitRating', () => {
   it('throws 403 NOT_RIDE_PARTICIPANT when the caller is not on the ride', async () => {
     vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'completed', user_id: 7n, driver_id: 42n } as never)
     await expect(submitRating({ ...base, fromUserId: 999n })).rejects.toMatchObject({
-      httpStatus: 403, code: 'NOT_RIDE_PARTICIPANT',
+      httpStatus: 403, appCode: 'NOT_RIDE_PARTICIPANT',
     })
     expect(repo.insertRating).not.toHaveBeenCalled()
   })

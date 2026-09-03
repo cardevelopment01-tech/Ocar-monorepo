@@ -6,6 +6,7 @@ import type { TriggerSosInput } from './safety.types'
 import { logger } from '@/lib/logger'
 import { assertRideParticipant } from './safety.guards'
 import { client as redis } from '@/db/redis'
+import { httpError } from '@/lib/errors'
 
 const log = logger.child({ module: 'sos-service' })
 
@@ -16,12 +17,10 @@ const SOS_HOURLY_WINDOW_SECONDS = 3600
 export async function triggerSos(input: TriggerSosInput) {
   const ride = await repo.getRideBasic(input.rideId)
   if (!ride) {
-    throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+    throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
   }
   if (ride.status !== 'in_progress' && ride.status !== 'driver_arrived' && ride.status !== 'returning') {
-    throw Object.assign(new Error('SOS can only be triggered during an active ride'), {
-      httpStatus: 400, code: 'RIDE_NOT_ACTIVE',
-    })
+    throw httpError(400, 'SOS can only be triggered during an active ride', 'RIDE_NOT_ACTIVE')
   }
 
   const principal: { role: 'user' | 'driver'; id: bigint } =
@@ -47,9 +46,7 @@ export async function triggerSos(input: TriggerSosInput) {
   const count = await redis.incr(rlKey)
   if (count === 1) await redis.expire(rlKey, SOS_HOURLY_WINDOW_SECONDS)
   if (count > SOS_HOURLY_CAP) {
-    throw Object.assign(new Error('Too many safety alerts. Contact support directly if this is urgent.'), {
-      httpStatus: 429, code: 'SOS_RATE_LIMITED',
-    })
+    throw httpError(429, 'Too many safety alerts. Contact support directly if this is urgent.', 'SOS_RATE_LIMITED')
   }
 
   const alert = await repo.insertSosAlert({
@@ -118,7 +115,7 @@ export async function listSosAlerts(opts: {
 
 export async function acknowledgeSosAlert(id: bigint, adminId: bigint) {
   const alert = await repo.updateSosStatus(id, 'acknowledged', adminId)
-  if (!alert) throw Object.assign(new Error('SOS alert not found'), { httpStatus: 404 })
+  if (!alert) throw httpError(404, 'SOS alert not found', 'SOS_ALERT_NOT_FOUND')
   return alert
 }
 
@@ -129,6 +126,6 @@ export async function resolveSosAlert(
   note?:   string
 ) {
   const alert = await repo.updateSosStatus(id, status, adminId, note)
-  if (!alert) throw Object.assign(new Error('SOS alert not found'), { httpStatus: 404 })
+  if (!alert) throw httpError(404, 'SOS alert not found', 'SOS_ALERT_NOT_FOUND')
   return alert
 }

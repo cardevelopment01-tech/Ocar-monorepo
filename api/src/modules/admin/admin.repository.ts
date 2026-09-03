@@ -1348,10 +1348,16 @@ export async function approveDriverDoc(
   verifiedValidUntil: string,
   seenUpdatedAt: string,
 ): Promise<{ driver_id: string } | null> {
+  // Compared at millisecond precision on both sides: Postgres stores updated_at
+  // with microsecond precision, but node-postgres deserializes timestamptz into
+  // a JS Date (millisecond precision only), so any seenUpdatedAt a real client
+  // round-trips through JSON has already lost its sub-millisecond digits before
+  // this query ever runs — an exact-equality compare would reject almost every
+  // real request with a false optimistic-lock conflict.
   const res = await pool.query(
     `UPDATE driver_documents
      SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
-     WHERE id = $3 AND updated_at = $4
+     WHERE id = $3 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $4::timestamptz)
      RETURNING driver_id`,
     [verifiedValidUntil, adminId, docId, seenUpdatedAt],
   );
@@ -1383,11 +1389,13 @@ export async function approveVehicleDoc(
   verifiedValidUntil: string,
   seenUpdatedAt: string,
 ): Promise<{ driver_id: string } | null> {
+  // See the matching comment on approveDriverDoc above — same millisecond-
+  // vs-microsecond precision mismatch between JS Date and Postgres timestamptz.
   const res = await pool.query(
     `UPDATE driver_vehicle_documents dvd
      SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
      FROM driver_vehicles dv
-     WHERE dvd.id = $3 AND dvd.updated_at = $4 AND dv.id = dvd.vehicle_id
+     WHERE dvd.id = $3 AND date_trunc('milliseconds', dvd.updated_at) = date_trunc('milliseconds', $4::timestamptz) AND dv.id = dvd.vehicle_id
      RETURNING dv.driver_id`,
     [verifiedValidUntil, adminId, docId, seenUpdatedAt],
   );

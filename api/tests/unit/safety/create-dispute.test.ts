@@ -27,7 +27,7 @@ describe('createDispute', () => {
   it('throws 400 RIDE_NOT_COMPLETED for a non-completed ride', async () => {
     vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'in_progress', user_id: 7n, driver_id: 42n } as never)
     await expect(createDispute({ ...base, initiatedByUserId: 7n })).rejects.toMatchObject({
-      httpStatus: 400, code: 'RIDE_NOT_COMPLETED',
+      httpStatus: 400, appCode: 'RIDE_NOT_COMPLETED',
     })
     expect(repo.insertDispute).not.toHaveBeenCalled()
   })
@@ -35,7 +35,7 @@ describe('createDispute', () => {
   it('throws 403 NOT_RIDE_PARTICIPANT when the caller is not on the ride', async () => {
     vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'completed', user_id: 7n, driver_id: 42n } as never)
     await expect(createDispute({ ...base, initiatedByUserId: 999n })).rejects.toMatchObject({
-      httpStatus: 403, code: 'NOT_RIDE_PARTICIPANT',
+      httpStatus: 403, appCode: 'NOT_RIDE_PARTICIPANT',
     })
     expect(repo.insertDispute).not.toHaveBeenCalled()
   })

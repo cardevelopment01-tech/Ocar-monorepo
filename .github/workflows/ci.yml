@@ -153,6 +153,15 @@ jobs:
           S3_REGION: ap-south-1
           S3_ACCESS_KEY: test-access-key
           S3_SECRET_KEY: test-secret-key
+          # M08's webhook tests need real (non-empty) Razorpay keys, not just the
+          # webhook secret — payments.service.ts branches to a dev-mode auto-confirm
+          # shortcut (bypassing the order-creation/webhook path entirely) whenever
+          # RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET are empty, which would silently
+          # defeat the webhook idempotency tests in CI. The 'razorpay' SDK itself is
+          # mocked (vi.mock in m08.test.ts), so these values never hit the network.
+          RAZORPAY_KEY_ID: rzp_test_dummy_key_id
+          RAZORPAY_KEY_SECRET: test-razorpay-key-secret
+          RAZORPAY_WEBHOOK_SECRET: test_webhook_secret_123
 
   typecheck-user:
     name: Typecheck User App
