@@ -99,5 +99,18 @@ describe('M10 — Notifications', () => {
         await pool.query(`DELETE FROM notification_logs WHERE owner_type='user' AND owner_id=$1`, [userId])
       }
     })
+
+    // Deferred — no voice-call provider exists anywhere in api/src. The
+    // notif_channel enum includes 'voice' but nothing sends via it.
+    it.todo('TC-M10-003: SOS triggers voice call to emergency contact — no voice provider implemented')
+
+    // Deferred — this describes retry/backoff behavior in the async BullMQ
+    // worker delivery path (notifications.worker.ts), not any HTTP surface
+    // this plan tests. Out of scope for the HTTP-integration-test shape used
+    // throughout this plan; would need a worker-level test harness instead.
+    it.todo('TC-M10-004: notification failure retries with exponential backoff — worker-level behavior, not HTTP-testable here')
   })
+
+  // TC-M10-005 (template rendering) is Task 8's job — see the "Admin
+  // notification templates" describe block added there.
 })
