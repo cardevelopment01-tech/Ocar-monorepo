@@ -64,7 +64,7 @@ describe('M11 — Admin Panel', () => {
       const listRes = await request(app)
         .get('/api/v1/admin/system-config/')
         .set('Authorization', `Bearer ${superAdmin.accessToken}`)
-      const flag = listRes.body.config.find((c: { value_type?: string; valueType?: string }) => (c.valueType ?? c.value_type) === 'boolean')
+      const flag = listRes.body.config.find((c: { valueType: string }) => c.valueType === 'boolean')
       if (!flag) throw new Error('No boolean-typed system_config row seeded to test against')
       const originalValue = flag.value as string
 
