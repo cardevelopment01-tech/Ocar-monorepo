@@ -44,5 +44,12 @@ export async function seedAdmin(
 }
 
 export async function cleanupAdmins(pool: Pool, emails: string[]) {
+  // admin_audit_log.admin_id FK has no ON DELETE action (NO ACTION), so any
+  // recordAuditLog() call made during a test (e.g. vehicle/driver doc approval)
+  // leaves a row that blocks deleting the admin. Clear those first.
+  await pool.query(
+    'DELETE FROM admin_audit_log WHERE admin_id = ANY(SELECT id FROM admins WHERE email = ANY($1))',
+    [emails]
+  )
   await pool.query('DELETE FROM admins WHERE email = ANY($1)', [emails])
 }
