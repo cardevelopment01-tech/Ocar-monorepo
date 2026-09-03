@@ -126,23 +126,27 @@ export async function completeDailyVerification(app: Express, accessToken: strin
 
 export async function goOnline(
   app: Express, accessToken: string, vehicleId: string, categoryId: number,
-  lat = 20.29, lng = 85.82
+  lat = 20.29, lng = 85.82,
+  opts: { mode?: 'standard' | 'return_cab'; destinationCityId?: number } = {}
 ) {
+  const body: Record<string, unknown> = { mode: opts.mode ?? 'standard', vehicleId: Number(vehicleId), categoryId, lat, lng }
+  if (opts.destinationCityId !== undefined) body['destinationCityId'] = opts.destinationCityId
   return request(app)
     .post('/api/v1/rides/sessions/online')
     .set('Authorization', `Bearer ${accessToken}`)
-    .send({ mode: 'standard', vehicleId: Number(vehicleId), categoryId, lat, lng })
+    .send(body)
 }
 
 /** Full driver-ready-to-accept-rides setup, composing the helpers above. */
 export async function setupOnlineDriver(
   app: Express, pool: Pool, redis: Redis, phone: string,
-  opts: Parameters<typeof seedActiveDriverWithVehicle>[2] = {}
+  opts: Parameters<typeof seedActiveDriverWithVehicle>[2] = {},
+  goOnlineOpts: Parameters<typeof goOnline>[6] = {}
 ) {
   const { accessToken, driverId } = await loginDriver(app, redis, phone)
   const { vehicleId, categoryId, cityId } = await seedActiveDriverWithVehicle(pool, driverId, opts)
   await completeDailyVerification(app, accessToken)
-  const onlineRes = await goOnline(app, accessToken, vehicleId, categoryId)
+  const onlineRes = await goOnline(app, accessToken, vehicleId, categoryId, 20.29, 85.82, goOnlineOpts)
   if (onlineRes.status !== 200) {
     throw new Error(`Go-online failed: ${JSON.stringify(onlineRes.body)}`)
   }
@@ -380,6 +384,10 @@ export async function cleanupRideAndDriverData(pool: Pool, phones: string[]) {
     // and never gets caught by the ride_id-scoped delete above. Must run before
     // driver_sessions is deleted (ride_assignments.session_id FKs driver_sessions).
     await pool.query('DELETE FROM ride_assignments WHERE driver_id = ANY($1)', [driverIds])
+    // return_cab_routes.session_id/driver_id both FK with NO ON DELETE CASCADE
+    // (007_m5_booking.sql) — a return_cab-mode goOnline() call (see M05 Task 4's
+    // TC-M07-011) leaves a row here that must go before driver_sessions.
+    await pool.query('DELETE FROM return_cab_routes WHERE driver_id = ANY($1)', [driverIds])
     await pool.query('DELETE FROM driver_wallet_ledger WHERE driver_id = ANY($1)', [driverIds])
     await pool.query('DELETE FROM driver_wallets WHERE driver_id = ANY($1)', [driverIds])
     await pool.query('DELETE FROM driver_location_snapshots WHERE driver_id = ANY($1)', [driverIds])

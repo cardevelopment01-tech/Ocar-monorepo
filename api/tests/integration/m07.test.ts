@@ -23,16 +23,25 @@ const PHONES = {
   noDriversUser: '+919700000003',
   secondBookerUser: '+919700000004',
   onlineDriver1: '+919700000011',
+  gpsDriver: '+919700000012',
+  gpsUser: '+919700000013',
+  returnCabDriver: '+919700000014',
 } as const
 const ALL_PHONES = Object.values(PHONES)
 
 let categoryId: number
+let cuttackCityId: number
 
 beforeAll(async () => {
   const { rows } = await pool.query<{ id: string }>(
     "SELECT id FROM vehicle_categories WHERE slug = 'sedan' LIMIT 1"
   )
   categoryId = Number(rows[0]!.id)
+
+  const { rows: cityRows } = await pool.query<{ id: string }>(
+    "SELECT id FROM cities WHERE slug = 'cuttack' LIMIT 1"
+  )
+  cuttackCityId = Number(cityRows[0]!.id)
 })
 
 afterAll(async () => {
@@ -113,10 +122,56 @@ describe('M07 — Ride Lifecycle', () => {
       expect(rows[0]?.status).toBe('requested')
     })
 
+    it('TC-M07-009: GPS track batch flush writes to gps_tracks table', async () => {
+      const driver = await setupOnlineDriver(app, pool, redis, PHONES.gpsDriver, { categorySlug: 'sedan' })
+      const { accessToken: userToken } = await loginUser(app, redis, PHONES.gpsUser)
+      const bookRes = await request(app)
+        .post('/api/v1/rides')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ categoryId: driver.categoryId, ...DEFAULT_BOOKING })
+      expect(bookRes.status, JSON.stringify(bookRes.body)).toBe(201)
+      const rideId = bookRes.body.rideId as string
+
+      const flushRes = await request(app)
+        .post('/api/v1/geo/tracks/flush')
+        .set('Authorization', `Bearer ${driver.accessToken}`)
+        .send({
+          tracks: [
+            { ride_id: Number(rideId), session_id: Number(driver.sessionId), latitude: 20.29, longitude: 85.82, speed_kmph: 20, accuracy_metres: 10, recorded_at: new Date().toISOString() },
+            { ride_id: Number(rideId), session_id: Number(driver.sessionId), latitude: 20.30, longitude: 85.83, speed_kmph: 22, accuracy_metres: 999, recorded_at: new Date().toISOString() },
+          ],
+        })
+      expect(flushRes.status, JSON.stringify(flushRes.body)).toBe(200)
+      expect(flushRes.body.written).toBe(1)
+
+      const { rows } = await pool.query('SELECT count(*)::int AS n FROM gps_tracks WHERE ride_id = $1', [rideId])
+      expect(rows[0]?.n).toBe(1)
+
+      await pool.query('DELETE FROM gps_tracks WHERE ride_id = $1', [rideId])
+    })
+
     // Deferred — see docs/superpowers/plans/2026-09-02-m07-m08-integration-tests.md Task 4.
-    it.todo('TC-M07-009: GPS track batch flush writes to gps_tracks table — needs geo module route path')
     it.todo('TC-M07-010: advance booking dispatches 15 min before pickup — needs BullMQ delayed-job test strategy')
-    it.todo('TC-M07-011: return cab route matching finds eligible drivers — needs findReturnCabDrivers query shape')
+
+    it('TC-M07-011: return cab route matching finds eligible drivers', async () => {
+      // goOnline(mode: 'return_cab', destinationCityId) auto-creates the
+      // return_cab_routes row (rides.service.ts) — no manual INSERT needed.
+      const driver = await setupOnlineDriver(
+        app, pool, redis, PHONES.returnCabDriver, { categorySlug: 'sedan' },
+        { mode: 'return_cab', destinationCityId: cuttackCityId }
+      )
+
+      // Pickup near the driver's go-online point (origin of the corridor,
+      // within match_radius_metres=2000m default). Drop near Cuttack's seeded
+      // centroid (85.8830, 20.4686) so the nearest-active-city-to-dropoff
+      // lookup resolves to cuttackCityId, matching the route's destination.
+      const res = await request(app).get(
+        `/api/v1/rides/return-cab-available?pickupLat=20.29&pickupLng=85.82&dropLat=20.4686&dropLng=85.8830&categoryId=${driver.categoryId}`
+      )
+      expect(res.status, JSON.stringify(res.body)).toBe(200)
+      const ids = (res.body.drivers as Array<{ driver_id: string }>).map((d) => String(d.driver_id))
+      expect(ids).toContain(String(driver.driverId))
+    })
   })
 
   describe('Full ride progression', () => {

@@ -2,15 +2,42 @@ import { describe, it, expect, afterAll, vi } from 'vitest'
 import request from 'supertest'
 import { createApp } from '@/app'
 import { pool } from '@/db/client'
+import { client as redis } from '@/db/redis'
+import {
+  loginUser, setupOnlineDriver, cleanupRideAndDriverData, DEFAULT_BOOKING,
+} from '../helpers/fixtures/rides.fixture'
 
 const TEST_PLACE_ID = 'ChIJTestPlaceId12345'
+
+const PHONES = {
+  gpsDriver: '+919700000105',
+  gpsUser: '+919700000106',
+  nearDriver: '+919700000107',
+  farDriver: '+919700000108',
+} as const
+const ALL_PHONES = Object.values(PHONES)
 
 afterAll(async () => {
   // Runs regardless of test outcome — a failed assertion mid-test must not
   // leak this row and permanently wedge the next run's cache-miss assumption.
   await pool.query('DELETE FROM place_geocode_cache WHERE normalized_address = $1', [`place:${TEST_PLACE_ID}`])
+  await cleanupRideAndDriverData(pool, [...ALL_PHONES])
+  for (const p of ALL_PHONES) {
+    await redis.del(`otp_rate:user:${p}:login`)
+    await redis.del(`otp_rate:driver:${p}:login`)
+    await redis.del(`otp:user:${p}:login`)
+    await redis.del(`otp:driver:${p}:login`)
+  }
   await pool.end()
+  redis.disconnect()
 })
+
+vi.mock('@/lib/storage', () => ({
+  getUploadUrl: vi.fn().mockResolvedValue('https://storage.test/put-url'),
+  promotePendingUpload: vi.fn().mockResolvedValue('https://storage.test/x.jpg'),
+  deleteFile: vi.fn().mockResolvedValue(undefined),
+  getPresignedUrl: vi.fn().mockImplementation((url: string) => Promise.resolve(url)),
+}))
 
 vi.mock('@/modules/geo/providers/google.provider', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/modules/geo/providers/google.provider')>()
@@ -71,6 +98,55 @@ describe('M05 — Geo & Spatial', () => {
       )
       expect(afterRows).toHaveLength(1)
       expect(afterRows[0]?.hit_count).toBeGreaterThan(cacheRows[0]?.hit_count as number)
+    })
+  })
+
+  describe('GPS tracking and driver search', () => {
+    it('TC-M05-003: GPS track flush writes valid points and drops low-accuracy ones', async () => {
+      const driver = await setupOnlineDriver(app, pool, redis, PHONES.gpsDriver, { categorySlug: 'sedan' })
+      const { accessToken: userToken } = await loginUser(app, redis, PHONES.gpsUser)
+      const bookRes = await request(app)
+        .post('/api/v1/rides')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ categoryId: driver.categoryId, ...DEFAULT_BOOKING })
+      expect(bookRes.status, JSON.stringify(bookRes.body)).toBe(201)
+      const rideId = bookRes.body.rideId as string
+
+      const flushRes = await request(app)
+        .post('/api/v1/geo/tracks/flush')
+        .set('Authorization', `Bearer ${driver.accessToken}`)
+        .send({
+          tracks: [
+            { ride_id: Number(rideId), session_id: Number(driver.sessionId), latitude: 20.29, longitude: 85.82, speed_kmph: 20, accuracy_metres: 10, recorded_at: new Date().toISOString() },
+            { ride_id: Number(rideId), session_id: Number(driver.sessionId), latitude: 20.30, longitude: 85.83, speed_kmph: 22, accuracy_metres: 999, recorded_at: new Date().toISOString() },
+          ],
+        })
+      expect(flushRes.status, JSON.stringify(flushRes.body)).toBe(200)
+      expect(flushRes.body.written).toBe(1)
+
+      const { rows } = await pool.query('SELECT count(*)::int AS n FROM gps_tracks WHERE ride_id = $1', [rideId])
+      expect(rows[0]?.n).toBe(1)
+
+      await pool.query('DELETE FROM gps_tracks WHERE ride_id = $1', [rideId])
+    })
+
+    it('TC-M05-004: nearby-drivers search only returns drivers within radius', async () => {
+      const nearDriver = await setupOnlineDriver(app, pool, redis, PHONES.nearDriver, { categorySlug: 'sedan' })
+      // Far driver: seed then manually move their location snapshot far away.
+      // setupOnlineDriver's goOnline call populates driver_location_snapshots
+      // (via upsertDriverLocation in rides.service.ts's goOnline) — that's the
+      // table findAllNearbyDrivers reads from, so overriding it here is correct.
+      const farDriver = await setupOnlineDriver(app, pool, redis, PHONES.farDriver, { categorySlug: 'sedan' })
+      await pool.query(
+        `UPDATE driver_location_snapshots SET location = ST_SetSRID(ST_MakePoint(88.36, 22.57), 4326)::geography WHERE driver_id = $1`,
+        [farDriver.driverId]
+      )
+
+      const res = await request(app).get('/api/v1/rides/nearby-drivers?lat=20.29&lng=85.82&categoryId=' + nearDriver.categoryId)
+      expect(res.status, JSON.stringify(res.body)).toBe(200)
+      const ids = (res.body.drivers as Array<{ driver_id: string }>).map((d) => String(d.driver_id))
+      expect(ids).toContain(String(nearDriver.driverId))
+      expect(ids).not.toContain(String(farDriver.driverId))
     })
   })
 })
