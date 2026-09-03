@@ -7,12 +7,14 @@ import { loginUser, cleanupRideAndDriverData } from '../helpers/fixtures/rides.f
 
 const app = createApp()
 
-const PHONES = { notifUser: '+919700000201' } as const
+const PHONES = { notifUser: '+919700000201', notifUser2: '+919700000202' } as const
 
 afterAll(async () => {
   await cleanupRideAndDriverData(pool, [...Object.values(PHONES)])
-  await redis.del(`otp_rate:user:${PHONES.notifUser}:login`)
-  await redis.del(`otp:user:${PHONES.notifUser}:login`)
+  for (const p of Object.values(PHONES)) {
+    await redis.del(`otp_rate:user:${p}:login`)
+    await redis.del(`otp:user:${p}:login`)
+  }
   await pool.end()
   redis.disconnect()
 })
@@ -48,6 +50,36 @@ describe('M10 — Notifications', () => {
         expect(afterRows).toHaveLength(0)
       } finally {
         await pool.query(`DELETE FROM device_tokens WHERE token = 'test-fcm-token-abc123'`)
+      }
+    })
+
+    it('TC-M10-001b: re-registering the same token under a different owner re-owns it', async () => {
+      // registerDeviceToken does ON CONFLICT (token) DO UPDATE SET owner_type/
+      // owner_id = EXCLUDED.* — a real flow when a device is handed to another
+      // user (e.g. driver logs out, a different driver logs in on the same phone).
+      const { accessToken: token1 } = await loginUser(app, redis, PHONES.notifUser)
+      const { accessToken: token2, userId: userId2 } = await loginUser(app, redis, PHONES.notifUser2)
+
+      try {
+        const firstRegister = await request(app)
+          .post('/api/v1/notifications/devices')
+          .set('Authorization', `Bearer ${token1}`)
+          .send({ token: 'test-fcm-token-shared', platform: 'android' })
+        expect(firstRegister.status, JSON.stringify(firstRegister.body)).toBe(204)
+
+        const secondRegister = await request(app)
+          .post('/api/v1/notifications/devices')
+          .set('Authorization', `Bearer ${token2}`)
+          .send({ token: 'test-fcm-token-shared', platform: 'android' })
+        expect(secondRegister.status, JSON.stringify(secondRegister.body)).toBe(204)
+
+        const { rows } = await pool.query(
+          `SELECT owner_type, owner_id FROM device_tokens WHERE token = 'test-fcm-token-shared'`
+        )
+        expect(rows).toHaveLength(1)
+        expect(String(rows[0]?.owner_id)).toBe(String(userId2))
+      } finally {
+        await pool.query(`DELETE FROM device_tokens WHERE token = 'test-fcm-token-shared'`)
       }
     })
 
