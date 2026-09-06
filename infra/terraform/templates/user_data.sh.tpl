@@ -87,7 +87,12 @@ docker compose -f docker-compose.prod.yml pull api alloy node_exporter postgres_
 # there's no boot-time race against an empty/missing password file.
 aws ssm get-parameter --region "$REGION" --name "${refresh_pg_exporter_secret_script_parameter_name}" --query 'Parameter.Value' --output text > refresh-postgres-exporter-secret.sh
 chmod +x refresh-postgres-exporter-secret.sh
-./refresh-postgres-exporter-secret.sh
+# The script needs AWS_REGION for its own `aws secretsmanager` call -- .env.prod
+# doesn't define it (confirmed live: "AWS_REGION: unbound variable" under set -u),
+# so it's passed explicitly here, and via the systemd unit's Environment= below
+# for the recurring timer-triggered runs (a fresh systemd process has no shell
+# variables to inherit).
+AWS_REGION="$REGION" ./refresh-postgres-exporter-secret.sh
 
 docker compose -f docker-compose.prod.yml up -d api alloy node_exporter postgres_exporter cadvisor
 
@@ -101,6 +106,7 @@ Description=Refresh postgres_exporter's DB password from Secrets Manager
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/ocar
+Environment=AWS_REGION=${region}
 ExecStart=/opt/ocar/refresh-postgres-exporter-secret.sh
 EOF
 
