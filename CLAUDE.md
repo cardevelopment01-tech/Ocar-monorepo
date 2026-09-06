@@ -24,8 +24,8 @@ cab-booking-platform/
 | Layer | Tech |
 |---|---|
 | API | Express 4, TypeScript 5, Zod validation |
-| DB | PostgreSQL 18 (Docker) + PostGIS, pg pool |
-| Cache/Queues | Redis (ioredis), BullMQ |
+| DB | PostgreSQL 18 + PostGIS, pg pool. Local dev uses Docker (see Database Setup below). Prod and staging run on AWS RDS (`infra/terraform/rds.tf`), migrated off Neon on 2026-08-25 — see `docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md` |
+| Cache/Queues | Redis protocol (ioredis client), BullMQ. Prod and staging run on AWS ElastiCache, Valkey engine, single node (`infra/terraform/elasticache.tf`) — replaced the external Redis Cloud instance |
 | Real-time | Socket.io v4 (attached to same HTTP server) |
 | Auth | JWT access + refresh; SHA-256 refresh hash stored in DB |
 | Payments | Razorpay + driver/user wallet ledger (M08 done) |
@@ -401,9 +401,14 @@ cd api && npx tsc --noEmit
 
 ## CI/CD
 
-Two workflows, not one — `.github/workflows/ci.yml` (six check jobs on every push/PR: `lint`,
-`typecheck-api`, `test-api`, `typecheck-user`, `typecheck-driver`, `typecheck-admin`) and
-`.github/workflows/deploy.yml` (triggered by `workflow_run` off `ci.yml` completing on `main`).
+Four workflow files, not two — `.github/workflows/ci.yml` (seven jobs on every push/PR:
+`security-scan` (Trivy, dependency CVEs + misconfig/secrets), `lint`, `typecheck-api`,
+`test-api`, `typecheck-user`, `typecheck-driver`, `typecheck-admin`), `.github/workflows/deploy.yml`
+(triggered by `workflow_run` off `ci.yml` completing on `main` for prod; `workflow_dispatch`
+for a manual staging deploy), `.github/workflows/terraform-plan.yml` (posts `terraform plan`
+as a PR comment whenever `infra/**` changes on a PR into `main`, read-only, never applies),
+and `.github/workflows/staging-infra.yml` (manual-only `apply`/`destroy` of the staging
+environment, never triggered by a push).
 A `changes` job in `deploy.yml` (hand-rolled SHA diff, not `dorny/paths-filter` — see the job's own
 comment for why) gates `build-push`/`deploy` so they only run when the diff since the last
 successful deploy touches `api/**`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, or

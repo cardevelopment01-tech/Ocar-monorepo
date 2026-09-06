@@ -1,5 +1,17 @@
 # Terraform Infra Session — Brief for Claude Code
 
+**Status: SUPERSEDED (2026-09).** This was the pre-build planning brief, pasted into
+a Claude Code session before any of this infrastructure existed. Nearly everything
+in "Current production setup" and "Target architecture" below describes either the
+old single-EC2 box or an early single-ASG plan, neither of which matches what was
+actually built. For the current, accurate state (blue/green ASGs, AWS RDS, AWS
+ElastiCache Valkey, S3-backed Terraform state, full CI/CD flow), see the dedicated
+deployment architecture document instead. Kept here for history only — do not use
+this file as a source of truth, and do not "correct" the live `.tf` files to match
+it.
+
+---
+
 Paste this whole file as your first message in a Claude Code terminal session, in the
 `cab-booking-platform` repo root. It gives Claude Code full context so you don't have
 to re-explain the plan from scratch.

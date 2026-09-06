@@ -18,6 +18,13 @@ data "aws_region" "current" {}
 locals {
   colors = toset(["blue", "green"])
 
+  # deploy.yml's job-level `environment:` key (which sets the OIDC sub claim
+  # github_actions_deploy's trust policy checks) uses GitHub's own
+  # Environment name, not var.environment's value -- "prod" maps to the
+  # pre-existing "production" GitHub Environment, everything else (just
+  # "staging" today) passes through unchanged.
+  gha_environment_name = var.environment == "prod" ? "production" : var.environment
+
   image_tag_parameter_names = {
     for c in local.colors : c => "/${var.project_name}/${var.environment}/${c}/image-tag"
   }
@@ -70,6 +77,7 @@ resource "aws_iam_role_policy" "read_boot_parameters" {
             local.api_env_parameter_arn,
             aws_ssm_parameter.docker_compose_prod.arn,
             aws_ssm_parameter.alloy_config.arn,
+            aws_ssm_parameter.refresh_pg_exporter_secret_script.arn,
           ]
         )
       },

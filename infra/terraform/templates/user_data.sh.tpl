@@ -79,4 +79,41 @@ echo "$GHCR_TOKEN" | docker login ghcr.io -u "${ghcr_username}" --password-stdin
 set -x
 
 docker compose -f docker-compose.prod.yml pull api alloy node_exporter postgres_exporter cadvisor
+
+# postgres_exporter reads its DB password from a file this script keeps in
+# sync with RDS's auto-rotating Secrets-Manager password (see the script's
+# own header comment and docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md) --
+# populate it once, synchronously, before postgres_exporter's first start so
+# there's no boot-time race against an empty/missing password file.
+aws ssm get-parameter --region "$REGION" --name "${refresh_pg_exporter_secret_script_parameter_name}" --query 'Parameter.Value' --output text > refresh-postgres-exporter-secret.sh
+chmod +x refresh-postgres-exporter-secret.sh
+./refresh-postgres-exporter-secret.sh
+
 docker compose -f docker-compose.prod.yml up -d api alloy node_exporter postgres_exporter cadvisor
+
+# Runs the same script every 5 minutes so a future password rotation
+# self-heals without needing a redeploy -- the script itself is a no-op
+# (skips the container recreate) whenever the password hasn't changed.
+cat > /etc/systemd/system/pg-exporter-secret-refresh.service <<'EOF'
+[Unit]
+Description=Refresh postgres_exporter's DB password from Secrets Manager
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ocar
+ExecStart=/opt/ocar/refresh-postgres-exporter-secret.sh
+EOF
+
+cat > /etc/systemd/system/pg-exporter-secret-refresh.timer <<'EOF'
+[Unit]
+Description=Run pg-exporter-secret-refresh.service every 5 minutes
+
+[Timer]
+OnUnitActiveSec=5min
+OnBootSec=5min
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl enable --now pg-exporter-secret-refresh.timer

@@ -122,7 +122,9 @@ that creates `api-env` -- it must be created **manually** as a `SecureString`,
 same as prod's (`infra/terraform/iam.tf` only reads this parameter, it never
 creates it). Pull prod's current `api-env` as a starting template, then swap
 in:
-  - `DATABASE_URL` -> the Neon branch connection string from step 3
+  - `DATABASE_URL` -> the RDS instance endpoint from step 3 (no Neon involved
+    anymore -- step 3 above already corrected this, this line used to say
+    otherwise)
   - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` -> the test-mode keys from step 4
   - `JWT_SECRET` -> a fresh, staging-only secret (never reuse prod's)
   - Any Fast2SMS/Exotel/FCM credentials per step 5's decision
@@ -130,7 +132,32 @@ in:
     aws ssm put-parameter --name "/ocar/staging/api-env" --type SecureString \
       --value "$(cat staging-api-env.txt)" --overwrite
 
-## 7. Tear down after the load test
+## 7. Bootstrap the blue/green SSM parameters (one-time, before the first deploy)
+
+Terraform never creates these (same reasoning as `api-env` in step 6 -- see
+`infra/terraform/iam.tf`'s comment, it only reads them for IAM scoping). The
+staging ASGs boot by reading their own color's `image-tag` parameter, so a
+fresh `terraform apply` against staging will hang/fail on instance boot until
+these exist:
+
+    aws ssm put-parameter --name "/ocar/staging/active-color" --type String --value "blue"
+    aws ssm put-parameter --name "/ocar/staging/blue/image-tag" --type String --value "<a real sha-XXXXXXX tag already pushed to ghcr.io/<owner>/ocar-api>"
+    aws ssm put-parameter --name "/ocar/staging/green/image-tag" --type String --value "<same tag as blue -- green just needs a placeholder until its first real deploy>"
+
+After this, staging deploys go through the `Deploy` workflow itself
+(`.github/workflows/deploy.yml`, `workflow_dispatch` with
+`environment: staging`) -- it does the blue/green cutover (build, migrate,
+scale idle color, smoke-test, flip, bake, scale down) the same way it does
+for prod. Also requires two GitHub repo variables that don't exist by
+default -- `STAGING_ALB_DNS_NAME` (from `terraform output alb_dns_name`
+against staging state) and `STAGING_GHA_DEPLOY_ROLE_ARN` (from
+`terraform output github_actions_deploy_role_arn` against staging state,
+**after** applying the `local.gha_environment_name` fix in
+`infra/terraform/github-oidc.tf` -- without it the role's trust policy still
+only trusts the `production` GitHub Environment, not `staging`, and the
+deploy job's AWS credential step will fail with an OIDC trust error).
+
+## 8. Tear down after the load test
 
     pnpm infra:staging:destroy
 

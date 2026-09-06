@@ -104,24 +104,28 @@ services:
   # pg_stat_statements collector is disabled by default upstream (expensive
   # on a busy server, one series per unique query) -- explicitly enabled here
   # since finding slow/unusual queries is the whole point of running this.
-  # DATA_SOURCE_NAME (not DATABASE_URL, which is what .env.prod actually has)
-  # is what the exporter reads -- the entrypoint override maps one to the
-  # other rather than duplicating the connection string under a second name.
   # Runs on every instance identically: all instances share the same RDS DB,
   # so every instance's exporter reports the same pg_stat_statements numbers
   # -- harmless duplication (dashboard queries use max() not sum()), simpler
   # than standing up a dedicated instance just to avoid it.
+  #
+  # Password comes from a file refreshed by refresh-postgres-exporter-secret.sh
+  # (run once at boot, then on a systemd timer), not from .env.prod's DB_* vars
+  # directly -- RDS's master password auto-rotates via Secrets Manager, and a
+  # value baked into this container's env at start would go stale on the next
+  # rotation exactly like it did in docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md's
+  # follow-up gap. DATA_SOURCE_URI/USER (host/port/db/user, not secret) still
+  # come straight from .env.prod's DB_HOST/DB_PORT/DB_NAME/DB_USER -- the
+  # entrypoint override remaps those into postgres_exporter's expected env var
+  # names rather than duplicating them under a second name.
   postgres_exporter:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
     container_name: ocar_postgres_exporter
     restart: unless-stopped
     env_file: .env.prod
-    # uselibpqcompat is a node-postgres-only connection-string flag (worked around
-    # RDS's non-public CA chain for the api container's Node client) -- Go's lib/pq
-    # driver here doesn't recognize it and forwards it straight to Postgres as a
-    # bogus runtime parameter, which the server rejects outright. lib/pq doesn't hit
-    # the cert-verification issue Node did, so plain sslmode=require is enough here.
-    entrypoint: ["sh", "-c", "DATA_SOURCE_NAME=\"$$(echo $$DATABASE_URL | sed 's/&uselibpqcompat=true//')\" exec /bin/postgres_exporter --collector.stat_statements --collector.stat_statements.include_query"]
+    volumes:
+      - ./secrets/pg_exporter_password:/run/secrets/pg_exporter_password:ro
+    entrypoint: ["sh", "-c", "DATA_SOURCE_URI=\"$$DB_HOST:$$DB_PORT/$$DB_NAME?sslmode=require\" DATA_SOURCE_USER=\"$$DB_USER\" DATA_SOURCE_PASS_FILE=/run/secrets/pg_exporter_password exec /bin/postgres_exporter --collector.stat_statements --collector.stat_statements.include_query"]
     networks:
       - ocar_net
     logging:

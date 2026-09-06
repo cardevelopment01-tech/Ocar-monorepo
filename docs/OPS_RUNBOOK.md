@@ -263,6 +263,14 @@ or `destroy`), or locally: `pnpm infra:staging:init/plan/apply/destroy`.
 **Always destroy after a load test** — staging isn't meant to run
 continuously and costs the same per-instance rate as prod.
 
+`terraform apply` only boots the ASGs against whatever image tag is already
+sitting in `/ocar/staging/{blue,green}/image-tag` — it does not deploy code.
+To get a real app version onto staging, run the `Deploy` workflow manually
+(`workflow_dispatch`, `environment: staging`) — it runs the same blue/green
+cutover (build, migrate, scale idle color, smoke-test, flip, bake) as prod.
+One-time SSM bootstrap is required before the first-ever staging deploy —
+see the runbook's "Bootstrap the blue/green SSM parameters" section.
+
 ## Who can do what (current gaps — see CLAUDE.md "Pending Ops Actions")
 
 - Deploys to `main` currently run with **no human approval gate** — the

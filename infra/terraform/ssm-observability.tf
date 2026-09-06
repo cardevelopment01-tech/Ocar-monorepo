@@ -25,3 +25,9 @@ resource "aws_ssm_parameter" "alloy_config" {
   type  = "String"
   value = file("${path.module}/../../infra/alloy/config.alloy")
 }
+
+resource "aws_ssm_parameter" "refresh_pg_exporter_secret_script" {
+  name  = "/${var.project_name}/${var.environment}/refresh-pg-exporter-secret-script"
+  type  = "String"
+  value = file("${path.module}/../scripts/refresh-postgres-exporter-secret.sh")
+}

@@ -5,6 +5,22 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: [main]
+  # Manual staging deploys only -- prod always deploys via the workflow_run
+  # trigger above, never through this. See "environment resolution" below.
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy
+        type: choice
+        options: [staging]
+        required: true
+
+# "prod" for the normal workflow_run trigger; workflow_dispatch is staging-only
+# today (see the `on:` block above) so any dispatch resolves to "staging".
+# Matches Terraform's var.environment values ("prod"/"staging"), which is what
+# every AWS resource name and SSM parameter path below is built from.
+env:
+  DEPLOY_ENV: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || 'prod' }}
 
 jobs:
   # workflow_run doesn't support `on.paths:` filtering (push/pull_request only)
@@ -32,7 +48,7 @@ jobs:
   # successful Deploy run exists (first run ever).
   changes:
     name: Detect relevant changes
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -42,13 +58,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
       - id: filter
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # A manual staging dispatch means "deploy right now" -- the
+            # skip-if-irrelevant optimization below exists only to stop
+            # every routine main-branch merge from restarting the ASG for a
+            # docs/Terraform-only change, not to second-guess an explicit ask.
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           PREV_SHA=$(gh run list --workflow=deploy.yml --status=success --branch=main --limit=1 --json headSha --jq '.[0].headSha' 2>/dev/null || echo "")
           if [ -z "$PREV_SHA" ] || ! git cat-file -e "$PREV_SHA" 2>/dev/null; then
             BASE="HEAD^"
@@ -65,7 +89,7 @@ jobs:
   build-push:
     name: Build & Push Docker Image
     needs: changes
-    if: github.event.workflow_run.conclusion == 'success' && needs.changes.outputs.relevant == 'true'
+    if: (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') && needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-api
@@ -78,7 +102,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -130,9 +154,16 @@ jobs:
     needs: [changes, build-push]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
-    environment: production
+    # Sets the OIDC sub claim's environment segment (see
+    # infra/terraform/github-oidc.tf's local.gha_environment_name) -- "prod"
+    # maps to the pre-existing "production" GitHub Environment name, staging
+    # passes through as-is.
+    environment: ${{ env.DEPLOY_ENV == 'staging' && 'staging' || 'production' }}
     concurrency:
-      group: deploy-api
+      # Per-environment, not shared -- a staging deploy shouldn't queue
+      # behind a prod bake window (or vice versa), they touch entirely
+      # separate AWS resources.
+      group: deploy-api-${{ env.DEPLOY_ENV }}
       cancel-in-progress: false
     permissions:
       id-token: write
@@ -141,10 +172,13 @@ jobs:
     env:
       IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
       PROJECT: ocar
-      ENVIRONMENT: prod
-      ACTIVE_COLOR_PARAM: /ocar/prod/active-color
-      ALB_DNS_NAME: ${{ vars.ALB_DNS_NAME }}
-      ALB_NAME: ocar-prod-alb
+      ENVIRONMENT: ${{ env.DEPLOY_ENV }}
+      ACTIVE_COLOR_PARAM: /ocar/${{ env.DEPLOY_ENV }}/active-color
+      ALB_DNS_NAME: ${{ env.DEPLOY_ENV == 'staging' && vars.STAGING_ALB_DNS_NAME || vars.ALB_DNS_NAME }}
+      ALB_NAME: ocar-${{ env.DEPLOY_ENV }}-alb
+      # Host header the smoke test presents to the ALB -- prod and staging
+      # are on different domains (infra/terraform/staging.tfvars).
+      SMOKE_TEST_HOST: ${{ env.DEPLOY_ENV == 'staging' && 'staging.ocar-api.clienttesting.in' || 'ocar-api.clienttesting.in' }}
       BAKE_SECONDS: 600
       # Must stay a multiple of 60: HTTPCode_Target_5XX_Count is a
       # standard-resolution ALB metric, and CloudWatch's GetMetricStatistics
@@ -163,7 +197,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.GHA_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.DEPLOY_ENV == 'staging' && vars.STAGING_GHA_DEPLOY_ROLE_ARN || vars.GHA_DEPLOY_ROLE_ARN }}
           aws-region: ap-south-1
 
       - name: Read active color, compute idle color and resource names
@@ -211,10 +245,10 @@ jobs:
 
       - name: Run migrations (new image, current color still serving all traffic)
         env:
-          # ocar-prod-db is Terraform's stable "${project_name}-${environment}-db"
-          # identifier (infra/terraform/rds.tf) -- not a secret, doesn't rotate,
-          # safe to hardcode here same as it is throughout rds.tf itself.
-          DB_INSTANCE_ID: ocar-prod-db
+          # Terraform's stable "${project_name}-${environment}-db" identifier
+          # (infra/terraform/rds.tf) -- not a secret, doesn't rotate, safe to
+          # build from PROJECT/ENVIRONMENT here same as it is throughout rds.tf.
+          DB_INSTANCE_ID: ocar-${{ env.DEPLOY_ENV }}-db
           INSTANCE_ID: ${{ steps.instance.outputs.id }}
         run: |
           set -e
@@ -348,7 +382,7 @@ jobs:
         run: |
           set +e
           for i in 1 2 3; do
-            if curl -sk --max-time 5 -H "Host: ocar-api.clienttesting.in" -H "X-Deploy-Preview: ${{ steps.colors.outputs.idle }}" \
+            if curl -sk --max-time 5 -H "Host: $SMOKE_TEST_HOST" -H "X-Deploy-Preview: ${{ steps.colors.outputs.idle }}" \
                  "https://$ALB_DNS_NAME/api/v1/geo/cities" | grep -q '"slug"'; then
               echo "result=success" >> "$GITHUB_OUTPUT"
               exit 0

@@ -25,16 +25,16 @@ Three scenarios run **concurrently** in one `k6 run main.js` — that overlap (b
 
 ## 2. Prerequisites — do these before the day of the test
 
-1. **Staging environment must exist.** As of this writing it does not — `infra/terraform/providers.tf`'s S3 backend is hardcoded to `key = "prod/terraform.tfstate"`, there is no `staging.tfvars`, and the staging Phase 1 (variable-izing ASG sizing) work referenced in `docs/TERRAFORM_INFRA_BRIEF.md` had not landed as of the last check. **This is the actual blocker — resolve it first.** Running this against production is not an option.
+1. **Staging environment must exist and be running the deploy you want to test.** `infra/terraform/staging.tfvars`/`staging.backend.hcl` exist and staging's blue/green Terraform shape is already live (see `docs/superpowers/specs/2026-08-14-staging-runbook.md`) — provision it with `pnpm infra:staging:apply`, then get a real app version onto it with the `Deploy` GitHub Actions workflow (`workflow_dispatch`, `environment: staging`), not just `terraform apply` on its own (that only boots the ASGs, it doesn't deploy code).
 2. **Seed test data on staging:**
    ```bash
-   DATABASE_URL=<staging Neon URL> JWT_ACCESS_SECRET=<staging secret> \
+   DATABASE_URL=<staging RDS endpoint, from the api-env SSM param> JWT_ACCESS_SECRET=<staging secret> \
      node seed/generate-test-tokens.js --users 6000 --drivers 400 --expiry 3h
    ```
    Copy both values from staging's `api-env` SSM parameter (see `CLAUDE.md`'s Pending Ops Actions for the SSM pull/edit loop). This writes `k6/tokens.json`. Re-run any time — it's idempotent (upserts, reuses existing rows).
    - If it warns it found fewer than `--drivers` active drivers with an active vehicle: onboard more test drivers through the real driver app onboarding flow on staging once — these become reusable for every future load test, not a one-time cost.
 3. **Confirm `CATEGORY_ID`/`CITY_ID`** actually exist on staging: `SELECT id, name FROM vehicle_categories; SELECT id, name FROM cities;` — pass the real IDs as env vars, don't trust the `1`/`1` defaults blind.
-4. **Neon dashboard steps from `docs/superpowers/specs/2026-07-26-db-loadtest-readiness-design.md`** (still open per `CLAUDE.md`): enable `pg_stat_statements`, set `log_min_duration_statement=500`, confirm `DATABASE_URL` uses the `-pooler` host. Do this before the test — it's the only way to get the query-level data the "what actually strains first" analysis needs afterward.
+4. **DB observability steps from `docs/superpowers/specs/2026-07-26-db-loadtest-readiness-design.md`** (still open per `CLAUDE.md` — note that doc predates the Neon→RDS migration, so read "Neon dashboard"/"`-pooler` host" as stale): confirm `pg_stat_statements` is enabled and `log_min_duration_statement=500` is set — on RDS this is `infra/terraform/rds.tf`'s `aws_db_parameter_group.main`, already applied for both environments, not a manual dashboard step. Do this before the test — it's the only way to get the query-level data the "what actually strains first" analysis needs afterward.
 5. **Grafana dashboards open and ready** — see monitoring plan below. Confirm Alloy is shipping metrics from the staging instances before starting (check for recent data, not just that the panel exists).
 6. **Run `smoke.js` in private, alone, at least a day before the live session** (§3). Never let a live k6 run in front of a client be the first time the script has touched staging.
 7. **Admin token for the `admin_dashboard` scenario (optional but recommended).**

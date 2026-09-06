@@ -54,15 +54,16 @@ resource "aws_launch_template" "api" {
   }
 
   user_data = base64encode(templatefile("${path.module}/templates/user_data.sh.tpl", {
-    region                        = var.aws_region
-    environment                   = var.environment
-    color                         = each.key
-    image_tag_parameter_name      = local.image_tag_parameter_names[each.key]
-    ghcr_token_parameter_name     = local.ghcr_token_parameter_name
-    api_env_parameter_name        = local.api_env_parameter_name
-    docker_compose_parameter_name = aws_ssm_parameter.docker_compose_prod.name
-    alloy_config_parameter_name   = aws_ssm_parameter.alloy_config.name
-    ghcr_username                 = var.ghcr_username
+    region                                           = var.aws_region
+    environment                                      = var.environment
+    color                                            = each.key
+    image_tag_parameter_name                         = local.image_tag_parameter_names[each.key]
+    ghcr_token_parameter_name                        = local.ghcr_token_parameter_name
+    api_env_parameter_name                           = local.api_env_parameter_name
+    docker_compose_parameter_name                    = aws_ssm_parameter.docker_compose_prod.name
+    alloy_config_parameter_name                      = aws_ssm_parameter.alloy_config.name
+    refresh_pg_exporter_secret_script_parameter_name = aws_ssm_parameter.refresh_pg_exporter_secret_script.name
+    ghcr_username                                    = var.ghcr_username
   }))
 
   tag_specifications {
