@@ -158,27 +158,38 @@ jobs:
     # infra/terraform/github-oidc.tf's local.gha_environment_name) -- "prod"
     # maps to the pre-existing "production" GitHub Environment name, staging
     # passes through as-is.
-    environment: ${{ env.DEPLOY_ENV == 'staging' && 'staging' || 'production' }}
+    # env context isn't available in jobs.<job_id>.environment/.concurrency
+    # (only github/needs/vars/inputs/strategy/matrix are) -- the workflow-level
+    # DEPLOY_ENV env var can't be read here, so the same ternary is inlined
+    # instead of referencing env.DEPLOY_ENV.
+    environment: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging') && 'staging' || 'production' }}
     concurrency:
       # Per-environment, not shared -- a staging deploy shouldn't queue
       # behind a prod bake window (or vice versa), they touch entirely
       # separate AWS resources.
-      group: deploy-api-${{ env.DEPLOY_ENV }}
+      group: deploy-api-${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || 'prod' }}
       cancel-in-progress: false
     permissions:
       id-token: write
       contents: read
       packages: read
+    # jobs.<job_id>.env doesn't support the env context either (only
+    # github/needs/vars/inputs/strategy/matrix) -- workflow-level DEPLOY_ENV
+    # can't be read here, so every entry below inlines the same ternary
+    # instead of referencing env.DEPLOY_ENV. ENVIRONMENT is the one exception:
+    # once it's set as an actual environment variable by this same block, the
+    # *steps* below read it via $ENVIRONMENT (shell expansion, not the `env`
+    # GitHub context), which is unaffected by this restriction.
     env:
       IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
       PROJECT: ocar
-      ENVIRONMENT: ${{ env.DEPLOY_ENV }}
-      ACTIVE_COLOR_PARAM: /ocar/${{ env.DEPLOY_ENV }}/active-color
-      ALB_DNS_NAME: ${{ env.DEPLOY_ENV == 'staging' && vars.STAGING_ALB_DNS_NAME || vars.ALB_DNS_NAME }}
-      ALB_NAME: ocar-${{ env.DEPLOY_ENV }}-alb
+      ENVIRONMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || 'prod' }}
+      ACTIVE_COLOR_PARAM: /ocar/${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || 'prod' }}/active-color
+      ALB_DNS_NAME: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging') && vars.STAGING_ALB_DNS_NAME || vars.ALB_DNS_NAME }}
+      ALB_NAME: ocar-${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || 'prod' }}-alb
       # Host header the smoke test presents to the ALB -- prod and staging
       # are on different domains (infra/terraform/staging.tfvars).
-      SMOKE_TEST_HOST: ${{ env.DEPLOY_ENV == 'staging' && 'staging.ocar-api.clienttesting.in' || 'ocar-api.clienttesting.in' }}
+      SMOKE_TEST_HOST: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging') && 'staging.ocar-api.clienttesting.in' || 'ocar-api.clienttesting.in' }}
       BAKE_SECONDS: 600
       # Must stay a multiple of 60: HTTPCode_Target_5XX_Count is a
       # standard-resolution ALB metric, and CloudWatch's GetMetricStatistics
