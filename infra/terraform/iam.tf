@@ -118,11 +118,23 @@ resource "aws_iam_role_policy" "rds_iam_connect" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = "rds-db:connect"
-      Resource = "arn:aws:rds-db:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.main.resource_id}/${var.db_master_username}"
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "rds-db:connect"
+        Resource = "arn:aws:rds-db:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.main.resource_id}/${var.db_master_username}"
+      },
+      {
+        # refresh-postgres-exporter-secret.sh (infra/scripts/) derives the
+        # current DB_SECRET_ARN fresh at boot/refresh time instead of reading
+        # it from .env.prod -- same rationale as deploy.yml's migration step
+        # (docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md), needs this to
+        # look itself up.
+        Effect   = "Allow"
+        Action   = "rds:DescribeDBInstances"
+        Resource = aws_db_instance.main.arn
+      }
+    ]
   })
 }
 

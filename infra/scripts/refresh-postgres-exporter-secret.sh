@@ -19,6 +19,14 @@ set -a
 source <(tr -d '\r' < .env.prod)
 set +a
 
+# DB_SECRET_ARN isn't in .env.prod -- deliberately kept out (same reasoning
+# as deploy.yml's migration step: docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md,
+# a copied/hand-maintained value goes stale). Derive the RDS instance
+# identifier from DB_HOST (which IS in .env.prod, per docker-compose.prod.yml's
+# entrypoint remap) and query the secret ARN fresh, same pattern deploy.yml uses.
+DB_INSTANCE_ID=$(echo "$DB_HOST" | cut -d. -f1)
+DB_SECRET_ARN=$(aws rds describe-db-instances --region "$AWS_REGION" --db-instance-identifier "$DB_INSTANCE_ID" --query 'DBInstances[0].MasterUserSecret.SecretArn' --output text)
+
 SECRET_JSON=$(aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id "$DB_SECRET_ARN" --query SecretString --output text)
 NEW_PASSWORD=$(printf '%s' "$SECRET_JSON" | grep -o '"password":"[^"]*"' | head -1 | cut -d'"' -f4)
 if [ -z "$NEW_PASSWORD" ]; then
