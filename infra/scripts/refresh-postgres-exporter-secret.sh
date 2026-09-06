@@ -10,7 +10,13 @@
 set -euo pipefail
 cd /opt/ocar
 set -a
-source .env.prod
+# .env.prod is written from an SSM parameter that carries CRLF line endings
+# (authored on Windows) -- a plain `source` chokes on the trailing \r on
+# every line ("$'\r': command not found"), which aborts this whole script
+# under `set -e` and, since user_data.sh.tpl runs this before `docker compose
+# up`, prevents the API container from ever starting. Strip \r via process
+# substitution instead of sourcing the file directly.
+source <(tr -d '\r' < .env.prod)
 set +a
 
 SECRET_JSON=$(aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id "$DB_SECRET_ARN" --query SecretString --output text)
