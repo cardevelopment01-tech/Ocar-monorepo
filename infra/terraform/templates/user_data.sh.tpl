@@ -92,7 +92,14 @@ chmod +x refresh-postgres-exporter-secret.sh
 # so it's passed explicitly here, and via the systemd unit's Environment= below
 # for the recurring timer-triggered runs (a fresh systemd process has no shell
 # variables to inherit).
-AWS_REGION="$REGION" ./refresh-postgres-exporter-secret.sh
+# Non-fatal: this is a monitoring sidecar's credential refresh, not the API
+# itself -- confirmed live that a failure here (missing env var, transient
+# Secrets Manager hiccup, etc.) was aborting this ENTIRE script under set -e
+# before docker compose ever ran, taking the whole API container down over a
+# postgres_exporter password rotation. If this fails, postgres_exporter just
+# doesn't get metrics until the next successful timer run (see below) -- that
+# must never block the API from booting.
+AWS_REGION="$REGION" ./refresh-postgres-exporter-secret.sh || echo "refresh-postgres-exporter-secret.sh failed at boot -- continuing without blocking the API (postgres_exporter will retry on its 5-min timer)" >&2
 
 docker compose -f docker-compose.prod.yml up -d api alloy node_exporter postgres_exporter cadvisor
 
