@@ -78,7 +78,8 @@ resource "aws_iam_role_policy" "read_boot_parameters" {
             aws_ssm_parameter.docker_compose_prod.arn,
             aws_ssm_parameter.alloy_config.arn,
             aws_ssm_parameter.refresh_pg_exporter_secret_script.arn,
-          ]
+          ],
+          var.environment == "staging" ? [aws_ssm_parameter.restore_temp_db_password[0].arn] : []
         )
       },
       {
