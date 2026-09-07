@@ -64,6 +64,9 @@ resource "aws_launch_template" "api" {
     alloy_config_parameter_name                      = aws_ssm_parameter.alloy_config.name
     refresh_pg_exporter_secret_script_parameter_name = aws_ssm_parameter.refresh_pg_exporter_secret_script.name
     ghcr_username                                    = var.ghcr_username
+    db_instance_identifier                           = aws_db_instance.main.identifier
+    db_name                                          = var.db_name
+    db_master_username                               = var.db_master_username
   }))
 
   tag_specifications {

@@ -61,6 +61,27 @@ aws ssm get-parameter --region "$REGION" --name "${api_env_parameter_name}" --wi
   echo "ALLOY_COLOR=${color}"
 } >> .env.prod
 
+# DB_HOST/DB_PORT/DB_SECRET_ARN are derived fresh from RDS here, NOT copied
+# into the hand-maintained api-env SecureString -- a copied value goes stale
+# the moment the DB instance is ever recreated (confirmed live: a staging
+# rebuild left api-env pointing at a destroyed instance). DB_NAME/DB_USER are
+# static Terraform values, not secrets, safe to bake in at render time. Only
+# postgres_exporter's docker-compose entrypoint needs these four -- the app
+# itself defaults to DB_AUTH_MODE=password (DATABASE_URL) and is unaffected
+# either way (api/src/config/index.ts). Guarded so a real, intentionally-set
+# value in api-env is never silently overridden.
+if ! grep -q '^DB_HOST=' .env.prod; then
+  DB_INFO=$(aws rds describe-db-instances --region "$REGION" --db-instance-identifier "${db_instance_identifier}" \
+    --query "DBInstances[0].{Host:Endpoint.Address,Port:Endpoint.Port,SecretArn:MasterUserSecret.SecretArn}" --output json)
+  {
+    echo "DB_HOST=$(echo "$DB_INFO" | python3 -c 'import json,sys; print(json.load(sys.stdin)["Host"])')"
+    echo "DB_PORT=$(echo "$DB_INFO" | python3 -c 'import json,sys; print(json.load(sys.stdin)["Port"])')"
+    echo "DB_SECRET_ARN=$(echo "$DB_INFO" | python3 -c 'import json,sys; print(json.load(sys.stdin)["SecretArn"])')"
+    echo "DB_NAME=${db_name}"
+    echo "DB_USER=${db_master_username}"
+  } >> .env.prod
+fi
+
 # .env: Compose's own auto-loaded substitution file (unrelated to env_file
 # above) -- fills in docker-compose.prod.yml's $${GITHUB_REPOSITORY_OWNER}/
 # $${IMAGE_TAG} references.
