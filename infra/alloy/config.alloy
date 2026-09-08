@@ -97,12 +97,29 @@ prometheus.relabel "node" {
   }
 }
 
-// Every instance's exporter reports the same pg_stat_statements/pg_stat_database
-// numbers (they all connect to the same shared Neon DB) -- harmless
-// duplication, dashboard queries use max() rather than sum() where that matters.
+// pg_stat_statements is staging's biggest active-series driver (per-query
+// x every instance, unfiltered). Dropped from remote_write there via the
+// relabel rule below; archived to S3 instead (s3-metrics-archive.tf). Prod
+// unaffected.
 prometheus.scrape "postgres" {
-  targets    = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
+  targets    = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR"), "alloy_env" = sys.env("ALLOY_ENV")}]
+  forward_to = [prometheus.relabel.postgres.receiver]
+}
+
+prometheus.relabel "postgres" {
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  rule {
+    source_labels = ["alloy_env"]
+    regex         = "staging"
+    action        = "drop"
+  }
+
+  // alloy_env only exists for the drop rule above -- strip before remote_write.
+  rule {
+    action = "labeldrop"
+    regex  = "alloy_env"
+  }
 }
 
 // Per-container CPU/memory -- node_exporter above is host-wide only, this is

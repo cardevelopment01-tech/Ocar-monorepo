@@ -44,6 +44,13 @@ resource "aws_ssm_parameter" "refresh_pg_exporter_secret_script" {
 # lets every future temp-restore instance reuse the exact same read path
 # below, with zero further ad-hoc IAM grants. Staging-only -- this workflow
 # never runs against prod.
+resource "aws_ssm_parameter" "archive_metrics_to_s3_script" {
+  count = var.environment == "staging" ? 1 : 0
+  name  = "/${var.project_name}/${var.environment}/archive-metrics-to-s3-script"
+  type  = "String"
+  value = file("${path.module}/../scripts/archive-metrics-to-s3.sh")
+}
+
 resource "aws_ssm_parameter" "restore_temp_db_password" {
   count = var.environment == "staging" ? 1 : 0
   name  = "/${var.project_name}/${var.environment}/restore-temp-db-password"

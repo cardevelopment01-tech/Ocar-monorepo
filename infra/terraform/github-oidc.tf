@@ -284,6 +284,8 @@ resource "aws_iam_role_policy" "github_actions_plan_read" {
           "acm:List*",
           "elasticache:Describe*",
           "elasticache:List*",
+          "rds:Describe*",
+          "rds:List*",
           "ssm:Describe*",
           "ssm:GetParameter*",
           "ssm:List*",

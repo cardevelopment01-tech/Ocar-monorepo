@@ -151,3 +151,37 @@ WantedBy=timers.target
 EOF
 
 systemctl enable --now pg-exporter-secret-refresh.timer
+
+%{ if environment == "staging" ~}
+# Archives every exporter's raw /metrics to S3 every minute -- see
+# infra/scripts/archive-metrics-to-s3.sh's header for why. Staging-only,
+# this whole block doesn't render for prod.
+aws ssm get-parameter --region "$REGION" --name "${archive_metrics_to_s3_script_parameter_name}" --query 'Parameter.Value' --output text > archive-metrics-to-s3.sh
+chmod +x archive-metrics-to-s3.sh
+
+cat > /etc/systemd/system/archive-metrics-to-s3.service <<'EOF'
+[Unit]
+Description=Snapshot every exporter's /metrics to S3
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ocar
+Environment=AWS_REGION=${region}
+Environment=METRICS_ARCHIVE_BUCKET=${metrics_archive_bucket}
+ExecStart=/opt/ocar/archive-metrics-to-s3.sh
+EOF
+
+cat > /etc/systemd/system/archive-metrics-to-s3.timer <<'EOF'
+[Unit]
+Description=Run archive-metrics-to-s3.service every minute
+
+[Timer]
+OnUnitActiveSec=1min
+OnBootSec=1min
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl enable --now archive-metrics-to-s3.timer
+%{ endif ~}
