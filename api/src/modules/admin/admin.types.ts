@@ -64,6 +64,9 @@ export interface AdminDriverDetail {
     file_url: string
     status: string
     rejection_note: string | null
+    claimed_valid_until: string | null
+    verified_valid_until: string | null
+    updated_at: string
   }[]
   vehicle_documents: {
     id: string
@@ -71,6 +74,9 @@ export interface AdminDriverDetail {
     file_url: string
     status: string
     rejection_note: string | null
+    claimed_valid_until: string | null
+    verified_valid_until: string | null
+    updated_at: string
   }[]
   status_history: {
     from_status: string | null
