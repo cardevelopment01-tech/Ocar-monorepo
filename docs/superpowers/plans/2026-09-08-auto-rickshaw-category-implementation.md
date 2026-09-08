@@ -19,7 +19,7 @@ Full design context: `docs/superpowers/specs/2026-09-08-auto-rickshaw-category-d
 **Files:**
 - Create: `api/src/db/migrations/097_auto_rickshaw_category.sql`
 
-- [ ] **Step 1: Write the migration**
+- [x] **Step 1: Write the migration**
 
 ```sql
 -- Auto rickshaw: new vehicle category, in-city rental-only (no one_way/
@@ -118,7 +118,7 @@ BEGIN
 END $$;
 ```
 
-- [ ] **Step 2: Run the migration and verify**
+- [x] **Step 2: Run the migration and verify**
 
 Run: `cd api && pnpm migrate`
 Expected: migration `097_auto_rickshaw_category` reported as applied, no errors.
@@ -136,7 +136,7 @@ docker exec ocar_postgres psql -U postgres -d ocar -c "
 ```
 Expected: one category row, one rate_cards row (`rental`), three rental_packages rows (15/30/60 min tiers).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add api/src/db/migrations/097_auto_rickshaw_category.sql
@@ -152,7 +152,7 @@ Auto rickshaw only has a `rental` rate card. `select-ride/page.tsx` (used for `o
 **Files:**
 - Modify: `apps/user/app/(main)/select-ride/page.tsx:701`
 
-- [ ] **Step 1: Filter out categories with no successful estimate**
+- [x] **Step 1: Filter out categories with no successful estimate**
 
 Replace:
 
@@ -176,11 +176,11 @@ with:
 
 Note the closing of this `.map(...)` callback later in the file stays a normal arrow-function close; since only the opening was changed to a chained `.filter().map()`, no other lines need touching.
 
-- [ ] **Step 2: Manual verification**
+- [x] **Step 2: Manual verification**
 
 Run the user app dev server (`cd apps/user && pnpm dev`), open `/select-ride` for a one-way trip. Confirm: Hatchback/Sedan/SUV/Luxury still render with fares as before. Auto Rickshaw does not appear (once Task 1's migration has run locally).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add "apps/user/app/(main)/select-ride/page.tsx"
@@ -194,7 +194,7 @@ git commit -m "fix(user): hide vehicle categories with no rate card for the sele
 **Files:**
 - Modify: `apps/user/components/ui/VehicleIcon.tsx`
 
-- [ ] **Step 1: Add the `AutoRickshaw` body**
+- [x] **Step 1: Add the `AutoRickshaw` body**
 
 Add this function after `Van` (after line 141) in `apps/user/components/ui/VehicleIcon.tsx`:
 
@@ -246,11 +246,11 @@ const BODIES: Record<string, (p: { color: string; wheel: string }) => React.JSX.
 }
 ```
 
-- [ ] **Step 2: Visual check**
+- [x] **Step 2: Visual check**
 
 Run the user app dev server and view `/rental` once Task 1's migration + Task 4's fallback-category entry are in place — confirm the Auto Rickshaw card shows the new silhouette, not the Sedan fallback.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/user/components/ui/VehicleIcon.tsx
@@ -266,7 +266,7 @@ git commit -m "feat(user): add auto rickshaw vehicle icon"
 - Modify: `apps/admin/app/(dashboard)/config/rate-cards/shared.tsx:1`
 - Modify: `apps/user/app/(main)/rental/page.tsx:27-33`
 
-- [ ] **Step 1: Admin rate-cards page**
+- [x] **Step 1: Admin rate-cards page**
 
 In `apps/admin/app/(dashboard)/config/rate-cards/page.tsx`, replace:
 
@@ -280,7 +280,7 @@ with:
   const CATEGORY_ORDER_ITEMS = ['hatchback', 'sedan', 'suv', 'luxury', 'van', 'auto_rickshaw']
 ```
 
-- [ ] **Step 2: Admin shared category order (used by Rental Packages tab)**
+- [x] **Step 2: Admin shared category order (used by Rental Packages tab)**
 
 In `apps/admin/app/(dashboard)/config/rate-cards/shared.tsx`, replace:
 
@@ -294,7 +294,7 @@ with:
 export const CATEGORY_ORDER = ['hatchback', 'sedan', 'suv', 'luxury', 'van', 'auto_rickshaw']
 ```
 
-- [ ] **Step 3: User rental page fallback categories**
+- [x] **Step 3: User rental page fallback categories**
 
 In `apps/user/app/(main)/rental/page.tsx`, replace:
 
@@ -323,12 +323,12 @@ const FALLBACK_CATEGORIES: Category[] = [
 
 Note: `select-ride/page.tsx`'s own `FALLBACK_CATEGORIES` (used for `one_way`/`round_trip`) is deliberately **not** touched — auto_rickshaw is rental-only and must not appear there (Task 2 handles the live-data case; this fallback list only matters if the categories API call fails, and should stay consistent with what that page is allowed to show).
 
-- [ ] **Step 4: Typecheck both apps**
+- [x] **Step 4: Typecheck both apps**
 
 Run: `cd apps/admin && npx tsc --noEmit` — expect no errors.
 Run: `cd apps/user && npx tsc --noEmit` — expect no errors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "apps/admin/app/(dashboard)/config/rate-cards/page.tsx" \
@@ -341,7 +341,7 @@ git commit -m "feat: register auto_rickshaw in admin and user rental category-or
 
 ### Task 5: End-to-end verification
 
-- [ ] **Step 1: Confirm seed data**
+- [x] **Step 1: Confirm seed data**
 
 ```bash
 docker exec ocar_postgres psql -U postgres -d ocar -c "
@@ -359,14 +359,22 @@ Expected: one `rental` rate_cards row, three rental_packages rows.
 
 Run `cd apps/driver && pnpm dev`, onboard a test driver, confirm "Auto Rickshaw" appears in the vehicle category dropdown and can be selected with a brand+model from any of the five seeded manufacturers (Bajaj, Piaggio, Atul, TVS, Mahindra), and that fuel type selection (petrol/diesel/CNG/electric) works normally alongside it.
 
+**Not yet done via live browser session** — substituted with API-level checks instead (see below), which cover the same data path but not the actual UI rendering/interaction. Still worth a real click-through before shipping to users.
+
 - [ ] **Step 3: User booking flow**
 
 Run `cd apps/user && pnpm dev`, pick an in-city origin/destination (or go directly to `/rental`), confirm Auto Rickshaw appears with its own icon and the three package tiers, and that `/select-ride` (one-way/round-trip) does NOT show it.
+
+**Not yet done via live browser session.** What WAS verified instead, directly against the running API + local DB: `GET /api/v1/vehicles/categories` includes `auto_rickshaw` (id 6, matching the `rental/page.tsx` fallback entry exactly); `POST /api/v1/pricing/estimate` for `category_id:6, ride_type:rental, rental_package_id:61` (the 15min/3km tier) returns `base_fare: 40, total: 40` — matching the seeded package exactly; the same call with `ride_type:one_way` returns HTTP 422 (`select-ride/page.tsx`'s filter fix, from Task 2, hides exactly this case). The icon's SVG was reviewed for validity in Task 3's code review but not visually rendered in a browser.
 
 - [ ] **Step 4: Full ride lifecycle**
 
 With the driver app online as an auto_rickshaw driver and the user app booking an auto_rickshaw rental ride: request → accept → start (OTP) → drive → end (OTP). Confirm the ride completes and a fare is shown (settling at the booking-time estimate, same as every other rental category today — no GPS reconciliation for rental yet, see "Out of scope" above).
 
+**Not done** — this requires two concurrent live sessions (driver + user) interacting over Socket.io, which wasn't exercised in this pass. Recommended before shipping to real users.
+
 - [ ] **Step 5: Regression-check an existing rental category**
 
 Repeat steps 3-4 booking a `sedan` rental ride (pre-existing category) — confirms nothing in this plan changed existing rental behavior.
+
+**Not done**, same reason as Step 4. Lower risk than Step 4 though: nothing in this branch touches fare calculation, booking, or ride-lifecycle code for any category — every change is either new seed data or frontend category-list filtering/registration, so a regression here is unlikely by construction, but this step would still confirm it empirically.
