@@ -37,6 +37,17 @@
   "templating": {
     "list": [
       {
+        "name": "env",
+        "label": "Environment",
+        "type": "custom",
+        "query": "prod : prod,staging : staging",
+        "current": { "text": "prod", "value": "prod" },
+        "options": [
+          { "text": "prod", "value": "prod", "selected": true },
+          { "text": "staging", "value": "staging" }
+        ]
+      },
+      {
         "name": "min_level",
         "label": "Log level",
         "type": "custom",
@@ -53,7 +64,7 @@
         "label": "Instance",
         "type": "query",
         "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-        "query": "label_values({service=\"ocar\", env=\"prod\"}, host)",
+        "query": "label_values({service=\"ocar\", env=\"$env\"}, host)",
         "refresh": 2,
         "includeAll": true,
         "multi": true,
@@ -72,7 +83,7 @@
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{instance=\"api:4000\"} == 1)", "refId": "A", "instant": true }
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{instance=\"api:4000\", host=~\"$host\"} == 1)", "refId": "A", "instant": true }
       ],
       "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
       "options": { "colorMode": "value", "graphMode": "area" }
@@ -84,7 +95,7 @@
       "gridPos": { "h": 6, "w": 18, "x": 6, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{instance=\"api:4000\"})", "refId": "A", "legendFormat": "instances" }
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{instance=\"api:4000\", host=~\"$host\"})", "refId": "A", "legendFormat": "instances" }
       ],
       "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
     },
@@ -101,7 +112,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(rate(http_request_duration_seconds_count[5m])) by (route)",
+          "expr": "sum(rate(http_request_duration_seconds_count{host=~\"$host\"}[5m])) by (route)",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -118,7 +129,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(rate(http_request_duration_seconds_count{status_code=~\"5..\"}[5m])) by (route) / sum(rate(http_request_duration_seconds_count[5m])) by (route)",
+          "expr": "sum(rate(http_request_duration_seconds_count{status_code=~\"5..\", host=~\"$host\"}[5m])) by (route) / sum(rate(http_request_duration_seconds_count{host=~\"$host\"}[5m])) by (route)",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -135,19 +146,19 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))",
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])) by (le, route))",
           "legendFormat": "p50 {{route}}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))",
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])) by (le, route))",
           "legendFormat": "p95 {{route}}",
           "refId": "B"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))",
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])) by (le, route))",
           "legendFormat": "p99 {{route}}",
           "refId": "C"
         }
@@ -163,7 +174,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "topk(10, sum by (route, method) (rate(http_request_duration_seconds_count[5m])))",
+          "expr": "topk(10, sum by (route, method) (rate(http_request_duration_seconds_count{host=~\"$host\"}[5m])))",
           "refId": "A", "format": "table", "instant": true
         }
       ],
@@ -182,7 +193,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "pg_pool_connections",
+          "expr": "pg_pool_connections{host=~\"$host\"}",
           "legendFormat": "{{state}}",
           "refId": "A"
         }
@@ -199,7 +210,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "bullmq_queue_job_counts",
+          "expr": "bullmq_queue_job_counts{host=~\"$host\"}",
           "legendFormat": "{{queue}} — {{state}}",
           "refId": "A"
         }
@@ -219,7 +230,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "100 - (avg by (host) (rate(node_cpu_seconds_total{instance=\"node_exporter:9100\", mode=\"idle\"}[5m])) * 100)",
+          "expr": "100 - (avg by (host) (rate(node_cpu_seconds_total{instance=\"node_exporter:9100\", mode=\"idle\", host=~\"$host\"}[5m])) * 100)",
           "legendFormat": "{{host}}",
           "refId": "A"
         }
@@ -235,7 +246,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "100 * (1 - (node_memory_MemAvailable_bytes{instance=\"node_exporter:9100\"} / node_memory_MemTotal_bytes{instance=\"node_exporter:9100\"}))",
+          "expr": "100 * (1 - (node_memory_MemAvailable_bytes{instance=\"node_exporter:9100\", host=~\"$host\"} / node_memory_MemTotal_bytes{instance=\"node_exporter:9100\", host=~\"$host\"}))",
           "legendFormat": "{{host}}",
           "refId": "A"
         }
@@ -251,7 +262,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "100 * (1 - (node_filesystem_avail_bytes{instance=\"node_exporter:9100\", mountpoint=\"/\"} / node_filesystem_size_bytes{instance=\"node_exporter:9100\", mountpoint=\"/\"}))",
+          "expr": "100 * (1 - (node_filesystem_avail_bytes{instance=\"node_exporter:9100\", mountpoint=\"/\", host=~\"$host\"} / node_filesystem_size_bytes{instance=\"node_exporter:9100\", mountpoint=\"/\", host=~\"$host\"}))",
           "legendFormat": "{{host}}",
           "refId": "A"
         }
@@ -271,7 +282,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "topk(10, max by (queryid, query) ((rate(pg_stat_statements_seconds_total[5m]) / rate(pg_stat_statements_calls_total[5m])) * on(queryid, host) group_left(query) pg_stat_statements_query_id))",
+          "expr": "topk(10, max by (queryid, query) ((rate(pg_stat_statements_seconds_total{host=~\"$host\"}[5m]) / rate(pg_stat_statements_calls_total{host=~\"$host\"}[5m])) * on(queryid, host) group_left(query) pg_stat_statements_query_id))",
           "refId": "A", "format": "table", "instant": true
         }
       ],
@@ -289,7 +300,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "topk(10, max by (queryid, query) (rate(pg_stat_statements_seconds_total[5m]) * on(queryid, host) group_left(query) pg_stat_statements_query_id))",
+          "expr": "topk(10, max by (queryid, query) (rate(pg_stat_statements_seconds_total{host=~\"$host\"}[5m]) * on(queryid, host) group_left(query) pg_stat_statements_query_id))",
           "refId": "A", "format": "table", "instant": true
         }
       ],
@@ -307,7 +318,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "max by (datname) (rate(pg_stat_database_blks_hit[5m])) / (max by (datname) (rate(pg_stat_database_blks_hit[5m])) + max by (datname) (rate(pg_stat_database_blks_read[5m])))",
+          "expr": "max by (datname) (rate(pg_stat_database_blks_hit{host=~\"$host\"}[5m])) / (max by (datname) (rate(pg_stat_database_blks_hit{host=~\"$host\"}[5m])) + max by (datname) (rate(pg_stat_database_blks_read{host=~\"$host\"}[5m])))",
           "legendFormat": "{{datname}}",
           "refId": "A"
         }
@@ -324,13 +335,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "max by (datname) (rate(pg_stat_database_deadlocks[5m]))",
+          "expr": "max by (datname) (rate(pg_stat_database_deadlocks{host=~\"$host\"}[5m]))",
           "legendFormat": "deadlocks {{datname}}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "max by (datname) (rate(pg_stat_database_xact_rollback[5m]))",
+          "expr": "max by (datname) (rate(pg_stat_database_xact_rollback{host=~\"$host\"}[5m]))",
           "legendFormat": "rollbacks {{datname}}",
           "refId": "B"
         }
@@ -344,13 +355,13 @@
       "id": 9,
       "type": "logs",
       "title": "ocar-api logs",
-      "description": "{service=\"ocar\", env=\"prod\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $host variable and the $min_level dropdown above (Pino numeric levels: 30=info, 40=warn, 50=error) — both are line/label filters, not extra Loki stream labels, so they cost nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
+      "description": "{service=\"ocar\", env=\"$env\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $env, $host, and $min_level dropdowns above (Pino numeric levels: 30=info, 40=warn, 50=error) — all are line/label filters, not extra Loki stream labels, so they cost nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 72 },
       "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-          "expr": "{service=\"ocar\", env=\"prod\", host=~\"$host\"} | json | level >= $min_level",
+          "expr": "{service=\"ocar\", env=\"$env\", host=~\"$host\"} | json | level >= $min_level",
           "refId": "A"
         }
       ],
@@ -369,7 +380,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "container_memory_working_set_bytes{name=~\"ocar_.*\"}",
+          "expr": "container_memory_working_set_bytes{name=~\"ocar_.*\", host=~\"$host\"}",
           "legendFormat": "{{host}} — {{name}}",
           "refId": "A"
         }
@@ -386,7 +397,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "container_memory_working_set_bytes{name=~\"ocar_.*\"} / container_spec_memory_limit_bytes{name=~\"ocar_.*\"}",
+          "expr": "container_memory_working_set_bytes{name=~\"ocar_.*\", host=~\"$host\"} / container_spec_memory_limit_bytes{name=~\"ocar_.*\", host=~\"$host\"}",
           "legendFormat": "{{host}} — {{name}}",
           "refId": "A"
         }
@@ -402,7 +413,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "rate(container_cpu_usage_seconds_total{name=~\"ocar_.*\"}[5m])",
+          "expr": "rate(container_cpu_usage_seconds_total{name=~\"ocar_.*\", host=~\"$host\"}[5m])",
           "legendFormat": "{{host}} — {{name}}",
           "refId": "A"
         }
@@ -419,7 +430,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "increase(container_oom_events_total{name=~\"ocar_.*\"}[5m])",
+          "expr": "increase(container_oom_events_total{name=~\"ocar_.*\", host=~\"$host\"}[5m])",
           "legendFormat": "{{host}} — {{name}}",
           "refId": "A"
         }

@@ -5,18 +5,20 @@
 #
 # One ASG per color (blue/green) -- both exist all the time so the idle
 # color is instantly available for the next deploy. min_size/desired_capacity
-# below only seed the *active* color with a 2-instance redundancy floor on
-# first apply (see var.active_color) -- every deploy after that flips both
-# at runtime via `aws autoscaling update-auto-scaling-group` from
+# below only seed the *active* color with a 1-instance floor on first apply
+# (see var.active_color) -- every deploy after that flips both at runtime via
+# `aws autoscaling update-auto-scaling-group` from
 # .github/workflows/deploy.yml, not by re-applying Terraform (see
-# lifecycle.ignore_changes below). The min_size floor matters on its own,
-# separately from desired_capacity: without it, the pre-existing
-# request-count-tracking policy (below) is free to scale the *live* color
-# down to 1 instance (or lower) whenever real traffic is low, silently
-# removing the redundancy this ASG exists for in the first place -- this
-# happened for real during the blue/green migration and had to be fixed by
-# hand on production. min_size=2 on whichever color is actually live is not
-# optional.
+# lifecycle.ignore_changes below).
+#
+# Was min_size=2 (a redundancy floor -- without it, the request-count-tracking
+# policy below is free to scale the live color down to 0, which happened for
+# real during the blue/green migration and had to be fixed by hand on
+# production). Deliberately dropped to 1 -- both prod and staging run a
+# single instance minimum now, max_size=4 still gives the same scale-out
+# ceiling under load. If a single-instance-down redundancy gap becomes a real
+# problem again, that's the earlier incident repeating -- raise this back to
+# 2, don't silently re-lower it.
 
 resource "aws_autoscaling_group" "api" {
   for_each = local.colors
@@ -31,8 +33,8 @@ resource "aws_autoscaling_group" "api" {
   vpc_zone_identifier = aws_subnet.public[*].id
   target_group_arns   = [aws_lb_target_group.api[each.key].arn]
 
-  min_size         = each.key == var.active_color ? 2 : 0
-  desired_capacity = each.key == var.active_color ? 2 : 0
+  min_size         = each.key == var.active_color ? 1 : 0
+  desired_capacity = each.key == var.active_color ? 1 : 0
   max_size         = 4
 
   # "ELB" (not the default "EC2") means health is judged by the target

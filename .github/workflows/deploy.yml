@@ -4,9 +4,13 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    branches: [main]
-  # Manual staging deploys only -- prod always deploys via the workflow_run
-  # trigger above, never through this. See "environment resolution" below.
+    # main -> prod, develop -> staging (see the `changes` job's `deploy_env`
+    # output below, resolved from `github.event.workflow_run.head_branch`).
+    branches: [main, develop]
+  # Manual deploy on top of the two automatic branch triggers above -- e.g.
+  # redeploying the same commit, or a staging hotfix without a new develop
+  # push. See the `changes` job's `deploy_env` output for how environment
+  # gets resolved for all three trigger paths.
   workflow_dispatch:
     inputs:
       environment:
@@ -14,13 +18,6 @@ on:
         type: choice
         options: [staging]
         required: true
-
-# "prod" for the normal workflow_run trigger; workflow_dispatch is staging-only
-# today (see the `on:` block above) so any dispatch resolves to "staging".
-# Matches Terraform's var.environment values ("prod"/"staging"), which is what
-# every AWS resource name and SSM parameter path below is built from.
-env:
-  DEPLOY_ENV: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || 'prod' }}
 
 jobs:
   # workflow_run doesn't support `on.paths:` filtering (push/pull_request only)
@@ -55,6 +52,16 @@ jobs:
       contents: read
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
+      # Single source of truth for which environment this run targets --
+      # "prod"/"staging", matching Terraform's var.environment values (every
+      # AWS resource name and SSM parameter path downstream is built from
+      # this). Computed once here and read via needs.changes.outputs.deploy_env
+      # everywhere else in this file, rather than each job/step re-deriving
+      # its own copy of the ternary -- `needs` is available in
+      # jobs.<job_id>.environment/.concurrency (unlike `env`, which isn't;
+      # see the `deploy` job's env block for why that constraint used to
+      # force duplicated ternaries all over this file).
+      deploy_env: ${{ steps.filter.outputs.deploy_env }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,14 +73,28 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # A manual staging dispatch means "deploy right now" -- the
+            DEPLOY_ENV="${{ inputs.environment }}"
+          elif [ "${{ github.event.workflow_run.head_branch }}" = "develop" ]; then
+            DEPLOY_ENV="staging"
+          else
+            DEPLOY_ENV="prod"
+          fi
+          echo "deploy_env=$DEPLOY_ENV" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # A manual dispatch means "deploy right now" -- the
             # skip-if-irrelevant optimization below exists only to stop
-            # every routine main-branch merge from restarting the ASG for a
+            # every routine branch push from restarting the ASG for a
             # docs/Terraform-only change, not to second-guess an explicit ask.
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          PREV_SHA=$(gh run list --workflow=deploy.yml --status=success --branch=main --limit=1 --json headSha --jq '.[0].headSha' 2>/dev/null || echo "")
+          # Diff against the last successful deploy on the SAME target branch
+          # -- main's deploy history and develop's are unrelated, diffing a
+          # staging (develop) push against main's last-deployed SHA would
+          # compare against the wrong baseline entirely.
+          TARGET_BRANCH=$([ "$DEPLOY_ENV" = "staging" ] && echo "develop" || echo "main")
+          PREV_SHA=$(gh run list --workflow=deploy.yml --status=success --branch="$TARGET_BRANCH" --limit=1 --json headSha --jq '.[0].headSha' 2>/dev/null || echo "")
           if [ -z "$PREV_SHA" ] || ! git cat-file -e "$PREV_SHA" 2>/dev/null; then
             BASE="HEAD^"
           else
@@ -158,38 +179,40 @@ jobs:
     # infra/terraform/github-oidc.tf's local.gha_environment_name) -- "prod"
     # maps to the pre-existing "production" GitHub Environment name, staging
     # passes through as-is.
-    # env context isn't available in jobs.<job_id>.environment/.concurrency
-    # (only github/needs/vars/inputs/strategy/matrix are) -- the workflow-level
-    # DEPLOY_ENV env var can't be read here, so the same ternary is inlined
-    # instead of referencing env.DEPLOY_ENV.
-    environment: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging') && 'staging' || 'production' }}
+    # `needs` (unlike `env`) IS available in jobs.<job_id>.environment/
+    # .concurrency, so this reads needs.changes.outputs.deploy_env directly
+    # instead of re-deriving the trigger-type ternary here.
+    environment: ${{ needs.changes.outputs.deploy_env == 'staging' && 'staging' || 'production' }}
     concurrency:
       # Per-environment, not shared -- a staging deploy shouldn't queue
       # behind a prod bake window (or vice versa), they touch entirely
       # separate AWS resources.
-      group: deploy-api-${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || 'prod' }}
+      group: deploy-api-${{ needs.changes.outputs.deploy_env }}
       cancel-in-progress: false
     permissions:
       id-token: write
       contents: read
       packages: read
-    # jobs.<job_id>.env doesn't support the env context either (only
-    # github/needs/vars/inputs/strategy/matrix) -- workflow-level DEPLOY_ENV
-    # can't be read here, so every entry below inlines the same ternary
-    # instead of referencing env.DEPLOY_ENV. ENVIRONMENT is the one exception:
-    # once it's set as an actual environment variable by this same block, the
-    # *steps* below read it via $ENVIRONMENT (shell expansion, not the `env`
-    # GitHub context), which is unaffected by this restriction.
+    # jobs.<job_id>.env doesn't support the `needs` context restriction the
+    # other way -- it CAN read `needs`, so every entry below reads
+    # needs.changes.outputs.deploy_env directly (already normalized to
+    # exactly "prod"/"staging" by the `changes` job, so no ternary needed
+    # except where a *different* value needs picking per environment, e.g.
+    # ALB_DNS_NAME/SMOKE_TEST_HOST below). ENVIRONMENT is then just an alias
+    # of deploy_env -- once set as an actual environment variable by this
+    # block, the *steps* below read it via $ENVIRONMENT (shell expansion) or
+    # env.ENVIRONMENT (GitHub `env` context, valid everywhere except
+    # jobs.<job_id>.environment/.concurrency above).
     env:
       IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
       PROJECT: ocar
-      ENVIRONMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || 'prod' }}
-      ACTIVE_COLOR_PARAM: /ocar/${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || 'prod' }}/active-color
-      ALB_DNS_NAME: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging') && vars.STAGING_ALB_DNS_NAME || vars.ALB_DNS_NAME }}
-      ALB_NAME: ocar-${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || 'prod' }}-alb
+      ENVIRONMENT: ${{ needs.changes.outputs.deploy_env }}
+      ACTIVE_COLOR_PARAM: /ocar/${{ needs.changes.outputs.deploy_env }}/active-color
+      ALB_DNS_NAME: ${{ needs.changes.outputs.deploy_env == 'staging' && vars.STAGING_ALB_DNS_NAME || vars.ALB_DNS_NAME }}
+      ALB_NAME: ocar-${{ needs.changes.outputs.deploy_env }}-alb
       # Host header the smoke test presents to the ALB -- prod and staging
       # are on different domains (infra/terraform/staging.tfvars).
-      SMOKE_TEST_HOST: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging') && 'staging.ocar-api.clienttesting.in' || 'ocar-api.clienttesting.in' }}
+      SMOKE_TEST_HOST: ${{ needs.changes.outputs.deploy_env == 'staging' && 'staging.ocar-api.clienttesting.in' || 'ocar-api.clienttesting.in' }}
       BAKE_SECONDS: 600
       # Must stay a multiple of 60: HTTPCode_Target_5XX_Count is a
       # standard-resolution ALB metric, and CloudWatch's GetMetricStatistics
@@ -208,7 +231,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ env.DEPLOY_ENV == 'staging' && vars.STAGING_GHA_DEPLOY_ROLE_ARN || vars.GHA_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'staging' && vars.STAGING_GHA_DEPLOY_ROLE_ARN || vars.GHA_DEPLOY_ROLE_ARN }}
           aws-region: ap-south-1
 
       - name: Read active color, compute idle color and resource names
@@ -259,7 +282,7 @@ jobs:
           # Terraform's stable "${project_name}-${environment}-db" identifier
           # (infra/terraform/rds.tf) -- not a secret, doesn't rotate, safe to
           # build from PROJECT/ENVIRONMENT here same as it is throughout rds.tf.
-          DB_INSTANCE_ID: ocar-${{ env.DEPLOY_ENV }}-db
+          DB_INSTANCE_ID: ocar-${{ env.ENVIRONMENT }}-db
           INSTANCE_ID: ${{ steps.instance.outputs.id }}
         run: |
           set -e
@@ -367,7 +390,7 @@ jobs:
           # instances boot with the current image tag every time. Harmless
           # no-op in the normal case (idle color already at 0).
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 0
-          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 2
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 1
 
       - name: Wait for the idle color's targets to pass health checks
         id: wait
@@ -378,8 +401,8 @@ jobs:
           for i in $(seq 1 30); do
             HEALTHY=$(aws elbv2 describe-target-health --target-group-arn "$IDLE_TG_ARN" \
               --query "length(TargetHealthDescriptions[?TargetHealth.State=='healthy'])" --output text)
-            echo "healthy targets: $HEALTHY/2"
-            if [ "$HEALTHY" -ge 2 ] 2>/dev/null; then
+            echo "healthy targets: $HEALTHY/1"
+            if [ "$HEALTHY" -ge 1 ] 2>/dev/null; then
               echo "result=success" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -456,12 +479,14 @@ jobs:
           aws autoscaling resume-processes --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --scaling-processes AlarmNotification
           aws autoscaling suspend-processes --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --scaling-processes AlarmNotification
           # min_size is the redundancy floor, separate from desired_capacity
-          # -- the color now serving live traffic needs it restored to 2 so
-          # the target-tracking policy above can never take it below 2 on a
+          # -- the color now serving live traffic needs it restored to 1
+          # (infra/terraform/asg.tf's floor, 2026-09-08) so the
+          # target-tracking policy above can never take it below 1 on a
           # quiet-traffic window (this happened for real during the initial
-          # migration and had to be fixed by hand on production). The color
-          # going idle gets its floor dropped to 0 so it can reach 0 later.
-          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 2
+          # migration when the floor was 0, and had to be fixed by hand on
+          # production). The color going idle gets its floor dropped to 0 so
+          # it can reach 0 later.
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 1
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --min-size 0
 
       - name: Bake period -- watch the new active color's error rate
@@ -517,7 +542,7 @@ jobs:
           # the "Resume scaling..." step -- whichever color is actually live
           # needs the floor, not whichever color the deploy was trying to
           # promote.
-          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --min-size 2
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --min-size 1
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0
           echo "Rolled back to ${{ steps.colors.outputs.active }}. NOTE: any migrations $IMAGE_TAG applied are NOT reverted (forward-only) -- if the migration itself is the problem, fix forward, don't roll it back." >&2
           # Best-effort from here -- an annotation failure must not mask the
@@ -565,5 +590,5 @@ jobs:
           echo "Job failed after the listener flip succeeded but before the bake step could produce a result. Traffic is correctly on the new color (${{ steps.colors.outputs.idle }}) -- NOT rolling back the listener. The failure most likely happened in the resume/suspend step, so scaling state may be inconsistent between the two ASGs. Reconciling defensively by re-running all four calls (all idempotent, safe to repeat): resuming AlarmNotification + restoring the min_size=2 redundancy floor on the new active color (${{ steps.colors.outputs.idle_asg }}), suspending AlarmNotification + dropping the floor to 0 on the new idle color (${{ steps.colors.outputs.active_asg }})." >&2
           aws autoscaling resume-processes --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --scaling-processes AlarmNotification || true
           aws autoscaling suspend-processes --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --scaling-processes AlarmNotification || true
-          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 2 || true
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 1 || true
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --min-size 0 || true

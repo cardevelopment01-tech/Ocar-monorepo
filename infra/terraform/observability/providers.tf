@@ -65,6 +65,10 @@ data "aws_ssm_parameter" "prometheus_datasource_uid" {
   name = "/ocar/observability/prometheus-datasource-uid"
 }
 
+data "aws_ssm_parameter" "loki_datasource_uid" {
+  name = "/ocar/observability/loki-datasource-uid"
+}
+
 data "aws_ssm_parameter" "synthetic_probe_ids" {
   name = "/ocar/observability/synthetic-probe-ids"
 }
@@ -88,6 +92,7 @@ locals {
   slack_webhook_url             = data.aws_ssm_parameter.slack_webhook_url.value
   alert_email                   = data.aws_ssm_parameter.alert_email.value
   prometheus_datasource_uid     = data.aws_ssm_parameter.prometheus_datasource_uid.value
+  loki_datasource_uid           = data.aws_ssm_parameter.loki_datasource_uid.value
   synthetic_probe_ids           = [for id in split(",", data.aws_ssm_parameter.synthetic_probe_ids.value) : tonumber(id)]
   sm_access_token               = data.aws_ssm_parameter.sm_access_token.value
   sm_url                        = data.aws_ssm_parameter.sm_url.value
