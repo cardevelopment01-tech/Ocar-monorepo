@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
+vi.mock('@/db/client', () => ({
+  pool: { query: vi.fn() },
+  withTransaction: vi.fn((cb: (client: { query: ReturnType<typeof vi.fn> }) => unknown) =>
+    cb({ query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }) })
+  ),
+}))
 vi.mock('@/db/redis', () => ({ client: { del: vi.fn() } }))
 vi.mock('@/lib/otp', () => ({
   generateOtp: vi.fn(() => '1234'),
