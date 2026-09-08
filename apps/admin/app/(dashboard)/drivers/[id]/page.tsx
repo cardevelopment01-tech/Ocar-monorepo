@@ -378,9 +378,9 @@ export default function DriverDetailPage() {
     await fetchDetail()
   }
 
-  async function handleDriverDocApprove(docId: string) { await adminDriverApi.approveDriverDoc(docId); await fetchDetail() }
+  async function handleDriverDocApprove(docId: string, verifiedValidUntil: string, seenUpdatedAt: string) { await adminDriverApi.approveDriverDoc(docId, verifiedValidUntil, seenUpdatedAt); await fetchDetail() }
   async function handleDriverDocReject(docId: string, reason: string) { await adminDriverApi.rejectDriverDoc(docId, reason); await fetchDetail() }
-  async function handleVehicleDocApprove(docId: string) { await adminDriverApi.approveVehicleDoc(docId); await fetchDetail() }
+  async function handleVehicleDocApprove(docId: string, verifiedValidUntil: string, seenUpdatedAt: string) { await adminDriverApi.approveVehicleDoc(docId, verifiedValidUntil, seenUpdatedAt); await fetchDetail() }
   async function handleVehicleDocReject(docId: string, reason: string) { await adminDriverApi.rejectVehicleDoc(docId, reason); await fetchDetail() }
 
   function openReview(initDocIdx = 0) { setReviewInitIdx(initDocIdx); setReviewOpen(true) }

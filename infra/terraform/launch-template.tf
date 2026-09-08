@@ -67,6 +67,8 @@ resource "aws_launch_template" "api" {
     db_instance_identifier                           = aws_db_instance.main.identifier
     db_name                                          = var.db_name
     db_master_username                               = var.db_master_username
+    archive_metrics_to_s3_script_parameter_name      = var.environment == "staging" ? aws_ssm_parameter.archive_metrics_to_s3_script[0].name : ""
+    metrics_archive_bucket                           = var.environment == "staging" ? aws_s3_bucket.metrics_archive[0].bucket : ""
   }))
 
   tag_specifications {

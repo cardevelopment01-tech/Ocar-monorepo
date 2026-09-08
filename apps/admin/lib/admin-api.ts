@@ -60,8 +60,8 @@ export interface DriverDetail {
     brand_id: string | null
     model_id: string | null
   } | null
-  documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null }[]
-  vehicle_documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null }[]
+  documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null; claimed_valid_until: string | null; verified_valid_until: string | null; updated_at: string }[]
+  vehicle_documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null; claimed_valid_until: string | null; verified_valid_until: string | null; updated_at: string }[]
   status_history: { from_status: string | null; to_status: string; reason: string | null; created_at: string }[]
   wallet: { balance: string; is_frozen: boolean } | null
   rating_avg: string
@@ -139,8 +139,11 @@ export const adminDriverApi = {
     await api.patch(`/api/v1/admin/drivers/${id}/status`, { status: 'active' })
   },
 
-  approveDriverDoc: async (docId: string): Promise<void> => {
-    await api.patch(`/api/v1/admin/drivers/documents/${docId}/approve`)
+  approveDriverDoc: async (docId: string, verifiedValidUntil: string, seenUpdatedAt: string): Promise<void> => {
+    await api.patch(`/api/v1/admin/drivers/documents/${docId}/approve`, {
+      verified_valid_until: verifiedValidUntil,
+      seen_updated_at: seenUpdatedAt,
+    })
   },
 
   rejectDriverDoc: async (docId: string, rejectionNote: string): Promise<void> => {
@@ -194,8 +197,11 @@ export const adminDriverApi = {
     await api.delete(`/api/v1/admin/drivers/${id}`, { data: { reason, confirm_phone: confirmPhone } })
   },
 
-  approveVehicleDoc: async (docId: string): Promise<void> => {
-    await api.patch(`/api/v1/admin/vehicles/documents/${docId}/approve`)
+  approveVehicleDoc: async (docId: string, verifiedValidUntil: string, seenUpdatedAt: string): Promise<void> => {
+    await api.patch(`/api/v1/admin/vehicles/documents/${docId}/approve`, {
+      verified_valid_until: verifiedValidUntil,
+      seen_updated_at: seenUpdatedAt,
+    })
   },
 
   rejectVehicleDoc: async (docId: string, rejectionNote: string): Promise<void> => {

@@ -381,9 +381,9 @@ jobs:
 
       - name: Scale the idle color up
         run: |
-          # Scale to 0 first, then to 2 -- if the previous deploy attempt's
-          # bake failed, this ASG was deliberately left at desired=2 (kept
-          # warm for inspection), so a straight "set desired=2" would be a
+          # Scale to 0 first, then to 1 -- if the previous deploy attempt's
+          # bake failed, this ASG was deliberately left at desired=1 (kept
+          # warm for inspection), so a straight "set desired=1" would be a
           # no-op and the health-check/smoke-test below would validate those
           # already-running, previously-bad instances instead of the new
           # image tag just written above. Forcing 0 first guarantees fresh
@@ -587,7 +587,7 @@ jobs:
         # and reported result=failed) and doesn't fire when bake ran cleanly.
         if: failure() && steps.flip.outcome == 'success' && steps.bake.outcome != 'success' && steps.bake.outcome != 'failure'
         run: |
-          echo "Job failed after the listener flip succeeded but before the bake step could produce a result. Traffic is correctly on the new color (${{ steps.colors.outputs.idle }}) -- NOT rolling back the listener. The failure most likely happened in the resume/suspend step, so scaling state may be inconsistent between the two ASGs. Reconciling defensively by re-running all four calls (all idempotent, safe to repeat): resuming AlarmNotification + restoring the min_size=2 redundancy floor on the new active color (${{ steps.colors.outputs.idle_asg }}), suspending AlarmNotification + dropping the floor to 0 on the new idle color (${{ steps.colors.outputs.active_asg }})." >&2
+          echo "Job failed after the listener flip succeeded but before the bake step could produce a result. Traffic is correctly on the new color (${{ steps.colors.outputs.idle }}) -- NOT rolling back the listener. The failure most likely happened in the resume/suspend step, so scaling state may be inconsistent between the two ASGs. Reconciling defensively by re-running all four calls (all idempotent, safe to repeat): resuming AlarmNotification + restoring the min_size=1 redundancy floor on the new active color (${{ steps.colors.outputs.idle_asg }}), suspending AlarmNotification + dropping the floor to 0 on the new idle color (${{ steps.colors.outputs.active_asg }})." >&2
           aws autoscaling resume-processes --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --scaling-processes AlarmNotification || true
           aws autoscaling suspend-processes --auto-scaling-group-name "${{ steps.colors.outputs.active_asg }}" --scaling-processes AlarmNotification || true
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 1 || true

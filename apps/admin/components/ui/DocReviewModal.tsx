@@ -19,6 +19,8 @@ interface FlatDoc {
   fileUrl: string
   status: string
   rejectionNote: string | null
+  claimedValidUntil: string | null
+  updatedAt: string | null
   id?: string
 }
 
@@ -27,9 +29,9 @@ export interface DocReviewModalProps {
   initialDocIndex?: number
   onClose: () => void
   onDriverAction: (type: 'approve' | 'rejectDocs' | 'ban' | 'suspend' | 'reinstate', reason?: string) => Promise<void>
-  onDriverDocApprove: (docId: string) => Promise<void>
+  onDriverDocApprove: (docId: string, verifiedValidUntil: string, seenUpdatedAt: string) => Promise<void>
   onDriverDocReject: (docId: string, reason: string) => Promise<void>
-  onVehicleDocApprove: (docId: string) => Promise<void>
+  onVehicleDocApprove: (docId: string, verifiedValidUntil: string, seenUpdatedAt: string) => Promise<void>
   onVehicleDocReject: (docId: string, reason: string) => Promise<void>
 }
 
@@ -65,10 +67,10 @@ function buildDocs(d: DriverDetail): FlatDoc[] {
   const list: FlatDoc[] = []
   const addedD = new Set<string>()
   const addedV = new Set<string>()
-  for (const x of d.documents)         { list.push({ kind: 'driver',  docType: x.doc_type, fileUrl: x.file_url, status: x.status, rejectionNote: x.rejection_note, id: x.id }); addedD.add(x.doc_type) }
-  for (const x of d.vehicle_documents) { list.push({ kind: 'vehicle', docType: x.doc_type, fileUrl: x.file_url, status: x.status, rejectionNote: x.rejection_note, id: x.id }); addedV.add(x.doc_type) }
-  for (const k of REQUIRED_DRIVER)  if (!addedD.has(k)) list.push({ kind: 'driver',  docType: k, fileUrl: '', status: 'missing', rejectionNote: null })
-  for (const k of REQUIRED_VEHICLE) if (!addedV.has(k)) list.push({ kind: 'vehicle', docType: k, fileUrl: '', status: 'missing', rejectionNote: null })
+  for (const x of d.documents)         { list.push({ kind: 'driver',  docType: x.doc_type, fileUrl: x.file_url, status: x.status, rejectionNote: x.rejection_note, claimedValidUntil: x.claimed_valid_until, updatedAt: x.updated_at, id: x.id }); addedD.add(x.doc_type) }
+  for (const x of d.vehicle_documents) { list.push({ kind: 'vehicle', docType: x.doc_type, fileUrl: x.file_url, status: x.status, rejectionNote: x.rejection_note, claimedValidUntil: x.claimed_valid_until, updatedAt: x.updated_at, id: x.id }); addedV.add(x.doc_type) }
+  for (const k of REQUIRED_DRIVER)  if (!addedD.has(k)) list.push({ kind: 'driver',  docType: k, fileUrl: '', status: 'missing', rejectionNote: null, claimedValidUntil: null, updatedAt: null })
+  for (const k of REQUIRED_VEHICLE) if (!addedV.has(k)) list.push({ kind: 'vehicle', docType: k, fileUrl: '', status: 'missing', rejectionNote: null, claimedValidUntil: null, updatedAt: null })
   return list
 }
 
@@ -194,6 +196,70 @@ function ReasonForm({ title, placeholder, confirmLabel, danger, loading, onSubmi
   )
 }
 
+// ─── Inline approve form ──────────────────────────────────────────────────────
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function ApproveForm({ claimedValidUntil, loading, error, onSubmit, onCancel }: {
+  claimedValidUntil: string | null; loading: boolean; error: string | null
+  onSubmit: (verifiedValidUntil: string) => void; onCancel: () => void
+}) {
+  // Postgres DATE columns round-trip through JSON as a full ISO datetime
+  // (e.g. "2027-06-15T00:00:00.000Z"); <input type="date"> requires exactly
+  // YYYY-MM-DD or it silently renders empty instead of the prefilled value.
+  const claimedDate = claimedValidUntil ? claimedValidUntil.slice(0, 10) : null
+  const claimedIsFuture = !!claimedDate && claimedDate >= todayIso()
+  const [value, setValue] = useState(claimedIsFuture ? claimedDate! : '')
+  const valid = value >= todayIso()
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-semibold text-text-primary">Approve Document</p>
+      <div>
+        <label htmlFor="verified-valid-until" className="block text-xs font-medium text-text-muted mb-1">
+          Verified expiry date
+        </label>
+        <input
+          id="verified-valid-until"
+          type="date"
+          value={value}
+          min={todayIso()}
+          autoFocus
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && valid && !loading) { e.preventDefault(); onSubmit(value) }
+          }}
+          className={cn(
+            'w-full sm:w-56 border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary',
+            error ? 'border-danger' : 'border-border'
+          )}
+        />
+        <p className="text-xs text-text-muted mt-1.5">
+          Driver claims: {claimedDate ? claimedDate : 'not provided'}
+        </p>
+        {error && <p className="text-xs text-danger mt-1.5">{error}</p>}
+      </div>
+      <div className="flex items-center gap-2.5">
+        <button
+          onClick={() => onSubmit(value)}
+          disabled={!valid || loading}
+          className="px-4 py-2 text-sm font-semibold rounded-xl transition-colors disabled:opacity-45 bg-success text-white hover:bg-emerald-600"
+        >
+          {loading ? 'Approving…' : 'Approve'}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 text-sm font-medium text-text-secondary border border-border rounded-xl hover:bg-surface-2 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 export default function DocReviewModal({
@@ -211,6 +277,8 @@ export default function DocReviewModal({
   const [docLoading, setDocLoading]       = useState(false)
   const [driverLoading, setDriverLoading] = useState(false)
   const [rejectDoc, setRejectDoc]         = useState(false)
+  const [approveDoc, setApproveDoc]       = useState(false)
+  const [approveError, setApproveError]   = useState<string | null>(null)
   const [driverMode, setDriverMode]       = useState<'rejectDocs' | 'ban' | 'suspend' | null>(null)
   const [mounted, setMounted]             = useState(false)
   const scrollRef                         = useRef<HTMLDivElement>(null)
@@ -278,6 +346,8 @@ export default function DocReviewModal({
   useEffect(() => { setMounted(true) }, [])
   useEffect(() => {
     setRejectDoc(false)
+    setApproveDoc(false)
+    setApproveError(null)
     setZoomLevel('fit')
     setRotation(0)
     setImgLoaded(false)
@@ -356,14 +426,20 @@ export default function DocReviewModal({
   const approvedCount = allDocs.filter(d => d.status === 'approved').length
   const totalUploaded = allDocs.filter(d => d.fileUrl && d.status !== 'missing').length
 
-  async function doDocApprove() {
+  async function doDocApprove(verifiedValidUntil: string) {
     if (!doc?.id) return
     setDocLoading(true)
+    setApproveError(null)
     try {
-      if (doc.kind === 'driver') await onDriverDocApprove(doc.id)
-      else                       await onVehicleDocApprove(doc.id)
+      const seenUpdatedAt = doc.updatedAt ?? ''
+      if (doc.kind === 'driver') await onDriverDocApprove(doc.id, verifiedValidUntil, seenUpdatedAt)
+      else                       await onVehicleDocApprove(doc.id, verifiedValidUntil, seenUpdatedAt)
+      setApproveDoc(false)
       const next = nextActionableIdx(allDocs, idx)
       if (next !== null) setIdx(next)
+    } catch (err) {
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      setApproveError(message ?? 'Could not approve. Please try again.')
     } finally { setDocLoading(false) }
   }
   async function doDocReject(reason: string) {
@@ -390,22 +466,20 @@ export default function DocReviewModal({
       if (tag === 'TEXTAREA' || tag === 'INPUT') return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === 'Escape') {
-        if (rejectDoc || driverMode) { setRejectDoc(false); setDriverMode(null) }
+        if (rejectDoc || approveDoc || driverMode) { setRejectDoc(false); setApproveDoc(false); setDriverMode(null) }
         else onClose()
       }
       if (e.key === 'ArrowLeft'  && idx > 0)                  setIdx(i => i - 1)
       if (e.key === 'ArrowRight' && idx < allDocs.length - 1) setIdx(i => i + 1)
       const k = e.key.toLowerCase()
-      if (!rejectDoc && !driverMode) {
-        if (k === 'a' && canApprove) { e.preventDefault(); void doDocApprove() }
+      if (!rejectDoc && !approveDoc && !driverMode) {
+        if (k === 'a' && canApprove) { e.preventDefault(); setApproveDoc(true) }
         if (k === 'r' && canReject)  { e.preventDefault(); setRejectDoc(true) }
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  // doDocApprove closes over doc/idx/allDocs, re-bind on idx change (already in deps)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, allDocs.length, onClose, rejectDoc, driverMode, canApprove, canReject])
+  }, [idx, allDocs.length, onClose, rejectDoc, approveDoc, driverMode, canApprove, canReject])
 
   if (!mounted || !doc) return null
 
@@ -780,8 +854,21 @@ export default function DocReviewModal({
                   </motion.div>
                 )}
 
+                {/* Per-doc approve form */}
+                {!driverMode && !rejectDoc && approveDoc && (
+                  <motion.div key="doc-approve-form" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.15 }}>
+                    <ApproveForm
+                      claimedValidUntil={doc.claimedValidUntil}
+                      loading={docLoading}
+                      error={approveError}
+                      onSubmit={verifiedValidUntil => void doDocApprove(verifiedValidUntil)}
+                      onCancel={() => { setApproveDoc(false); setApproveError(null) }}
+                    />
+                  </motion.div>
+                )}
+
                 {/* Normal state */}
-                {!driverMode && !rejectDoc && (
+                {!driverMode && !rejectDoc && !approveDoc && (
                   <motion.div key="normal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="flex items-center gap-3 h-full">
 
                     {/* Doc info */}
@@ -806,7 +893,7 @@ export default function DocReviewModal({
                       <div className="flex items-center gap-2 flex-shrink-0">
                         {canApprove && (
                           <button
-                            onClick={() => void doDocApprove()}
+                            onClick={() => setApproveDoc(true)}
                             disabled={docLoading}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-success border border-success/35 rounded-xl bg-success/6 hover:bg-success/12 transition-colors disabled:opacity-50"
                           >

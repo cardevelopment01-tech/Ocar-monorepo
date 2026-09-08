@@ -123,6 +123,13 @@ services:
     container_name: ocar_postgres_exporter
     restart: unless-stopped
     env_file: .env.prod
+    # Plain bind mount -- Compose secrets' mode:/uid:/gid: overrides are
+    # Swarm-only and are silently ignored under plain `docker compose up`
+    # (confirmed live: docker inspect showed a bare bind mount regardless of
+    # the mode: 0444 previously set here). The exporter image runs as uid
+    # 65534 (nobody), not root, so the real fix is on the write side --
+    # refresh-postgres-exporter-secret.sh chowns this file to 65534:65534
+    # after writing it, matching the container's actual runtime user.
     volumes:
       - ./secrets/pg_exporter_password:/run/secrets/pg_exporter_password:ro
     entrypoint: ["sh", "-c", "DATA_SOURCE_URI=\"$$DB_HOST:$$DB_PORT/$$DB_NAME?sslmode=require\" DATA_SOURCE_USER=\"$$DB_USER\" DATA_SOURCE_PASS_FILE=/run/secrets/pg_exporter_password exec /bin/postgres_exporter --collector.stat_statements --collector.stat_statements.include_query"]

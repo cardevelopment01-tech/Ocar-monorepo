@@ -36,10 +36,23 @@ fi
 
 mkdir -p secrets
 OLD_PASSWORD=$(cat secrets/pg_exporter_password 2>/dev/null || echo "")
-if [ "$NEW_PASSWORD" = "$OLD_PASSWORD" ]; then
+PASSWORD_CHANGED=0
+if [ "$NEW_PASSWORD" != "$OLD_PASSWORD" ]; then
+  PASSWORD_CHANGED=1
+  umask 077
+  printf '%s' "$NEW_PASSWORD" > secrets/pg_exporter_password
+fi
+
+# postgres_exporter's image runs as uid 65534 (nobody), not root -- this
+# script runs as root, so a plain write above leaves the file root-owned and
+# unreadable to the container ("permission denied" seen live, both here and
+# on the file's very first write at boot). chown every run, not just on
+# password rotation, since the file can already exist with wrong ownership
+# from before this fix. Cheap and idempotent when already correct.
+chown 65534:65534 secrets/pg_exporter_password
+
+if [ "$PASSWORD_CHANGED" -eq 0 ]; then
   exit 0
 fi
 
-umask 077
-printf '%s' "$NEW_PASSWORD" > secrets/pg_exporter_password
 docker compose -f docker-compose.prod.yml up -d --force-recreate postgres_exporter

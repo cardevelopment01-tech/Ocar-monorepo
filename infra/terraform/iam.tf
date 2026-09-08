@@ -79,7 +79,10 @@ resource "aws_iam_role_policy" "read_boot_parameters" {
             aws_ssm_parameter.alloy_config.arn,
             aws_ssm_parameter.refresh_pg_exporter_secret_script.arn,
           ],
-          var.environment == "staging" ? [aws_ssm_parameter.restore_temp_db_password[0].arn] : []
+          var.environment == "staging" ? [
+            aws_ssm_parameter.restore_temp_db_password[0].arn,
+            aws_ssm_parameter.archive_metrics_to_s3_script[0].arn,
+          ] : []
         )
       },
       {
@@ -145,6 +148,34 @@ resource "aws_iam_role_policy" "rds_iam_connect" {
 # docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md. Replaces the old
 # migration-database-url SSM parameter (removed above) entirely -- there's
 # nothing left to go stale.
+# Lets archive-metrics-to-s3.sh upload full-fidelity exporter snapshots to
+# the staging-only metrics-archive bucket (s3-metrics-archive.tf) -- see that
+# file's header for why this exists. No List/Get needed, this role only ever
+# writes new objects, never reads or lists what's already there.
+resource "aws_iam_role_policy" "metrics_archive_write" {
+  count = var.environment == "staging" ? 1 : 0
+  name  = "${var.project_name}-${var.environment}-metrics-archive-write"
+  role  = aws_iam_role.ec2.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.metrics_archive[0].arn}/*"
+      },
+      {
+        # Bucket defaults to SSE-KMS (s3-metrics-archive.tf) -- PutObject
+        # needs GenerateDataKey to encrypt each upload under that key.
+        Effect   = "Allow"
+        Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+        Resource = aws_kms_key.metrics_archive[0].arn
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "rds_secret_read" {
   name = "${var.project_name}-${var.environment}-rds-secret-read"
   role = aws_iam_role.ec2.id
