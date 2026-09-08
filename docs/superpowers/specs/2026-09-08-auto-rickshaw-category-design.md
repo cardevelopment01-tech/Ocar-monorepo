@@ -61,14 +61,48 @@ One new migration, e.g. `09x_auto_rickshaw_category.sql`:
 4. `INSERT INTO stop_charges` — one row is required per category
    (`006_m4_pricing.sql:64-73`).
 5. **No `category_fallback_rules` rows.**
-6. Seed `vehicle_brands` / `vehicle_models` for auto-rickshaw makes (Bajaj, TVS,
-   Piaggio, Mahindra, ...) with `typical_category_id` pointing at the new category,
-   mirroring the existing car-brand seed pattern in `016_seed.sql`.
+6. Seed `vehicle_brands` / `vehicle_models` for the five 3-wheeler manufacturers
+   active in Odisha, with `typical_category_id` pointing at the new category,
+   mirroring the existing car-brand seed pattern in `016_seed.sql`. Full catalog,
+   as supplied by the client, in Section 4.1 below.
+7. **No `vehicle_models.fuel_type` column needed.** `driver_vehicles.fuel_type`
+   (`004_m2_vehicles.sql:40`, validated as `petrol`/`diesel`/`cng`/`electric` in
+   `drivers.validator.ts:58`) already exists as a per-vehicle field, generic across
+   every category, and is already collected in both the driver onboarding flow and
+   the admin vehicle-edit screen. Several of the model names below encode their own
+   fuel variant (e.g. "RE CNG", "Ape E City", "Alfa DX Duo CNG"); the model catalog
+   itself carries no fuel_type column, the driver still separately selects the
+   correct value at registration, same as it already works for every other
+   category.
 
-## 5. Backend change: close the rental overage-billing gap
+### 4.1 Full manufacturer / model catalog (client-supplied, Odisha market)
 
-This is the one non-seed code change, and it affects existing `rental` rides too,
-not just auto_rickshaw.
+| Brand | Models |
+|---|---|
+| Bajaj | RE &middot; RE CNG &middot; Compact RE &middot; Gogo &middot; Maxima X Wide &middot; Maxima Z |
+| Piaggio | Classic Diesel &middot; Ape City Plus &middot; Ape E City &middot; Ape E City FX Max &middot; Ape Auto Dx |
+| Atul | Gem Paxx CNG &middot; Elite Plus Electric &middot; Rik &middot; Elite Paxx Electric |
+| TVS | King Deluxe &middot; King EV Max &middot; King Duramax &middot; King Duramax Plus |
+| Mahindra | Treo Plus &middot; Alfa DX Duo CNG &middot; Alfa DX &middot; Udo Electric &middot; E Alfa Plus |
+
+24 models across 5 brands, replacing the earlier 4-brand/5-model placeholder list
+(Atul was missing entirely, and the other four brands' model names did not match
+the real Odisha-market lineup). Every model maps to `typical_category_id =
+auto_rickshaw`.
+
+## 5. Backend change: close the rental overage-billing gap — DEFERRED
+
+**Status: deferred, pending client confirmation (2026-09-08).** This section is kept
+for reference — the analysis is still accurate and the fix may be picked up later —
+but it is **not part of the current implementation scope**. Auto_rickshaw ships
+without it: rental fares (all categories, not just auto_rickshaw) continue to
+settle at `total_estimated`, same as they do today. See the implementation plan's
+"Out of scope for now" note.
+
+This would have been the one non-seed code change, and it affects existing
+`rental` rides too, not just auto_rickshaw — which is exactly why it needs
+client sign-off before shipping (it changes settlement behavior for a ride type
+that's already live).
 
 **Current state:** `rides.service.ts`'s `verifyEndOTP` does server-side
 GPS-breadcrumb-based distance/duration reconciliation
@@ -111,10 +145,18 @@ category-slug lists that are hardcoded in a few places, and one new icon.
   `CATEGORY_ORDER_ITEMS` / `CATEGORY_ORDER`. Without this, the category's rate
   card and rental package sections won't render in the admin Rate Cards page at
   all (categories not in this list are simply skipped).
-- **`apps/user/app/(main)/select-ride/page.tsx`** and **`.../rental/page.tsx`** —
-  add to `FALLBACK_CATEGORIES`. Only exercised if the live
-  `GET /api/v1/vehicles/categories` call fails; low risk but cheap to keep
-  consistent.
+- **`apps/user/app/(main)/rental/page.tsx`** — add to `FALLBACK_CATEGORIES`. Only
+  exercised if the live `GET /api/v1/vehicles/categories` call fails; low risk but
+  cheap to keep consistent. `select-ride/page.tsx`'s own `FALLBACK_CATEGORIES` is
+  deliberately **not** touched — auto_rickshaw is rental-only and must not appear
+  on the one-way/round-trip page.
+- **`apps/user/app/(main)/select-ride/page.tsx`** — real bug fix, not cosmetic:
+  this page fetches the live category list generically and renders every category
+  unconditionally, even ones with no rate card for the current ride type. Once
+  auto_rickshaw exists it would show up here as a broken, price-less card (the
+  first category to expose this, since all 5 existing categories support every
+  ride type). Fix: filter to categories with a successful fare estimate once
+  loading has settled.
 - **Driver onboarding** (`onboarding-api.ts`, vehicle registration screens) —
   **no code change**. The category dropdown is already fully data-driven from the
   public categories endpoint.
@@ -128,23 +170,23 @@ category-slug lists that are hardcoded in a few places, and one new icon.
 - `category_fallback_rules` entries for auto_rickshaw (either direction).
 - Auto-rickshaw-specific onboarding fields (e.g. `ac_availability` special-casing)
   — cosmetic only; auto rickshaws simply get `ac_availability: false`.
+- **The rental GPS-reconciliation fix (Section 5)** — deferred pending client
+  confirmation. Rental fares (all categories) keep settling at `total_estimated`.
 
 ## 8. Verification plan
 
 No new algorithmic logic is being introduced (the fare-calc code path is
-unchanged; the `verifyEndOTP` change is a conditional-gate extension of existing,
-already-proven round_trip logic), so this is verified end-to-end rather than with
-a unit-level `demo()`/assert check:
+unchanged), so this is verified end-to-end rather than with a unit-level
+`demo()`/assert check:
 
 1. Run the migration; confirm `vehicle_categories`, `rate_cards`,
    `rental_packages`, and `stop_charges` rows exist for `auto_rickshaw`.
 2. Confirm the user app's `/rental` page lists auto_rickshaw once seeded, with its
-   own icon (not the sedan fallback).
+   own icon (not the sedan fallback), and that it does NOT appear on
+   `/select-ride` (one-way/round-trip).
 3. Confirm a driver can onboard selecting the `auto_rickshaw` category.
 4. Book an end-to-end rental ride as `auto_rickshaw`: request → assign → start →
-   drive → end.
-5. Confirm `verifyEndOTP` now GPS-reconciles the rental ride —
-   `fare_snapshots.actual_km`/`actual_duration_min` should reflect GPS-breadcrumb
-   data (from `gps_tracks`), not the driver app's naive straight-line estimate.
-6. Re-run an existing (non-auto-rickshaw) rental ride through the same flow to
-   confirm the `verifyEndOTP` change doesn't regress current rental billing.
+   drive → end. Fare settles at the booking-time estimate, same as any other
+   rental category today (Section 5's fix is deferred).
+5. Re-run an existing (non-auto-rickshaw) rental ride through the same flow to
+   confirm nothing regressed.
