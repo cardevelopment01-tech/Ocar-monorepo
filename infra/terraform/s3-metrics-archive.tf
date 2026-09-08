@@ -20,6 +20,36 @@ resource "aws_s3_bucket" "metrics_archive" {
   }
 }
 
+# Dedicated key, not a reuse of the bootstrap terraform_state key (different
+# purpose, and that key's policy isn't scoped to grant this bucket's readers/
+# writers kms:Encrypt/Decrypt anyway) -- satisfies Trivy's AWS-0132
+# (SSE-S3/AES256 alone doesn't, it specifically wants a customer managed key).
+resource "aws_kms_key" "metrics_archive" {
+  count                   = var.environment == "staging" ? 1 : 0
+  description             = "${var.project_name}-${var.environment}-metrics-archive bucket encryption"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+}
+
+resource "aws_kms_alias" "metrics_archive" {
+  count         = var.environment == "staging" ? 1 : 0
+  name          = "alias/${var.project_name}-${var.environment}-metrics-archive"
+  target_key_id = aws_kms_key.metrics_archive[0].key_id
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "metrics_archive" {
+  count  = var.environment == "staging" ? 1 : 0
+  bucket = aws_s3_bucket.metrics_archive[0].id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.metrics_archive[0].arn
+    }
+    bucket_key_enabled = true
+  }
+}
+
 resource "aws_s3_bucket_public_access_block" "metrics_archive" {
   count  = var.environment == "staging" ? 1 : 0
   bucket = aws_s3_bucket.metrics_archive[0].id

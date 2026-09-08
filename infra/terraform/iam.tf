@@ -159,11 +159,20 @@ resource "aws_iam_role_policy" "metrics_archive_write" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = "s3:PutObject"
-      Resource = "${aws_s3_bucket.metrics_archive[0].arn}/*"
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.metrics_archive[0].arn}/*"
+      },
+      {
+        # Bucket defaults to SSE-KMS (s3-metrics-archive.tf) -- PutObject
+        # needs GenerateDataKey to encrypt each upload under that key.
+        Effect   = "Allow"
+        Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+        Resource = aws_kms_key.metrics_archive[0].arn
+      }
+    ]
   })
 }
 
