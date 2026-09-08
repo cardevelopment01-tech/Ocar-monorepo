@@ -9,21 +9,24 @@
 # changed, so routine runs are a no-op.
 set -euo pipefail
 cd /opt/ocar
-set -a
-# .env.prod is written from an SSM parameter that carries CRLF line endings
-# (authored on Windows) -- a plain `source` chokes on the trailing \r on
-# every line ("$'\r': command not found"), which aborts this whole script
-# under `set -e` and, since user_data.sh.tpl runs this before `docker compose
-# up`, prevents the API container from ever starting. Strip \r via process
-# substitution instead of sourcing the file directly.
-source <(tr -d '\r' < .env.prod)
-set +a
 
 # DB_SECRET_ARN isn't in .env.prod -- deliberately kept out (same reasoning
 # as deploy.yml's migration step: docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md,
 # a copied/hand-maintained value goes stale). Derive the RDS instance
 # identifier from DB_HOST (which IS in .env.prod, per docker-compose.prod.yml's
 # entrypoint remap) and query the secret ARN fresh, same pattern deploy.yml uses.
+#
+# Extracted via grep/cut, NOT `source <(tr -d '\r' < .env.prod)` (the prior
+# approach) -- sourcing executes the ENTIRE file as bash, and other values in
+# it (DATABASE_URL/MIGRATION_DATABASE_URL, which embed the DB password) can
+# contain shell metacharacters like `(` that RDS's auto-generated password
+# is free to include, breaking the source with a syntax error and silently
+# aborting this whole script before it ever writes the secret file --
+# confirmed live, this is what caused postgres_exporter's persistent
+# "is a directory" mount corruption (see docker-compose.prod.yml's postgres_exporter
+# comment). Plain text extraction of just the one line this script needs
+# never executes any of the other values, so their contents can't break it.
+DB_HOST=$(grep '^DB_HOST=' .env.prod | tr -d '\r' | cut -d= -f2-)
 DB_INSTANCE_ID=$(echo "$DB_HOST" | cut -d. -f1)
 DB_SECRET_ARN=$(aws rds describe-db-instances --region "$AWS_REGION" --db-instance-identifier "$DB_INSTANCE_ID" --query 'DBInstances[0].MasterUserSecret.SecretArn' --output text)
 
