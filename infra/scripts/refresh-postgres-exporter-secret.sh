@@ -26,7 +26,12 @@ cd /opt/ocar
 # "is a directory" mount corruption (see docker-compose.prod.yml's postgres_exporter
 # comment). Plain text extraction of just the one line this script needs
 # never executes any of the other values, so their contents can't break it.
-DB_HOST=$(grep '^DB_HOST=' .env.prod | tr -d '\r' | cut -d= -f2-)
+# tail -1, not just grep -- .env.prod's own DB_HOST= is only ever written
+# once today, but the same file has already shown a duplicate-key surprise
+# for ALLOY_HOSTNAME (archive-metrics-to-s3.sh, stale value from the base
+# api-env content) -- tail -1 keeps this correct (last-assignment-wins,
+# matching what sourcing would have done) even if that ever changes here.
+DB_HOST=$(grep '^DB_HOST=' .env.prod | tail -1 | tr -d '\r' | cut -d= -f2-)
 DB_INSTANCE_ID=$(echo "$DB_HOST" | cut -d. -f1)
 DB_SECRET_ARN=$(aws rds describe-db-instances --region "$AWS_REGION" --db-instance-identifier "$DB_INSTANCE_ID" --query 'DBInstances[0].MasterUserSecret.SecretArn' --output text)
 
