@@ -7,11 +7,48 @@ import { forceResolveRide as resolveStuckRide, getRideAssignCandidates as getAss
 import { getRideStops } from '@/modules/rides/rides.repository'
 import { listMessages as listRideMessages } from '@/modules/ride-chat/ride-chat.repository'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
+import { renderTemplate } from '@/modules/notifications/templates.service'
+import { notificationsQueue } from '@/jobs/queues'
 import { recordAuditLog } from '@/lib/audit-log'
-import { hasAllRequiredDocsApproved } from '@/modules/drivers/drivers.repository'
+import { hasAllRequiredDocsApproved, findDriverById } from '@/modules/drivers/drivers.repository'
 
 export function docLabel(docType: string): string {
   return docType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+// Shared by rejectDriverDoc/rejectVehicleDoc — one place for the tiered
+// copy/escalation logic so both routes stay in sync (see 097_document_
+// rejection_escalation.sql for why follow_up_note is composed here rather
+// than as separate template rows: the template system only substitutes
+// flat {{var}}s, no conditionals).
+async function notifyDocumentRejected(driverId: bigint, docType: string, note: string, rejectionCount: number) {
+  const followUpNote =
+    rejectionCount <= 1 ? '' :
+    rejectionCount === 2 ? ' This is the 2nd time. Check the requirements carefully before resubmitting.' :
+    ` This document has been rejected ${rejectionCount} times. Our support team has been notified and will reach out. You can also contact support directly.`
+
+  // Strip trailing punctuation from the admin's note -- the template already
+  // supplies the period after {{reason}}, and an admin note ending in its
+  // own "." produced a visible ".." in every rejection notification.
+  const reason = note.trim().replace(/[.!?]+$/, '')
+
+  const { subject, body } = await renderTemplate('document_rejected', 'push', {
+    doc_name: docLabel(docType), reason, follow_up_note: followUpNote,
+  })
+  await notifyOwner({
+    ownerType: 'driver', ownerId: driverId, type: 'document_rejected',
+    title: subject ?? 'Document Rejected', body, payload: { path: '/profile/documents' },
+  })
+
+  if (rejectionCount >= 3) {
+    const driver = await findDriverById(driverId)
+    if (driver) {
+      await notificationsQueue.add('document_rejection_escalated', {
+        driverId: driverId.toString(), driverName: driver.full_name ?? driver.phone, driverPhone: driver.phone,
+        docName: docLabel(docType), rejectionCount: String(rejectionCount),
+      })
+    }
+  }
 }
 
 const VALID_STATUSES = new Set<DriverStatus>(['pending_docs', 'pending_approval', 'active', 'suspended', 'banned', 'docs_rejected'])
@@ -93,7 +130,7 @@ export async function updateDriverStatus(
   // (and inevitably drifting) across three frontend surfaces.
   if (payload.status === 'active' && currentStatus !== 'active') {
     if (!(await hasAllRequiredDocsApproved(driverId))) {
-      throw httpError(422, 'Cannot activate driver — required documents are not all approved yet.', 'DOCS_INCOMPLETE')
+      throw httpError(422, 'Cannot activate driver. Required documents are not all approved yet.', 'DOCS_INCOMPLETE')
     }
   }
 
@@ -327,14 +364,7 @@ export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: stri
       adminId, action: 'driver_documents.reject', targetTable: 'driver_documents', targetId: docId,
       afterState: { status: 'rejected', doc_type: rejected.doc_type, note }, ipAddress,
     })
-    await notifyOwner({
-      ownerType: 'driver',
-      ownerId: BigInt(rejected.driver_id),
-      type: 'document_rejected',
-      title: 'Document Rejected',
-      body: `Your ${docLabel(rejected.doc_type)} was rejected: ${note}. Please resubmit it to continue.`,
-      payload: { path: '/profile/documents' },
-    })
+    await notifyDocumentRejected(BigInt(rejected.driver_id), rejected.doc_type, note, rejected.rejection_count)
     await repo.syncDriverStatusAfterDocChange(BigInt(rejected.driver_id), adminId)
   }
   return rejected
@@ -372,14 +402,7 @@ export async function rejectVehicleDoc(docId: bigint, adminId: bigint, note: str
       adminId, action: 'vehicle_documents.reject', targetTable: 'driver_vehicle_documents', targetId: docId,
       afterState: { status: 'rejected', doc_type: rejected.doc_type, note }, ipAddress,
     })
-    await notifyOwner({
-      ownerType: 'driver',
-      ownerId: BigInt(rejected.driver_id),
-      type: 'document_rejected',
-      title: 'Document Rejected',
-      body: `Your ${docLabel(rejected.doc_type)} was rejected: ${note}. Please resubmit it to continue.`,
-      payload: { path: '/profile/documents' },
-    })
+    await notifyDocumentRejected(BigInt(rejected.driver_id), rejected.doc_type, note, rejected.rejection_count)
     await repo.syncDriverStatusAfterDocChange(BigInt(rejected.driver_id), adminId)
   }
   return rejected

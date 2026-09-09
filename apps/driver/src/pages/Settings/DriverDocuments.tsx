@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Shield, CheckCircle2, AlertCircle } from 'lucide-react'
+import { motion } from 'framer-motion'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import SettingsHeader from '@/components/settings/SettingsHeader'
 import SectionHeader from '@/components/documents/SectionHeader'
@@ -9,12 +10,19 @@ import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
 import type { SlotDef, SlotState } from '@/components/documents/types'
 import { DRIVER_GROUPS, VEHICLE_GROUPS, initSlotState } from '@/components/documents/groups'
 import FieldError, { ShakeWrap, useShake } from '@/components/ui/FieldError'
+import { useAuthStore } from '@/store/useAuthStore'
 
 // Flat settings screen for an already-approved driver's documents.
 // Every upload and the identity-number fields already save themselves
 // (immediate PATCH/upload calls) — there's no "Continue" gate here,
 // no forced order, no step to advance to.
+//
+// Exception: a docs_rejected driver is routed here too (ProtectedRoute) —
+// for them this screen doubles as "fix what got rejected," so it gets one
+// banner explaining why they're here. Not shown for a driver who navigated
+// here voluntarily from Profile.
 export default function DriverDocuments() {
+  const { driver } = useAuthStore()
   const [licenseNumber, setLicenseNumber] = useState('')
   const [aadhaarNumber, setAadhaarNumber] = useState('')
   const [identitySaved, setIdentitySaved] = useState(false)
@@ -123,6 +131,20 @@ export default function DriverDocuments() {
 
         <main className="flex-1 overflow-y-auto px-5 pt-6 pb-6">
           <div className="space-y-3">
+
+            {driver?.status === 'docs_rejected' && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className="flex items-center gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-3"
+              >
+                <AlertCircle size={16} className="text-amber-500 flex-shrink-0" />
+                <p className="text-amber-700 text-sm font-medium">
+                  A document needs fixing before you can go online again.
+                </p>
+              </motion.div>
+            )}
 
             {/* Identity Numbers */}
             <div className="rounded-2xl border border-border bg-surface-2 p-4">

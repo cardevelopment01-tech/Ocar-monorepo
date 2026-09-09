@@ -26,6 +26,9 @@ function formatPhone(input: string): string {
 
 function getOnboardingRoute(driver: DriverProfile): string {
   if (driver.status === 'active') return '/'
+  // Returning driver with a rejected document, not a first-time applicant —
+  // send them to the same settings screen ProtectedRoute now allows through.
+  if (driver.status === 'docs_rejected') return '/profile/documents'
   if (driver.status === 'pending_approval') return '/onboarding/pending-review'
   switch (driver.onboarding_step) {
     case 'personal_info': return '/onboarding/personal'
