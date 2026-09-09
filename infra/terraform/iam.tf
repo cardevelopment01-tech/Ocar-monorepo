@@ -150,8 +150,10 @@ resource "aws_iam_role_policy" "rds_iam_connect" {
 # nothing left to go stale.
 # Lets archive-metrics-to-s3.sh upload full-fidelity exporter snapshots to
 # the staging-only metrics-archive bucket (s3-metrics-archive.tf) -- see that
-# file's header for why this exists. No List/Get needed, this role only ever
-# writes new objects, never reads or lists what's already there.
+# file's header for why this exists. GetObject/ListBucket added later, read-
+# only, so this same role can also double as a scratch transfer path for
+# ad-hoc ops work (e.g. staging a k6 load-test runner instance under
+# tmp/ -- see load-tests/README.md) without needing a second bucket/role.
 resource "aws_iam_role_policy" "metrics_archive_write" {
   count = var.environment == "staging" ? 1 : 0
   name  = "${var.project_name}-${var.environment}-metrics-archive-write"
@@ -162,12 +164,18 @@ resource "aws_iam_role_policy" "metrics_archive_write" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = "s3:PutObject"
+        Action   = ["s3:PutObject", "s3:GetObject"]
         Resource = "${aws_s3_bucket.metrics_archive[0].arn}/*"
       },
       {
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.metrics_archive[0].arn
+      },
+      {
         # Bucket defaults to SSE-KMS (s3-metrics-archive.tf) -- PutObject
-        # needs GenerateDataKey to encrypt each upload under that key.
+        # needs GenerateDataKey to encrypt, GetObject needs Decrypt to read
+        # back under the same key.
         Effect   = "Allow"
         Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
         Resource = aws_kms_key.metrics_archive[0].arn
