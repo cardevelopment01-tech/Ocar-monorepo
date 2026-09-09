@@ -76,11 +76,21 @@ export const options = {
       // iterations to VU exhaustion and understate the real failure rate.
       maxVUs: 600,
       exec: 'bookingFlow',
+      // Default gracefulStop (30s) plus a recovery stage that never reaches
+      // zero arrivals left iterations still starting right up to the test's
+      // hard end -- confirmed live, this interrupted ~125 in-flight bookings
+      // with zero server-side cause (DB pool idle, no errors, fast responses
+      // for everything that did finish). Final stage now ramps arrivals to
+      // zero before the test ends, and gracefulStop gives trailing iterations
+      // real time to finish, so a real completion problem isn't masked by --
+      // or confused with -- this tooling gap.
+      gracefulStop: '90s',
       stages: [
         { duration: '10s', target: SPIKE_RATE }, // instant surge
         { duration: '2m', target: SPIKE_RATE }, // hold the peak
         { duration: '10s', target: 10 }, // drop hard
-        { duration: '3m', target: 10 }, // recovery observation window
+        { duration: '2m30s', target: 10 }, // recovery observation window
+        { duration: '30s', target: 0 }, // taper arrivals to zero before the test ends
       ],
     },
     rider_spike: {
