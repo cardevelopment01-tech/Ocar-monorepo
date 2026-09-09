@@ -276,6 +276,7 @@ export default function DocReviewModal({
   const [imgLoaded, setImgLoaded]         = useState(false)
   const [docLoading, setDocLoading]       = useState(false)
   const [driverLoading, setDriverLoading] = useState(false)
+  const [driverActionError, setDriverActionError] = useState<string | null>(null)
   const [rejectDoc, setRejectDoc]         = useState(false)
   const [approveDoc, setApproveDoc]       = useState(false)
   const [approveError, setApproveError]   = useState<string | null>(null)
@@ -426,6 +427,15 @@ export default function DocReviewModal({
   const approvedCount = allDocs.filter(d => d.status === 'approved').length
   const totalUploaded = allDocs.filter(d => d.fileUrl && d.status !== 'missing').length
 
+  // Activation gate — mirrors the backend's hasAllRequiredDocsApproved check.
+  // Kept here only as a UI hint (disable + explain); the backend is the real
+  // guard and rejects the request either way if this ever drifts out of sync.
+  const REQUIRED_TYPES = [...REQUIRED_DRIVER, ...REQUIRED_VEHICLE]
+  const requiredMissingCount = REQUIRED_TYPES.filter(
+    t => allDocs.find(d => d.docType === t)?.status !== 'approved'
+  ).length
+  const canActivate = requiredMissingCount === 0
+
   async function doDocApprove(verifiedValidUntil: string) {
     if (!doc?.id) return
     setDocLoading(true)
@@ -455,7 +465,14 @@ export default function DocReviewModal({
   }
   async function doDriverAction(type: 'approve' | 'rejectDocs' | 'ban' | 'suspend' | 'reinstate', reason?: string) {
     setDriverLoading(true)
-    try { await onDriverAction(type, reason); onClose() } finally { setDriverLoading(false) }
+    setDriverActionError(null)
+    try {
+      await onDriverAction(type, reason)
+      onClose()
+    } catch (err) {
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      setDriverActionError(message ?? 'Action failed. Please try again.')
+    } finally { setDriverLoading(false) }
   }
 
   // Keyboard nav + action shortcuts (A = approve, R = reject, ←/→ = navigate)
@@ -530,40 +547,26 @@ export default function DocReviewModal({
 
           {/* Application actions */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            {detail.status === 'pending_approval' && !driverMode && (
+            {(detail.status === 'pending_approval' || detail.status === 'docs_rejected') && !driverMode && (
               <>
                 <button
                   onClick={() => void doDriverAction('approve')}
-                  disabled={driverLoading}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-success text-white text-xs font-bold rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                  disabled={driverLoading || !canActivate}
+                  title={canActivate ? undefined : `${requiredMissingCount} required document${requiredMissingCount === 1 ? '' : 's'} still ${requiredMissingCount === 1 ? 'needs' : 'need'} approval`}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-success text-white text-xs font-bold rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-success"
                 >
-                  <CheckCircle size={13} /> Approve
+                  <CheckCircle size={13} /> Activate
                 </button>
+                {detail.status === 'pending_approval' && (
+                  <button
+                    onClick={() => { setDriverMode('rejectDocs'); setDriverActionError(null) }}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 border border-warning/60 text-warning text-xs font-bold rounded-xl hover:bg-warning/8 transition-colors"
+                  >
+                    Reject Docs
+                  </button>
+                )}
                 <button
-                  onClick={() => setDriverMode('rejectDocs')}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 border border-warning/60 text-warning text-xs font-bold rounded-xl hover:bg-warning/8 transition-colors"
-                >
-                  Reject Docs
-                </button>
-                <button
-                  onClick={() => setDriverMode('ban')}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 border border-danger/60 text-danger text-xs font-bold rounded-xl hover:bg-danger/8 transition-colors"
-                >
-                  <XCircle size={13} /> Ban
-                </button>
-              </>
-            )}
-            {detail.status === 'docs_rejected' && !driverMode && (
-              <>
-                <button
-                  onClick={() => void doDriverAction('approve')}
-                  disabled={driverLoading}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-success text-white text-xs font-bold rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50"
-                >
-                  <CheckCircle size={13} /> Approve
-                </button>
-                <button
-                  onClick={() => setDriverMode('ban')}
+                  onClick={() => { setDriverMode('ban'); setDriverActionError(null) }}
                   className="flex items-center gap-1.5 px-3.5 py-1.5 border border-danger/60 text-danger text-xs font-bold rounded-xl hover:bg-danger/8 transition-colors"
                 >
                   <XCircle size={13} /> Ban
@@ -571,7 +574,7 @@ export default function DocReviewModal({
               </>
             )}
             {detail.status === 'active' && !driverMode && (
-              <button onClick={() => setDriverMode('suspend')} className="px-3.5 py-1.5 border border-warning/60 text-warning text-xs font-bold rounded-xl hover:bg-warning/8 transition-colors">
+              <button onClick={() => { setDriverMode('suspend'); setDriverActionError(null) }} className="px-3.5 py-1.5 border border-warning/60 text-warning text-xs font-bold rounded-xl hover:bg-warning/8 transition-colors">
                 Suspend
               </button>
             )}
@@ -582,6 +585,23 @@ export default function DocReviewModal({
             )}
           </div>
         </div>
+
+        {/* Activation-gate / action-error caption — only occupies space when there's something to say */}
+        <AnimatePresence>
+          {!driverMode && (driverActionError || (!canActivate && (detail.status === 'pending_approval' || detail.status === 'docs_rejected'))) && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.15 }}
+              className="px-5 overflow-hidden flex-shrink-0"
+            >
+              <p className={cn('text-xs pb-2', driverActionError ? 'text-danger' : 'text-text-muted')}>
+                {driverActionError ?? `${requiredMissingCount} required document${requiredMissingCount === 1 ? '' : 's'} still ${requiredMissingCount === 1 ? 'needs' : 'need'} approval before this driver can be activated.`}
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Progress bar: shows approved/total uploaded */}
         <div className="h-0.5 bg-surface-2 flex-shrink-0">

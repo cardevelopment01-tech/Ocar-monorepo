@@ -373,6 +373,31 @@ export async function hasApprovedRequiredDocs(driverId: bigint, client?: PoolCli
   return !rows[0]!.has_issue
 }
 
+const REQUIRED_IDENTITY_DOCS = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
+const REQUIRED_VEHICLE_DOCS  = ['vehicle_rc', 'insurance', 'permit']
+
+// Stricter than hasApprovedRequiredDocs above: that function only reports a
+// known ISSUE on already-uploaded rows (rejected, or approved-but-expired) —
+// a driver with zero documents uploaded has no issue row to find, so it
+// returns true for them. This function is the actual completeness gate for
+// first-time activation: every required identity doc and every required doc
+// on the primary vehicle must exist AND be 'approved'.
+export async function hasAllRequiredDocsApproved(driverId: bigint): Promise<boolean> {
+  const rows = await query<{ identity_count: string; vehicle_count: string }>(
+    `SELECT
+       (SELECT COUNT(DISTINCT dd.doc_type) FROM driver_documents dd
+        WHERE dd.driver_id = $1 AND dd.status = 'approved' AND dd.doc_type::text = ANY($2::text[])) AS identity_count,
+       (SELECT COUNT(DISTINCT dvd.doc_type) FROM driver_vehicle_documents dvd
+        JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+        WHERE dv.driver_id = $1 AND dv.is_primary = true AND dvd.status = 'approved'
+          AND dvd.doc_type::text = ANY($3::text[])) AS vehicle_count`,
+    [driverId.toString(), REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS]
+  )
+  const row = rows[0]!
+  return Number(row.identity_count) === REQUIRED_IDENTITY_DOCS.length
+    && Number(row.vehicle_count) === REQUIRED_VEHICLE_DOCS.length
+}
+
 const EXPIRY_REMINDER_DAYS = [30, 15, 7, 1]
 
 export interface ExpiringDocNotice {

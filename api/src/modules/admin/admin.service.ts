@@ -8,6 +8,7 @@ import { getRideStops } from '@/modules/rides/rides.repository'
 import { listMessages as listRideMessages } from '@/modules/ride-chat/ride-chat.repository'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { recordAuditLog } from '@/lib/audit-log'
+import { hasAllRequiredDocsApproved } from '@/modules/drivers/drivers.repository'
 
 export function docLabel(docType: string): string {
   return docType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -83,6 +84,17 @@ export async function updateDriverStatus(
   const backwardTransitions = new Set(['pending_docs', 'pending_approval', 'docs_rejected'])
   if (currentStatus === 'active' && backwardTransitions.has(payload.status)) {
     throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
+
+  // Activation must go through document review — cannot flip a driver to
+  // 'active' with required documents missing or unapproved. This is the one
+  // choke point every "Activate" UI (doc modal, driver detail, drivers list)
+  // routes through, so the check lives here rather than being duplicated
+  // (and inevitably drifting) across three frontend surfaces.
+  if (payload.status === 'active' && currentStatus !== 'active') {
+    if (!(await hasAllRequiredDocsApproved(driverId))) {
+      throw httpError(422, 'Cannot activate driver — required documents are not all approved yet.', 'DOCS_INCOMPLETE')
+    }
   }
 
   // When rejecting docs, reset onboarding_step so driver lands on the documents page

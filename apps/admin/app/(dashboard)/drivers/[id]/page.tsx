@@ -36,9 +36,11 @@ type Pagination = { total: number; page: number; limit: number; pages: number }
 
 // ── Alert strip: surface anomalies without opening a tab ──────────────────────
 function AlertStrip({ d }: { d: DriverDetail }) {
-  const missingDriver  = REQUIRED_DRIVER_DOCS.filter(k => !d.documents.find(x => x.doc_type === k))
-  const missingVehicle = REQUIRED_VEHICLE_DOCS.filter(k => !d.vehicle_documents.find(x => x.doc_type === k))
-  const totalMissing   = missingDriver.length + missingVehicle.length
+  // Approval status, not just upload presence — a driver with every file
+  // uploaded but still pending review must still show as not-ready-to-activate.
+  const unapprovedDriver  = REQUIRED_DRIVER_DOCS.filter(k => d.documents.find(x => x.doc_type === k)?.status !== 'approved')
+  const unapprovedVehicle = REQUIRED_VEHICLE_DOCS.filter(k => d.vehicle_documents.find(x => x.doc_type === k)?.status !== 'approved')
+  const totalUnapproved = unapprovedDriver.length + unapprovedVehicle.length
   const unacknowledged = d.warnings.filter(w => !w.acknowledged_at).length
   const balance = d.wallet ? parseFloat(d.wallet.balance) : 0
 
@@ -46,7 +48,7 @@ function AlertStrip({ d }: { d: DriverDetail }) {
   if (d.wallet?.is_frozen) alerts.push({ text: 'Wallet is frozen', tone: 'danger' })
   else if (balance < 500) alerts.push({ text: `Wallet below ₹500 minimum (₹${balance.toLocaleString('en-IN')})`, tone: 'warning' })
   if (d.status === 'docs_rejected') alerts.push({ text: 'Documents were rejected — awaiting resubmission', tone: 'warning' })
-  if (totalMissing > 0) alerts.push({ text: `${totalMissing} required document${totalMissing !== 1 ? 's' : ''} missing`, tone: 'warning' })
+  if (totalUnapproved > 0) alerts.push({ text: `${totalUnapproved} required document${totalUnapproved !== 1 ? 's' : ''} not yet approved`, tone: 'warning' })
   if (unacknowledged > 0) alerts.push({ text: `${unacknowledged} unacknowledged warning${unacknowledged !== 1 ? 's' : ''}`, tone: 'danger' })
   if (d.total_ratings > 0 && parseFloat(d.rating_avg) < 3.5) alerts.push({ text: `Low rating (★ ${parseFloat(d.rating_avg).toFixed(2)})`, tone: 'warning' })
 
@@ -345,7 +347,10 @@ export default function DriverDetailPage() {
       if (pendingAction === 'reinstate')  await adminDriverApi.reinstate(detail.id)
       setPendingAction(null)
       await fetchDetail()
-    } catch { setActionError('Action failed. Please try again.') }
+    } catch (err) {
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      setActionError(message ?? 'Action failed. Please try again.')
+    }
     finally { setActionLoading(false) }
   }
 
@@ -444,6 +449,10 @@ export default function DriverDetailPage() {
   const missingDriver  = REQUIRED_DRIVER_DOCS.filter(k => !d.documents.find(x => x.doc_type === k))
   const missingVehicle = REQUIRED_VEHICLE_DOCS.filter(k => !d.vehicle_documents.find(x => x.doc_type === k))
   const totalMissing   = missingDriver.length + missingVehicle.length
+  const requiredUnapprovedCount =
+    REQUIRED_DRIVER_DOCS.filter(k => d.documents.find(x => x.doc_type === k)?.status !== 'approved').length +
+    REQUIRED_VEHICLE_DOCS.filter(k => d.vehicle_documents.find(x => x.doc_type === k)?.status !== 'approved').length
+  const canActivate = requiredUnapprovedCount === 0
   const unacknowledgedWarnings = d.warnings.filter(w => !w.acknowledged_at).length
   const allDocs = [...d.documents.map(x => ({ ...x, kind: 'driver' as const })), ...d.vehicle_documents.map(x => ({ ...x, kind: 'vehicle' as const }))]
   const selfie = d.documents.find(x => x.doc_type === 'profile_photo')
@@ -481,12 +490,26 @@ export default function DriverDetailPage() {
           {/* Persistent action bar — lifecycle actions live here, not buried in a tab */}
           <div className="flex gap-2 flex-wrap">
             {d.status === 'pending_approval' && <>
-              <button onClick={() => openAction('approve')}    className="px-4 py-2 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 transition-colors">Approve</button>
+              <button
+                onClick={() => openAction('approve')}
+                disabled={!canActivate}
+                title={canActivate ? undefined : `${requiredUnapprovedCount} required document${requiredUnapprovedCount === 1 ? '' : 's'} still ${requiredUnapprovedCount === 1 ? 'needs' : 'need'} approval`}
+                className="px-4 py-2 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-success"
+              >
+                Activate
+              </button>
               <button onClick={() => openAction('rejectDocs')} className="px-4 py-2 border border-warning text-warning font-semibold rounded-xl text-sm hover:bg-warning/6 transition-colors">Reject Docs</button>
               <button onClick={() => openAction('ban')}        className="px-4 py-2 border border-danger text-danger font-semibold rounded-xl text-sm hover:bg-danger/6 transition-colors">Ban</button>
             </>}
             {d.status === 'docs_rejected' && <>
-              <button onClick={() => openAction('approve')} className="px-4 py-2 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 transition-colors">Approve</button>
+              <button
+                onClick={() => openAction('approve')}
+                disabled={!canActivate}
+                title={canActivate ? undefined : `${requiredUnapprovedCount} required document${requiredUnapprovedCount === 1 ? '' : 's'} still ${requiredUnapprovedCount === 1 ? 'needs' : 'need'} approval`}
+                className="px-4 py-2 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-success"
+              >
+                Activate
+              </button>
               <button onClick={() => openAction('ban')}      className="px-4 py-2 border border-danger text-danger font-semibold rounded-xl text-sm hover:bg-danger/6 transition-colors">Ban</button>
             </>}
             {d.status === 'active' && (
@@ -1131,9 +1154,9 @@ export default function DriverDetailPage() {
       <ConfirmDialog
         open={pendingAction === 'approve' || pendingAction === 'reinstate'}
         onOpenChange={v => { if (!v) { setPendingAction(null); setActionError('') } }}
-        title={pendingAction === 'approve' ? 'Approve Driver' : 'Reinstate Driver'}
-        description={actionError || (pendingAction === 'approve' ? `Approve ${d.full_name ?? d.phone} as an active driver?` : `Reinstate ${d.full_name ?? d.phone}?`)}
-        confirmLabel={actionLoading ? 'Submitting…' : pendingAction === 'approve' ? 'Approve' : 'Reinstate'}
+        title={pendingAction === 'approve' ? 'Activate Driver' : 'Reinstate Driver'}
+        description={actionError || (pendingAction === 'approve' ? `Activate ${d.full_name ?? d.phone} as an active driver?` : `Reinstate ${d.full_name ?? d.phone}?`)}
+        confirmLabel={actionLoading ? 'Submitting…' : pendingAction === 'approve' ? 'Activate' : 'Reinstate'}
         variant={actionError ? 'danger' : 'success'}
         onConfirm={() => { if (!actionLoading) executeAction() }}
       />
