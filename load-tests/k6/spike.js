@@ -102,8 +102,19 @@ export const options = {
         { duration: '2m', target: SPIKE_RIDERS },
         { duration: '30s', target: 0 },
       ],
-      gracefulRampDown: '30s',
-      gracefulStop: '30s',
+      // riderIdleWatch holds each connection open for 150s (its own
+      // setTimeout below) before closing it itself -- but this scenario's
+      // total active window was only 160s (10s+2m+30s), and VUs loop and
+      // open fresh connections throughout the whole 2m hold stage, not just
+      // in the initial burst. Any connection starting even slightly after
+      // the first 10s mathematically cannot reach its own 150s close before
+      // the scenario ends. Confirmed live: interrupted exactly 500 of 2500
+      // connection attempts, with zero connect failures and healthy latency
+      // -- a test-timing mismatch, not a server problem. gracefulRampDown/
+      // gracefulStop raised well past 150s so a connection that starts at
+      // any point in the hold stage gets its full natural close honored.
+      gracefulRampDown: '180s',
+      gracefulStop: '180s',
     },
   },
   thresholds: {
