@@ -12,7 +12,7 @@ vi.mock('@/jobs/queues', () => ({
   gpsFlushQueue: { add: vi.fn().mockResolvedValue(undefined) },
 }))
 vi.mock('@/modules/rides/rides.repository', () => ({
-  getRideById: vi.fn(),
+  getRideCoreById: vi.fn(),
   logStatusHistory: vi.fn().mockResolvedValue(undefined),
   updateRideStatus: vi.fn().mockResolvedValue(undefined),
   updateRideStatusCAS: vi.fn().mockResolvedValue({ id: BigInt(202), status: 'completed' }),
@@ -66,19 +66,19 @@ describe('endRideEarlyAsDriver', () => {
   })
 
   it('rejects a ride that is not in_progress', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(baseRide({ status: 'accepted' }) as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide({ status: 'accepted' }) as never)
     await expect(endRideEarlyAsDriver(BigInt(9), BigInt(202), 'vehicle_breakdown', 3, 10))
       .rejects.toMatchObject({ httpStatus: 409 })
   })
 
   it('rejects a non-owner driver', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(baseRide({ driver_id: 999 }) as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide({ driver_id: 999 }) as never)
     await expect(endRideEarlyAsDriver(BigInt(9), BigInt(202), 'vehicle_breakdown', 3, 10))
       .rejects.toMatchObject({ httpStatus: 403 })
   })
 
   it('computes a partial fare and marks the ride completed', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide() as never)
     // rate_per_km=12, rate_per_min=1.5, min_fare=60 → metered = 3*12 + 10*1.5 = 51, floored to min_fare=60
     const result = await endRideEarlyAsDriver(BigInt(9), BigInt(202), 'vehicle_breakdown', 3, 10)
     expect(result.success).toBe(true)
@@ -89,7 +89,7 @@ describe('endRideEarlyAsDriver', () => {
   })
 
   it('caps the recalculated fare at the originally-quoted total_estimated', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide() as never)
     vi.mocked(pool.query).mockImplementation((sql: unknown) => {
       const s = sql as string
       if (/FROM fare_snapshots fs\s+JOIN rate_cards/.test(s)) {
@@ -111,7 +111,7 @@ describe('endRideEarlyAsDriver', () => {
   })
 
   it('rejects with 409 when the CAS status update loses the race (already ended)', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide() as never)
     vi.mocked(repo.updateRideStatusCAS).mockResolvedValue(null as never)
     await expect(endRideEarlyAsDriver(BigInt(9), BigInt(202), 'vehicle_breakdown', 3, 10))
       .rejects.toMatchObject({ httpStatus: 409 })

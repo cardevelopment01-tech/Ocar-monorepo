@@ -339,6 +339,14 @@ export async function getDisputes(opts: {
   }
 }
 
+// Join-free counterpart to getDisputeById — for callers that only check
+// existence or read a native `disputes` column (e.g. ride_id), not the
+// admin-detail-view fields (rider/driver names, ride addresses/coordinates).
+export async function getDisputeCoreById(id: bigint) {
+  const res = await pool.query(`SELECT * FROM disputes WHERE id = $1`, [id])
+  return res.rows[0] ?? null
+}
+
 export async function getDisputeById(id: bigint) {
   const res = await pool.query(
     `SELECT d.*,

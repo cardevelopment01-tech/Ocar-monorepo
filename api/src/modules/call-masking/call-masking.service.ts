@@ -3,7 +3,7 @@ import { pool } from '@/db/client'
 import { getConfigValue } from '@/lib/system-config'
 import { invalidate } from '@/lib/cache/reference-cache'
 import { configKey } from '@/constants/redis-keys'
-import { getRideById } from '@/modules/rides/rides.repository'
+import { getRideCoreById } from '@/modules/rides/rides.repository'
 import { createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import * as repo from '@/modules/call-masking/call-masking.repository'
@@ -45,7 +45,7 @@ export async function triggerCall(params: {
   // the caller must actually be the rider or driver on this ride, otherwise
   // any authenticated user/driver could trigger a real, billed call between
   // two strangers.
-  const ride = await getRideById(params.rideId)
+  const ride = await getRideCoreById(params.rideId)
   if (!ride) throw createHttpError(AppErrors.RIDE_NOT_FOUND)
   const isOwner =
     (params.callerRole === 'user' && String(ride.user_id) === String(params.callerId)) ||

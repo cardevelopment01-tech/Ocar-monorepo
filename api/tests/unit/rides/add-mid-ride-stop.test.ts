@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/modules/rides/rides.repository', () => ({
-  getRideById:     vi.fn(),
+  getRideCoreById: vi.fn(),
   getRideStops:    vi.fn(),
   appendRideStop:  vi.fn(),
 }))
@@ -47,7 +47,7 @@ describe('addRideStop', () => {
   })
 
   it('rejects when the ride does not belong to the caller', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: RIDE_ID, user_id: BigInt(999), status: 'in_progress', ride_type: 'one_way', category_id: BigInt(1),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
     } as never)
@@ -57,7 +57,7 @@ describe('addRideStop', () => {
   })
 
   it('rejects once the ride has completed', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: RIDE_ID, user_id: USER_ID, status: 'completed', ride_type: 'one_way', category_id: BigInt(1),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
     } as never)
@@ -67,7 +67,7 @@ describe('addRideStop', () => {
   })
 
   it('adds a stop with no charge for a one_way ride in progress', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: RIDE_ID, user_id: USER_ID, driver_id: BigInt(55), status: 'in_progress', ride_type: 'one_way', category_id: BigInt(1),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
     } as never)
@@ -84,7 +84,7 @@ describe('addRideStop', () => {
   })
 
   it('does not notify the driver when the ride has no driver assigned yet', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: RIDE_ID, user_id: USER_ID, driver_id: null, status: 'in_progress', ride_type: 'one_way', category_id: BigInt(1),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
     } as never)
@@ -95,7 +95,7 @@ describe('addRideStop', () => {
   })
 
   it('applies the flat stop charge for a round_trip ride', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: RIDE_ID, user_id: USER_ID, status: 'accepted', ride_type: 'round_trip', category_id: BigInt(3),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
     } as never)
@@ -106,7 +106,7 @@ describe('addRideStop', () => {
   })
 
   it('retries once on a unique-violation race and succeeds on the second attempt', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: RIDE_ID, user_id: USER_ID, status: 'in_progress', ride_type: 'one_way', category_id: BigInt(1),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
     } as never)
@@ -126,7 +126,7 @@ describe('addRideStop', () => {
   })
 
   it('gives up and rethrows after exhausting retries on repeated unique-violations', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: RIDE_ID, user_id: USER_ID, status: 'in_progress', ride_type: 'one_way', category_id: BigInt(1),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
     } as never)
@@ -138,7 +138,7 @@ describe('addRideStop', () => {
   })
 
   it('rejects once the ride already has the maximum number of stops', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: RIDE_ID, user_id: USER_ID, status: 'in_progress', ride_type: 'one_way', category_id: BigInt(1),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
     } as never)
@@ -155,7 +155,7 @@ describe('addRideStop', () => {
   })
 
   it('rejects a stop that is too close to an existing point in the trip', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: RIDE_ID, user_id: USER_ID, status: 'in_progress', ride_type: 'one_way', category_id: BigInt(1),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
     } as never)

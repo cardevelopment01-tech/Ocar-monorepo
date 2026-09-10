@@ -25,7 +25,7 @@ import {
   FORCE_ASSIGN_GRACE_MINUTES,
 } from '@/constants/limits'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
-import type { BillingMode, BookingRequest, Ride, StopInput } from './rides.types'
+import type { BillingMode, BookingRequest, Ride, RideCore, StopInput } from './rides.types'
 import {
   createPaymentRecord,
   deductCommission,
@@ -788,7 +788,7 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
 }
 
 export async function markArrived(driverId: bigint, rideId: bigint) {
-  const ride = await repo.getRideForDriverAction(rideId, driverId)
+  const ride = await repo.getRideCoreForDriverAction(rideId, driverId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   // Defense-in-depth: getRideForDriverAction already scopes its query by driver_id,
   // so a mismatched ride.driver_id can't occur via a real DB call today — this guard
@@ -833,7 +833,7 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
 // of the "start return" control is a clean 409 no-op instead of double-
 // logging history or double-emitting the socket event.
 export async function startReturn(driverId: bigint, rideId: bigint) {
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
@@ -863,7 +863,7 @@ export async function startReturn(driverId: bigint, rideId: bigint) {
 }
 
 export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: string) {
-  const ride = await repo.getRideForDriverAction(rideId, driverId)
+  const ride = await repo.getRideCoreForDriverAction(rideId, driverId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
@@ -931,7 +931,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
 // ── Ride stops ───────────────────────────────────────────────
 
 async function assertRideStopAccess(driverId: bigint, rideId: bigint) {
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
@@ -1012,7 +1012,7 @@ export async function addRideStop(
   rideId: bigint,
   stop: StopInput
 ) {
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (BigInt(ride.user_id) !== userId) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
@@ -1123,7 +1123,7 @@ async function readCancellationFee(
 // fee we actually collected.
 async function chargeCancellationFee(
   client: PoolClient,
-  ride: Ride,
+  ride: RideCore,
   userId: bigint,
   rideId: bigint,
 ): Promise<number> {
@@ -1201,7 +1201,7 @@ export async function cancelRide(
   reasonCode?: string,
   reason?: string,
 ) {
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (BigInt(ride.user_id) !== userId) throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
   if (!CANCELLABLE_BY_USER.has(ride.status)) {
@@ -1316,7 +1316,7 @@ export async function cancelRideAsDriver(
   reasonCode?: string,
   reason?: string,
 ) {
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
@@ -1404,7 +1404,7 @@ export async function endRideEarlyAsDriver(
   actualDistanceKm: number,
   actualDurationMin: number,
 ) {
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
@@ -1516,7 +1516,7 @@ export async function forceResolveRide(
   note?: string,
   actorId?: bigint,
 ) {
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (ride.status !== 'in_progress' && ride.status !== 'returning') {
     throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
@@ -1575,7 +1575,7 @@ export async function forceResolveRide(
 // ── Admin manual driver assignment ──────────────────────────────
 
 export async function getRideAssignCandidates(rideId: bigint) {
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (!ride.origin_city_id) {
     throw Object.assign(new Error('Ride has no origin city'), { httpStatus: 409 })
@@ -1600,6 +1600,7 @@ export async function adminAssignDriver(
   overrideEligibility: boolean,
   adminId: bigint,
 ): Promise<{ success: true; mode: 'request' | 'force' }> {
+  // Rich (not Core): the manual-offer socket payload below needs total_estimated.
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (!['scheduled', 'requested', 'no_drivers'].includes(ride.status)) {
@@ -1742,7 +1743,7 @@ export async function forceAssignGraceCheck(rideId: bigint, driverId: bigint): P
     return
   }
 
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideCoreById(rideId)
   if (!ride || ride.status !== 'accepted' || !ride.driver_id || BigInt(ride.driver_id) !== driverId) return
 
   const reverted = await repo.revertForceAssign(rideId, driverId)
@@ -1857,6 +1858,7 @@ export async function verifyEndOTP(
   actualEndLat?: number,
   actualEndLng?: number
 ) {
+  // Rich (not Core): the completion notification below needs user_phone/driver_name.
   const ride = await repo.getRideForDriverAction(rideId, driverId)
   if (!ride) throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
@@ -2141,7 +2143,7 @@ export async function settleRideCompletionPayment(
   rideId: bigint,
   driverId: bigint
 ): Promise<void> {
-  const rideData = await repo.getRideById(rideId)
+  const rideData = await repo.getRideCoreById(rideId)
   const paymentChannel = rideData?.payment_channel ?? 'cash'
 
   const fareRow = await pool.query(
@@ -2225,7 +2227,7 @@ export async function collectCash(
   rideId: bigint,
   input: { collectedAmount?: number; notCollected?: boolean; note?: string }
 ): Promise<{ collected: number; discrepancy: boolean }> {
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
   if (String(ride.driver_id) !== String(driverId)) throw httpError(403, 'Not your ride', 'FORBIDDEN')
   if (ride.status !== 'completed') throw httpError(409, 'Ride is not completed', 'RIDE_NOT_COMPLETED')
@@ -2254,7 +2256,7 @@ export async function collectCash(
     [rideId, collected, discrepancy, input.note ?? null]
   )
   if (claim.rowCount === 0) {
-    const fresh = await repo.getRideById(rideId)
+    const fresh = await repo.getRideCoreById(rideId)
     return {
       collected:   parseFloat(fresh?.cash_collected_amount ?? '0'),
       discrepancy: fresh?.cash_discrepancy ?? false,

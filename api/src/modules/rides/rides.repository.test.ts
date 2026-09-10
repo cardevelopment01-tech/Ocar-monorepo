@@ -14,7 +14,7 @@ vi.mock('@/db/redis', () => ({
   client: { del: vi.fn().mockResolvedValue(1) },
 }))
 
-import { getEligibleDriverCategoryIds, findNearbyDrivers, findReturnCabDrivers, getCategoryDisplayName, getRideById } from './rides.repository'
+import { getEligibleDriverCategoryIds, findNearbyDrivers, findReturnCabDrivers, getCategoryDisplayName, getRideById, getRideCoreById, getRideCoreForDriverAction } from './rides.repository'
 
 describe('findNearbyDrivers', () => {
   beforeEach(() => { mockQuery.mockReset() })
@@ -107,5 +107,48 @@ describe('getRideById', () => {
     const [sql] = mockQuery.mock.calls[0] as [string]
     expect(sql).toContain('booked_category_name')
     expect(sql).toContain('assigned_category_name')
+  })
+})
+
+describe('getRideCoreById', () => {
+  beforeEach(() => { mockQuery.mockReset() })
+
+  it('queries rides directly with no joins', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: '1' }] })
+
+    await getRideCoreById(1n)
+
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).not.toContain('LEFT JOIN')
+    expect(sql).toContain('FROM rides r')
+    expect(sql).toContain('WHERE r.id = $1')
+    expect(params).toEqual([1n])
+  })
+
+  it('returns null when no row matches', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+    const result = await getRideCoreById(999n)
+    expect(result).toBeNull()
+  })
+})
+
+describe('getRideCoreForDriverAction', () => {
+  beforeEach(() => { mockQuery.mockReset() })
+
+  it('scopes the query by both id and driver_id, no joins', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: '1', driver_id: '7' }] })
+
+    await getRideCoreForDriverAction(1n, 7n)
+
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).not.toContain('LEFT JOIN')
+    expect(sql).toContain('WHERE r.id = $1 AND r.driver_id = $2')
+    expect(params).toEqual([1n, 7n])
+  })
+
+  it('returns null for a ride owned by a different driver (ownership scoped at the query, not app-checked after fetch)', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+    const result = await getRideCoreForDriverAction(1n, 999n)
+    expect(result).toBeNull()
   })
 })

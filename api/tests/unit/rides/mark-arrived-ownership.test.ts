@@ -13,7 +13,7 @@ vi.mock('@/jobs/queues', () => ({
   gpsFlushQueue: { add: vi.fn().mockResolvedValue(undefined) },
 }))
 vi.mock('@/modules/rides/rides.repository', () => ({
-  getRideForDriverAction: vi.fn(),
+  getRideCoreForDriverAction: vi.fn(),
   updateRideStatus:       vi.fn().mockResolvedValue(undefined),
   logStatusHistory:       vi.fn().mockResolvedValue(undefined),
 }))
@@ -33,19 +33,19 @@ describe('markArrived — ownership', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('throws 404 when the ride is not assigned to this driver (owner-scoped fetch returns null)', async () => {
-    vi.mocked(repo.getRideForDriverAction).mockResolvedValue(null)
+    vi.mocked(repo.getRideCoreForDriverAction).mockResolvedValue(null)
     await expect(markArrived(BigInt(9), BigInt(101))).rejects.toMatchObject({ httpStatus: 404 })
     expect(repo.updateRideStatus).not.toHaveBeenCalled()
   })
 
   it('throws 403 (defense-in-depth guard) if a mismatched-driver row is somehow returned', async () => {
-    vi.mocked(repo.getRideForDriverAction).mockResolvedValue({ id: BigInt(101), driver_id: 999, user_id: 42 } as never)
+    vi.mocked(repo.getRideCoreForDriverAction).mockResolvedValue({ id: BigInt(101), driver_id: 999, user_id: 42 } as never)
     await expect(markArrived(BigInt(9), BigInt(101))).rejects.toMatchObject({ httpStatus: 403 })
     expect(repo.updateRideStatus).not.toHaveBeenCalled()
   })
 
   it('proceeds for the owning driver', async () => {
-    vi.mocked(repo.getRideForDriverAction).mockResolvedValue({ id: BigInt(101), driver_id: 9, user_id: 42 } as never)
+    vi.mocked(repo.getRideCoreForDriverAction).mockResolvedValue({ id: BigInt(101), driver_id: 9, user_id: 42 } as never)
     const res = await markArrived(BigInt(9), BigInt(101))
     expect(res).toEqual({ success: true })
     expect(repo.updateRideStatus).toHaveBeenCalledWith(BigInt(101), 'driver_arrived', expect.anything())

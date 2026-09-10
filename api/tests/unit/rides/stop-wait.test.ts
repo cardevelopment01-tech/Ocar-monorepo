@@ -6,7 +6,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   createRideAssignment:   vi.fn(),
   getActiveRideIdForUser: vi.fn(),
   insertRideStops:        vi.fn(),
-  getRideById:            vi.fn(),
+  getRideCoreById:        vi.fn(),
   markStopStatus:         vi.fn(),
   getRideRatePerMin:      vi.fn(),
 }))
@@ -98,7 +98,7 @@ describe('markStopStatus — wait is metered only on one-way', () => {
   })
 
   it('one-way reached passes the free window + the ride’s per-minute rate', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(inProgress('one_way') as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(inProgress('one_way') as never)
     await markStopStatus(DRIVER_ID, RIDE_ID, 1, 'reached')
 
     expect(repo.getRideRatePerMin).toHaveBeenCalledWith(RIDE_ID)
@@ -106,7 +106,7 @@ describe('markStopStatus — wait is metered only on one-way', () => {
   })
 
   it('round-trip reached meters no wait (rate 0, free 0) — wait is in the hours package', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(inProgress('round_trip') as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(inProgress('round_trip') as never)
     await markStopStatus(DRIVER_ID, RIDE_ID, 1, 'reached')
 
     expect(repo.getRideRatePerMin).not.toHaveBeenCalled()

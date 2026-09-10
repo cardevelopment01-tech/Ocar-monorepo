@@ -1,4 +1,4 @@
-import { getRideById } from '@/modules/rides/rides.repository'
+import { getRideCoreById } from '@/modules/rides/rides.repository'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { pushToTokens } from '@/modules/notifications/notifications.service'
 import { getTokensForOwner } from '@/modules/notifications/notifications.repository'
@@ -24,7 +24,7 @@ interface ResolvedParticipant {
 // rides.routes.ts GET /:id handler and the join:ride socket handler already use.
 // Returns who the caller is (sender) and who the other party is (recipient).
 async function resolveParticipant(rideId: bigint, caller: ChatCaller): Promise<ResolvedParticipant> {
-  const ride = await getRideById(rideId)
+  const ride = await getRideCoreById(rideId)
   if (!ride) throw createHttpError(AppErrors.RIDE_NOT_FOUND)
 
   if (caller.userId !== undefined && String(ride.user_id) === String(caller.userId)) {

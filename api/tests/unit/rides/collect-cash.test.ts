@@ -13,7 +13,7 @@ vi.mock('@/jobs/queues', () => ({
   gpsFlushQueue: { add: vi.fn().mockResolvedValue(undefined) },
 }))
 vi.mock('@/modules/rides/rides.repository', () => ({
-  getRideById: vi.fn(),
+  getRideCoreById: vi.fn(),
 }))
 vi.mock('@/modules/payments/payments.service', () => ({
   createPaymentRecord: vi.fn().mockResolvedValue(undefined),
@@ -58,7 +58,7 @@ describe('collectCash', () => {
   })
 
   it('happy path: exact collection settles, no discrepancy', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide() as never)
     const res = await collectCash(BigInt(9), BigInt(101), { collectedAmount: 480 })
 
     expect(res).toEqual({ collected: 480, discrepancy: false })
@@ -75,7 +75,7 @@ describe('collectCash', () => {
   })
 
   it('short collection: commission still accrues on fare, flags discrepancy', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide() as never)
     const res = await collectCash(BigInt(9), BigInt(101), { collectedAmount: 300, note: 'rider short' })
 
     expect(res).toEqual({ collected: 300, discrepancy: true })
@@ -91,7 +91,7 @@ describe('collectCash', () => {
   })
 
   it('not collected: collected 0, discrepancy true, commission still accrues', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide() as never)
     const res = await collectCash(BigInt(9), BigInt(101), { notCollected: true, note: 'no cash' })
 
     expect(res).toEqual({ collected: 0, discrepancy: true })
@@ -102,7 +102,7 @@ describe('collectCash', () => {
   })
 
   it('idempotent: already collected → returns early, no re-settle', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(
       baseRide({ cash_collected_at: '2026-07-27T10:00:00Z', cash_collected_amount: '480.00', cash_discrepancy: false }) as never,
     )
     const res = await collectCash(BigInt(9), BigInt(101), { collectedAmount: 480 })
@@ -114,7 +114,7 @@ describe('collectCash', () => {
   it('claim lost (concurrent settle): no double-settle, returns fresh ride state', async () => {
     // read-time guard passes (cash_collected_at null), but the atomic UPDATE claims
     // 0 rows because a concurrent call already settled.
-    vi.mocked(repo.getRideById)
+    vi.mocked(repo.getRideCoreById)
       .mockResolvedValueOnce(baseRide() as never) // first read: unsettled
       .mockResolvedValueOnce(baseRide({ cash_collected_amount: '480.00', cash_discrepancy: false, cash_collected_at: 'x' }) as never) // fresh read after lost claim
     vi.mocked(pool.query).mockImplementation((sql: unknown) =>
@@ -131,13 +131,13 @@ describe('collectCash', () => {
   })
 
   it('rejects non-owner driver with 403', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(baseRide({ driver_id: 999 }) as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide({ driver_id: 999 }) as never)
     await expect(collectCash(BigInt(9), BigInt(101), { collectedAmount: 480 }))
       .rejects.toMatchObject({ httpStatus: 403 })
   })
 
   it('rejects non-completed ride with 409', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue(baseRide({ status: 'in_progress' }) as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide({ status: 'in_progress' }) as never)
     await expect(collectCash(BigInt(9), BigInt(101), { collectedAmount: 480 }))
       .rejects.toMatchObject({ httpStatus: 409 })
   })

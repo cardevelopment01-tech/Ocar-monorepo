@@ -93,6 +93,21 @@ export interface Ride {
   billing_mode_snapshot: BillingMode | null
 }
 
+// Columns that only exist via RIDE_SELECT_SQL's joins (users/drivers/
+// fare_snapshots/driver_vehicles/etc) — everything else is native to `rides`
+// itself (or ST_Y/ST_X-derived from rides.origin/destination directly), so a
+// join-free query can populate it. Used by getRideCoreById/
+// getRideCoreForDriverAction for call sites that never read a joined field.
+export type RideCore = Omit<Ride,
+  | 'user_phone' | 'user_name' | 'user_rating'
+  | 'driver_name' | 'driver_phone' | 'driver_rating' | 'driver_photo'
+  | 'total_estimated'
+  | 'vehicle_number_plate' | 'vehicle_color' | 'vehicle_name' | 'vehicle_model' | 'vehicle_brand'
+  | 'booked_category_name' | 'assigned_category_name'
+  | 'driver_current_lat' | 'driver_current_lng'
+  | 'payment_status'
+>
+
 export interface StopInput {
   address?: string
   lat: number

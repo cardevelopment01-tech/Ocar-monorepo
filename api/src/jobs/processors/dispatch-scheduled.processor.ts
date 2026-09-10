@@ -24,7 +24,7 @@ export async function processDispatchScheduled(data: DispatchScheduledJobData): 
   // RETURNING * from the CAS gives raw geography columns, not the ST_Y/ST_X
   // lat/lng the broadcast pipeline needs — re-fetch through the same query
   // every other ride route uses so this can't drift from that shape.
-  const ride = await repo.getRideById(rideId)
+  const ride = await repo.getRideCoreById(rideId)
   if (!ride) return
 
   await repo.logStatusHistory({
