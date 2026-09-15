@@ -315,7 +315,134 @@ Scaffold `apps/rider-mobile`, `apps/driver-mobile` (both using the `src/app` SDK
 Build `packages/mobile-shared`: API client + refresh interceptor, socket factory, secure storage wrapper, theme tokens, base UI primitives (Button, Input, Card, Skeleton). `GestureHandlerRootView` + Reanimated installed and verified working in both apps.
 
 **Days 3-4 — Auth + navigation shell (both apps)**
-OTP request/verify screens against `/auth/otp/request` and `/otp/verify`, with optimistic advance-then-rollback UX. Token refresh wired end-to-end. `expo-router` stacks with protected-route guard via `(auth)`/`(tabs)` groups. Rider: home/map tab shell. Driver: online/offline toggle shell, earnings tab shell. `react-native-firebase` installed, Android notification channels created, device tokens registering against `/api/v1/notifications`.
+OTP request/verify screens against `/auth/otp/request` and `/otp/verify`, with optimistic advance-then-rollback UX. Token refresh wired end-to-end. `expo-router` stacks with protected-route guard via `(auth)`/`(tabs)` groups. Rider: home/map tab shell. Driver: online/offline toggle shell, earnings tab shell. `@react-native-firebase/messaging` installed, Android notification channels created, device tokens registering against `/api/v1/notifications/devices`. Full detail, screen-by-screen, in Section 7.1.
+
+### 7.1 Days 3-4 detail
+
+**Confirmed contracts (read from `api/src/modules/auth` and `api/src/modules/notifications` directly, not assumed):**
+- `POST /auth/otp/request` — body `{ phone, role: 'user'|'driver', purpose: 'login' }` → `{ message, otp? }` (`otp` present only outside production, for dev). Errors: `AUTH_OTP_RATE_LIMITED`, `AUTH_OTP_LOCKED`.
+- `POST /auth/otp/verify` — body `{ phone, otp, role, purpose: 'login' }` → `201` (`isNew`) or `200` with `{ tokens: { accessToken, refreshToken, expiresIn, refreshExpiresIn }, principal, isNew }`. Errors: `AUTH_OTP_EXPIRED`, `AUTH_OTP_LOCKED`, `AUTH_OTP_INVALID`.
+- `POST /api/v1/notifications/devices` (authenticated) — body `{ token, platform: 'android' }` → `204`. `DELETE` same path/body to unregister.
+- Backend already sends raw FCM pushes (M10 done) — the client needs a real FCM token, not an Expo push token, so `@react-native-firebase/messaging` is required over `expo-notifications`' own push service (which would hand back an Expo-format token the backend can't send to).
+
+**Screens — reusing `apps/driver/src/pages/Login.tsx`'s proven two-step UX, not reinventing it:**
+- `(auth)/phone.tsx` — phone entry, `formatPhone()` ported as-is (10-digit → `+91` prefix). `keyboardType="phone-pad"`, submit button disabled until 10 digits.
+- `(auth)/otp.tsx` — **one** `TextInput`, not four/six manual digit boxes: `textContentType="oneTimeCode"` (iOS autofill) + `autoComplete="sms-otp"` + `keyboardType="number-pad"` (Android autofill). This is simultaneously the accessible choice (a screen reader handles one field far better than N boxes with manual focus-juggling), the platform-recommended choice (native SMS autofill on both OSes for free), and the lazy choice (no paste-splitting/backspace-across-boxes logic to write or debug). Reuse the `countdownRef`/`setInterval` 30s resend-cooldown pattern and the `otpRequestInFlightRef`/`otpVerifyInFlightRef` double-submit guards verbatim from `Login.tsx`. In non-production, auto-populate the field from the response's `otp` field (mirrors `devOtp` in the web app) to keep the 15-day dev loop fast.
+- Step transition (phone → otp) is a Reanimated `FadeIn`/`SlideInRight` on the same screen, not a stack push — it's a sub-state, not a new route (matches the web app's `AnimatePresence` treatment of the same flow). **Android back-button gap (outside-voice finding, resolved):** since there's no second route to pop, Android's hardware/gesture back from the OTP sub-state would otherwise exit the `(auth)` stack instead of returning to phone entry (the web pattern this was ported from has no hardware back button, so this was silently dropped in the port). Fixed with a `BackHandler.addEventListener('hardwareBackPress', ...)` active only in the OTP sub-state, reverting to the phone sub-state and returning `true` (handled) instead of the default pop.
+- Optimistic advance-then-rollback (already a binding convention per Section 6): on submit, the button shows a spinner and the input is disabled ("verifying" sub-state) rather than navigating away immediately; only route to `(tabs)` on confirmed success. On rejection, re-enable the input and show one specific inline message per error code via `mapOtpErrorCode()` (issue 2A, resolved) — a new pure function in `packages/mobile-shared/src/api/errorMessages.ts` (`AUTH_OTP_EXPIRED` → "Code expired, request a new one"; `AUTH_OTP_INVALID` → "Incorrect code"; `AUTH_OTP_LOCKED`/`AUTH_OTP_RATE_LIMITED` → "Too many attempts, try again in a few minutes"), shared by both apps instead of duplicated — never surface `error.message` or raw response bodies (CLAUDE.md security rule applies to the client too, not just the API).
+
+**`useAuthStore` per app** — new stores for both apps (there is no existing mobile or rider-web zustand store to port — rider-web's `apps/user/lib/auth-context.tsx` is plain React Context; `apps/driver/src/store/useAuthStore.ts` is the *shape reference*, not something either mobile store extends), following the same shape (`token`/`refreshToken`/`driver` or `user`/`isAuthenticated`/`setAuth`/`clearAuth`). **Hybrid storage split (issue 1A, resolved):** `secureStorage.ts` itself documents a hard 2048-byte ceiling and says explicitly "never full profile/history objects" — persisting the entire store as one blob through it would violate that ceiling as the profile shape grows (vehicle info, documents, etc., already foreshadowed elsewhere in this codebase). `packages/mobile-shared` exports a `hybridSecureStorage` (zustand `StateStorage`) that routes `token`/`refreshToken` through `createSecurePersistStorage()` (SecureStore-backed) and everything else (`user`/`driver`, `isAuthenticated`) through plain `AsyncStorage`, driven by the persisted key name. `rider-mobile` stores `user`, `driver-mobile` stores `driver` (same `DriverProfile` shape already defined web-side).
+
+**Write-path atomicity (outside-voice finding, resolved):** a single zustand `persist` write fanning out to two backends risks leaving auth state inconsistent if one write succeeds and the other throws (e.g. SecureStore quota/keystore error). `hybridSecureStorage.setItem()` writes the SecureStore (token) portion first; the AsyncStorage (profile) write only runs if that succeeds, and either failure rejects the whole call so zustand's persist middleware surfaces the error rather than silently landing a half-written state — a later state change retries the write and self-heals.
+
+**Testability (outside-voice finding, resolved):** rather than `hybridSecureStorage` importing `expo-secure-store`/`AsyncStorage` directly, it's `createHybridStorage(secure, async)` — a factory taking both backends as injected parameters, matching the `createApiClient`/`createSocket` pattern already established. The `vitest` test passes trivial in-memory fakes for both, so the routing logic gets full coverage with zero native-module mocking — no `jest-expo`/`AsyncStorage` jest mock needed, and no second test runner in the package.
+
+**Wiring `createApiClient`/`createSocket`:** instantiated once per app in `src/services/api/index.ts` / `src/services/socket/index.ts`, passed the store's token getters and `setAuth`/`clearAuth` as the factories' injected callbacks — per Day 2's decision that these factories take callbacks and must not assume either app's store shape.
+
+**Dedup decision (logged `f7b56947`):** the FCM registration sequence and the secure-persist storage adapter are identical logic across both apps, so both become `packages/mobile-shared` factories rather than being written twice — `createSecurePersistStorage()` (above) and `registerPushNotifications(apiClient, channelConfig)` (below), matching the existing `createApiClient`/`createSocket` pattern of taking injected config rather than assuming an app's shape.
+
+**Route guards (`expo-router`):**
+- `(auth)/_layout.tsx`: `isAuthenticated` → `<Redirect href="/(tabs)/home" />`.
+- `(tabs)/_layout.tsx`: not `isAuthenticated` → `<Redirect href="/(auth)/phone" />`.
+- Root `_layout.tsx`: hold the splash screen (`SplashScreen.preventAutoHideAsync()`) until zustand-persist finishes rehydrating from `hybridSecureStorage`, then hide it — without this guard there's a real, common RN bug where the wrong screen flashes for one frame before the redirect fires.
+- **Rehydration failure (issue 1B, resolved):** if `SecureStore.getItemAsync()` throws during rehydration (corrupted keychain entry, OS-level keystore error — a real, not hypothetical, failure mode), the rehydration `await` is wrapped in `try/catch`; any error calls `clearAuth()` (fail safe to logged-out) before hiding the splash, so the app never hangs indefinitely on a black splash screen — worst case the user has to log in again.
+- **`hasHydrated` signal (outside-voice finding, resolved):** the store's `onRehydrateStorage` callback (the same one wired for the 1B fix above) also sets a `hasHydrated: true` field once rehydration settles (success or failure) — later phases (e.g. Days 5-7's deep-link-into-`ride/[id]` routing from a killed-state notification tap) read this instead of re-deriving the same rehydration-complete signal from scratch.
+
+**Tab shells (scaffolded stub files from Day 1, now given real shells):**
+- Rider `(tabs)`: `home` (static "Where to?" search-bar shell — the real map lands Days 5-7), `trips`/`profile` show `EmptyState` from `mobile-shared` until wired.
+- Driver `(tabs)`: `home` (online/offline toggle rendered but inert/disabled — real logic is Days 8-10, a static disabled `Button` is enough now, not a state machine built early), `earnings`/`profile` show `EmptyState`.
+- Built on `expo-router`'s built-in `Tabs`, respecting the 44×44pt minimum touch target (Apple HIG / Material both mandate this) and `tabBarAccessibilityLabel` on any icon-only tab.
+
+**FCM device-token registration — `registerPushNotifications(apiClient, channelConfig)` in `packages/mobile-shared`:** takes the app's `createApiClient` instance and a small per-app channel config (rider passes a default channel only; driver additionally passes the high-importance `ride_requests` channel), so the permission/token/register sequence itself is written once. Called only after login (the route requires `authenticate()`): request `POST_NOTIFICATIONS` runtime permission on Android 13+ via `expo-notifications`' permission API (RNFirebase doesn't manage this Android 13 runtime permission itself), get the FCM token via `@react-native-firebase/messaging`, `POST /notifications/devices` with `{ token, platform: 'android' }`, and create the app's Android notification channels with `Notifications.setNotificationChannelAsync()` (already part of `expo-notifications`, no extra `notifee` dependency needed). On logout, each app calls the matching `unregisterPushNotifications(apiClient)` best-effort (`DELETE /notifications/devices`) before clearing its store — not blocking logout on it.
+
+**Permission-denial signal (outside-voice finding, resolved):** for the driver app specifically, a denied `POST_NOTIFICATIONS` prompt means silently missing OS alerts for incoming ride requests — a functional gap, not cosmetic. `registerPushNotifications()` returns whether permission was granted; both apps store that outcome now (`pushPermissionGranted` on `useAuthStore`) so the fact isn't lost, but the actual settings-redirect banner UI is deferred to Days 13-14's already-planned "full FCM handling" polish pass rather than pulled into this auth-focused phase — the driver home tab is still an inert shell this phase anyway (Days 8-10 owns the real online/offline logic), so a banner on it now would have nowhere functional to point back to.
+
+**Accessibility (built into these screens now, not audited in later as an afterthought):**
+- Every interactive element gets `accessibilityRole` + `accessibilityLabel` — icons are never the only cue.
+- Phone/OTP inputs get `accessibilityHint` describing the expected format.
+- Inline error text uses `accessibilityLiveRegion="polite"` so a screen reader announces it automatically — no imperative `AccessibilityInfo.announceForAccessibility()` call needed for this case.
+- Never set `allowFontScaling={false}` anywhere (RN defaults it to `true`) — dynamic type must keep working.
+- Verify the theme tokens' indigo-on-white / white-on-indigo pairs hit WCAG AA (4.5:1) specifically for error/success text, the highest-risk spot for contrast failures.
+- Any icon-only touch target under 44×44pt gets `hitSlop` to compensate.
+
+**CI coverage (outside-voice finding, resolved):** `turbo.json` gained a `typecheck` task in Day 1-2, but `.github/workflows/ci.yml` was never updated — every other app in this repo (`typecheck-user`, `typecheck-driver`, `typecheck-admin`) has a dedicated CI job, and the two new mobile apps would otherwise ship auth/token code for weeks with zero CI enforcement. Days 3-4 adds a `typecheck-mobile` job to `ci.yml` matching the existing per-app pattern: `pnpm turbo run typecheck --filter=rider-mobile --filter=driver-mobile --filter=mobile-shared` (typecheck-only, no Android SDK/Gradle needed in CI).
+
+**Automated tests (issue 3A, resolved):** no test framework exists yet for any mobile app or `mobile-shared` — Days 3-4 adds `vitest` (already the `api/` standard) scoped to `packages/mobile-shared` only, covering the three pieces of pure, RN-runtime-free logic this phase introduces: `jwt.test.ts` (`tokenExpiresSoon` — valid/expired/malformed token), `errorMessages.test.ts` (`mapOtpErrorCode` — every `AUTH_OTP_*` code plus the unknown-code fallback), `secureStorage.test.ts` (`hybridSecureStorage`'s key-routing — token keys go to SecureStore, profile keys go to AsyncStorage). Screen-level RN component/E2E automation is explicitly deferred (would need `jest-expo` + React Native Testing Library, a heavier setup not justified yet) — covered instead by the manual verification checkpoints below, same as before.
+
+**Verification checkpoints (goal-driven, not "make it work"):**
+1. OTP round-trip for both a new and an existing phone number, both roles, against the local API (`docker exec ocar_postgres ...` running) → 201/200 as expected, tokens land in SecureStore, and killing + relaunching the app keeps the user logged in (persist rehydration works).
+2. Force each backend error code → the correct specific inline copy shows, input stays editable after rollback, nothing raw leaks into the UI.
+3. Logged-out user cannot reach `(tabs)` via direct deep link; logged-in user is bounced out of `(auth)` if navigated back to it.
+4. After login, `select * from device_tokens` in the local DB shows the row, and the `ride_requests` channel is visible in the driver app's Android system notification settings.
+5. TalkBack can complete phone → otp → home end-to-end without sighted assistance — the actual accessibility bar, not just "labels exist."
+6. Both apps still `tsc --noEmit` clean and `gradlew assembleDebug` succeeds with everything above wired in.
+7. `vitest run` in `packages/mobile-shared` passes: every `AUTH_OTP_*` code maps correctly (plus the unknown-code fallback), `tokenExpiresSoon` handles valid/expired/malformed tokens, `hybridSecureStorage` routes token keys to SecureStore and profile keys to AsyncStorage.
+8. Android hardware back button from the OTP sub-state returns to phone entry (not out of the app); `typecheck-mobile` CI job passes on the PR.
+
+### NOT in scope (Days 3-4)
+
+- **Screen-level RN component/E2E automation** (jest-expo + React Native Testing Library) — deferred; the manual checkpoints above (device testing, TalkBack) cover this phase's actual UI risk. Revisit once the app has enough screens that manual verification stops scaling (likely around Days 5-7's map/booking flow).
+- **The real map, fare estimate, and booking flow** — Days 5-7 per the day-by-day; this phase's rider `home` tab is a static shell only.
+- **Real online/offline toggle logic and background location** — Days 8-10; this phase's driver `home` tab renders the toggle inert/disabled.
+- **iOS-specific auth/push behavior** (APNs, iOS `expo-notifications` permission flow differences) — Phase 2 per Section 1, after day 15; Android is the only platform actually exercised through these verification checkpoints.
+- **Rate-limiting/backoff beyond the existing 30s resend cooldown** — the backend already enforces `AUTH_OTP_RATE_LIMITED`; no additional client-side throttling logic beyond disabling the resend button during cooldown.
+
+### What already exists (reused, not rebuilt)
+
+- Two-step phone→OTP UX, countdown/in-flight-guard pattern, `formatPhone()`, dev-OTP autofill — `apps/driver/src/pages/Login.tsx` (ported, not reinvented).
+- `useAuthStore` shape (`token`/`refreshToken`/`driver`/`isAuthenticated`/`setAuth`/`clearAuth`) — `apps/driver/src/store/useAuthStore.ts` (same shape, different storage backend per issue 1A).
+- `createApiClient`/`createSocket` factories with injected callbacks — `packages/mobile-shared` (Day 2).
+- `secureStorage.ts`'s byte-cap enforcement — `packages/mobile-shared` (Day 2); this phase respects rather than works around it (issue 1A).
+- Skeleton/EmptyState/Button/Input UI primitives — `packages/mobile-shared/src/ui` (Day 2).
+- OTP/error backend contracts — `api/src/modules/auth`, `api/src/modules/notifications` (read directly, not assumed, before this plan was written).
+
+### Failure modes
+
+| Codepath | Failure scenario | Test? | Error handling? | User-visible? |
+|---|---|---|---|---|
+| `tokenExpiresSoon` malformed token | Corrupted/truncated JWT in storage | ✅ unit test (issue 3A) | Returns a safe default rather than throwing | N/A — internal check |
+| SecureStore rehydration | Keystore/keychain error on app launch | Manual checkpoint only | ✅ try/catch → fail-safe logged-out (issue 1B) | Yes — routed to login, not a hang |
+| `hybridSecureStorage` routing | Wrong key routed to wrong backend | ✅ unit test (issue 3A, injected-fakes design) | N/A — deterministic key list | N/A |
+| `hybridSecureStorage` partial write | SecureStore write succeeds, AsyncStorage write throws (or vice versa) | Not unit-tested (would need fault injection) | ✅ SecureStore-first, whole call rejects on either failure (outside-voice finding) | No — surfaces as a persist error, self-heals on next write |
+| Android hardware back from OTP state | User presses back while on OTP sub-state | Manual checkpoint only | ✅ `BackHandler` intercept reverts to phone step (outside-voice finding) | Yes — correct back behavior instead of exiting the app |
+| OTP verify — network failure | API unreachable during submit | Manual checkpoint (#2 covers server error codes; airplane-mode check covers this) | ✅ generic "check your connection" message, separate from server error codes | Yes — clear retry message |
+| FCM registration failure | Permission denied, or `POST /notifications/devices` fails | Not covered | Explicitly "best-effort" per plan — login must not block on this; denial outcome is stored (`pushPermissionGranted`) for Days 13-14 to act on | Silent this phase by design — driver push-denial banner deferred to Days 13-14 (outside-voice finding) |
+| CI enforcement gap | Mobile TS ships with no CI typecheck gate | N/A | ✅ `typecheck-mobile` job added to `ci.yml` (outside-voice finding) | N/A — process gap, not runtime |
+
+### Worktree parallelization strategy
+
+Sequential implementation, no parallelization opportunity — both apps' Days 3-4 work touches the same shared dependency (`packages/mobile-shared`'s new `errorMessages.ts`/`hybridSecureStorage`) which must land first, and the two apps' auth screens are small enough that splitting them across worktrees would cost more in coordination than it saves.
+
+### Implementation Tasks
+
+- [ ] **T1 (P1, human: ~35min / CC: ~10min)** — mobile-shared — Add `createHybridStorage(secure, async)` (injected-backend factory; routes token/refreshToken to `secure` first, then `async`, rejecting the whole write on either failure) and `createSecurePersistStorage()`
+  - Surfaced by: Architecture issue 1A; write-atomicity + testability outside-voice findings
+  - Files: `packages/mobile-shared/src/storage/secureStorage.ts`, new `hybridStorage.ts`
+  - Verify: `vitest run` — routing + partial-failure-rejects tests pass, using injected fakes (no native mocks)
+- [ ] **T2 (P1, human: ~15min / CC: ~5min)** — mobile-shared — Add `mapOtpErrorCode()` pure function
+  - Surfaced by: Code Quality issue 2A
+  - Files: new `packages/mobile-shared/src/api/errorMessages.ts`
+  - Verify: `vitest run` — all codes + fallback covered
+- [ ] **T3 (P1, human: ~20min / CC: ~5min)** — mobile-shared — Set up `vitest` in `packages/mobile-shared`, write `jwt.test.ts`/`errorMessages.test.ts`/`hybridStorage.test.ts`
+  - Surfaced by: Test review issue 3A
+  - Files: `packages/mobile-shared/vitest.config.ts`, `package.json`, the three test files
+  - Verify: `vitest run` exits 0
+- [ ] **T4 (P1, human: ~15min / CC: ~3min)** — both apps — Wrap persist rehydration in try/catch with fail-safe `clearAuth()` before hiding splash; set `hasHydrated: true` in the same `onRehydrateStorage` callback
+  - Surfaced by: Architecture issue 1B; `hasHydrated` outside-voice finding
+  - Files: `apps/rider-mobile/src/app/_layout.tsx`, `apps/driver-mobile/src/app/_layout.tsx`, both `src/store/useAuthStore.ts`
+  - Verify: manual checkpoint — simulate a SecureStore throw, confirm app reaches login screen, not a hang; confirm `hasHydrated` flips to `true` after rehydration
+- [ ] **T5 (P2, human: ~15min / CC: ~5min)** — both apps — OTP screen catches network-layer failure (not just server error codes) with a generic retry message
+  - Surfaced by: Failure modes critical gap (OTP verify network failure)
+  - Files: `apps/rider-mobile/src/app/(auth)/otp.tsx`, `apps/driver-mobile/src/app/(auth)/otp.tsx`
+  - Verify: manual checkpoint — airplane mode during submit, confirm inline message, no unhandled rejection in logs
+- [ ] **T6 (P1, human: ~2h / CC: ~30min)** — both apps — Screens, store, route guards, tab shells, FCM wiring per Section 7.1, including the `BackHandler` intercept on the OTP sub-state and storing `pushPermissionGranted` on registration
+  - Surfaced by: this plan section in full; Android back-button + push-denial outside-voice findings
+  - Files: per app — `src/app/(auth)/*`, `src/app/(tabs)/*`, `src/app/_layout.tsx`, `src/store/useAuthStore.ts`, `src/services/api/index.ts`, `src/services/socket/index.ts`, `src/services/notifications/index.ts`
+  - Verify: verification checkpoints 1-8 above
+- [ ] **T7 (P1, human: ~15min / CC: ~5min)** — CI — Add `typecheck-mobile` job to `ci.yml`
+  - Surfaced by: CI-coverage outside-voice finding
+  - Files: `.github/workflows/ci.yml`
+  - Verify: job runs and passes on the PR that lands this phase's code
 
 **Days 5-7 — Rider: core point-to-point booking**
 Map screen with foreground current location. Pickup/drop pickers wired to `/geo/autocomplete`, `/geo/place/:id`, `/geo/reverse`. Fare estimate (`POST /pricing/estimate`) + category selection (`GET /vehicles/categories`), skeleton loading on both. Booking creation (`POST /rides`), "searching" state over `ride:status_update` with reconnect-and-rejoin wired per Section 3.2. Driver-assigned screen with animated (ref-driven, not React-state-driven) live marker updates + ETA. In-ride tracking screen, start/end-OTP display, cash-collection confirmation. Ride history via `FlashList` against `/rides/me/history`, `/me/upcoming`.

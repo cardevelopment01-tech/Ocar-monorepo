@@ -1,10 +1,17 @@
-import { Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
+import { Input, colors, spacing, typography } from '@ocar/mobile-shared'
 
-// Placeholder — map + book CTA lands days 5-7.
+// Static "Where to?" shell -- real map + booking flow lands days 5-7.
 export default function HomeScreen() {
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>Rider — Home (placeholder)</Text>
+    <View style={styles.container}>
+      <Text style={styles.greeting}>Where to?</Text>
+      <Input placeholder="Enter destination" editable={false} accessibilityLabel="Search destination" />
     </View>
   )
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: spacing.lg, backgroundColor: colors.bg, gap: spacing.md },
+  greeting: { ...typography.headline, color: colors.ink900 },
+})

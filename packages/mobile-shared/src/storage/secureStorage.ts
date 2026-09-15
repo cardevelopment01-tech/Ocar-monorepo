@@ -36,3 +36,17 @@ export async function getSecureJSON<T>(key: string): Promise<T | null> {
   if (!raw) return null
   return JSON.parse(raw) as T
 }
+
+export interface StorageBackend {
+  getItem(key: string): Promise<string | null>
+  setItem(key: string, value: string): Promise<void>
+  removeItem(key: string): Promise<void>
+}
+
+export function createSecurePersistStorage(): StorageBackend {
+  return {
+    getItem: getSecureItem,
+    setItem: setSecureItem,
+    removeItem: deleteSecureItem,
+  }
+}
