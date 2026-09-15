@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "Ocar Driver",
+    "slug": "ocar-driver",
+    "scheme": "ocardriver",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.ocar.driver",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.ocar.driver",
+      "supportsTablet": false,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location"
+        ]
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Ocar needs your location in the background to match you with nearby ride requests and track active trips.",
+          "isAndroidForegroundServiceEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "foregroundService": {
+            "notificationTitle": "Ocar is tracking your location",
+            "notificationBody": "Required while you're online to receive ride requests.",
+            "notificationColor": "#4F46E5"
+          }
+        }
+      ],
+      "expo-status-bar"
+    ]
+  }
+}
