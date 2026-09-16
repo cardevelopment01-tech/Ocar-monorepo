@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import axios from 'axios'
 import { BackHandler, StyleSheet, Text, View } from 'react-native'
 import Animated, { FadeIn, SlideInRight } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
@@ -111,8 +112,8 @@ export default function PhoneScreen() {
       setAuth(tokens.accessToken, tokens.refreshToken, principal)
       void setupPushNotifications()
       router.replace('/(tabs)/home')
-    } catch (err: unknown) {
-      const code = (err as { response?: { data?: { code?: string } } }).response?.data?.code
+    } catch (err) {
+      const code = axios.isAxiosError(err) ? (err.response?.data as { code?: string } | undefined)?.code : undefined
       setOtp('')
       setError(code ? mapOtpErrorCode(code) : 'Check your connection and try again')
     } finally {

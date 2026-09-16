@@ -6,7 +6,7 @@
 
 **Stack:** Expo SDK 55+ (New Architecture is mandatory, not optional, as of SDK 55 — RN 0.83), custom development builds (not Expo Go — background location, Firebase messaging, and maps all need native modules Expo Go can't load), TypeScript, two new apps + one shared package inside the existing pnpm + Turborepo monorepo.
 
-**Build strategy (local-first):** all day-to-day builds run locally via `npx expo run:android` against the Android SDK/JDK/emulator installed on this machine — no EAS account, login, or cloud queue needed for the 15-day window. This is strictly faster for iteration (no upload/queue wait) and has no monthly build quota. EAS is brought in exactly once, on day 15, to produce the signed `production`-profile AAB for the Play Console internal testing track upload — see Section 4's EAS build profiles and the day-by-day below.
+**Build strategy (local-first):** all day-to-day builds run locally via `npx expo run:android` against the Android SDK/JDK/emulator installed on this machine — no EAS account, login, or cloud queue needed through day 10. This is strictly faster for iteration (no upload/queue wait) and has no monthly build quota. EAS is brought in twice: a `preview`-profile dry run on days 11-12 to de-risk the pipeline itself (added during the full-plan review — see Section 4), then the real `production`-profile AAB on day 15 for the Play Console internal testing track upload — see Section 4's EAS build profiles and the day-by-day below.
 
 ---
 
@@ -37,7 +37,7 @@ Same feature boundaries as the 2026-09-14 draft. What changes is what "done" mea
 - TestFlight distribution.
 - App Store submission/review.
 
-**Day 8 checkpoint (unchanged mechanism):** if Android P0 isn't functionally complete by day 8, P1 does not start — days 10-11 get reabsorbed into P0 hardening instead.
+**Day 9 checkpoint (shifted from day 8 during the full-plan review — a Day 5 background-location spike was inserted, per Section 7's outside-voice finding, pushing driver booking from Days 8-10 to Days 9-10):** if Android P0 isn't functionally complete by day 9, P1 does not start — days 11-12 get reabsorbed into P0 hardening instead.
 
 **Day 15 checkpoint (new, hard gate):** Android build installable from Play Console internal testing, full P0 flow walked end-to-end on a physical Android device, no P0 regression bugs open. This is the exit criterion for the 15-day window regardless of iOS state.
 
@@ -95,7 +95,9 @@ apps/
         socket/                     # ride-room join/leave wiring specific to rider flows
         location/                   # foreground-only for rider (map recenter), no background mode needed
         notifications/              # FCM registration + foreground/background handler + deep-link resolver
-        storage/                    # re-exports packages/mobile-shared secure storage with rider-specific keys
+        # No services/storage/ -- updated 2026-09-16: storage wiring (hybridStorage,
+        # createSecurePersistStorage) lives directly in store/useAuthStore.ts, which already
+        # owns its own persist key namespacing. A separate re-export layer had no job to do.
       store/                        # zustand stores — mirrors apps/driver's proven pattern (useAuthStore, useRideStore)
       theme/                        # tokens ported from DESIGN.md, re-exported from packages/mobile-shared/theme
       components/                   # generic, ride-agnostic UI primitives not already in the shared package
@@ -142,13 +144,13 @@ packages/
     src/
       api/
         client.ts                   # axios instance factory + refresh-token interceptor
-        auth.ts                     # /auth/otp/request, /otp/verify, /refresh
-        rides.ts                    # /rides/* typed calls, mirrors api's Zod schemas where practical
-        geo.ts
-        pricing.ts
-        vehicles.ts
-        notifications.ts            # device token register/unregister, feed
+        errorMessages.ts            # mapOtpErrorCode() and future error-code -> copy maps
+        jwt.ts                      # tokenExpiresSoon()
         types.ts                    # shared response/request types
+        # No per-domain typed wrapper modules (auth.ts/rides.ts/geo.ts/pricing.ts/vehicles.ts) --
+        # updated 2026-09-16: decided against these during the full-plan review. Screens/hooks call
+        # api.post('/api/v1/...')/api.get(...) inline with the full path, matching apps/driver's own
+        # web convention exactly (verified: Login.tsx has no auth.ts wrapper either).
       socket/
         createSocket.ts             # io() factory with the same auth/reconnect contract as apps/driver's socket.ts
       storage/
@@ -172,6 +174,7 @@ packages/
 - `packages/mobile-shared` is a plain TypeScript workspace package (no build step needed — Metro can resolve and transpile workspace TS source directly via `metro.config.js`'s `watchFolders` + `resolver.nodeModulesPaths`, the standard pnpm-monorepo Metro pattern). No separate `tsc` build/publish cycle inside the 15 days.
 - Both apps' `metro.config.js` must extend the monorepo root (`getDefaultConfig(__dirname)` then add `watchFolders: [monorepoRoot]` and dedupe `resolver.nodeModulesPaths`) — this is the standard pnpm+Expo+Turborepo pattern; skipping it is the most common cause of "module not found" errors for workspace packages in Expo monorepos.
 - Turborepo pipeline: add `dev`, `android`, and `typecheck` tasks for both new apps to `turbo.json`, matching the existing per-app task shape already used for `apps/admin`/`apps/user`/`apps/driver`.
+- **Root `.npmrc`: `node-linker=hoisted` + `shamefully-hoist=true` (issue 1C, investigated during the full-plan review).** Repo-wide, not scoped to the mobile workspace — pnpm has no per-package `.npmrc` scoping for a root-level `pnpm install`, so this affects `api/` and all three existing web apps too. **Confirmed still required, not legacy**: removed it and did a clean reinstall + rebuild as a test — `react-native-worklets`' native Android build failed with `CreateProcess error=2, file not found` trying to resolve `prefab_command.bat` through pnpm's symlinked `.pnpm` virtual store, a distinct pnpm-symlink/native-autolinking incompatibility, separate from the original Windows 260-char path-length issue that moving the repo to `C:\ocar` already fixed. Restored the setting; rebuild succeeded again. Regression risk is low (hoisting can only add resolvable modules, never remove one that currently works) but worth revisiting if a phantom-dependency bug ever appears in `api/` or the web apps.
 
 ---
 
@@ -187,7 +190,8 @@ Concretely, for the driver app: a `RideLifecycleProvider` (or the `_layout.tsx` 
 This is a direct port of the proven concept in `apps/driver/src/lib/socket.ts` and `useRideStore.ts` — the mobile spec does not reinvent this, it re-expresses the same lifecycle ownership in a provider because RN has no route-level `App.tsx` singleton the way the Vite app does.
 
 ### 3.1 API client (`packages/mobile-shared/src/api/client.ts`)
-- Axios instance, `baseURL` from `expo-constants` env config (dev/staging/prod variants via EAS build profiles).
+- Axios instance, `baseURL` from `process.env.EXPO_PUBLIC_API_URL` — Expo inlines `EXPO_PUBLIC_*` vars at build time via its babel plugin, no `expo-constants` indirection needed (updated 2026-09-16: simpler than the originally-planned `expo-constants`/EAS-build-profile approach, and already verified working). Each app's `.env.example` documents the Android-emulator default (`http://10.0.2.2:3000`, the emulator's host-loopback alias).
+- **Physical-device networking (outside-voice finding, added during the full-plan review):** `10.0.2.2` only resolves inside the Android emulator — Day 15's physical-device testing requirement needs `EXPO_PUBLIC_API_URL` pointed at the dev machine's LAN IP instead (e.g. `http://192.168.x.x:3000`), with the phone on the same Wi-Fi network. Two easy-to-miss blockers the first time: confirm the API server binds `0.0.0.0` (not just `localhost`), and confirm the dev machine's firewall allows inbound traffic on the API port from the phone's IP.
 - Request interceptor attaches `Authorization: Bearer <accessToken>` from secure storage.
 - Response interceptor: on 401, single in-flight refresh (same `refreshInProgress` boolean guard pattern already used in `apps/driver/src/lib/socket.ts`) against `POST /auth/refresh`, retries the original request once, and on refresh failure clears auth and routes to `(auth)/phone`.
 - Never logs `error.message` from API responses in any UI-facing surface, matching the project-wide rule of codes/safe messages only.
@@ -206,11 +210,13 @@ This is a direct port of the proven concept in `apps/driver/src/lib/socket.ts` a
   - `stop()` is called the instant the driver goes offline or logs out — background location must never run without an active online/ride reason, both for battery and for Play Store policy compliance.
 
 ### 3.4 Notifications service (`services/notifications/`)
-- FCM registration on login (`react-native-firebase` `messaging().getToken()`), POSTed to the existing `/api/v1/notifications` device-token endpoint — no backend change needed, it already accepts device tokens per owner.
-- Foreground: `messaging().onMessage()` shows an in-app toast/banner (do not rely on the OS notification tray while the app is open — this is where FCM/Expo integration conflicts most commonly surface, per current library guidance, so keep it to one single foreground listener registered once in the root provider).
-- Background/killed: `messaging().setBackgroundMessageHandler()` (Android-only requirement — this handler is what fires when the app is not in the JS foreground) triggers the OS notification via a Notifee or `expo-notifications`-created channel; tapping it uses `messaging().onNotificationOpenedApp()` / `getInitialNotification()` to deep-link into `ride/[id]` via expo-router's `router.push`.
-- Data-only messages (not `notification`-type FCM payloads) are used for the ride-request alert specifically, since the driver app needs to trigger its own full-screen incoming-request UI/sound rather than a plain OS notification tap — this matches how the existing backend's `sendNotification`/`notifyOwner()` helpers already separate push payload from in-app feed row.
-- Android notification channels are created once at app startup (e.g. `ride_requests` channel with `IMPORTANCE_HIGH` + custom sound, `ride_status` channel with default importance) — required on Android 8+ regardless of FCM vs Expo notifications, and this is also where the OS-level "make it loud enough to notice while backgrounded" requirement for ride requests is satisfied.
+
+**Updated 2026-09-16 after Days 3-4's `/plan-eng-review`** — the original design below (FCM via `react-native-firebase` directly) was superseded once `google-services.json` turned out to still be unavailable at Days 3-4. The actual, reviewed, and implemented design:
+
+- `registerPushNotifications(apiClient, channelConfig)` / `unregisterPushNotifications(apiClient, token)` in `packages/mobile-shared/src/notifications/registerPushNotifications.ts` — takes an **injected** `getFcmToken: () => Promise<string | null>` callback rather than importing `@react-native-firebase/messaging` directly, because that package isn't installed yet (its Android Gradle build requires `google-services.json`, still not available). Each app's `services/notifications/index.ts` currently passes a stub returning `null`, marked `// TODO(fcm)`; swapping in a real `() => messaging().getToken()` once the config file lands is a one-line change, nothing else in the module changes.
+- Android notification channels are created via `expo-notifications`' `Notifications.setNotificationChannelAsync()` — no Notifee dependency. Driver gets a `default` channel plus a high-importance `ride_requests` channel; rider gets `default` only.
+- Permission is requested via `expo-notifications`' `requestPermissionsAsync()` (covers the Android 13+ `POST_NOTIFICATIONS` runtime permission, which RNFirebase does not manage itself). The grant/deny outcome is stored on `useAuthStore` as `pushPermissionGranted` for later phases to act on (see 7.1's permission-denial finding).
+- **Still to build once FCM is real** (Days 9-10 / 13-14 per the day-by-day): `messaging().onMessage()` foreground listener, `messaging().setBackgroundMessageHandler()`, `onNotificationOpenedApp()`/`getInitialNotification()` deep-linking into `ride/[id]`, and the data-only-message pattern for the driver's full-screen incoming-request UI. These are unaffected by the stub — they're new code once messaging is installed, not a rework of what Days 3-4 built.
 
 ### 3.5 Secure storage service (`packages/mobile-shared/src/storage/secureStorage.ts`)
 - `expo-secure-store`, Keystore-backed on Android. Confirmed 2026 caveat: values are capped around 2048 bytes and newer SDKs throw (not just warn) past that limit — store only `accessToken`, `refreshToken`, and a small user/driver identity blob (id, phone, role) here. Anything larger (full profile objects, ride history cache) goes in AsyncStorage or the zustand `persist` middleware's default storage, never SecureStore.
@@ -263,9 +269,10 @@ Rider app only needs `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` — no ba
 **Battery optimization guidance for testers:** Android's Doze/App Standby can throttle background location on some OEMs (Xiaomi/Oppo/Vivo especially) even with a foreground service running. Document (in the internal test invite, not shippable UI) that testers should disable battery optimization for the driver app during the pilot, and treat this as a known Android fragmentation risk to watch for during days 14-15 device testing, not a bug to chase in-app.
 
 **Local vs EAS builds — when each is used:**
-- **Days 1-14: local builds only.** `npx expo prebuild --platform android` generates the native `android/` project once (regenerate after any config-plugin/native-dependency change), then `npx expo run:android` builds via local Gradle + JDK 17 and installs straight onto the connected device/emulator via `adb`. No account, no login, no upload wait, no monthly quota — this is the fast inner loop for all of days 1-14, including the background-location and FCM work in days 8-10.
-- **Day 15 only: one EAS build.** `eas build --profile production --platform android` produces the signed AAB required for Play Console upload — EAS's managed keystore signing is the one piece worth using its cloud service for (self-managing a release keystore locally is possible but not worth the setup time inside this window). This is the only point `eas login` is needed.
-- `eas.json` still defines all three profiles for optionality (`development` dev-client, `preview` internal-distribution APK, `production` AAB) — but `development` and `preview` cloud builds are a fallback only (e.g. if local Gradle breaks and there's no time to debug it), not the default path.
+- **Days 1-10: local builds only.** `npx expo prebuild --platform android` generates the native `android/` project once (regenerate after any config-plugin/native-dependency change), then `npx expo run:android` builds via local Gradle + JDK 17 and installs straight onto the connected device/emulator via `adb`. No account, no login, no upload wait, no monthly quota — this is the fast inner loop for days 1-10, including the day 5 background-location spike and driver FCM work in days 9-10.
+- **Days 11-12: one EAS dry-run build (outside-voice finding, added during the full-plan review).** `eas build --profile preview --platform android` (internal-distribution APK, no production signing) during the existing P1/stretch window — this is the first `eas login` and the first time the config-plugin resolution and cloud build queue run under EAS instead of local Gradle. De-risks the pipeline itself days before it's load-bearing, so anything that surfaces here gets fixed with real slack still available, not discovered for the first time on day 15.
+- **Day 15: the production EAS build.** `eas build --profile production --platform android` produces the signed AAB required for Play Console upload — EAS's managed keystore signing is the one piece worth using its cloud service for (self-managing a release keystore locally is possible but not worth the setup time inside this window). By this point the pipeline itself is already proven from the day 11-12 dry run; day 15 only has to prove the production signing config specifically.
+- `eas.json` still defines all three profiles for optionality (`development` dev-client, `preview` internal-distribution APK, `production` AAB) — `development` cloud builds remain a fallback only (e.g. if local Gradle breaks and there's no time to debug it), not the default path.
 
 **Play Console internal testing track:**
 - Fastest structured distribution option Google offers — up to 100 testers via email list, no external review wait the way TestFlight's external tier has.
@@ -309,15 +316,62 @@ Rider app only needs `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` — no ba
 ## 7. Revised day-by-day (15 days, Android-only target)
 
 **Day 1 — Foundation**
-Scaffold `apps/rider-mobile`, `apps/driver-mobile` (both using the `src/app` SDK 55 layout), `packages/mobile-shared`, wire pnpm workspace + `metro.config.js` `watchFolders`/`nodeModulesPaths`, add Turborepo tasks. Run `npx expo prebuild --platform android` + `npx expo run:android` locally for both apps to confirm the toolchain (JDK 17, Android SDK, `adb`) is wired correctly end-to-end — this is the local-build smoke test, no EAS/cloud step here. Create the Play Console app listings (draft) and internal testing track shells for both apps. Confirm Firebase config (`google-services.json`) is available for the backend's Firebase project.
+Scaffold `apps/rider-mobile`, `apps/driver-mobile` (both using the `src/app` SDK 55 layout), `packages/mobile-shared`, wire pnpm workspace + `metro.config.js` `watchFolders`/`nodeModulesPaths`, add Turborepo tasks. Run `npx expo prebuild --platform android` + `npx expo run:android` locally for both apps to confirm the toolchain (JDK 17, Android SDK, `adb`) is wired correctly end-to-end — this is the local-build smoke test, no EAS/cloud step here. Create the Play Console app listings (draft) and internal testing track shells for both apps — **assumes account identity verification (Section 8.2) was already started before day 1** (outside-voice finding, added during the full-plan review); if it wasn't, that verification is the actual blocking pre-day-1 gate, not a same-day task. Confirm Firebase config (`google-services.json`) is available for the backend's Firebase project.
 
 **Day 2 — Shared foundations**
 Build `packages/mobile-shared`: API client + refresh interceptor, socket factory, secure storage wrapper, theme tokens, base UI primitives (Button, Input, Card, Skeleton). `GestureHandlerRootView` + Reanimated installed and verified working in both apps.
 
-**Days 3-4 — Auth + navigation shell (both apps)**
-OTP request/verify screens against `/auth/otp/request` and `/otp/verify`, with optimistic advance-then-rollback UX. Token refresh wired end-to-end. `expo-router` stacks with protected-route guard via `(auth)`/`(tabs)` groups. Rider: home/map tab shell. Driver: online/offline toggle shell, earnings tab shell. `@react-native-firebase/messaging` installed, Android notification channels created, device tokens registering against `/api/v1/notifications/devices`. Full detail, screen-by-screen, in Section 7.1.
+**Days 3-4 — Auth + navigation shell (both apps) — DONE, see commit `9c11439`**
+OTP request/verify screens against `/auth/otp/request` and `/otp/verify`, with optimistic advance-then-rollback UX. Token refresh wired end-to-end. `expo-router` stacks with protected-route guard via `(auth)`/`(tabs)` groups. Rider: home/map tab shell. Driver: online/offline toggle shell, earnings tab shell. Android notification channels created via `expo-notifications`, device tokens registering against `/api/v1/notifications/devices` — `@react-native-firebase/messaging` itself is **not** installed yet (stubbed pending `google-services.json`, see updated Section 3.4). Full detail, screen-by-screen, in Section 7.1.
 
 ### 7.1 Days 3-4 detail
+
+**App boot / auth-state sequence (added during the full-plan review — the most complex state machine either app has, worth a diagram):**
+
+```
+App launch
+   │
+   ▼
+SplashScreen.preventAutoHideAsync()  (root _layout.tsx, module scope)
+   │
+   ▼
+zustand-persist rehydration starts
+   │
+   ├── SecureStore/AsyncStorage read throws ──► clearAuth() (fail-safe logged-out)
+   │        (issue 1B)                                │
+   │                                                   ▼
+   └── read succeeds ──────────────────────────► hasHydrated = true
+                                                        │
+                                                        ▼
+                                        SplashScreen.hideAsync()
+                                                        │
+                                                        ▼
+                                        root Stack renders index.tsx
+                                                        │
+                                        isAuthenticated? ─────────────┐
+                                             │ no                     │ yes
+                                             ▼                        ▼
+                                    Redirect /(auth)/phone   Redirect /(tabs)/home
+                                             │                        │
+                              (auth)/_layout guard:          (tabs)/_layout guard:
+                              isAuthenticated? ──yes──►      isAuthenticated? ──no──►
+                              bounce to /(tabs)/home          bounce to /(auth)/phone
+                                             │                        │
+                                             ▼                        ▼
+                                    phone.tsx renders            tab screens render
+                                    (step: 'phone' | 'otp'
+                                     sub-state, same screen)
+                                             │
+                                    OTP verify succeeds
+                                             │
+                                             ▼
+                                    setAuth() + setupPushNotifications()
+                                             │
+                                             ▼
+                                    router.replace('/(tabs)/home')
+```
+
+Every arrow above already has an owning code path: the two `_layout.tsx` guards are defense-in-depth against direct deep links (verification checkpoint #3), not just the default `index.tsx` redirect.
 
 **Confirmed contracts (read from `api/src/modules/auth` and `api/src/modules/notifications` directly, not assumed):**
 - `POST /auth/otp/request` — body `{ phone, role: 'user'|'driver', purpose: 'login' }` → `{ message, otp? }` (`otp` present only outside production, for dev). Errors: `AUTH_OTP_RATE_LIMITED`, `AUTH_OTP_LOCKED`.
@@ -346,16 +400,16 @@ OTP request/verify screens against `/auth/otp/request` and `/otp/verify`, with o
 - `(tabs)/_layout.tsx`: not `isAuthenticated` → `<Redirect href="/(auth)/phone" />`.
 - Root `_layout.tsx`: hold the splash screen (`SplashScreen.preventAutoHideAsync()`) until zustand-persist finishes rehydrating from `hybridSecureStorage`, then hide it — without this guard there's a real, common RN bug where the wrong screen flashes for one frame before the redirect fires.
 - **Rehydration failure (issue 1B, resolved):** if `SecureStore.getItemAsync()` throws during rehydration (corrupted keychain entry, OS-level keystore error — a real, not hypothetical, failure mode), the rehydration `await` is wrapped in `try/catch`; any error calls `clearAuth()` (fail safe to logged-out) before hiding the splash, so the app never hangs indefinitely on a black splash screen — worst case the user has to log in again.
-- **`hasHydrated` signal (outside-voice finding, resolved):** the store's `onRehydrateStorage` callback (the same one wired for the 1B fix above) also sets a `hasHydrated: true` field once rehydration settles (success or failure) — later phases (e.g. Days 5-7's deep-link-into-`ride/[id]` routing from a killed-state notification tap) read this instead of re-deriving the same rehydration-complete signal from scratch.
+- **`hasHydrated` signal (outside-voice finding, resolved):** the store's `onRehydrateStorage` callback (the same one wired for the 1B fix above) also sets a `hasHydrated: true` field once rehydration settles (success or failure) — later phases (e.g. Days 6-8's deep-link-into-`ride/[id]` routing from a killed-state notification tap) read this instead of re-deriving the same rehydration-complete signal from scratch.
 
 **Tab shells (scaffolded stub files from Day 1, now given real shells):**
-- Rider `(tabs)`: `home` (static "Where to?" search-bar shell — the real map lands Days 5-7), `trips`/`profile` show `EmptyState` from `mobile-shared` until wired.
-- Driver `(tabs)`: `home` (online/offline toggle rendered but inert/disabled — real logic is Days 8-10, a static disabled `Button` is enough now, not a state machine built early), `earnings`/`profile` show `EmptyState`.
+- Rider `(tabs)`: `home` (static "Where to?" search-bar shell — the real map lands Days 6-8), `trips`/`profile` show `EmptyState` from `mobile-shared` until wired.
+- Driver `(tabs)`: `home` (online/offline toggle rendered but inert/disabled — real logic is Days 9-10 (background location itself is Day 5's spike), a static disabled `Button` is enough now, not a state machine built early), `earnings`/`profile` show `EmptyState`.
 - Built on `expo-router`'s built-in `Tabs`, respecting the 44×44pt minimum touch target (Apple HIG / Material both mandate this) and `tabBarAccessibilityLabel` on any icon-only tab.
 
 **FCM device-token registration — `registerPushNotifications(apiClient, channelConfig)` in `packages/mobile-shared`:** takes the app's `createApiClient` instance and a small per-app channel config (rider passes a default channel only; driver additionally passes the high-importance `ride_requests` channel), so the permission/token/register sequence itself is written once. Called only after login (the route requires `authenticate()`): request `POST_NOTIFICATIONS` runtime permission on Android 13+ via `expo-notifications`' permission API (RNFirebase doesn't manage this Android 13 runtime permission itself), get the FCM token via `@react-native-firebase/messaging`, `POST /notifications/devices` with `{ token, platform: 'android' }`, and create the app's Android notification channels with `Notifications.setNotificationChannelAsync()` (already part of `expo-notifications`, no extra `notifee` dependency needed). On logout, each app calls the matching `unregisterPushNotifications(apiClient)` best-effort (`DELETE /notifications/devices`) before clearing its store — not blocking logout on it.
 
-**Permission-denial signal (outside-voice finding, resolved):** for the driver app specifically, a denied `POST_NOTIFICATIONS` prompt means silently missing OS alerts for incoming ride requests — a functional gap, not cosmetic. `registerPushNotifications()` returns whether permission was granted; both apps store that outcome now (`pushPermissionGranted` on `useAuthStore`) so the fact isn't lost, but the actual settings-redirect banner UI is deferred to Days 13-14's already-planned "full FCM handling" polish pass rather than pulled into this auth-focused phase — the driver home tab is still an inert shell this phase anyway (Days 8-10 owns the real online/offline logic), so a banner on it now would have nowhere functional to point back to.
+**Permission-denial signal (outside-voice finding, resolved):** for the driver app specifically, a denied `POST_NOTIFICATIONS` prompt means silently missing OS alerts for incoming ride requests — a functional gap, not cosmetic. `registerPushNotifications()` returns whether permission was granted; both apps store that outcome now (`pushPermissionGranted` on `useAuthStore`) so the fact isn't lost, but the actual settings-redirect banner UI is deferred to Days 13-14's already-planned "full FCM handling" polish pass rather than pulled into this auth-focused phase — the driver home tab is still an inert shell this phase anyway (Days 9-10 owns the real online/offline logic), so a banner on it now would have nowhere functional to point back to.
 
 **Accessibility (built into these screens now, not audited in later as an afterthought):**
 - Every interactive element gets `accessibilityRole` + `accessibilityLabel` — icons are never the only cue.
@@ -381,9 +435,9 @@ OTP request/verify screens against `/auth/otp/request` and `/otp/verify`, with o
 
 ### NOT in scope (Days 3-4)
 
-- **Screen-level RN component/E2E automation** (jest-expo + React Native Testing Library) — deferred; the manual checkpoints above (device testing, TalkBack) cover this phase's actual UI risk. Revisit once the app has enough screens that manual verification stops scaling (likely around Days 5-7's map/booking flow).
-- **The real map, fare estimate, and booking flow** — Days 5-7 per the day-by-day; this phase's rider `home` tab is a static shell only.
-- **Real online/offline toggle logic and background location** — Days 8-10; this phase's driver `home` tab renders the toggle inert/disabled.
+- **Screen-level RN component/E2E automation** (jest-expo + React Native Testing Library) — deferred; the manual checkpoints above (device testing, TalkBack) cover this phase's actual UI risk. Revisit once the app has enough screens that manual verification stops scaling (likely around Days 6-8's map/booking flow).
+- **The real map, fare estimate, and booking flow** — Days 6-8 per the day-by-day; this phase's rider `home` tab is a static shell only.
+- **Real online/offline toggle logic** — Days 9-10 (background location itself is Day 5's spike, per the outside-voice resequencing in Section 7); this phase's driver `home` tab renders the toggle inert/disabled.
 - **iOS-specific auth/push behavior** (APNs, iOS `expo-notifications` permission flow differences) — Phase 2 per Section 1, after day 15; Android is the only platform actually exercised through these verification checkpoints.
 - **Rate-limiting/backoff beyond the existing 30s resend cooldown** — the backend already enforces `AUTH_OTP_RATE_LIMITED`; no additional client-side throttling logic beyond disabling the resend button during cooldown.
 
@@ -444,15 +498,20 @@ Sequential implementation, no parallelization opportunity — both apps' Days 3-
   - Files: `.github/workflows/ci.yml`
   - Verify: job runs and passes on the PR that lands this phase's code
 
-**Days 5-7 — Rider: core point-to-point booking**
+**Day 5 — Background-location spike (driver app only) — added during the full-plan review (outside-voice finding)**
+The plan's own Section 3.3 calls background location "the highest-risk module," yet it was originally scheduled as day 3-of-3 inside Days 8-10, right before the P1 cut consumes whatever slack remains — the riskiest native integration in the whole plan was getting discovered latest, with the least runway to react. Pulled forward into its own narrow spike, isolated from the rest of driver booking: `Location.startLocationUpdatesAsync` + `TaskManager` wired per Section 3.3/4, the prominent-disclosure screen shown before the OS permission dialog, one real-device test confirming tracking survives Doze/App Standby backgrounding. If this blows up, it's discovered on day 5 with 10 more days available to react, not on day 9-10 (the original placement) with only the P1 slot left.
+
+**Days 6-8 — Rider: core point-to-point booking**
+**Pacing re-check (outside-voice finding, added during the full-plan review):** after this block completes, compare actual time spent + issues found against Days 3-4's real numbers (7 tasks, 8 checkpoints, 13 review findings — for auth, arguably the simplest domain in the app). Re-validate the remaining day-by-day (Days 9-10, 11-12, 13-14, 15) before continuing — don't assume the original 15-day total still holds untested just because it was the original estimate.
 Map screen with foreground current location. Pickup/drop pickers wired to `/geo/autocomplete`, `/geo/place/:id`, `/geo/reverse`. Fare estimate (`POST /pricing/estimate`) + category selection (`GET /vehicles/categories`), skeleton loading on both. Booking creation (`POST /rides`), "searching" state over `ride:status_update` with reconnect-and-rejoin wired per Section 3.2. Driver-assigned screen with animated (ref-driven, not React-state-driven) live marker updates + ETA. In-ride tracking screen, start/end-OTP display, cash-collection confirmation. Ride history via `FlashList` against `/rides/me/history`, `/me/upcoming`.
 
-**Days 8-10 — Driver: core point-to-point booking**
-**Checkpoint at start of day 8: if rider P0 isn't done, absorb days 10-11's P1 slot into finishing this instead.**
-Online/offline toggle (`/rides/sessions/online`/`/offline`) with the background-location disclosure screen shown before the OS permission dialog, then background tracking wired in per Section 3.3/4 — this is the highest native-integration risk in the whole plan, budget real slack here. Incoming ride-request handling via `ride:request` socket event + data-only FCM fallback when backgrounded, full-screen incoming-request UI with sound (via the `ride_requests` high-importance channel), `ride:request:ack` emit, countdown against `expiresAt`/`timeoutSeconds`. Accept/arrived/start-OTP screens with optimistic state advance. Active-trip screen emitting `location:update` at the existing ~3s cadence with `POST /sessions/location` HTTP fallback. End-OTP + cash collection UI. Trip history/earnings summary.
+**Days 9-10 — Driver: core point-to-point booking (background location already de-risked by Day 5)**
+**Checkpoint at start of day 9: if rider P0 isn't done, absorb days 11-12's P1 slot into finishing this instead.**
+**FCM gate (outside-voice finding, added during the full-plan review):** driver P0's incoming-ride-request alert depends on real FCM, which depends on `google-services.json` (Firebase access, itself downstream of Play Console identity verification — Section 8.2). This is a real, unowned dependency chain spanning Sections 1/3.4/8, not something to discover at day 8. If `google-services.json` still isn't available by day 8, driver P0 ships with a degraded mode instead of blocking: foreground-only ride-request alerts via in-app polling, not real push. Do not silently block the whole driver flow on an external Firebase-access dependency clearing on schedule.
+Online/offline toggle (`/rides/sessions/online`/`/offline`), wiring the Day 5 spike's background tracking into the real online/offline state transition. Incoming ride-request handling via `ride:request` socket event + data-only FCM fallback when backgrounded, full-screen incoming-request UI with sound (via the `ride_requests` high-importance channel), `ride:request:ack` emit, countdown against `expiresAt`/`timeoutSeconds`. Accept/arrived/start-OTP screens with optimistic state advance. Active-trip screen emitting `location:update` at the existing ~3s cadence with `POST /sessions/location` HTTP fallback. End-OTP + cash collection UI. Trip history/earnings summary.
 
 **Days 11-12 — Stretch: outstation + rentals (P1, cut first if behind)**
-Ride-type selector expanded beyond point-to-point. Outstation round-trip toggle + `return-cab-available`/`start-return`. Rental package-tier picker. Multi-stop only if both land early.
+Ride-type selector expanded beyond point-to-point. Outstation round-trip toggle + `return-cab-available`/`start-return`. Rental package-tier picker. Multi-stop only if both land early. **Also run the EAS dry-run build (outside-voice finding, added during the full-plan review, see Section 4):** `eas build --profile preview --platform android` — first `eas login`, first cloud build, first config-plugin resolution under EAS instead of local Gradle. Fits inside this window regardless of whether the P1 stretch scope itself gets cut.
 
 **Days 13-14 — Push, polish, edge cases, Android hardening**
 Full FCM handling across foreground/background/killed on both apps, deep-linking a notification tap into the relevant `ride/[id]` screen. Loading/error/empty states audited across all screens (not just added — actually walked one by one against the table in Section 6). Network-retry handling, forced logout on refresh-token expiry. Background-location prominent-disclosure screen copy finalized (needed for the Play Console submission, not just UX). Battery-optimization tester instructions written.
@@ -489,3 +548,50 @@ Apple Developer Program enrollment (start this as early as possible, ideally in 
 - Apple Developer Program access (start enrollment early regardless, since it's pure lead time, but it does not block any Android-focused day-1-through-15 work).
 - Physical iOS test device / TestFlight setup.
 - `GoogleService-Info.plist`.
+
+---
+
+## 9. Full-plan review addendum (2026-09-16)
+
+Written after a `/plan-eng-review` pass across the entire document (Sections 1-8, Days 1-15), following the earlier pass that covered only Section 7.1.
+
+### NOT in scope (this review)
+
+- **Expanding Days 5-15 to Section 7.1's level of detail** — considered and explicitly deferred (Step 0 decision). That detail gets written just-in-time, right before each block is implemented, matching how 7.1 itself was produced. Doing it now for unbuilt days risks the same drift Sections 2/3.1/3.4 already showed once Days 3-4 was actually built.
+
+### What already exists (whole-plan level)
+
+- Days 1-2 foundation (scaffolding, toolchain, `packages/mobile-shared` primitives) — built, not re-reviewed line-by-line here since it predates any review process; no issues surfaced against it during this pass.
+- Days 3-4 (Section 7.1) — fully implemented and previously reviewed; this pass found 3 further issues in it (FCM doc drift, baseURL doc drift, unsafe error-cast), all resolved above.
+- The repo's own established conventions (inline `api.post()` calls, no typed API wrapper modules, per-app independent auth stores) — confirmed via the web app and now made the explicit convention for mobile too (issues 1D/2A).
+
+### Failure modes (new, whole-plan level)
+
+| Area | Failure scenario | Status |
+|---|---|---|
+| `.npmrc` hoisting (issue 1C) | A future dependency removal in `api/`/web apps was silently relying on hoisting | Investigated with a real remove-and-rebuild test, not assumed — confirmed still required for the mobile apps' native builds (a different pnpm-symlink/native-autolinking failure, not just the path-length issue). Documented in Section 2 with the exact evidence. |
+| Error-cast type safety (issue 2B) | A non-axios error thrown in the OTP submit path was silently mis-read | Fixed in both apps — `axios.isAxiosError()` guard now used, matching the pattern already inside `createApiClient`. |
+
+### Worktree parallelization strategy (whole-plan level)
+
+Unlike Days 3-4 (correctly sequential — both apps depended on the same new `mobile-shared` factories landing first), **Days 6-8 (rider booking) and Days 9-10 (driver booking, after Day 5's background-location spike) are genuinely parallelizable**: they touch entirely separate app directories (`apps/rider-mobile` vs `apps/driver-mobile`), and neither's spec currently calls for new shared `packages/mobile-shared` code — both reuse what Days 1-4 already built (API client, socket factory, storage, notifications).
+
+| Step | Modules touched | Depends on |
+|---|---|---|
+| Day 5 (background-location spike) | `apps/driver-mobile/` | Days 1-4 (done) |
+| Days 6-8 (rider booking) | `apps/rider-mobile/` | Days 1-4 (done) |
+| Days 9-10 (driver booking) | `apps/driver-mobile/` | Days 1-4 (done), Day 5 spike |
+
+**Solo-build note (outside-voice finding, added during the full-plan review):** this plan is scoped for one person/session (Section 1's header). The lanes below are an option only if a second agent/session is available to run Lane B concurrently — not part of the default 15-day path.
+
+**Lane A:** Days 6-8 (independent). **Lane B:** Day 5 spike → Days 9-10 (Day 5 is sequential prerequisite within this lane, not parallel with itself). **Conflict flag:** if either block *does* end up needing a new `mobile-shared` addition partway through (plausible — e.g. a shared `FareCard` component, or a ride-status-mapping helper), that lands sequentially first, same as the Day 3-4 pattern, before the two lanes resume in parallel.
+
+### Test review (whole-plan level)
+
+Days 1-4: `vitest` (11/11 passing) for `mobile-shared`'s pure logic, `typecheck-mobile` CI gate, manual verification checkpoints for screen-level behavior — solid, per the earlier detailed review. Days 5-15: no test framework decision needed yet beyond what's already established (`vitest` for new pure logic in `mobile-shared`, manual/device checkpoints for screens, `jest-expo`/RNTL deferred to `TODOS.md` until screen count justifies it) — the pattern already set doesn't need re-deciding per day-block.
+
+One regression-adjacent note: the `axios.isAxiosError()` fix (issue 2B) touched already-shipped Days 3-4 code with no existing automated coverage for that catch block (screen-level tests are the explicitly deferred TODO). Not adding an ad-hoc test for this one line — doing so would contradict the just-reaffirmed decision to defer screen-level testing as a block, not test individual lines piecemeal. Flagged here for traceability, not left silent.
+
+### Performance review (whole-plan level)
+
+No new issues. Section 6's existing conventions (memoized map markers, ref-driven position updates, `FlashList`, skeleton states) already cover the plan's real performance risk areas (Days 5-10's map/list screens) before they're built — nothing to add at this pass.
