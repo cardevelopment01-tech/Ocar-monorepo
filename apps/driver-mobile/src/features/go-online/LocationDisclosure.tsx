@@ -28,7 +28,7 @@ export function LocationDisclosure({ visible, onAccept, onDecline }: LocationDis
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'center', padding: spacing.lg },
+  backdrop: { flex: 1, backgroundColor: `${colors.ink900}99`, justifyContent: 'center', padding: spacing.lg },
   card: { backgroundColor: colors.surface, borderRadius: 16, padding: spacing.lg, gap: spacing.md },
   title: { ...typography.headline, color: colors.ink900 },
   body: { ...typography.body, color: colors.ink600 },

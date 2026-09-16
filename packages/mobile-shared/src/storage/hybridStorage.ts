@@ -24,10 +24,12 @@ const secureKey = (key: string): string => `${key}:secure`
  * `secure`, everything else to `async`. SecureStore's 2048-byte ceiling means
  * only small, sensitive fields (tokens) belong there -- see secureStorage.ts.
  *
- * SecureStore is written first; the async write only runs if it succeeds, and
- * either failure rejects the whole call so zustand's persist middleware
- * surfaces the error rather than landing a half-written state. A later write
- * retries and self-heals.
+ * SecureStore is written first. If the AsyncStorage write then fails, the
+ * SecureStore write is rolled back to its previous value before rethrowing --
+ * without this, a token rotation could commit with no matching profile update,
+ * the exact half-written state this store (which holds auth tokens) can't
+ * tolerate. Not true two-phase commit (a crash mid-rollback isn't covered),
+ * but closes the realistic single-write-failure case.
  */
 export function createHybridStorage(
   secure: StorageBackend,
@@ -50,8 +52,15 @@ export function createHybridStorage(
       const envelope = JSON.parse(value) as PersistedEnvelope
       const secureState = pick(envelope.state, secureFields)
       const restState = omit(envelope.state, secureFields)
+      const previousSecureRaw = await secure.getItem(secureKey(key))
       await secure.setItem(secureKey(key), JSON.stringify(secureState))
-      await asyncStorage.setItem(key, JSON.stringify({ ...envelope, state: restState }))
+      try {
+        await asyncStorage.setItem(key, JSON.stringify({ ...envelope, state: restState }))
+      } catch (err) {
+        if (previousSecureRaw !== null) await secure.setItem(secureKey(key), previousSecureRaw)
+        else await secure.removeItem(secureKey(key))
+        throw err
+      }
     },
 
     async removeItem(key) {

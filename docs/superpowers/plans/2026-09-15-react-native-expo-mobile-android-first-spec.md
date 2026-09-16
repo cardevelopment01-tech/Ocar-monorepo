@@ -315,6 +315,13 @@ Rider app only needs `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` — no ba
 
 ## 7. Revised day-by-day (15 days, Android-only target)
 
+**Standard verification trio (added during the Days 1-5 review, 2026-09-16) — run for every day-block going forward, not just when something seems worth double-checking:**
+1. `tsc --noEmit` — TypeScript correctness.
+2. `npx expo export --platform android` — proves Metro can actually resolve every import (including workspace packages like `@ocar/mobile-shared`) without needing a device or emulator. **This had never been run once across Days 1-5** despite many "verified" claims — `gradlew assembleDebug` (a debug build) does not bundle JS at all, it loads live from Metro at runtime, so native-build success proves nothing about Metro resolution. Both apps confirmed passing (1770/1758 modules respectively) once actually run during this review.
+3. `gradlew assembleDebug` — native compile succeeds.
+
+`metro.config.js`'s minimal `getDefaultConfig(__dirname)` (no manual `watchFolders`) is confirmed correct, not just claimed — Expo SDK 57's monorepo auto-detection genuinely resolves `packages/mobile-shared` without extra config, verified by the `expo export` runs above actually succeeding.
+
 **Day 1 — Foundation**
 Scaffold `apps/rider-mobile`, `apps/driver-mobile` (both using the `src/app` SDK 55 layout), `packages/mobile-shared`, wire pnpm workspace + `metro.config.js` `watchFolders`/`nodeModulesPaths`, add Turborepo tasks. Run `npx expo prebuild --platform android` + `npx expo run:android` locally for both apps to confirm the toolchain (JDK 17, Android SDK, `adb`) is wired correctly end-to-end — this is the local-build smoke test, no EAS/cloud step here. Create the Play Console app listings (draft) and internal testing track shells for both apps — **assumes account identity verification (Section 8.2) was already started before day 1** (outside-voice finding, added during the full-plan review); if it wasn't, that verification is the actual blocking pre-day-1 gate, not a same-day task. Confirm Firebase config (`google-services.json`) is available for the backend's Firebase project.
 
@@ -531,6 +538,27 @@ The plan's own Section 3.3 calls background location "the highest-risk module," 
 6. Stop tracking — fix count stops increasing, no further background activity (checked via `adb logcat` or the notification disappearing).
 
 **What already exists (reused, not rebuilt):** the `app.json` `expo-location` config plugin, `ACCESS_BACKGROUND_LOCATION`/`FOREGROUND_SERVICE`/`FOREGROUND_SERVICE_LOCATION` permissions — all already added Day 1 (confirmed via `apps/driver-mobile/app.json`, unchanged since). The permission-denial UX pattern (inline message, no retry loop) mirrors Days 3-4's `pushPermissionGranted` handling.
+
+### 7.3 Days 1, 2, 5 review outcomes (2026-09-16)
+
+Days 1-2's scaffolding and shared foundations, plus Day 5's spike, had not been given the same deep review Days 3-4 (Section 7.1) got. A full `/plan-eng-review` pass (native + outside-voice, Claude subagent — Codex not installed) found and resolved:
+
+**Real bugs in Day 5's spike code (fixed):**
+- `stopBackgroundTracking()` checked `TaskManager.isTaskRegisteredAsync()` (always `true` once the task is defined at import) instead of `Location.hasStartedLocationUpdatesAsync()` (whether tracking is actually running) — fixed, plus a new `isCurrentlyTracking()` export.
+- `useLocationSpikeTest`'s `status` never synced with real tracking state on mount, so after backgrounding + reopening the app — the exact scenario this spike exists to verify — the UI could misleadingly show "idle" while tracking was still active. Fixed with an on-mount check.
+- `clearAuth()` never stopped background tracking or cleared the spike's log — a driver logging out while tracking was on left an orphaned OS-level task running indefinitely (battery drain, no session justification) and left location history for the next driver on a shared test device. Fixed: `clearAuth()` now stops tracking and clears the log, matching Section 3's "lifecycle owner stops it" rule.
+- The spike's "Location test" card and its independent background-location permission flow rendered unconditionally in every build. Gated behind `__DEV__` (including the hook call itself, not just the UI) so it can never reach an EAS preview/production build even if Days 9-10 slip.
+- `TaskManager.defineTask`'s callback had no try/catch around its unlocked read-modify-write — could throw unhandled on a corrupted log value. Wrapped in try/catch; the read-modify-write race itself is marked with a `ponytail:` comment as an accepted spike-only ceiling, not fixed (real complexity not justified for a throwaway 50-entry log) — explicitly flagged not to be copied into Days 9-10's real location sync.
+
+**Real bug in Day 2's shared storage (fixed):** `hybridStorage.ts`'s doc comment claimed writes were atomic ("either failure rejects the whole call... rather than landing a half-written state"), but this was only true if the SecureStore write failed — if the *AsyncStorage* write failed after SecureStore already committed, tokens could rotate with no matching profile update, the exact inconsistency the comment claimed couldn't happen. Fixed: `setItem()` now reads the previous SecureStore value first and rolls back to it (or removes the key, if there was no prior value) when the AsyncStorage write throws. Two new tests cover both cases (13/13 passing).
+
+**Process gap, closed:** no day's verification checkpoints had ever run a Metro JS-bundle check (`npx expo export --platform android`) — every prior "verified" claim across Days 1-5 was `tsc --noEmit` + `gradlew assembleDebug` only, and debug Android builds don't bundle JS at all (Metro serves it live at runtime). Ran it for both apps during this review — both pass (1770/1758 modules) — and added it as a standing third leg of verification for all future day-blocks (Section 7's new intro note). This also means `metro.config.js`'s "SDK 57 auto-detects the pnpm workspace, no `watchFolders` needed" comment is now confirmed correct via a real bundle, not just claimed.
+
+**Deferred, not fixed (with rationale, not silently dropped):**
+- A non-401 refresh failure (e.g. timeout) in the API client's proactive-refresh path sends one request with a stale token before the response interceptor's existing 401-retry-once path self-heals it — an avoidable round trip, not worth duplicating retry logic for.
+- Live Metro watch-mode Fast Refresh across the `packages/mobile-shared` workspace boundary is unverified beyond the one-shot `expo export` above — will surface naturally during Days 6-8's real edit-and-reload dev loop.
+- `expo-notifications` config-plugin entry (needed for a custom notification icon/color) — deferred to Days 13-14, when real push notifications are actually being tested end-to-end.
+- `Button`'s `Omit<PressableProps, 'style'>` blocks layout overrides — no screen has needed this yet through Day 5; add `style` support when one actually does, not speculatively.
 
 **Days 6-8 — Rider: core point-to-point booking**
 **Pacing re-check (outside-voice finding, added during the full-plan review):** after this block completes, compare actual time spent + issues found against Days 3-4's real numbers (7 tasks, 8 checkpoints, 13 review findings — for auth, arguably the simplest domain in the app). Re-validate the remaining day-by-day (Days 9-10, 11-12, 13-14, 15) before continuing — don't assume the original 15-day total still holds untested just because it was the original estimate.

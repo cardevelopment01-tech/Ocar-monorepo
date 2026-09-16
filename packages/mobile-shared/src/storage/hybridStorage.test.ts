@@ -69,6 +69,49 @@ describe('createHybridStorage', () => {
     expect(asyncStorage.data.size).toBe(0)
   })
 
+  it('rolls back the secure write when the async write fails, no half-written state', async () => {
+    const secure = makeFakeBackend()
+    const asyncStorage: StorageBackend = {
+      getItem: async () => null,
+      setItem: async () => {
+        throw new Error('async storage full')
+      },
+      removeItem: async () => {},
+    }
+    const storage = createHybridStorage(secure, asyncStorage, ['token'])
+
+    // Establish a prior committed value first.
+    const workingAsync = makeFakeBackend()
+    const workingStorage = createHybridStorage(secure, workingAsync, ['token'])
+    await workingStorage.setItem('key', JSON.stringify({ state: { token: 'old-token', other: 1 } }))
+    expect(secure.data.get('key:secure')).toBe(JSON.stringify({ token: 'old-token' }))
+
+    await expect(storage.setItem('key', JSON.stringify({ state: { token: 'new-token', other: 2 } }))).rejects.toThrow(
+      'async storage full'
+    )
+
+    // Rolled back to the pre-write value, not left holding the new (uncommitted-elsewhere) token.
+    expect(secure.data.get('key:secure')).toBe(JSON.stringify({ token: 'old-token' }))
+  })
+
+  it('removes the secure entry (no rollback target) when the async write fails on a first write', async () => {
+    const secure = makeFakeBackend()
+    const asyncStorage: StorageBackend = {
+      getItem: async () => null,
+      setItem: async () => {
+        throw new Error('async storage full')
+      },
+      removeItem: async () => {},
+    }
+    const storage = createHybridStorage(secure, asyncStorage, ['token'])
+
+    await expect(storage.setItem('key', JSON.stringify({ state: { token: 'x', other: 1 } }))).rejects.toThrow(
+      'async storage full'
+    )
+
+    expect(secure.data.has('key:secure')).toBe(false)
+  })
+
   it('removes both entries on removeItem', async () => {
     const secure = makeFakeBackend()
     const asyncStorage = makeFakeBackend()

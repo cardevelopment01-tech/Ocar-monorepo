@@ -3,6 +3,7 @@ import * as Location from 'expo-location'
 import {
   clearLoggedFixes,
   getLoggedFixes,
+  isCurrentlyTracking,
   startBackgroundTracking,
   stopBackgroundTracking,
 } from '@/services/location/backgroundTask'
@@ -27,6 +28,15 @@ export function useLocationSpikeTest() {
     const interval = setInterval(refreshFixes, 5000)
     return () => clearInterval(interval)
   }, [refreshFixes])
+
+  // React state doesn't survive a JS engine restart, but background tracking itself
+  // does (it's an OS-level task) -- sync on mount so the UI reflects reality after
+  // exactly the backgrounding+reopening scenario this spike exists to verify.
+  useEffect(() => {
+    isCurrentlyTracking().then((tracking) => {
+      if (tracking) setStatus('tracking')
+    })
+  }, [])
 
   const requestForeground = useCallback(async () => {
     const { status: fgStatus } = await Location.requestForegroundPermissionsAsync()

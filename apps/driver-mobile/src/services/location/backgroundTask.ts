@@ -21,14 +21,23 @@ interface LoggedFix {
 // was killed, so the task definition has to already exist when that happens.
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (error) return
-  const { locations } = (data as { locations: Location.LocationObject[] }) ?? { locations: [] }
-  const latest = locations[locations.length - 1]
-  if (!latest) return
+  try {
+    const { locations } = (data as { locations: Location.LocationObject[] }) ?? { locations: [] }
+    const latest = locations[locations.length - 1]
+    if (!latest) return
 
-  const raw = await AsyncStorage.getItem(LOG_KEY)
-  const log: LoggedFix[] = raw ? JSON.parse(raw) : []
-  log.push({ lat: latest.coords.latitude, lng: latest.coords.longitude, timestamp: latest.timestamp })
-  await AsyncStorage.setItem(LOG_KEY, JSON.stringify(log.slice(-MAX_LOG_ENTRIES)))
+    // ponytail: unlocked read-modify-write -- burst delivery can race and drop an
+    // entry. Fine for a capped, throwaway verification log; add a lock/queue if
+    // this pattern is ever reused for real telemetry (it should not be copied
+    // as-is into Days 9-10's real location sync).
+    const raw = await AsyncStorage.getItem(LOG_KEY)
+    const log: LoggedFix[] = raw ? JSON.parse(raw) : []
+    log.push({ lat: latest.coords.latitude, lng: latest.coords.longitude, timestamp: latest.timestamp })
+    await AsyncStorage.setItem(LOG_KEY, JSON.stringify(log.slice(-MAX_LOG_ENTRIES)))
+  } catch {
+    // Best-effort verification log -- a corrupted/foreign value under LOG_KEY
+    // shouldn't crash a background task nothing awaits or catches.
+  }
 })
 
 export async function getLoggedFixes(): Promise<LoggedFix[]> {
@@ -53,6 +62,10 @@ export async function startBackgroundTracking(): Promise<void> {
 }
 
 export async function stopBackgroundTracking(): Promise<void> {
-  const isRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME)
-  if (isRegistered) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME)
+  const isTracking = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)
+  if (isTracking) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME)
+}
+
+export async function isCurrentlyTracking(): Promise<boolean> {
+  return Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)
 }

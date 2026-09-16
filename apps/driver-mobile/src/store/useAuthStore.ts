@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createHybridStorage, createSecurePersistStorage } from '@ocar/mobile-shared'
+import { clearLoggedFixes, stopBackgroundTracking } from '@/services/location/backgroundTask'
 
 export interface DriverProfile {
   id: string
@@ -39,7 +40,15 @@ export const useAuthStore = create<AuthState>()(
 
       setAuth: (token, refreshToken, driver) => set({ token, refreshToken, driver, isAuthenticated: true }),
 
-      clearAuth: () => set({ token: null, refreshToken: null, driver: null, isAuthenticated: false }),
+      clearAuth: () => {
+        // Lifecycle ownership (Section 3): the auth store owns stopping anything that
+        // depends on a live session -- an orphaned background-location task after
+        // logout has no session to justify it (battery drain, Play Store risk) and
+        // leaves the spike's location log for the next driver on a shared device.
+        stopBackgroundTracking().catch(() => {})
+        clearLoggedFixes().catch(() => {})
+        set({ token: null, refreshToken: null, driver: null, isAuthenticated: false })
+      },
 
       updateDriver: (updates) =>
         set((state) => ({
