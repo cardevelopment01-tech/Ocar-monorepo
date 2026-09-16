@@ -4,6 +4,10 @@ import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import * as SplashScreen from 'expo-splash-screen'
 import { useAuthStore } from '@/store/useAuthStore'
+// Registers the background-location TaskManager task at module scope -- must run
+// unconditionally at app startup, since Android can invoke the task in a headless
+// JS instance after the app process was killed (see backgroundTask.ts).
+import '@/services/location/backgroundTask'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
 

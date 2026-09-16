@@ -499,7 +499,38 @@ Sequential implementation, no parallelization opportunity — both apps' Days 3-
   - Verify: job runs and passes on the PR that lands this phase's code
 
 **Day 5 — Background-location spike (driver app only) — added during the full-plan review (outside-voice finding)**
-The plan's own Section 3.3 calls background location "the highest-risk module," yet it was originally scheduled as day 3-of-3 inside Days 8-10, right before the P1 cut consumes whatever slack remains — the riskiest native integration in the whole plan was getting discovered latest, with the least runway to react. Pulled forward into its own narrow spike, isolated from the rest of driver booking: `Location.startLocationUpdatesAsync` + `TaskManager` wired per Section 3.3/4, the prominent-disclosure screen shown before the OS permission dialog, one real-device test confirming tracking survives Doze/App Standby backgrounding. If this blows up, it's discovered on day 5 with 10 more days available to react, not on day 9-10 (the original placement) with only the P1 slot left.
+The plan's own Section 3.3 calls background location "the highest-risk module," yet it was originally scheduled as day 3-of-3 inside Days 8-10, right before the P1 cut consumes whatever slack remains — the riskiest native integration in the whole plan was getting discovered latest, with the least runway to react. Pulled forward into its own narrow spike, isolated from the rest of driver booking: `Location.startLocationUpdatesAsync` + `TaskManager` wired per Section 3.3/4, the prominent-disclosure screen shown before the OS permission dialog, one real-device test confirming tracking survives Doze/App Standby backgrounding. If this blows up, it's discovered on day 5 with 10 more days available to react, not on day 9-10 (the original placement) with only the P1 slot left. Full detail in Section 7.2.
+
+### 7.2 Day 5 detail
+
+**Explicitly isolated scope — no online/offline logic, no ride-request handling, no socket wiring, no real backend location POST.** Days 9-10 owns wiring proven tracking into the real "go online" flow (`POST /rides/sessions/online`, then `POST /rides/sessions/location` with a real `sessionId` — confirmed via `apps/driver/src/lib/ride-api.ts:128-145`, the web app's own pattern). This spike's only job: prove `expo-location`'s background mode actually survives Android backgrounding/Doze on this app's config, before any of that real logic gets built on top of an unproven foundation.
+
+**New dependency:** `expo-task-manager` (not yet installed — `Location.startLocationUpdatesAsync` requires a `TaskManager`-registered task; `expo-location` alone doesn't provide this). Install via `npx expo install expo-task-manager`.
+
+**Two-step Android 10+ permission flow (confirmed via `expo-location` docs, not assumed):** foreground and background location cannot be requested in one prompt on Android 10+ — `requestForegroundPermissionsAsync()` must resolve `granted` before `requestBackgroundPermissionsAsync()` can be called at all. The prominent in-app disclosure screen (Section 4's Play Store requirement) is shown after foreground is granted, before the background-permission system dialog fires — that's the specific dialog the disclosure exists to precede, not the foreground one.
+
+**Background task registration:** `TaskManager.defineTask(LOCATION_TASK_NAME, ...)` must be called at module scope in a file imported unconditionally at app startup (not inside a component or conditionally) — this is a hard `expo-task-manager` requirement, since Android can invoke the task in a headless JS instance after the app process was killed, and the task definition has to already exist when that happens. Lives in `apps/driver-mobile/src/services/location/backgroundTask.ts`, imported from the root `_layout.tsx`.
+
+**Verification mechanism (spike-only, not production code):** each background fix appends `{ lat, lng, timestamp }` to a capped (last 50) array in `AsyncStorage` under a `ocar_location_spike_log` key — deliberately NOT wired to the real `/api/v1/rides/sessions/location` endpoint (no session exists yet; Days 9-10's job). A temporary "Location Test" card on the driver `home` tab shows: start/stop buttons, permission status, and the count + most-recent-timestamp of logged fixes — enough to verify on a real device that fixes kept arriving while the app was backgrounded, without building throwaway UI beyond what proves the point.
+
+**Failure modes:**
+
+| Scenario | Handling |
+|---|---|
+| Foreground permission denied | Stop here, show inline message — no background request attempted (can't be granted without foreground first). |
+| Background permission denied (after disclosure shown) | Stop tracking, show inline message — no retry loop (Android won't re-prompt without a settings deep-link, matching Section 4's existing driver-app permission-denial pattern from Days 3-4). |
+| `startLocationUpdatesAsync` throws (e.g. Play Services unavailable) | Caught, surfaced as an inline error on the test card — not silent. |
+| App killed by OS while backgrounded (not just suspended) | Expected/known Android behavior on some OEMs (per Section 4's battery-optimization note) — the spike's own real-device test is specifically what determines whether this happens on the test device, that's the point of running it. |
+
+**Verification checkpoints:**
+1. `npx expo install expo-task-manager`, `npx expo prebuild --platform android`, `gradlew assembleDebug` succeeds with the new native dependency.
+2. On a real Android device: grant foreground, see the disclosure screen, grant background ("Allow all the time").
+3. Start tracking, background the app (home button, not force-close), wait 2+ minutes, reopen — the fix count on the test card increased while backgrounded.
+4. Repeat with the screen locked (not just backgrounded) — same expectation.
+5. If a non-Pixel OEM device is available (per Section 8.2's recommendation), repeat there too — this is exactly the fragmentation risk Section 4 flags.
+6. Stop tracking — fix count stops increasing, no further background activity (checked via `adb logcat` or the notification disappearing).
+
+**What already exists (reused, not rebuilt):** the `app.json` `expo-location` config plugin, `ACCESS_BACKGROUND_LOCATION`/`FOREGROUND_SERVICE`/`FOREGROUND_SERVICE_LOCATION` permissions — all already added Day 1 (confirmed via `apps/driver-mobile/app.json`, unchanged since). The permission-denial UX pattern (inline message, no retry loop) mirrors Days 3-4's `pushPermissionGranted` handling.
 
 **Days 6-8 — Rider: core point-to-point booking**
 **Pacing re-check (outside-voice finding, added during the full-plan review):** after this block completes, compare actual time spent + issues found against Days 3-4's real numbers (7 tasks, 8 checkpoints, 13 review findings — for auth, arguably the simplest domain in the app). Re-validate the remaining day-by-day (Days 9-10, 11-12, 13-14, 15) before continuing — don't assume the original 15-day total still holds untested just because it was the original estimate.
