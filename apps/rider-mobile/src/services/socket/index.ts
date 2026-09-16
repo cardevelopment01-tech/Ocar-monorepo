@@ -2,7 +2,7 @@ import axios from 'axios'
 import { createSocket } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 
-const API_URL = process.env['EXPO_PUBLIC_API_URL'] ?? 'http://10.0.2.2:3000'
+const API_URL = process.env['EXPO_PUBLIC_API_URL'] ?? 'http://10.0.2.2:4000'
 
 // Bare axios, not the `api` client -- avoids the response interceptor loop, mirrors
 // apps/driver/src/lib/socket.ts's refreshSocketToken.

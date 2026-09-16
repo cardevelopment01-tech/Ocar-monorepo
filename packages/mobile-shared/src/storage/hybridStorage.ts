@@ -17,7 +17,11 @@ function omit(obj: Record<string, unknown>, keys: string[]): Record<string, unkn
   return out
 }
 
-const secureKey = (key: string): string => `${key}:secure`
+// expo-secure-store keys are restricted to alphanumeric, ".", "-", and "_" --
+// a ":" separator throws "Invalid key provided to SecureStore" at runtime, a
+// failure mode neither tsc nor a native build catches (only surfaces when the
+// app actually runs and calls SecureStore.setItemAsync).
+const secureKey = (key: string): string => `${key}_secure`
 
 /**
  * Splits a zustand persist write across two backends: `secureFields` go to
