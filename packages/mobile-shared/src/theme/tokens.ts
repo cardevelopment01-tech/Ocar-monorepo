@@ -85,6 +85,15 @@ const isRider = Constants.expoConfig?.slug === 'ocar-rider'
 
 export const colors = isRider ? riderColors : driverColors
 
+// Both web apps' .btn-primary is this exact teal->pink gradient (apps/driver/src/index.css,
+// apps/user/app/globals.css's bg-gradient-primary) -- fixed, not part of either app's own
+// palette split above, since it's identical on both sites regardless of their other colors.
+export const gradientPrimary = ['#0A9FB0', '#DC3E93'] as const
+
+// Driver's buttons are rounded-2xl everywhere; rider's are rounded-full (pill) everywhere --
+// a real per-app shape rule in both sites' CSS, not just a color difference.
+export const buttonRadius = isRider ? 9999 : 16
+
 export const typography = {
   display: { fontFamily: 'Space Grotesk', fontSize: 28, fontWeight: '700', lineHeight: 34, letterSpacing: -0.84 },
   headline: { fontFamily: 'Space Grotesk', fontSize: 22, fontWeight: '700', lineHeight: 29, letterSpacing: -0.44 },

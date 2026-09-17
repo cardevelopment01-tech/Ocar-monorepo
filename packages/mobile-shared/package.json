@@ -12,6 +12,7 @@
     "axios": "^1.6.0",
     "socket.io-client": "^4.6.0",
     "expo-constants": "~57.0.18",
+    "expo-linear-gradient": "~57.0.2",
     "expo-secure-store": "~57.0.4",
     "expo-notifications": "~57.0.19",
     "expo-location": "~57.0.17"

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { BackHandler, StyleSheet, Text, View } from 'react-native'
+import { BackHandler, Image, StyleSheet, Text, View } from 'react-native'
 import Animated, { FadeIn, SlideInRight } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
-import { Button, Input, colors, spacing, typography, mapOtpErrorCode } from '@ocar/mobile-shared'
+import { Button, Card, Input, colors, spacing, typography, mapOtpErrorCode } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { setupPushNotifications } from '@/services/notifications'
 import { useAuthStore, type DriverProfile } from '@/store/useAuthStore'
@@ -124,9 +124,17 @@ export default function PhoneScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerGlow} />
+        <Image source={require('../../../assets/brand/logo-mark.png')} style={styles.logo} resizeMode="contain" />
+        <Text style={styles.tagline}>Driver Partner</Text>
+      </View>
+
       {step === 'phone' ? (
-        <Animated.View entering={FadeIn} style={styles.stepContainer}>
-          <Text style={styles.title}>Driver login</Text>
+        <Animated.View entering={FadeIn}>
+        <Card style={styles.stepContainer}>
+          <Text style={styles.title}>Welcome back</Text>
+          <Text style={styles.subtitle}>Enter your registered mobile number</Text>
           <Input
             value={phone}
             onChangeText={setPhone}
@@ -147,9 +155,11 @@ export default function PhoneScreen() {
             loading={loading}
             disabled={phone.replace(/\D/g, '').length !== 10}
           />
+        </Card>
         </Animated.View>
       ) : (
-        <Animated.View entering={SlideInRight} style={styles.stepContainer}>
+        <Animated.View entering={SlideInRight}>
+        <Card style={styles.stepContainer}>
           <Text style={styles.title}>Enter OTP</Text>
           <Text style={styles.subtitle}>Sent to {formatPhone(phone)}</Text>
           <Input
@@ -176,6 +186,7 @@ export default function PhoneScreen() {
             onPress={handleResend}
             disabled={countdown > 0}
           />
+        </Card>
         </Animated.View>
       )}
     </View>
@@ -184,6 +195,17 @@ export default function PhoneScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', padding: spacing.lg, backgroundColor: colors.bg },
+  header: { alignItems: 'center', marginBottom: spacing.xl },
+  headerGlow: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: colors.primary,
+    opacity: 0.18,
+  },
+  logo: { width: 88, height: 88, marginBottom: spacing.xs },
+  tagline: { ...typography.label, color: colors.ink600 },
   stepContainer: { gap: spacing.md },
   title: { ...typography.headline, color: colors.ink900 },
   subtitle: { ...typography.body, color: colors.ink600 },

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { BackHandler, StyleSheet, Text, View } from 'react-native'
-import Animated, { FadeIn, SlideInRight } from 'react-native-reanimated'
+import { BackHandler, Image, StyleSheet, Text, View } from 'react-native'
+import Animated, { FadeIn, SlideInRight, SlideInUp } from 'react-native-reanimated'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { Button, Input, colors, spacing, typography, mapOtpErrorCode } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
@@ -124,9 +125,17 @@ export default function PhoneScreen() {
 
   return (
     <View style={styles.container}>
+      <LinearGradient colors={['#0F0F23', '#1E1B4B']} start={{ x: 0, y: 0 }} end={{ x: 0.7, y: 1 }} style={styles.hero}>
+        <View style={styles.heroGlow} />
+        <Image source={require('../../../assets/brand/logo-mark.png')} style={styles.logo} resizeMode="contain" />
+        <Text style={styles.tagline}>Your ride, your city</Text>
+      </LinearGradient>
+
+      <Animated.View entering={SlideInUp.duration(350)} style={styles.sheet}>
       {step === 'phone' ? (
         <Animated.View entering={FadeIn} style={styles.stepContainer}>
-          <Text style={styles.title}>Welcome to Ocar</Text>
+          <Text style={styles.title}>Welcome back</Text>
+          <Text style={styles.subtitle}>Enter your phone number to continue</Text>
           <Input
             value={phone}
             onChangeText={setPhone}
@@ -178,12 +187,33 @@ export default function PhoneScreen() {
           />
         </Animated.View>
       )}
+      </Animated.View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: spacing.lg, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: colors.bg },
+  hero: { alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingBottom: 40, overflow: 'hidden' },
+  heroGlow: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    top: 20,
+    backgroundColor: colors.primary,
+    opacity: 0.35,
+  },
+  logo: { width: 96, height: 96, marginBottom: spacing.sm },
+  tagline: { ...typography.label, color: 'rgba(255,255,255,0.45)' },
+  sheet: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: spacing.lg,
+    paddingTop: spacing.xl,
+  },
   stepContainer: { gap: spacing.md },
   title: { ...typography.headline, color: colors.ink900 },
   subtitle: { ...typography.body, color: colors.ink600 },
