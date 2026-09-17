@@ -1,0 +1,166 @@
+import { useState } from 'react'
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Feather } from '@expo/vector-icons'
+import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+
+export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+  return (
+    <View style={styles.fieldWrap}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      {children}
+      {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
+    </View>
+  )
+}
+
+export function FieldError({ message }: { message?: string | null }) {
+  if (!message) return null
+  return <Text style={styles.fieldError}>{message}</Text>
+}
+
+export function TextField(props: React.ComponentProps<typeof TextInput>) {
+  return <TextInput placeholderTextColor={colors.ink400} style={[styles.input, props.style]} {...props} />
+}
+
+export type ChipOption = { value: string; label: string }
+
+export function ChipGroup({ options, value, multiValue, onChange, columns }: { options: ChipOption[]; value?: string | null; multiValue?: string[]; onChange: (v: string) => void; columns?: number }) {
+  return (
+    <View style={[styles.chipRow, columns ? { flexWrap: 'nowrap' } : null]}>
+      {options.map((opt) => {
+        const active = multiValue ? multiValue.includes(opt.value) : value === opt.value
+        return (
+          <Pressable
+            key={opt.value}
+            onPress={() => onChange(opt.value)}
+            style={[
+              styles.chip,
+              columns ? { flex: 1 } : null,
+              active ? styles.chipActive : null,
+            ]}
+          >
+            {active ? <Feather name="check" size={12} color={colors.primary} style={{ marginRight: 4 }} /> : null}
+            <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{opt.label}</Text>
+          </Pressable>
+        )
+      })}
+    </View>
+  )
+}
+
+export function Stepper({ value, min, max, unit, onChange }: { value: number; min: number; max: number; unit: string; onChange: (v: number) => void }) {
+  return (
+    <View style={styles.stepperCard}>
+      <Text style={styles.stepperValue}>{value}</Text>
+      <Text style={styles.stepperUnit}>{value === 1 ? unit : `${unit}s`}</Text>
+      <View style={styles.stepperBtnRow}>
+        <Pressable onPress={() => onChange(Math.max(min, value - 1))} disabled={value <= min} style={[styles.stepperBtn, value <= min ? styles.stepperBtnDisabled : null]}>
+          <Feather name="minus" size={14} color={colors.primary} />
+        </Pressable>
+        <Pressable onPress={() => onChange(Math.min(max, value + 1))} disabled={value >= max} style={[styles.stepperBtn, value >= max ? styles.stepperBtnDisabled : null]}>
+          <Feather name="plus" size={14} color={colors.primary} />
+        </Pressable>
+      </View>
+    </View>
+  )
+}
+
+export type PickerOption = { value: string | number; label: string }
+
+export function PickerField({
+  label, value, options, onSelect, placeholder, disabled, loading, searchable,
+}: {
+  label: string
+  value: string | number | null
+  options: PickerOption[]
+  onSelect: (value: string | number) => void
+  placeholder: string
+  disabled?: boolean
+  loading?: boolean
+  searchable?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const selected = options.find((o) => o.value === value)
+  const filtered = searchable && query.trim()
+    ? options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+    : options
+
+  return (
+    <Field label={label}>
+      <Pressable
+        onPress={() => !disabled && setOpen(true)}
+        style={[styles.pickerBtn, disabled ? styles.pickerBtnDisabled : null]}
+      >
+        <Text style={[styles.pickerText, !selected ? styles.pickerPlaceholder : null]}>
+          {loading ? 'Loading…' : selected?.label ?? placeholder}
+        </Text>
+        <Feather name="chevron-down" size={16} color={colors.ink400} />
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <View style={styles.backdrop}>
+          <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
+          <View style={styles.sheet}>
+            <View style={styles.handle} />
+            <Text style={styles.sheetTitle}>{label}</Text>
+            {searchable ? (
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search…"
+                placeholderTextColor={colors.ink400}
+                style={styles.searchInput}
+                autoFocus
+              />
+            ) : null}
+            <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
+              {filtered.map((opt) => (
+                <Pressable
+                  key={String(opt.value)}
+                  onPress={() => { onSelect(opt.value); setOpen(false); setQuery('') }}
+                  style={styles.optionRow}
+                >
+                  <Text style={styles.optionText}>{opt.label}</Text>
+                  {opt.value === value ? <Feather name="check" size={16} color={colors.primary} /> : null}
+                </Pressable>
+              ))}
+              {filtered.length === 0 ? <Text style={styles.emptyText}>No results</Text> : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </Field>
+  )
+}
+
+const styles = StyleSheet.create({
+  fieldWrap: { gap: spacing.xs },
+  fieldLabel: { ...typography.caption, color: colors.ink600, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
+  fieldHint: { ...typography.caption, color: colors.ink400 },
+  fieldError: { ...typography.caption, color: colors.error, fontWeight: '600' },
+  input: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, borderWidth: 1, borderColor: colors.border },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs + 2 },
+  chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.sm, borderRadius: radii.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface2, minHeight: 40, justifyContent: 'center' },
+  chipActive: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },
+  chipText: { ...typography.caption, color: colors.ink600, fontWeight: '700' },
+  chipTextActive: { color: colors.primary },
+  stepperCard: { alignItems: 'center', backgroundColor: colors.surface, borderRadius: radii.xl, paddingVertical: spacing.md, borderWidth: 1, borderColor: colors.border },
+  stepperValue: { fontSize: 32, fontWeight: '800', color: colors.ink900 },
+  stepperUnit: { ...typography.caption, color: colors.ink400, fontWeight: '700', textTransform: 'uppercase', marginBottom: spacing.sm },
+  stepperBtnRow: { flexDirection: 'row', gap: spacing.md },
+  stepperBtn: { width: 32, height: 32, borderRadius: radii.full, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
+  stepperBtnDisabled: { opacity: 0.3 },
+  pickerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, borderWidth: 1, borderColor: colors.border, minHeight: 52 },
+  pickerBtnDisabled: { opacity: 0.5 },
+  pickerText: { ...typography.body, color: colors.ink900, fontWeight: '600' },
+  pickerPlaceholder: { color: colors.ink400, fontWeight: '400' },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, maxHeight: '75%' },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.md },
+  sheetTitle: { ...typography.title, color: colors.ink900, fontWeight: '800', marginBottom: spacing.sm },
+  searchInput: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.sm },
+  optionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.sm + 4, borderBottomWidth: 1, borderBottomColor: colors.border },
+  optionText: { ...typography.body, color: colors.ink900 },
+  emptyText: { ...typography.body, color: colors.ink400, textAlign: 'center', paddingVertical: spacing.lg },
+})

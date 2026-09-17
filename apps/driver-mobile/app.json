@@ -62,7 +62,15 @@
         }
       ],
       "@react-native-firebase/app",
-      "@react-native-firebase/messaging"
+      "@react-native-firebase/messaging",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ocar needs access to your photos to upload your documents and vehicle papers.",
+          "cameraPermission": "Ocar needs camera access to photograph your documents and take your reference selfie."
+        }
+      ]
     ]
   }
 }

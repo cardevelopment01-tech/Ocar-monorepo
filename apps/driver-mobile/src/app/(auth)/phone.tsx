@@ -111,7 +111,10 @@ export default function PhoneScreen() {
       const { tokens, principal } = res.data
       setAuth(tokens.accessToken, tokens.refreshToken, principal)
       void setupPushNotifications()
-      router.replace('/(tabs)/home')
+      // Route through "/" rather than straight to the tab shell -- its onboarding
+      // gate decides between the wizard, pending-review, and the tabs/active-ride
+      // relaunch check based on the driver's real status/onboarding_step.
+      router.replace('/')
     } catch (err) {
       const code = axios.isAxiosError(err) ? (err.response?.data as { code?: string } | undefined)?.code : undefined
       setOtp('')
