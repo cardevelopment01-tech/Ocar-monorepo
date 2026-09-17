@@ -4,6 +4,8 @@ import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import * as SplashScreen from 'expo-splash-screen'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useRideRequestListener } from '@/features/ride-requests/useRideRequestListener'
+import { RideRequestOverlay } from '@/features/ride-requests/RideRequestOverlay'
 // Registers the background-location TaskManager task at module scope -- must run
 // unconditionally at app startup, since Android can invoke the task in a headless
 // JS instance after the app process was killed (see backgroundTask.ts).
@@ -13,6 +15,11 @@ SplashScreen.preventAutoHideAsync().catch(() => {})
 
 export default function RootLayout() {
   const hasHydrated = useAuthStore((s) => s.hasHydrated)
+
+  // Root-level ride-request listener, per the plan's binding architecture
+  // decision -- mounted once, same place the socket connect lifecycle lives,
+  // never per-screen.
+  useRideRequestListener()
 
   useEffect(() => {
     if (hasHydrated) SplashScreen.hideAsync().catch(() => {})
@@ -27,6 +34,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }} />
+      <RideRequestOverlay />
     </GestureHandlerRootView>
   )
 }

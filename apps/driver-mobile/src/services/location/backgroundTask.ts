@@ -1,10 +1,11 @@
 import * as Location from 'expo-location'
 import * as TaskManager from 'expo-task-manager'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { emitLocationTick } from './locationSync'
 
-// Spike-only verification log -- NOT the real backend sync (that's Days 9-10's
-// POST /api/v1/rides/sessions/location, which needs a real session id from the
-// online/offline flow that doesn't exist yet). Capped at 50 entries.
+// Dev-only verification log, kept from the Day 5 spike for manual on-device
+// verification (__DEV__-gated in useLocationSpikeTest.ts) -- separate from the
+// real backend sync below. Capped at 50 entries.
 const LOG_KEY = 'ocar_location_spike_log'
 const MAX_LOG_ENTRIES = 50
 
@@ -26,10 +27,18 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     const latest = locations[locations.length - 1]
     if (!latest) return
 
+    // Real backend sync (Days 8-10) -- no-ops if the driver isn't online
+    // (emitLocationTick reads the current sessionId itself).
+    void emitLocationTick({
+      lat: latest.coords.latitude,
+      lng: latest.coords.longitude,
+      ...(latest.coords.heading != null ? { heading: latest.coords.heading } : {}),
+      ...(latest.coords.speed != null ? { speed: latest.coords.speed } : {}),
+      recordedAt: new Date(latest.timestamp).toISOString(),
+    })
+
     // ponytail: unlocked read-modify-write -- burst delivery can race and drop an
-    // entry. Fine for a capped, throwaway verification log; add a lock/queue if
-    // this pattern is ever reused for real telemetry (it should not be copied
-    // as-is into Days 9-10's real location sync).
+    // entry. Fine for a capped, throwaway dev verification log.
     const raw = await AsyncStorage.getItem(LOG_KEY)
     const log: LoggedFix[] = raw ? JSON.parse(raw) : []
     log.push({ lat: latest.coords.latitude, lng: latest.coords.longitude, timestamp: latest.timestamp })
@@ -52,7 +61,7 @@ export async function clearLoggedFixes(): Promise<void> {
 export async function startBackgroundTracking(): Promise<void> {
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
     accuracy: Location.Accuracy.Balanced,
-    timeInterval: 5000,
+    timeInterval: 3000,
     distanceInterval: 0,
     foregroundService: {
       notificationTitle: 'Ocar is tracking your location',
