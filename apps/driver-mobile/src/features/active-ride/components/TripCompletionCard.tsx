@@ -23,6 +23,6 @@ export function TripCompletionCard({ fareEarned, onBackToOnline }: TripCompletio
 const styles = StyleSheet.create({
   card: { gap: spacing.sm, alignItems: 'center' },
   title: { ...typography.title, color: colors.ink900 },
-  fare: { ...typography.display, color: colors.success },
+  fare: { ...typography.display, color: colors.money },
   detail: { ...typography.body, color: colors.ink600 },
 })

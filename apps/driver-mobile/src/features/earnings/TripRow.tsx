@@ -23,7 +23,7 @@ const styles = StyleSheet.create({
   card: { gap: spacing.xs, marginHorizontal: spacing.lg, marginBottom: spacing.sm },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   address: { ...typography.body, color: colors.ink900, flex: 1 },
-  earning: { ...typography.title, color: colors.success },
+  earning: { ...typography.title, color: colors.money },
   detail: { ...typography.label, color: colors.ink600 },
   date: { ...typography.caption, color: colors.ink400 },
 })
