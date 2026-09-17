@@ -1,148 +1,308 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useMemo } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import Animated, { interpolate, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
-import * as Location from 'expo-location'
-import MapView, { Marker, type Region } from 'react-native-maps'
-import { Input, colors, getCurrentOrLastKnownPosition, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { Feather } from '@expo/vector-icons'
+import { colors, spacing, typography } from '@ocar/mobile-shared'
+import { useAuthStore } from '@/store/useAuthStore'
+import { useRideHistory } from '@/features/ride-history/hooks/useRideHistory'
 
-type LocationStatus = 'requesting' | 'denied' | 'ready' | 'error'
+// Static, matching the real web home page's own hardcoded SAVED/POPULAR constants
+// (apps/user/app/(main)/home/page.tsx) -- not wired to a saved-places API since
+// none exists yet on either platform (see CLAUDE.md's Known UI Caveats).
+const SAVED = [
+  { icon: 'home' as const, label: 'Home', sub: 'Sahid Nagar, Bhubaneswar' },
+  { icon: 'briefcase' as const, label: 'Work', sub: 'Infocity, Chandrasekharpur' },
+]
+const POPULAR = [
+  { from: 'Bhubaneswar', to: 'Cuttack' },
+  { from: 'Bhubaneswar', to: 'Puri' },
+  { from: 'Cuttack', to: 'Bhubaneswar' },
+  { from: 'Puri', to: 'Bhubaneswar' },
+]
 
-const DEFAULT_DELTA = { latitudeDelta: 0.01, longitudeDelta: 0.01 }
+function greeting(): string {
+  const h = new Date().getHours()
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
+}
+
+function PressableScale({ children, onPress, style }: { children: React.ReactNode; onPress: () => void; style?: object }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [style, pressed ? { transform: [{ scale: 0.97 }] } : null]}
+    >
+      {children}
+    </Pressable>
+  )
+}
 
 export default function HomeScreen() {
   const router = useRouter()
-  const mapRef = useRef<MapView>(null)
-  const [status, setStatus] = useState<LocationStatus>('requesting')
-  const [region, setRegion] = useState<Region | null>(null)
+  const user = useAuthStore((s) => s.user)
+  const { items, loading } = useRideHistory()
+  const firstName = user?.name?.split(' ')[0] ?? 'there'
 
-  const locate = useCallback(async () => {
-    setStatus('requesting')
-    const { status: permStatus } = await Location.requestForegroundPermissionsAsync()
-    if (permStatus !== 'granted') {
-      setStatus('denied')
-      return
-    }
-    try {
-      const position = await getCurrentOrLastKnownPosition()
-      const nextRegion = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        ...DEFAULT_DELTA,
-      }
-      setRegion(nextRegion)
-      setStatus('ready')
-      mapRef.current?.animateToRegion(nextRegion, 300)
-    } catch {
-      setStatus('error')
-    }
-  }, [])
+  const recentTrips = useMemo(
+    () => items.filter((r) => r.status === 'completed').slice(0, 2),
+    [items]
+  )
 
-  useEffect(() => {
-    locate()
-  }, [locate])
-
-  if (status === 'denied') {
-    return (
-      <View style={styles.container}>
-        <View style={styles.banner}>
-          <Text style={styles.bannerTitle}>Location access needed</Text>
-          <Text style={styles.bannerBody}>
-            Ocar needs your location to show nearby drivers and set your pickup point.
-          </Text>
-          <Pressable onPress={() => Linking.openSettings()} hitSlop={12}>
-            <Text style={styles.bannerLink}>Open settings</Text>
-          </Pressable>
-        </View>
-      </View>
-    )
-  }
+  // Scroll offset drives the greeting's fade -- state indication (you've
+  // scrolled past it), computed entirely on the UI thread. No setState per
+  // scroll frame.
+  const scrollY = useSharedValue(0)
+  const scrollHandler = useAnimatedScrollHandler((e) => {
+    scrollY.set(e.contentOffset.y)
+  })
+  const greetingStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.get(), [0, 48], [1, 0], 'clamp'),
+  }))
 
   return (
     <View style={styles.container}>
-      {status === 'ready' && region ? (
-        <MapView
-          ref={mapRef}
-          style={StyleSheet.absoluteFill}
-          initialRegion={region}
-          showsUserLocation={false}
-        >
-          <Marker coordinate={region} pinColor={colors.primary} />
-        </MapView>
-      ) : (
-        <View style={[StyleSheet.absoluteFill, styles.skeleton]}>
-          {status === 'error' ? (
-            <>
-              <Text style={styles.bannerBody} accessibilityLiveRegion="polite">
-                Couldn't get your location.
-              </Text>
-              <Pressable
-                onPress={locate}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Retry getting your location"
-              >
-                <Text style={styles.bannerLink}>Try again</Text>
-              </Pressable>
-            </>
-          ) : null}
+      <View style={styles.hero}>
+        <View style={styles.heroTopBar}>
+          <Text style={styles.logoText}>Ocar</Text>
+          <View style={styles.heroActions}>
+            <Pressable style={styles.heroIconButton} hitSlop={8} accessibilityRole="button" accessibilityLabel="Profile">
+              <Feather name="user" size={16} color="rgba(255,255,255,0.85)" />
+            </Pressable>
+          </View>
         </View>
-      )}
 
-      {/* Search bar overlay: pinned to the top only, leaving the rest of the map
-          free for pan/zoom. The future pickup/drop bottom-sheet (built alongside
-          app/booking/) mounts below this overlay, not here -- it should collapse
-          to leave the map's gesture area clear per the plan's gesture-conflict note. */}
-      <View style={styles.searchOverlay}>
-        <Pressable onPress={() => router.push('/booking')} accessibilityRole="search">
-          <Input
-            placeholder="Where to?"
-            editable={false}
-            pointerEvents="none"
-            accessibilityLabel="Search destination"
-          />
+        <Animated.View style={greetingStyle}>
+          <Text style={styles.greetingLabel}>{greeting()}</Text>
+          <Text style={styles.greetingName}>{firstName} 👋</Text>
+        </Animated.View>
+
+        <Pressable
+          style={({ pressed }) => [styles.searchBar, pressed ? styles.searchBarPressed : null]}
+          onPress={() => router.push('/booking')}
+          accessibilityRole="search"
+          accessibilityLabel="Where to?"
+        >
+          <Feather name="search" size={17} color={colors.ink400} />
+          <Text style={styles.searchPlaceholder}>Where to?</Text>
+          <View style={styles.searchGoPill}>
+            <Text style={styles.searchGoText}>Go</Text>
+          </View>
         </Pressable>
       </View>
 
-      {status === 'ready' ? (
-        <Pressable
-          style={styles.recenterButton}
-          onPress={locate}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          accessibilityRole="button"
-          accessibilityLabel="Recenter map on my location"
-        >
-          <Text style={styles.recenterIcon}>◎</Text>
-        </Pressable>
-      ) : null}
+      <Animated.ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentInner}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+      >
+        <View style={styles.servicesRow}>
+          <PressableScale style={styles.serviceCard} onPress={() => router.push('/booking')}>
+            <View style={styles.serviceIconWrap}>
+              <Feather name="navigation" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.serviceLabel}>One Way</Text>
+            <Text style={styles.serviceSub}>Best fare</Text>
+          </PressableScale>
+          <PressableScale style={styles.serviceCard} onPress={() => router.push('/booking')}>
+            <View style={styles.serviceIconWrap}>
+              <Feather name="repeat" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.serviceLabel}>Round Trip</Text>
+            <Text style={styles.serviceSub}>Driver stays</Text>
+          </PressableScale>
+          <PressableScale style={styles.serviceCard} onPress={() => router.push('/booking')}>
+            <View style={styles.serviceIconWrap}>
+              <Feather name="clock" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.serviceLabel}>City Rides</Text>
+            <Text style={styles.serviceSub}>Hourly</Text>
+          </PressableScale>
+        </View>
+
+        <View style={styles.card}>
+          {SAVED.map((p, i) => (
+            <PressableScale
+              key={p.label}
+              style={[styles.listRow, i < SAVED.length - 1 ? styles.listRowDivider : null]}
+              onPress={() => router.push('/booking')}
+            >
+              <View style={styles.rowIconWrap}>
+                <Feather name={p.icon} size={15} color={colors.primary} />
+              </View>
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>{p.label}</Text>
+                <Text style={styles.rowSub} numberOfLines={1}>{p.sub}</Text>
+              </View>
+              <Feather name="chevron-right" size={14} color={colors.ink400} />
+            </PressableScale>
+          ))}
+        </View>
+
+        {!loading && recentTrips.length > 0 ? (
+          <View style={styles.card}>
+            {recentTrips.map((r, i) => (
+              <PressableScale
+                key={r.id}
+                style={[styles.listRow, i < recentTrips.length - 1 ? styles.listRowDivider : null]}
+                onPress={() => router.push('/booking')}
+              >
+                <View style={styles.rowIconWrapMuted}>
+                  <Feather name="map-pin" size={14} color={colors.ink400} />
+                </View>
+                <View style={styles.rowText}>
+                  <Text style={styles.rowTitle} numberOfLines={1}>{r.destinationAddress ?? 'Unknown destination'}</Text>
+                  <Text style={styles.rowSub}>
+                    {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={14} color={colors.ink400} />
+              </PressableScale>
+            ))}
+          </View>
+        ) : null}
+
+        <Text style={styles.sectionLabel}>Popular routes</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.popularRow}>
+          {POPULAR.map((r) => (
+            <PressableScale key={`${r.from}-${r.to}`} style={styles.popularChip} onPress={() => router.push('/booking')}>
+              <Text style={styles.popularFrom}>{r.from}</Text>
+              <Feather name="arrow-right" size={10} color={colors.ink400} />
+              <Text style={styles.popularTo}>{r.to}</Text>
+            </PressableScale>
+          ))}
+        </ScrollView>
+
+        <View style={styles.promoCard}>
+          <View style={styles.promoText}>
+            <Text style={styles.promoTitle}>20% off your first ride</Text>
+            <Text style={styles.promoSub}>New to Ocar? Use code at checkout</Text>
+            <View style={styles.promoCodePill}>
+              <Text style={styles.promoCode}>OCAR20</Text>
+            </View>
+          </View>
+          <Text style={styles.promoEmoji}>🎉</Text>
+        </View>
+      </Animated.ScrollView>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  skeleton: {
-    backgroundColor: colors.surface3,
+  hero: {
+    backgroundColor: colors.primaryDark,
+    paddingTop: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    gap: spacing.md,
+  },
+  heroTopBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  logoText: { ...typography.title, color: colors.inkInverse, fontWeight: '700' },
+  heroActions: { flexDirection: 'row', gap: spacing.xs },
+  heroIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.lg,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  greetingLabel: { ...typography.label, color: 'rgba(255,255,255,0.5)' },
+  greetingName: { ...typography.headline, color: colors.inkInverse, marginTop: 2 },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+  },
+  searchBarPressed: { opacity: 0.85 },
+  searchPlaceholder: { ...typography.body, color: colors.ink400, flex: 1 },
+  searchGoPill: { backgroundColor: colors.primary, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 },
+  searchGoText: { ...typography.label, color: colors.inkInverse, fontWeight: '700' },
+  content: { flex: 1 },
+  contentInner: { padding: spacing.md, paddingBottom: spacing['2xl'], gap: spacing.md },
+  servicesRow: { flexDirection: 'row', gap: spacing.sm },
+  serviceCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  serviceIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.primarySubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceLabel: { ...typography.label, color: colors.ink900, fontWeight: '600' },
+  serviceSub: { ...typography.caption, color: colors.ink400 },
+  card: { backgroundColor: colors.surface, borderRadius: 16, overflow: 'hidden' },
+  listRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md },
+  listRowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  rowIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.primarySubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowIconWrapMuted: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.surface2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowText: { flex: 1, gap: 2 },
+  rowTitle: { ...typography.label, color: colors.ink900, fontWeight: '600' },
+  rowSub: { ...typography.caption, color: colors.ink400 },
+  sectionLabel: { ...typography.label, color: colors.ink600, fontWeight: '600' },
+  popularRow: { flexGrow: 0 },
+  popularChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    marginRight: spacing.xs,
+  },
+  popularFrom: { ...typography.caption, color: colors.ink600, fontWeight: '500' },
+  popularTo: { ...typography.caption, color: colors.ink900, fontWeight: '700' },
+  promoCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
   },
-  searchOverlay: { position: 'absolute', top: spacing.xl, left: spacing.lg, right: spacing.lg },
-  recenterButton: {
-    position: 'absolute',
-    right: spacing.lg,
-    bottom: spacing.xl,
-    width: 44,
-    height: 44,
-    borderRadius: radii.full,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.card,
+  promoText: { flex: 1, gap: 2 },
+  promoTitle: { ...typography.label, color: colors.ink900, fontWeight: '700' },
+  promoSub: { ...typography.caption, color: colors.ink400 },
+  promoCodePill: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primarySubtle,
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    marginTop: spacing.xs,
   },
-  recenterIcon: { fontSize: 20, color: colors.primary },
-  banner: { flex: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.sm },
-  bannerTitle: { ...typography.title, color: colors.ink900 },
-  bannerBody: { ...typography.body, color: colors.ink600 },
-  bannerLink: { ...typography.body, color: colors.primary, fontWeight: '600' },
+  promoCode: { ...typography.caption, color: colors.primaryDark, fontWeight: '700', letterSpacing: 1 },
+  promoEmoji: { fontSize: 28 },
 })
