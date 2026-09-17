@@ -96,6 +96,7 @@ export type RideDetail = {
   surgeFare: string | null
   startOtp: string | null
   endOtp: string | null
+  stops: RideStop[]
 }
 
 export type RideHistoryItem = {
