@@ -12,6 +12,12 @@ export type PlaceAutocompleteFieldProps = {
   bias: { lat?: number; lng?: number }
   value: BookingPlace | null
   onSelect: (place: BookingPlace) => void
+  // Renders without a label or border, for composing inside a card that
+  // draws its own chrome (e.g. the pickup/drop dot-and-line connector) --
+  // matches the real web app's unified from/to card
+  // (apps/user/app/(main)/search/page.tsx), which has no per-field label
+  // or border either.
+  bare?: boolean
 }
 
 export function PlaceAutocompleteField({
@@ -21,6 +27,7 @@ export function PlaceAutocompleteField({
   bias,
   value,
   onSelect,
+  bare = false,
 }: PlaceAutocompleteFieldProps) {
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
@@ -47,7 +54,7 @@ export function PlaceAutocompleteField({
   return (
     <View style={styles.container}>
       <Input
-        label={label}
+        {...(bare ? {} : { label })}
         value={focused ? query : (value?.address ?? query)}
         onChangeText={(text) => {
           setQuery(text)
@@ -59,6 +66,7 @@ export function PlaceAutocompleteField({
         accessibilityLabel={label}
         accessibilityHint={accessibilityHint}
         allowFontScaling
+        style={bare ? styles.bareInput : undefined}
       />
       {showDropdown ? (
         <View style={styles.dropdown}>
@@ -116,6 +124,13 @@ export function PlaceAutocompleteField({
 
 const styles = StyleSheet.create({
   container: { position: 'relative' },
+  bareInput: {
+    borderWidth: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 0,
+  },
   dropdown: {
     marginTop: spacing.xs,
     backgroundColor: colors.surface,

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import * as Location from 'expo-location'
 import { useRouter } from 'expo-router'
+import { Feather } from '@expo/vector-icons'
 import { Button, colors, getCurrentOrLastKnownPosition, spacing, typography } from '@ocar/mobile-shared'
 import { PlaceAutocompleteField } from '@/features/booking/components/PlaceAutocompleteField'
 import { fetchNearestCityId, fetchReverseGeocode, fetchRoute } from '@/features/booking/api'
@@ -62,25 +63,50 @@ export default function BookingPickersScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.title}>Where to?</Text>
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backButton}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Feather name="arrow-left" size={17} color={colors.ink900} />
+        </Pressable>
+        <Text style={styles.title}>Plan your trip</Text>
+      </View>
 
-      <PlaceAutocompleteField
-        label="Pickup"
-        placeholder={locating ? 'Finding your location…' : 'Enter pickup location'}
-        accessibilityHint="Search for a pickup location"
-        bias={pickup ? { lat: pickup.lat, lng: pickup.lng } : {}}
-        value={pickup}
-        onSelect={setPickup}
-      />
-
-      <PlaceAutocompleteField
-        label="Drop"
-        placeholder="Enter destination"
-        accessibilityHint="Search for a destination"
-        bias={pickup ? { lat: pickup.lat, lng: pickup.lng } : {}}
-        value={drop}
-        onSelect={setDrop}
-      />
+      <View style={styles.routeCard}>
+        <View style={styles.connector}>
+          <View style={styles.dotPickup} />
+          <View style={styles.dashedLine} />
+          <View style={styles.dotDrop} />
+        </View>
+        <View style={styles.fieldsColumn}>
+          <View style={styles.fieldRow}>
+            <PlaceAutocompleteField
+              label="Pickup"
+              placeholder={locating ? 'Finding your location…' : 'Enter pickup location'}
+              accessibilityHint="Search for a pickup location"
+              bias={pickup ? { lat: pickup.lat, lng: pickup.lng } : {}}
+              value={pickup}
+              onSelect={setPickup}
+              bare
+            />
+          </View>
+          <View style={styles.fieldRowLast}>
+            <PlaceAutocompleteField
+              label="Drop"
+              placeholder="Enter destination"
+              accessibilityHint="Search for a destination"
+              bias={pickup ? { lat: pickup.lat, lng: pickup.lng } : {}}
+              value={drop}
+              onSelect={setDrop}
+              bare
+            />
+          </View>
+        </View>
+      </View>
 
       {continueError ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
@@ -104,7 +130,31 @@ export default function BookingPickersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing['2xl'] },
-  title: { ...typography.headline, color: colors.ink900 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.surface2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { ...typography.title, color: colors.ink900, fontWeight: '700' },
+  routeCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    overflow: 'hidden',
+  },
+  connector: { width: 40, alignItems: 'center', paddingVertical: spacing.md },
+  dotPickup: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.success },
+  dashedLine: { flex: 1, width: 1, minHeight: 24, borderLeftWidth: 1, borderLeftColor: colors.border, borderStyle: 'dashed', marginVertical: 4 },
+  dotDrop: { width: 10, height: 10, borderRadius: 2, backgroundColor: colors.warning },
+  fieldsColumn: { flex: 1 },
+  fieldRow: { paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderLight },
+  fieldRowLast: { paddingHorizontal: spacing.sm },
   error: { ...typography.body, color: colors.error },
   footer: { marginTop: spacing.md },
 })
