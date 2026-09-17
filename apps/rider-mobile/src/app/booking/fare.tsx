@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import axios from 'axios'
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { Button, ErrorState, colors, spacing, typography, mapBookingErrorCode } from '@ocar/mobile-shared'
 import { CategoryCard } from '@/features/booking/components/CategoryCard'
@@ -12,6 +13,7 @@ import { socket } from '@/services/socket'
 
 export default function BookingFareScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const pickup = useBookingDraftStore((s) => s.pickup)
   const drop = useBookingDraftStore((s) => s.drop)
   const distanceKm = useBookingDraftStore((s) => s.distanceKm)
@@ -75,14 +77,14 @@ export default function BookingFareScreen() {
 
   if (error && categories.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
         <ErrorState message={error} onRetry={retry} />
       </View>
     )
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}

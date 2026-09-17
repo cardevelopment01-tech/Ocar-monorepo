@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import Animated, { interpolate, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { colors, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -39,6 +40,7 @@ function PressableScale({ children, onPress, style }: { children: React.ReactNod
 
 export default function HomeScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const user = useAuthStore((s) => s.user)
   const { items, loading } = useRideHistory()
   const firstName = user?.name?.split(' ')[0] ?? 'there'
@@ -61,7 +63,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.hero}>
+      <View style={[styles.hero, { paddingTop: insets.top + spacing.md }]}>
         <View style={styles.heroTopBar}>
           <Text style={styles.logoText}>Ocar</Text>
           <View style={styles.heroActions}>
@@ -192,7 +194,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   hero: {
     backgroundColor: colors.primaryDark,
-    paddingTop: spacing.xl,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
     borderBottomLeftRadius: 28,

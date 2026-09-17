@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { BackHandler, Image, StyleSheet, Text, View } from 'react-native'
+import { BackHandler, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native'
 import Animated, { FadeIn, SlideInRight, SlideInUp } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Button, Input, colors, spacing, typography, mapOtpErrorCode } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
@@ -26,6 +27,7 @@ function formatPhone(input: string): string {
 
 export default function PhoneScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const setAuth = useAuthStore((s) => s.setAuth)
 
   const [step, setStep] = useState<Step>('phone')
@@ -124,8 +126,16 @@ export default function PhoneScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <LinearGradient colors={['#0F0F23', '#1E1B4B']} start={{ x: 0, y: 0 }} end={{ x: 0.7, y: 1 }} style={styles.hero}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <LinearGradient
+        colors={['#0F0F23', '#1E1B4B']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0.7, y: 1 }}
+        style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}
+      >
         <View style={styles.heroGlow} />
         <Image source={require('../../../assets/brand/logo-mark.png')} style={styles.logo} resizeMode="contain" />
         <Text style={styles.tagline}>Your ride, your city</Text>
@@ -188,13 +198,13 @@ export default function PhoneScreen() {
         </Animated.View>
       )}
       </Animated.View>
-    </View>
+    </KeyboardAvoidingView>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  hero: { alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingBottom: 40, overflow: 'hidden' },
+  hero: { alignItems: 'center', justifyContent: 'center', paddingBottom: 40, overflow: 'hidden' },
   heroGlow: {
     position: 'absolute',
     width: 300,

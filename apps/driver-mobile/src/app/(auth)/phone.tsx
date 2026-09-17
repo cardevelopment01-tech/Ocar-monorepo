@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { BackHandler, Image, StyleSheet, Text, View } from 'react-native'
+import { BackHandler, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native'
 import Animated, { FadeIn, SlideInRight } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { Button, Card, Input, colors, spacing, typography, mapOtpErrorCode } from '@ocar/mobile-shared'
@@ -123,7 +123,10 @@ export default function PhoneScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <View style={styles.header}>
         <View style={styles.headerGlow} />
         <Image source={require('../../../assets/brand/logo-mark.png')} style={styles.logo} resizeMode="contain" />
@@ -189,7 +192,7 @@ export default function PhoneScreen() {
         </Card>
         </Animated.View>
       )}
-    </View>
+    </KeyboardAvoidingView>
   )
 }
 

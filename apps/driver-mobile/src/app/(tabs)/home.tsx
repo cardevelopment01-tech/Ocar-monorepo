@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Button, Card, colors, formatCurrency, getCurrentOrLastKnownPosition, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -19,6 +20,7 @@ const DEFAULT_REGION = { latitude: 20.2961, longitude: 85.8245, latitudeDelta: 0
 
 export default function HomeScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const driver = useAuthStore((s) => s.driver)
   const isOnline = useDriverSessionStore((s) => s.isOnline)
   const flow = useGoOnlineFlow()
@@ -61,11 +63,12 @@ export default function HomeScreen() {
         initialRegion={region}
         region={region}
         showsUserLocation
+        showsMyLocationButton={false}
         pointerEvents="none"
       />
       {!isOnline ? <View style={styles.mapDim} pointerEvents="none" /> : null}
 
-      <View style={styles.floating}>
+      <View style={[styles.floating, { top: insets.top + spacing.sm }]}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.date}>{todayLabel}</Text>
@@ -171,7 +174,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   mapDim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: `${colors.bg}59` },
-  floating: { position: 'absolute', top: spacing.xl, left: spacing.md, right: spacing.md, gap: spacing.sm },
+  floating: { position: 'absolute', left: spacing.md, right: spacing.md, gap: spacing.sm },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',

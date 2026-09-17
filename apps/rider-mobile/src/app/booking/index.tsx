@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import * as Location from 'expo-location'
 import { useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { Button, colors, getCurrentOrLastKnownPosition, spacing, typography } from '@ocar/mobile-shared'
 import { PlaceAutocompleteField } from '@/features/booking/components/PlaceAutocompleteField'
@@ -10,6 +11,7 @@ import { useBookingDraftStore } from '@/features/booking/store'
 
 export default function BookingPickersScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const pickup = useBookingDraftStore((s) => s.pickup)
   const drop = useBookingDraftStore((s) => s.drop)
   const setPickup = useBookingDraftStore((s) => s.setPickup)
@@ -62,7 +64,11 @@ export default function BookingPickersScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md }]}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
