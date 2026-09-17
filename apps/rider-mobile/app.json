@@ -8,6 +8,7 @@
     "userInterfaceStyle": "light",
     "android": {
       "package": "com.ocar.rider",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -15,13 +16,16 @@
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "REPLACE_WITH_REAL_ANDROID_MAPS_API_KEY"
+          "apiKey": "AIzaSyAAVGxzN9sRx8fOBOQxwITVIk8lPC6sGtM"
         }
       }
     },
     "ios": {
       "bundleIdentifier": "com.ocar.rider",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "config": {
+        "googleMapsApiKey": "AIzaSyAAVGxzN9sRx8fOBOQxwITVIk8lPC6sGtM"
+      }
     },
     "plugins": [
       "expo-router",
@@ -41,7 +45,9 @@
           "imageWidth": 160,
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
     ]
   }
 }

@@ -1,12 +1,22 @@
+import { getApp } from '@react-native-firebase/app'
+import { getMessaging, getToken, requestPermission, AuthorizationStatus } from '@react-native-firebase/messaging'
 import { registerPushNotifications, unregisterPushNotifications } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
 
-// TODO(fcm): google-services.json isn't available yet, so @react-native-firebase/messaging
-// isn't installed (its Android build requires that file). Swap this for a real
-// `() => messaging().getToken()` once the Firebase config lands -- nothing else here changes.
 async function getFcmToken(): Promise<string | null> {
-  return null
+  try {
+    const messaging = getMessaging(getApp())
+    const authStatus = await requestPermission(messaging)
+    const authorized =
+      authStatus === AuthorizationStatus.AUTHORIZED || authStatus === AuthorizationStatus.PROVISIONAL
+    if (!authorized) return null
+    return await getToken(messaging)
+  } catch {
+    // Best-effort -- a rider without a working FCM token still uses the app,
+    // just without background push.
+    return null
+  }
 }
 
 export async function setupPushNotifications(): Promise<void> {
