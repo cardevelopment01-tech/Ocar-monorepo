@@ -398,7 +398,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   if (data.scheduledFor === undefined) {
     const activeRideId = await repo.getActiveRideIdForUser(userId)
     if (activeRideId) {
-      throw Object.assign(new Error('You already have an active ride'), { httpStatus: 409 })
+      throw httpError(409, 'You already have an active ride', 'RIDE_ALREADY_ACTIVE')
     }
   }
 

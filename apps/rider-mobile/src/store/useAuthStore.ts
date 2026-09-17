@@ -3,6 +3,18 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createHybridStorage, createSecurePersistStorage } from '@ocar/mobile-shared'
 
+// Lazy require, not a static import: services/socket/index.ts imports useAuthStore
+// (for its own getToken/refreshToken callbacks) and createSocket() calls getToken()
+// synchronously at module-eval time -- a static import here would create a real
+// circular-init crash ("Cannot read property 'getState' of undefined"), since
+// whichever module loads first would see the other's exports still unassigned.
+// require()'d lazily inside the actions below, both modules are fully loaded by
+// the time either function actually runs.
+function getSocketActions(): { connectSocket: () => void; disconnectSocket: () => void } {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deliberate lazy require, see above
+  return require('@/services/socket')
+}
+
 export interface UserProfile {
   id: string
   code: string
@@ -36,9 +48,15 @@ export const useAuthStore = create<AuthState>()(
       hasHydrated: false,
       pushPermissionGranted: null,
 
-      setAuth: (token, refreshToken, user) => set({ token, refreshToken, user, isAuthenticated: true }),
+      setAuth: (token, refreshToken, user) => {
+        set({ token, refreshToken, user, isAuthenticated: true })
+        getSocketActions().connectSocket()
+      },
 
-      clearAuth: () => set({ token: null, refreshToken: null, user: null, isAuthenticated: false }),
+      clearAuth: () => {
+        getSocketActions().disconnectSocket()
+        set({ token: null, refreshToken: null, user: null, isAuthenticated: false })
+      },
 
       updateUser: (updates) =>
         set((state) => ({
@@ -60,8 +78,14 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),
-      onRehydrateStorage: () => (_state, error) => {
-        if (error) useAuthStore.getState().clearAuth()
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          useAuthStore.getState().clearAuth()
+        } else if (state?.isAuthenticated) {
+          // Restored an already-logged-in session (app relaunch) -- setAuth() only
+          // fires on a fresh login, so the socket connect has to happen here too.
+          getSocketActions().connectSocket()
+        }
         useAuthStore.setState({ hasHydrated: true })
       },
     }

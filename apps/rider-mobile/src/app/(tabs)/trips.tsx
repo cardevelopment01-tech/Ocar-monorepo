@@ -1,15 +1,15 @@
 import { StyleSheet, View } from 'react-native'
-import { EmptyState, colors, spacing } from '@ocar/mobile-shared'
+import { colors } from '@ocar/mobile-shared'
+import { RideHistoryList } from '@/features/ride-history/components/RideHistoryList'
 
-// Placeholder -- FlashList ride history against /rides/me/history lands days 5-7.
 export default function TripsScreen() {
   return (
     <View style={styles.container}>
-      <EmptyState title="No trips yet" description="Your ride history will show up here" />
+      <RideHistoryList />
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: spacing.lg, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: colors.bg },
 })

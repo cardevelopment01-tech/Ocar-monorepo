@@ -12,7 +12,12 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "POST_NOTIFICATIONS"
-      ]
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "REPLACE_WITH_REAL_ANDROID_MAPS_API_KEY"
+        }
+      }
     },
     "ios": {
       "bundleIdentifier": "com.ocar.rider",
@@ -20,6 +25,12 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Ocar needs your location to show nearby drivers and set your pickup point."
+        }
+      ],
       "expo-status-bar",
       "expo-secure-store",
       "expo-splash-screen"
