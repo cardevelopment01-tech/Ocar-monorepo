@@ -15,7 +15,12 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
         "POST_NOTIFICATIONS"
-      ]
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "REPLACE_WITH_REAL_ANDROID_MAPS_API_KEY"
+        }
+      }
     },
     "ios": {
       "bundleIdentifier": "com.ocar.driver",
@@ -37,7 +42,7 @@
           "foregroundService": {
             "notificationTitle": "Ocar is tracking your location",
             "notificationBody": "Required while you're online to receive ride requests.",
-            "notificationColor": "#4F46E5"
+            "notificationColor": "#0A9FB0"
           }
         }
       ],
