@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import * as SplashScreen from 'expo-splash-screen'
+import { SplashOverlay } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useRideRequestListener } from '@/features/ride-requests/useRideRequestListener'
 import { RideRequestOverlay } from '@/features/ride-requests/RideRequestOverlay'
@@ -15,6 +16,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {})
 
 export default function RootLayout() {
   const hasHydrated = useAuthStore((s) => s.hasHydrated)
+  const [showSplashOverlay, setShowSplashOverlay] = useState(true)
 
   // Root-level ride-request listener, per the plan's binding architecture
   // decision -- mounted once, same place the socket connect lifecycle lives,
@@ -35,6 +37,12 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }} />
       <RideRequestOverlay />
+      {showSplashOverlay ? (
+        <SplashOverlay
+          logoSource={require('../../assets/brand/logo-mark.png')}
+          onDone={() => setShowSplashOverlay(false)}
+        />
+      ) : null}
     </GestureHandlerRootView>
   )
 }
