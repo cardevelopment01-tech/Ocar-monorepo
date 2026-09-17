@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
 import Animated, { interpolate, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -40,6 +40,7 @@ function PressableScale({ children, onPress, style }: { children: React.ReactNod
 
 export default function HomeScreen() {
   const router = useRouter()
+  const { height: windowHeight } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   const user = useAuthStore((s) => s.user)
   const { items, loading } = useRideHistory()
@@ -50,16 +51,26 @@ export default function HomeScreen() {
     [items]
   )
 
-  // Scroll offset drives the greeting's fade -- state indication (you've
-  // scrolled past it), computed entirely on the UI thread. No setState per
-  // scroll frame.
+  // Scroll offset drives the hero's collapse -- state indication (you've
+  // scrolled past the greeting), computed entirely on the UI thread. No
+  // setState per scroll frame. Matches the real web app's Home.tsx, which
+  // collapses the greeting's height to 0 on scroll so the search bar rises
+  // up flush under the top bar, rather than just fading it in place.
   const scrollY = useSharedValue(0)
+  const greetingHeight = useSharedValue(0)
   const scrollHandler = useAnimatedScrollHandler((e) => {
     scrollY.set(e.contentOffset.y)
   })
-  const greetingStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.get(), [0, 48], [1, 0], 'clamp'),
-  }))
+  const greetingStyle = useAnimatedStyle(() => {
+    const h = greetingHeight.get()
+    if (h === 0) return { opacity: 1 }
+    const collapse = interpolate(scrollY.get(), [0, 24], [1, 0], 'clamp')
+    return {
+      opacity: collapse,
+      height: h * collapse,
+      marginBottom: spacing.md * collapse,
+    }
+  })
 
   return (
     <View style={styles.container}>
@@ -73,7 +84,12 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <Animated.View style={greetingStyle}>
+        <Animated.View
+          style={[styles.greetingWrap, greetingStyle]}
+          onLayout={(e) => {
+            if (greetingHeight.get() === 0) greetingHeight.set(e.nativeEvent.layout.height)
+          }}
+        >
           <Text style={styles.greetingLabel}>{greeting()}</Text>
           <Text style={styles.greetingName}>{firstName} 👋</Text>
         </Animated.View>
@@ -94,7 +110,7 @@ export default function HomeScreen() {
 
       <Animated.ScrollView
         style={styles.content}
-        contentContainerStyle={styles.contentInner}
+        contentContainerStyle={[styles.contentInner, { minHeight: windowHeight + 80 }]}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
@@ -198,9 +214,14 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
-    gap: spacing.md,
   },
-  heroTopBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  heroTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  greetingWrap: { overflow: 'hidden' },
   logoText: { ...typography.title, color: colors.inkInverse, fontWeight: '700' },
   heroActions: { flexDirection: 'row', gap: spacing.xs },
   heroIconButton: {

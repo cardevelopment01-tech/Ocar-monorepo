@@ -3,8 +3,9 @@ import { Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, Card, colors, formatCurrency, getCurrentOrLastKnownPosition, spacing, typography } from '@ocar/mobile-shared'
+import { Button, Card, colors, getCurrentOrLastKnownPosition, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { LocationDisclosure } from '@/features/go-online/LocationDisclosure'
@@ -113,27 +114,48 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.sheet}>
-        <View style={styles.statsRow}>
-          <View style={styles.statCol}>
-            <Text style={styles.statValue}>{summary ? formatCurrency(summary.totalEarnings) : '—'}</Text>
-            <Text style={styles.statLabel}>Earned</Text>
+        {/* One unified card: stats + quick actions, no nested chip cards --
+            matches the real web app's Home.tsx exactly (its own comment calls
+            out replacing three separately-floating pill blocks with this). */}
+        <View style={styles.unifiedCard}>
+          <View style={styles.statsRow}>
+            <View style={styles.statCol}>
+              <View style={styles.statValueRow}>
+                <MaterialCommunityIcons name="currency-inr" size={13} color={colors.accentOrange} />
+                <Text style={[styles.statValue, styles.statValueOrange]}>
+                  {summary ? Math.round(summary.totalEarnings).toLocaleString('en-IN') : '—'}
+                </Text>
+              </View>
+              <Text style={styles.statLabel}>Earned</Text>
+            </View>
+            <View style={[styles.statCol, styles.statColDivider]}>
+              <View style={styles.statValueRow}>
+                <Feather name="clock" size={11} color={colors.ink600} />
+                <Text style={styles.statValue}>{summary?.tripCount ?? '—'}</Text>
+              </View>
+              <Text style={styles.statLabel}>Trips</Text>
+            </View>
+            <View style={styles.statCol}>
+              <View style={styles.statValueRow}>
+                <Feather name="star" size={11} color={colors.ink600} />
+                <Text style={styles.statValue}>{summary?.rating ?? '—'}</Text>
+              </View>
+              <Text style={styles.statLabel}>Rating</Text>
+            </View>
           </View>
-          <View style={[styles.statCol, styles.statColDivider]}>
-            <Text style={styles.statValue}>{summary?.tripCount ?? '—'}</Text>
-            <Text style={styles.statLabel}>Trips</Text>
-          </View>
-          <View style={styles.statCol}>
-            <Text style={styles.statValue}>{summary?.rating ?? '—'}</Text>
-            <Text style={styles.statLabel}>Rating</Text>
-          </View>
-        </View>
 
-        <Pressable onPress={() => router.push('/earnings')} accessibilityRole="button">
-          <Card style={styles.actionCard}>
-            <Text style={styles.actionLabel}>Earnings</Text>
-            <Text style={styles.actionChevron}>›</Text>
-          </Card>
-        </Pressable>
+          <Pressable
+            onPress={() => router.push('/earnings')}
+            style={styles.actionRow}
+            accessibilityRole="button"
+          >
+            <View style={styles.actionLeft}>
+              <Feather name="trending-up" size={15} color={colors.primary} />
+              <Text style={styles.actionLabel}>Earnings</Text>
+            </View>
+            <Feather name="chevron-right" size={14} color={colors.ink400} />
+          </Pressable>
+        </View>
 
         <View style={styles.statusLine}>
           <View style={[styles.statusDot, isOnline ? styles.statusDotOnline : styles.statusDotOffline]} />
@@ -202,14 +224,29 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     gap: spacing.sm,
   },
-  statsRow: { flexDirection: 'row' },
-  statCol: { flex: 1, alignItems: 'center', gap: 2 },
+  unifiedCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  statsRow: { flexDirection: 'row', paddingVertical: spacing.sm },
+  statCol: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
   statColDivider: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: colors.border },
-  statValue: { ...typography.title, color: colors.ink900 },
-  statLabel: { ...typography.caption, color: colors.ink400 },
-  actionCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.sm },
+  statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  statValue: { ...typography.label, color: colors.ink900, fontWeight: '800' },
+  statValueOrange: { color: colors.accentOrange },
+  statLabel: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm + 4,
+    paddingHorizontal: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  actionLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
   actionLabel: { ...typography.label, color: colors.ink900, fontWeight: '600' },
-  actionChevron: { ...typography.title, color: colors.ink400 },
   statusLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingTop: spacing.xs },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusDotOnline: { backgroundColor: colors.accentOrange },
