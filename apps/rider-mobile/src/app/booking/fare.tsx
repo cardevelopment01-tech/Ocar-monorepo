@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import axios from 'axios'
-import { FlatList, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
+import { Feather } from '@expo/vector-icons'
 import { Button, ErrorState, colors, spacing, typography, mapBookingErrorCode } from '@ocar/mobile-shared'
 import { CategoryCard } from '@/features/booking/components/CategoryCard'
 import { useFareEstimates } from '@/features/booking/hooks/useFareEstimates'
@@ -82,10 +83,23 @@ export default function BookingFareScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Choose a ride</Text>
-      {distanceKm != null && durationMin != null ? (
-        <Text style={styles.subtitle}>{`${distanceKm.toFixed(1)} km · ${Math.round(durationMin)} min`}</Text>
-      ) : null}
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backButton}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Feather name="arrow-left" size={17} color={colors.ink900} />
+        </Pressable>
+        <View>
+          <Text style={styles.title}>Choose a ride</Text>
+          {distanceKm != null && durationMin != null ? (
+            <Text style={styles.subtitle}>{`${distanceKm.toFixed(1)} km · ${Math.round(durationMin)} min`}</Text>
+          ) : null}
+        </View>
+      </View>
 
       {loading && categories.length === 0 ? (
         <View style={styles.list}>
@@ -129,6 +143,15 @@ export default function BookingFareScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, padding: spacing.lg, gap: spacing.sm },
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.surface2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: { ...typography.headline, color: colors.ink900 },
   subtitle: { ...typography.label, color: colors.ink600 },
   list: { paddingVertical: spacing.sm },
