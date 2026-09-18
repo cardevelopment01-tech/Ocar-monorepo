@@ -93,7 +93,7 @@ export default function ProfileScreen() {
               <Text style={styles.phone}>+91 {displayPhone}</Text>
               {displayEmail ? <Text style={styles.email} numberOfLines={1}>{displayEmail}</Text> : null}
             </View>
-            <Pressable onPress={openEdit} style={styles.editBtn} accessibilityRole="button" accessibilityLabel="Edit profile">
+            <Pressable onPress={openEdit} style={({ pressed }) => [styles.editBtn, pressed ? styles.pressedScale : null]} accessibilityRole="button" accessibilityLabel="Edit profile">
               <Text style={styles.editBtnText}>Edit</Text>
             </Pressable>
           </View>
@@ -134,7 +134,7 @@ export default function ProfileScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(200).duration(360)}>
-          <Pressable onPress={() => setShowSignOut(true)} style={styles.signOutBtn}>
+          <Pressable onPress={() => setShowSignOut(true)} style={({ pressed }) => [styles.signOutBtn, pressed ? styles.pressedScale : null]}>
             <Feather name="log-out" size={15} color={colors.error} />
             <Text style={styles.signOutText}>Sign out</Text>
           </Pressable>
@@ -150,10 +150,10 @@ export default function ProfileScreen() {
             <Text style={styles.sheetTitle}>Sign out?</Text>
             <Text style={styles.sheetBody}>You will be signed out of your Ocar account.</Text>
             <View style={styles.sheetActions}>
-              <Pressable onPress={() => setShowSignOut(false)} style={styles.sheetCancelBtn}>
+              <Pressable onPress={() => setShowSignOut(false)} style={({ pressed }) => [styles.sheetCancelBtn, pressed ? styles.pressedScale : null]}>
                 <Text style={styles.sheetCancelText}>Cancel</Text>
               </Pressable>
-              <Pressable onPress={handleLogout} style={styles.sheetConfirmBtn}>
+              <Pressable onPress={handleLogout} style={({ pressed }) => [styles.sheetConfirmBtn, pressed ? styles.pressedScale : null]}>
                 <Text style={styles.sheetConfirmText}>Sign out</Text>
               </Pressable>
             </View>
@@ -168,7 +168,7 @@ export default function ProfileScreen() {
             <View style={styles.handle} />
             <View style={styles.editHeaderRow}>
               <Text style={styles.sheetTitle}>Edit profile</Text>
-              <Pressable onPress={() => setEditing(false)} style={styles.closeBtn} hitSlop={8}>
+              <Pressable onPress={() => setEditing(false)} style={({ pressed }) => [styles.closeBtn, pressed ? styles.pressedScale : null]} hitSlop={8}>
                 <Feather name="x" size={15} color={colors.ink600} />
               </Pressable>
             </View>
@@ -179,6 +179,8 @@ export default function ProfileScreen() {
                 onChangeText={(t) => { setEditName(t); setSaveErr('') }}
                 placeholder="Your full name"
                 placeholderTextColor={colors.ink400}
+                selectionColor={colors.primary}
+                cursorColor={colors.primary}
                 maxLength={120}
                 autoFocus
                 style={styles.input}
@@ -191,6 +193,8 @@ export default function ProfileScreen() {
                 onChangeText={setEditEmail}
                 placeholder="Email address (optional)"
                 placeholderTextColor={colors.ink400}
+                selectionColor={colors.primary}
+                cursorColor={colors.primary}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 style={styles.input}
@@ -200,7 +204,7 @@ export default function ProfileScreen() {
             <Pressable
               onPress={saveEdit}
               disabled={saving || editName.trim().length < 2}
-              style={[styles.saveBtn, (saving || editName.trim().length < 2) ? styles.disabled : null]}
+              style={({ pressed }) => [styles.saveBtn, (saving || editName.trim().length < 2) ? styles.disabled : null, pressed && !saving ? styles.pressedScale : null]}
             >
               <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.saveGradient}>
                 <Text style={styles.saveText}>{saving ? 'Saving…' : 'Save changes'}</Text>
@@ -259,6 +263,7 @@ const styles = StyleSheet.create({
   saveErr: { ...typography.caption, color: colors.error, marginBottom: spacing.sm },
   saveBtn: { borderRadius: radii.lg, overflow: 'hidden', marginTop: spacing.xs },
   disabled: { opacity: 0.5 },
+  pressedScale: { transform: [{ scale: 0.97 }] },
   saveGradient: { paddingVertical: spacing.sm + 6, alignItems: 'center' },
   saveText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
 })

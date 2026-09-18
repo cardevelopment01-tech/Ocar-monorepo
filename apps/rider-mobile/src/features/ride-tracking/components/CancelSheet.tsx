@@ -48,7 +48,7 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
           <View style={styles.handle} />
           <View style={styles.headerRow}>
             <Text style={styles.title}>Cancel your ride?</Text>
-            <Pressable onPress={onClose} disabled={submitting} style={styles.closeBtn} hitSlop={8}>
+            <Pressable onPress={onClose} disabled={submitting} style={({ pressed }) => [styles.closeBtn, pressed ? styles.pressedScale : null]} hitSlop={8}>
               <Feather name="x" size={16} color={colors.ink600} />
             </Pressable>
           </View>
@@ -70,7 +70,7 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
                 <Pressable
                   key={r.code}
                   onPress={() => setSelected(r.code)}
-                  style={[styles.reasonRow, active ? styles.reasonRowActive : null]}
+                  style={({ pressed }) => [styles.reasonRow, active ? styles.reasonRowActive : null, pressed ? styles.pressedScale : null]}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: active }}
                 >
@@ -87,6 +87,8 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
               onChangeText={setOtherText}
               placeholder="Tell us more…"
               placeholderTextColor={colors.ink400}
+              selectionColor={colors.primary}
+              cursorColor={colors.primary}
               multiline
               maxLength={200}
               style={styles.otherInput}
@@ -96,11 +98,11 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
           <Pressable
             onPress={handleConfirm}
             disabled={!canSubmit || submitting}
-            style={[styles.confirmBtn, (!canSubmit || submitting) ? styles.disabled : null]}
+            style={({ pressed }) => [styles.confirmBtn, (!canSubmit || submitting) ? styles.disabled : null, pressed && canSubmit && !submitting ? styles.pressedScale : null]}
           >
             <Text style={styles.confirmText}>{submitting ? 'Cancelling…' : 'Confirm cancellation'}</Text>
           </Pressable>
-          <Pressable onPress={onClose} disabled={submitting} style={styles.keepBtn}>
+          <Pressable onPress={onClose} disabled={submitting} style={({ pressed }) => [styles.keepBtn, pressed ? styles.pressedScale : null]}>
             <Text style={styles.keepText}>Keep my ride</Text>
           </Pressable>
         </View>
@@ -129,6 +131,7 @@ const styles = StyleSheet.create({
   otherInput: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.md, minHeight: 72, textAlignVertical: 'top', marginBottom: spacing.md },
   confirmBtn: { backgroundColor: colors.error, borderRadius: radii.lg, paddingVertical: spacing.md, alignItems: 'center', marginBottom: spacing.sm },
   disabled: { opacity: 0.4 },
+  pressedScale: { transform: [{ scale: 0.97 }] },
   confirmText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
   keepBtn: { backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, paddingVertical: spacing.sm + 4, alignItems: 'center' },
   keepText: { ...typography.body, color: colors.ink600, fontWeight: '600' },

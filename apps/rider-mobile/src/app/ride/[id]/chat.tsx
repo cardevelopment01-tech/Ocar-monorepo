@@ -75,11 +75,13 @@ export default function RideChatScreen() {
           onChangeText={setDraft}
           placeholder="Message your driver…"
           placeholderTextColor={colors.ink400}
+          selectionColor={colors.primary}
+          cursorColor={colors.primary}
           style={styles.input}
           multiline
           maxLength={1000}
         />
-        <Pressable onPress={handleSend} disabled={!draft.trim() || sending} style={[styles.sendBtn, !draft.trim() ? styles.sendBtnDisabled : null]}>
+        <Pressable onPress={handleSend} disabled={!draft.trim() || sending} style={({ pressed }) => [styles.sendBtn, !draft.trim() ? styles.sendBtnDisabled : null, pressed && draft.trim() ? styles.pressedScale : null]}>
           <Feather name="send" size={16} color={colors.inkInverse} />
         </Pressable>
       </View>
@@ -101,4 +103,5 @@ const styles = StyleSheet.create({
   input: { flex: 1, ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, maxHeight: 100 },
   sendBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   sendBtnDisabled: { opacity: 0.4 },
+  pressedScale: { transform: [{ scale: 0.97 }] },
 })

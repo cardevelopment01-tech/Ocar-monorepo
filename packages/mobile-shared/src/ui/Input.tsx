@@ -14,6 +14,8 @@ export const Input = forwardRef<TextInput, InputProps>(function Input({ label, e
       <TextInput
         ref={ref}
         placeholderTextColor={colors.ink400}
+        selectionColor={colors.primary}
+        cursorColor={colors.primary}
         style={[styles.input, error ? styles.inputError : null, style]}
         {...inputProps}
       />

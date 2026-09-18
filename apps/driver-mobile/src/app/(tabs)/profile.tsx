@@ -199,10 +199,10 @@ export default function ProfileScreen() {
               {isOnline ? "You're currently online. You'll be taken offline and signed out." : 'You will be signed out of your account.'}
             </Text>
             <View style={styles.sheetActions}>
-              <Pressable onPress={() => setShowSignOut(false)} style={styles.sheetCancelBtn}>
+              <Pressable onPress={() => setShowSignOut(false)} style={({ pressed }) => [styles.sheetCancelBtn, pressed ? styles.pressedScale : null]}>
                 <Text style={styles.sheetCancelText}>Cancel</Text>
               </Pressable>
-              <Pressable onPress={handleLogout} style={styles.sheetConfirmBtn}>
+              <Pressable onPress={handleLogout} style={({ pressed }) => [styles.sheetConfirmBtn, pressed ? styles.pressedScale : null]}>
                 <Text style={styles.sheetConfirmText}>Sign Out</Text>
               </Pressable>
             </View>
@@ -217,7 +217,7 @@ export default function ProfileScreen() {
             <View style={styles.handle} />
             <View style={styles.editHeaderRow}>
               <Text style={styles.sheetTitle}>Edit profile</Text>
-              <Pressable onPress={() => setEditing(false)} style={styles.closeBtn} hitSlop={8}>
+              <Pressable onPress={() => setEditing(false)} style={({ pressed }) => [styles.closeBtn, pressed ? styles.pressedScale : null]} hitSlop={8}>
                 <Feather name="x" size={15} color={colors.ink600} />
               </Pressable>
             </View>
@@ -226,6 +226,8 @@ export default function ProfileScreen() {
               onChangeText={(t) => { setEditName(t); setSaveErr('') }}
               placeholder="Your full name"
               placeholderTextColor={colors.ink400}
+              selectionColor={colors.primary}
+              cursorColor={colors.primary}
               maxLength={120}
               autoFocus
               style={styles.input}
@@ -235,6 +237,8 @@ export default function ProfileScreen() {
               onChangeText={setEditEmail}
               placeholder="Email address (optional)"
               placeholderTextColor={colors.ink400}
+              selectionColor={colors.primary}
+              cursorColor={colors.primary}
               keyboardType="email-address"
               autoCapitalize="none"
               style={styles.input}
@@ -243,7 +247,7 @@ export default function ProfileScreen() {
             <Pressable
               onPress={saveEdit}
               disabled={saving || editName.trim().length < 2}
-              style={[styles.saveBtn, (saving || editName.trim().length < 2) ? styles.disabled : null]}
+              style={({ pressed }) => [styles.saveBtn, (saving || editName.trim().length < 2) ? styles.disabled : null, pressed && !saving ? styles.pressedScale : null]}
             >
               <Text style={styles.saveText}>{saving ? 'Saving…' : 'Save changes'}</Text>
             </Pressable>
@@ -301,5 +305,6 @@ const styles = StyleSheet.create({
   saveErr: { ...typography.caption, color: colors.error, marginBottom: spacing.sm },
   saveBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 6, alignItems: 'center', marginTop: spacing.xs },
   disabled: { opacity: 0.5 },
+  pressedScale: { transform: [{ scale: 0.97 }] },
   saveText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
 })
