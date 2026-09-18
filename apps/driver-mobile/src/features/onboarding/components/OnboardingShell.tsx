@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -26,7 +26,7 @@ export function OnboardingShell({ stepIndex, title, subtitle = 'Progress is save
   const activeIdx = Math.min(Math.max(stepIndex, 0), STEPS.length - 1)
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 24) }]}>
         <View style={styles.headerRow}>
           <Pressable onPress={onBack ?? (() => router.back())} style={styles.backBtn} accessibilityLabel="Go back" hitSlop={8}>
@@ -57,7 +57,7 @@ export function OnboardingShell({ stepIndex, title, subtitle = 'Progress is save
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
         {footer}
       </View>
-    </View>
+    </KeyboardAvoidingView>
   )
 }
 

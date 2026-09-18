@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -162,7 +162,7 @@ export default function ProfileScreen() {
       </Modal>
 
       <Modal visible={editing} transparent animationType="fade" onRequestClose={() => setEditing(false)}>
-        <View style={styles.backdrop}>
+        <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => !saving && setEditing(false)} />
           <View style={styles.sheet}>
             <View style={styles.handle} />
@@ -207,7 +207,7 @@ export default function ProfileScreen() {
               </LinearGradient>
             </Pressable>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   )
