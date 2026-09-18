@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { Button, Card, colors, getCurrentOrLastKnownPosition, spacing, typography } from '@ocar/mobile-shared'
@@ -21,7 +20,6 @@ const DEFAULT_REGION = { latitude: 20.2961, longitude: 85.8245, latitudeDelta: 0
 
 export default function HomeScreen() {
   const router = useRouter()
-  const insets = useSafeAreaInsets()
   const driver = useAuthStore((s) => s.driver)
   const isOnline = useDriverSessionStore((s) => s.isOnline)
   const mode = useDriverSessionStore((s) => s.mode)
@@ -77,7 +75,14 @@ export default function HomeScreen() {
       />
       {!isOnline ? <View style={styles.mapDim} pointerEvents="none" /> : null}
 
-      <View style={[styles.floating, { top: insets.top + spacing.sm }]}>
+      <View style={styles.sheet}>
+        {/* Greeting + toggle lives here, in the sheet, matching the real web
+            app's Home.tsx exactly -- there the toggle sits as Row 1 of the
+            draggable bottom sheet, never pinned under the status bar. An
+            earlier pass here floated this whole row at the very top of the
+            screen instead (top: insets.top + spacing.sm, just 8dp of
+            breathing room below the status bar) -- barely noticeable with a
+            tiny Switch, glaring once it became the real 72px OnlineToggle. */}
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.date}>{todayLabel}</Text>
@@ -122,9 +127,7 @@ export default function HomeScreen() {
             <Button label="Retry" onPress={flow.retrySessionCheck} />
           </Card>
         ) : null}
-      </View>
 
-      <View style={styles.sheet}>
         {/* One unified card: stats + quick actions, no nested chip cards --
             matches the real web app's Home.tsx exactly (its own comment calls
             out replacing three separately-floating pill blocks with this). */}
@@ -201,7 +204,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   mapDim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: `${colors.bg}59` },
-  floating: { position: 'absolute', left: spacing.md, right: spacing.md, gap: spacing.sm },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
