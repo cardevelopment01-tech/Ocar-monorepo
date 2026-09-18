@@ -1,12 +1,16 @@
 import { useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
-import MapView, { Marker, Polyline } from 'react-native-maps'
+import MapView, { Polyline } from 'react-native-maps'
 import { colors, radii } from '@ocar/mobile-shared'
+import CarMarker from '@/features/map/components/CarMarker'
+import LocationPin from '@/features/map/components/LocationPin'
 
 export type RideMapViewProps = {
   pickup: [number, number]
   drop: [number, number] | null
   driverPos: [number, number] | null
+  driverHeading?: number
+  driverHeadingKnown?: boolean
   routePoints: [number, number][]
   showDrop: boolean
 }
@@ -14,8 +18,11 @@ export type RideMapViewProps = {
 // Real map replacing the earlier placeholder progress-bar "track" (LiveMarker) --
 // same pickup/drop/driver-pin + route-line shape as the web app's RideMapScene,
 // scoped down to what react-native-maps needs (no traffic layer, no nearby-driver
-// swarm -- those stay web-only per the UI-parity pass's agreed core scope).
-export function RideMapView({ pickup, drop, driverPos, routePoints, showDrop }: RideMapViewProps) {
+// swarm -- those stay web-only per the UI-parity pass's agreed core scope). Pickup/
+// drop/driver now use the same custom SVG markers as web (CarMarker/LocationPin)
+// instead of react-native-maps' default OS pin -- see the input-consistency +
+// premiumness pass this replaced.
+export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop }: RideMapViewProps) {
   const mapRef = useRef<MapView>(null)
 
   useEffect(() => {
@@ -36,17 +43,10 @@ export function RideMapView({ pickup, drop, driverPos, routePoints, showDrop }: 
         style={StyleSheet.absoluteFill}
         initialRegion={{ latitude: pickup[0], longitude: pickup[1], latitudeDelta: 0.05, longitudeDelta: 0.05 }}
       >
-        <Marker coordinate={{ latitude: pickup[0], longitude: pickup[1] }} pinColor={colors.primary} title="Pickup" />
-        {showDrop && drop ? (
-          <Marker coordinate={{ latitude: drop[0], longitude: drop[1] }} pinColor={colors.ink900} title="Drop" />
-        ) : null}
+        <LocationPin position={pickup} variant="pickup" />
+        {showDrop && drop ? <LocationPin position={drop} variant="drop" /> : null}
         {driverPos ? (
-          <Marker
-            coordinate={{ latitude: driverPos[0], longitude: driverPos[1] }}
-            pinColor={colors.accentOrange}
-            title="Driver"
-            zIndex={10}
-          />
+          <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} />
         ) : null}
         {routePoints.length >= 2 ? (
           <Polyline

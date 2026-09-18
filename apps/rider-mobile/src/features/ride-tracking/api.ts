@@ -2,9 +2,27 @@ import { camelizeKeys, decodePolyline } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import type { RideDetailExtra } from './types'
 
+// origin_lat/lng, dest_lat/lng and driver_current_lat/lng are all DECIMAL
+// columns in Postgres, which node-postgres returns as strings -- despite
+// RideDetail/RideDetailExtra's `number` types. Left uncoerced, these crash
+// react-native-maps' native Marker ("Value for latitude cannot be cast from
+// String to double") the moment they reach one, which RideMapView now does
+// (see the CarMarker/LocationPin premiumness pass this was found during).
+function coerceRideCoords(ride: RideDetailExtra): RideDetailExtra {
+  return {
+    ...ride,
+    originLat: Number(ride.originLat),
+    originLng: Number(ride.originLng),
+    destLat: ride.destLat != null ? Number(ride.destLat) : null,
+    destLng: ride.destLng != null ? Number(ride.destLng) : null,
+    driverCurrentLat: ride.driverCurrentLat != null ? Number(ride.driverCurrentLat) : null,
+    driverCurrentLng: ride.driverCurrentLng != null ? Number(ride.driverCurrentLng) : null,
+  }
+}
+
 export async function fetchRide(rideId: string): Promise<RideDetailExtra> {
   const res = await api.get(`/api/v1/rides/${rideId}`)
-  return camelizeKeys<RideDetailExtra>(res.data)
+  return coerceRideCoords(camelizeKeys<RideDetailExtra>(res.data))
 }
 
 // GET /rides/me/active-user 404s when there's no active ride -- that's the expected

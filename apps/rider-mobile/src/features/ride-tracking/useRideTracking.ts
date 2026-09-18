@@ -37,6 +37,8 @@ export function useRideTracking(rideId: string) {
   const [driverCancelled, setDriverCancelled] = useState<DriverCancelInfo | null>(null)
   const [lastLocationAt, setLastLocationAt] = useState<number | null>(null)
   const [driverPos, setDriverPos] = useState<[number, number] | null>(null)
+  const [driverHeading, setDriverHeading] = useState(0)
+  const [driverHeadingKnown, setDriverHeadingKnown] = useState(false)
   const [routePoints, setRoutePoints] = useState<[number, number][]>([])
   const [eta, setEta] = useState<{ etaMin: number; distanceKm: number } | null>(null)
   const [unreadChatCount, setUnreadChatCount] = useState(0)
@@ -105,6 +107,10 @@ export function useRideTracking(rideId: string) {
       markerHeading.value = payload.heading ?? 0
       setDriverPos([payload.lat, payload.lng])
       setLastLocationAt(Date.now())
+      if (payload.heading != null) {
+        setDriverHeading(payload.heading)
+        setDriverHeadingKnown(true)
+      }
     }
 
     function onDriverAssigned(payload: DriverAssignedPayload) {
@@ -222,6 +228,8 @@ export function useRideTracking(rideId: string) {
     markerLng,
     markerHeading,
     driverPos,
+    driverHeading,
+    driverHeadingKnown,
     pickup,
     drop,
     routePoints,
