@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BackHandler, StyleSheet, Text, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Button, Card, ErrorState, Skeleton, colors, spacing, typography } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
@@ -9,6 +10,8 @@ import { CashCollectionCard } from '@/features/active-ride/components/CashCollec
 import { TripCompletionCard } from '@/features/active-ride/components/TripCompletionCard'
 
 export default function ActiveRideScreen() {
+  const insets = useSafeAreaInsets()
+  const containerStyle = [styles.container, { paddingTop: insets.top + spacing.lg }]
   const { id } = useLocalSearchParams<{ id: string }>()
   const rideId = id ?? ''
   const router = useRouter()
@@ -38,7 +41,7 @@ export default function ActiveRideScreen() {
 
   if (loading) {
     return (
-      <View style={styles.container}>
+      <View style={containerStyle}>
         <Skeleton height={24} width="60%" />
         <Skeleton height={80} />
       </View>
@@ -47,7 +50,7 @@ export default function ActiveRideScreen() {
 
   if (loadError || !ride) {
     return (
-      <View style={styles.container}>
+      <View style={containerStyle}>
         <ErrorState message="Couldn't load this ride." onRetry={reload} />
       </View>
     )
@@ -75,7 +78,7 @@ export default function ActiveRideScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={containerStyle}>
       {actionError ? (
         <Card style={styles.errorCard}>
           <Text style={styles.error}>{actionError}</Text>

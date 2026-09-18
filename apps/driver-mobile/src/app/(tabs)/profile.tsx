@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated'
 import { colors, gradientPrimary, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
@@ -32,6 +33,7 @@ function normalizePhone(raw: string | null | undefined): string {
 }
 
 export default function ProfileScreen() {
+  const insets = useSafeAreaInsets()
   const driver = useAuthStore((s) => s.driver)
   const clearAuth = useAuthStore((s) => s.clearAuth)
   const updateDriver = useAuthStore((s) => s.updateDriver)
@@ -91,7 +93,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md }]}>
         <Animated.View entering={FadeIn.duration(420)} style={styles.headerCard}>
           <View style={styles.headerRow}>
             <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
