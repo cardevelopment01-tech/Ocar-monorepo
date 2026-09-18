@@ -8,6 +8,7 @@ import { useActiveRide } from '@/features/active-ride/useActiveRide'
 import { OtpEntryCard } from '@/features/active-ride/components/OtpEntryCard'
 import { CashCollectionCard } from '@/features/active-ride/components/CashCollectionCard'
 import { TripCompletionCard } from '@/features/active-ride/components/TripCompletionCard'
+import { RateRiderSheet } from '@/features/active-ride/components/RateRiderSheet'
 
 export default function ActiveRideScreen() {
   const insets = useSafeAreaInsets()
@@ -31,6 +32,7 @@ export default function ActiveRideScreen() {
 
   const [cashResult, setCashResult] = useState<{ collected: number } | null>(null)
   const [cashLoading, setCashLoading] = useState(false)
+  const [rateSheetOpen, setRateSheetOpen] = useState(true)
 
   // No-op on the hardware back button while a ride is active -- a driver can't
   // accidentally back out mid-trip (Eng/Design review finding).
@@ -86,7 +88,15 @@ export default function ActiveRideScreen() {
       ) : null}
 
       {status === 'completed' && cashResult ? (
-        <TripCompletionCard fareEarned={cashResult.collected} onBackToOnline={handleBackToOnline} />
+        <>
+          <TripCompletionCard fareEarned={cashResult.collected} onBackToOnline={handleBackToOnline} />
+          <RateRiderSheet
+            visible={rateSheetOpen}
+            rideId={rideId}
+            riderName={ride.riderName}
+            onClose={() => setRateSheetOpen(false)}
+          />
+        </>
       ) : status === 'completed' ? (
         <CashCollectionCard
           expectedFare={expectedFare}

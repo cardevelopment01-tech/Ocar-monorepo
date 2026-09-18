@@ -29,7 +29,7 @@ export default function RideTrackingScreen() {
   const router = useRouter()
   const {
     ride, loading, loadError, socketConnected, driverCancelled, lastLocationAt,
-    driverPos, pickup, drop, routePoints, eta, unreadChatCount,
+    driverPos, driverHeading, driverHeadingKnown, pickup, drop, routePoints, eta, unreadChatCount,
     fareDrift, dismissFareDrift, upgradeCategory, retry,
   } = useRideTracking(rideId)
 
@@ -126,6 +126,8 @@ export default function RideTrackingScreen() {
         pickup={pickup}
         drop={drop}
         driverPos={hasDriver ? driverPos : null}
+        driverHeading={driverHeading}
+        driverHeadingKnown={driverHeadingKnown}
         routePoints={routePoints}
         showDrop={drop != null}
       />
@@ -204,11 +206,25 @@ export default function RideTrackingScreen() {
       {detailsExpanded && ride.stops.length > 0 ? <StopTimeline stops={ride.stops} /> : null}
 
       {isCompleted ? (
-        <View style={styles.completeRow}>
-          <Feather name="check-circle" size={14} color={colors.success} />
-          <Text style={styles.completeText}>Trip complete</Text>
-          {fare ? <Text style={styles.completeFare}>{fare}</Text> : null}
-        </View>
+        <>
+          <View style={styles.completeRow}>
+            <Feather name="check-circle" size={14} color={colors.success} />
+            <Text style={styles.completeText}>Trip complete</Text>
+            {fare ? <Text style={styles.completeFare}>{fare}</Text> : null}
+          </View>
+          {ride.userRatingGiven == null ? (
+            <Pressable onPress={() => router.push(`/ride/${rideId}/rate`)} style={styles.rateBtn}>
+              <Feather name="star" size={14} color={colors.warning} />
+              <Text style={styles.rateBtnText}>Rate your driver</Text>
+              <Feather name="chevron-right" size={14} color={colors.ink400} />
+            </Pressable>
+          ) : (
+            <View style={styles.ratedRow}>
+              <Feather name="star" size={13} color={colors.warning} />
+              <Text style={styles.ratedText}>You rated this ride {ride.userRatingGiven}/5</Text>
+            </View>
+          )}
+        </>
       ) : null}
 
       {isCancelled ? (
@@ -259,6 +275,10 @@ const styles = StyleSheet.create({
   completeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.successLight, borderRadius: radii.lg, padding: spacing.sm + 4 },
   completeText: { ...typography.body, color: colors.success, fontWeight: '700', flex: 1 },
   completeFare: { ...typography.title, color: colors.ink900, fontWeight: '800' },
+  rateBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.sm + 4 },
+  rateBtnText: { ...typography.body, color: colors.ink900, fontWeight: '700', flex: 1 },
+  ratedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, justifyContent: 'center', paddingVertical: spacing.xs },
+  ratedText: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
   cancelledRow: { alignItems: 'center', padding: spacing.md },
   cancelledText: { ...typography.body, color: colors.error, fontWeight: '600' },
 })

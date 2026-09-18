@@ -11,6 +11,7 @@ export type RideDetailExtra = RideDetail & {
   cashCollectedAmount: string | null
   driverCurrentLat: number | null
   driverCurrentLng: number | null
+  userRatingGiven: number | null
 }
 
 export const SEARCHING_STATUSES = new Set(['requested', 'scheduled'])

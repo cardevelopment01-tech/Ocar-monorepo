@@ -57,6 +57,17 @@ export type VehicleCategory = {
   isActive: boolean
 }
 
+export type RentalPackage = {
+  id: number
+  categoryId: number
+  categoryName: string
+  durationMinutes: number
+  kmLimit: number
+  packageFare: number
+  extraPerKm: number
+  extraPerMin: number
+}
+
 export type RideDetail = {
   id: string
   status: string
@@ -119,4 +130,13 @@ export type GeoPlaceDetail = {
   address: string
   lat: number
   lng: number
+}
+
+export type RatingTag = {
+  id: string
+  tagKey: string
+  label: string
+  sentiment: 'positive' | 'negative' | 'neutral'
+  appliesTo: 'driver' | 'user' | 'both'
+  sortOrder: number
 }
