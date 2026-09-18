@@ -7,6 +7,8 @@ import { Feather } from '@expo/vector-icons'
 import { colors, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useRideHistory } from '@/features/ride-history/hooks/useRideHistory'
+import { useBookingDraftStore } from '@/features/booking/store'
+import type { RideType } from '@/features/booking/api'
 
 // Static, matching the real web home page's own hardcoded SAVED/POPULAR constants
 // (apps/user/app/(main)/home/page.tsx) -- not wired to a saved-places API since
@@ -44,7 +46,13 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets()
   const user = useAuthStore((s) => s.user)
   const { items, loading } = useRideHistory()
+  const setRideType = useBookingDraftStore((s) => s.setRideType)
   const firstName = user?.name?.split(' ')[0] ?? 'there'
+
+  function toBooking(rideType: RideType) {
+    setRideType(rideType)
+    router.push('/booking')
+  }
 
   const recentTrips = useMemo(
     () => items.filter((r) => r.status === 'completed').slice(0, 2),
@@ -115,21 +123,21 @@ export default function HomeScreen() {
         scrollEventThrottle={16}
       >
         <View style={styles.servicesRow}>
-          <PressableScale style={styles.serviceCard} onPress={() => router.push('/booking')}>
+          <PressableScale style={styles.serviceCard} onPress={() => toBooking('one_way')}>
             <View style={styles.serviceIconWrap}>
               <Feather name="navigation" size={18} color={colors.primary} />
             </View>
             <Text style={styles.serviceLabel}>One Way</Text>
             <Text style={styles.serviceSub}>Best fare</Text>
           </PressableScale>
-          <PressableScale style={styles.serviceCard} onPress={() => router.push('/booking')}>
+          <PressableScale style={styles.serviceCard} onPress={() => toBooking('round_trip')}>
             <View style={styles.serviceIconWrap}>
               <Feather name="repeat" size={18} color={colors.primary} />
             </View>
             <Text style={styles.serviceLabel}>Round Trip</Text>
             <Text style={styles.serviceSub}>Driver stays</Text>
           </PressableScale>
-          <PressableScale style={styles.serviceCard} onPress={() => router.push('/booking')}>
+          <PressableScale style={styles.serviceCard} onPress={() => toBooking('rental')}>
             <View style={styles.serviceIconWrap}>
               <Feather name="clock" size={18} color={colors.primary} />
             </View>
@@ -143,7 +151,7 @@ export default function HomeScreen() {
             <PressableScale
               key={p.label}
               style={[styles.listRow, i < SAVED.length - 1 ? styles.listRowDivider : null]}
-              onPress={() => router.push('/booking')}
+              onPress={() => toBooking('one_way')}
             >
               <View style={styles.rowIconWrap}>
                 <Feather name={p.icon} size={15} color={colors.primary} />
@@ -163,7 +171,7 @@ export default function HomeScreen() {
               <PressableScale
                 key={r.id}
                 style={[styles.listRow, i < recentTrips.length - 1 ? styles.listRowDivider : null]}
-                onPress={() => router.push('/booking')}
+                onPress={() => toBooking('one_way')}
               >
                 <View style={styles.rowIconWrapMuted}>
                   <Feather name="map-pin" size={14} color={colors.ink400} />
@@ -183,7 +191,7 @@ export default function HomeScreen() {
         <Text style={styles.sectionLabel}>Popular routes</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.popularRow}>
           {POPULAR.map((r) => (
-            <PressableScale key={`${r.from}-${r.to}`} style={styles.popularChip} onPress={() => router.push('/booking')}>
+            <PressableScale key={`${r.from}-${r.to}`} style={styles.popularChip} onPress={() => toBooking('one_way')}>
               <Text style={styles.popularFrom}>{r.from}</Text>
               <Feather name="arrow-right" size={10} color={colors.ink400} />
               <Text style={styles.popularTo}>{r.to}</Text>

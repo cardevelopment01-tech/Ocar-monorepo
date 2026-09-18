@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FareEstimate, VehicleCategory } from '@ocar/mobile-shared'
-import { fetchFareEstimate, fetchVehicleCategories } from '../api'
+import { fetchFareEstimate, fetchVehicleCategories, type RideType } from '../api'
 
 export type FareEstimatesState = {
   categories: VehicleCategory[]
@@ -19,7 +19,9 @@ export type FareEstimatesState = {
 export function useFareEstimates(
   distanceKm: number | null,
   durationMin: number | null,
-  originCityId: number | null
+  originCityId: number | null,
+  rideType: RideType = 'one_way',
+  tripHours?: number | null
 ): FareEstimatesState {
   const [categories, setCategories] = useState<VehicleCategory[]>([])
   const [estimates, setEstimates] = useState<Record<number, FareEstimate>>({})
@@ -42,11 +44,12 @@ export function useFareEstimates(
           cats.map((cat) => {
             const input: Parameters<typeof fetchFareEstimate>[0] = {
               categoryId: cat.id,
-              rideType: 'one_way',
+              rideType,
               distanceKm,
               durationMin,
             }
             if (originCityId !== null) input.cityId = originCityId
+            if (rideType === 'round_trip' && tripHours != null) input.tripHours = tripHours
             return fetchFareEstimate(input)
           })
         )
@@ -67,7 +70,7 @@ export function useFareEstimates(
         setError("Couldn't get a fare estimate, try again")
         setLoading(false)
       })
-  }, [distanceKm, durationMin, originCityId])
+  }, [distanceKm, durationMin, originCityId, rideType, tripHours])
 
   useEffect(() => {
     load()

@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import * as SplashScreen from 'expo-splash-screen'
 import { SplashOverlay, useAppFonts } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useLocationStore } from '@/store/useLocationStore'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
 
@@ -17,6 +18,13 @@ export default function RootLayout() {
   useEffect(() => {
     if (hasHydrated && fontsLoaded) SplashScreen.hideAsync().catch(() => {})
   }, [hasHydrated, fontsLoaded])
+
+  // Fire the GPS fix + reverse-geocode once, as early as the app can (well
+  // before the search screen -- often the booking flow's whole reason for
+  // being slow to open -- ever mounts). See useLocationStore's own comment.
+  useEffect(() => {
+    useLocationStore.getState().init()
+  }, [])
 
   // Splash stays visible until zustand-persist finishes rehydrating (success or
   // failure -- see useAuthStore's onRehydrateStorage) and the brand fonts are

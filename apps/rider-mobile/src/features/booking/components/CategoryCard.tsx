@@ -18,7 +18,7 @@ export function CategoryCard({ category, fareTotal, loading, selected, onPress }
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.row, selected ? styles.rowSelected : null]}
+      style={({ pressed }) => [styles.row, selected ? styles.rowSelected : null, pressed ? styles.rowPressed : null]}
       accessibilityRole="button"
       accessibilityLabel={`${category.displayName}${fareTotal != null ? `, fare rupees ${Math.round(fareTotal)}` : ''}`}
       accessibilityState={{ selected }}
@@ -60,6 +60,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   rowSelected: { backgroundColor: colors.primarySubtle, borderLeftColor: colors.primary, borderRadius: 12 },
+  rowPressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
   iconWrap: {
     width: 48,
     height: 48,
