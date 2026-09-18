@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
 import type { PickedFile } from '../api'
 
 export type DocSlotState = 'idle' | 'uploading' | 'done' | 'error'
@@ -62,7 +62,11 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
   const uploading = state === 'uploading' || busy
 
   return (
-    <Pressable onPress={handlePress} disabled={uploading} style={[styles.slot, rejected ? styles.slotRejected : null]}>
+    <Pressable
+      onPress={handlePress}
+      disabled={uploading}
+      style={({ pressed }) => [styles.slot, rejected ? styles.slotRejected : null, pressed && !uploading ? styles.pressedScale : null]}
+    >
       {thumbnailUrl ? (
         <Image source={{ uri: thumbnailUrl }} style={styles.thumb} />
       ) : (
@@ -97,8 +101,8 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
 }
 
 const styles = StyleSheet.create({
-  slot: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface2, borderRadius: radii.lg, padding: spacing.sm + 4, borderWidth: 1, borderColor: colors.border },
-  slotRejected: { borderColor: colors.error },
+  slot: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.sm + 4, ...shadows.card },
+  slotRejected: { borderWidth: 1, borderColor: colors.error },
   thumb: { width: 48, height: 48, borderRadius: radii.md },
   thumbEmpty: { backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   label: { ...typography.body, color: colors.ink900, fontWeight: '600' },
@@ -108,4 +112,5 @@ const styles = StyleSheet.create({
   statusDone: { color: colors.success, fontWeight: '600' },
   statusRejected: { ...typography.caption, color: colors.error, fontWeight: '600', marginTop: 2 },
   rejectionNote: { ...typography.caption, color: colors.ink400, marginTop: 2 },
+  pressedScale: { transform: [{ scale: 0.97 }] },
 })

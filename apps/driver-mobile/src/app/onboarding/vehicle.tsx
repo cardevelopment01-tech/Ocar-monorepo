@@ -134,7 +134,7 @@ export default function VehicleRegistrationScreen() {
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.errorText}>Failed to load vehicle data.</Text>
-        <Pressable onPress={() => void loadDropdownData()} style={styles.retryBtn}>
+        <Pressable onPress={() => void loadDropdownData()} style={({ pressed }) => [styles.retryBtn, pressed ? styles.pressedScale : null]}>
           <Feather name="refresh-cw" size={14} color={colors.primary} />
           <Text style={styles.retryText}>Tap to retry</Text>
         </Pressable>
@@ -157,7 +157,11 @@ export default function VehicleRegistrationScreen() {
         </Text>
       ) : null}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      <Pressable onPress={handleContinue} disabled={!isValid || isLoading} style={[styles.continueBtn, (!isValid || isLoading) ? styles.disabled : null]}>
+      <Pressable
+        onPress={handleContinue}
+        disabled={!isValid || isLoading}
+        style={({ pressed }) => [styles.continueBtn, (!isValid || isLoading) ? styles.disabled : null, pressed && isValid && !isLoading ? styles.pressedScale : null]}
+      >
         {isLoading ? <ActivityIndicator color={colors.inkInverse} /> : <Text style={styles.continueText}>Continue</Text>}
       </Pressable>
     </>
@@ -171,7 +175,11 @@ export default function VehicleRegistrationScreen() {
       <Field label="Vehicle Category">
         <View style={styles.categoryGrid}>
           {categories.map((c) => (
-            <Pressable key={c.id} onPress={() => setCategoryId(Number(c.id))} style={[styles.categoryBtn, categoryId === Number(c.id) ? styles.categoryBtnActive : null]}>
+            <Pressable
+              key={c.id}
+              onPress={() => setCategoryId(Number(c.id))}
+              style={({ pressed }) => [styles.categoryBtn, categoryId === Number(c.id) ? styles.categoryBtnActive : null, pressed ? styles.pressedScale : null]}
+            >
               <Text style={[styles.categoryText, categoryId === Number(c.id) ? styles.categoryTextActive : null]}>{c.display_name}</Text>
             </Pressable>
           ))}
@@ -208,7 +216,11 @@ export default function VehicleRegistrationScreen() {
       <Field label="Air Conditioning">
         <View style={styles.acRow}>
           {[true, false].map((v) => (
-            <Pressable key={String(v)} onPress={() => setAc(v)} style={[styles.acBtn, ac === v ? styles.acBtnActive : null]}>
+            <Pressable
+              key={String(v)}
+              onPress={() => setAc(v)}
+              style={({ pressed }) => [styles.acBtn, ac === v ? styles.acBtnActive : null, pressed ? styles.pressedScale : null]}
+            >
               <Text style={[styles.acText, ac === v ? styles.acTextActive : null]}>{v ? 'AC Available' : 'Non-AC'}</Text>
             </Pressable>
           ))}
@@ -238,4 +250,5 @@ const styles = StyleSheet.create({
   acBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },
   acText: { ...typography.body, color: colors.ink600, fontWeight: '700' },
   acTextActive: { color: colors.primary },
+  pressedScale: { transform: [{ scale: 0.97 }] },
 })

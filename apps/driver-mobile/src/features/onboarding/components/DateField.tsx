@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { BlurView } from 'expo-blur'
+import { colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
 import { Field } from './FormPrimitives'
 
 export type DateFieldProps = {
@@ -43,7 +44,7 @@ export function DateField({ label, value, onChange, minDate, maxDate, placeholde
   if (Platform.OS === 'android') {
     return (
       <Field label={label}>
-        <Pressable onPress={openPicker} style={styles.btn}>
+        <Pressable onPress={openPicker} style={({ pressed }) => [styles.btn, pressed ? styles.pressedScale : null]}>
           <Text style={[styles.text, !value ? styles.placeholder : null]}>{value || placeholder}</Text>
           <Feather name="calendar" size={16} color={colors.ink400} />
         </Pressable>
@@ -65,14 +66,16 @@ export function DateField({ label, value, onChange, minDate, maxDate, placeholde
 
   return (
     <Field label={label}>
-      <Pressable onPress={openPicker} style={styles.btn}>
+      <Pressable onPress={openPicker} style={({ pressed }) => [styles.btn, pressed ? styles.pressedScale : null]}>
         <Text style={[styles.text, !value ? styles.placeholder : null]}>{value || placeholder}</Text>
         <Feather name="calendar" size={16} color={colors.ink400} />
       </Pressable>
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <View style={styles.backdrop}>
           <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
           <View style={styles.sheet}>
+            <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+            <View style={styles.sheetTopEdge} />
             <View style={styles.handle} />
             <DateTimePicker
               value={draft}
@@ -81,7 +84,7 @@ export function DateField({ label, value, onChange, minDate, maxDate, placeholde
               {...rangeProps(minDate, maxDate)}
               onChange={(_event, date) => date && setDraft(date)}
             />
-            <Pressable onPress={() => { onChange(toISODate(draft)); setOpen(false) }} style={styles.doneBtn}>
+            <Pressable onPress={() => { onChange(toISODate(draft)); setOpen(false) }} style={({ pressed }) => [styles.doneBtn, pressed ? styles.pressedScale : null]}>
               <Text style={styles.doneText}>Done</Text>
             </Pressable>
           </View>
@@ -92,12 +95,14 @@ export function DateField({ label, value, onChange, minDate, maxDate, placeholde
 }
 
 const styles = StyleSheet.create({
-  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, borderWidth: 1, borderColor: colors.border, minHeight: 52 },
+  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, minHeight: 52, ...shadows.card },
   text: { ...typography.body, color: colors.ink900, fontWeight: '600' },
   placeholder: { color: colors.ink400, fontWeight: '400' },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg },
+  sheet: { backgroundColor: 'rgba(255,255,255,0.75)', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, overflow: 'hidden' },
+  sheetTopEdge: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.5)' },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.sm },
   doneBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 6, alignItems: 'center', marginTop: spacing.sm },
   doneText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  pressedScale: { transform: [{ scale: 0.97 }] },
 })

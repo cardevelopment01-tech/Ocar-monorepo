@@ -1,38 +1,88 @@
-import { useState } from 'react'
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useRef, useState } from 'react'
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
-import * as ImagePicker from 'expo-image-picker'
+import { CameraView, useCameraPermissions } from 'expo-camera'
+import { getInfoAsync } from 'expo-file-system/legacy'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type PickedFile } from '@/features/onboarding/api'
 import { OnboardingShell } from '@/features/onboarding/components/OnboardingShell'
 
-type Stage = 'gate' | 'preview' | 'submitting'
+type Stage = 'gate' | 'camera' | 'preview' | 'submitting'
+
+// Matches web's OvalOverlay (ReferenceSelfie.tsx): a static KYC-style oval
+// guide with L-shaped corner brackets. No live face detection on web either --
+// this is a framing guide, not a liveness check.
+const OVAL_WIDTH_RATIO = 0.62
+const OVAL_ASPECT = 3 / 4
+const BRACKET_ARM = 18
+const BRACKET_THICKNESS = 3
+
+function OvalOverlay({ dimmed, screenWidth, screenHeight }: { dimmed?: boolean; screenWidth: number; screenHeight: number }) {
+  const ovalWidth = screenWidth * OVAL_WIDTH_RATIO
+  const ovalHeight = ovalWidth / OVAL_ASPECT
+  const sideBandWidth = (screenWidth - ovalWidth) / 2
+  const topBandHeight = (screenHeight - ovalHeight) / 2
+  const dimColor = dimmed ? 'rgba(0,0,0,0.52)' : 'rgba(0,0,0,0.60)'
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View style={[styles.dimBand, { top: 0, left: 0, right: 0, height: topBandHeight, backgroundColor: dimColor }]} />
+      <View style={[styles.dimBand, { bottom: 0, left: 0, right: 0, height: topBandHeight, backgroundColor: dimColor }]} />
+      <View style={[styles.dimBand, { top: topBandHeight, left: 0, width: sideBandWidth, height: ovalHeight, backgroundColor: dimColor }]} />
+      <View style={[styles.dimBand, { top: topBandHeight, right: 0, width: sideBandWidth, height: ovalHeight, backgroundColor: dimColor }]} />
+
+      <View style={{ position: 'absolute', top: topBandHeight, left: sideBandWidth, width: ovalWidth, height: ovalHeight }}>
+        <View style={[styles.ovalRing, { width: ovalWidth, height: ovalHeight, borderRadius: ovalWidth / 2 }]} />
+        <View style={[styles.bracket, { top: 0, left: 0, width: BRACKET_ARM, height: BRACKET_THICKNESS }]} />
+        <View style={[styles.bracket, { top: 0, left: 0, width: BRACKET_THICKNESS, height: BRACKET_ARM }]} />
+        <View style={[styles.bracket, { top: 0, right: 0, width: BRACKET_ARM, height: BRACKET_THICKNESS }]} />
+        <View style={[styles.bracket, { top: 0, right: 0, width: BRACKET_THICKNESS, height: BRACKET_ARM }]} />
+        <View style={[styles.bracket, { bottom: 0, left: 0, width: BRACKET_ARM, height: BRACKET_THICKNESS }]} />
+        <View style={[styles.bracket, { bottom: 0, left: 0, width: BRACKET_THICKNESS, height: BRACKET_ARM }]} />
+        <View style={[styles.bracket, { bottom: 0, right: 0, width: BRACKET_ARM, height: BRACKET_THICKNESS }]} />
+        <View style={[styles.bracket, { bottom: 0, right: 0, width: BRACKET_THICKNESS, height: BRACKET_ARM }]} />
+      </View>
+    </View>
+  )
+}
 
 export default function ReferenceSelfieScreen() {
   const router = useRouter()
   const updateDriver = useAuthStore((s) => s.updateDriver)
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions()
+  const cameraRef = useRef<CameraView>(null)
 
   const [stage, setStage] = useState<Stage>('gate')
   const [photo, setPhoto] = useState<PickedFile | null>(null)
   const [permissionDenied, setPermissionDenied] = useState(false)
+  const [cameraReady, setCameraReady] = useState(false)
+  const [capturing, setCapturing] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [permission, requestPermission] = useCameraPermissions()
 
-  async function takeSelfie() {
-    const perm = await ImagePicker.requestCameraPermissionsAsync()
-    if (!perm.granted) { setPermissionDenied(true); return }
+  async function openCamera() {
+    const result = permission?.granted ? permission : await requestPermission()
+    if (!result.granted) { setPermissionDenied(true); return }
     setPermissionDenied(false)
-    const result = await ImagePicker.launchCameraAsync({
-      cameraType: ImagePicker.CameraType.front,
-      quality: 0.75,
-      allowsEditing: true,
-      aspect: [1, 1],
-    })
-    if (result.canceled || !result.assets[0]) return
-    const asset = result.assets[0]
-    setPhoto({ uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg', fileSize: asset.fileSize ?? 0 })
-    setStage('preview')
+    setCameraReady(false)
+    setStage('camera')
+  }
+
+  async function capture() {
+    if (!cameraRef.current || capturing) return
+    setCapturing(true)
+    try {
+      const shot = await cameraRef.current.takePictureAsync({ quality: 0.75 })
+      if (!shot) return
+      const info = await getInfoAsync(shot.uri)
+      setPhoto({ uri: shot.uri, mimeType: 'image/jpeg', fileSize: info.exists ? (info.size ?? 0) : 0 })
+      setStage('preview')
+    } finally {
+      setCapturing(false)
+    }
   }
 
   async function handleSubmit() {
@@ -50,13 +100,64 @@ export default function ReferenceSelfieScreen() {
     }
   }
 
+  if (stage === 'camera') {
+    return (
+      <View style={styles.cameraScreen}>
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          facing="front"
+          onCameraReady={() => setCameraReady(true)}
+        />
+
+        {!cameraReady ? (
+          <Animated.View exiting={FadeOut.duration(250)} style={[StyleSheet.absoluteFill, styles.loadingVeil]}>
+            <ActivityIndicator color={colors.inkInverse} size="large" />
+          </Animated.View>
+        ) : null}
+
+        <OvalOverlay screenWidth={screenWidth} screenHeight={screenHeight} />
+
+        <View style={styles.cameraHeader}>
+          <Pressable
+            onPress={() => setStage('gate')}
+            style={({ pressed }) => [styles.cameraBackBtn, pressed ? styles.pressedScale : null]}
+            accessibilityLabel="Go back"
+            hitSlop={8}
+          >
+            <Feather name="arrow-left" size={18} color={colors.inkInverse} />
+          </Pressable>
+        </View>
+
+        {cameraReady ? (
+          <Animated.View entering={FadeIn.delay(400).duration(250)} style={styles.chipTop} pointerEvents="none">
+            <Text style={styles.chipTopText}>Position your face in the oval</Text>
+          </Animated.View>
+        ) : null}
+        {cameraReady ? (
+          <Animated.View entering={FadeIn.delay(500).duration(250)} style={styles.chipBottom} pointerEvents="none">
+            <Text style={styles.chipBottomText}>Look straight  ·  Good lighting  ·  Clear view of face</Text>
+          </Animated.View>
+        ) : null}
+
+        <View style={styles.shutterRow}>
+          <Pressable onPress={() => void capture()} disabled={!cameraReady || capturing} style={styles.shutterBtn} accessibilityLabel="Capture selfie">
+            <View style={styles.shutterRing} />
+            <View style={styles.shutterDisc} />
+          </Pressable>
+          <Text style={styles.shutterHint}>Tap to capture</Text>
+        </View>
+      </View>
+    )
+  }
+
   const footer = stage === 'preview' ? (
     <>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
-      <Pressable onPress={() => void handleSubmit()} style={styles.primaryBtn}>
+      <Pressable onPress={() => void handleSubmit()} style={({ pressed }) => [styles.primaryBtn, pressed ? styles.pressedScale : null]}>
         <Text style={styles.primaryText}>Submit Application</Text>
       </Pressable>
-      <Pressable onPress={() => { setPhoto(null); void takeSelfie() }} style={styles.secondaryBtn}>
+      <Pressable onPress={() => { setPhoto(null); void openCamera() }} style={({ pressed }) => [styles.secondaryBtn, pressed ? styles.pressedScale : null]}>
         <Feather name="refresh-cw" size={14} color={colors.ink600} />
         <Text style={styles.secondaryText}>Retake</Text>
       </Pressable>
@@ -67,7 +168,7 @@ export default function ReferenceSelfieScreen() {
       <Text style={styles.submittingText}>Submitting…</Text>
     </View>
   ) : (
-    <Pressable onPress={() => void takeSelfie()} style={styles.primaryBtn}>
+    <Pressable onPress={() => void openCamera()} style={({ pressed }) => [styles.primaryBtn, pressed ? styles.pressedScale : null]}>
       <Feather name="camera" size={16} color={colors.inkInverse} />
       <Text style={styles.primaryText}>Open Camera</Text>
     </Pressable>
@@ -119,4 +220,22 @@ const styles = StyleSheet.create({
   secondaryText: { ...typography.body, color: colors.ink600, fontWeight: '600' },
   submittingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
   submittingText: { ...typography.body, color: colors.ink600, fontWeight: '600' },
+  pressedScale: { transform: [{ scale: 0.97 }] },
+
+  cameraScreen: { flex: 1, backgroundColor: '#000000' },
+  loadingVeil: { backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center', zIndex: 20 },
+  dimBand: { position: 'absolute' },
+  ovalRing: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)' },
+  bracket: { position: 'absolute', backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 1.5 },
+  cameraHeader: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.xl + spacing.md, zIndex: 15 },
+  cameraBackBtn: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  chipTop: { position: 'absolute', top: spacing.xl + spacing.xl + spacing.md, left: 0, right: 0, alignItems: 'center', zIndex: 15 },
+  chipTopText: { ...typography.caption, color: colors.inkInverse, fontWeight: '700', letterSpacing: 0.3, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radii.full, overflow: 'hidden' },
+  chipBottom: { position: 'absolute', bottom: 180, left: spacing.lg, right: spacing.lg, alignItems: 'center', zIndex: 15 },
+  chipBottomText: { ...typography.caption, color: 'rgba(255,255,255,0.9)', textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm + 2, borderRadius: radii.full, overflow: 'hidden' },
+  shutterRow: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#000000', paddingTop: spacing.lg, paddingBottom: spacing.xl + spacing.sm, alignItems: 'center', gap: spacing.sm },
+  shutterBtn: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center' },
+  shutterRing: { position: 'absolute', width: 76, height: 76, borderRadius: 38, borderWidth: 2, borderColor: 'rgba(255,255,255,0.6)' },
+  shutterDisc: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.inkInverse },
+  shutterHint: { ...typography.caption, color: 'rgba(255,255,255,0.7)' },
 })

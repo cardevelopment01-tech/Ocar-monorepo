@@ -70,6 +70,12 @@
           "photosPermission": "Ocar needs access to your photos to upload your documents and vehicle papers.",
           "cameraPermission": "Ocar needs camera access to photograph your documents and take your reference selfie."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Ocar needs camera access to take your reference selfie."
+        }
       ]
     ]
   }

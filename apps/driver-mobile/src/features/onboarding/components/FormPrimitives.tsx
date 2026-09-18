@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { BlurView } from 'expo-blur'
+import { colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
 
 export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
@@ -19,7 +20,15 @@ export function FieldError({ message }: { message?: string | null }) {
 }
 
 export function TextField(props: React.ComponentProps<typeof TextInput>) {
-  return <TextInput placeholderTextColor={colors.ink400} style={[styles.input, props.style]} {...props} />
+  return (
+    <TextInput
+      placeholderTextColor={colors.ink400}
+      selectionColor={colors.primary}
+      cursorColor={colors.primary}
+      style={[styles.input, props.style]}
+      {...props}
+    />
+  )
 }
 
 export type ChipOption = { value: string; label: string }
@@ -33,10 +42,11 @@ export function ChipGroup({ options, value, multiValue, onChange, columns }: { o
           <Pressable
             key={opt.value}
             onPress={() => onChange(opt.value)}
-            style={[
+            style={({ pressed }) => [
               styles.chip,
               columns ? { flex: 1 } : null,
               active ? styles.chipActive : null,
+              pressed ? styles.pressedScale : null,
             ]}
           >
             {active ? <Feather name="check" size={12} color={colors.primary} style={{ marginRight: 4 }} /> : null}
@@ -54,10 +64,20 @@ export function Stepper({ value, min, max, unit, onChange }: { value: number; mi
       <Text style={styles.stepperValue}>{value}</Text>
       <Text style={styles.stepperUnit}>{value === 1 ? unit : `${unit}s`}</Text>
       <View style={styles.stepperBtnRow}>
-        <Pressable onPress={() => onChange(Math.max(min, value - 1))} disabled={value <= min} style={[styles.stepperBtn, value <= min ? styles.stepperBtnDisabled : null]}>
+        <Pressable
+          onPress={() => onChange(Math.max(min, value - 1))}
+          disabled={value <= min}
+          hitSlop={8}
+          style={({ pressed }) => [styles.stepperBtn, value <= min ? styles.stepperBtnDisabled : null, pressed ? styles.pressedScale : null]}
+        >
           <Feather name="minus" size={14} color={colors.primary} />
         </Pressable>
-        <Pressable onPress={() => onChange(Math.min(max, value + 1))} disabled={value >= max} style={[styles.stepperBtn, value >= max ? styles.stepperBtnDisabled : null]}>
+        <Pressable
+          onPress={() => onChange(Math.min(max, value + 1))}
+          disabled={value >= max}
+          hitSlop={8}
+          style={({ pressed }) => [styles.stepperBtn, value >= max ? styles.stepperBtnDisabled : null, pressed ? styles.pressedScale : null]}
+        >
           <Feather name="plus" size={14} color={colors.primary} />
         </Pressable>
       </View>
@@ -90,7 +110,7 @@ export function PickerField({
     <Field label={label}>
       <Pressable
         onPress={() => !disabled && setOpen(true)}
-        style={[styles.pickerBtn, disabled ? styles.pickerBtnDisabled : null]}
+        style={({ pressed }) => [styles.pickerBtn, disabled ? styles.pickerBtnDisabled : null, pressed ? styles.pressedScale : null]}
       >
         <Text style={[styles.pickerText, !selected ? styles.pickerPlaceholder : null]}>
           {loading ? 'Loading…' : selected?.label ?? placeholder}
@@ -98,10 +118,12 @@ export function PickerField({
         <Feather name="chevron-down" size={16} color={colors.ink400} />
       </Pressable>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <View style={styles.backdrop}>
           <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
           <View style={styles.sheet}>
+            <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+            <View style={styles.sheetTopEdge} />
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>{label}</Text>
             {searchable ? (
@@ -119,7 +141,7 @@ export function PickerField({
                 <Pressable
                   key={String(opt.value)}
                   onPress={() => { onSelect(opt.value); setOpen(false); setQuery('') }}
-                  style={styles.optionRow}
+                  style={({ pressed }) => [styles.optionRow, pressed ? styles.optionRowPressed : null]}
                 >
                   <Text style={styles.optionText}>{opt.label}</Text>
                   {opt.value === value ? <Feather name="check" size={16} color={colors.primary} /> : null}
@@ -139,28 +161,31 @@ const styles = StyleSheet.create({
   fieldLabel: { ...typography.caption, color: colors.ink600, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
   fieldHint: { ...typography.caption, color: colors.ink400 },
   fieldError: { ...typography.caption, color: colors.error, fontWeight: '600' },
-  input: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, borderWidth: 1, borderColor: colors.border },
+  input: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, ...shadows.card },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs + 2 },
-  chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.sm, borderRadius: radii.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface2, minHeight: 40, justifyContent: 'center' },
+  pressedScale: { transform: [{ scale: 0.97 }] },
+  chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.sm, borderRadius: radii.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface, minHeight: 44, justifyContent: 'center' },
   chipActive: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },
   chipText: { ...typography.caption, color: colors.ink600, fontWeight: '700' },
   chipTextActive: { color: colors.primary },
-  stepperCard: { alignItems: 'center', backgroundColor: colors.surface, borderRadius: radii.xl, paddingVertical: spacing.md, borderWidth: 1, borderColor: colors.border },
+  stepperCard: { alignItems: 'center', backgroundColor: colors.surface, borderRadius: radii.xl, paddingVertical: spacing.md, ...shadows.card },
   stepperValue: { fontSize: 32, fontWeight: '800', color: colors.ink900 },
   stepperUnit: { ...typography.caption, color: colors.ink400, fontWeight: '700', textTransform: 'uppercase', marginBottom: spacing.sm },
   stepperBtnRow: { flexDirection: 'row', gap: spacing.md },
   stepperBtn: { width: 32, height: 32, borderRadius: radii.full, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
   stepperBtnDisabled: { opacity: 0.3 },
-  pickerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, borderWidth: 1, borderColor: colors.border, minHeight: 52 },
+  pickerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, minHeight: 52, ...shadows.card },
   pickerBtnDisabled: { opacity: 0.5 },
   pickerText: { ...typography.body, color: colors.ink900, fontWeight: '600' },
   pickerPlaceholder: { color: colors.ink400, fontWeight: '400' },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, maxHeight: '75%' },
+  sheet: { backgroundColor: 'rgba(255,255,255,0.75)', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, maxHeight: '75%', overflow: 'hidden' },
+  sheetTopEdge: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.5)' },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.md },
   sheetTitle: { ...typography.title, color: colors.ink900, fontWeight: '800', marginBottom: spacing.sm },
   searchInput: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.sm },
   optionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.sm + 4, borderBottomWidth: 1, borderBottomColor: colors.border },
+  optionRowPressed: { backgroundColor: colors.surface2 },
   optionText: { ...typography.body, color: colors.ink900 },
   emptyText: { ...typography.body, color: colors.ink400, textAlign: 'center', paddingVertical: spacing.lg },
 })

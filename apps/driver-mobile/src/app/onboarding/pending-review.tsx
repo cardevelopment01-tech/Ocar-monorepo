@@ -102,7 +102,7 @@ export default function PendingReviewScreen() {
             ))}
           </View>
         ) : null}
-        <Pressable onPress={() => router.replace('/onboarding/documents')} style={styles.primaryBtn}>
+        <Pressable onPress={() => router.replace('/onboarding/documents')} style={({ pressed }) => [styles.primaryBtn, pressed ? styles.pressedScale : null]}>
           <Text style={styles.primaryText}>Fix Documents</Text>
         </Pressable>
         {driver.code ? (
@@ -128,7 +128,7 @@ export default function PendingReviewScreen() {
             <Text style={styles.codeHint}>Provide this when contacting support</Text>
           </View>
         ) : null}
-        <Pressable onPress={() => void checkStatus()} disabled={checking} style={styles.checkBtn}>
+        <Pressable onPress={() => void checkStatus()} disabled={checking} style={({ pressed }) => [styles.checkBtn, pressed && !checking ? styles.pressedScale : null]}>
           <Feather name="refresh-cw" size={14} color={colors.primary} />
           <Text style={styles.checkText}>{checking ? 'Checking…' : 'Check status'}</Text>
         </Pressable>
@@ -168,7 +168,7 @@ export default function PendingReviewScreen() {
           <Text style={styles.codeHint}>Keep this for support enquiries</Text>
         </View>
       ) : null}
-      <Pressable onPress={() => void checkStatus()} disabled={checking} style={styles.checkBtn}>
+      <Pressable onPress={() => void checkStatus()} disabled={checking} style={({ pressed }) => [styles.checkBtn, pressed && !checking ? styles.pressedScale : null]}>
         <Feather name="refresh-cw" size={14} color={colors.primary} />
         <Text style={styles.checkText}>{checking ? 'Checking…' : 'Check approval status'}</Text>
       </Pressable>
@@ -194,4 +194,5 @@ const styles = StyleSheet.create({
   codeHint: { ...typography.caption, color: colors.ink400, marginTop: 2 },
   checkBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   checkText: { ...typography.body, color: colors.primary, fontWeight: '700' },
+  pressedScale: { transform: [{ scale: 0.97 }] },
 })

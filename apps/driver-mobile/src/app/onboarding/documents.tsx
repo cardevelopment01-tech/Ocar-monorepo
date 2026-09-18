@@ -125,7 +125,11 @@ export default function DocumentsScreen() {
   const footer = (
     <>
       {!canContinue && missingHint ? <Text style={styles.hint}>{missingHint}</Text> : null}
-      <Pressable onPress={() => void handleContinue()} disabled={!canContinue || isSaving} style={[styles.continueBtn, (!canContinue || isSaving) ? styles.disabled : null]}>
+      <Pressable
+        onPress={() => void handleContinue()}
+        disabled={!canContinue || isSaving}
+        style={({ pressed }) => [styles.continueBtn, (!canContinue || isSaving) ? styles.disabled : null, pressed && canContinue && !isSaving ? styles.pressedScale : null]}
+      >
         {isSaving ? <ActivityIndicator color={colors.inkInverse} /> : <Text style={styles.continueText}>Continue to Selfie</Text>}
       </Pressable>
     </>
@@ -226,4 +230,5 @@ const styles = StyleSheet.create({
   groupHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   groupLabel: { ...typography.body, color: colors.ink900, fontWeight: '700' },
   optionalBadge: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
+  pressedScale: { transform: [{ scale: 0.97 }] },
 })
