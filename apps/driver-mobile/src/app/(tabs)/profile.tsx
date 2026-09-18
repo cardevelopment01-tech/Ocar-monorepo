@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -33,6 +34,7 @@ function normalizePhone(raw: string | null | undefined): string {
 }
 
 export default function ProfileScreen() {
+  const router = useRouter()
   const insets = useSafeAreaInsets()
   const driver = useAuthStore((s) => s.driver)
   const clearAuth = useAuthStore((s) => s.clearAuth)
@@ -156,6 +158,16 @@ export default function ProfileScreen() {
         <Animated.View entering={FadeInDown.delay(160).duration(360)}>
           <Text style={styles.sectionLabel}>ACCOUNT</Text>
           <View style={styles.menuCard}>
+            <Pressable onPress={() => router.push('/wallet')} style={[styles.menuRow, styles.menuRowBorder]}>
+              <View style={styles.menuIcon}>
+                <Feather name="credit-card" size={15} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuLabel}>Wallet</Text>
+                <Text style={styles.menuSub}>Compliance deposit & transactions</Text>
+              </View>
+              <Feather name="chevron-right" size={14} color={colors.ink400} />
+            </Pressable>
             <Pressable style={styles.menuRow}>
               <View style={styles.menuIcon}>
                 <Feather name="user" size={15} color={colors.primary} />
