@@ -13,6 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.1",
+    "@expo-google-fonts/space-grotesk": "^0.4.1",
     "@ocar/mobile-shared": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "9.1.0",
@@ -21,6 +23,7 @@
     "@shopify/flash-list": "2.3.2",
     "expo": "57.0.22",
     "expo-constants": "~57.0.18",
+    "expo-font": "~57.0.4",
     "expo-image-picker": "~57.0.18",
     "expo-linear-gradient": "~57.0.2",
     "expo-linking": "~57.0.10",

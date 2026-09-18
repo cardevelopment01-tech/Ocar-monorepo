@@ -1,5 +1,14 @@
-import { useEffect, useRef } from 'react'
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect } from 'react'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
 import { colors } from '@ocar/mobile-shared'
@@ -14,27 +23,28 @@ export type OnlineToggleProps = {
 // "go online" control is this 72px circular gradient power-button with an
 // expanding pulse ring when online, never a plain OS Switch.
 export function OnlineToggle({ isOnline, onToggle, disabled = false }: OnlineToggleProps) {
-  const ring = useRef(new Animated.Value(0)).current
+  const reduced = useReducedMotion()
+  const active = isOnline && !reduced
+  const t = useSharedValue(0)
 
   useEffect(() => {
-    if (!isOnline) return
-    const loop = Animated.loop(
-      Animated.timing(ring, { toValue: 1, duration: 1600, easing: Easing.out(Easing.quad), useNativeDriver: true })
-    )
-    loop.start()
-    return () => { loop.stop(); ring.setValue(0) }
-  }, [isOnline, ring])
+    if (active) {
+      t.set(withRepeat(withTiming(1, { duration: 1600, easing: Easing.out(Easing.quad) }), -1, false))
+    } else {
+      cancelAnimation(t)
+      t.set(0)
+    }
+  }, [active, t])
 
-  const ringScale = ring.interpolate({ inputRange: [0, 1], outputRange: [1, 1.6] })
-  const ringOpacity = ring.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] })
+  const ringStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + t.get() * 0.6 }],
+    opacity: 0.55 * (1 - t.get()),
+  }))
 
   return (
     <View style={styles.wrap}>
       {isOnline ? (
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.ring, { transform: [{ scale: ringScale }], opacity: ringOpacity }]}
-        />
+        <Animated.View pointerEvents="none" style={[styles.ring, ringStyle]} />
       ) : null}
 
       <Pressable

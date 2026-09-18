@@ -94,13 +94,21 @@ export const gradientPrimary = ['#0A9FB0', '#DC3E93'] as const
 // a real per-app shape rule in both sites' CSS, not just a color difference.
 export const buttonRadius = isRider ? 9999 : 16
 
+// Font family names match what useAppFonts() (see fonts.ts) registers via
+// @expo-google-fonts -- these packages ship one file per weight, not a single
+// variable family, so fontFamily must name the exact weight and fontWeight is
+// kept alongside only as a harmless, non-functional hint (RN doesn't
+// synthesize bold on a custom font that has no bold file loaded). Until
+// useAppFonts() actually ran, every one of these silently fell back to the
+// OS default font (Roboto/San Francisco) -- neither mobile app ever loaded
+// Space Grotesk or Plus Jakarta Sans before this.
 export const typography = {
-  display: { fontFamily: 'Space Grotesk', fontSize: 28, fontWeight: '700', lineHeight: 34, letterSpacing: -0.84 },
-  headline: { fontFamily: 'Space Grotesk', fontSize: 22, fontWeight: '700', lineHeight: 29, letterSpacing: -0.44 },
-  title: { fontFamily: 'Plus Jakarta Sans', fontSize: 18, fontWeight: '600', lineHeight: 25 },
-  body: { fontFamily: 'Plus Jakarta Sans', fontSize: 16, fontWeight: '400', lineHeight: 26 },
-  label: { fontFamily: 'Plus Jakarta Sans', fontSize: 13, fontWeight: '500', lineHeight: 18 },
-  caption: { fontFamily: 'Plus Jakarta Sans', fontSize: 12, fontWeight: '400', lineHeight: 18 },
+  display: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 28, fontWeight: '700', lineHeight: 34, letterSpacing: -0.84 },
+  headline: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 22, fontWeight: '700', lineHeight: 29, letterSpacing: -0.44 },
+  title: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 18, fontWeight: '600', lineHeight: 25 },
+  body: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 16, fontWeight: '400', lineHeight: 26 },
+  label: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 13, fontWeight: '500', lineHeight: 18 },
+  caption: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, fontWeight: '400', lineHeight: 18 },
 } as const
 
 export const radii = {

@@ -1,4 +1,5 @@
 export * from './theme/tokens'
+export * from './theme/useAppFonts'
 export * from './api/client'
 export * from './api/types'
 export * from './api/errorMessages'

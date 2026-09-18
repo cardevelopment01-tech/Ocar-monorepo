@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
+import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
@@ -16,21 +17,27 @@ const DOC_LABELS: Record<string, string> = {
 }
 
 function PulsingIcon({ name, color, bg }: { name: React.ComponentProps<typeof Feather>['name']; color: string; bg: string }) {
-  const pulse = useRef(new Animated.Value(0.9)).current
+  const reduced = useReducedMotion()
+  const pulse = useSharedValue(1)
 
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.08, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.9, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ])
+    if (reduced) return
+    pulse.set(
+      withRepeat(
+        withSequence(
+          withTiming(1.08, { duration: 1400, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0.9, { duration: 1400, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        true
+      )
     )
-    loop.start()
-    return () => loop.stop()
-  }, [pulse])
+  }, [reduced, pulse])
+
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: pulse.get() }] }))
 
   return (
-    <Animated.View style={[styles.iconCircle, { backgroundColor: bg, transform: [{ scale: pulse }] }]}>
+    <Animated.View style={[styles.iconCircle, { backgroundColor: bg }, style]}>
       <Feather name={name} size={36} color={color} />
     </Animated.View>
   )

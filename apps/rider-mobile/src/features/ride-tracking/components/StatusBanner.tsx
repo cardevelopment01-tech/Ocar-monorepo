@@ -1,5 +1,14 @@
-import { useEffect, useRef } from 'react'
-import { Animated, StyleSheet, Text, View } from 'react-native'
+import { useEffect } from 'react'
+import { StyleSheet, Text, View } from 'react-native'
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated'
 import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { STATUS_CONFIG, statusBg, type StatusKey } from '../statusConfig'
 
@@ -9,33 +18,33 @@ export type StatusBannerProps = {
   eta: { etaMin: number; distanceKm: number } | null
 }
 
+// Reduced-motion users still see the plain dot (state is legible without the
+// pulse); everyone else gets a 0->1 ramp looped on the UI thread, driving both
+// opacity and scale off one shared value -- was two `Animated.Value`s on the
+// RN-runtime `Animated` API, which this project's own rules ban for anything
+// beyond a one-shot fade (Reanimated only).
 function PulsingDot({ color, pulse }: { color: string; pulse: boolean }) {
-  const scale = useRef(new Animated.Value(1)).current
-  const opacity = useRef(new Animated.Value(0.6)).current
+  const reduced = useReducedMotion()
+  const active = pulse && !reduced
+  const t = useSharedValue(0)
 
   useEffect(() => {
-    if (!pulse) return
-    const loop = Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(scale, { toValue: 2.2, duration: 900, useNativeDriver: true }),
-          Animated.timing(scale, { toValue: 1, duration: 0, useNativeDriver: true }),
-        ]),
-        Animated.sequence([
-          Animated.timing(opacity, { toValue: 0, duration: 900, useNativeDriver: true }),
-          Animated.timing(opacity, { toValue: 0.6, duration: 0, useNativeDriver: true }),
-        ]),
-      ])
-    )
-    loop.start()
-    return () => loop.stop()
-  }, [pulse, scale, opacity])
+    if (active) {
+      t.set(withRepeat(withTiming(1, { duration: 900, easing: Easing.out(Easing.quad) }), -1, false))
+    } else {
+      cancelAnimation(t)
+      t.set(0)
+    }
+  }, [active, t])
+
+  const style = useAnimatedStyle(() => ({
+    opacity: 0.6 * (1 - t.get()),
+    transform: [{ scale: 1 + t.get() * 1.2 }],
+  }))
 
   return (
     <View style={styles.dotWrap}>
-      {pulse ? (
-        <Animated.View style={[styles.dotPulse, { backgroundColor: color, opacity, transform: [{ scale }] }]} />
-      ) : null}
+      {active ? <Animated.View style={[styles.dotPulse, { backgroundColor: color }, style]} /> : null}
       <View style={[styles.dot, { backgroundColor: color }]} />
     </View>
   )
