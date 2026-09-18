@@ -17,4 +17,9 @@ export type EarningsSummary = {
   tripCount: number
   onlineHours: string
   rating: number | null
+  chart: number[]
+  chartLabels: string[]
+  breakdown: { baseFare: number; tips: number; incentives: number; platformFee: number }
 }
+
+export type EarningsPeriod = 'today' | 'week' | 'month'
