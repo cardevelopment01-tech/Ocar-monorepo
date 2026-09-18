@@ -11,7 +11,7 @@ export default function ModeSelectionScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Go back" hitSlop={8}>
+        <Pressable onPress={() => { if (router.canGoBack()) router.back() }} style={styles.backBtn} accessibilityLabel="Go back" hitSlop={8}>
           <Feather name="arrow-left" size={20} color={colors.ink600} />
         </Pressable>
         <Text style={styles.title}>How do you want to drive?</Text>

@@ -74,7 +74,7 @@ export default function DailyVerificationScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Go back" hitSlop={8}>
+        <Pressable onPress={() => { if (router.canGoBack()) router.back() }} style={styles.backBtn} accessibilityLabel="Go back" hitSlop={8}>
           <Feather name="arrow-left" size={20} color={colors.ink600} />
         </Pressable>
         <Text style={styles.stepLabel}>{step === 'selfie' ? 'Step 1 of 2' : 'Step 2 of 2'}</Text>
