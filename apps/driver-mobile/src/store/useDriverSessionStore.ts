@@ -14,8 +14,16 @@ interface DriverSessionState {
   isOnline: boolean
   vehicleId: number | null
   categoryId: number | null
+  mode: 'standard' | 'return_cab' | null
+  destinationCityName: string | null
   activeRide: ActiveRideSummary | null
-  setOnline: (session: { id: string; vehicleId: number; categoryId: number }) => void
+  setOnline: (session: {
+    id: string
+    vehicleId: number
+    categoryId: number
+    mode?: 'standard' | 'return_cab'
+    destinationCityName?: string | null
+  }) => void
   setOffline: () => void
   setActiveRide: (ride: ActiveRideSummary | null) => void
 }
@@ -25,6 +33,8 @@ export const useDriverSessionStore = create<DriverSessionState>()((set) => ({
   isOnline: false,
   vehicleId: null,
   categoryId: null,
+  mode: null,
+  destinationCityName: null,
   activeRide: null,
 
   setOnline: (session) =>
@@ -33,10 +43,12 @@ export const useDriverSessionStore = create<DriverSessionState>()((set) => ({
       isOnline: true,
       vehicleId: session.vehicleId,
       categoryId: session.categoryId,
+      mode: session.mode ?? 'standard',
+      destinationCityName: session.destinationCityName ?? null,
     }),
 
   setOffline: () =>
-    set({ sessionId: null, isOnline: false, vehicleId: null, categoryId: null, activeRide: null }),
+    set({ sessionId: null, isOnline: false, vehicleId: null, categoryId: null, mode: null, destinationCityName: null, activeRide: null }),
 
   setActiveRide: (ride) => set({ activeRide: ride }),
 }))

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -8,7 +8,7 @@ import { useRouter } from 'expo-router'
 import { Button, Card, colors, getCurrentOrLastKnownPosition, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
-import { LocationDisclosure } from '@/features/go-online/LocationDisclosure'
+import { OnlineToggle } from '@/features/go-online/components/OnlineToggle'
 import { useGoOnlineFlow } from '@/features/go-online/useGoOnlineFlow'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
@@ -24,6 +24,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets()
   const driver = useAuthStore((s) => s.driver)
   const isOnline = useDriverSessionStore((s) => s.isOnline)
+  const mode = useDriverSessionStore((s) => s.mode)
+  const destinationCityName = useDriverSessionStore((s) => s.destinationCityName)
   const flow = useGoOnlineFlow()
   const walletGate = useWalletGate()
   const documentGate = useDocumentGate()
@@ -51,11 +53,17 @@ export default function HomeScreen() {
       ? 'Your wallet is frozen. Contact support.'
       : null
 
-  const switchDisabled =
-    flow.sessionCheck !== 'ready' || flow.goingOnline || (!isOnline && (!!blockedReason || !flow.vehicle))
+  const toggleDisabled =
+    flow.sessionCheck !== 'ready' || flow.checkingVerification || (!isOnline && (!!blockedReason || !flow.vehicle))
 
   const firstName = driver?.full_name?.split(' ')[0] ?? 'Driver'
   const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+
+  async function handleToggle() {
+    if (isOnline) { setShowOfflineConfirm(true); return }
+    const nextRoute = await flow.requestGoOnline()
+    router.push(nextRoute)
+  }
 
   return (
     <View style={styles.container}>
@@ -78,14 +86,17 @@ export default function HomeScreen() {
               {isOnline ? "You're live, ride requests incoming" : 'Go online to start earning'}
             </Text>
           </View>
-          <Switch
-            value={isOnline}
-            disabled={switchDisabled}
-            onValueChange={(next) => (next ? flow.requestGoOnline() : setShowOfflineConfirm(true))}
-            trackColor={{ true: colors.primary, false: colors.border }}
-            thumbColor={colors.surface}
-          />
+          <OnlineToggle isOnline={isOnline} onToggle={() => void handleToggle()} disabled={toggleDisabled} />
         </View>
+
+        {isOnline && mode === 'return_cab' ? (
+          <View style={styles.returnCabBanner}>
+            <View style={styles.returnCabDot} />
+            <Text style={styles.returnCabText}>
+              Return Cab Mode{destinationCityName ? `, heading to ${destinationCityName}` : ''}
+            </Text>
+          </View>
+        ) : null}
 
         {flow.vehicleLoading ? null : !flow.vehicle ? (
           <Card style={styles.card}>
@@ -165,12 +176,6 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <LocationDisclosure
-        visible={flow.showDisclosure}
-        onAccept={() => void flow.handleDisclosureAccept()}
-        onDecline={flow.handleDisclosureDecline}
-      />
-
       <Modal visible={showOfflineConfirm} transparent animationType="fade">
         <View style={styles.confirmBackdrop}>
           <Card style={styles.confirmCard}>
@@ -212,6 +217,9 @@ const styles = StyleSheet.create({
   card: { gap: spacing.sm },
   detail: { ...typography.body, color: colors.ink600 },
   error: { ...typography.label, color: colors.error },
+  returnCabBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.successLight, borderRadius: 20, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  returnCabDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
+  returnCabText: { ...typography.caption, color: colors.success, fontWeight: '700' },
   sheet: {
     position: 'absolute',
     left: 0,

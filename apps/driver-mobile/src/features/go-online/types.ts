@@ -21,3 +21,5 @@ export type DriverSession = {
   vehicleId: number
   categoryId: number
 }
+
+export type City = { id: number; name: string; slug: string }

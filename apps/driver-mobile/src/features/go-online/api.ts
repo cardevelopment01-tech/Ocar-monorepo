@@ -1,6 +1,6 @@
 import { camelizeKeys } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
-import type { DocumentGateStatus, DriverSession, VehicleInfo, WalletInfo } from './types'
+import type { City, DocumentGateStatus, DriverSession, VehicleInfo, WalletInfo } from './types'
 
 export async function fetchMyVehicle(): Promise<VehicleInfo | null> {
   const res = await api.get<{ vehicle: unknown }>('/api/v1/drivers/onboarding/vehicle-info')
@@ -43,21 +43,30 @@ export async function fetchCurrentSession(): Promise<DriverSession | null> {
 // Body fields are camelCase -- api/src/modules/rides/rides.routes.ts passes
 // req.body straight through to service.goOnline() without a case-conversion layer.
 export async function goOnline(input: {
+  mode: 'standard' | 'return_cab'
   vehicleId: number
   categoryId: number
   lat: number
   lng: number
+  destinationCityId?: number
 }): Promise<DriverSession> {
-  const res = await api.post('/api/v1/rides/sessions/online', {
-    mode: 'standard',
+  const body: Record<string, unknown> = {
+    mode: input.mode,
     vehicleId: input.vehicleId,
     categoryId: input.categoryId,
     lat: input.lat,
     lng: input.lng,
-  })
+  }
+  if (input.destinationCityId !== undefined) body['destinationCityId'] = input.destinationCityId
+  const res = await api.post('/api/v1/rides/sessions/online', body)
   return camelizeKeys<DriverSession>(res.data)
 }
 
 export async function goOffline(): Promise<void> {
   await api.post('/api/v1/rides/sessions/offline', {})
+}
+
+export async function fetchCities(): Promise<City[]> {
+  const res = await api.get<City[]>('/api/v1/geo/cities')
+  return res.data ?? []
 }
