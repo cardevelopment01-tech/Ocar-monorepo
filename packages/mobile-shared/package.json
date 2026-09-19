@@ -29,7 +29,6 @@
     "jest-expo": "~57.0.5",
     "react": "19.2.3",
     "react-native": "0.86.3",
-    "react-test-renderer": "19.2.3",
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"
   }
