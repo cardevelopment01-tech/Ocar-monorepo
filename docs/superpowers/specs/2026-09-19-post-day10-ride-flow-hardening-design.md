@@ -202,7 +202,11 @@ per-stage, not as an exhaustive list.
   **Loading state:** on submit, the confirm button swaps its label for an
   inline spinner; the sheet stays open and the backdrop becomes
   non-dismissible until the server responds — prevents a double-submit on a
-  slow connection.
+  slow connection. **Timeout (locked during follow-up `/plan-eng-review`):**
+  a client-side ~10s timeout re-enables dismiss and shows "Taking longer
+  than expected — try again" (keeping the selected reason) rather than
+  leaving the sheet non-dismissible indefinitely if the request hangs
+  without a clean error.
   **Accessibility:** reason rows use `accessibilityRole: "radio"` with the
   selected state announced; bottom content padding is
   `Math.max(spacing.lg, insets.bottom + spacing.sm)` to clear the Android
@@ -240,7 +244,11 @@ per-stage, not as an exhaustive list.
   position update lands for ~15s, the driver marker fades to reduced opacity
   with a small "Last seen Xs ago" label rather than continuing to render as
   if live — a frozen marker that looks current is more misleading than one
-  that visibly says so.
+  that visibly says so. **Implementation (locked during follow-up
+  `/plan-eng-review`):** the staleness check lives inside the store itself
+  (one interval, flips a derived `isStale` flag) rather than each
+  subscribing screen computing it independently — avoids N duplicate timers
+  across stages 2 and 4's map screens.
 
 - **Stop-visibility component:** empty state collapses to nothing
   (doesn't render at all) when a round-trip/rental ride has zero stops
