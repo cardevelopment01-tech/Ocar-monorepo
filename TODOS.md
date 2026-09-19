@@ -29,3 +29,15 @@
 **Effort:** S
 **Priority:** P3
 **Depends on:** None (informed by the Section 8 metric's data, not blocked by it)
+
+### Confirm speed_alert_log delivery mechanism before building driver-mobile's speed-alert surface
+
+**What:** Determine whether `speed_alert_log` events reach the client via a socket push or only ever via REST poll, before building driver-mobile's speed-alert UI in the post-Day-10 ride-flow hardening plan's Stage 4.
+
+**Why:** Web driver's `useSpeedAlert.ts` surfaces speed alerts somehow, but a grep of `api/src/websocket/socket.server.ts` during the 2026-09-19 `/plan-eng-review` of `docs/superpowers/specs/2026-09-19-post-day10-ride-flow-hardening-design.md` found no `speed_alert` socket emit anywhere. Building driver-mobile's speed-alert surface against an assumed push that doesn't exist would ship a silently-broken feature (no alert ever fires, no error either).
+
+**Context:** Surfaced during that review's backend-contract verification pass, alongside two other checks (driver-cancel endpoint, `returning` status socket push, `stop:added` event) that turned out to already exist — this is the one item that check could not confirm either way. Read `useSpeedAlert.ts` (web driver) directly to see how it actually gets data before assuming either mechanism.
+
+**Effort:** XS (a few minutes of reading, not new code)
+**Priority:** P2 — blocks Stage 4's speed-alert component specifically, not the rest of the plan
+**Depends on:** None
