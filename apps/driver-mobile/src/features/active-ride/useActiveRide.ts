@@ -18,6 +18,7 @@ export function useActiveRide(rideId: string) {
   const [state, dispatch] = useReducer(activeRideReducer, {
     confirmedStatus: 'accepted',
     pendingOptimisticStatus: null,
+    rideType: '',
   })
   const setActiveRideSummary = useDriverSessionStore((s) => s.setActiveRide)
 
@@ -26,7 +27,7 @@ export function useActiveRide(rideId: string) {
     fetchRide(rideId)
       .then((detail) => {
         setRide(detail)
-        dispatch({ type: 'confirmed', status: detail.status as RideStatus })
+        dispatch({ type: 'confirmed', status: detail.status as RideStatus, rideType: detail.rideType })
         setLoadError(false)
       })
       .catch(() => setLoadError(true))

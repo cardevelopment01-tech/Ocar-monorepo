@@ -30,7 +30,7 @@ export type ActiveRideReducerState = {
 
 export type ActiveRideReducerAction =
   | { type: 'optimistic_advance'; to: RideStatus }
-  | { type: 'confirmed'; status: RideStatus }
+  | { type: 'confirmed'; status: RideStatus; rideType?: string }
   | { type: 'reverted' }
 
 export function activeRideReducer(
@@ -41,7 +41,12 @@ export function activeRideReducer(
     case 'optimistic_advance':
       return { ...state, pendingOptimisticStatus: action.to }
     case 'confirmed':
-      return { ...state, confirmedStatus: action.status, pendingOptimisticStatus: null }
+      return {
+        ...state,
+        confirmedStatus: action.status,
+        pendingOptimisticStatus: null,
+        ...(action.rideType !== undefined ? { rideType: action.rideType } : {}),
+      }
     case 'reverted':
       return { ...state, pendingOptimisticStatus: null }
   }

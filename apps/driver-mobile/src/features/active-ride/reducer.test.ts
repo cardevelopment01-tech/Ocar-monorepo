@@ -49,3 +49,17 @@ describe('activeRideReducer: new round_trip returning status', () => {
     expect(state.rideType).toBe('rental')
   })
 })
+
+describe('activeRideReducer: confirmed action can optionally update rideType', () => {
+  it('updates rideType when the confirmed action provides one', () => {
+    const state: ActiveRideReducerState = { confirmedStatus: 'accepted', pendingOptimisticStatus: null, rideType: '' }
+    const next = activeRideReducer(state, { type: 'confirmed', status: 'driver_arrived', rideType: 'round_trip' })
+    expect(next.rideType).toBe('round_trip')
+  })
+
+  it('leaves rideType unchanged when the confirmed action omits it', () => {
+    const state: ActiveRideReducerState = { confirmedStatus: 'driver_arrived', pendingOptimisticStatus: null, rideType: 'round_trip' }
+    const next = activeRideReducer(state, { type: 'confirmed', status: 'in_progress' })
+    expect(next.rideType).toBe('round_trip')
+  })
+})
