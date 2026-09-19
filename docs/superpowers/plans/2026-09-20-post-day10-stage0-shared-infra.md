@@ -114,24 +114,35 @@ Edit `packages/mobile-shared/package.json`'s `"scripts"` block:
 
 - [ ] **Step 4: Write the smoke test against the existing `Button` component**
 
+**Correction (found while debugging Task 1's first two dispatch attempts):**
+`@testing-library/react-native` v14 made `render()`, `fireEvent()`, and
+`renderHook()` async by default — each now returns a `Promise` and MUST be
+awaited (confirmed via RTL's own v14 migration guide and release notes).
+Confirmed directly: a bare `render(<Text>hello</Text>)` in this exact setup
+returns `Promise { <pending> }`, which is why `screen.getByText()` failed
+with `` `render` function has not been called `` — the render had not
+actually resolved yet. Every test in this plan (Task 1, 4, 5) uses `await`
+for this reason — this is not optional stylistic `await`, it is required by
+RTL 14's API.
+
 ```tsx
 // packages/mobile-shared/src/ui/Button.test.tsx
 import { render, screen, fireEvent } from '@testing-library/react-native'
 import { Button } from './Button'
 
 describe('Button (harness smoke test)', () => {
-  it('renders its label and calls onPress', () => {
+  it('renders its label and calls onPress', async () => {
     const onPress = jest.fn()
-    render(<Button label="Go online" onPress={onPress} />)
+    await render(<Button label="Go online" onPress={onPress} />)
     expect(screen.getByText('Go online')).toBeTruthy()
-    fireEvent.press(screen.getByText('Go online'))
+    await fireEvent.press(screen.getByText('Go online'))
     expect(onPress).toHaveBeenCalledTimes(1)
   })
 
-  it('does not call onPress when disabled', () => {
+  it('does not call onPress when disabled', async () => {
     const onPress = jest.fn()
-    render(<Button label="Go online" onPress={onPress} disabled />)
-    fireEvent.press(screen.getByText('Go online'))
+    await render(<Button label="Go online" onPress={onPress} disabled />)
+    await fireEvent.press(screen.getByText('Go online'))
     expect(onPress).not.toHaveBeenCalled()
   })
 })
@@ -543,25 +554,28 @@ export async function triggerSos(rideId: string, lat?: number, lng?: number): Pr
 
 - [ ] **Step 3: Write the failing component test**
 
+**Reminder: RTL v14's `render`/`fireEvent` are async — every call is `await`ed
+below (see Task 1's correction note for why this is required, not stylistic).**
+
 ```tsx
 // packages/mobile-shared/src/ui/SOSButton.test.tsx
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native'
 import { SOSButton, type SOSTriggerResult } from './SOSButton'
 
 describe('SOSButton', () => {
-  it('renders nothing when enabled is false', () => {
-    render(<SOSButton enabled={false} onTrigger={async () => ({ ok: true })} />)
+  it('renders nothing when enabled is false', async () => {
+    await render(<SOSButton enabled={false} onTrigger={async () => ({ ok: true })} />)
     expect(screen.queryByLabelText('Emergency SOS, double tap to send alert')).toBeNull()
   })
 
-  it('renders the trigger when enabled', () => {
-    render(<SOSButton enabled onTrigger={async () => ({ ok: true })} />)
+  it('renders the trigger when enabled', async () => {
+    await render(<SOSButton enabled onTrigger={async () => ({ ok: true })} />)
     expect(screen.getByLabelText('Emergency SOS, double tap to send alert')).toBeTruthy()
   })
 
   it('on success, shows no failure state', async () => {
-    render(<SOSButton enabled onTrigger={async () => ({ ok: true })} />)
-    fireEvent.press(screen.getByLabelText('Emergency SOS, double tap to send alert'))
+    await render(<SOSButton enabled onTrigger={async () => ({ ok: true })} />)
+    await fireEvent.press(screen.getByLabelText('Emergency SOS, double tap to send alert'))
     await waitFor(() => expect(screen.queryByText(/not sent/i)).toBeNull())
   })
 
@@ -571,8 +585,8 @@ describe('SOSButton', () => {
       calls++
       return { ok: false, reason: 'error' }
     }
-    render(<SOSButton enabled onTrigger={onTrigger} />)
-    fireEvent.press(screen.getByLabelText('Emergency SOS, double tap to send alert'))
+    await render(<SOSButton enabled onTrigger={onTrigger} />)
+    await fireEvent.press(screen.getByLabelText('Emergency SOS, double tap to send alert'))
     await waitFor(() => expect(screen.getByText(/SOS not sent/i)).toBeTruthy())
     expect(calls).toBe(2) // one initial attempt + one automatic retry
   })
@@ -583,21 +597,21 @@ describe('SOSButton', () => {
       calls++
       return { ok: false, reason: 'rate_limited' }
     }
-    render(<SOSButton enabled onTrigger={onTrigger} />)
-    fireEvent.press(screen.getByLabelText('Emergency SOS, double tap to send alert'))
+    await render(<SOSButton enabled onTrigger={onTrigger} />)
+    await fireEvent.press(screen.getByLabelText('Emergency SOS, double tap to send alert'))
     await waitFor(() => expect(screen.getByText(/too many/i)).toBeTruthy())
     expect(calls).toBe(1) // no retry against a rate limit
   })
 
   it('shows the tel: fallback when a phone number is provided and the failure persists', async () => {
-    render(<SOSButton enabled onTrigger={async () => ({ ok: false, reason: 'error' })} emergencyPhoneNumber="+911234567890" />)
-    fireEvent.press(screen.getByLabelText('Emergency SOS, double tap to send alert'))
+    await render(<SOSButton enabled onTrigger={async () => ({ ok: false, reason: 'error' })} emergencyPhoneNumber="+911234567890" />)
+    await fireEvent.press(screen.getByLabelText('Emergency SOS, double tap to send alert'))
     await waitFor(() => expect(screen.getByText(/call emergency/i)).toBeTruthy())
   })
 
   it('hides the tel: fallback when no phone number is provided', async () => {
-    render(<SOSButton enabled onTrigger={async () => ({ ok: false, reason: 'error' })} />)
-    fireEvent.press(screen.getByLabelText('Emergency SOS, double tap to send alert'))
+    await render(<SOSButton enabled onTrigger={async () => ({ ok: false, reason: 'error' })} />)
+    await fireEvent.press(screen.getByLabelText('Emergency SOS, double tap to send alert'))
     await waitFor(() => expect(screen.getByText(/SOS not sent/i)).toBeTruthy())
     expect(screen.queryByText(/call emergency/i)).toBeNull()
   })
@@ -797,6 +811,9 @@ git commit -m "feat(mobile-shared): add SOSButton with retry/rate-limit/tel: fal
 
 - [ ] **Step 1: Write the failing test**
 
+**Reminder: RTL v14's `render`/`fireEvent` are async — every call is `await`ed
+below (see Task 1's correction note for why this is required, not stylistic).**
+
 ```tsx
 // packages/mobile-shared/src/ui/CancelSheet.test.tsx
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native'
@@ -808,28 +825,28 @@ const REASONS = [
 ]
 
 describe('CancelSheet', () => {
-  it('renders nothing when not visible', () => {
-    render(<CancelSheet visible={false} reasons={REASONS} onClose={jest.fn()} onConfirm={jest.fn()} />)
+  it('renders nothing when not visible', async () => {
+    await render(<CancelSheet visible={false} reasons={REASONS} onClose={jest.fn()} onConfirm={jest.fn()} />)
     expect(screen.queryByText('Changed my mind')).toBeNull()
   })
 
-  it('renders the supplied reasons when visible', () => {
-    render(<CancelSheet visible reasons={REASONS} onClose={jest.fn()} onConfirm={jest.fn()} />)
+  it('renders the supplied reasons when visible', async () => {
+    await render(<CancelSheet visible reasons={REASONS} onClose={jest.fn()} onConfirm={jest.fn()} />)
     expect(screen.getByText('Changed my mind')).toBeTruthy()
     expect(screen.getByText('Emergency')).toBeTruthy()
   })
 
-  it('confirm button is disabled until a reason is selected', () => {
-    render(<CancelSheet visible reasons={REASONS} onClose={jest.fn()} onConfirm={jest.fn()} />)
+  it('confirm button is disabled until a reason is selected', async () => {
+    await render(<CancelSheet visible reasons={REASONS} onClose={jest.fn()} onConfirm={jest.fn()} />)
     const confirm = screen.getByText('Confirm cancellation')
     expect(confirm.props.accessibilityState?.disabled ?? confirm.parent?.props.accessibilityState?.disabled).toBeTruthy()
   })
 
   it('selecting a reason and confirming calls onConfirm with the reason code', async () => {
     const onConfirm = jest.fn().mockResolvedValue(undefined)
-    render(<CancelSheet visible reasons={REASONS} onClose={jest.fn()} onConfirm={onConfirm} />)
-    fireEvent.press(screen.getByText('Emergency'))
-    fireEvent.press(screen.getByText('Confirm cancellation'))
+    await render(<CancelSheet visible reasons={REASONS} onClose={jest.fn()} onConfirm={onConfirm} />)
+    await fireEvent.press(screen.getByText('Emergency'))
+    await fireEvent.press(screen.getByText('Confirm cancellation'))
     await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('emergency'))
   })
 
@@ -837,9 +854,9 @@ describe('CancelSheet', () => {
     jest.useFakeTimers()
     const onClose = jest.fn()
     const onConfirm = () => new Promise<void>(() => {}) // never resolves
-    render(<CancelSheet visible reasons={REASONS} onClose={onClose} onConfirm={onConfirm} />)
-    fireEvent.press(screen.getByText('Changed my mind'))
-    fireEvent.press(screen.getByText('Confirm cancellation'))
+    await render(<CancelSheet visible reasons={REASONS} onClose={onClose} onConfirm={onConfirm} />)
+    await fireEvent.press(screen.getByText('Changed my mind'))
+    await fireEvent.press(screen.getByText('Confirm cancellation'))
     jest.advanceTimersByTime(10_500)
     await waitFor(() => expect(screen.getByText(/taking longer than expected/i)).toBeTruthy())
     jest.useRealTimers()
