@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { buttonRadius, colors, gradientPrimary, radii, shadows, spacing, typography } from '../theme/tokens'
 
 export type CancelReason = { code: string; label: string }
@@ -18,13 +19,16 @@ export function CancelSheet({ visible, reasons, onClose, onConfirm }: CancelShee
   const [selected, setSelected] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [timedOut, setTimedOut] = useState(false)
+  const [submitError, setSubmitError] = useState(false)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const insets = useSafeAreaInsets()
 
   useEffect(() => {
     if (!visible) {
       setSelected(null)
       setSubmitting(false)
       setTimedOut(false)
+      setSubmitError(false)
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
     }
   }, [visible])
@@ -46,20 +50,27 @@ export function CancelSheet({ visible, reasons, onClose, onConfirm }: CancelShee
   async function submit(reasonCode: string) {
     setSubmitting(true)
     setTimedOut(false)
+    setSubmitError(false)
     timeoutRef.current = setTimeout(() => {
       setSubmitting(false)
       setTimedOut(true)
     }, SUBMIT_TIMEOUT_MS)
-    await onConfirm(reasonCode)
-    if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    setSubmitting(false)
+    try {
+      await onConfirm(reasonCode)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      setSubmitting(false)
+    } catch {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      setSubmitting(false)
+      setSubmitError(true)
+    }
   }
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => !submitting && onClose()}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => !submitting && onClose()} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: Math.max(spacing.lg, insets.bottom + spacing.sm) }]}>
           <View style={styles.handle} />
           <Text style={styles.title}>Why are you cancelling?</Text>
 
@@ -81,6 +92,7 @@ export function CancelSheet({ visible, reasons, onClose, onConfirm }: CancelShee
           </View>
 
           {timedOut ? <Text style={styles.timeoutText}>Taking longer than expected — try again.</Text> : null}
+          {submitError ? <Text style={styles.timeoutText}>Something went wrong — try again.</Text> : null}
 
           <Pressable onPress={handleConfirm} disabled={!selected || submitting} style={styles.confirmWrap}>
             <LinearGradient
@@ -106,7 +118,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
     padding: spacing.lg,
-    paddingBottom: Math.max(spacing.lg, spacing.md),
   },
   handle: { width: spacing.xl, height: spacing.xs, borderRadius: radii.full, backgroundColor: colors.border, alignSelf: 'center', marginVertical: spacing.sm },
   title: { ...typography.title, color: colors.ink900, marginBottom: spacing.md },

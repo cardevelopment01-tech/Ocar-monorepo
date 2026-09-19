@@ -132,6 +132,8 @@ export type GeoPlaceDetail = {
   lng: number
 }
 
+export type SOSTriggerResult = { ok: true } | { ok: false; reason: 'rate_limited' | 'error' }
+
 export type RatingTag = {
   id: string
   tagKey: string

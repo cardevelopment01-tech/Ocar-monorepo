@@ -83,6 +83,8 @@ peer deps require `react>=19.0.0`/`react-native>=0.78`, both satisfied without
 `react-test-renderer` in the mix.)
 (`react-test-renderer` version must match the `react` version already in `packages/mobile-shared/package.json`'s peer deps — `19.2.3` — or RTL's renderer mismatches and every test fails with a version-conflict error, not a useful assertion failure.)
 
+**Clarification (added during the final whole-branch review — the causal story above overstates what fixed the hang):** `react-test-renderer` was removed only as a DIRECT devDependency of `packages/mobile-shared` — it is still present in `pnpm-lock.yaml` as a transitive dependency of `jest-expo` itself, so it was never fully removed from the dependency tree. The actual fix for the "`render()` hangs as a pending Promise" bug was adding `await` to every `render()`/`fireEvent()` call, per RTL v14's async API (see Step 2's correction below) — not the `react-test-renderer` removal. Removing it as a direct devDependency was still correct (RTL 14 shouldn't have it as a direct dependency on React 19), just not what fixed this specific hang.
+
 - [ ] **Step 2: Add `jest.config.js`**
 
 ```javascript

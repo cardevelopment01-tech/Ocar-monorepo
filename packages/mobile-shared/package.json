@@ -21,7 +21,8 @@
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
-    "react-native-reanimated": "*"
+    "react-native-reanimated": "*",
+    "react-native-safe-area-context": "*"
   },
   "devDependencies": {
     "@testing-library/react-native": "^14.0.1",

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react-native'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native'
 import { CancelSheet } from './CancelSheet'
 
 const REASONS = [
@@ -39,8 +39,24 @@ describe('CancelSheet', () => {
     await render(<CancelSheet visible reasons={REASONS} onClose={onClose} onConfirm={onConfirm} />)
     await fireEvent.press(screen.getByText('Changed my mind'))
     await fireEvent.press(screen.getByText('Confirm cancellation'))
-    jest.advanceTimersByTime(10_500)
+    await act(async () => {
+      jest.advanceTimersByTime(10_500)
+    })
     await waitFor(() => expect(screen.getByText(/taking longer than expected/i)).toBeTruthy())
     jest.useRealTimers()
+  })
+
+  it('becomes dismissible again with an error message when onConfirm rejects', async () => {
+    const onClose = jest.fn()
+    const onConfirm = jest.fn().mockRejectedValue(new Error('network error'))
+    await render(<CancelSheet visible reasons={REASONS} onClose={onClose} onConfirm={onConfirm} />)
+    await fireEvent.press(screen.getByText('Changed my mind'))
+    await fireEvent.press(screen.getByText('Confirm cancellation'))
+    await waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeTruthy())
+    // No longer stuck submitting: the confirm button shows its label again, not a spinner.
+    expect(screen.getByText('Confirm cancellation')).toBeTruthy()
+    const confirm = screen.getByText('Confirm cancellation')
+    const disabled = confirm.props.accessibilityState?.disabled ?? confirm.parent?.props.accessibilityState?.disabled
+    expect(disabled).toBeFalsy()
   })
 })
