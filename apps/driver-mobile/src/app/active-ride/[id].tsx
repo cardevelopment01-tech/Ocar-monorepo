@@ -9,6 +9,7 @@ import { OtpEntryCard } from '@/features/active-ride/components/OtpEntryCard'
 import { CashCollectionCard } from '@/features/active-ride/components/CashCollectionCard'
 import { TripCompletionCard } from '@/features/active-ride/components/TripCompletionCard'
 import { RateRiderSheet } from '@/features/active-ride/components/RateRiderSheet'
+import { ActiveRideMap } from '@/features/active-ride/components/ActiveRideMap'
 
 export default function ActiveRideScreen() {
   const insets = useSafeAreaInsets()
@@ -107,6 +108,11 @@ export default function ActiveRideScreen() {
         />
       ) : status === 'in_progress' ? (
         <>
+          <ActiveRideMap
+            pickup={[ride.originLat, ride.originLng]}
+            destination={ride.destLat != null && ride.destLng != null ? [ride.destLat, ride.destLng] : null}
+            leg="to-destination"
+          />
           <Card style={styles.card}>
             <Text style={styles.title}>Trip in progress</Text>
             <Text style={styles.detail} numberOfLines={2}>
@@ -130,13 +136,16 @@ export default function ActiveRideScreen() {
           onSubmit={(otp) => void submitStartOtpAction(otp)}
         />
       ) : (
-        <Card style={styles.card}>
-          <Text style={styles.title}>Head to pickup</Text>
-          <Text style={styles.detail} numberOfLines={2}>
-            {ride.originAddress ?? 'Pickup location'}
-          </Text>
-          <Button label="I've arrived" onPress={() => void markArrivedAction()} />
-        </Card>
+        <>
+          <ActiveRideMap pickup={[ride.originLat, ride.originLng]} destination={null} leg="to-pickup" />
+          <Card style={styles.card}>
+            <Text style={styles.title}>Head to pickup</Text>
+            <Text style={styles.detail} numberOfLines={2}>
+              {ride.originAddress ?? 'Pickup location'}
+            </Text>
+            <Button label="I've arrived" onPress={() => void markArrivedAction()} />
+          </Card>
+        </>
       )}
     </View>
   )

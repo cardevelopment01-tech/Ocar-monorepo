@@ -1,14 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { BackHandler, Modal, StyleSheet, Text, View } from 'react-native'
+import Svg, { Circle } from 'react-native-svg'
 import { router } from 'expo-router'
 import { Button, Card, colors, formatCurrency, formatDistanceKm, spacing, typography } from '@ocar/mobile-shared'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { acceptRideRequest } from './api'
 import { computeRemainingSeconds } from './countdown'
+import { useRideAlertSound } from './useRideAlertSound'
 
 const WARNING_THRESHOLD_SECONDS = 5
 const DISMISS_DELAY_MS = 1500
+
+// Uber-style circular countdown ring around the fare, replacing the old linear
+// bar. Same radius math as a standard SVG progress ring: stroke-dashoffset
+// counts down from 0 (full circle) to the full circumference (empty).
+const RING_SIZE = 96
+const RING_STROKE = 6
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
 
 // Renders above whatever screen is active (mounted once at the root, per the
 // design review's information-hierarchy fix -- an incoming request must
@@ -23,6 +33,11 @@ export function RideRequestOverlay() {
   const [dismissReason, setDismissReason] = useState<'expired' | 'raceLost' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Rings while a request is actually up for response -- stops the instant it
+  // resolves (accept/reject/expire/race-lost), matching the web driver app's
+  // playRideSound()/stopRideSound() lifecycle.
+  useRideAlertSound(!!pending && !dismissReason)
 
   useEffect(() => {
     setDismissReason(null)
@@ -104,23 +119,58 @@ export function RideRequestOverlay() {
             <Text style={styles.message}>Request expired</Text>
           ) : (
             <>
-              <View style={styles.countdownTrack}>
-                <View
-                  style={[
-                    styles.countdownFill,
-                    { width: `${Math.max(0, (remainingSeconds / pending.timeoutSeconds) * 100)}%` },
-                    isUrgent && styles.countdownFillUrgent,
-                  ]}
-                />
+              <View style={styles.ringRow}>
+                <View style={styles.ringWrap}>
+                  <Svg width={RING_SIZE} height={RING_SIZE} style={styles.ringSvg}>
+                    <Circle
+                      cx={RING_SIZE / 2}
+                      cy={RING_SIZE / 2}
+                      r={RING_RADIUS}
+                      stroke={colors.surface3}
+                      strokeWidth={RING_STROKE}
+                      fill="none"
+                    />
+                    <Circle
+                      cx={RING_SIZE / 2}
+                      cy={RING_SIZE / 2}
+                      r={RING_RADIUS}
+                      stroke={isUrgent ? colors.warning : colors.primary}
+                      strokeWidth={RING_STROKE}
+                      fill="none"
+                      strokeDasharray={`${RING_CIRCUMFERENCE} ${RING_CIRCUMFERENCE}`}
+                      strokeDashoffset={RING_CIRCUMFERENCE * (1 - remainingSeconds / pending.timeoutSeconds)}
+                      strokeLinecap="round"
+                      // Ring starts at 12 o'clock and depletes clockwise, matching the
+                      // conventional countdown-timer reading direction.
+                      rotation={-90}
+                      originX={RING_SIZE / 2}
+                      originY={RING_SIZE / 2}
+                    />
+                  </Svg>
+                  <Text style={styles.ringSeconds} accessibilityLabel={`${remainingLabel} seconds remaining`}>
+                    {remainingLabel}
+                  </Text>
+                </View>
+                <View style={styles.fareCol}>
+                  <Text style={styles.fareLabel}>Fare</Text>
+                  <Text style={styles.fare}>{formatCurrency(pending.estimatedFare)}</Text>
+                  <Text style={styles.distance}>{formatDistanceKm(pending.distanceToPickup / 1000)} to pickup</Text>
+                </View>
               </View>
-              <Text style={styles.fare}>{formatCurrency(pending.estimatedFare)}</Text>
-              <Text style={styles.address} numberOfLines={2}>
-                {pending.pickup}
-              </Text>
-              <Text style={styles.detail}>{formatDistanceKm(pending.distanceToPickup / 1000)} to pickup</Text>
-              <Text style={styles.address} numberOfLines={2}>
-                → {pending.drop}
-              </Text>
+              <View style={styles.addressBlock}>
+                <View style={styles.addressRow}>
+                  <View style={[styles.addressDot, styles.addressDotPickup]} />
+                  <Text style={styles.address} numberOfLines={2}>
+                    {pending.pickup}
+                  </Text>
+                </View>
+                <View style={styles.addressRow}>
+                  <View style={[styles.addressDot, styles.addressDotDrop]} />
+                  <Text style={styles.address} numberOfLines={2}>
+                    {pending.drop}
+                  </Text>
+                </View>
+              </View>
               {error ? <Text style={styles.error}>{error}</Text> : null}
               <View style={styles.actions}>
                 <View style={styles.actionButton}>
@@ -146,13 +196,21 @@ export function RideRequestOverlay() {
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: `${colors.ink900}CC`, justifyContent: 'center', padding: spacing.lg },
-  card: { gap: spacing.sm },
-  countdownTrack: { height: 6, borderRadius: 3, backgroundColor: colors.surface3, overflow: 'hidden' },
-  countdownFill: { height: '100%', backgroundColor: colors.primary },
-  countdownFillUrgent: { backgroundColor: colors.warning },
+  card: { gap: spacing.md },
+  ringRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  ringWrap: { width: RING_SIZE, height: RING_SIZE, alignItems: 'center', justifyContent: 'center' },
+  ringSvg: { position: 'absolute' },
+  ringSeconds: { ...typography.title, color: colors.ink900, fontWeight: '700' },
+  fareCol: { flex: 1, gap: 2 },
+  fareLabel: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
   fare: { ...typography.display, color: colors.ink900 },
-  address: { ...typography.body, color: colors.ink900 },
-  detail: { ...typography.label, color: colors.ink600 },
+  distance: { ...typography.label, color: colors.ink600 },
+  addressBlock: { gap: spacing.xs },
+  addressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  addressDot: { width: 8, height: 8, borderRadius: 4 },
+  addressDotPickup: { backgroundColor: colors.success },
+  addressDotDrop: { backgroundColor: colors.error },
+  address: { ...typography.body, color: colors.ink900, flex: 1 },
   error: { ...typography.label, color: colors.error },
   message: { ...typography.title, color: colors.ink900, textAlign: 'center', paddingVertical: spacing.lg },
   actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },

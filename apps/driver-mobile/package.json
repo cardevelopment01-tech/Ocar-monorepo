@@ -22,6 +22,7 @@
     "@react-native-firebase/messaging": "^26.4.0",
     "@shopify/flash-list": "2.3.2",
     "expo": "57.0.22",
+    "expo-audio": "~57.0.5",
     "expo-blur": "~57.0.3",
     "expo-camera": "~57.0.5",
     "expo-constants": "~57.0.18",
@@ -44,6 +45,7 @@
     "react-native-reanimated": "4.6.0",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.2",
+    "react-native-svg": "15.15.4",
     "react-native-worklets": "0.12.2",
     "zustand": "^4.4.0"
   },
