@@ -41,3 +41,15 @@
 **Effort:** XS (a few minutes of reading, not new code)
 **Priority:** P2 — blocks Stage 4's speed-alert component specifically, not the rest of the plan
 **Depends on:** None
+
+### Wire packages/mobile-shared's new jest-expo test:ui into CI
+
+**What:** `turbo.json`'s `test` task doesn't include the `test:ui` script Stage 0 added to `packages/mobile-shared` (jest-expo + RTL component tests), and `.github/workflows/ci.yml` has no job touching `packages/mobile-shared` or either mobile app at all. Either alias/rename `test:ui` into the existing `test` task turbo already runs, or add a dedicated CI job.
+
+**Why:** Stage 0 (post-Day-10 ride-flow hardening) spent three implementer dispatches getting this test harness right (RTL v14's async `render()`/`fireEvent()` API, `react-test-renderer` incompatibility) specifically so `SOSButton`/`CancelSheet` — safety-critical and policy-critical components — have real component tests. None of those 18 tests currently run anywhere except a developer's own machine; they'll silently rot the first time someone changes a token or a prop shape and nobody notices until it ships broken.
+
+**Context:** Surfaced during Stage 0's final whole-branch review (`docs/superpowers/plans/2026-09-20-post-day10-stage0-shared-infra.md`), explicitly flagged by the reviewer as "arguably outside Stage 0's declared scope" and deferred here rather than fixed inline, since it's a project-wide CI/turbo decision, not a Stage-0 component bug.
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** None
