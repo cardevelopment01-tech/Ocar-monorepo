@@ -147,6 +147,28 @@ per-stage, not as an exhaustive list.
   the device can't place a call (no SIM, tablet, VoIP-only) — the failure
   state then shows retry only, never a dead button. Reused unmodified
   across stages 2, 4, and 5, both apps.
+
+  **Visual spec (locked during `/plan-design-review`, all values from
+  `packages/mobile-shared/src/theme/tokens.ts`, no hardcoded hex):**
+  size `56x56`, `radii.full` (circular), `colors.error` fill, `colors.inkInverse`
+  icon, `shadows.buttonPrimary` (teal-tinted per the app's existing shadow
+  convention, even though the button itself is red). Placement:
+  `position: absolute; bottom: spacing.xl + insets.bottom; right: spacing.md;
+  zIndex: 10` — above map content, below `CancelSheet`; offset to
+  `right: 16, bottom: 96` on screens where map controls already occupy
+  bottom-right. Press feedback: scale to `0.96` over `120ms`; at-rest a subtle
+  breathing scale `1 → 1.02` every 3s, only while `status === 'in_progress'`
+  (not an infinite pulse). Failure state renders as a separate anchored pill
+  (not inside the circle): `background: colors.errorLight, border: colors.error,
+  label: typography.caption` for the message, `typography.label` (semibold)
+  for the retry tap target. The `tel:` fallback is a secondary pill below it
+  (`colors.surface` background, `colors.border` stroke, `typography.label`) —
+  when hidden by the capability check, the failure pill expands to fill the
+  space rather than leaving a gap.
+  **Accessibility:** `hitSlop: 8`, `accessible: true`,
+  `accessibilityLabel: "Emergency SOS, double tap to send alert"`,
+  `accessibilityRole: "button"`.
+
 - **`packages/mobile-shared/src/ui/CancelSheet.tsx`** (new) — a shared
   UI-only shell: renders a `reasons` prop (each app supplies its own
   role-correct list — driver: `passenger_no_show`, `vehicle_breakdown`,
@@ -160,6 +182,35 @@ per-stage, not as an exhaustive list.
   same client/server split the rest of the app uses (fare calculation is
   never client-side either). The client shows whatever the server's
   response says. Reused at every stage after request/broadcast, both apps.
+
+  **Visual spec (locked during `/plan-design-review`; the doc's own
+  "glassmorphism vs. solid" open item is now resolved as solid):**
+  container `background: colors.surface`,
+  `borderTopLeftRadius/borderTopRightRadius: radii.xl`; handle
+  `width: 32, height: 4, background: colors.border, borderRadius: radii.full,
+  marginVertical: spacing.sm/spacing.md`. Backdrop: `rgba(15,23,42,0.4)`,
+  fade `opacity 0 → 1` over `200ms`, **solid, not glass** — a blur over a live
+  map during a cancellation (already a stressful moment) risks a
+  vibrancy/contrast failure exactly when legibility matters most. Reason
+  rows: `spacing.md` apart, `minHeight: 48, borderRadius: radii.md, border:
+  colors.borderLight`; selected: `border: colors.primary, background:
+  colors.primarySubtle`. Text: `typography.body` (reason),
+  `typography.caption` (helper). CTA: `height: 48`, `gradientPrimary` fill via
+  `expo-linear-gradient`, `borderRadius: buttonRadius` (the per-app shape
+  difference — rider gets the `9999` pill, driver gets `16`),
+  `typography.body` semibold in `colors.inkInverse`, `shadows.buttonPrimary`.
+  **Loading state:** on submit, the confirm button swaps its label for an
+  inline spinner; the sheet stays open and the backdrop becomes
+  non-dismissible until the server responds — prevents a double-submit on a
+  slow connection.
+  **Accessibility:** reason rows use `accessibilityRole: "radio"` with the
+  selected state announced; bottom content padding is
+  `Math.max(spacing.lg, insets.bottom + spacing.sm)` to clear the Android
+  gesture bar.
+  Tokens import is mandatory in both components:
+  `import { colors, gradientPrimary, buttonRadius, radii, spacing,
+  typography, shadows } from '@ocar/mobile-shared'` — no hardcoded hex in
+  either file.
 
 ## Driver-mobile structural changes
 
@@ -185,6 +236,20 @@ per-stage, not as an exhaustive list.
   into a small store (matching the existing `useDriverSessionStore`
   pattern); stage 2/4 map screens subscribe to that store instead of
   opening their own GPS stream. One GPS subscription total.
+  **Stale-signal state (locked during `/plan-design-review`):** if no
+  position update lands for ~15s, the driver marker fades to reduced opacity
+  with a small "Last seen Xs ago" label rather than continuing to render as
+  if live — a frozen marker that looks current is more misleading than one
+  that visibly says so.
+
+- **Stop-visibility component:** empty state collapses to nothing
+  (doesn't render at all) when a round-trip/rental ride has zero stops
+  added yet — matches the plan's own minimal-chrome direction, and
+  driver-mobile's version is read-only anyway so an "add a stop" prompt
+  would be the wrong copy for that app. Overflow: caps at ~3 visible rows,
+  scrolling within a fixed-height container beyond that, so a long stop
+  list never pushes other Stage 4 chrome (map, SOS button) off-screen on
+  smaller devices.
 
 ## Premium UI bar
 
@@ -192,6 +257,42 @@ Extend the visual language already shipped in onboarding/home
 (`gradientPrimary`, glassmorphism blur, press-feedback scale, brand splash)
 onto ride-flow screens that were originally built functional-first and never
 got the same design pass — not a new visual direction.
+
+**Token mapping (locked during `/plan-design-review` — the single reference
+every stage's screens pull from, so polish stops being ad-hoc per screen):**
+
+| Element | Token |
+|---|---|
+| Screen background | `colors.bg` (driver `#F5F8FF`, rider `#F5F7FF`) — never `colors.surface` |
+| Primary action | `gradientPrimary` fill, `buttonRadius` shape, `shadows.buttonPrimary` |
+| Secondary action | `colors.surface` fill + `colors.border` stroke |
+| Success state (OTP verified, ride completed) | `colors.success` + `colors.successLight` |
+| Error state | `colors.error` + `colors.errorLight` only |
+| Headline typography | `typography.headline` — driver only (Space Grotesk); rider uses `typography.title`/bold body (no Space Grotesk, per the existing per-app font rule) |
+| Body/label/caption | `typography.body`/`label`/`caption`, spacing always from the `spacing` scale — never a bare numeric margin |
+
+**Per-stage headline copy (locked during `/plan-design-review` —
+`'returning'` existed only as a backend status string before this):**
+
+| Stage/status | User-facing headline |
+|---|---|
+| En route (`driver_arrived` pending) | "Driver is on the way" |
+| Trip in progress (`in_progress`) | "On your trip" |
+| Returning (`returning`) | "Heading back" |
+
+**Stage 4 stacking priority (locked during `/plan-design-review` — 5
+concurrent surfaces now have a defined order instead of an implicit
+per-implementer choice):**
+1. `SOSButton` — always top-most, persistent (safety overrides everything)
+2. Active modal/sheet (`CancelSheet`, OTP entry)
+3. Transient toast (speed alert — auto-dismissing)
+4. Persistent chrome (ride-type banner, stop-visibility list — collapsible)
+
+**Speed alerts are driver-facing only, never surfaced to the rider**
+(locked during `/plan-design-review`) — `speed_alert_log` already feeds the
+admin ops/SOS pipeline; showing a rider "your driver is speeding" mid-ride
+creates anxiety with no action beyond the SOS control that already exists
+for that purpose.
 
 ## Testing / exit criteria per stage
 
