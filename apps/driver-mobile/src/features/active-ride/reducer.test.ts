@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { activeRideReducer, displayStatus, type ActiveRideReducerState } from './reducer'
 
-const initial: ActiveRideReducerState = { confirmedStatus: 'accepted', pendingOptimisticStatus: null }
+const initial: ActiveRideReducerState = { confirmedStatus: 'accepted', pendingOptimisticStatus: null, rideType: 'one_way' }
 
 describe('activeRideReducer', () => {
   it('shows the optimistic status immediately on advance', () => {
@@ -12,7 +12,7 @@ describe('activeRideReducer', () => {
   it('promotes the optimistic status to confirmed and clears the overlay on success', () => {
     let state = activeRideReducer(initial, { type: 'optimistic_advance', to: 'driver_arrived' })
     state = activeRideReducer(state, { type: 'confirmed', status: 'driver_arrived' })
-    expect(state).toEqual({ confirmedStatus: 'driver_arrived', pendingOptimisticStatus: null })
+    expect(state).toEqual({ confirmedStatus: 'driver_arrived', pendingOptimisticStatus: null, rideType: 'one_way' })
   })
 
   it('reverts to the last confirmed status on rejection, never leaving the UI on an unconfirmed state', () => {
@@ -29,5 +29,23 @@ describe('activeRideReducer', () => {
       state = activeRideReducer(state, { type: 'confirmed', status })
       expect(displayStatus(state)).toBe(status)
     }
+  })
+})
+
+describe('activeRideReducer: new round_trip returning status', () => {
+  it('walks in_progress -> returning -> completed for a round_trip ride', () => {
+    let state: ActiveRideReducerState = { confirmedStatus: 'in_progress', pendingOptimisticStatus: null, rideType: 'round_trip' }
+    state = activeRideReducer(state, { type: 'confirmed', status: 'returning' })
+    expect(displayStatus(state)).toBe('returning')
+    state = activeRideReducer(state, { type: 'confirmed', status: 'completed' })
+    expect(displayStatus(state)).toBe('completed')
+  })
+
+  it('rideType is preserved unchanged across every transition', () => {
+    let state: ActiveRideReducerState = { confirmedStatus: 'accepted', pendingOptimisticStatus: null, rideType: 'rental' }
+    state = activeRideReducer(state, { type: 'optimistic_advance', to: 'driver_arrived' })
+    expect(state.rideType).toBe('rental')
+    state = activeRideReducer(state, { type: 'reverted' })
+    expect(state.rideType).toBe('rental')
   })
 })
