@@ -2,6 +2,7 @@ import * as Location from 'expo-location'
 import * as TaskManager from 'expo-task-manager'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { emitLocationTick } from './locationSync'
+import { useDriverPositionStore } from './driverPositionStore'
 
 // Dev-only verification log, kept from the Day 5 spike for manual on-device
 // verification (__DEV__-gated in useLocationSpikeTest.ts) -- separate from the
@@ -36,6 +37,13 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       ...(latest.coords.speed != null ? { speed: latest.coords.speed } : {}),
       recordedAt: new Date(latest.timestamp).toISOString(),
     })
+    useDriverPositionStore.getState().setPosition({
+      lat: latest.coords.latitude,
+      lng: latest.coords.longitude,
+      ...(latest.coords.heading != null ? { heading: latest.coords.heading } : {}),
+      ...(latest.coords.speed != null ? { speed: latest.coords.speed } : {}),
+    })
+    useDriverPositionStore.getState().startStaleWatch()
 
     // ponytail: unlocked read-modify-write -- burst delivery can race and drop an
     // entry. Fine for a capped, throwaway dev verification log.
