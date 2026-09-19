@@ -67,9 +67,20 @@ apps/rider-mobile/src/
 
 Run from the repo root:
 ```bash
-pnpm --filter @ocar/mobile-shared add -D jest@^29.7.0 jest-expo@~57.0.5 @testing-library/react-native@^14.0.1 react-test-renderer@19.2.3
+pnpm --filter @ocar/mobile-shared add -D jest@^29.7.0 jest-expo@~57.0.5 @testing-library/react-native@^14.0.1
 ```
-(All four versions verified against the npm registry directly — `jest-expo@57.0.5` is the latest 57.x release matching this project's Expo 57 pin; `@testing-library/react-native@14.0.1`'s peer deps require `react>=19.0.0`/`react-native>=0.78`, both satisfied; `react-test-renderer@19.2.3` is a real published version exactly matching this project's `react@19.2.3`.)
+**Correction (found during Task 1's first dispatch — do NOT install `react-test-renderer`):**
+the original draft of this step also listed `react-test-renderer@19.2.3`. Expo's own
+current unit-testing docs are explicit: *"`@testing-library/react-native` now replaces
+the deprecated `react-test-renderer` because `react-test-renderer` does not support
+React 19 and above... do not install `react-test-renderer` if using React 19+; remove
+it if already present."* Installing it alongside RTL 14 on React 19 is what caused
+`render()` to hang as a pending Promise in the first implementation attempt — RTL 14
+targets React 19 directly and brings its own renderer; a co-installed legacy
+`react-test-renderer` conflicts with it. (`jest-expo@57.0.5` is still correct — verified
+as the latest 57.x release matching this project's Expo 57 pin; `@testing-library/react-native@14.0.1`'s
+peer deps require `react>=19.0.0`/`react-native>=0.78`, both satisfied without
+`react-test-renderer` in the mix.)
 (`react-test-renderer` version must match the `react` version already in `packages/mobile-shared/package.json`'s peer deps — `19.2.3` — or RTL's renderer mismatches and every test fails with a version-conflict error, not a useful assertion failure.)
 
 - [ ] **Step 2: Add `jest.config.js`**
@@ -144,53 +155,41 @@ git commit -m "test(mobile-shared): add jest-expo + RTL harness, smoke-tested ag
 
 **Files:**
 - Modify: `apps/driver-mobile/src/features/active-ride/reducer.ts`
-- Create: `apps/driver-mobile/src/features/active-ride/reducer.test.ts`
+- Modify: `apps/driver-mobile/src/features/active-ride/reducer.test.ts` (this file
+  already exists with 4 passing tests against the current 2-field state shape —
+  **do not overwrite it.** Its existing `initial` constant and one `toEqual`
+  assertion (currently `{ confirmedStatus: 'driver_arrived', pendingOptimisticStatus: null }`,
+  missing `rideType`) will fail the moment `rideType` is added to the state
+  shape. Update the existing `initial` to include `rideType: 'one_way'`, update
+  that one `toEqual` to include `rideType: 'one_way'`, then add the new
+  `returning`-status tests below the existing ones in the same file/`describe`
+  structure it already uses.)
 
 **Interfaces:**
 - Consumes: nothing new — `RideDetail.rideType: string` already exists in `packages/mobile-shared/src/api/types.ts:74` and is already returned by `fetchRide()` (`apps/driver-mobile/src/features/active-ride/api.ts`); this task just starts reading a field that's already there.
 - Produces: `RideStatus` now includes `'returning'`; `ActiveRideReducerState` gains a `rideType: string` field that `useActiveRide.ts` (a later stage's task, not this one) will read when it initializes the reducer from the fetched `RideDetail`.
 
-- [ ] **Step 1: Write the regression test FIRST (IRON RULE — this widening modifies existing behavior)**
+- [ ] **Step 1: Update the existing regression test FIRST (IRON RULE — this widening modifies existing behavior), then add new coverage**
+
+`reducer.test.ts` already exists with 4 passing tests. Make exactly these
+changes to it — do not replace the file:
+
+1. Change line 4 from:
+   ```typescript
+   const initial: ActiveRideReducerState = { confirmedStatus: 'accepted', pendingOptimisticStatus: null }
+   ```
+   to:
+   ```typescript
+   const initial: ActiveRideReducerState = { confirmedStatus: 'accepted', pendingOptimisticStatus: null, rideType: 'one_way' }
+   ```
+
+2. Change the `toEqual` in the second test (currently
+   `{ confirmedStatus: 'driver_arrived', pendingOptimisticStatus: null }`) to
+   `{ confirmedStatus: 'driver_arrived', pendingOptimisticStatus: null, rideType: 'one_way' }`.
+
+3. Append this new `describe` block after the existing one, in the same file:
 
 ```typescript
-// apps/driver-mobile/src/features/active-ride/reducer.test.ts
-import { describe, expect, it } from 'vitest'
-import { activeRideReducer, displayStatus, type ActiveRideReducerState } from './reducer'
-
-const initial: ActiveRideReducerState = {
-  confirmedStatus: 'accepted',
-  pendingOptimisticStatus: null,
-  rideType: 'one_way',
-}
-
-describe('activeRideReducer regression: one_way happy path unchanged after widening', () => {
-  it('optimistic_advance sets pendingOptimisticStatus without touching confirmedStatus or rideType', () => {
-    const next = activeRideReducer(initial, { type: 'optimistic_advance', to: 'driver_arrived' })
-    expect(next).toEqual({ confirmedStatus: 'accepted', pendingOptimisticStatus: 'driver_arrived', rideType: 'one_way' })
-  })
-
-  it('confirmed clears the optimistic overlay and updates confirmedStatus', () => {
-    const advanced = activeRideReducer(initial, { type: 'optimistic_advance', to: 'driver_arrived' })
-    const next = activeRideReducer(advanced, { type: 'confirmed', status: 'driver_arrived' })
-    expect(next).toEqual({ confirmedStatus: 'driver_arrived', pendingOptimisticStatus: null, rideType: 'one_way' })
-  })
-
-  it('reverted clears the optimistic overlay and falls back to confirmedStatus', () => {
-    const advanced = activeRideReducer(initial, { type: 'optimistic_advance', to: 'in_progress' })
-    const next = activeRideReducer(advanced, { type: 'reverted' })
-    expect(next).toEqual({ confirmedStatus: 'accepted', pendingOptimisticStatus: null, rideType: 'one_way' })
-    expect(displayStatus(next)).toBe('accepted')
-  })
-
-  it('walks the full one_way lifecycle: accepted -> driver_arrived -> in_progress -> completed', () => {
-    let state = initial
-    for (const status of ['driver_arrived', 'in_progress', 'completed'] as const) {
-      state = activeRideReducer(state, { type: 'confirmed', status })
-      expect(displayStatus(state)).toBe(status)
-    }
-  })
-})
-
 describe('activeRideReducer: new round_trip returning status', () => {
   it('walks in_progress -> returning -> completed for a round_trip ride', () => {
     let state: ActiveRideReducerState = { confirmedStatus: 'in_progress', pendingOptimisticStatus: null, rideType: 'round_trip' }
@@ -198,6 +197,14 @@ describe('activeRideReducer: new round_trip returning status', () => {
     expect(displayStatus(state)).toBe('returning')
     state = activeRideReducer(state, { type: 'confirmed', status: 'completed' })
     expect(displayStatus(state)).toBe('completed')
+  })
+
+  it('rideType is preserved unchanged across every transition', () => {
+    let state: ActiveRideReducerState = { confirmedStatus: 'accepted', pendingOptimisticStatus: null, rideType: 'rental' }
+    state = activeRideReducer(state, { type: 'optimistic_advance', to: 'driver_arrived' })
+    expect(state.rideType).toBe('rental')
+    state = activeRideReducer(state, { type: 'reverted' })
+    expect(state.rideType).toBe('rental')
   })
 })
 ```
