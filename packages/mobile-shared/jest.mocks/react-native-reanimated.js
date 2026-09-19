@@ -19,4 +19,9 @@ module.exports = {
     View: View,
     Text: Text,
   },
+  useSharedValue: (initial) => ({ value: initial }),
+  useAnimatedStyle: (fn) => fn(),
+  withRepeat: (toValue) => toValue,
+  withSequence: (...values) => values[0],
+  withTiming: (toValue) => toValue,
 }

@@ -20,7 +20,8 @@
   },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "react-native-reanimated": "*"
   },
   "devDependencies": {
     "@testing-library/react-native": "^14.0.1",
