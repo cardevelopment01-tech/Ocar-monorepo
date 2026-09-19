@@ -141,8 +141,12 @@ per-stage, not as an exhaustive list.
   "Call emergency contact/number" `tel:` dialer fallback** shown alongside
   the failure state — a device-native call needs no backend work and
   closes the worst case (extended total network loss) without building a
-  full offline-queue system, which is out of scope for this plan. Reused
-  unmodified across stages 2, 4, and 5, both apps.
+  full offline-queue system, which is out of scope for this plan. The
+  fallback button checks telephony capability first
+  (`Linking.canOpenURL('tel:...')` or `expo-device`) and hides itself when
+  the device can't place a call (no SIM, tablet, VoIP-only) — the failure
+  state then shows retry only, never a dead button. Reused unmodified
+  across stages 2, 4, and 5, both apps.
 - **`packages/mobile-shared/src/ui/CancelSheet.tsx`** (new) — a shared
   UI-only shell: renders a `reasons` prop (each app supplies its own
   role-correct list — driver: `passenger_no_show`, `vehicle_breakdown`,
@@ -201,6 +205,68 @@ session's onboarding bugfix pass:
 4. Each stage's wiring audit findings and fixes noted before moving to the
    next stage.
 
+## Diagrams
+
+Stage 0 dependency graph and the reducer's widened state-transition diagram
+(added during `/plan-eng-review`) — the second belongs as a code comment
+above `RideStatus` in `reducer.ts` once implemented, alongside that file's
+existing design-intent header:
+
+```
+                    ┌──────────────────────────┐
+                    │  Stage 0: shared infra    │
+                    │  (built once)             │
+                    ├──────────────────────────┤
+                    │ SOSButton + tel: fallback │
+                    │ CancelSheet (UI-only)     │
+                    │ reducer widening          │
+                    │ driver-position store     │
+                    │ jest-expo + RTL setup     │
+                    └──┬────────┬────────┬──────┘
+                       │        │        │
+           ┌───────────┘        │        └───────────┐
+           ▼                    ▼                     ▼
+   ┌───────────────┐   ┌────────────────┐    ┌────────────────┐
+   │ Stage 2:        │   │ Stage 4:        │    │ Stage 5:        │
+   │ en route        │   │ trip in progress│    │ trip completion │
+   │ uses: SOSButton,│   │ uses: SOSButton,│    │ uses: SOSButton,│
+   │ CancelSheet,    │   │ CancelSheet,    │    │ position store  │
+   │ position store  │   │ reducer, stop-  │    │ (final marker), │
+   └───────────────┘   │ visibility,      │    │ cash collection  │
+                         │ speed-alert,     │    └────────────────┘
+                         │ position store   │
+                         └────────────────┘
+   Stage 1 (request/broadcast) and Stage 3 (OTP verify) don't consume
+   Stage 0's infra — audit found them mostly solid, polish-only.
+```
+
+```
+   accepted ──markArrived──▶ driver_arrived ──startOtp──▶ in_progress
+                                                                │
+                                        ┌───────────────────────┤
+                                        │ one_way/rental          │ round_trip
+                                        ▼                        ▼
+                                   endOtp                    returning ──endOtp──▶ completed
+                                        │
+                                        ▼
+                                   completed
+
+   optimistic_advance → pendingOptimisticStatus set
+   confirmed           → pendingOptimisticStatus cleared, confirmedStatus updated
+   reverted            → pendingOptimisticStatus cleared, confirmedStatus unchanged
+   (unchanged from today — the widening only adds the 'returning' node/edge above)
+```
+
+## Failure modes (Stage 0 infra)
+
+| Codepath | Failure scenario | Test coverage | Error handling | User experience |
+|---|---|---|---|---|
+| `SOSButton` trigger | Network drops mid-request | Stage 0 unit test | Retry + persistent failure state + `tel:` fallback | Clear — never silent |
+| `SOSButton` `tel:` fallback | Device has no telephony | Stage 0 unit test | Capability-checked, button hides itself when unavailable | Clear — no dead button |
+| `CancelSheet` submit | Ride completes server-side same moment as cancel submit (race) | Stage 0 unit test, happy path only | Server 4xx presumed; exact response handling TBD at implementation | To be defined at implementation |
+| Reducer `'returning'` widening | Old cached app state (pre-update) has no handling for `'returning'` on reconnect | Regression test (IRON RULE — mandatory) | TypeScript union type forces exhaustive handling at compile time | N/A if regression test passes |
+| Driver-position store | `backgroundTask.ts` write races a screen's read during rapid GPS ticks | Not addressed — low risk (simple atomic assignment) | N/A | Low risk, not flagged as critical |
+
 ## Open items for the implementation plan
 
 - Exact `SOSButton`/`CancelSheet` visual design (glassmorphism sheet vs.
@@ -208,3 +274,5 @@ session's onboarding bugfix pass:
 - Whether return-cab active-ride wiring is confirmed broken or confirmed
   fine needs a live-data check as the first task of stage 4, since the
   audit could not confirm either way from static reading alone.
+- `CancelSheet` submit-race response handling (table above) — defined at
+  implementation time, not blocking this design.
