@@ -25,12 +25,10 @@ export default function ModeSelectionScreen() {
               <Feather name="truck" size={24} color={colors.inkInverse} />
             </View>
             <View style={styles.cardBodyWrap}>
-              <View style={styles.cardTitleRow}>
-                <Text style={styles.cardTitle}>Standard Mode</Text>
-                <View style={styles.statusRow}>
-                  <View style={styles.statusDot} />
-                  <Text style={styles.statusText}>Operational</Text>
-                </View>
+              <Text style={styles.cardTitle}>Standard Mode</Text>
+              <View style={styles.statusRow}>
+                <View style={styles.statusDot} />
+                <Text style={styles.statusText}>Operational</Text>
               </View>
               <Text style={styles.cardBody}>Accept rides anywhere in the city.</Text>
               <View style={styles.tagRow}>
@@ -48,12 +46,10 @@ export default function ModeSelectionScreen() {
               <Feather name="corner-up-left" size={24} color={colors.inkInverse} />
             </View>
             <View style={styles.cardBodyWrap}>
-              <View style={styles.cardTitleRow}>
-                <Text style={styles.cardTitle}>Return Cab</Text>
-                <View style={styles.statusRow}>
-                  <View style={styles.statusDot} />
-                  <Text style={styles.statusText}>Active</Text>
-                </View>
+              <Text style={styles.cardTitle}>Return Cab</Text>
+              <View style={styles.statusRow}>
+                <View style={styles.statusDot} />
+                <Text style={styles.statusText}>Active</Text>
               </View>
               <Text style={styles.cardBody}>Set a destination and only accept rides heading that way.</Text>
               <View style={styles.tagRow}>
@@ -84,9 +80,13 @@ const styles = StyleSheet.create({
   // ever land at ITS OWN cross-axis position, which is what put the arrow at
   // the tags' height instead of centered against the icon/title.
   cardBodyWrap: { flex: 1, paddingRight: spacing.lg + 2 },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 },
-  cardTitle: { ...typography.title, color: colors.ink900, fontWeight: '800' },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  // Own line below the title, not squeezed onto it -- "Standard Mode" plus
+  // an inline "OPERATIONAL" badge left them touching with zero breathing
+  // room (space-between only has the row's leftover width to distribute,
+  // and a long title + badge leaves almost none). A status label doesn't
+  // need to fight the heading for the same line.
+  cardTitle: { ...typography.title, color: colors.ink900, fontWeight: '800', marginBottom: 4 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: spacing.xs },
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
   statusText: { fontSize: 9, fontWeight: '700', color: colors.ink400, textTransform: 'uppercase', letterSpacing: 0.5 },
   cardBody: { ...typography.body, color: colors.ink600, marginBottom: spacing.sm },
