@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
-import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors } from '@ocar/mobile-shared'
 import CarMarker from '@/features/map/components/CarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { fetchNearbyDrivers } from '@/features/booking/api'
@@ -18,18 +17,21 @@ export type SelectRideMapProps = {
    *  itself (a fraction of the window height) rather than letting this
    *  component dictate a fixed height. */
   fill?: boolean
+  /** Reports poll state up so the parent can render the "no drivers nearby"
+   *  banner itself (in the sheet, like web does) instead of this component
+   *  drawing it as a map overlay -- the map's bottom edge sits right where
+   *  the sheet's rounded top corner overlaps it (fare.tsx's negative
+   *  marginTop), which clipped the banner right where it needed to be readable. */
+  onNearbyDriversChange?: (hasPolled: boolean, count: number) => void
 }
 
 // Matches web's SelectRideMapScene: pickup/drop pins + route line, plus a
 // scattering of nearby driver car icons around pickup -- the "cars are close,
 // you'll be matched fast" reassurance beat. Polls the same nearby-drivers
 // endpoint the web select-ride page polls, at the same 8s cadence.
-export function SelectRideMap({ pickup, drop, routePoints, fill }: SelectRideMapProps) {
+export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDriversChange }: SelectRideMapProps) {
   const mapRef = useRef<MapView>(null)
   const [nearbyDrivers, setNearbyDrivers] = useState<Array<{ driverId: string; lat: number; lng: number }>>([])
-  // Distinct from "0 drivers" -- a fresh poll in flight shouldn't flash a false
-  // "no drivers nearby" banner before the first response has even landed.
-  const [hasPolled, setHasPolled] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -38,7 +40,7 @@ export function SelectRideMap({ pickup, drop, routePoints, fill }: SelectRideMap
         const drivers = await fetchNearbyDrivers(pickup[0], pickup[1])
         if (!cancelled) {
           setNearbyDrivers(drivers)
-          setHasPolled(true)
+          onNearbyDriversChange?.(true, drivers.length)
         }
       } catch {
         // Nearby-drivers is a reassurance layer, not core booking data -- a
@@ -88,34 +90,11 @@ export function SelectRideMap({ pickup, drop, routePoints, fill }: SelectRideMap
           <CarMarker key={d.driverId} position={[d.lat, d.lng]} />
         ))}
       </MapView>
-
-      {hasPolled && nearbyDrivers.length === 0 ? (
-        <View style={styles.noDriversBanner} pointerEvents="none">
-          <Feather name="alert-triangle" size={13} color={colors.warning} />
-          <Text style={styles.noDriversText}>No drivers nearby. Try again in a few minutes.</Text>
-        </View>
-      ) : null}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { height: 180, borderRadius: radii.lg, overflow: 'hidden' },
+  container: { height: 180, borderRadius: 16, overflow: 'hidden' },
   fillContainer: { flex: 1 },
-  noDriversBanner: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-    bottom: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.warningLight,
-    borderWidth: 1,
-    borderColor: colors.warning,
-    borderRadius: radii.md,
-    paddingVertical: spacing.xs + 2,
-    paddingHorizontal: spacing.sm,
-  },
-  noDriversText: { ...typography.caption, color: colors.warning, fontWeight: '600', flex: 1 },
 })

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
@@ -9,6 +9,7 @@ import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { fetchClassifyTrip, fetchNearestCityId, fetchPlaceDetail, fetchRoute, fetchSavedPlaces, type SavedPlace } from '@/features/booking/api'
 import { useAutocomplete } from '@/features/booking/hooks/useAutocomplete'
 import { useBookingDraftStore, type BookingPlace } from '@/features/booking/store'
+import type { RideType } from '@/features/booking/api'
 import { useLocationStore } from '@/store/useLocationStore'
 import { useRecentSearchesStore } from '@/store/useRecentSearchesStore'
 import { RedirectToast } from '@/features/booking/components/RedirectToast'
@@ -83,6 +84,37 @@ export default function BookingPickersScreen() {
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current) }, [])
 
+  // A successful redirect (e.g. undeclared + in-city -> rental) never reset
+  // redirectToast back to null -- it just pushed the next screen, leaving the
+  // message sitting in this screen's state. expo-router keeps this instance
+  // mounted underneath, so backing out of that pushed screen re-showed the
+  // stale "switching to X" toast immediately, before the rider had done
+  // anything new. Clearing on focus (the actual moment this screen becomes
+  // visible again) closes that gap directly instead of hoping every mutation
+  // path remembers to clear it.
+  useFocusEffect(
+    useCallback(() => {
+      if (redirectTimerRef.current) { clearTimeout(redirectTimerRef.current); redirectTimerRef.current = null }
+      setRedirectToast(null)
+    }, [])
+  )
+
+  // A redirect (e.g. undeclared + in-city -> rental) calls setRideType(...,
+  // true), which permanently marks the draft as "declared" in the store.
+  // expo-router keeps this screen instance mounted across back-navigation,
+  // so picking a DIFFERENT destination afterwards inherited that leftover
+  // auto-picked mode instead of classifying fresh. Captured once on entry so
+  // a fresh destination pick can restore exactly what this screen started
+  // with -- reset from inside commitPlace itself (a synchronous event
+  // handler), not a useEffect keyed on `drop`: that effect and the
+  // pickup+drop auto-continue effect both fire in the same commit, and
+  // zustand's setRideType() doesn't retroactively update the closure
+  // handleContinue already captured for *this* render, so auto-continue
+  // could still see the pre-reset rideType/declared. Resetting before
+  // setDrop() runs means the render setDrop triggers already reads fresh.
+  const enteredDeclaredRef = useRef<{ rideType: RideType; declared: boolean } | null>(null)
+  if (enteredDeclaredRef.current === null) enteredDeclaredRef.current = { rideType, declared: rideTypeDeclared }
+
   // Closes editing whenever a field's value changes from ANY source, not just
   // this screen's own commitPlace -- e.g. map-picker (a separate screen) sets
   // `drop` directly on the shared store and navigates back here, which would
@@ -109,12 +141,23 @@ export default function BookingPickersScreen() {
   }
 
   async function commitPlace(place: BookingPlace) {
+    // A deliberate pick always clears the auto-trigger guard below, even if
+    // it resolves to the exact same coordinates as last time (e.g. picking
+    // "Puri" again after backing out of the trip-type screen) -- the guard's
+    // key is the pickup+drop pair, which is unchanged in that case, so
+    // without this the auto-continue effect silently no-ops until the rider
+    // notices and taps Continue manually.
+    autoTriggeredRef.current = null
     if (editingField === 'pickup') {
       setPickup(place)
       // Nothing left to edit if drop is already set; otherwise move straight
       // into destination entry so the whole flow can complete in one pass.
       setEditingField(drop ? null : 'drop')
     } else {
+      const entry = enteredDeclaredRef.current!
+      setRideType(entry.rideType, entry.declared)
+      if (redirectTimerRef.current) { clearTimeout(redirectTimerRef.current); redirectTimerRef.current = null }
+      setRedirectToast(null)
       setDrop(place)
       addRecent(place)
       setEditingField(null)
@@ -142,6 +185,11 @@ export default function BookingPickersScreen() {
     if (!pickup || !drop || continuing) return
     setContinuing(true)
     setContinueError(null)
+    // Defensive: a fresh Continue always starts clean, even if the drop-change
+    // effect above didn't catch this particular path (e.g. re-tapping Continue
+    // after a redirect's own timer already fired).
+    if (redirectTimerRef.current) { clearTimeout(redirectTimerRef.current); redirectTimerRef.current = null }
+    setRedirectToast(null)
     try {
       const [route, cityId, classification] = await Promise.all([
         fetchRoute(pickup.lat, pickup.lng, drop.lat, drop.lng),

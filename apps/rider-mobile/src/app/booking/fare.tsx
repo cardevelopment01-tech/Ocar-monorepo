@@ -43,6 +43,10 @@ export default function BookingFareScreen() {
   const [booking, setBooking] = useState(false)
   const [bookError, setBookError] = useState<string | null>(null)
   const bookInFlightRef = useRef(false)
+  // Distinct from "0 drivers" -- a fresh poll in flight shouldn't flash a
+  // false "no drivers nearby" banner before the first response has landed.
+  const [driversPolled, setDriversPolled] = useState(false)
+  const [nearbyDriverCount, setNearbyDriverCount] = useState(0)
 
   const effectiveSelected = selectedCategoryId ?? categories[0]?.id ?? null
   const selectedFare = effectiveSelected != null ? estimates[effectiveSelected]?.breakdown.total : undefined
@@ -109,7 +113,13 @@ export default function BookingFareScreen() {
     <View style={styles.container}>
       <View style={[styles.mapSection, { height: windowHeight * MAP_HEIGHT_RATIO }]}>
         {pickup && drop ? (
-          <SelectRideMap pickup={[pickup.lat, pickup.lng]} drop={[drop.lat, drop.lng]} routePoints={routePoints} fill />
+          <SelectRideMap
+            pickup={[pickup.lat, pickup.lng]}
+            drop={[drop.lat, drop.lng]}
+            routePoints={routePoints}
+            fill
+            onNearbyDriversChange={(polled, count) => { setDriversPolled(polled); setNearbyDriverCount(count) }}
+          />
         ) : null}
         <Pressable
           onPress={() => router.back()}
@@ -133,6 +143,13 @@ export default function BookingFareScreen() {
             </Text>
           ) : null}
         </View>
+
+        {driversPolled && nearbyDriverCount === 0 ? (
+          <View style={styles.noDriversBanner}>
+            <Feather name="alert-triangle" size={13} color={colors.warning} />
+            <Text style={styles.noDriversText}>No drivers nearby. Try again in a few minutes.</Text>
+          </View>
+        ) : null}
 
         {loading && categories.length === 0 ? (
           <View style={styles.list}>
@@ -212,6 +229,20 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sheetHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs },
+  noDriversBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xs,
+    backgroundColor: colors.warningLight,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: radii.md,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.sm,
+  },
+  noDriversText: { ...typography.caption, color: colors.warning, fontWeight: '600', flex: 1 },
   title: { ...typography.headline, color: colors.ink900 },
   subtitle: { ...typography.label, color: colors.ink600 },
   listFlex: { flex: 1 },

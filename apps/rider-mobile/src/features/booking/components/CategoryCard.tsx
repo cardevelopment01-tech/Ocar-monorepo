@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { Ionicons, Feather } from '@expo/vector-icons'
-import { Skeleton, colors, spacing, typography } from '@ocar/mobile-shared'
+import { Feather } from '@expo/vector-icons'
+import { Skeleton, VehicleIcon, colors, spacing, typography } from '@ocar/mobile-shared'
 import type { VehicleCategory } from '@ocar/mobile-shared'
 
 export type CategoryCardProps = {
@@ -24,7 +24,7 @@ export function CategoryCard({ category, fareTotal, loading, selected, onPress }
       accessibilityState={{ selected }}
     >
       <View style={[styles.iconWrap, selected ? styles.iconWrapSelected : null]}>
-        <Ionicons name="car-outline" size={26} color={selected ? colors.primary : colors.ink600} />
+        <VehicleIcon slug={category.slug} size={28} color={selected ? colors.primary : colors.ink600} />
       </View>
 
       <View style={styles.info}>
