@@ -2,8 +2,10 @@ import { useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Card, ErrorState, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Card, ErrorState, SOSButton, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
+import { triggerSos } from '@/features/safety/api'
+import { useLocationStore } from '@/store/useLocationStore'
 import { DriverCard } from '@/features/ride-tracking/components/DriverCard'
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
 import { StatusBanner } from '@/features/ride-tracking/components/StatusBanner'
@@ -36,6 +38,9 @@ export default function RideTrackingScreen() {
     () => lastLocationAt != null && Date.now() - lastLocationAt > STALE_LOCATION_MS,
     [lastLocationAt]
   )
+
+  const riderLat = useLocationStore((s) => s.lat)
+  const riderLng = useLocationStore((s) => s.lng)
 
   const cancelInFlightRef = useRef(false)
   const [cancelling, setCancelling] = useState(false)
@@ -118,6 +123,7 @@ export default function RideTrackingScreen() {
     : ride.totalEstimated != null ? `₹${Math.round(parseFloat(ride.totalEstimated))}` : null
 
   return (
+    <View style={styles.screen}>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {!socketConnected ? <ReconnectBanner /> : null}
 
@@ -252,10 +258,17 @@ export default function RideTrackingScreen() {
         onSelect={handleAddStop}
       />
     </ScrollView>
+
+    <SOSButton
+      enabled={!isCompleted && !isCancelled}
+      onTrigger={() => triggerSos(rideId, riderLat ?? undefined, riderLng ?? undefined)}
+    />
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1 },
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, gap: spacing.md },
   // Cancels the ScrollView's own padding so the map runs edge-to-edge at

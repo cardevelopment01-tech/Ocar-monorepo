@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import { BackHandler, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Button, ErrorState, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, ErrorState, SOSButton, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useActiveRide } from '@/features/active-ride/useActiveRide'
 import { OtpEntryCard } from '@/features/active-ride/components/OtpEntryCard'
 import { CashCollectionCard } from '@/features/active-ride/components/CashCollectionCard'
 import { TripCompletionCard } from '@/features/active-ride/components/TripCompletionCard'
 import { RateRiderSheet } from '@/features/active-ride/components/RateRiderSheet'
+import { RiderActionsRow } from '@/features/active-ride/components/RiderActionsRow'
 import { RideSheet } from '@/features/active-ride/components/RideSheet'
 import { ActiveRideMap } from '@/features/active-ride/components/ActiveRideMap'
+import { triggerSos } from '@/features/active-ride/safety-api'
+import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosition'
 
 export default function ActiveRideScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -84,13 +87,21 @@ export default function ActiveRideScreen() {
   // the viewport left dead.
   const destination = ride.destLat != null && ride.destLng != null ? ([ride.destLat, ride.destLng] as [number, number]) : null
   const showsDestination = status === 'in_progress' || status === 'completed'
+  const pickup: [number, number] = [ride.originLat, ride.originLng]
+  const navigateTarget = showsDestination && destination ? destination : pickup
+  const live = useDriverLivePosition(true)
 
   return (
     <View style={styles.container}>
       <ActiveRideMap
-        pickup={[ride.originLat, ride.originLng]}
+        pickup={pickup}
         destination={showsDestination ? destination : null}
         leg={showsDestination ? 'to-destination' : 'to-pickup'}
+      />
+
+      <SOSButton
+        enabled={status !== 'completed'}
+        onTrigger={() => triggerSos(rideId, live?.position[0], live?.position[1])}
       />
 
       {status === 'completed' && cashResult ? (
@@ -119,6 +130,7 @@ export default function ActiveRideScreen() {
       ) : status === 'in_progress' ? (
         <RideSheet key="in-progress">
           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+          <RiderActionsRow rideId={rideId} riderName={ride.riderName} navigateTo={navigateTarget} />
           <Text style={styles.title}>Trip in progress</Text>
           <Text style={styles.detail} numberOfLines={2}>
             → {ride.destinationAddress ?? 'Destination'}
@@ -134,6 +146,7 @@ export default function ActiveRideScreen() {
       ) : status === 'driver_arrived' ? (
         <RideSheet key="start-otp">
           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+          <RiderActionsRow rideId={rideId} riderName={ride.riderName} navigateTo={navigateTarget} />
           <OtpEntryCard
             title="Enter start OTP"
             submitLabel="Start trip"
@@ -145,6 +158,7 @@ export default function ActiveRideScreen() {
       ) : (
         <RideSheet key="head-to-pickup">
           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+          <RiderActionsRow rideId={rideId} riderName={ride.riderName} navigateTo={navigateTarget} />
           <Text style={styles.title}>Head to pickup</Text>
           <Text style={styles.detail} numberOfLines={2}>
             {ride.originAddress ?? 'Pickup location'}

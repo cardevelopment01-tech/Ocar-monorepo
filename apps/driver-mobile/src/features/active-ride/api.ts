@@ -10,6 +10,13 @@ export async function markArrived(rideId: string): Promise<void> {
   await api.post(`/api/v1/rides/${rideId}/arrived`)
 }
 
+// Same endpoint rider-mobile's triggerMaskedCall hits -- rides.routes.ts's
+// call handler checks req.user OR req.driver as the ride owner, so this
+// works unchanged for the driver side too.
+export async function triggerMaskedCall(rideId: string): Promise<void> {
+  await api.post(`/api/v1/rides/${rideId}/call`)
+}
+
 export async function submitStartOtp(rideId: string, otp: string): Promise<void> {
   await api.post(`/api/v1/rides/${rideId}/start-otp`, { otp })
 }
