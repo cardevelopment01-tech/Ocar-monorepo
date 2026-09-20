@@ -3,6 +3,7 @@ import { BackHandler, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Button, ErrorState, SOSButton, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
+import { useAuthStore } from '@/store/useAuthStore'
 import { useActiveRide } from '@/features/active-ride/useActiveRide'
 import { OtpEntryCard } from '@/features/active-ride/components/OtpEntryCard'
 import { CashCollectionCard } from '@/features/active-ride/components/CashCollectionCard'
@@ -32,6 +33,7 @@ export default function ActiveRideScreen() {
     collectCashAction,
   } = useActiveRide(rideId)
 
+  const driverRating = useAuthStore((s) => s.driver?.rating ?? null)
   const [cashResult, setCashResult] = useState<{ collected: number } | null>(null)
   const [cashLoading, setCashLoading] = useState(false)
   const [rateSheetOpen, setRateSheetOpen] = useState(true)
@@ -107,7 +109,12 @@ export default function ActiveRideScreen() {
       {status === 'completed' && cashResult ? (
         <>
           <RideSheet key="trip-complete">
-            <TripCompletionCard fareEarned={cashResult.collected} onBackToOnline={handleBackToOnline} />
+            <TripCompletionCard
+              ride={ride}
+              collectedCash={cashResult.collected}
+              driverRating={driverRating}
+              onBackToOnline={handleBackToOnline}
+            />
           </RideSheet>
           <RateRiderSheet
             visible={rateSheetOpen}
@@ -121,6 +128,7 @@ export default function ActiveRideScreen() {
           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
           <CashCollectionCard
             expectedFare={expectedFare}
+            riderName={ride.riderName}
             loading={cashLoading}
             error={null}
             onConfirmFull={() => void handleConfirmCashFull()}

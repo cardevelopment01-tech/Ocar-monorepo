@@ -10,8 +10,18 @@ function isInvalidOtp(err: unknown): boolean {
   return axios.isAxiosError(err) && err.response?.status === 422
 }
 
+// GET /rides/:id's own query already joins payments and returns these
+// (rides.repository.ts's getRideById), same fields web's TripEnd.tsx polls
+// for -- just not declared on the shared RideDetail type since only the
+// completed-trip screen needs them.
+export type RideDetailSettled = RideDetail & {
+  commissionAmount?: string | null
+  driverEarning?: string | null
+  paymentChannel?: string | null
+}
+
 export function useActiveRide(rideId: string) {
-  const [ride, setRide] = useState<RideDetail | null>(null)
+  const [ride, setRide] = useState<RideDetailSettled | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -26,7 +36,7 @@ export function useActiveRide(rideId: string) {
     setLoading(true)
     fetchRide(rideId)
       .then((detail) => {
-        setRide(detail)
+        setRide(detail as RideDetailSettled)
         dispatch({ type: 'confirmed', status: detail.status as RideStatus, rideType: detail.rideType })
         setLoadError(false)
       })
@@ -95,13 +105,20 @@ export function useActiveRide(rideId: string) {
     async (input: { collectedAmount?: number; notCollected?: boolean; note?: string }) => {
       setActionError(null)
       try {
-        return await submitCashCollection(rideId, input)
+        const result = await submitCashCollection(rideId, input)
+        // settleRideCompletionPayment (writes commission_amount/driver_earning)
+        // runs async on the server, fired after this call already responded --
+        // one re-fetch shortly after is enough to usually catch it landing
+        // (web's TripEnd.tsx polls up to 5x for the same reason; the
+        // completion screen falls back to an estimate if it's still missing).
+        setTimeout(load, 1200)
+        return result
       } catch {
         setActionError('Could not record cash collection. Try again.')
         return null
       }
     },
-    [rideId]
+    [rideId, load]
   )
 
   return {
