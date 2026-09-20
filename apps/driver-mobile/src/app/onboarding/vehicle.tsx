@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type VehicleBrand, type VehicleCategory, type VehicleInfoPayload, type VehicleModel } from '@/features/onboarding/api'
 import { FUEL_TYPES, VEHICLE_COLORS } from '@/features/onboarding/constants'
@@ -134,10 +134,7 @@ export default function VehicleRegistrationScreen() {
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.errorText}>Failed to load vehicle data.</Text>
-        <Pressable onPress={() => void loadDropdownData()} style={({ pressed }) => [styles.retryBtn, pressed ? styles.pressedScale : null]}>
-          <Feather name="refresh-cw" size={14} color={colors.primary} />
-          <Text style={styles.retryText}>Tap to retry</Text>
-        </Pressable>
+        <Button label="Tap to retry" variant="ghost" icon="refresh-cw" onPress={() => void loadDropdownData()} />
       </View>
     )
   }
@@ -157,75 +154,81 @@ export default function VehicleRegistrationScreen() {
         </Text>
       ) : null}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      <Pressable
-        onPress={handleContinue}
-        disabled={!isValid || isLoading}
-        style={({ pressed }) => [styles.continueBtn, (!isValid || isLoading) ? styles.disabled : null, pressed && isValid && !isLoading ? styles.pressedScale : null]}
-      >
-        {isLoading ? <ActivityIndicator color={colors.inkInverse} /> : <Text style={styles.continueText}>Continue</Text>}
-      </Pressable>
+      <Button label="Continue" onPress={handleContinue} loading={isLoading} disabled={!isValid} />
     </>
   )
 
   return (
     <OnboardingShell stepIndex={1} title="Vehicle Details" footer={footer}>
-      <PickerField label="Brand" value={brandId} options={brands.map((b) => ({ value: Number(b.id), label: b.name }))} onSelect={(v) => void handleBrandChange(Number(v))} placeholder="Select brand" searchable={brands.length > 6} />
-      <PickerField label="Model" value={modelId} options={models.map((m) => ({ value: Number(m.id), label: m.name }))} onSelect={(v) => handleModelChange(Number(v))} placeholder={!brandId ? 'Select brand first' : 'Select model'} disabled={!brandId} searchable={models.length > 6} />
-
-      <Field label="Vehicle Category">
-        <View style={styles.categoryGrid}>
-          {categories.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => setCategoryId(Number(c.id))}
-              style={({ pressed }) => [styles.categoryBtn, categoryId === Number(c.id) ? styles.categoryBtnActive : null, pressed ? styles.pressedScale : null]}
-            >
-              <Text style={[styles.categoryText, categoryId === Number(c.id) ? styles.categoryTextActive : null]}>{c.display_name}</Text>
-            </Pressable>
-          ))}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Feather name="truck" size={15} color={colors.primary} />
+          <Text style={styles.cardTitle}>Vehicle</Text>
         </View>
-      </Field>
-
-      <Field label="Registration Number">
-        <TextField value={plate} onChangeText={(t) => setPlate(t.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 11))} placeholder="OD05AB1234" autoCapitalize="characters" maxLength={11} />
-      </Field>
-
-      <Field label="Year of Manufacture">
-        <TextField value={modelYear} onChangeText={(t) => setModelYear(t.replace(/\D/g, '').slice(0, 4))} placeholder="2022" keyboardType="number-pad" maxLength={4} />
-      </Field>
-
-      <DateField label="Registration Date" value={registrationDate} onChange={setRegistrationDate} maxDate={TODAY_ISO} placeholder="Select registration date" />
-
-      <Field label="Fuel Type">
-        <ChipGroup columns={4} value={fuelType} onChange={setFuelType} options={FUEL_TYPES.map((f) => ({ value: f.value, label: f.label }))} />
-      </Field>
-
-      <Field label="Color">
-        <ChipGroup value={color} onChange={setColor} options={VEHICLE_COLORS.map((c) => ({ value: c, label: c }))} />
-      </Field>
-
-      <View style={styles.stepperRow}>
-        <View style={{ flex: 1 }}>
-          <Field label="Seats"><Stepper value={seating} min={1} max={8} unit="seat" onChange={setSeating} /></Field>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Field label="Luggage Bags"><Stepper value={luggage} min={0} max={5} unit="bag" onChange={setLuggage} /></Field>
-        </View>
+        <PickerField label="Brand" value={brandId} options={brands.map((b) => ({ value: Number(b.id), label: b.name }))} onSelect={(v) => void handleBrandChange(Number(v))} placeholder="Select brand" searchable={brands.length > 6} />
+        <PickerField label="Model" value={modelId} options={models.map((m) => ({ value: Number(m.id), label: m.name }))} onSelect={(v) => handleModelChange(Number(v))} placeholder={!brandId ? 'Select brand first' : 'Select model'} disabled={!brandId} searchable={models.length > 6} />
+        <Field label="Vehicle Category">
+          <View style={styles.categoryGrid}>
+            {categories.map((c) => (
+              <Pressable
+                key={c.id}
+                onPress={() => setCategoryId(Number(c.id))}
+                style={({ pressed }) => [styles.categoryBtn, categoryId === Number(c.id) ? styles.categoryBtnActive : null, pressed ? styles.pressedScale : null]}
+              >
+                <Text style={[styles.categoryText, categoryId === Number(c.id) ? styles.categoryTextActive : null]}>{c.display_name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </Field>
       </View>
 
-      <Field label="Air Conditioning">
-        <View style={styles.acRow}>
-          {[true, false].map((v) => (
-            <Pressable
-              key={String(v)}
-              onPress={() => setAc(v)}
-              style={({ pressed }) => [styles.acBtn, ac === v ? styles.acBtnActive : null, pressed ? styles.pressedScale : null]}
-            >
-              <Text style={[styles.acText, ac === v ? styles.acTextActive : null]}>{v ? 'AC Available' : 'Non-AC'}</Text>
-            </Pressable>
-          ))}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Feather name="file-text" size={15} color={colors.primary} />
+          <Text style={styles.cardTitle}>Registration</Text>
         </View>
-      </Field>
+        <Field label="Registration Number">
+          <TextField value={plate} onChangeText={(t) => setPlate(t.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 11))} placeholder="OD05AB1234" autoCapitalize="characters" maxLength={11} />
+        </Field>
+        <Field label="Year of Manufacture">
+          <TextField value={modelYear} onChangeText={(t) => setModelYear(t.replace(/\D/g, '').slice(0, 4))} placeholder="2022" keyboardType="number-pad" maxLength={4} />
+        </Field>
+        <DateField label="Registration Date" value={registrationDate} onChange={setRegistrationDate} maxDate={TODAY_ISO} placeholder="Select registration date" />
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Feather name="sliders" size={15} color={colors.primary} />
+          <Text style={styles.cardTitle}>Specifications</Text>
+        </View>
+        <Field label="Fuel Type">
+          <ChipGroup columns={4} value={fuelType} onChange={setFuelType} options={FUEL_TYPES.map((f) => ({ value: f.value, label: f.label }))} />
+        </Field>
+        <Field label="Color">
+          <ChipGroup value={color} onChange={setColor} options={VEHICLE_COLORS.map((c) => ({ value: c, label: c }))} />
+        </Field>
+        <View style={styles.stepperRow}>
+          <View style={{ flex: 1 }}>
+            <Field label="Seats"><Stepper value={seating} min={1} max={8} unit="seat" onChange={setSeating} /></Field>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Luggage Bags"><Stepper value={luggage} min={0} max={5} unit="bag" onChange={setLuggage} /></Field>
+          </View>
+        </View>
+        <Field label="Air Conditioning">
+          <View style={styles.acRow}>
+            {[true, false].map((v) => (
+              <Pressable
+                key={String(v)}
+                onPress={() => setAc(v)}
+                style={({ pressed }) => [styles.acBtn, ac === v ? styles.acBtnActive : null, pressed ? styles.pressedScale : null]}
+              >
+                <Text style={[styles.acText, ac === v ? styles.acTextActive : null]}>{v ? 'AC Available' : 'Non-AC'}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </Field>
+      </View>
     </OnboardingShell>
   )
 }
@@ -233,12 +236,13 @@ export default function VehicleRegistrationScreen() {
 const styles = StyleSheet.create({
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, gap: spacing.sm },
   errorText: { ...typography.body, color: colors.error },
-  retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  retryText: { ...typography.body, color: colors.primary, fontWeight: '700' },
   hint: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginBottom: spacing.xs },
-  continueBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 8, alignItems: 'center' },
-  disabled: { opacity: 0.4 },
-  continueText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  // Matches personal.tsx's card pattern -- vehicle used to be a flat list of
+  // fields with no grouping, the one step in the wizard that looked
+  // unfinished next to personal.tsx and documents.tsx's titled sections.
+  card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.md, gap: spacing.md, borderWidth: 1, borderColor: colors.border },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  cardTitle: { ...typography.body, color: colors.ink900, fontWeight: '700' },
   categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs + 2 },
   categoryBtn: { flexBasis: '48%', flexGrow: 1, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface2, alignItems: 'center' },
   categoryBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },

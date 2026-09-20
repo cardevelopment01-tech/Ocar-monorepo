@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import axios from 'axios'
+import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type PersonalInfoPayload } from '@/features/onboarding/api'
 import { INDIA_STATES, INDIAN_LANGUAGES } from '@/features/onboarding/constants'
@@ -46,6 +47,7 @@ export default function PersonalDetailsScreen() {
   const [isFetching, setIsFetching] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [emergencyError, setEmergencyError] = useState<string | null>(null)
 
   useEffect(() => {
     onboardingApi.getCities()
@@ -88,6 +90,7 @@ export default function PersonalDetailsScreen() {
   async function handleContinue() {
     if (!isValid) return
     setError(null)
+    setEmergencyError(null)
     setIsLoading(true)
     try {
       const payload: PersonalInfoPayload = {
@@ -107,8 +110,16 @@ export default function PersonalDetailsScreen() {
       const result = await onboardingApi.savePersonalInfo(payload)
       updateDriver({ onboarding_step: result.next_step })
       router.push('/onboarding/vehicle')
-    } catch {
-      setError('Something went wrong. Please try again.')
+    } catch (err) {
+      const data = axios.isAxiosError(err)
+        ? (err.response?.data as { error?: string; fields?: Record<string, string[]> } | undefined)
+        : undefined
+      const message = data?.fields?.['emergency_contact']?.[0] ?? data?.error
+      if (message?.toLowerCase().includes('emergency contact')) {
+        setEmergencyError(message)
+      } else {
+        setError(message ?? 'Something went wrong. Please try again.')
+      }
     } finally {
       setIsLoading(false)
     }
@@ -144,9 +155,7 @@ export default function PersonalDetailsScreen() {
         </Text>
       ) : null}
       {error ? <FieldError message={error} /> : null}
-      <Pressable onPress={handleContinue} disabled={!isValid || isLoading} style={[styles.continueBtn, (!isValid || isLoading) ? styles.disabled : null]}>
-        {isLoading ? <ActivityIndicator color={colors.inkInverse} /> : <Text style={styles.continueText}>Continue</Text>}
-      </Pressable>
+      <Button label="Continue" onPress={handleContinue} loading={isLoading} disabled={!isValid} />
     </>
   )
 
@@ -235,13 +244,21 @@ export default function PersonalDetailsScreen() {
             <Text style={styles.phonePrefix}>+91</Text>
             <TextField
               value={emergency}
-              onChangeText={(t) => setEmergency(t.replace(/\D/g, '').slice(0, 10))}
+              onChangeText={(t) => { setEmergency(t.replace(/\D/g, '').slice(0, 10)); setEmergencyError(null) }}
               placeholder="Family member's number"
               keyboardType="number-pad"
               maxLength={10}
               style={styles.phoneInput}
+              // This is a family member's number, not the driver's own -- Android's
+              // autofill/suggestion highlight (a distracting white-and-blue box that
+              // doesn't match this field's pill styling) has nothing useful to offer
+              // here and was rendering regardless of focus state.
+              importantForAutofill="no"
+              textContentType="none"
+              autoComplete="off"
             />
           </View>
+          <FieldError message={emergencyError} />
         </Field>
         {!showEmail ? (
           <Pressable onPress={() => setShowEmail(true)} style={styles.addEmailBtn}>
@@ -264,16 +281,18 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   cardTitle: { ...typography.body, color: colors.ink900, fontWeight: '700' },
   hint: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginBottom: spacing.xs },
-  continueBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 8, alignItems: 'center' },
-  disabled: { opacity: 0.4 },
-  continueText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
   experienceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface2, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, minHeight: 52 },
   stepBtn: { width: 40, height: 40, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   experienceText: { ...typography.body, color: colors.ink900, fontWeight: '700' },
   moreLangs: { ...typography.caption, color: colors.primary, fontWeight: '700', marginTop: spacing.xs },
   phoneRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.surface2, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md },
   phonePrefix: { ...typography.body, color: colors.ink600, fontWeight: '700' },
-  phoneInput: { flex: 1, backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0 },
+  // Cancels every visual layer `styles.input` (via ...shadows.card) puts on this
+  // TextInput -- backgroundColor/borderWidth alone left the shadow/elevation
+  // active, which on Android renders as an opaque white box with a shadow ring
+  // floating inside phoneRow's own pill, since a transparent background can't
+  // stop an elevated view from compositing its own backing layer.
+  phoneInput: { flex: 1, backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, shadowColor: 'transparent', shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 },
   addEmailBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: spacing.xs },
   addEmailText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
 })

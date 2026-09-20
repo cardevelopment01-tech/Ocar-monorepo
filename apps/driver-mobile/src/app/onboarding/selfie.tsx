@@ -5,49 +5,13 @@ import { useRouter } from 'expo-router'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { getInfoAsync } from 'expo-file-system/legacy'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type PickedFile } from '@/features/onboarding/api'
 import { OnboardingShell } from '@/features/onboarding/components/OnboardingShell'
+import { OvalOverlay } from '@/components/camera/OvalOverlay'
 
 type Stage = 'gate' | 'camera' | 'preview' | 'submitting'
-
-// Matches web's OvalOverlay (ReferenceSelfie.tsx): a static KYC-style oval
-// guide with L-shaped corner brackets. No live face detection on web either --
-// this is a framing guide, not a liveness check.
-const OVAL_WIDTH_RATIO = 0.62
-const OVAL_ASPECT = 3 / 4
-const BRACKET_ARM = 18
-const BRACKET_THICKNESS = 3
-
-function OvalOverlay({ dimmed, screenWidth, screenHeight }: { dimmed?: boolean; screenWidth: number; screenHeight: number }) {
-  const ovalWidth = screenWidth * OVAL_WIDTH_RATIO
-  const ovalHeight = ovalWidth / OVAL_ASPECT
-  const sideBandWidth = (screenWidth - ovalWidth) / 2
-  const topBandHeight = (screenHeight - ovalHeight) / 2
-  const dimColor = dimmed ? 'rgba(0,0,0,0.52)' : 'rgba(0,0,0,0.60)'
-
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <View style={[styles.dimBand, { top: 0, left: 0, right: 0, height: topBandHeight, backgroundColor: dimColor }]} />
-      <View style={[styles.dimBand, { bottom: 0, left: 0, right: 0, height: topBandHeight, backgroundColor: dimColor }]} />
-      <View style={[styles.dimBand, { top: topBandHeight, left: 0, width: sideBandWidth, height: ovalHeight, backgroundColor: dimColor }]} />
-      <View style={[styles.dimBand, { top: topBandHeight, right: 0, width: sideBandWidth, height: ovalHeight, backgroundColor: dimColor }]} />
-
-      <View style={{ position: 'absolute', top: topBandHeight, left: sideBandWidth, width: ovalWidth, height: ovalHeight }}>
-        <View style={[styles.ovalRing, { width: ovalWidth, height: ovalHeight, borderRadius: ovalWidth / 2 }]} />
-        <View style={[styles.bracket, { top: 0, left: 0, width: BRACKET_ARM, height: BRACKET_THICKNESS }]} />
-        <View style={[styles.bracket, { top: 0, left: 0, width: BRACKET_THICKNESS, height: BRACKET_ARM }]} />
-        <View style={[styles.bracket, { top: 0, right: 0, width: BRACKET_ARM, height: BRACKET_THICKNESS }]} />
-        <View style={[styles.bracket, { top: 0, right: 0, width: BRACKET_THICKNESS, height: BRACKET_ARM }]} />
-        <View style={[styles.bracket, { bottom: 0, left: 0, width: BRACKET_ARM, height: BRACKET_THICKNESS }]} />
-        <View style={[styles.bracket, { bottom: 0, left: 0, width: BRACKET_THICKNESS, height: BRACKET_ARM }]} />
-        <View style={[styles.bracket, { bottom: 0, right: 0, width: BRACKET_ARM, height: BRACKET_THICKNESS }]} />
-        <View style={[styles.bracket, { bottom: 0, right: 0, width: BRACKET_THICKNESS, height: BRACKET_ARM }]} />
-      </View>
-    </View>
-  )
-}
 
 export default function ReferenceSelfieScreen() {
   const router = useRouter()
@@ -154,13 +118,8 @@ export default function ReferenceSelfieScreen() {
   const footer = stage === 'preview' ? (
     <>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
-      <Pressable onPress={() => void handleSubmit()} style={({ pressed }) => [styles.primaryBtn, pressed ? styles.pressedScale : null]}>
-        <Text style={styles.primaryText}>Submit Application</Text>
-      </Pressable>
-      <Pressable onPress={() => { setPhoto(null); void openCamera() }} style={({ pressed }) => [styles.secondaryBtn, pressed ? styles.pressedScale : null]}>
-        <Feather name="refresh-cw" size={14} color={colors.ink600} />
-        <Text style={styles.secondaryText}>Retake</Text>
-      </Pressable>
+      <Button label="Submit Application" onPress={() => void handleSubmit()} />
+      <Button label="Retake" variant="ghost" icon="refresh-cw" onPress={() => { setPhoto(null); void openCamera() }} />
     </>
   ) : stage === 'submitting' ? (
     <View style={styles.submittingRow}>
@@ -168,10 +127,7 @@ export default function ReferenceSelfieScreen() {
       <Text style={styles.submittingText}>Submitting…</Text>
     </View>
   ) : (
-    <Pressable onPress={() => void openCamera()} style={({ pressed }) => [styles.primaryBtn, pressed ? styles.pressedScale : null]}>
-      <Feather name="camera" size={16} color={colors.inkInverse} />
-      <Text style={styles.primaryText}>Open Camera</Text>
-    </Pressable>
+    <Button label="Open Camera" icon="camera" onPress={() => void openCamera()} />
   )
 
   return (
@@ -207,26 +163,22 @@ export default function ReferenceSelfieScreen() {
 const styles = StyleSheet.create({
   gateCard: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.lg, alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
   iconCircle: { width: 64, height: 64, borderRadius: radii.full, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs },
-  gateTitle: { ...typography.title, color: colors.ink900, fontWeight: '800' },
+  // headline, not title -- this gate card is the only content on the screen
+  // and should read with the same weight as OnboardingShell's own step title,
+  // not a smaller card-subsection size. 700 is the heaviest loaded weight.
+  gateTitle: { ...typography.headline, color: colors.ink900, fontWeight: '700' },
   gateBody: { ...typography.body, color: colors.ink600, textAlign: 'center' },
   permissionWarning: { flexDirection: 'row', gap: spacing.xs, backgroundColor: colors.errorLight, borderRadius: radii.md, padding: spacing.sm, marginTop: spacing.sm },
   permissionText: { ...typography.caption, color: colors.error, flex: 1 },
   previewWrap: { alignItems: 'center' },
   previewImage: { width: 220, height: 220, borderRadius: radii['2xl'] },
   errorText: { ...typography.caption, color: colors.error, textAlign: 'center', marginBottom: spacing.xs },
-  primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 8 },
-  primaryText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
-  secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, paddingVertical: spacing.sm + 4, marginTop: spacing.xs },
-  secondaryText: { ...typography.body, color: colors.ink600, fontWeight: '600' },
   submittingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
   submittingText: { ...typography.body, color: colors.ink600, fontWeight: '600' },
   pressedScale: { transform: [{ scale: 0.97 }] },
 
   cameraScreen: { flex: 1, backgroundColor: '#000000' },
   loadingVeil: { backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center', zIndex: 20 },
-  dimBand: { position: 'absolute' },
-  ovalRing: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)' },
-  bracket: { position: 'absolute', backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 1.5 },
   cameraHeader: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.xl + spacing.md, zIndex: 15 },
   cameraBackBtn: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
   chipTop: { position: 'absolute', top: spacing.xl + spacing.xl + spacing.md, left: 0, right: 0, alignItems: 'center', zIndex: 15 },

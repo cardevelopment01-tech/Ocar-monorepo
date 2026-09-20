@@ -1,19 +1,17 @@
 import { useEffect, useState } from 'react'
 import { BackHandler, StyleSheet, Text, View } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Button, Card, ErrorState, Skeleton, colors, spacing, typography } from '@ocar/mobile-shared'
+import { Button, ErrorState, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useActiveRide } from '@/features/active-ride/useActiveRide'
 import { OtpEntryCard } from '@/features/active-ride/components/OtpEntryCard'
 import { CashCollectionCard } from '@/features/active-ride/components/CashCollectionCard'
 import { TripCompletionCard } from '@/features/active-ride/components/TripCompletionCard'
 import { RateRiderSheet } from '@/features/active-ride/components/RateRiderSheet'
+import { RideSheet } from '@/features/active-ride/components/RideSheet'
 import { ActiveRideMap } from '@/features/active-ride/components/ActiveRideMap'
 
 export default function ActiveRideScreen() {
-  const insets = useSafeAreaInsets()
-  const containerStyle = [styles.container, { paddingTop: insets.top + spacing.lg }]
   const { id } = useLocalSearchParams<{ id: string }>()
   const rideId = id ?? ''
   const router = useRouter()
@@ -44,7 +42,7 @@ export default function ActiveRideScreen() {
 
   if (loading) {
     return (
-      <View style={containerStyle}>
+      <View style={styles.centeredState}>
         <Skeleton height={24} width="60%" />
         <Skeleton height={80} />
       </View>
@@ -53,7 +51,7 @@ export default function ActiveRideScreen() {
 
   if (loadError || !ride) {
     return (
-      <View style={containerStyle}>
+      <View style={styles.centeredState}>
         <ErrorState message="Couldn't load this ride." onRetry={reload} />
       </View>
     )
@@ -80,17 +78,26 @@ export default function ActiveRideScreen() {
     router.replace('/(tabs)/home')
   }
 
+  // The map is always the whole screen, not a boxed inset -- every ride
+  // state docks its content in one RideSheet floating over it (Uber
+  // convention), instead of a Card stranded at the top with the rest of
+  // the viewport left dead.
+  const destination = ride.destLat != null && ride.destLng != null ? ([ride.destLat, ride.destLng] as [number, number]) : null
+  const showsDestination = status === 'in_progress' || status === 'completed'
+
   return (
-    <View style={containerStyle}>
-      {actionError ? (
-        <Card style={styles.errorCard}>
-          <Text style={styles.error}>{actionError}</Text>
-        </Card>
-      ) : null}
+    <View style={styles.container}>
+      <ActiveRideMap
+        pickup={[ride.originLat, ride.originLng]}
+        destination={showsDestination ? destination : null}
+        leg={showsDestination ? 'to-destination' : 'to-pickup'}
+      />
 
       {status === 'completed' && cashResult ? (
         <>
-          <TripCompletionCard fareEarned={cashResult.collected} onBackToOnline={handleBackToOnline} />
+          <RideSheet key="trip-complete">
+            <TripCompletionCard fareEarned={cashResult.collected} onBackToOnline={handleBackToOnline} />
+          </RideSheet>
           <RateRiderSheet
             visible={rateSheetOpen}
             rideId={rideId}
@@ -99,63 +106,60 @@ export default function ActiveRideScreen() {
           />
         </>
       ) : status === 'completed' ? (
-        <CashCollectionCard
-          expectedFare={expectedFare}
-          loading={cashLoading}
-          error={null}
-          onConfirmFull={() => void handleConfirmCashFull()}
-          onPartialOrNotCollected={(input) => void handlePartialCash(input)}
-        />
-      ) : status === 'in_progress' ? (
-        <>
-          <ActiveRideMap
-            pickup={[ride.originLat, ride.originLng]}
-            destination={ride.destLat != null && ride.destLng != null ? [ride.destLat, ride.destLng] : null}
-            leg="to-destination"
+        <RideSheet key="collect-cash">
+          {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+          <CashCollectionCard
+            expectedFare={expectedFare}
+            loading={cashLoading}
+            error={null}
+            onConfirmFull={() => void handleConfirmCashFull()}
+            onPartialOrNotCollected={(input) => void handlePartialCash(input)}
           />
-          <Card style={styles.card}>
-            <Text style={styles.title}>Trip in progress</Text>
-            <Text style={styles.detail} numberOfLines={2}>
-              → {ride.destinationAddress ?? 'Destination'}
-            </Text>
-          </Card>
+        </RideSheet>
+      ) : status === 'in_progress' ? (
+        <RideSheet key="in-progress">
+          {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+          <Text style={styles.title}>Trip in progress</Text>
+          <Text style={styles.detail} numberOfLines={2}>
+            → {ride.destinationAddress ?? 'Destination'}
+          </Text>
           <OtpEntryCard
             title="Enter end OTP"
             submitLabel="End trip"
             loading={false}
-            error={actionError}
+            error={null}
             onSubmit={(otp) => void submitEndOtpAction(otp)}
           />
-        </>
+        </RideSheet>
       ) : status === 'driver_arrived' ? (
-        <OtpEntryCard
-          title="Enter start OTP"
-          submitLabel="Start trip"
-          loading={false}
-          error={actionError}
-          onSubmit={(otp) => void submitStartOtpAction(otp)}
-        />
+        <RideSheet key="start-otp">
+          {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+          <OtpEntryCard
+            title="Enter start OTP"
+            submitLabel="Start trip"
+            loading={false}
+            error={null}
+            onSubmit={(otp) => void submitStartOtpAction(otp)}
+          />
+        </RideSheet>
       ) : (
-        <>
-          <ActiveRideMap pickup={[ride.originLat, ride.originLng]} destination={null} leg="to-pickup" />
-          <Card style={styles.card}>
-            <Text style={styles.title}>Head to pickup</Text>
-            <Text style={styles.detail} numberOfLines={2}>
-              {ride.originAddress ?? 'Pickup location'}
-            </Text>
-            <Button label="I've arrived" onPress={() => void markArrivedAction()} />
-          </Card>
-        </>
+        <RideSheet key="head-to-pickup">
+          {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+          <Text style={styles.title}>Head to pickup</Text>
+          <Text style={styles.detail} numberOfLines={2}>
+            {ride.originAddress ?? 'Pickup location'}
+          </Text>
+          <Button label="I've arrived" onPress={() => void markArrivedAction()} />
+        </RideSheet>
       )}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: spacing.lg, backgroundColor: colors.bg, gap: spacing.md },
-  card: { gap: spacing.sm },
-  errorCard: { gap: spacing.xs },
+  container: { flex: 1, backgroundColor: colors.bg },
+  centeredState: { flex: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.md },
   title: { ...typography.title, color: colors.ink900 },
   detail: { ...typography.body, color: colors.ink600 },
-  error: { ...typography.label, color: colors.error },
+  error: { ...typography.label, color: colors.error, backgroundColor: colors.errorLight, borderRadius: radii.md, padding: spacing.sm, overflow: 'hidden' },
 })

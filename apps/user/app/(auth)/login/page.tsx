@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { authApi, storeAuth, formatPhone, isValidIndianPhone } from '@/lib/auth'
 import { DEMO_MODE } from '@/lib/demo'
+import { createSingleFlightGuard } from '@/lib/single-flight'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -26,7 +27,8 @@ export default function LoginPage() {
   const [countdown, setCountdown] = useState(0)
   const [devOtp, setDevOtp] = useState('')
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const otpRequestInFlightRef = useRef(false)
+  const otpRequestGuardRef = useRef(createSingleFlightGuard())
+  const otpVerifyGuardRef = useRef(createSingleFlightGuard())
 
   const isPhoneValid = isValidIndianPhone(phone)
 
@@ -48,16 +50,17 @@ export default function LoginPage() {
   }
 
   async function handleSendOtp() {
-    if (!isPhoneValid || loading || otpRequestInFlightRef.current) return
-    otpRequestInFlightRef.current = true
+    if (!isPhoneValid || loading || otpRequestGuardRef.current.inFlight) return
     setError('')
     setLoading(true)
     try {
-      const result = await authApi.requestOtp(formatPhone(phone))
-      if ((DEMO_MODE || process.env.NODE_ENV === 'development') && result.otp) setDevOtp(result.otp)
-      setStep('otp')
-      setOtp('')
-      startCountdown()
+      await otpRequestGuardRef.current.run(async () => {
+        const result = await authApi.requestOtp(formatPhone(phone))
+        if ((DEMO_MODE || process.env.NODE_ENV === 'development') && result.otp) setDevOtp(result.otp)
+        setStep('otp')
+        setOtp('')
+        startCountdown()
+      })
     } catch (err: unknown) {
       const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
       if (code === 'AUTH_OTP_RATE_LIMITED') {
@@ -66,7 +69,6 @@ export default function LoginPage() {
         setError('Failed to send OTP. Please check your number.')
       }
     } finally {
-      otpRequestInFlightRef.current = false
       setLoading(false)
     }
   }
@@ -77,17 +79,19 @@ export default function LoginPage() {
   }
 
   async function submitOtp(code: string) {
-    if (code.length < 6 || loading) return
+    if (code.length < 6 || loading || otpVerifyGuardRef.current.inFlight) return
     setError('')
     setLoading(true)
     try {
-      const result = await authApi.verifyOtp(formatPhone(phone), code)
-      storeAuth(result.tokens.accessToken, result.tokens.refreshToken, result.principal)
-      if (result.isNew || !result.principal.name) {
-        router.push('/onboarding')
-      } else {
-        router.push('/home')
-      }
+      await otpVerifyGuardRef.current.run(async () => {
+        const result = await authApi.verifyOtp(formatPhone(phone), code)
+        storeAuth(result.tokens.accessToken, result.tokens.refreshToken, result.principal)
+        if (result.isNew || !result.principal.name) {
+          router.push('/onboarding')
+        } else {
+          router.push('/home')
+        }
+      })
     } catch (err: unknown) {
       const apiCode = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
       if (apiCode === 'AUTH_OTP_INVALID') {

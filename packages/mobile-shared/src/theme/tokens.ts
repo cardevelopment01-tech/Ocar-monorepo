@@ -102,9 +102,27 @@ export const buttonRadius = isRider ? 9999 : 16
 // useAppFonts() actually ran, every one of these silently fell back to the
 // OS default font (Roboto/San Francisco) -- neither mobile app ever loaded
 // Space Grotesk or Plus Jakarta Sans before this.
-export const typography = {
+//
+// display/headline are per-app, like colors/buttonRadius above -- grepped
+// both web codebases: driver web applies its `font-display` (Space Grotesk)
+// class on every major screen heading (Login, Home, Earnings, Wallet,
+// Profile, GoOnline). Rider/user web has `font-display` configured but
+// applies it NOWHERE -- zero usages across the whole app, including its own
+// home page greeting -- so every rider heading is really just bold Plus
+// Jakarta Sans. A single shared `typography` object previously gave
+// rider-mobile Space Grotesk headlines it was never supposed to have.
+const driverDisplay = {
   display: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 28, fontWeight: '700', lineHeight: 34, letterSpacing: -0.84 },
   headline: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 22, fontWeight: '700', lineHeight: 29, letterSpacing: -0.44 },
+} as const
+
+const riderDisplay = {
+  display: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 26, fontWeight: '700', lineHeight: 32 },
+  headline: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 20, fontWeight: '700', lineHeight: 26 },
+} as const
+
+export const typography = {
+  ...(isRider ? riderDisplay : driverDisplay),
   title: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 18, fontWeight: '600', lineHeight: 25 },
   body: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 16, fontWeight: '400', lineHeight: 26 },
   label: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 13, fontWeight: '500', lineHeight: 18 },

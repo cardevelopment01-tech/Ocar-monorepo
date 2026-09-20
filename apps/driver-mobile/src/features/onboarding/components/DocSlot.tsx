@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
+import { getInfoAsync } from 'expo-file-system/legacy'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
 import type { PickedFile } from '../api'
@@ -34,7 +35,12 @@ async function pickFrom(source: 'camera' | 'library'): Promise<PickedFile | null
 
   if (result.canceled || !result.assets[0]) return null
   const asset = result.assets[0]
-  return { uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg', fileSize: asset.fileSize ?? 0 }
+  // asset.fileSize is unreliable after the quality re-encode above (often
+  // undefined on Android) -- a wrong content_length signs the presigned S3
+  // PUT for the wrong byte count, so S3 rejects the real upload with a
+  // signature mismatch. Read the actual re-encoded file's size instead.
+  const info = await getInfoAsync(asset.uri)
+  return { uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg', fileSize: info.exists ? (info.size ?? 0) : (asset.fileSize ?? 0) }
 }
 
 export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, error, onPick }: DocSlotProps) {

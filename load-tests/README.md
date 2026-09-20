@@ -28,11 +28,11 @@ Three scenarios run **concurrently** in one `k6 run main.js` — that overlap (b
 1. **Staging environment must exist and be running the deploy you want to test.** `infra/terraform/staging.tfvars`/`staging.backend.hcl` exist and staging's blue/green Terraform shape is already live (see `docs/superpowers/specs/2026-08-14-staging-runbook.md`) — provision it with `pnpm infra:staging:apply`, then get a real app version onto it with the `Deploy` GitHub Actions workflow (`workflow_dispatch`, `environment: staging`), not just `terraform apply` on its own (that only boots the ASGs, it doesn't deploy code).
 2. **Seed test data on staging:**
    ```bash
-   DATABASE_URL=<staging RDS endpoint, from the api-env SSM param> JWT_ACCESS_SECRET=<staging secret> \
+   JWT_ACCESS_SECRET=<staging secret, from the api-env SSM param> \
      node seed/generate-test-tokens.js --users 6000 --drivers 400 --expiry 3h
    ```
-   Copy both values from staging's `api-env` SSM parameter (see `CLAUDE.md`'s Pending Ops Actions for the SSM pull/edit loop). This writes `k6/tokens.json`. Re-run any time — it's idempotent (upserts, reuses existing rows).
-   - If it warns it found fewer than `--drivers` active drivers with an active vehicle: onboard more test drivers through the real driver app onboarding flow on staging once — these become reusable for every future load test, not a one-time cost.
+   The DB connection is derived live from AWS (`seed/lib/staging-db.js`), not from `DATABASE_URL` — that SSM value still points at the pre-migration Neon database and must never be used for load-test tooling. This writes `k6/tokens.json`. Re-run any time — it's idempotent (upserts, reuses existing rows).
+   - If it warns it found fewer than `--drivers` active drivers with an active vehicle: run `node seed/activate-restored-driver-vehicles.js` first if staging's drivers came from a prod-snapshot restore (their vehicles are commonly still `pending`), or onboard more test drivers through the real driver app onboarding flow on staging once — these become reusable for every future load test, not a one-time cost.
 3. **Confirm `CATEGORY_ID`/`CITY_ID`** actually exist on staging: `SELECT id, name FROM vehicle_categories; SELECT id, name FROM cities;` — pass the real IDs as env vars, don't trust the `1`/`1` defaults blind.
 4. **DB observability steps from `docs/superpowers/specs/2026-07-26-db-loadtest-readiness-design.md`** (still open per `CLAUDE.md` — note that doc predates the Neon→RDS migration, so read "Neon dashboard"/"`-pooler` host" as stale): confirm `pg_stat_statements` is enabled and `log_min_duration_statement=500` is set — on RDS this is `infra/terraform/rds.tf`'s `aws_db_parameter_group.main`, already applied for both environments, not a manual dashboard step. Do this before the test — it's the only way to get the query-level data the "what actually strains first" analysis needs afterward.
 5. **Grafana dashboards open and ready** — see monitoring plan below. Confirm Alloy is shipping metrics from the staging instances before starting (check for recent data, not just that the panel exists).
@@ -163,14 +163,17 @@ cd load-tests
 npm install   # pg + jsonwebtoken, only needed for the seed/ scripts, not k6
 
 # 1. run this first — the bulk seeder reuses its synthetic users/drivers
-DATABASE_URL=<staging Neon URL> JWT_ACCESS_SECRET=<staging secret> \
+JWT_ACCESS_SECRET=<staging secret> \
   node seed/generate-test-tokens.js --users 6000 --drivers 400 --expiry 3h
 
 # 2. seed 1M historical rides (+ status history + fare snapshots + payments)
 #    spread over the last 12 months, skewed toward recent dates
-DATABASE_URL=<staging Neon URL> \
-  node seed/generate-bulk-ride-history.js --rides 1000000 --months 12
+node seed/generate-bulk-ride-history.js --rides 1000000 --months 12
 ```
+
+Neither needs `DATABASE_URL` — both derive the staging RDS connection live from AWS
+(`seed/lib/staging-db.js`). Never point load-test tooling at the `DATABASE_URL` SSM value;
+it still points at the pre-migration Neon database.
 
 Flags: `--rides` (default 1,000,000), `--months` (default 12, date range to spread rows
 over), `--batch-size` (default 1000), `--completed-pct`/`--cancelled-pct` (default 80/15,
@@ -200,12 +203,12 @@ absolute ceiling:
 # reset + baseline at CURRENT volume, then seed, then check at NEW volume
 # NOTE: --reset wipes pg_stat_statements for the ENTIRE database, not just
 # these 4 tracked queries — anyone else profiling this DB loses their window too.
-DATABASE_URL=<staging> node verify/query-regression.js --reset
+node verify/query-regression.js --reset
 #   ...run a representative workload (e.g. one main.js step)...
-DATABASE_URL=<staging> node verify/query-regression.js --mode baseline --out baseline.json
-DATABASE_URL=<staging> node seed/generate-bulk-ride-history.js --rides 1000000 --months 12
+node verify/query-regression.js --mode baseline --out baseline.json
+node seed/generate-bulk-ride-history.js --rides 1000000 --months 12
 #   ...re-run the same workload against the larger dataset...
-DATABASE_URL=<staging> node verify/query-regression.js --mode check --baseline baseline.json
+node verify/query-regression.js --mode check --baseline baseline.json
 ```
 
 A red result is the signal to open `EXPLAIN ANALYZE` on that query (a seq scan
@@ -262,7 +265,7 @@ active ride, orphaned `gps_tracks` rows, and — the same hijack check as above,
 state instead of an HTTP status code — rides accepted by a driver with no `ride_assignments` row.
 
 ```bash
-DATABASE_URL=<staging Neon URL> node verify/reconcile.js --since-hours 24
+node verify/reconcile.js --since-hours 24
 ```
 
 Exits 1 if any check finds violations, so it can gate a "this session passed" decision rather

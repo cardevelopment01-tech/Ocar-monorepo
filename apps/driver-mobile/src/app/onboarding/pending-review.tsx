@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { api } from '@/services/api'
 import { onboardingApi, type DocumentStatus } from '@/features/onboarding/api'
@@ -102,9 +102,9 @@ export default function PendingReviewScreen() {
             ))}
           </View>
         ) : null}
-        <Pressable onPress={() => router.replace('/onboarding/documents')} style={({ pressed }) => [styles.primaryBtn, pressed ? styles.pressedScale : null]}>
-          <Text style={styles.primaryText}>Fix Documents</Text>
-        </Pressable>
+        <View style={styles.btnWrap}>
+          <Button label="Fix Documents" onPress={() => router.replace('/onboarding/documents')} />
+        </View>
         {driver.code ? (
           <View style={styles.codeCard}>
             <Text style={styles.codeLabel}>YOUR DRIVER CODE</Text>
@@ -128,10 +128,7 @@ export default function PendingReviewScreen() {
             <Text style={styles.codeHint}>Provide this when contacting support</Text>
           </View>
         ) : null}
-        <Pressable onPress={() => void checkStatus()} disabled={checking} style={({ pressed }) => [styles.checkBtn, pressed && !checking ? styles.pressedScale : null]}>
-          <Feather name="refresh-cw" size={14} color={colors.primary} />
-          <Text style={styles.checkText}>{checking ? 'Checking…' : 'Check status'}</Text>
-        </Pressable>
+        <Button label={checking ? 'Checking…' : 'Check status'} variant="ghost" icon="refresh-cw" onPress={() => void checkStatus()} disabled={checking} />
       </View>
     )
   }
@@ -168,10 +165,7 @@ export default function PendingReviewScreen() {
           <Text style={styles.codeHint}>Keep this for support enquiries</Text>
         </View>
       ) : null}
-      <Pressable onPress={() => void checkStatus()} disabled={checking} style={({ pressed }) => [styles.checkBtn, pressed && !checking ? styles.pressedScale : null]}>
-        <Feather name="refresh-cw" size={14} color={colors.primary} />
-        <Text style={styles.checkText}>{checking ? 'Checking…' : 'Check approval status'}</Text>
-      </Pressable>
+      <Button label={checking ? 'Checking…' : 'Check approval status'} variant="ghost" icon="refresh-cw" onPress={() => void checkStatus()} disabled={checking} />
     </View>
   )
 }
@@ -179,20 +173,22 @@ export default function PendingReviewScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, paddingHorizontal: spacing.xl, gap: spacing.sm },
   iconCircle: { width: 80, height: 80, borderRadius: radii.full, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
-  title: { ...typography.headline, color: colors.ink900, fontWeight: '800', textAlign: 'center' },
+  // 700 is the heaviest loaded weight -- '800' silently rendered identical.
+  title: { ...typography.headline, color: colors.ink900, fontWeight: '700', textAlign: 'center' },
   body: { ...typography.body, color: colors.ink600, textAlign: 'center', marginBottom: spacing.md },
   card: { backgroundColor: colors.surface2, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, width: '100%', maxWidth: 320, marginBottom: spacing.md },
   cardLabel: { ...typography.caption, color: colors.ink400, fontWeight: '700', letterSpacing: 0.5, marginBottom: spacing.xs },
   rejectedDoc: { ...typography.body, color: colors.warning, fontWeight: '700' },
   rejectedNote: { ...typography.caption, color: colors.ink400 },
-  primaryBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 8, paddingHorizontal: spacing.xl, marginBottom: spacing.md, width: '100%', maxWidth: 320, alignItems: 'center' },
-  primaryText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  btnWrap: { width: '100%', maxWidth: 320, marginBottom: spacing.md },
   codeCard: { backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, borderRadius: radii.xl, paddingHorizontal: spacing.xl, paddingVertical: spacing.md, width: '100%', maxWidth: 320, alignItems: 'center', marginBottom: spacing.md },
   codeLabel: { ...typography.caption, color: colors.ink400, fontWeight: '700', letterSpacing: 0.5, marginBottom: spacing.xs },
-  codeValue: { ...typography.title, color: colors.ink600, fontWeight: '800', letterSpacing: 2 },
-  codeValuePrimary: { fontSize: 24, fontWeight: '800', color: colors.primary, letterSpacing: 2 },
+  // Both previously fell back to the OS default font -- codeValue never set a
+  // fontFamily at all (typography.title's Jakarta family was there, but '800'
+  // was still dead weight), and codeValuePrimary set raw fontSize/fontWeight
+  // with no fontFamily key whatsoever, so a driver's own code -- arguably the
+  // single most memorable string on this screen -- was silently off-brand.
+  codeValue: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 18, fontWeight: '700', color: colors.ink600, letterSpacing: 2 },
+  codeValuePrimary: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 24, fontWeight: '700', color: colors.primary, letterSpacing: 2 },
   codeHint: { ...typography.caption, color: colors.ink400, marginTop: 2 },
-  checkBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  checkText: { ...typography.body, color: colors.primary, fontWeight: '700' },
-  pressedScale: { transform: [{ scale: 0.97 }] },
 })

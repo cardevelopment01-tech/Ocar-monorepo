@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
+﻿import { useMemo } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import Animated, { interpolate, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -42,7 +42,6 @@ function PressableScale({ children, onPress, style }: { children: React.ReactNod
 
 export default function HomeScreen() {
   const router = useRouter()
-  const { height: windowHeight } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   const user = useAuthStore((s) => s.user)
   const { items, loading } = useRideHistory()
@@ -99,7 +98,7 @@ export default function HomeScreen() {
           }}
         >
           <Text style={styles.greetingLabel}>{greeting()}</Text>
-          <Text style={styles.greetingName}>{firstName} 👋</Text>
+          <Text style={styles.greetingName}>{firstName} ðŸ‘‹</Text>
         </Animated.View>
 
         <Pressable
@@ -118,7 +117,7 @@ export default function HomeScreen() {
 
       <Animated.ScrollView
         style={styles.content}
-        contentContainerStyle={[styles.contentInner, { minHeight: windowHeight + 80 }]}
+        contentContainerStyle={styles.contentInner}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
@@ -207,7 +206,7 @@ export default function HomeScreen() {
               <Text style={styles.promoCode}>OCAR20</Text>
             </View>
           </View>
-          <Text style={styles.promoEmoji}>🎉</Text>
+          <Text style={styles.promoEmoji}>ðŸŽ‰</Text>
         </View>
       </Animated.ScrollView>
     </View>
@@ -336,3 +335,4 @@ const styles = StyleSheet.create({
   promoCode: { ...typography.caption, color: colors.primaryDark, fontWeight: '700', letterSpacing: 1 },
   promoEmoji: { fontSize: 28 },
 })
+

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { onboardingApi, type DocumentStatus, type PickedFile } from '@/features/onboarding/api'
 import { DRIVER_DOC_GROUPS, VEHICLE_DOC_GROUPS, ALL_DOC_KEYS } from '@/features/onboarding/constants'
 import { OnboardingShell } from '@/features/onboarding/components/OnboardingShell'
@@ -125,13 +125,7 @@ export default function DocumentsScreen() {
   const footer = (
     <>
       {!canContinue && missingHint ? <Text style={styles.hint}>{missingHint}</Text> : null}
-      <Pressable
-        onPress={() => void handleContinue()}
-        disabled={!canContinue || isSaving}
-        style={({ pressed }) => [styles.continueBtn, (!canContinue || isSaving) ? styles.disabled : null, pressed && canContinue && !isSaving ? styles.pressedScale : null]}
-      >
-        {isSaving ? <ActivityIndicator color={colors.inkInverse} /> : <Text style={styles.continueText}>Continue to Selfie</Text>}
-      </Pressable>
+      <Button label="Continue to Selfie" onPress={() => void handleContinue()} loading={isSaving} disabled={!canContinue} />
     </>
   )
 
@@ -219,9 +213,6 @@ export default function DocumentsScreen() {
 const styles = StyleSheet.create({
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   hint: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginBottom: spacing.xs },
-  continueBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 8, alignItems: 'center' },
-  disabled: { opacity: 0.4 },
-  continueText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
   identityCard: { backgroundColor: colors.surface2, borderRadius: radii.xl, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   cardTitle: { ...typography.body, color: colors.ink900, fontWeight: '700', flex: 1 },
@@ -230,5 +221,4 @@ const styles = StyleSheet.create({
   groupHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   groupLabel: { ...typography.body, color: colors.ink900, fontWeight: '700' },
   optionalBadge: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
-  pressedScale: { transform: [{ scale: 0.97 }] },
 })

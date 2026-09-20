@@ -12,7 +12,6 @@ import { CancelSheet } from '@/features/ride-tracking/components/CancelSheet'
 import { AddStopSheet } from '@/features/ride-tracking/components/AddStopSheet'
 import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { FareDriftToast, UpgradeToast } from '@/features/ride-tracking/components/Toasts'
-import { OtpDisplay } from '@/features/ride-tracking/components/OtpDisplay'
 import { CashCollectionBanner } from '@/features/ride-tracking/components/CashCollectionBanner'
 import { ReconnectBanner } from '@/features/ride-tracking/components/ReconnectBanner'
 import { DriverCancelledBanner } from '@/features/ride-tracking/components/DriverCancelledBanner'
@@ -122,15 +121,17 @@ export default function RideTrackingScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {!socketConnected ? <ReconnectBanner /> : null}
 
-      <RideMapView
-        pickup={pickup}
-        drop={drop}
-        driverPos={hasDriver ? driverPos : null}
-        driverHeading={driverHeading}
-        driverHeadingKnown={driverHeadingKnown}
-        routePoints={routePoints}
-        showDrop={drop != null}
-      />
+      <View style={styles.mapBleed}>
+        <RideMapView
+          pickup={pickup}
+          drop={drop}
+          driverPos={hasDriver ? driverPos : null}
+          driverHeading={driverHeading}
+          driverHeadingKnown={driverHeadingKnown}
+          routePoints={routePoints}
+          showDrop={drop != null}
+        />
+      </View>
 
       <StatusBanner status={status} eta={eta} />
 
@@ -159,7 +160,12 @@ export default function RideTrackingScreen() {
       {hasDriver ? (
         <View style={styles.driverRow}>
           <View style={{ flex: 1 }}>
-            <DriverCard ride={ride} stale={stale} />
+            <DriverCard
+              ride={ride}
+              stale={stale}
+              otp={isAssigned ? ride.startOtp : isInProgress ? ride.endOtp : null}
+              otpLabel={isInProgress ? 'End PIN' : 'Start PIN'}
+            />
           </View>
           <DriverActionsRow
             rideId={rideId}
@@ -176,9 +182,6 @@ export default function RideTrackingScreen() {
           <Text style={styles.fareValue}>{fare}</Text>
         </View>
       ) : null}
-
-      {isAssigned && ride.startOtp ? <OtpDisplay label="Start OTP" otp={ride.startOtp} /> : null}
-      {isInProgress && ride.endOtp ? <OtpDisplay label="End OTP" otp={ride.endOtp} /> : null}
 
       {(ride.status === 'accepted' || ride.status === 'driver_arrived') ? (
         <Pressable onPress={() => setShowCancelSheet(true)} style={styles.cancelRideBtn}>
@@ -255,6 +258,9 @@ export default function RideTrackingScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, gap: spacing.md },
+  // Cancels the ScrollView's own padding so the map runs edge-to-edge at
+  // the top instead of floating as a boxed inset inside it.
+  mapBleed: { marginHorizontal: -spacing.lg, marginTop: -spacing.lg },
   skeletonBlock: { marginBottom: spacing.md },
   searchingCard: { gap: spacing.xs, alignItems: 'center' },
   searchingTitle: { ...typography.title, color: colors.ink900 },

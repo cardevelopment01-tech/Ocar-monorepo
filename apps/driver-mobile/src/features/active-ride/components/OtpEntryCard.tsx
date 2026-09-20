@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { StyleSheet, Text } from 'react-native'
-import { Button, Card, Input, colors, spacing, typography } from '@ocar/mobile-shared'
+import { useEffect, useState } from 'react'
+import { StyleSheet, Text, View } from 'react-native'
+import { Button, OtpBoxInput, colors, spacing, typography } from '@ocar/mobile-shared'
 
 export type OtpEntryCardProps = {
   title: string
@@ -12,32 +12,45 @@ export type OtpEntryCardProps = {
 
 // 4-digit ride OTP entry -- matches CLAUDE.md's ride-OTP convention (SHA-256
 // hashed server-side, 4 digits, distinct from the 6-digit login OTP).
+// Uses the same OtpBoxInput as login (digit boxes, SMS-autofill hint,
+// pop/shake feedback) instead of a plain text field with a "0000"
+// placeholder -- this is the same "read a code off your screen" moment as
+// login, it should not look like a lesser version of it.
 export function OtpEntryCard({ title, submitLabel, loading, error, onSubmit }: OtpEntryCardProps) {
   const [otp, setOtp] = useState('')
 
+  // Auto-submit the instant all 4 digits land, matching login's OTP step --
+  // a driver mid-handover with the rider shouldn't also need to tap Verify.
+  useEffect(() => {
+    if (otp.length === 4) onSubmit(otp)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only otp reaching 4 digits should trigger this
+  }, [otp])
+
   return (
-    <Card style={styles.card}>
+    <View style={styles.card}>
       <Text style={styles.title}>{title}</Text>
-      <Input
+      <OtpBoxInput
+        length={4}
         value={otp}
-        onChangeText={(text) => setOtp(text.replace(/\D/g, '').slice(0, 4))}
-        keyboardType="number-pad"
-        maxLength={4}
-        placeholder="0000"
+        onChangeText={setOtp}
+        error={!!error}
+        autoFocus
+        editable={!loading}
         accessibilityLabel={title}
-        {...(error ? { error } : {})}
       />
+      {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button
         label={submitLabel}
         loading={loading}
         disabled={otp.length !== 4 || loading}
         onPress={() => onSubmit(otp)}
       />
-    </Card>
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
   card: { gap: spacing.sm },
   title: { ...typography.title, color: colors.ink900 },
+  error: { ...typography.label, color: colors.error },
 })

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
-import { colors, radii } from '@ocar/mobile-shared'
+import { colors } from '@ocar/mobile-shared'
 import CarMarker from '@/features/map/components/CarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 
@@ -61,5 +61,8 @@ export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHead
 }
 
 const styles = StyleSheet.create({
-  container: { height: 260, borderRadius: radii.lg, overflow: 'hidden' },
+  // Edge-to-edge like Uber's post-booking map header, not a boxed inset
+  // floating in the scroll -- taller too, since a cramped 260px map next to
+  // 15+ stacked cards is what "not premium" was pointing at.
+  container: { height: 340 },
 })

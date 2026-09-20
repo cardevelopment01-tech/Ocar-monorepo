@@ -14,14 +14,15 @@
  * time window, so it's safe to run against a staging DB with real historical
  * rows sitting next to load-test rows.
  *
- * Usage:
- *   DATABASE_URL=postgresql://... node reconcile.js --since-hours 24
+ * Usage (no DATABASE_URL needed -- see ../seed/lib/staging-db.js):
+ *   node reconcile.js --since-hours 24
  *
  * Exit code 1 if any check finds violations (so this can gate a "test
  * session passed" decision, not just eyeballed).
  */
 
 const { Client } = require('pg')
+const { getStagingDbConfig } = require('../seed/lib/staging-db')
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`)
@@ -29,11 +30,6 @@ function arg(name, fallback) {
 }
 
 const SINCE_HOURS = parseInt(arg('since-hours', '24'), 10)
-const DATABASE_URL = process.env.DATABASE_URL
-if (!DATABASE_URL) {
-  console.error('DATABASE_URL env var is required.')
-  process.exit(1)
-}
 
 const SYNTHETIC_USERS = `(SELECT id FROM users WHERE phone LIKE '99999%')`
 
@@ -115,7 +111,7 @@ const CHECKS = [
 ]
 
 async function main() {
-  const client = new Client({ connectionString: DATABASE_URL })
+  const client = new Client(getStagingDbConfig())
   await client.connect()
 
   let anyFailed = false

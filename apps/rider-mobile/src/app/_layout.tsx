@@ -3,6 +3,7 @@ import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { KeyboardProvider } from 'react-native-keyboard-controller'
 import * as SplashScreen from 'expo-splash-screen'
 import { SplashOverlay, useAppFonts } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -35,14 +36,22 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <StatusBar style="dark" />
-        <Stack screenOptions={{ headerShown: false }} />
-        {showSplashOverlay ? (
-          <SplashOverlay
-            logoSource={require('../../assets/brand/logo-mark.png')}
-            onDone={() => setShowSplashOverlay(false)}
-          />
-        ) : null}
+        {/* Required for any keyboard-aware animation (useReanimatedKeyboardAnimation
+            etc.) to get real keyboard height/progress -- RN's legacy Keyboard module
+            detects show/hide by comparing root-view resize, which edgeToEdgeEnabled
+            breaks entirely on Android (confirmed on a real device: no resize, no
+            event). KeyboardProvider uses the platform's native insets-animation
+            callback instead, which works regardless of window-resize behavior. */}
+        <KeyboardProvider>
+          <StatusBar style="dark" />
+          <Stack screenOptions={{ headerShown: false }} />
+          {showSplashOverlay ? (
+            <SplashOverlay
+              logoSource={require('../../assets/brand/logo-mark.png')}
+              onDone={() => setShowSplashOverlay(false)}
+            />
+          ) : null}
+        </KeyboardProvider>
       </GestureHandlerRootView>
     </SafeAreaProvider>
   )

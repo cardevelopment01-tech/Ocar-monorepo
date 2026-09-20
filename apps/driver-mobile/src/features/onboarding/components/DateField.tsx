@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Feather } from '@expo/vector-icons'
 import { BlurView } from 'expo-blur'
@@ -30,6 +31,7 @@ function rangeProps(minDate?: string, maxDate?: string): { minimumDate?: Date; m
 }
 
 export function DateField({ label, value, onChange, minDate, maxDate, placeholder }: DateFieldProps) {
+  const insets = useSafeAreaInsets()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<Date>(value ? new Date(value) : new Date())
 
@@ -73,8 +75,8 @@ export function DateField({ label, value, onChange, minDate, maxDate, placeholde
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <View style={styles.backdrop}>
           <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
-          <View style={styles.sheet}>
-            <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={[styles.sheet, { paddingBottom: Math.max(spacing.lg, insets.bottom + spacing.sm) }]}>
+            <BlurView intensity={60} tint="light" blurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
             <View style={styles.sheetTopEdge} />
             <View style={styles.handle} />
             <DateTimePicker
@@ -99,7 +101,11 @@ const styles = StyleSheet.create({
   text: { ...typography.body, color: colors.ink900, fontWeight: '600' },
   placeholder: { color: colors.ink400, fontWeight: '400' },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' },
-  sheet: { backgroundColor: 'rgba(255,255,255,0.75)', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, overflow: 'hidden' },
+  // Opaque, not translucent -- same fix as FormPrimitives.tsx's PickerField
+  // sheet: BlurView with no blurMethod renders fully transparent on Android,
+  // so 0.75-alpha white was the only real layer, letting content underneath
+  // ghost through.
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, overflow: 'hidden' },
   sheetTopEdge: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.5)' },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.sm },
   doneBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 6, alignItems: 'center', marginTop: spacing.sm },

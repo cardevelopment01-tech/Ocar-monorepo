@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { StyleSheet, Text } from 'react-native'
-import { Button, Card, Input, colors, formatCurrency, spacing, typography } from '@ocar/mobile-shared'
+import { StyleSheet, Text, View } from 'react-native'
+import { Button, Input, colors, formatCurrency, spacing, typography } from '@ocar/mobile-shared'
 
 export type CashCollectionCardProps = {
   expectedFare: number
@@ -26,7 +26,7 @@ export function CashCollectionCard({
   const [note, setNote] = useState('')
 
   return (
-    <Card style={styles.card}>
+    <View style={styles.card}>
       <Text style={styles.title}>Collect cash</Text>
       <Text style={styles.fare}>{formatCurrency(expectedFare)}</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -58,7 +58,7 @@ export function CashCollectionCard({
           <Button label="Cancel" variant="ghost" onPress={() => setShowPartial(false)} />
         </>
       )}
-    </Card>
+    </View>
   )
 }
 

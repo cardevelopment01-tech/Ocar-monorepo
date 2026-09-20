@@ -1,5 +1,5 @@
-import { StyleSheet, Text } from 'react-native'
-import { Button, Card, colors, formatCurrency, spacing, typography } from '@ocar/mobile-shared'
+import { StyleSheet, Text, View } from 'react-native'
+import { Button, colors, formatCurrency, spacing, typography } from '@ocar/mobile-shared'
 
 export type TripCompletionCardProps = {
   fareEarned: number
@@ -11,12 +11,12 @@ export type TripCompletionCardProps = {
 // toggle screen with no closure. This card is the fix.
 export function TripCompletionCard({ fareEarned, onBackToOnline }: TripCompletionCardProps) {
   return (
-    <Card style={styles.card}>
+    <View style={styles.card}>
       <Text style={styles.title}>Trip complete</Text>
       <Text style={styles.fare}>{formatCurrency(fareEarned)}</Text>
       <Text style={styles.detail}>earned this trip</Text>
       <Button label="Back to online" onPress={onBackToOnline} />
-    </Card>
+    </View>
   )
 }
 

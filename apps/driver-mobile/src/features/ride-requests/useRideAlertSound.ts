@@ -1,6 +1,14 @@
 import { useEffect } from 'react'
 import { Vibration } from 'react-native'
-import { setAudioModeAsync, useAudioPlayer } from 'expo-audio'
+import { setAudioModeAsync, useAudioPlayer, type AudioPlayer } from 'expo-audio'
+
+function safePause(player: AudioPlayer) {
+  try {
+    player.pause()
+  } catch {
+    // Player already released natively -- nothing left to pause.
+  }
+}
 
 // Same asset + same repeating-loop behavior as the web driver app's
 // lib/rideSound.ts (playRideSound/stopRideSound) -- ported to expo-audio
@@ -37,13 +45,17 @@ export function useRideAlertSound(active: boolean): void {
       player.play()
       Vibration.vibrate(VIBRATION_PATTERN, true)
     } else {
-      player.pause()
+      safePause(player)
       Vibration.cancel()
     }
     // Cleanup covers unmount mid-ring (e.g. fast navigation away) so the alarm
-    // and vibration never outlive the overlay that triggered them.
+    // and vibration never outlive the overlay that triggered them. By the
+    // time this runs on unmount, expo-audio may have already released the
+    // native player (observed as "Cannot use shared object that was already
+    // released") -- pause() on an already-released player is a no-op we want,
+    // not a crash, so it's swallowed rather than left to throw.
     return () => {
-      player.pause()
+      safePause(player)
       Vibration.cancel()
     }
   }, [active, player])

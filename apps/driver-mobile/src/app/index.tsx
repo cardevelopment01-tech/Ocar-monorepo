@@ -3,6 +3,7 @@ import { Redirect } from 'expo-router'
 import { Text, View } from 'react-native'
 import { Button, Card, colors, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useOnboardingIntroStore } from '@/store/useOnboardingIntroStore'
 import { fetchActiveRideForRelaunch } from '@/features/active-ride/relaunchApi'
 import { relaunchRoute } from '@/features/active-ride/relaunchRouting'
 
@@ -28,6 +29,8 @@ const ONBOARDING_STEP_ROUTES: Record<string, string> = {
 export default function Index() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const driver = useAuthStore((s) => s.driver)
+  const hasSeenIntro = useOnboardingIntroStore((s) => s.hasSeenIntro)
+  const introHydrated = useOnboardingIntroStore((s) => s.hasHydrated)
   const [checkState, setCheckState] = useState<CheckState>('checking')
   const [route, setRoute] = useState<string | null>(null)
   const [retryToken, setRetryToken] = useState(0)
@@ -50,6 +53,8 @@ export default function Index() {
       .catch(() => setCheckState('failed'))
   }, [isAuthenticated, retryToken, onboardingRoute])
 
+  if (!introHydrated) return null
+  if (!isAuthenticated && !hasSeenIntro) return <Redirect href="/intro" />
   if (!isAuthenticated) return <Redirect href="/(auth)/phone" />
   if (onboardingRoute) return <Redirect href={onboardingRoute} />
 

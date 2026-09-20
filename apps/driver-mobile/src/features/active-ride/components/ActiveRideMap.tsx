@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
 import * as Location from 'expo-location'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, spacing, typography } from '@ocar/mobile-shared'
 import CarMarker from '@/features/map/components/CarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { useDriverLivePosition } from '../useDriverLivePosition'
@@ -71,7 +71,7 @@ export function ActiveRideMap({ pickup, destination, leg }: ActiveRideMapProps) 
 
   if (permissionDenied) {
     return (
-      <View style={[styles.container, styles.fallback]}>
+      <View style={[StyleSheet.absoluteFill, styles.fallback]}>
         <Text style={styles.fallbackText}>Enable location to see the live map</Text>
       </View>
     )
@@ -80,7 +80,7 @@ export function ActiveRideMap({ pickup, destination, leg }: ActiveRideMapProps) 
   const routePoints: [number, number][] = live && legTarget ? [live.position, legTarget] : []
 
   return (
-    <View style={styles.container}>
+    <View style={StyleSheet.absoluteFill}>
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
@@ -115,7 +115,6 @@ export function ActiveRideMap({ pickup, destination, leg }: ActiveRideMapProps) 
 }
 
 const styles = StyleSheet.create({
-  container: { height: 220, borderRadius: radii.lg, overflow: 'hidden' },
   fallback: { backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center', padding: spacing.md },
   fallbackText: { ...typography.label, color: colors.ink600, textAlign: 'center' },
 })
