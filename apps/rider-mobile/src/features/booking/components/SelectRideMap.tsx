@@ -48,14 +48,22 @@ export function SelectRideMap({ pickup, drop, routePoints, fill }: SelectRideMap
     void poll()
     const id = setInterval(poll, POLL_MS)
     return () => { cancelled = true; clearInterval(id) }
-  }, [pickup])
+    // pickup is a fresh [lat, lng] array literal every render of the parent
+    // screen -- depending on the array reference itself would tear down and
+    // restart this interval (and the "have we polled yet" banner state) on
+    // every unrelated re-render instead of running a stable 8s cadence,
+    // which is what made new drivers coming online look like they required
+    // leaving and re-entering the screen to show up.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickup[0], pickup[1]])
 
   useEffect(() => {
     mapRef.current?.fitToCoordinates(
       [pickup, drop].map(([latitude, longitude]) => ({ latitude, longitude })),
       { edgePadding: { top: 40, right: 40, bottom: 40, left: 40 }, animated: true }
     )
-  }, [pickup, drop])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickup[0], pickup[1], drop[0], drop[1]])
 
   return (
     <View style={fill ? styles.fillContainer : styles.container}>
@@ -63,6 +71,9 @@ export function SelectRideMap({ pickup, drop, routePoints, fill }: SelectRideMap
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         initialRegion={{ latitude: pickup[0], longitude: pickup[1], latitudeDelta: 0.05, longitudeDelta: 0.05 }}
+        loadingEnabled
+        loadingIndicatorColor={colors.primary}
+        loadingBackgroundColor={colors.surface}
       >
         {routePoints.length >= 2 ? (
           <Polyline
