@@ -24,6 +24,14 @@ const POPULAR = [
   { from: 'Puri', to: 'Bhubaneswar' },
 ]
 
+// Same empty-string-on-invalid-date guard as RideHistoryRow.tsx's formatDate --
+// a malformed/missing createdAt must never render the literal "Invalid Date".
+function formatTripDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
 function greeting(): string {
   const h = new Date().getHours()
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
@@ -108,7 +116,7 @@ export default function HomeScreen() {
           }}
         >
           <Text style={styles.greetingLabel}>{greeting()}</Text>
-          <Text style={styles.greetingName}>{firstName} ðŸ‘‹</Text>
+          <Text style={styles.greetingName}>{firstName} 👋</Text>
         </Animated.View>
 
         <Pressable
@@ -187,9 +195,7 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle} numberOfLines={1}>{r.destinationAddress ?? 'Unknown destination'}</Text>
-                  <Text style={styles.rowSub}>
-                    {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                  </Text>
+                  <Text style={styles.rowSub}>{formatTripDate(r.createdAt)}</Text>
                 </View>
                 <Feather name="chevron-right" size={14} color={colors.ink400} />
               </PressableScale>
@@ -216,7 +222,7 @@ export default function HomeScreen() {
               <Text style={styles.promoCode}>OCAR20</Text>
             </View>
           </View>
-          <Text style={styles.promoEmoji}>ðŸŽ‰</Text>
+          <Text style={styles.promoEmoji}>🎉</Text>
         </View>
       </Animated.ScrollView>
     </View>
