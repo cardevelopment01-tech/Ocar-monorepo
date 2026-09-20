@@ -108,6 +108,27 @@ export async function fetchNearestCityId(lat: number, lng: number): Promise<numb
   }
 }
 
+export type TripClassification =
+  | { scope: 'in_city'; cityId: number; cityName: string }
+  | { scope: 'outstation' }
+
+// Same endpoint web's geoApi.classifyTrip hits (GET /api/v1/geo/classify-trip) --
+// decides whether a route stays inside one city (round trips/rentals can't
+// serve it, one-way/rental can) or crosses to another (one-way/rental can't
+// serve it, round trip/outstation one-way can).
+export async function fetchClassifyTrip(
+  originLat: number, originLng: number, destLat: number, destLng: number
+): Promise<TripClassification | null> {
+  try {
+    const res = await api.get<TripClassification>('/api/v1/geo/classify-trip', {
+      params: { originLat, originLng, destLat, destLng },
+    })
+    return res.data
+  } catch {
+    return null
+  }
+}
+
 // vehicles.repository.ts's real SELECT returns {id, slug, display_name,
 // max_passengers, is_active} -- packages/mobile-shared's VehicleCategory now
 // matches that shape exactly (fixed after this file first flagged the drift),

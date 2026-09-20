@@ -49,7 +49,17 @@ export default function HomeScreen() {
   const firstName = user?.name?.split(' ')[0] ?? 'there'
 
   function toBooking(rideType: RideType) {
-    setRideType(rideType)
+    setRideType(rideType, true)
+    router.push('/booking')
+  }
+
+  // Search bar, saved places, recent trips, popular routes -- none of these
+  // declare a ride type (matches web's /search reached with no `rideType`
+  // URL param). /booking's Continue classifies the chosen destination itself
+  // once it's known and picks one_way/round_trip/rental accordingly, instead
+  // of every quick-pick silently forcing one_way regardless of destination.
+  function toBookingAuto() {
+    setRideType('one_way', false)
     router.push('/booking')
   }
 
@@ -103,7 +113,7 @@ export default function HomeScreen() {
 
         <Pressable
           style={({ pressed }) => [styles.searchBar, pressed ? styles.searchBarPressed : null]}
-          onPress={() => router.push('/booking')}
+          onPress={toBookingAuto}
           accessibilityRole="search"
           accessibilityLabel="Where to?"
         >
@@ -150,7 +160,7 @@ export default function HomeScreen() {
             <PressableScale
               key={p.label}
               style={[styles.listRow, i < SAVED.length - 1 ? styles.listRowDivider : null]}
-              onPress={() => toBooking('one_way')}
+              onPress={toBookingAuto}
             >
               <View style={styles.rowIconWrap}>
                 <Feather name={p.icon} size={15} color={colors.primary} />
@@ -170,7 +180,7 @@ export default function HomeScreen() {
               <PressableScale
                 key={r.id}
                 style={[styles.listRow, i < recentTrips.length - 1 ? styles.listRowDivider : null]}
-                onPress={() => toBooking('one_way')}
+                onPress={toBookingAuto}
               >
                 <View style={styles.rowIconWrapMuted}>
                   <Feather name="map-pin" size={14} color={colors.ink400} />
@@ -190,7 +200,7 @@ export default function HomeScreen() {
         <Text style={styles.sectionLabel}>Popular routes</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.popularRow}>
           {POPULAR.map((r) => (
-            <PressableScale key={`${r.from}-${r.to}`} style={styles.popularChip} onPress={() => toBooking('one_way')}>
+            <PressableScale key={`${r.from}-${r.to}`} style={styles.popularChip} onPress={toBookingAuto}>
               <Text style={styles.popularFrom}>{r.from}</Text>
               <Feather name="arrow-right" size={10} color={colors.ink400} />
               <Text style={styles.popularTo}>{r.to}</Text>

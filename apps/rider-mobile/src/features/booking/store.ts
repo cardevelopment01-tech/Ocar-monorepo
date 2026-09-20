@@ -15,6 +15,13 @@ interface BookingDraftState {
    *  pushing to /booking, drives search's post-Continue routing (one_way -> fare,
    *  round_trip -> round-trip, rental -> rental). Matches web's SERVICES tiles. */
   rideType: RideType
+  /** False when the rider never declared a ride type (search bar, saved places,
+   *  recent trips, popular routes -- Home screen taps that skip the service
+   *  tiles). Mirrors web's `rideType` URL param being absent: /booking's
+   *  Continue then classifies the route itself instead of trusting the
+   *  leftover/default value above. True once a tile (or the trip-type screen)
+   *  has explicitly picked one. */
+  rideTypeDeclared: boolean
   /** Round-trip only -- how many hours the driver stays, chosen on /booking/round-trip. */
   tripHours: number | null
   /** Round-trip/rental only, up to 3 -- matches web's stops[] URL-param carrying. */
@@ -28,7 +35,7 @@ interface BookingDraftState {
   setDrop: (place: BookingPlace) => void
   setRoute: (distanceKm: number, durationMin: number, originCityId: number | null, routePoints: [number, number][]) => void
   setSelectedCategoryId: (id: number) => void
-  setRideType: (rideType: RideType) => void
+  setRideType: (rideType: RideType, declared?: boolean) => void
   setTripHours: (hours: number) => void
   addStop: (place: BookingPlace) => void
   removeStop: (index: number) => void
@@ -53,6 +60,7 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
   routePoints: [],
   selectedCategoryId: null,
   rideType: 'one_way',
+  rideTypeDeclared: false,
   tripHours: null,
   stops: [],
   scheduledFor: null,
@@ -62,7 +70,7 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
   setDrop: (place) => set({ drop: place }),
   setRoute: (distanceKm, durationMin, originCityId, routePoints) => set({ distanceKm, durationMin, originCityId, routePoints }),
   setSelectedCategoryId: (id) => set({ selectedCategoryId: id }),
-  setRideType: (rideType) => set({ rideType }),
+  setRideType: (rideType, declared = true) => set({ rideType, rideTypeDeclared: declared }),
   setTripHours: (hours) => set({ tripHours: hours }),
   addStop: (place) => set((s) => (s.stops.length >= MAX_STOPS ? s : { stops: [...s.stops, place] })),
   removeStop: (index) => set((s) => ({ stops: s.stops.filter((_, i) => i !== index) })),
@@ -89,6 +97,7 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
       routePoints: [],
       selectedCategoryId: null,
       rideType: 'one_way',
+      rideTypeDeclared: false,
       tripHours: null,
       stops: [],
       scheduledFor: null,

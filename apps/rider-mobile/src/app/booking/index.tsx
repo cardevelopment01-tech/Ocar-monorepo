@@ -6,11 +6,12 @@ import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { PlaceRow } from '@/features/booking/components/PlaceRow'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
-import { fetchNearestCityId, fetchPlaceDetail, fetchRoute, fetchSavedPlaces, type SavedPlace } from '@/features/booking/api'
+import { fetchClassifyTrip, fetchNearestCityId, fetchPlaceDetail, fetchRoute, fetchSavedPlaces, type SavedPlace } from '@/features/booking/api'
 import { useAutocomplete } from '@/features/booking/hooks/useAutocomplete'
 import { useBookingDraftStore, type BookingPlace } from '@/features/booking/store'
 import { useLocationStore } from '@/store/useLocationStore'
 import { useRecentSearchesStore } from '@/store/useRecentSearchesStore'
+import { RedirectToast } from '@/features/booking/components/RedirectToast'
 
 type ActiveField = 'pickup' | 'drop'
 
@@ -41,6 +42,8 @@ export default function BookingPickersScreen() {
   const setDrop = useBookingDraftStore((s) => s.setDrop)
   const setRoute = useBookingDraftStore((s) => s.setRoute)
   const rideType = useBookingDraftStore((s) => s.rideType)
+  const rideTypeDeclared = useBookingDraftStore((s) => s.rideTypeDeclared)
+  const setRideType = useBookingDraftStore((s) => s.setRideType)
   const riderName = useBookingDraftStore((s) => s.riderName)
   const riderPhone = useBookingDraftStore((s) => s.riderPhone)
   const setRider = useBookingDraftStore((s) => s.setRider)
@@ -76,6 +79,9 @@ export default function BookingPickersScreen() {
   const [query, setQuery] = useState('')
   const [continuing, setContinuing] = useState(false)
   const [continueError, setContinueError] = useState<string | null>(null)
+  const [redirectToast, setRedirectToast] = useState<string | null>(null)
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current) }, [])
 
   // Closes editing whenever a field's value changes from ANY source, not just
   // this screen's own commitPlace -- e.g. map-picker (a separate screen) sets
@@ -125,22 +131,58 @@ export default function BookingPickersScreen() {
     }
   }
 
+  // Matches web's search/page.tsx navigateToRide: classifies the route
+  // in-city vs outstation and either follows the rider's declared ride type
+  // (redirecting if it can't actually serve this destination -- round trips
+  // and rentals can't cross cities, one_way/rental can't stay in one) or,
+  // when no ride type was declared (search bar/saved places/recent/popular),
+  // auto-routes: in-city -> rental (City Rides), outstation -> trip-type
+  // chooser.
   async function handleContinue() {
     if (!pickup || !drop || continuing) return
     setContinuing(true)
     setContinueError(null)
     try {
-      const [route, cityId] = await Promise.all([
+      const [route, cityId, classification] = await Promise.all([
         fetchRoute(pickup.lat, pickup.lng, drop.lat, drop.lng),
         fetchNearestCityId(pickup.lat, pickup.lng),
+        // Classification failure must not block booking -- fall back to the
+        // safe "outstation" default (same default web's search page uses).
+        fetchClassifyTrip(pickup.lat, pickup.lng, drop.lat, drop.lng),
       ])
       setRoute(route.distanceKm, route.durationMin, cityId, route.routePoints)
+      const isInCity = classification?.scope === 'in_city'
+      const cityLabel = classification?.scope === 'in_city' ? classification.cityName : 'the city'
+
+      function redirectWithToast(path: '/booking/rental' | '/booking/fare' | '/booking/trip-type', message: string, resolvedRideType?: 'one_way' | 'rental') {
+        if (resolvedRideType) setRideType(resolvedRideType, true)
+        setContinuing(false)
+        setRedirectToast(message)
+        if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current)
+        redirectTimerRef.current = setTimeout(() => router.push(path), 1500)
+      }
+
+      if (!rideTypeDeclared) {
+        if (isInCity) redirectWithToast('/booking/rental', `That's inside ${cityLabel}, switching to City Rides`, 'rental')
+        else { setContinuing(false); router.push('/booking/trip-type') }
+        return
+      }
+
+      if ((rideType === 'one_way' || rideType === 'round_trip') && isInCity) {
+        redirectWithToast('/booking/rental', `That's inside ${cityLabel}, switching to City Rides`, 'rental')
+        return
+      }
+      if (rideType === 'rental' && !isInCity) {
+        redirectWithToast('/booking/fare', `That's outside ${cityLabel}, switching to One Way`, 'one_way')
+        return
+      }
+
+      setContinuing(false)
       router.push(
         rideType === 'round_trip' ? '/booking/round-trip' : rideType === 'rental' ? '/booking/rental' : '/booking/fare'
       )
     } catch {
       setContinueError("Couldn't work out that route — try again")
-    } finally {
       setContinuing(false)
     }
   }
@@ -380,6 +422,8 @@ export default function BookingPickersScreen() {
         onCommit={(name, phone) => { setRider(name, phone); setRiderSheetOpen(false) }}
         onClearToMyself={() => { clearRider(); setRiderSheetOpen(false) }}
       />
+
+      <RedirectToast message={redirectToast} />
     </View>
   )
 }
