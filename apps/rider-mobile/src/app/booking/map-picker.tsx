@@ -88,6 +88,9 @@ export default function MapPickerScreen() {
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         initialRegion={{ latitude: centerLat, longitude: centerLng, latitudeDelta: 0.02, longitudeDelta: 0.02 }}
+        loadingEnabled
+        loadingIndicatorColor={colors.primary}
+        loadingBackgroundColor={colors.surface}
         onRegionChangeComplete={handleRegionChangeComplete}
       >
         {otherPlace ? (

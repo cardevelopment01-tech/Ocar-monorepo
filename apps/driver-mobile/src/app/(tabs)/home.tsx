@@ -71,6 +71,9 @@ export default function HomeScreen() {
         region={region}
         showsUserLocation
         showsMyLocationButton={false}
+        loadingEnabled
+        loadingIndicatorColor={colors.primary}
+        loadingBackgroundColor={colors.surface}
         pointerEvents="none"
       />
       {!isOnline ? <View style={styles.mapDim} pointerEvents="none" /> : null}

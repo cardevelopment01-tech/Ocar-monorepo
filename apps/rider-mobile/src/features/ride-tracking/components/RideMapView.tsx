@@ -42,6 +42,9 @@ export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHead
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         initialRegion={{ latitude: pickup[0], longitude: pickup[1], latitudeDelta: 0.05, longitudeDelta: 0.05 }}
+        loadingEnabled
+        loadingIndicatorColor={colors.primary}
+        loadingBackgroundColor={colors.surface}
       >
         <LocationPin position={pickup} variant="pickup" />
         {showDrop && drop ? <LocationPin position={drop} variant="drop" /> : null}

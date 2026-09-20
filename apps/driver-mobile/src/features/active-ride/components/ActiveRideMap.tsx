@@ -89,6 +89,9 @@ export function ActiveRideMap({ pickup, destination, leg }: ActiveRideMapProps) 
             ? { latitude: live.position[0], longitude: live.position[1], latitudeDelta: 0.02, longitudeDelta: 0.02 }
             : DEFAULT_REGION
         }
+        loadingEnabled
+        loadingIndicatorColor={colors.primary}
+        loadingBackgroundColor={colors.surface}
       >
         <LocationPin position={pickup} variant="pickup" />
         {destination ? <LocationPin position={destination} variant="drop" /> : null}

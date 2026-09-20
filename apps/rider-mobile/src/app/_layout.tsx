@@ -8,6 +8,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import { SplashOverlay, useAppFonts } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useLocationStore } from '@/store/useLocationStore'
+import { MapWarmup } from '@/features/map/components/MapWarmup'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
 
@@ -44,6 +45,7 @@ export default function RootLayout() {
             callback instead, which works regardless of window-resize behavior. */}
         <KeyboardProvider>
           <StatusBar style="dark" />
+          <MapWarmup />
           <Stack screenOptions={{ headerShown: false }} />
           {showSplashOverlay ? (
             <SplashOverlay
