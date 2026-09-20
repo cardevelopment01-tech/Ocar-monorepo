@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import Animated, { FadeInDown } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -18,47 +19,51 @@ export default function ModeSelectionScreen() {
       </View>
 
       <View style={styles.content}>
-        <Pressable onPress={() => router.push('/go-online/standard')} style={styles.card}>
-          <View style={[styles.iconTile, { backgroundColor: '#0F172A' }]}>
-            <Feather name="truck" size={24} color={colors.inkInverse} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={styles.cardTitleRow}>
-              <Text style={styles.cardTitle}>Standard Mode</Text>
-              <View style={styles.statusRow}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>Operational</Text>
+        <Animated.View entering={FadeInDown.duration(360).delay(0)}>
+          <Pressable onPress={() => router.push('/go-online/standard')} style={styles.card}>
+            <View style={[styles.iconTile, { backgroundColor: '#0F172A' }]}>
+              <Feather name="truck" size={24} color={colors.inkInverse} />
+            </View>
+            <View style={styles.cardBodyWrap}>
+              <View style={styles.cardTitleRow}>
+                <Text style={styles.cardTitle}>Standard Mode</Text>
+                <View style={styles.statusRow}>
+                  <View style={styles.statusDot} />
+                  <Text style={styles.statusText}>Operational</Text>
+                </View>
+              </View>
+              <Text style={styles.cardBody}>Accept rides anywhere in the city.</Text>
+              <View style={styles.tagRow}>
+                <View style={styles.tag}><Text style={styles.tagText}>All areas</Text></View>
+                <View style={styles.tag}><Text style={styles.tagText}>No restriction</Text></View>
               </View>
             </View>
-            <Text style={styles.cardBody}>Accept rides anywhere in the city.</Text>
-            <View style={styles.tagRow}>
-              <View style={styles.tag}><Text style={styles.tagText}>All areas</Text></View>
-              <View style={styles.tag}><Text style={styles.tagText}>No restriction</Text></View>
-            </View>
-          </View>
-          <Feather name="chevron-right" size={18} color={colors.ink900} style={styles.chevron} />
-        </Pressable>
+            <Feather name="chevron-right" size={18} color={colors.ink900} style={styles.chevron} />
+          </Pressable>
+        </Animated.View>
 
-        <Pressable onPress={() => router.push('/go-online/return-cab')} style={styles.card}>
-          <View style={[styles.iconTile, { backgroundColor: colors.success }]}>
-            <Feather name="corner-up-left" size={24} color={colors.inkInverse} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={styles.cardTitleRow}>
-              <Text style={styles.cardTitle}>Return Cab</Text>
-              <View style={styles.statusRow}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>Active</Text>
+        <Animated.View entering={FadeInDown.duration(360).delay(80)}>
+          <Pressable onPress={() => router.push('/go-online/return-cab')} style={styles.card}>
+            <View style={[styles.iconTile, { backgroundColor: colors.success }]}>
+              <Feather name="corner-up-left" size={24} color={colors.inkInverse} />
+            </View>
+            <View style={styles.cardBodyWrap}>
+              <View style={styles.cardTitleRow}>
+                <Text style={styles.cardTitle}>Return Cab</Text>
+                <View style={styles.statusRow}>
+                  <View style={styles.statusDot} />
+                  <Text style={styles.statusText}>Active</Text>
+                </View>
+              </View>
+              <Text style={styles.cardBody}>Set a destination and only accept rides heading that way.</Text>
+              <View style={styles.tagRow}>
+                <View style={[styles.tag, styles.tagGreen]}><Text style={[styles.tagText, styles.tagTextGreen]}>One-way</Text></View>
+                <View style={[styles.tag, styles.tagGreen]}><Text style={[styles.tagText, styles.tagTextGreen]}>Earn on the way</Text></View>
               </View>
             </View>
-            <Text style={styles.cardBody}>Set a destination and only accept rides heading that way.</Text>
-            <View style={styles.tagRow}>
-              <View style={[styles.tag, styles.tagGreen]}><Text style={[styles.tagText, styles.tagTextGreen]}>One-way</Text></View>
-              <View style={[styles.tag, styles.tagGreen]}><Text style={[styles.tagText, styles.tagTextGreen]}>Earn on the way</Text></View>
-            </View>
-          </View>
-          <Feather name="chevron-right" size={18} color={colors.success} style={styles.chevron} />
-        </Pressable>
+            <Feather name="chevron-right" size={18} color={colors.success} style={styles.chevron} />
+          </Pressable>
+        </Animated.View>
 
         <Text style={styles.footerNote}>You can go offline at any time from the home screen</Text>
       </View>
@@ -72,8 +77,13 @@ const styles = StyleSheet.create({
   backBtn: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   title: { ...typography.headline, color: colors.ink900, fontWeight: '800', flex: 1 },
   content: { paddingHorizontal: spacing.lg, gap: spacing.sm },
-  card: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radii['2xl'], padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
+  card: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radii['2xl'], padding: spacing.lg, borderWidth: 1, borderColor: colors.border, position: 'relative' },
   iconTile: { width: 56, height: 56, borderRadius: radii.xl, alignItems: 'center', justifyContent: 'center' },
+  // Room for the chevron, which is absolutely centered to the whole card
+  // (below) rather than laid out as a row sibling -- a flex sibling can only
+  // ever land at ITS OWN cross-axis position, which is what put the arrow at
+  // the tags' height instead of centered against the icon/title.
+  cardBodyWrap: { flex: 1, paddingRight: spacing.lg + 2 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 },
   cardTitle: { ...typography.title, color: colors.ink900, fontWeight: '800' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
@@ -85,6 +95,6 @@ const styles = StyleSheet.create({
   tagText: { fontSize: 11, fontWeight: '700', color: colors.ink600 },
   tagGreen: { backgroundColor: colors.successLight },
   tagTextGreen: { color: colors.success },
-  chevron: { marginTop: spacing.lg },
+  chevron: { position: 'absolute', right: spacing.lg, top: '50%', marginTop: -9 },
   footerNote: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginTop: spacing.md },
 })

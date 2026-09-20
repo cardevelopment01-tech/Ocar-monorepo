@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { getInfoAsync } from 'expo-file-system/legacy'
 import { Feather } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type PickedFile } from '@/features/onboarding/api'
@@ -17,6 +18,7 @@ export default function ReferenceSelfieScreen() {
   const router = useRouter()
   const updateDriver = useAuthStore((s) => s.updateDriver)
   const { width: screenWidth, height: screenHeight } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
   const cameraRef = useRef<CameraView>(null)
 
   const [stage, setStage] = useState<Stage>('gate')
@@ -104,7 +106,7 @@ export default function ReferenceSelfieScreen() {
           </Animated.View>
         ) : null}
 
-        <View style={styles.shutterRow}>
+        <View style={[styles.shutterRow, { paddingBottom: Math.max(insets.bottom, spacing.sm) + spacing.lg }]}>
           <Pressable onPress={() => void capture()} disabled={!cameraReady || capturing} style={styles.shutterBtn} accessibilityLabel="Capture selfie">
             <View style={styles.shutterRing} />
             <View style={styles.shutterDisc} />

@@ -139,7 +139,7 @@ export default function DailyVerificationScreen() {
           </Animated.View>
         ) : null}
 
-        <View style={styles.shutterRow}>
+        <View style={[styles.shutterRow, { paddingBottom: Math.max(insets.bottom, spacing.sm) + spacing.lg }]}>
           <Pressable onPress={() => void capture()} disabled={!cameraReady || capturing} style={styles.shutterBtn} accessibilityLabel={`Capture ${step}`}>
             <View style={styles.shutterRing} />
             <View style={styles.shutterDisc} />
