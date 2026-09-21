@@ -7,6 +7,7 @@ import { NotificationsProvider } from '@/lib/notifications-context'
 import { LocationProvider } from '@/lib/location-context'
 import SplashWrapper from '@/components/ui/SplashWrapper'
 import NotificationToast from '@/components/ui/NotificationToast'
+import CookieNotice from '@/components/ui/CookieNotice'
 import MaintenanceProvider from '@/components/providers/MaintenanceProvider'
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <NotificationsProvider>
                     <SplashWrapper>{children}</SplashWrapper>
                     <NotificationToast />
+                    <CookieNotice />
                   </NotificationsProvider>
                 </AuthProvider>
               </LocationProvider>

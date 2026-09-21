@@ -32,7 +32,7 @@ export async function processAckCheck(data: AckCheckJobData): Promise<void> {
   const exists = await redis.exists(rideAckKey(data.rideId, data.driverId))
   if (!exists) return
 
-  const ride = await repo.getRideById(BigInt(data.rideId))
+  const ride = await repo.getRideCoreById(BigInt(data.rideId))
   if (!ride || ride.status !== 'requested') {
     await redis.del(rideAckKey(data.rideId, data.driverId))
     return

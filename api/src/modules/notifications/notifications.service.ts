@@ -54,6 +54,7 @@ export async function sendRideRequestPushOnce(
       tag: `ride-${rideId}`,
       ttlSeconds: Math.min(windowSeconds, 30),
       data: { type: 'ride_request', rideId },
+      channelId: 'ride_requests_v2',
     })
   } catch (err) {
     log.error({ err }, 'sendRideRequestPushOnce failed')

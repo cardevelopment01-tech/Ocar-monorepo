@@ -6,6 +6,7 @@ import { Eye, EyeOff, ArrowRight, CheckCircle2, ShieldCheck } from 'lucide-react
 import { adminAuthApi, storeAdminAuth } from '@/lib/auth'
 import { registerPush } from '@/lib/push'
 import { cn } from '@/lib/utils'
+import { TERMS_URL, PRIVACY_URL } from '@/lib/legal'
 
 function AdminLoginForm() {
   const router = useRouter()
@@ -235,6 +236,11 @@ function AdminLoginForm() {
 
           <p className="text-center text-text-muted mt-8" style={{ fontSize: '11px' }}>
             Ocar · Internal Tool &nbsp;·&nbsp; Authorised Personnel Only
+          </p>
+          <p className="text-center text-text-muted mt-2" style={{ fontSize: '11px' }}>
+            <a href={TERMS_URL} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary underline">Terms</a>
+            {' '}&amp;{' '}
+            <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary underline">Privacy Policy</a>
           </p>
       </div>
     </div>

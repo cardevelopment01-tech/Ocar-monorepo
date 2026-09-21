@@ -14,6 +14,7 @@ vi.mock('@/jobs/queues', () => ({
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideById:            vi.fn(),
   getRideForDriverAction: vi.fn(),
+  getRideCoreById:        vi.fn(),
   getRideStops:     vi.fn(),
   getStopWaitTotal: vi.fn().mockResolvedValue(0),
   updateRideStatus: vi.fn().mockResolvedValue(undefined),
@@ -61,6 +62,11 @@ describe('verifyEndOTP — pending stops guard', () => {
     // verifyEndOTP now fetches via getRideForDriverAction; mirror whatever each
     // test set on getRideById so the existing per-test setups keep working.
     vi.mocked(repo.getRideForDriverAction).mockImplementation(
+      ((rideId: bigint) => vi.mocked(repo.getRideById)(rideId)) as never
+    )
+    // settleRideCompletionPayment (called from within verifyEndOTP) reads via
+    // getRideCoreById — same mirror.
+    vi.mocked(repo.getRideCoreById).mockImplementation(
       ((rideId: bigint) => vi.mocked(repo.getRideById)(rideId)) as never
     )
   })

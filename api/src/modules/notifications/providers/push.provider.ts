@@ -16,6 +16,10 @@ export interface PushMessage {
   // the browser's native tag/renotify behavior instead of stacking popups.
   tag?: string
   ttlSeconds?: number
+  // Routes the notification to a client-configured Android channel (see
+  // registerPushNotifications.ts) -- e.g. driver-mobile's high-importance
+  // 'ride_requests_v2' channel. Falls back to 'default_v2', which every app creates.
+  channelId?: string
 }
 
 export interface SendPushResult {
@@ -60,13 +64,26 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
   }
 
   try {
+    // Android notification.sound/channelId/defaultVibrateTimings were previously
+    // never set here -- with no channelId, Android routes the notification to
+    // its own auto-created fallback channel instead of whichever channel the
+    // client actually configured with sound + vibration (registerPushNotifications.ts),
+    // which is why notifications arrived silently despite the client-side channel
+    // setup being correct. Set on every push, not just tagged ones.
     const message: MulticastMessage = {
       tokens,
       notification: { title: msg.title, body: msg.body },
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: msg.channelId ?? 'default_v2',
+          sound: 'default',
+          defaultVibrateTimings: true,
+        },
+      },
     }
     if (msg.data) message.data = msg.data
     if (msg.tag) {
-      message.android = { priority: 'high' }
       const headers: Record<string, string> = { Urgency: 'high' }
       if (msg.ttlSeconds !== undefined) headers['TTL'] = String(msg.ttlSeconds)
       message.webpush = {

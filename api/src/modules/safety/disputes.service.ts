@@ -60,7 +60,7 @@ export async function getDispute(id: bigint) {
 }
 
 export async function assignDispute(id: bigint, adminId: bigint) {
-  const dispute = await repo.getDisputeById(id)
+  const dispute = await repo.getDisputeCoreById(id)
   if (!dispute) throw httpError(404, 'Dispute not found', 'DISPUTE_NOT_FOUND')
 
   const updated = await repo.updateDisputeStatus(id, 'under_review', adminId)
@@ -76,7 +76,7 @@ export async function assignDispute(id: bigint, adminId: bigint) {
 }
 
 export async function resolveDispute(id: bigint, input: ResolveDisputeInput) {
-  const dispute = await repo.getDisputeById(id)
+  const dispute = await repo.getDisputeCoreById(id)
   if (!dispute) throw httpError(404, 'Dispute not found', 'DISPUTE_NOT_FOUND')
 
   const client = await pool.connect()

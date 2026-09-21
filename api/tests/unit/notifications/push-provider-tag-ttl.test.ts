@@ -23,18 +23,24 @@ describe('sendPush — tag/renotify/TTL', () => {
     await sendPush(['tok1'], { title: 'Ride', body: 'New request', tag: 'ride-101', ttlSeconds: 25 })
 
     const msg = sendEachForMulticast.mock.calls[0]?.[0] as Record<string, unknown>
-    expect(msg.android).toEqual({ priority: 'high' })
+    expect(msg.android).toEqual({
+      priority: 'high',
+      notification: { channelId: 'default_v2', sound: 'default', defaultVibrateTimings: true },
+    })
     expect(msg.webpush).toEqual({
       headers: { Urgency: 'high', TTL: '25' },
       notification: { tag: 'ride-101', renotify: true },
     })
   })
 
-  it('omits android/webpush entirely when no tag is provided (existing callers unaffected)', async () => {
+  it('always sets android channel/sound/vibration; omits webpush when no tag is provided', async () => {
     await sendPush(['tok1'], { title: 'Wallet', body: 'Low balance' })
 
     const msg = sendEachForMulticast.mock.calls[0]?.[0] as Record<string, unknown>
-    expect(msg.android).toBeUndefined()
+    expect(msg.android).toEqual({
+      priority: 'high',
+      notification: { channelId: 'default_v2', sound: 'default', defaultVibrateTimings: true },
+    })
     expect(msg.webpush).toBeUndefined()
   })
 })

@@ -95,8 +95,11 @@ export default function DriversPage() {
       if (type === 'ban')         await adminDriverApi.ban(driverId, reason!)
       setPendingAction(null)
       await fetchList()
-      setSuccessMsg(type === 'approve' ? 'Driver approved' : type === 'rejectDocs' ? 'Documents rejected' : 'Driver banned')
-    } catch { setActionError('Action failed. Please try again.') }
+      setSuccessMsg(type === 'approve' ? 'Driver activated' : type === 'rejectDocs' ? 'Documents rejected' : 'Driver banned')
+    } catch (err) {
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      setActionError(message ?? 'Action failed. Please try again.')
+    }
     finally { setActionLoading(false) }
   }
 
@@ -191,7 +194,7 @@ export default function DriversPage() {
                       <td className="text-text-muted">{fmt(d.created_at)}</td>
                       <td>
                         <div className="flex gap-2">
-                          <button onClick={() => openAction('approve', d)} className="px-3 py-1 text-xs font-semibold bg-success text-white rounded-lg hover:bg-emerald-600 transition-colors">Approve</button>
+                          <button onClick={() => openAction('approve', d)} className="px-3 py-1 text-xs font-semibold bg-success text-white rounded-lg hover:bg-emerald-600 transition-colors">Activate</button>
                           <button
                             onClick={() => router.push(`/drivers/${d.id}?tab=documents`)}
                             className="px-3 py-1 text-xs font-semibold border border-primary text-primary rounded-lg hover:bg-primary-light transition-colors"
@@ -261,9 +264,9 @@ export default function DriversPage() {
       <ConfirmDialog
         open={pendingAction?.type === 'approve'}
         onOpenChange={v => { if (!v) { setPendingAction(null); setActionError('') } }}
-        title="Approve Driver"
-        description={actionError || `Approve ${pendingAction?.driverName} as an active driver?`}
-        confirmLabel={actionLoading ? 'Submitting…' : 'Approve'}
+        title="Activate Driver"
+        description={actionError || `Activate ${pendingAction?.driverName} as an active driver?`}
+        confirmLabel={actionLoading ? 'Submitting…' : 'Activate'}
         variant={actionError ? 'danger' : 'success'}
         onConfirm={() => { if (!actionLoading) executeAction() }}
       />

@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "Ocar Rider",
+    "slug": "ocar-rider",
+    "scheme": "ocarrider",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/brand/app-icon.png",
+    "android": {
+      "package": "com.ocar.rider",
+      "googleServicesFile": "./google-services.json",
+      "icon": "./assets/brand/app-icon.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/brand/adaptive-icon-foreground.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "POST_NOTIFICATIONS"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAAVGxzN9sRx8fOBOQxwITVIk8lPC6sGtM"
+        }
+      }
+    },
+    "notification": {
+      "icon": "./assets/brand/notification-icon.png",
+      "color": "#0A9FB0"
+    },
+    "ios": {
+      "bundleIdentifier": "com.ocar.rider",
+      "supportsTablet": false,
+      "config": {
+        "googleMapsApiKey": "AIzaSyAAVGxzN9sRx8fOBOQxwITVIk8lPC6sGtM"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Ocar needs your location to show nearby drivers and set your pickup point."
+        }
+      ],
+      "expo-status-bar",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0F0D1A",
+          "image": "./assets/brand/logo-mark.png",
+          "imageWidth": 160,
+          "resizeMode": "contain"
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
+    ]
+  }
+}

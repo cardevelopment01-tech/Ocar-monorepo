@@ -13,7 +13,10 @@ export default function ProtectedRoute({ children, requireApproved = false }: Pr
     return <Navigate to="/login" replace />
   }
 
-  if (requireApproved && driver?.status !== 'active') {
+  // docs_rejected is a returning driver hitting a snag, not a first-time
+  // applicant — send them into the app (settings/documents screen), never
+  // back into the first-run onboarding wizard.
+  if (requireApproved && driver?.status !== 'active' && driver?.status !== 'docs_rejected') {
     const step = driver?.onboarding_step ?? 'personal_info'
     const stepRoutes: Record<string, string> = {
       personal_info: '/onboarding/personal',

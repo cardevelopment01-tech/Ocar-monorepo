@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ── Mocks must be declared before any import that triggers the module graph ──
 vi.mock('@/modules/rides/rides.repository', () => ({
-  getRideById: vi.fn(),
+  getRideCoreById: vi.fn(),
 }))
 vi.mock('@/modules/ride-chat/ride-chat.repository', () => ({
   insertMessageIdempotent: vi.fn(),
@@ -42,7 +42,7 @@ const NEW_ROW = {
 describe('sendMessage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(ridesRepo.getRideById).mockResolvedValue(RIDE as never)
+    vi.mocked(ridesRepo.getRideCoreById).mockResolvedValue(RIDE as never)
     vi.mocked(chatRepo.insertMessageIdempotent).mockResolvedValue(NEW_ROW as never)
     vi.mocked(getTokensForOwner).mockResolvedValue(['token-1'])
   })
@@ -87,7 +87,7 @@ describe('sendMessage', () => {
   })
 
   it('rejects sending on a ride that has ended', async () => {
-    vi.mocked(ridesRepo.getRideById).mockResolvedValue(CLOSED_RIDE as never)
+    vi.mocked(ridesRepo.getRideCoreById).mockResolvedValue(CLOSED_RIDE as never)
 
     await expect(
       sendMessage(1n, { userId: 5n }, { body: 'hi', clientMsgId: 'c1' }),
@@ -99,7 +99,7 @@ describe('sendMessage', () => {
 describe('getUnreadCount', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(ridesRepo.getRideById).mockResolvedValue(RIDE as never)
+    vi.mocked(ridesRepo.getRideCoreById).mockResolvedValue(RIDE as never)
   })
 
   it('returns the unread count for the resolved participant', async () => {
@@ -120,7 +120,7 @@ describe('getUnreadCount', () => {
 describe('getHistory on a closed ride', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(ridesRepo.getRideById).mockResolvedValue(CLOSED_RIDE as never)
+    vi.mocked(ridesRepo.getRideCoreById).mockResolvedValue(CLOSED_RIDE as never)
   })
 
   it('still returns message history after the ride has ended', async () => {

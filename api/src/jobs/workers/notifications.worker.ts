@@ -50,6 +50,42 @@ export const notificationsWorker = new Worker(
         log.error({ err }, 'notify failed for driver_submitted_for_review')
       }
 
+    } else if (job.name === 'document_rejection_escalated') {
+      const data = job.data as {
+        driverId: string
+        driverName: string
+        driverPhone: string
+        docName: string
+        rejectionCount: string
+      }
+      const lp: LogParams = { jobName: job.name, payload: data as Record<string, unknown>, recipientPhone: data.driverPhone }
+      const logId = await notifService.logNotification(lp)
+      try {
+        const { body: message } = await renderTemplate('document_rejected', 'sms', {
+          doc_name: data.docName, rejection_count: data.rejectionCount,
+        })
+        await sendSms(data.driverPhone, message)
+        await notifService.markSent(logId)
+      } catch (err) {
+        await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
+        throw err
+      }
+
+      try {
+        const { subject, body } = await renderTemplate('document_rejection_escalated', 'push', {
+          driverName: data.driverName, driverPhone: data.driverPhone,
+          docName: data.docName, rejectionCount: data.rejectionCount,
+        })
+        await notifService.notifyAllAdmins({
+          type: 'document_rejection_escalated',
+          title: subject ?? 'Repeat document rejection',
+          body,
+          payload: { driverId: data.driverId },
+        })
+      } catch (err) {
+        log.error({ err }, 'notify failed for document_rejection_escalated')
+      }
+
     } else if (job.name === 'otp_sms') {
       const data = job.data as {
         phone: string

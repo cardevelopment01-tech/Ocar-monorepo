@@ -19,10 +19,14 @@ export function useDocumentGate(): DocumentGate {
   useEffect(() => {
     onboardingApi.getDocumentStatus()
       .then(status => {
-        const rejected = Object.values({ ...status.photos, ...status.vehicle_docs })
-          .some(doc => doc.status === 'rejected')
-        setHasRejected(rejected)
-        setRejectionReason(status.rejection_reason)
+        const docs = Object.values({ ...status.photos, ...status.vehicle_docs })
+        const rejectedDoc = docs.find(doc => doc.status === 'rejected')
+        setHasRejected(!!rejectedDoc)
+        // Prefer the specific per-document note over the generic status-
+        // transition reason ("Document rejected or expired") — the specific
+        // one is already fetched here, no reason to show the vaguer string
+        // when it's sitting right next to it.
+        setRejectionReason(rejectedDoc?.rejection_note ?? status.rejection_reason)
       })
       .catch(() => { /* fail open — server still enforces the block on goOnline() */ })
       .finally(() => setLoading(false))

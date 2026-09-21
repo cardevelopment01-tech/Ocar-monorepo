@@ -1358,7 +1358,8 @@ export async function approveDriverDoc(
   // real request with a false optimistic-lock conflict.
   const res = await pool.query(
     `UPDATE driver_documents
-     SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
+     SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now(),
+         rejection_count = 0, rejection_note = NULL
      WHERE id = $3 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $4::timestamptz)
      RETURNING driver_id`,
     [verifiedValidUntil, adminId, docId, seenUpdatedAt],
@@ -1371,17 +1372,18 @@ export async function rejectDriverDoc(
   docId: bigint,
   adminId: bigint,
   rejectionNote: string,
-): Promise<{ driver_id: string; doc_type: string } | null> {
+): Promise<{ driver_id: string; doc_type: string; rejection_count: number } | null> {
   const res = await pool.query(
     `UPDATE driver_documents
-     SET status = 'rejected', rejection_note = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
+     SET status = 'rejected', rejection_note = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now(),
+         rejection_count = rejection_count + 1
      WHERE id = $3
-     RETURNING driver_id, doc_type`,
+     RETURNING driver_id, doc_type, rejection_count`,
     [rejectionNote, adminId, docId],
   );
   const row = res.rows[0];
   return row
-    ? { driver_id: String(row.driver_id), doc_type: row.doc_type as string }
+    ? { driver_id: String(row.driver_id), doc_type: row.doc_type as string, rejection_count: row.rejection_count as number }
     : null;
 }
 
@@ -1395,7 +1397,8 @@ export async function approveVehicleDoc(
   // vs-microsecond precision mismatch between JS Date and Postgres timestamptz.
   const res = await pool.query(
     `UPDATE driver_vehicle_documents dvd
-     SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
+     SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now(),
+         rejection_count = 0, rejection_note = NULL
      FROM driver_vehicles dv
      WHERE dvd.id = $3 AND date_trunc('milliseconds', dvd.updated_at) = date_trunc('milliseconds', $4::timestamptz) AND dv.id = dvd.vehicle_id
      RETURNING dv.driver_id`,
@@ -1409,18 +1412,19 @@ export async function rejectVehicleDoc(
   docId: bigint,
   adminId: bigint,
   rejectionNote: string,
-): Promise<{ driver_id: string; doc_type: string } | null> {
+): Promise<{ driver_id: string; doc_type: string; rejection_count: number } | null> {
   const res = await pool.query(
     `UPDATE driver_vehicle_documents dvd
-     SET status = 'rejected', rejection_note = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now()
+     SET status = 'rejected', rejection_note = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now(),
+         rejection_count = rejection_count + 1
      FROM driver_vehicles dv
      WHERE dvd.id = $3 AND dv.id = dvd.vehicle_id
-     RETURNING dvd.doc_type, dv.driver_id`,
+     RETURNING dvd.doc_type, dvd.rejection_count, dv.driver_id`,
     [rejectionNote, adminId, docId],
   );
   const row = res.rows[0];
   return row
-    ? { driver_id: String(row.driver_id), doc_type: row.doc_type as string }
+    ? { driver_id: String(row.driver_id), doc_type: row.doc_type as string, rejection_count: row.rejection_count as number }
     : null;
 }
 

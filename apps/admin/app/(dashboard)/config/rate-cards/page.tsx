@@ -559,7 +559,7 @@ export default function RateCardsPage() {
   }
 
   // Derived data
-  const CATEGORY_ORDER_ITEMS = ['hatchback', 'sedan', 'suv', 'luxury', 'van']
+  const CATEGORY_ORDER_ITEMS = ['hatchback', 'sedan', 'suv', 'luxury', 'van', 'auto_rickshaw']
   const RIDE_TYPE_ORDER = ['one_way', 'round_trip', 'rental']
 
   const filteredCards = cityFilter === '' ? cards

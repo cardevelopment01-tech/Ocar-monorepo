@@ -5,7 +5,7 @@ vi.mock('@/db/client', () => ({ pool: { connect: vi.fn(() => Promise.resolve(cli
 vi.mock('@/db/redis', () => ({ client: { incr: vi.fn(async () => 1), expire: vi.fn(), del: vi.fn() } }))
 
 vi.mock('@/modules/rides/rides.repository', () => ({
-  getRideById:        vi.fn(),
+  getRideCoreById:    vi.fn(),
   cancelAllAssignments: vi.fn(async () => []),
 }))
 vi.mock('@/websocket/socket.server', () => ({
@@ -43,7 +43,7 @@ function wireClient(balance: string) {
 describe('cancelRide — cancellation fee', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(repo.getRideById).mockResolvedValue(ACCEPTED_RIDE as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(ACCEPTED_RIDE as never)
     vi.mocked(redis.incr).mockResolvedValue(1 as never)
   })
 

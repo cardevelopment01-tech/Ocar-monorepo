@@ -12,7 +12,7 @@ vi.mock('@/jobs/queues', () => ({
   QUEUE_NAMES: { NOTIFICATIONS: 'notifications', DISPATCH: 'dispatch' },
   gpsFlushQueue: { add: vi.fn().mockResolvedValue(undefined) },
 }))
-vi.mock('@/modules/rides/rides.repository', () => ({ getRideById: vi.fn() }))
+vi.mock('@/modules/rides/rides.repository', () => ({ getRideCoreById: vi.fn() }))
 vi.mock('@/modules/payments/payments.service', () => ({
   createPaymentRecord: vi.fn(),
   createRidePaymentOrder: vi.fn(),
@@ -36,7 +36,7 @@ beforeEach(() => {
 
 describe('settleRideCompletionPayment (wallet channel)', () => {
   it('insufficient wallet balance → notifies the rider', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({ user_id: 42n, payment_channel: 'wallet' } as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({ user_id: 42n, payment_channel: 'wallet' } as never)
     vi.mocked(payments.payFromUserWallet).mockResolvedValue(false as never)
 
     await settleRideCompletionPayment(101n, 9n)
@@ -46,7 +46,7 @@ describe('settleRideCompletionPayment (wallet channel)', () => {
   })
 
   it('sufficient wallet balance → confirms, does not notify', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({ user_id: 42n, payment_channel: 'wallet' } as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({ user_id: 42n, payment_channel: 'wallet' } as never)
     vi.mocked(payments.payFromUserWallet).mockResolvedValue(true as never)
 
     await settleRideCompletionPayment(101n, 9n)

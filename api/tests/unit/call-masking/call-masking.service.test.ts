@@ -17,25 +17,25 @@ import * as service from '@/modules/call-masking/call-masking.service'
 
 // Minimal ride shape — triggerCall only reads user_id/driver_id off it.
 const rideFor = (userId: string, driverId: string | null) =>
-  ({ user_id: userId, driver_id: driverId }) as unknown as Awaited<ReturnType<typeof ridesRepo.getRideById>>
+  ({ user_id: userId, driver_id: driverId }) as unknown as Awaited<ReturnType<typeof ridesRepo.getRideCoreById>>
 
 describe('call-masking service — triggerCall', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Default: caller (userId 1n) is the ride's rider — most tests aren't
     // exercising the ownership check itself.
-    vi.mocked(ridesRepo.getRideById).mockResolvedValue(rideFor('1', '9'))
+    vi.mocked(ridesRepo.getRideCoreById).mockResolvedValue(rideFor('1', '9'))
   })
 
   it('throws RIDE_NOT_FOUND when the ride does not exist', async () => {
-    vi.mocked(ridesRepo.getRideById).mockResolvedValue(null)
+    vi.mocked(ridesRepo.getRideCoreById).mockResolvedValue(null)
     await expect(
       service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 1n })
     ).rejects.toMatchObject({ appCode: 'RIDE_NOT_FOUND' })
   })
 
   it('throws AUTH_FORBIDDEN when the caller is not this ride\'s rider or driver', async () => {
-    vi.mocked(ridesRepo.getRideById).mockResolvedValue(rideFor('1', '9'))
+    vi.mocked(ridesRepo.getRideCoreById).mockResolvedValue(rideFor('1', '9'))
     await expect(
       service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 999n })
     ).rejects.toMatchObject({ appCode: 'AUTH_FORBIDDEN' })

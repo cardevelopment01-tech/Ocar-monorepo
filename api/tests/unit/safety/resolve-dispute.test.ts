@@ -4,6 +4,7 @@ const fakeClient = { query: vi.fn(), release: vi.fn() }
 vi.mock('@/db/client', () => ({ pool: { connect: vi.fn(() => Promise.resolve(fakeClient)) } }))
 vi.mock('@/modules/safety/safety.repository', () => ({
   getDisputeById: vi.fn(),
+  getDisputeCoreById: vi.fn(),
   getRideBasic: vi.fn(),
   insertDriverWarning: vi.fn(),
   countRecentDriverWarnings: vi.fn(),
@@ -33,6 +34,7 @@ const base = { adminId: 1n, note: 'resolved via test' }
 describe('resolveDispute — refund cap', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(repo.getDisputeCoreById).mockResolvedValue({ id: 10n, ride_id: 500n, driver_id: 42n } as never)
     vi.mocked(repo.getDisputeById).mockResolvedValue({ id: 10n, ride_id: 500n, driver_id: 42n } as never)
     vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 500n, driver_id: 42n } as never)
   })

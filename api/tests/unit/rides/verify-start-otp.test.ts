@@ -18,7 +18,7 @@ vi.mock('@/jobs/queues', () => ({
   gpsFlushQueue: { add: vi.fn().mockResolvedValue(undefined) },
 }))
 vi.mock('@/modules/rides/rides.repository', () => ({
-  getRideForDriverAction: vi.fn(),
+  getRideCoreForDriverAction: vi.fn(),
   updateRideStatus:       vi.fn().mockResolvedValue(undefined),
   logStatusHistory:       vi.fn().mockResolvedValue(undefined),
 }))
@@ -52,25 +52,25 @@ describe('verifyStartOTP — ownership', () => {
   })
 
   it('throws 404 when the owner-scoped fetch returns null (not this driver)', async () => {
-    vi.mocked(repo.getRideForDriverAction).mockResolvedValue(null)
+    vi.mocked(repo.getRideCoreForDriverAction).mockResolvedValue(null)
     await expect(verifyStartOTP(BigInt(9), BigInt(303), '1234')).rejects.toMatchObject({ httpStatus: 404 })
     expect(repo.updateRideStatus).not.toHaveBeenCalled()
   })
 
   it('throws 403 (defense-in-depth) if a mismatched-driver row is returned', async () => {
-    vi.mocked(repo.getRideForDriverAction).mockResolvedValue(baseRide({ driver_id: 999 }) as never)
+    vi.mocked(repo.getRideCoreForDriverAction).mockResolvedValue(baseRide({ driver_id: 999 }) as never)
     await expect(verifyStartOTP(BigInt(9), BigInt(303), '1234')).rejects.toMatchObject({ httpStatus: 403 })
   })
 
   it('completes for the owning driver with a valid OTP', async () => {
-    vi.mocked(repo.getRideForDriverAction).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideCoreForDriverAction).mockResolvedValue(baseRide() as never)
     const res = await verifyStartOTP(BigInt(9), BigInt(303), '1234')
     expect(res).toEqual({ success: true })
     expect(repo.updateRideStatus).toHaveBeenCalledWith(BigInt(303), 'in_progress', expect.anything())
   })
 
   it('locks out with 429 when the attempt limiter throws (over the cap)', async () => {
-    vi.mocked(repo.getRideForDriverAction).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideCoreForDriverAction).mockResolvedValue(baseRide() as never)
     vi.mocked(otpLib.checkRideOtpAttempts).mockRejectedValueOnce(
       Object.assign(new Error('Too many incorrect attempts. Try again later.'), {
         httpStatus: 429, appCode: 'RIDE_OTP_LOCKED',
@@ -82,7 +82,7 @@ describe('verifyStartOTP — ownership', () => {
   })
 
   it('records the real attempt_number (from the limiter) in ride_otp_events, not a hardcoded 1', async () => {
-    vi.mocked(repo.getRideForDriverAction).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideCoreForDriverAction).mockResolvedValue(baseRide() as never)
     vi.mocked(otpLib.checkRideOtpAttempts).mockResolvedValueOnce(3)
     await verifyStartOTP(BigInt(9), BigInt(303), '1234')
 

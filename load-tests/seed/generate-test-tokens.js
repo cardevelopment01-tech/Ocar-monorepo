@@ -34,9 +34,12 @@
  *   whole run) — see the k6 docs on "Authentication: token-based".
  *
  * Usage:
- *   DATABASE_URL=postgresql://... \
  *   JWT_ACCESS_SECRET=... \
  *   node generate-test-tokens.js --users 6000 --drivers 400 --expiry 3h
+ *
+ * DB connection is derived live from AWS (lib/staging-db.js) against the
+ * staging RDS instance specifically -- no DATABASE_URL needed or read, so
+ * there's no way for this to silently target the wrong database.
  *
  * Output: ./tokens.json — consumed by load-tests/k6/main.js via k6's open().
  *
@@ -46,15 +49,14 @@
  *     `driver_verifications` rows dated today for drivers that already
  *     exist. It never creates or mutates a `drivers` row, `driver_vehicles`
  *     row, or anything payment/ride-related.
- *   - Run this against STAGING only. It refuses to run if DATABASE_URL looks
- *     like it points at a prod-named DB, as a blunt but useful guardrail —
- *     override with --i-know-what-im-doing if that heuristic is wrong for
- *     your setup.
+ *   - Hardcoded to the staging RDS instance identifier -- there is no way to
+ *     point this at prod short of editing lib/staging-db.js itself.
  */
 
 const { Client } = require('pg')
 const jwt = require('jsonwebtoken')
 const fs = require('fs')
+const { getStagingDbConfig } = require('./lib/staging-db')
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`)
@@ -65,29 +67,19 @@ const NUM_USERS = parseInt(arg('users', '500'), 10)
 const NUM_DRIVERS = parseInt(arg('drivers', '200'), 10)
 const EXPIRY = arg('expiry', '3h')
 const OUT_FILE = arg('out', './tokens.json')
-const FORCE = process.argv.includes('--i-know-what-im-doing')
 
-const DATABASE_URL = process.env.DATABASE_URL
 const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET
 
-if (!DATABASE_URL || !JWT_ACCESS_SECRET) {
-  console.error('DATABASE_URL and JWT_ACCESS_SECRET env vars are required (copy from staging api-env).')
+if (!JWT_ACCESS_SECRET) {
+  console.error('JWT_ACCESS_SECRET env var is required (copy from staging api-env).')
   process.exit(1)
 }
 
-// Check the HOSTNAME only, not the full connection string — the scheme
-// "postgresql://" itself contains the substring "stg", which would falsely
-// satisfy a staging/dev exclusion checked against the whole URL.
-function dbHost(url) {
-  try { return new URL(url).hostname } catch { return url }
-}
-if (!FORCE && /prod/i.test(dbHost(DATABASE_URL)) && !/staging|stg|test|dev/i.test(dbHost(DATABASE_URL))) {
-  console.error(
-    `DATABASE_URL looks like it might point at production ("${DATABASE_URL.replace(/:[^:@]+@/, ':***@')}").\n` +
-    'This script writes synthetic rows. Re-run against the staging Neon branch, or pass --i-know-what-im-doing to override.'
-  )
-  process.exit(1)
-}
+// DB connection is derived live from AWS (see lib/staging-db.js), not read
+// from DATABASE_URL -- that SSM value was found pointing at the old
+// pre-migration Neon database, silently diverging from what the app itself
+// (DB_AUTH_MODE=secrets-manager) actually reads. Hardcoded to the staging
+// RDS instance only, so there's no prod-detection heuristic to get wrong.
 
 // Mirrors signAccessToken() in api/src/lib/jwt.ts exactly (same secret,
 // same payload shape, same `sub` as JWT `subject`) — just with a
@@ -100,7 +92,7 @@ function signAccessToken({ sub, code, role, status }) {
 }
 
 async function main() {
-  const client = new Client({ connectionString: DATABASE_URL })
+  const client = new Client(getStagingDbConfig())
   await client.connect()
 
   console.log(`Connected. Seeding ${NUM_USERS} test users + reusing up to ${NUM_DRIVERS} real active drivers...`)

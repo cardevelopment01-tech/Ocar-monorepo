@@ -1,0 +1,94 @@
+﻿{
+    "expo":  {
+                 "name":  "Ocar Driver",
+                 "slug":  "ocar-driver",
+                 "scheme":  "ocardriver",
+                 "version":  "1.0.0",
+                 "orientation":  "portrait",
+                 "userInterfaceStyle":  "light",
+                 "icon":  "./assets/brand/app-icon.png",
+                 "android":  {
+                                 "package":  "com.ocar.driver",
+                                 "googleServicesFile":  "./google-services.json",
+                                 "icon":  "./assets/brand/app-icon.png",
+                                 "adaptiveIcon":  {
+                                                      "foregroundImage":  "./assets/brand/adaptive-icon-foreground.png",
+                                                      "backgroundColor":  "#FFFFFF"
+                                                  },
+                                 "permissions":  [
+                                                     "ACCESS_FINE_LOCATION",
+                                                     "ACCESS_COARSE_LOCATION",
+                                                     "ACCESS_BACKGROUND_LOCATION",
+                                                     "FOREGROUND_SERVICE",
+                                                     "FOREGROUND_SERVICE_LOCATION",
+                                                     "POST_NOTIFICATIONS"
+                                                 ],
+                                 "config":  {
+                                                "googleMaps":  {
+                                                                   "apiKey":  "AIzaSyAAVGxzN9sRx8fOBOQxwITVIk8lPC6sGtM"
+                                                               }
+                                            }
+                             },
+                 "ios":  {
+                             "bundleIdentifier":  "com.ocar.driver",
+                             "supportsTablet":  false,
+                             "config":  {
+                                            "googleMapsApiKey":  "AIzaSyAAVGxzN9sRx8fOBOQxwITVIk8lPC6sGtM"
+                                        },
+                             "infoPlist":  {
+                                               "UIBackgroundModes":  [
+                                                                         "location"
+                                                                     ]
+                                           }
+                         },
+                 "notification":  {
+                                      "icon":  "./assets/brand/notification-icon.png",
+                                      "color":  "#0A9FB0"
+                                  },
+                 "plugins":  [
+                                 "expo-router",
+                                 [
+                                     "expo-location",
+                                     {
+                                         "locationAlwaysAndWhenInUsePermission":  "Ocar needs your location in the background to match you with nearby ride requests and track active trips.",
+                                         "isAndroidForegroundServiceEnabled":  true,
+                                         "isAndroidBackgroundLocationEnabled":  true,
+                                         "foregroundService":  {
+                                                                   "notificationTitle":  "Ocar is tracking your location",
+                                                                   "notificationBody":  "Required while you\u0027re online to receive ride requests.",
+                                                                   "notificationColor":  "#0A9FB0"
+                                                               }
+                                     }
+                                 ],
+                                 "expo-status-bar",
+                                 "expo-secure-store",
+                                 [
+                                     "expo-splash-screen",
+                                     {
+                                         "backgroundColor":  "#0F0D1A",
+                                         "image":  "./assets/brand/logo-mark.png",
+                                         "imageWidth":  160,
+                                         "resizeMode":  "contain"
+                                     }
+                                 ],
+                                 "@react-native-firebase/app",
+                                 "@react-native-firebase/messaging",
+                                 "@react-native-community/datetimepicker",
+                                 [
+                                     "expo-image-picker",
+                                     {
+                                         "photosPermission":  "Ocar needs access to your photos to upload your documents and vehicle papers.",
+                                         "cameraPermission":  "Ocar needs camera access to photograph your documents and take your reference selfie."
+                                     }
+                                 ],
+                                 [
+                                     "expo-camera",
+                                     {
+                                         "cameraPermission":  "Ocar needs camera access to take your reference selfie."
+                                     }
+                                 ],
+                                 "expo-audio"
+                             ]
+             }
+}
+

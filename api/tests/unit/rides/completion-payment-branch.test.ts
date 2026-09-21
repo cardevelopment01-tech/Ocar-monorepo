@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
+vi.mock('@/db/client', () => ({
+  pool: { query: vi.fn() },
+  withTransaction: vi.fn((cb: (client: { query: ReturnType<typeof vi.fn> }) => unknown) =>
+    cb({ query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }) })
+  ),
+}))
 vi.mock('@/db/redis', () => ({ client: { del: vi.fn() } }))
 vi.mock('@/lib/otp', () => ({
   generateOtp: vi.fn(() => '1234'),
@@ -20,6 +25,7 @@ vi.mock('@/jobs/queues', () => ({
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideById:              vi.fn(),
   getRideForDriverAction:   vi.fn(),
+  getRideCoreById:          vi.fn(),
   getRideStops:             vi.fn().mockResolvedValue([]),
   updateRideStatus:         vi.fn(),
   updateRideStatusCAS:      vi.fn(),
@@ -66,6 +72,12 @@ describe('verifyEndOTP — payment channel branch', () => {
     // verifyEndOTP now fetches via getRideForDriverAction; mirror whatever each
     // test set on getRideById so the existing per-test setups keep working.
     vi.mocked(repo.getRideForDriverAction).mockImplementation(
+      ((rideId: bigint) => vi.mocked(repo.getRideById)(rideId)) as never
+    )
+    // settleRideCompletionPayment (called from within verifyEndOTP) now reads
+    // via getRideCoreById — same mirror, so its payment_channel/user_id reads
+    // see the same ride each test already set up via getRideById.
+    vi.mocked(repo.getRideCoreById).mockImplementation(
       ((rideId: bigint) => vi.mocked(repo.getRideById)(rideId)) as never
     )
   })
@@ -361,7 +373,7 @@ describe('startReturn', () => {
   })
 
   it('transitions in_progress -> returning and logs history + emits socket event', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: BigInt(101), user_id: 42, driver_id: 9, status: 'in_progress',
       ride_type: 'round_trip', payment_channel: 'cash',
       origin_lat: 20.3, origin_lng: 85.8, user_phone: null,
@@ -383,7 +395,7 @@ describe('startReturn', () => {
   })
 
   it('rejects a non-round_trip ride with 422', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: BigInt(101), user_id: 42, driver_id: 9, status: 'in_progress',
       ride_type: 'one_way', payment_channel: 'cash',
       origin_lat: 20.3, origin_lng: 85.8, user_phone: null,
@@ -394,7 +406,7 @@ describe('startReturn', () => {
   })
 
   it('rejects when the ride is not currently in_progress (lost the CAS race)', async () => {
-    vi.mocked(repo.getRideById).mockResolvedValue({
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: BigInt(101), user_id: 42, driver_id: 9, status: 'in_progress',
       ride_type: 'round_trip', payment_channel: 'cash',
       origin_lat: 20.3, origin_lng: 85.8, user_phone: null,

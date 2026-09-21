@@ -20,6 +20,18 @@ const s3 = new S3Client({
 
 const S3_URL_PREFIX = `https://${config.S3_BUCKET_NAME}.s3.${config.S3_REGION}.amazonaws.com/`
 
+// Matches any virtual-hosted-style S3 URL (any bucket/region), not just the
+// CURRENT config.S3_BUCKET_NAME/S3_REGION -- rows written before a bucket
+// migration point at whatever bucket/region was live then. New uploads
+// always target the current bucket/region (S3_URL_PREFIX, above), so read
+// paths only need to recognize the URL *shape* to keep resolving old links
+// after a migration, not match a specific historical value.
+const S3_URL_PATTERN = /^https:\/\/[^./]+\.s3\.[^./]+\.amazonaws\.com\/(.+)$/
+
+function extractS3Key(url: string): string | null {
+  return url.match(S3_URL_PATTERN)?.[1] ?? null
+}
+
 export async function uploadFile(
   file: Express.Multer.File,
   folder: string
@@ -71,7 +83,7 @@ export async function promotePendingUpload(pendingKey: string, folder: string): 
 }
 
 export async function getPresignedUrl(fileUrl: string, expiresIn = 3600): Promise<string> {
-  const key = fileUrl.startsWith(S3_URL_PREFIX) ? fileUrl.slice(S3_URL_PREFIX.length) : null
+  const key = extractS3Key(fileUrl)
   if (!key) return fileUrl
 
   return getSignedUrl(
@@ -82,7 +94,7 @@ export async function getPresignedUrl(fileUrl: string, expiresIn = 3600): Promis
 }
 
 export async function deleteFile(url: string): Promise<void> {
-  const key = url.startsWith(S3_URL_PREFIX) ? url.slice(S3_URL_PREFIX.length) : null
+  const key = extractS3Key(url)
   if (!key) return
 
   await s3.send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET_NAME, Key: key }))

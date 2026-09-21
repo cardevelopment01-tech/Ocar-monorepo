@@ -76,11 +76,21 @@ export const options = {
       // iterations to VU exhaustion and understate the real failure rate.
       maxVUs: 600,
       exec: 'bookingFlow',
+      // Default gracefulStop (30s) plus a recovery stage that never reaches
+      // zero arrivals left iterations still starting right up to the test's
+      // hard end -- confirmed live, this interrupted ~125 in-flight bookings
+      // with zero server-side cause (DB pool idle, no errors, fast responses
+      // for everything that did finish). Final stage now ramps arrivals to
+      // zero before the test ends, and gracefulStop gives trailing iterations
+      // real time to finish, so a real completion problem isn't masked by --
+      // or confused with -- this tooling gap.
+      gracefulStop: '90s',
       stages: [
         { duration: '10s', target: SPIKE_RATE }, // instant surge
         { duration: '2m', target: SPIKE_RATE }, // hold the peak
         { duration: '10s', target: 10 }, // drop hard
-        { duration: '3m', target: 10 }, // recovery observation window
+        { duration: '2m30s', target: 10 }, // recovery observation window
+        { duration: '30s', target: 0 }, // taper arrivals to zero before the test ends
       ],
     },
     rider_spike: {
@@ -92,8 +102,19 @@ export const options = {
         { duration: '2m', target: SPIKE_RIDERS },
         { duration: '30s', target: 0 },
       ],
-      gracefulRampDown: '30s',
-      gracefulStop: '30s',
+      // riderIdleWatch holds each connection open for 150s (its own
+      // setTimeout below) before closing it itself -- but this scenario's
+      // total active window was only 160s (10s+2m+30s), and VUs loop and
+      // open fresh connections throughout the whole 2m hold stage, not just
+      // in the initial burst. Any connection starting even slightly after
+      // the first 10s mathematically cannot reach its own 150s close before
+      // the scenario ends. Confirmed live: interrupted exactly 500 of 2500
+      // connection attempts, with zero connect failures and healthy latency
+      // -- a test-timing mismatch, not a server problem. gracefulRampDown/
+      // gracefulStop raised well past 150s so a connection that starts at
+      // any point in the hold stage gets its full natural close honored.
+      gracefulRampDown: '180s',
+      gracefulStop: '180s',
     },
   },
   thresholds: {

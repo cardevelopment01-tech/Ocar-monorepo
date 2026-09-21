@@ -18,13 +18,13 @@
 // staging prerequisite) and the pg dependency (load-tests/package.json, same as
 // reconcile.js). Read-only except for the optional --reset.
 //
-// Usage:
+// Usage (no DATABASE_URL needed -- see ../seed/lib/staging-db.js):
 //   # 1. before the run/seed, reset stats to get a clean window:
-//   DATABASE_URL=<staging> node verify/query-regression.js --reset
+//   node verify/query-regression.js --reset
 //   # 2. capture the baseline (after a warm-up run at current data volume):
-//   DATABASE_URL=<staging> node verify/query-regression.js --mode baseline --out baseline.json
+//   node verify/query-regression.js --mode baseline --out baseline.json
 //   # 3. after the change (e.g. after generate-bulk-ride-history.js), check:
-//   DATABASE_URL=<staging> node verify/query-regression.js --mode check \
+//   node verify/query-regression.js --mode check \
 //     --baseline baseline.json --tolerance 0.2 --abs-p95-ms 500
 //
 // Exits 1 if any named query's p95 regressed past BOTH the relative tolerance
@@ -32,6 +32,7 @@
 
 const fs = require('fs')
 const { Client } = require('pg')
+const { getStagingDbConfig } = require('../seed/lib/staging-db')
 
 // The critical queries §7 names, matched by a stable substring of the
 // normalized query text in pg_stat_statements. Keep these fragments specific
@@ -112,12 +113,7 @@ async function snapshot(client) {
 }
 
 async function main() {
-  const dbUrl = process.env.DATABASE_URL
-  if (!dbUrl) {
-    console.error('DATABASE_URL is required')
-    process.exit(2)
-  }
-  const client = new Client({ connectionString: dbUrl })
+  const client = new Client(getStagingDbConfig())
   await client.connect()
 
   try {

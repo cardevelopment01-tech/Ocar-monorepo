@@ -3,7 +3,7 @@ import { cachedRead } from '@/lib/cache/reference-cache'
 import { logger } from '@/lib/logger'
 import { categoryFallbackKey } from '@/constants/redis-keys'
 import { docIssueExistsSql } from '@/modules/drivers/drivers.repository'
-import type { AssignCandidate, BillingMode, DriverSession, NearbyDriver, Ride, RideStop, StopInput } from './rides.types'
+import type { AssignCandidate, BillingMode, DriverSession, NearbyDriver, Ride, RideCore, RideStop, StopInput } from './rides.types'
 import {
   STALE_REQUESTED_MINUTES,
   STALE_ACCEPTED_HOURS,
@@ -572,6 +572,18 @@ const RIDE_SELECT_SQL = `SELECT
        u.phone      AS user_phone,
        u.name       AS user_name,
        u.rating_avg AS user_rating,
+       -- rides.rider_name is only ever set by the "book for someone else"
+       -- flow, which is currently disabled (see CLAUDE.md's Known UI
+       -- Caveats) -- so on every normal booking it's null, and the driver
+       -- app was showing a bare question-mark avatar / "Your rider"
+       -- fallback instead of the actual account name. Positioned after the
+       -- r.* above so this COALESCE'd value overwrites r.*'s raw
+       -- (usually-null) rider_name in the result row -- node-pg builds each
+       -- row by assigning fields in select-list order, so a later duplicate
+       -- column name wins. Mirrors web driver app's own client-side
+       -- fallback (App.tsx: ride.rider_name ?? ride.user_name), just done
+       -- once here instead of in every client.
+       COALESCE(r.rider_name, u.name) AS rider_name,
        d.full_name  AS driver_name,
        d.phone      AS driver_phone,
        d.rating_avg           AS driver_rating,
@@ -623,6 +635,39 @@ export async function getRideForDriverAction(
 ): Promise<Ride | null> {
   const res = await pool.query<Ride>(
     `${RIDE_SELECT_SQL} WHERE r.id = $1 AND r.driver_id = $2`,
+    [rideId, driverId]
+  )
+  return res.rows[0] ?? null
+}
+
+// Join-free counterpart to RIDE_SELECT_SQL — most call sites (status guards,
+// ownership checks, native-column reads) never touch a joined field, so
+// they've been paying for 10 LEFT JOINs for nothing. Use this unless the
+// caller actually reads a field only RideCore's Omit excludes (driver_photo,
+// total_estimated, vehicle_*, driver_current_lat/lng, etc) — those still need
+// getRideById/getRideForDriverAction.
+const RIDE_CORE_SELECT_SQL = `SELECT
+       r.*,
+       ST_Y(r.origin::geometry)      AS origin_lat,
+       ST_X(r.origin::geometry)      AS origin_lng,
+       ST_Y(r.destination::geometry) AS dest_lat,
+       ST_X(r.destination::geometry) AS dest_lng
+     FROM rides r`
+
+export async function getRideCoreById(rideId: bigint): Promise<RideCore | null> {
+  const res = await pool.query<RideCore>(`${RIDE_CORE_SELECT_SQL} WHERE r.id = $1`, [rideId])
+  return res.rows[0] ?? null
+}
+
+// Same fail-closed-by-construction ownership scoping as getRideForDriverAction
+// (see its comment) — scoping by (id, driver_id) at the query level, not an
+// app-level check after a broader fetch.
+export async function getRideCoreForDriverAction(
+  rideId: bigint,
+  driverId: bigint
+): Promise<RideCore | null> {
+  const res = await pool.query<RideCore>(
+    `${RIDE_CORE_SELECT_SQL} WHERE r.id = $1 AND r.driver_id = $2`,
     [rideId, driverId]
   )
   return res.rows[0] ?? null

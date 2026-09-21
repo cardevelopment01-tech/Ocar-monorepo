@@ -6,6 +6,7 @@ import { AdminAuthProvider } from '@/lib/auth-context'
 import { NotificationsProvider } from '@/lib/notifications-context'
 import GoogleMapsProvider from '@/components/GoogleMapsProvider'
 import MaintenanceBanner from '@/components/layout/MaintenanceBanner'
+import CookieNotice from '@/components/ui/CookieNotice'
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </NotificationsProvider>
           </AdminAuthProvider>
         </GoogleMapsProvider>
+        <CookieNotice />
       </body>
     </html>
   )

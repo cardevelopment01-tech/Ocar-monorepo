@@ -21,8 +21,7 @@
  * ride-scoped rows on top of accounts that script already created.
  * Run generate-test-tokens.js first.
  *
- * Usage:
- *   DATABASE_URL=postgresql://... \
+ * Usage (no DATABASE_URL needed -- see lib/staging-db.js):
  *   node generate-bulk-ride-history.js --rides 1000000 --months 12
  *
  * Cleanup: see the SQL block this script prints at the end, or re-run with
@@ -30,6 +29,7 @@
  */
 
 const { Client } = require('pg')
+const { getStagingDbConfig } = require('./lib/staging-db')
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`)
@@ -45,24 +45,11 @@ const CANCELLED_PCT = parseInt(arg('cancelled-pct', '15'), 10)
 const FORCE = process.argv.includes('--i-know-what-im-doing')
 const DO_CLEANUP = process.argv.includes('--cleanup')
 
-const DATABASE_URL = process.env.DATABASE_URL
-if (!DATABASE_URL) {
-  console.error('DATABASE_URL env var is required (copy from staging api-env).')
-  process.exit(1)
-}
-// Check the HOSTNAME only, not the full connection string — the scheme
-// "postgresql://" itself contains the substring "stg", which would falsely
-// satisfy a staging/dev exclusion checked against the whole URL.
-function dbHost(url) {
-  try { return new URL(url).hostname } catch { return url }
-}
-if (!FORCE && /prod/i.test(dbHost(DATABASE_URL)) && !/staging|stg|test|dev/i.test(dbHost(DATABASE_URL))) {
-  console.error(
-    `DATABASE_URL looks like it might point at production ("${DATABASE_URL.replace(/:[^:@]+@/, ':***@')}").\n` +
-    'This script writes ~1M synthetic rows. Re-run against staging, or pass --i-know-what-im-doing to override.'
-  )
-  process.exit(1)
-}
+// DB connection is derived live from AWS (see lib/staging-db.js) against
+// the staging RDS instance specifically -- no DATABASE_URL needed or read.
+// That SSM value was found pointing at the old pre-migration Neon database,
+// silently diverging from what the app itself (DB_AUTH_MODE=secrets-manager)
+// actually reads -- this closes that gap for good.
 
 const CLEANUP_SQL = `
 DELETE FROM payments            WHERE ride_id IN (SELECT id FROM rides WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '99999%'));
@@ -163,7 +150,7 @@ async function insertGpsTracks(client, rows) {
 
 async function main() {
   if (DO_CLEANUP) {
-    const client = new Client({ connectionString: DATABASE_URL })
+    const client = new Client(getStagingDbConfig())
     await client.connect()
     console.log('Running cleanup...')
     await client.query(CLEANUP_SQL)
@@ -172,7 +159,7 @@ async function main() {
     return
   }
 
-  const client = new Client({ connectionString: DATABASE_URL })
+  const client = new Client(getStagingDbConfig())
   await client.connect()
 
   const existing = await client.query(

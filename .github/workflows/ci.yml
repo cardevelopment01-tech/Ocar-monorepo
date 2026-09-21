@@ -210,3 +210,22 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --filter @ocar/admin
       - run: pnpm --filter @ocar/admin exec tsc --noEmit
+
+  typecheck-mobile:
+    name: Typecheck Mobile Apps
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-typecheck-mobile-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @ocar/rider-mobile... --filter @ocar/driver-mobile...
+      - run: pnpm --filter @ocar/mobile-shared exec tsc --noEmit
+      - run: pnpm --filter @ocar/mobile-shared exec vitest run
+      - run: pnpm --filter @ocar/rider-mobile exec tsc --noEmit
+      - run: pnpm --filter @ocar/driver-mobile exec tsc --noEmit

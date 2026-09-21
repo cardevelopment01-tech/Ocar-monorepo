@@ -15,6 +15,13 @@
     },
     "lint": {
       "outputs": []
+    },
+    "typecheck": {
+      "outputs": []
+    },
+    "android": {
+      "cache": false,
+      "persistent": true
     }
   }
 }

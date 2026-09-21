@@ -399,6 +399,12 @@ function SelectRideContent() {
   // Round trip disabled when no hours selected
   const roundTripMissingHours = rideType === 'round_trip' && tripHours === undefined
 
+  // Hide any category whose estimate fetch failed (e.g. no rate card for
+  // this ride_type — auto_rickshaw only has `rental`) once loading has
+  // settled; keep showing all cards during the initial load so the
+  // skeleton state still renders.
+  const visibleCategories = categories.filter(cat => loading || estimates[cat.id] !== undefined)
+
   if (!hasOriginDest) {
     return (
       <div className="h-full flex items-center justify-center bg-white">
@@ -698,7 +704,7 @@ function SelectRideContent() {
           )}
 
           {/* ── Standard category list ── */}
-          {categories.map((cat, i) => {
+          {visibleCategories.map((cat, i) => {
             const est    = estimates[cat.id]
             const fare   = est?.breakdown.total
             const isSel  = !isReturnCab && selected === cat.id
@@ -781,7 +787,7 @@ function SelectRideContent() {
                     </div>
                   </div>
                 </button>
-                {i < categories.length - 1 && <div className="mx-4 h-px bg-slate-100" />}
+                {i < visibleCategories.length - 1 && <div className="mx-4 h-px bg-slate-100" />}
               </div>
             )
           })}

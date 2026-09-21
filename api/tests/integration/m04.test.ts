@@ -180,6 +180,38 @@ describe('M04 — Vehicle Management', () => {
 
       await pool.query(`UPDATE drivers SET status = 'pending_approval' WHERE id = $1`, [realDriverId])
 
+      // Activation now requires every required document to be approved
+      // (hasAllRequiredDocsApproved, admin.service.ts) — seed a primary
+      // vehicle plus approved rows for every required identity/vehicle doc
+      // type so this test exercises the real precondition instead of a
+      // driver with zero documents.
+      const { rows: cats } = await pool.query<{ id: string }>(
+        "SELECT id FROM vehicle_categories WHERE slug = 'sedan'"
+      )
+      const { rows: brands } = await pool.query<{ id: string }>(
+        "SELECT id FROM vehicle_brands WHERE name = 'Maruti Suzuki'"
+      )
+      const { rows: vehicles } = await pool.query<{ id: string }>(
+        `INSERT INTO driver_vehicles (driver_id, category_id, brand_id, number_plate, status, is_primary)
+         VALUES ($1, $2, $3, $4, 'active', true) RETURNING id`,
+        [realDriverId, cats[0]!.id, brands[0]!.id, `OD02A${realDriverId}`]
+      )
+      const vehicleId = vehicles[0]!.id
+      for (const docType of ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']) {
+        await pool.query(
+          `INSERT INTO driver_documents (driver_id, doc_type, file_url, status, verified_valid_until)
+           VALUES ($1, $2, 'https://example.com/doc.jpg', 'approved', '2030-01-01')`,
+          [realDriverId, docType]
+        )
+      }
+      for (const docType of ['vehicle_rc', 'insurance', 'permit']) {
+        await pool.query(
+          `INSERT INTO driver_vehicle_documents (vehicle_id, doc_type, file_url, status, verified_valid_until)
+           VALUES ($1, $2, 'https://example.com/doc.jpg', 'approved', '2030-01-01')`,
+          [vehicleId, docType]
+        )
+      }
+
       const admin = await loginAdmin(app, ADMIN_EMAIL, ADMIN_PASSWORD)
       const approveRes = await request(app)
         .patch(`/api/v1/admin/drivers/${realDriverId}/status`)

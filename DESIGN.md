@@ -252,6 +252,29 @@ The splash screen is the single exception: it sits on the darkest possible surfa
 
 **The Flat-by-Default Rule.** Interactive elements are flat at rest. The shadow appears on the primary CTA to mark it as primary, not on every card or every button. Shadow is a priority signal, not a surface treatment.
 
+## 4a. Materials & Glass
+
+Reversal from an earlier version of this system, which banned blur/glass surfaces outright. Apple's own interface guidance (*Designing Fluid Interfaces*, WWDC 2018; *Materials*, HIG) treats translucent material as a first-class depth cue, not decoration — it is how the system communicates layering (this floats above that) without a heavier shadow. Glass is now part of the Ocar system, used deliberately, not everywhere.
+
+**Where glass belongs:** floating chrome that sits above scrolling content and needs to feel like a physical pane — sheet handles/headers, sticky nav/tab bars, the onboarding progress header, toasts, and any modal that isn't full-bleed. It marks "this is a temporary layer above your content," which is exactly the depth cue full-opacity white cannot give.
+
+**Where it doesn't:** body content, form fields, list rows, cards holding text a user reads at length. A page of glass cards has nothing to be "above," and it fights the tonal shadow vocabulary in section 4. Base surfaces stay solid white with the Indigo/Teal Shadow Rule; glass is reserved for the floating layer above them.
+
+### Vocabulary
+- **Light material** (`rgba(255,255,255,0.65)` + blur 20, saturate 180%): default glass for headers, sheet chrome, floating pills over a light background.
+- **Heavy material** (`rgba(255,255,255,0.82)` + blur 30): denser glass for a surface that must stay legible over a busy or image-heavy background (photo-backed hero, live map overlay).
+- **Bright top edge:** every glass surface carries a `1px` top border at `rgba(255,255,255,0.4-0.5)` — it reads as light catching the material's top edge, and is what keeps glass from looking like plain semi-transparent gray.
+- **Never stack two light-material layers.** A translucent sheet over a translucent header collapses legibility. If a glass surface must sit over another, the lower one goes fully opaque first.
+- **Vibrancy over flat gray.** Text/icons on a glass surface get slightly heavier weight and a touch more contrast than the same text would need on solid white — the moving background underneath needs it.
+
+### Platform implementation
+- **Web:** `backdrop-filter: blur(20px) saturate(180%)` + the semi-transparent background above. Ship a solid-white fallback behind `@supports not (backdrop-filter: blur(1px))`.
+- **React Native (driver/rider mobile):** `expo-blur`'s `BlurView` (`intensity` ~40-60 for light material, ~70-85 for heavy; `tint="light"`). Never animate `BlurView` intensity per-frame — it re-renders the blur each frame on Android; crossfade the opacity of a static `BlurView` instead (see `animate-expo` skill).
+- **`prefers-reduced-transparency` / low-end devices:** raise background opacity toward solid and drop the blur radius rather than removing the surface — the user still needs to see it's a floating layer, just without the material simulation.
+
+### Named Rule
+**The Floating-Layer Rule.** Glass marks temporary elevation above scrolling content — headers, sheets, floating pills, toasts. It is never the resting material for a card, input, or list row a user reads from. If content sits still and is meant to be read, it is solid white with a tonal shadow, not glass.
+
 ## 5. Components
 
 Ocar's component vocabulary is conservative. The same button shape appears consistently across each app. Standard affordances are used for standard tasks.
@@ -377,7 +400,6 @@ A comet-taper arc: a 120-degree rotating arc with a gradient from opaque head to
 **Absolute bans (match-and-refuse)**
 - **No gradient text.** `background-clip: text` plus a gradient is forbidden everywhere in the system. Use solid Ink 900, white, or a single solid brand color.
 - **No side-stripe borders.** `border-left` or `border-right` greater than 1px as a colored accent on cards, callouts, or list items. Rewrite with background tint or full border. _(A violation exists at `apps/driver/src/components/map/SelfCarMarker.tsx:81`, `borderLeft: '5px solid'`, to be resolved.)_
-- **No glassmorphism on main surfaces.** Blur/glass effects are not part of this system; they fight the clean shadow vocabulary.
 - **No hero-metric template.** Big numbers in gradient rings with "stats below" is the SaaS cliche this system explicitly rejects (PRODUCT.md anti-reference).
 
 **Color**

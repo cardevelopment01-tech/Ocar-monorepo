@@ -25,11 +25,12 @@ import BookingForSheet from '@/components/booking/BookingForSheet'
 type Category = VehicleCategory
 
 const FALLBACK_CATEGORIES: Category[] = [
-  { id: 1, slug: 'hatchback', display_name: 'Hatchback', max_passengers: 4 },
-  { id: 2, slug: 'sedan',     display_name: 'Sedan',     max_passengers: 4 },
-  { id: 3, slug: 'suv',       display_name: 'SUV',       max_passengers: 6 },
-  { id: 4, slug: 'luxury',    display_name: 'Luxury',    max_passengers: 4 },
-  { id: 5, slug: 'van',       display_name: 'Van',        max_passengers: 8 },
+  { id: 1, slug: 'hatchback',    display_name: 'Hatchback',    max_passengers: 4 },
+  { id: 2, slug: 'sedan',        display_name: 'Sedan',        max_passengers: 4 },
+  { id: 3, slug: 'suv',          display_name: 'SUV',          max_passengers: 6 },
+  { id: 4, slug: 'luxury',       display_name: 'Luxury',       max_passengers: 4 },
+  { id: 5, slug: 'van',          display_name: 'Van',          max_passengers: 8 },
+  { id: 6, slug: 'auto_rickshaw', display_name: 'Auto Rickshaw', max_passengers: 3 },
 ]
 
 const EASE = [0.22, 1, 0.36, 1] as const

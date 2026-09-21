@@ -15,7 +15,7 @@ const { store, redisMock } = vi.hoisted(() => {
 })
 vi.mock('@/db/redis', () => ({ client: redisMock }))
 vi.mock('@/websocket/socket.server', () => ({ socketEvents: { sendRideRequest: vi.fn() } }))
-vi.mock('@/modules/rides/rides.repository', () => ({ getRideById: vi.fn() }))
+vi.mock('@/modules/rides/rides.repository', () => ({ getRideCoreById: vi.fn() }))
 vi.mock('@/jobs/queues', () => ({
   queues: { dispatch: { add: vi.fn() } },
   QUEUE_NAMES: { DISPATCH: 'dispatch' },
@@ -46,7 +46,7 @@ describe('processAckCheck — fallback push delegation', () => {
     vi.clearAllMocks()
     store.clear()
     store.set(rideAckKey(baseData.rideId, baseData.driverId), '1')
-    vi.mocked(repo.getRideById).mockResolvedValue({ status: 'requested' } as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({ status: 'requested' } as never)
   })
 
   it('delegates the fallback push to sendRideRequestPushOnce with the ride/driver/pickup/drop', async () => {
