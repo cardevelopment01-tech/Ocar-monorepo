@@ -22,7 +22,9 @@ async function getFcmToken(): Promise<string | null> {
 export async function setupPushNotifications(): Promise<void> {
   const { granted } = await registerPushNotifications(api, {
     getFcmToken,
-    channels: [{ channelId: 'default', name: 'General' }],
+    // _v2 -- forces a fresh channel with sound+vibrate (see driver-mobile's
+    // notifications/index.ts comment for why the plain 'default' id is stuck).
+    channels: [{ channelId: 'default_v2', name: 'General' }],
   })
   useAuthStore.getState().setPushPermissionGranted(granted)
 }

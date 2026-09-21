@@ -9,6 +9,7 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi } from '@/lib/ride-api'
 import api from '@/lib/api'
 import { unregisterPush } from '@/lib/push'
+import { TERMS_URL } from '@/lib/constants'
 
 type MenuAction = 'vehicle' | 'documents' | 'personal' | 'email' | 'terms'
 
@@ -98,7 +99,7 @@ export default function Profile() {
     if (action === 'documents') { navigate('/profile/documents'); return }
     if (action === 'personal')  { navigate('/profile/personal');  return }
     if (action === 'email')     { window.open(`mailto:support@ocar.in?subject=${encodeURIComponent(`Driver ${driver?.code ?? ''} — Support`)}`); return }
-    if (action === 'terms')     { window.open('https://ocar.in/terms'); return }
+    if (action === 'terms')     { window.open(TERMS_URL, '_blank', 'noopener,noreferrer'); return }
   }
 
   const displayName  = driver?.full_name ?? driver?.code ?? 'Driver'

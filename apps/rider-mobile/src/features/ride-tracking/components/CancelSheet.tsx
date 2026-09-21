@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import Animated, { useAnimatedStyle } from 'react-native-reanimated'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, useKeyboardOffset } from '@ocar/mobile-shared'
 
 // Same reason lists + copy as apps/user/app/(main)/ride/[id]/CancelSheet.tsx.
 const BEFORE_REASONS = [
@@ -32,6 +33,11 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
 
   const reasons = feeWarning ? AFTER_REASONS : BEFORE_REASONS
   const canSubmit = selected !== null && (selected !== 'other' || otherText.trim().length > 0)
+  const keyboardOffset = useKeyboardOffset()
+  // Same gap as AddStopSheet: this Modal's bottom-docked sheet had no
+  // keyboard handling, so the "Other reason" text box could sit behind the
+  // keyboard the instant it was focused.
+  const keyboardStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -keyboardOffset.get() }] }))
 
   async function handleConfirm() {
     if (!selected || submitting) return
@@ -44,7 +50,7 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => !submitting && onClose()} />
-        <View style={styles.sheet}>
+        <Animated.View style={[styles.sheet, keyboardStyle]}>
           <View style={styles.handle} />
           <View style={styles.headerRow}>
             <Text style={styles.title}>Cancel your ride?</Text>
@@ -105,7 +111,7 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
           <Pressable onPress={onClose} disabled={submitting} style={({ pressed }) => [styles.keepBtn, pressed ? styles.pressedScale : null]}>
             <Text style={styles.keepText}>Keep my ride</Text>
           </Pressable>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   )

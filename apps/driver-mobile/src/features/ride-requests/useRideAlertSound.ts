@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Vibration } from 'react-native'
 import { setAudioModeAsync, useAudioPlayer, type AudioPlayer } from 'expo-audio'
+import rideAlertSoundAsset from '../../../assets/sounds/ride-request.wav'
 
 function safePause(player: AudioPlayer) {
   try {
@@ -13,7 +14,7 @@ function safePause(player: AudioPlayer) {
 // Same asset + same repeating-loop behavior as the web driver app's
 // lib/rideSound.ts (playRideSound/stopRideSound) -- ported to expo-audio
 // instead of reimplemented, per the plan's reuse-ladder correction.
-const RIDE_ALERT_SOUND = require('../../../assets/sounds/ride-request.wav')
+const RIDE_ALERT_SOUND = rideAlertSoundAsset
 
 // Uber-style pattern: buzz, pause, buzz, repeat -- not a single blip.
 const VIBRATION_PATTERN = [0, 400, 200, 400]

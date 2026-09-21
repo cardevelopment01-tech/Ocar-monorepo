@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSharedValue } from 'react-native-reanimated'
-import { useRoomJoin } from '@ocar/mobile-shared'
+import { simplifyPolyline, useRoomJoin } from '@ocar/mobile-shared'
 import { socket } from '@/services/socket'
 import { fetchRide, fetchRouteLeg, fetchUnreadChatCount } from './api'
 import type { DriverCancelInfo, RideDetailExtra } from './types'
@@ -53,7 +53,7 @@ export function useRideTracking(rideId: string) {
   const markerHeading = useSharedValue(0)
   const hasMarkerFix = useRef(false)
   const routeFetchSeq = useRef(0)
-  const lastRouteFetch = useRef<{ mode: RouteMode; at: number } | null>(null)
+  const lastRouteFetch = useRef<{ mode: RouteMode; stopsKey: string; at: number } | null>(null)
 
   const loadRide = useCallback(async () => {
     try {
@@ -162,12 +162,16 @@ export function useRideTracking(rideId: string) {
     }
   }, [loadRide, markerLat, markerLng, markerHeading])
 
-  // Route + live ETA -- same leg selection as the web tracking page's effect,
-  // scoped down (no waypoint detour legs; add-stop still bends the *booking*
-  // route on web, but the live-trip route line here stays origin->dest for
-  // simplicity, matching the agreed core-parity scope for the map itself).
+  // Route + live ETA -- same leg selection AND waypoint-detour behavior as
+  // the web tracking page's effect (previously scoped down to skip waypoint
+  // legs here, which meant the drawn line never bent through a stop the
+  // rider had just added -- reported as "the UI isn't updating" after
+  // add-stop, since the one visible thing that should have changed, didn't).
   const routeMode = ride ? routeModeFor(ride.status) : 'pickup-dest'
   const hasDest = ride?.destLat != null && ride?.destLng != null
+  // Pending-stop identity: a stop leaving this set (marked reached) must
+  // retrigger the fetch so the line stops bending toward it, same as web.
+  const stopsKey = ride ? ride.stops.filter((s) => s.status === 'pending').map((s) => `${s.lat},${s.lng}`).join('|') : ''
 
   useEffect(() => {
     if (!ride) return
@@ -195,24 +199,48 @@ export function useRideTracking(rideId: string) {
     }
 
     const prev = lastRouteFetch.current
-    const modeChanged = !prev || prev.mode !== routeMode
+    const modeChanged = !prev || prev.mode !== routeMode || prev.stopsKey !== stopsKey
     const stale = prev ? Date.now() - prev.at > 20_000 : true
     if (!modeChanged && !stale) return
 
     const seq = ++routeFetchSeq.current
-    lastRouteFetch.current = { mode: routeMode, at: Date.now() }
+    lastRouteFetch.current = { mode: routeMode, stopsKey, at: Date.now() }
     const wantsEta = routeMode === 'driver-pickup' || routeMode === 'driver-dest' || routeMode === 'returning'
+
+    // Stops sit between pickup and drop -- never bend the pickup leg or the
+    // return-to-origin leg through them, only the pickup->dest leg (matches
+    // web's exact rule).
+    const waypoints: [number, number][] = (routeMode === 'driver-pickup' || routeMode === 'returning')
+      ? []
+      : ride.stops.filter((s) => s.status === 'pending').map((s): [number, number] => [s.lat, s.lng])
+
+    if (waypoints.length > 0) {
+      const pts = [origin, ...waypoints, dest]
+      Promise.all(pts.slice(0, -1).map((p, i) => fetchRouteLeg(p[0], p[1], pts[i + 1]![0], pts[i + 1]![1], wantsEta)))
+        .then((legs) => {
+          if (routeFetchSeq.current !== seq) return
+          setRoutePoints(simplifyPolyline(legs.flatMap((l) => l.polyline)))
+          setEta(wantsEta ? {
+            etaMin: Math.round(legs.reduce((s, l) => s + l.etaMin, 0)),
+            distanceKm: Math.round(legs.reduce((s, l) => s + l.distanceKm, 0) * 10) / 10,
+          } : null)
+        })
+        .catch(() => {
+          if (routeFetchSeq.current === seq) { setRoutePoints([]); setEta(null) }
+        })
+      return
+    }
 
     fetchRouteLeg(origin[0], origin[1], dest[0], dest[1], wantsEta)
       .then((leg) => {
         if (routeFetchSeq.current !== seq) return
-        setRoutePoints(leg.polyline)
+        setRoutePoints(simplifyPolyline(leg.polyline))
         setEta(wantsEta ? { etaMin: leg.etaMin, distanceKm: leg.distanceKm } : null)
       })
       .catch(() => {
         if (routeFetchSeq.current === seq) { setRoutePoints([]); setEta(null) }
       })
-  }, [routeMode, driverPos, ride, hasDest])
+  }, [routeMode, driverPos, ride, hasDest, stopsKey])
 
   const pickup = useMemo<[number, number]>(() => (ride ? [ride.originLat, ride.originLng] : [0, 0]), [ride])
   const drop = useMemo<[number, number] | null>(() => (hasDest ? [ride!.destLat!, ride!.destLng!] : null), [ride, hasDest])

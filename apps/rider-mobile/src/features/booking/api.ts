@@ -148,6 +148,7 @@ export type FareEstimateInput = {
   cityId?: number
   tripHours?: number
   rentalPackageId?: number
+  isReturnCab?: boolean
 }
 
 export async function fetchFareEstimate(
@@ -159,12 +160,38 @@ export async function fetchFareEstimate(
     ride_type: input.rideType,
     distance_km: input.distanceKm,
     duration_min: input.durationMin,
+    is_return_cab: input.isReturnCab ?? false,
   }
   if (input.cityId !== undefined) body['city_id'] = input.cityId
   if (input.tripHours !== undefined) body['trip_hours'] = input.tripHours
   if (input.rentalPackageId !== undefined) body['rental_package_id'] = input.rentalPackageId
   const res = await api.post('/api/v1/pricing/estimate', body, config)
   return camelizeKeys<FareEstimate>(res.data)
+}
+
+// Mirrors web's rideApi.getReturnCabAvailable (apps/user/lib/ride-api.ts) --
+// checks whether a driver already heading back through destinationCityName is
+// on this exact pickup->drop route right now, for the "Return Cab Available"
+// discounted section. Meaningless for a scheduled future pickup (a live
+// driver's current route says nothing about later), so callers should only
+// fire this for immediate one_way bookings.
+export async function fetchReturnCabAvailable(params: {
+  pickupLat: number
+  pickupLng: number
+  dropLat: number
+  dropLng: number
+  categoryId: number
+}): Promise<{ count: number }> {
+  const res = await api.get<{ count: number }>('/api/v1/rides/return-cab-available', {
+    params: {
+      pickupLat: params.pickupLat,
+      pickupLng: params.pickupLng,
+      dropLat: params.dropLat,
+      dropLng: params.dropLng,
+      categoryId: params.categoryId,
+    },
+  })
+  return res.data
 }
 
 export async function fetchRentalPackages(categoryId: number, cityId?: number | null): Promise<RentalPackage[]> {
@@ -194,6 +221,7 @@ export type CreateBookingInput = {
   scheduledFor?: string
   riderName?: string
   riderPhone?: string
+  isReturnCab?: boolean
 }
 
 export async function createBooking(input: CreateBookingInput): Promise<BookingResult> {

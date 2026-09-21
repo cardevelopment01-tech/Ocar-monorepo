@@ -1,111 +1,204 @@
-import { useCallback } from 'react'
-import { RefreshControl, StyleSheet, Text, View } from 'react-native'
-import { FlashList } from '@shopify/flash-list'
+import { useMemo } from 'react'
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { EmptyState, ErrorState, Skeleton, colors, spacing, typography } from '@ocar/mobile-shared'
+import { EmptyState, ErrorState, Skeleton, colors, radii, spacing, typography, type RideHistoryItem } from '@ocar/mobile-shared'
 import { useRideHistory } from '../hooks/useRideHistory'
 import { RideHistoryRow } from './RideHistoryRow'
+import { UpcomingCard } from './UpcomingCard'
+import { ActiveRideCard } from './ActiveRideCard'
+import { filterRidesByTab } from '../filterRidesByTab'
+import type { HistoryTab, UpcomingRide } from '../types'
 
-const SKELETON_ROWS = Array.from({ length: 6 }, (_, i) => i)
+const TABS: { id: HistoryTab; label: string }[] = [
+  { id: 'upcoming', label: 'Upcoming' },
+  { id: 'all', label: 'All' },
+  { id: 'completed', label: 'Completed' },
+  { id: 'cancelled', label: 'Cancelled' },
+]
 
 function RowSkeleton() {
   return (
     <View style={styles.skeletonRow}>
-      <Skeleton height={72} borderRadius={16} />
+      <Skeleton height={104} borderRadius={radii.lg} />
     </View>
   )
 }
 
+// Matches web's My Rides page (apps/user/app/(main)/history/page.tsx) 1:1: a
+// sticky "My Rides" header with a total-count pill, four tab pills
+// (Upcoming/All/Completed/Cancelled), an active-ride card + scheduled-ride
+// list with per-ride cancel on the Upcoming tab, and a Prev/Next-paginated
+// history list (not infinite scroll -- web isn't either) on the other three,
+// each filtering the current page client-side same as web does.
 export function RideHistoryList() {
   const router = useRouter()
-  const { items, upcoming, loading, refreshing, loadingMore, hasMore, error, refresh, loadMore } = useRideHistory()
+  const {
+    tab, setTab,
+    rides, page, pages, total, loading, error, fetchHistory,
+    upcoming, upcomingLoading, upcomingError, cancellingId, cancelUpcoming,
+    activeRide,
+    refresh,
+  } = useRideHistory()
 
-  const openRide = useCallback((id: string) => router.push(`/ride/${id}`), [router])
+  const openRide = (id: string) => router.push(`/ride/${id}`)
+  const bookRide = () => router.push('/(tabs)/home')
 
-  if (loading) {
-    return (
-      <FlashList
-        data={SKELETON_ROWS}
-        keyExtractor={(i) => String(i)}
-        renderItem={RowSkeleton}
-        contentContainerStyle={styles.content}
-      />
-    )
-  }
+  const filtered = useMemo(() => filterRidesByTab(rides, tab), [rides, tab])
 
-  if (error && items.length === 0 && upcoming.length === 0) {
-    return (
-      <View style={styles.centerContainer}>
-        <ErrorState message={error} onRetry={refresh} />
+  const header = (
+    <View style={styles.header}>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>My Rides</Text>
+        {tab !== 'upcoming' && !loading && total > 0 ? (
+          <View style={styles.totalPill}>
+            <Text style={styles.totalPillText}>{total} total</Text>
+          </View>
+        ) : null}
       </View>
-    )
-  }
+      <View style={styles.tabsRow}>
+        {TABS.map((t) => {
+          const active = tab === t.id
+          return (
+            <Pressable
+              key={t.id}
+              onPress={() => setTab(t.id)}
+              style={[styles.tabPill, active ? styles.tabPillActive : null]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+            >
+              <Text style={[styles.tabPillText, active ? styles.tabPillTextActive : null]}>{t.label}</Text>
+            </Pressable>
+          )
+        })}
+      </View>
+    </View>
+  )
 
-  if (items.length === 0 && upcoming.length === 0) {
+  if (tab === 'upcoming') {
     return (
-      <View style={styles.centerContainer}>
-        <EmptyState title="No trips yet" description="Your ride history will show up here" />
+      <View style={styles.container}>
+        {header}
+        <FlatList<UpcomingRide>
+          data={upcoming}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} tintColor={colors.primary} />}
+          ListHeaderComponent={
+            <View>
+              {activeRide ? <ActiveRideCard ride={activeRide} onOpen={() => openRide(activeRide.id)} /> : null}
+              {upcomingLoading ? (
+                <View>
+                  <RowSkeleton />
+                  <RowSkeleton />
+                </View>
+              ) : null}
+            </View>
+          }
+          renderItem={({ item }) => (
+            <UpcomingCard
+              ride={item}
+              onOpen={() => openRide(item.id)}
+              onCancel={() => void cancelUpcoming(item.id)}
+              cancelling={cancellingId === item.id}
+            />
+          )}
+          ListEmptyComponent={
+            upcomingLoading ? null : upcomingError ? (
+              <View style={styles.centerState}>
+                <ErrorState message={upcomingError} onRetry={refresh} />
+              </View>
+            ) : (
+              <View style={styles.centerState}>
+                <EmptyState
+                  title="No scheduled rides"
+                  description="Schedule now and we'll find your driver closer to pickup. No need to book last-minute."
+                />
+                <Pressable onPress={bookRide} style={styles.ctaBtn}>
+                  <Text style={styles.ctaText}>Book a ride</Text>
+                </Pressable>
+              </View>
+            )
+          }
+        />
       </View>
     )
   }
 
   return (
-    <FlashList
-      data={items}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => <RideHistoryRow item={item} onPress={openRide} />}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}
-      onEndReachedThreshold={0.4}
-      onEndReached={loadMore}
-      ListHeaderComponent={
-        <View>
-          {error ? (
-            <View style={styles.retryBanner}>
-              <Text style={styles.retryText} accessibilityLiveRegion="polite">{error}</Text>
-              <Text style={styles.retryLink} onPress={refresh} accessibilityRole="button">Retry</Text>
+    <View style={styles.container}>
+      {header}
+      <FlatList<RideHistoryItem>
+        data={loading ? [] : filtered}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} tintColor={colors.primary} />}
+        renderItem={({ item }) => <RideHistoryRow item={item} onPress={openRide} />}
+        ListHeaderComponent={loading ? <View><RowSkeleton /><RowSkeleton /><RowSkeleton /></View> : null}
+        ListEmptyComponent={
+          loading ? null : error ? (
+            <View style={styles.centerState}>
+              <ErrorState message={error} onRetry={() => void fetchHistory(1)} />
             </View>
-          ) : null}
-          {upcoming.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Upcoming</Text>
-              {upcoming.map((item) => (
-                <RideHistoryRow key={item.id} item={item} onPress={openRide} />
-              ))}
-              <Text style={styles.sectionTitle}>Past trips</Text>
+          ) : (
+            <View style={styles.centerState}>
+              <EmptyState
+                title={tab === 'all' ? 'No rides yet' : `No ${tab} rides`}
+                description={tab === 'all' ? 'Your ride history will show up here once you take your first trip.' : `Rides that get ${tab} will show up here.`}
+              />
+              {tab === 'all' ? (
+                <Pressable onPress={bookRide} style={styles.ctaBtn}>
+                  <Text style={styles.ctaText}>Book a ride</Text>
+                </Pressable>
+              ) : null}
             </View>
-          ) : null}
-        </View>
-      }
-      ListFooterComponent={
-        loadingMore ? (
-          <View style={styles.skeletonRow}><Skeleton height={72} borderRadius={16} /></View>
-        ) : !hasMore && items.length > 0 ? (
-          <Text style={styles.endText}>That's all your trips</Text>
-        ) : null
-      }
-    />
+          )
+        }
+        ListFooterComponent={
+          !loading && !error && pages > 1 ? (
+            <View style={styles.pager}>
+              <Pressable
+                disabled={page <= 1}
+                onPress={() => void fetchHistory(page - 1)}
+                style={[styles.pagerBtn, page <= 1 ? styles.pagerBtnDisabled : null]}
+              >
+                <Text style={styles.pagerBtnText}>Prev</Text>
+              </Pressable>
+              <Text style={styles.pagerLabel}>{page} / {pages}</Text>
+              <Pressable
+                disabled={page >= pages}
+                onPress={() => void fetchHistory(page + 1)}
+                style={[styles.pagerBtn, page >= pages ? styles.pagerBtnDisabled : null]}
+              >
+                <Text style={styles.pagerBtnText}>Next</Text>
+              </Pressable>
+            </View>
+          ) : null
+        }
+      />
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
-  content: { paddingVertical: spacing.md },
-  centerContainer: { flex: 1, justifyContent: 'center' },
+  container: { flex: 1 },
+  header: { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: spacing.sm },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.sm },
+  title: { ...typography.headline, color: colors.ink900 },
+  totalPill: { backgroundColor: colors.surface2, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
+  totalPillText: { ...typography.caption, fontSize: 11, color: colors.ink400, fontWeight: '600' },
+  tabsRow: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.lg },
+  tabPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radii.full, backgroundColor: colors.surface2 },
+  tabPillActive: { backgroundColor: colors.primary },
+  tabPillText: { ...typography.caption, fontSize: 12, color: colors.ink400, fontWeight: '600' },
+  tabPillTextActive: { color: colors.inkInverse },
+  content: { paddingVertical: spacing.md, flexGrow: 1 },
   skeletonRow: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
-  section: { paddingTop: spacing.xs },
-  sectionTitle: { ...typography.label, color: colors.ink400, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
-  retryBanner: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: 12,
-    backgroundColor: colors.errorLight,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  retryText: { ...typography.caption, color: colors.error, flex: 1 },
-  retryLink: { ...typography.label, color: colors.error, fontWeight: '700' },
-  endText: { ...typography.caption, color: colors.ink400, textAlign: 'center', paddingVertical: spacing.md },
+  centerState: { alignItems: 'center', paddingTop: spacing.xl, paddingHorizontal: spacing.lg, gap: spacing.sm },
+  ctaBtn: { marginTop: spacing.xs, backgroundColor: colors.primary, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm + 2, borderRadius: radii.full },
+  ctaText: { ...typography.label, color: colors.inkInverse, fontWeight: '700' },
+  pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg },
+  pagerBtn: { backgroundColor: colors.surface2, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.full },
+  pagerBtnDisabled: { opacity: 0.4 },
+  pagerBtnText: { ...typography.label, color: colors.primary, fontWeight: '700' },
+  pagerLabel: { ...typography.caption, color: colors.ink400 },
 })

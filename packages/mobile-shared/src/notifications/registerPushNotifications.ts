@@ -5,6 +5,7 @@ export interface NotificationChannelConfig {
   channelId: string
   name: string
   importance?: Notifications.AndroidImportance
+  vibrationPattern?: number[]
 }
 
 export interface PushNotificationsConfig {
@@ -20,10 +21,20 @@ export async function registerPushNotifications(
   apiClient: AxiosInstance,
   config: PushNotificationsConfig
 ): Promise<{ granted: boolean }> {
+  // sound/enableVibrate/vibrationPattern were previously left unset -- Android's
+  // NotificationChannel defaults enableVibrate to FALSE (sound-only), and FCM
+  // pushes never referenced a channelId at all (see push.provider.ts), so they
+  // fell into Android's own silent-ish auto-created fallback channel instead of
+  // any channel this app configured. Both are fixed now: every channel this app
+  // creates explicitly gets sound + vibration, and the backend now targets
+  // these channelIds directly.
   for (const channel of config.channels) {
     await Notifications.setNotificationChannelAsync(channel.channelId, {
       name: channel.name,
       importance: channel.importance ?? Notifications.AndroidImportance.DEFAULT,
+      sound: 'default',
+      enableVibrate: true,
+      vibrationPattern: channel.vibrationPattern ?? [0, 250, 250, 250],
     })
   }
 

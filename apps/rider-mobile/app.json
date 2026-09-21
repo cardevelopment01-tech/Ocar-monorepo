@@ -6,9 +6,15 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/brand/app-icon.png",
     "android": {
       "package": "com.ocar.rider",
       "googleServicesFile": "./google-services.json",
+      "icon": "./assets/brand/app-icon.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/brand/adaptive-icon-foreground.png",
+        "backgroundColor": "#FFFFFF"
+      },
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -19,6 +25,10 @@
           "apiKey": "AIzaSyAAVGxzN9sRx8fOBOQxwITVIk8lPC6sGtM"
         }
       }
+    },
+    "notification": {
+      "icon": "./assets/brand/notification-icon.png",
+      "color": "#0A9FB0"
     },
     "ios": {
       "bundleIdentifier": "com.ocar.rider",

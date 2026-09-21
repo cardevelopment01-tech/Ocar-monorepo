@@ -2,6 +2,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { formatPickupTime } from '@/lib/formatPickupTime'
 
 export type ScheduleSheetProps = {
   visible: boolean
@@ -9,20 +10,10 @@ export type ScheduleSheetProps = {
   onChange: (iso: string | null) => void
 }
 
-function isSameDay(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
-}
-
-const TIME_FMT: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true }
-
-export function formatPickupTime(d: Date): string {
-  const now = new Date()
-  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
-  const time = d.toLocaleString('en-IN', TIME_FMT).replace('AM', 'am').replace('PM', 'pm')
-  if (isSameDay(d, now)) return `Today, ${time}`
-  if (isSameDay(d, tomorrow)) return `Tomorrow, ${time}`
-  return `${d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' })}, ${time}`
-}
+// Re-exported for existing callers (rental.tsx, round-trip.tsx import it from
+// here) -- the real implementation now lives in lib/formatPickupTime.ts so it
+// can be unit tested without a react-native import in the way.
+export { formatPickupTime }
 
 function atHour(daysFromNow: number, hour: number): Date {
   const d = new Date()

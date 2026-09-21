@@ -222,7 +222,10 @@ export default function LoginPage() {
                 </motion.button>
 
                 <p className="text-center text-text-muted text-xs mt-auto pt-10">
-                  By continuing you agree to our Terms & Privacy Policy
+                  By continuing you agree to our{' '}
+                  <a href="/legal/terms" className="font-semibold text-primary underline">Terms</a>
+                  {' '}&amp;{' '}
+                  <a href="/legal/privacy" className="font-semibold text-primary underline">Privacy Policy</a>
                 </p>
               </form>
             </motion.div>

@@ -5,7 +5,7 @@ import Svg, { Path, Ellipse, Circle } from 'react-native-svg'
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
 import { colors } from '@ocar/mobile-shared'
 
-export type PinVariant = 'pickup' | 'drop'
+export type PinVariant = 'pickup' | 'drop' | 'stop'
 
 export type LocationPinProps = {
   position: [number, number]
@@ -33,10 +33,20 @@ function PulsingHalo() {
 }
 
 function LocationPin({ position, variant }: LocationPinProps) {
-  const fill = variant === 'pickup' ? colors.success : colors.error
+  const fill = variant === 'pickup' ? colors.success : variant === 'drop' ? colors.error : colors.warning
 
   return (
-    <Marker coordinate={{ latitude: position[0], longitude: position[1] }} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={false}>
+    <Marker
+      coordinate={{ latitude: position[0], longitude: position[1] }}
+      anchor={{ x: 0.5, y: 1 }}
+      // The pickup pin's PulsingHalo starts its reanimated loop from a
+      // useEffect, which fires after the first paint -- with
+      // tracksViewChanges=false (a static one-time snapshot), react-native-maps
+      // on Android can snapshot before that first paint settles, leaving the
+      // whole marker blank/invisible (not just the halo frozen). The drop pin
+      // has no animation and is safe to snapshot once.
+      tracksViewChanges={variant === 'pickup'}
+    >
       <View style={styles.wrap}>
         {variant === 'pickup' ? <PulsingHalo /> : null}
         <Svg width={28} height={38} viewBox="0 0 28 38">

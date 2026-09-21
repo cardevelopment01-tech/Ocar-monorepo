@@ -1,5 +1,14 @@
 export const EASE = [0.22, 1, 0.36, 1] as const
 
+// The rider web app (apps/user) is the single hosted source for Terms &
+// Privacy content -- every other surface (this app, admin, both mobile apps)
+// links out to it instead of duplicating the legal text 5x. Override via
+// VITE_LEGAL_BASE_URL per environment; falls back to the domain already
+// assumed elsewhere in this app (see the old support@ocar.in mailto).
+const LEGAL_BASE_URL = (import.meta.env['VITE_LEGAL_BASE_URL'] as string | undefined) || 'https://ocar.in'
+export const TERMS_URL = `${LEGAL_BASE_URL}/legal/terms`
+export const PRIVACY_URL = `${LEGAL_BASE_URL}/legal/privacy`
+
 // Shared stacking scale so fixed/portaled overlays have a deterministic order
 // instead of ad-hoc z-[N] values colliding (e.g. SOSButton vs BottomNav both
 // at z-[100]). SOS sits above everything else in the app on purpose — a

@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { BackHandler, Dimensions, Image, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { BackHandler, Dimensions, Image, Linking, ScrollView, StyleSheet, Text, View } from 'react-native'
 import Animated, { Easing, FadeIn, SlideInLeft, SlideInRight, SlideOutLeft, SlideOutRight } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Button, Input, OtpBoxInput, colors, spacing, typography, mapOtpErrorCode } from '@ocar/mobile-shared'
+import { Button, Input, OtpBoxInput, colors, spacing, typography, mapOtpErrorCode, TERMS_URL, PRIVACY_URL } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { setupPushNotifications } from '@/services/notifications'
 import { useAuthStore, type DriverProfile } from '@/store/useAuthStore'
+import loginHeroImage from '../../../assets/brand/login-hero.png'
+import logoMarkImage from '../../../assets/brand/logo-mark.png'
 
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1)
 // Fixed at module load, not reactive to rotation -- portrait-only auth screen.
@@ -178,7 +180,7 @@ export default function PhoneScreen() {
           this moving. */}
       <View style={[styles.hero, { height: HERO_HEIGHT }]}>
         <Image
-          source={require('../../../assets/brand/login-hero.png')}
+          source={loginHeroImage}
           style={styles.heroImage}
           resizeMode="cover"
         />
@@ -204,7 +206,7 @@ export default function PhoneScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <Image source={require('../../../assets/brand/logo-mark.png')} style={styles.logo} resizeMode="contain" />
+            <Image source={logoMarkImage} style={styles.logo} resizeMode="contain" />
 
             <Animated.View
             key={step}
@@ -242,6 +244,12 @@ export default function PhoneScreen() {
                   loading={loading}
                   disabled={phone.replace(/\D/g, '').length !== 10}
                 />
+                <Text style={styles.consent}>
+                  By continuing you agree to our{' '}
+                  <Text style={styles.consentLink} onPress={() => void Linking.openURL(TERMS_URL)}>Driver Partner Terms</Text>
+                  {' '}&amp;{' '}
+                  <Text style={styles.consentLink} onPress={() => void Linking.openURL(PRIVACY_URL)}>Privacy Policy</Text>
+                </Text>
               </>
             ) : (
               <>
@@ -319,4 +327,6 @@ const styles = StyleSheet.create({
   title: { ...typography.display, fontSize: 28, lineHeight: 32, letterSpacing: -0.5, color: colors.ink900 },
   subtitle: { ...typography.body, color: colors.ink600 },
   error: { ...typography.label, color: colors.error },
+  consent: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginTop: spacing.xs },
+  consentLink: { color: colors.primary, fontWeight: '700' },
 })

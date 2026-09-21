@@ -54,7 +54,7 @@ export async function fetchRouteLeg(
   }
 }
 
-export async function cancelRide(rideId: string, reasonCode: string, reason?: string): Promise<void> {
+export async function cancelRide(rideId: string, reasonCode?: string, reason?: string): Promise<void> {
   await api.post(`/api/v1/rides/${rideId}/cancel`, { reasonCode, reason })
 }
 
@@ -80,14 +80,22 @@ export async function markChatRead(rideId: string): Promise<void> {
 
 export type ChatMessage = {
   id: string
+  rideId: string
   senderType: 'user' | 'driver'
+  senderId: string
   body: string
+  clientMsgId: string
+  readAt: string | null
   createdAt: string
 }
 
-export async function fetchChatMessages(rideId: string): Promise<ChatMessage[]> {
-  const res = await api.get(`/api/v1/rides/${rideId}/messages`)
-  return camelizeKeys<ChatMessage[]>(res.data)
+// Server responds { messages: [...] }, not a bare array -- see
+// api/src/modules/ride-chat/ride-chat.controller.ts's getMessages.
+export async function fetchChatMessages(rideId: string, after?: string): Promise<ChatMessage[]> {
+  const res = await api.get<{ messages: unknown[] }>(`/api/v1/rides/${rideId}/messages`, {
+    params: after ? { after } : undefined,
+  })
+  return camelizeKeys<ChatMessage[]>(res.data.messages)
 }
 
 export async function sendChatMessage(rideId: string, body: string, clientMsgId: string): Promise<ChatMessage> {

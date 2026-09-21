@@ -110,15 +110,18 @@ export type RideDetail = {
   stops: RideStop[]
 }
 
+// Matches GET /rides/me/history's exact row shape (api/src/modules/rides/rides.repository.ts's
+// getUserRideHistory) after camelizeKeys -- not a superset/guess, the real columns selected.
 export type RideHistoryItem = {
   id: string
   status: string
   rideType: string
   originAddress: string | null
   destinationAddress: string | null
-  totalFinal: string | null
-  totalEstimated: string | null
-  createdAt: string
+  requestedAt: string
+  completedAt: string | null
+  driverName: string | null
+  fare: string | null
 }
 
 export type GeoAutocompleteResult = {

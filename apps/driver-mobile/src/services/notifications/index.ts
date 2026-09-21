@@ -24,11 +24,17 @@ export async function setupPushNotifications(): Promise<void> {
   const { granted } = await registerPushNotifications(api, {
     getFcmToken,
     channels: [
-      { channelId: 'default', name: 'General' },
+      // _v2 -- forces Android to create a fresh channel with sound+vibrate baked
+      // in (channel settings are locked after first creation and `adb install -r`
+      // never resets them, only a full uninstall does; the original 'default'/
+      // 'ride_requests' channels on already-installed devices were created before
+      // that config existed).
+      { channelId: 'default_v2', name: 'General' },
       {
-        channelId: 'ride_requests',
+        channelId: 'ride_requests_v2',
         name: 'Ride requests',
         importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 400, 200, 400],
       },
     ],
   })

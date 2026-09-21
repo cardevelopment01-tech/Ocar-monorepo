@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, shadows, spacing, typography, TERMS_URL } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { teardownPushNotifications } from '@/services/notifications'
@@ -168,13 +168,26 @@ export default function ProfileScreen() {
               </View>
               <Feather name="chevron-right" size={14} color={colors.ink400} />
             </Pressable>
-            <Pressable style={styles.menuRow}>
+            <Pressable style={[styles.menuRow, styles.menuRowBorder]}>
               <View style={styles.menuIcon}>
                 <Feather name="user" size={15} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.menuLabel}>{MENU[2]!.label}</Text>
                 <Text style={styles.menuSub}>{MENU[2]!.sub}</Text>
+              </View>
+              <Feather name="chevron-right" size={14} color={colors.ink400} />
+            </Pressable>
+            {/* The only functional row in this section -- deep-links to apps/user's
+                hosted /legal/terms (which itself cross-links to /legal/privacy)
+                rather than duplicating the legal text natively. */}
+            <Pressable style={styles.menuRow} onPress={() => void Linking.openURL(TERMS_URL)}>
+              <View style={styles.menuIcon}>
+                <Feather name="file-text" size={15} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuLabel}>Terms & Privacy</Text>
+                <Text style={styles.menuSub}>Legal information</Text>
               </View>
               <Feather name="chevron-right" size={14} color={colors.ink400} />
             </Pressable>

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { Dimensions, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, Card, colors, getCurrentOrLastKnownPosition, spacing, typography } from '@ocar/mobile-shared'
+import { Button, Card, colors, getCurrentOrLastKnownPosition, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { OnlineToggle } from '@/features/go-online/components/OnlineToggle'
@@ -13,13 +14,25 @@ import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
 import { fetchEarningsSummary } from '@/features/earnings/api'
 import type { EarningsSummary } from '@/features/earnings/types'
+import CarMarker from '@/features/map/components/CarMarker'
+import AddressCallout from '@/features/map/components/AddressCallout'
+import { fetchReverseGeocode } from '@/features/map/api'
+import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosition'
 
 // Same fallback center as the web driver app's Home.tsx (Bhubaneswar) -- shown
 // until a real fix comes in, or forever if location is denied.
 const DEFAULT_REGION = { latitude: 20.2961, longitude: 85.8245, latitudeDelta: 0.05, longitudeDelta: 0.05 }
 
+const WINDOW_HEIGHT = Dimensions.get('window').height
+// Rough pre-layout guess (greeting + stats card, no error banners) -- only
+// used for the first frame before onLayout below reports the sheet's real
+// measured height; mapPadding switches to the real value the instant it's
+// available.
+const SHEET_HEIGHT_ESTIMATE = WINDOW_HEIGHT * 0.42
+
 export default function HomeScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const driver = useAuthStore((s) => s.driver)
   const isOnline = useDriverSessionStore((s) => s.isOnline)
   const mode = useDriverSessionStore((s) => s.mode)
@@ -28,15 +41,52 @@ export default function HomeScreen() {
   const walletGate = useWalletGate()
   const documentGate = useDocumentGate()
 
+  const mapRef = useRef<MapView>(null)
   const [region, setRegion] = useState(DEFAULT_REGION)
+  const [hasFix, setHasFix] = useState(false)
+  const [address, setAddress] = useState<string | null>(null)
   const [summary, setSummary] = useState<EarningsSummary | null>(null)
   const [showOfflineConfirm, setShowOfflineConfirm] = useState(false)
+  // The bottom sheet covers a real, content-dependent chunk of the screen
+  // (grows with blockedReason/error cards) -- measured via onLayout below
+  // rather than a hardcoded height, so mapPadding keeps the driver's own
+  // position framed in the open part of the map, not hidden behind the sheet.
+  const [sheetHeight, setSheetHeight] = useState(SHEET_HEIGHT_ESTIMATE)
+  // mapPadding crashes ("setPadding on a null object reference") if set before
+  // the native GoogleMap instance finishes initializing -- same class of
+  // race as the pickup-pin/fitToCoordinates issue fixed in rider-mobile this
+  // session. Withhold it until onMapReady confirms the native map exists.
+  const [mapReady, setMapReady] = useState(false)
+  // The one-shot fix below is only for the very first pin before the driver
+  // ever goes online -- once online, this tracks the actual live position
+  // (same GPS watch active-ride screens use), so this pin stops silently
+  // drifting away from reality as the driver moves. Previously this screen
+  // never updated after its first snapshot, sourced from getCurrentOrLastKnownPosition
+  // (which can fall back to a STALE cached OS fix, not even a fresh one) --
+  // a driver who'd moved since that snapshot saw themselves somewhere they
+  // hadn't been in a while, with nothing on screen indicating it was stale.
+  const live = useDriverLivePosition(isOnline)
 
   useEffect(() => {
     Location.requestForegroundPermissionsAsync()
       .then(({ status }) => (status === 'granted' ? getCurrentOrLastKnownPosition() : null))
       .then((pos) => {
-        if (pos) setRegion({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 })
+        if (!pos) return
+        const fixRegion = { latitude: pos.coords.latitude, longitude: pos.coords.longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 }
+        setRegion(fixRegion)
+        setHasFix(true)
+        // Imperative one-time camera move, not a controlled `region` prop --
+        // the map is a real pannable/zoomable surface now (per this session's
+        // decision to enable that), and a controlled `region` would fight the
+        // driver's own gestures on every re-render after this.
+        mapRef.current?.animateToRegion(fixRegion, 600)
+        // One-shot on the initial fix, matching the pill's purpose (where am I
+        // right now) rather than live-updating on every GPS tick -- this screen
+        // doesn't track the driver's position continuously the way an active
+        // trip does.
+        fetchReverseGeocode(pos.coords.latitude, pos.coords.longitude)
+          .then((place) => setAddress(place.address))
+          .catch(() => {})
       })
       .catch(() => {})
   }, [])
@@ -44,6 +94,8 @@ export default function HomeScreen() {
   useEffect(() => {
     fetchEarningsSummary('today').then(setSummary).catch(() => {})
   }, [])
+
+  const carPosition: [number, number] | null = live?.position ?? (hasFix ? [region.latitude, region.longitude] : null)
 
   const blockedReason = documentGate.hasRejected
     ? (documentGate.rejectionReason ?? 'A document was rejected. Check your profile.')
@@ -66,26 +118,56 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <MapView
+        ref={mapRef}
         style={StyleSheet.absoluteFill}
-        initialRegion={region}
-        region={region}
-        showsUserLocation
+        initialRegion={DEFAULT_REGION}
+        // Real pan/zoom now, not a static backdrop -- the driver's own fix
+        // still lands the camera there once via mapRef.animateToRegion above,
+        // but nothing here re-asserts a controlled `region` afterward, so it
+        // never fights the driver's own gesture.
+        // Without this, the driver's own position frames on the FULL window
+        // height, landing right under the bottom sheet's top edge (roughly
+        // half the screen) instead of the open map area above it. Prop
+        // omitted entirely (not passed as undefined -- exactOptionalPropertyTypes
+        // forbids that) until mapReady, matching the guard below.
+        {...(mapReady ? { mapPadding: { top: 0, right: 0, bottom: sheetHeight, left: 0 } } : {})}
+        onMapReady={() => setMapReady(true)}
+        showsUserLocation={false}
         showsMyLocationButton={false}
         loadingEnabled
         loadingIndicatorColor={colors.primary}
         loadingBackgroundColor={colors.surface}
-        pointerEvents="none"
-      />
+      >
+        {/* Own car icon instead of the OS's generic blue dot. Live position once
+            online (real bearing available); the pre-online one-shot fix has no
+            bearing, matching CarMarker's own contract for "no real bearing yet"
+            (dimmed, not a fake north snap). */}
+        {carPosition ? (
+          <CarMarker position={carPosition} headingKnown={live?.headingKnown ?? false} opacity={0.85} />
+        ) : null}
+        {/* Real map-anchored Marker (see AddressCallout's own comment), not a
+            screen-fixed overlay -- stays correctly pinned above the car
+            through every pan/zoom instead of drifting off it. */}
+        {carPosition && address ? <AddressCallout position={carPosition} address={address} /> : null}
+      </MapView>
       {!isOnline ? <View style={styles.mapDim} pointerEvents="none" /> : null}
 
-      <View style={styles.sheet}>
-        {/* Greeting + toggle lives here, in the sheet, matching the real web
-            app's Home.tsx exactly -- there the toggle sits as Row 1 of the
-            draggable bottom sheet, never pinned under the status bar. An
-            earlier pass here floated this whole row at the very top of the
-            screen instead (top: insets.top + spacing.sm, just 8dp of
-            breathing room below the status bar) -- barely noticeable with a
-            tiny Switch, glaring once it became the real 72px OnlineToggle. */}
+      {/* Minimal persistent HUD -- wallet balance and a notifications entry
+          point, out of the way in the corners. */}
+      <View style={[styles.topRow, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
+        <View style={styles.walletPill}>
+          <MaterialCommunityIcons name="currency-inr" size={13} color={colors.accentOrange} />
+          <Text style={styles.walletPillText}>{walletGate.loading ? '—' : Math.round(walletGate.balance).toLocaleString('en-IN')}</Text>
+        </View>
+        {/* No notifications feature exists yet in driver-mobile (unlike the
+            web app) -- visual-parity placeholder only, same treatment as
+            rider-mobile profile's inert MENU rows. */}
+        <View style={styles.bellBtn} accessibilityElementsHidden>
+          <Feather name="bell" size={15} color={colors.ink600} />
+        </View>
+      </View>
+
+      <View style={styles.sheet} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.date}>{todayLabel}</Text>
@@ -207,6 +289,10 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   mapDim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: `${colors.bg}59` },
+  topRow: { position: 'absolute', left: spacing.md, right: spacing.md, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  walletPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.surface, borderRadius: radii.full, paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.xs + 2, ...shadows.card },
+  walletPillText: { ...typography.label, color: colors.ink900, fontWeight: '800' },
+  bellBtn: { width: 36, height: 36, borderRadius: radii.full, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', ...shadows.card },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',

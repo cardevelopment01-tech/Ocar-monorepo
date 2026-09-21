@@ -9,6 +9,7 @@ import { SplashOverlay, useAppFonts } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useLocationStore } from '@/store/useLocationStore'
 import { MapWarmup } from '@/features/map/components/MapWarmup'
+import logoMarkImage from '../../assets/brand/logo-mark.png'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
 
@@ -49,7 +50,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }} />
           {showSplashOverlay ? (
             <SplashOverlay
-              logoSource={require('../../assets/brand/logo-mark.png')}
+              logoSource={logoMarkImage}
               onDone={() => setShowSplashOverlay(false)}
             />
           ) : null}

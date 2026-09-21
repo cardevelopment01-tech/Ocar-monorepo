@@ -70,8 +70,14 @@ export const useAuthStore = create<AuthState>()(
         driver: state.driver,
         isAuthenticated: state.isAuthenticated,
       }),
-      onRehydrateStorage: () => (_state, error) => {
-        if (error) useAuthStore.getState().clearAuth()
+      onRehydrateStorage: () => (_state, _error) => {
+        // Don't clearAuth() here -- that actively deletes the persisted token.
+        // A rehydration error can be a transient SecureStore read failure (e.g.
+        // Android Keystore decrypt glitch after an abrupt process kill racing an
+        // in-flight write), not necessarily a signal the driver should be logged
+        // out. Failing soft (unauthenticated in memory only, storage untouched)
+        // lets a clean read on the next launch silently restore the session
+        // instead of permanently destroying it on what may be a one-off glitch.
         useAuthStore.setState({ hasHydrated: true })
       },
     }

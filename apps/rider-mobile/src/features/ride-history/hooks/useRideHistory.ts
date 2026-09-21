@@ -1,87 +1,109 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFocusEffect } from 'expo-router'
-import { camelizeKeys, type RideHistoryItem } from '@ocar/mobile-shared'
+import { camelizeKeys, type RideDetail, type RideHistoryItem } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
+import { fetchRide, fetchActiveRideId, cancelRide } from '@/features/ride-tracking/api'
+import type { HistoryTab, UpcomingRide } from '../types'
 
-const PAGE_SIZE = 20
+// Mirrors web's My Rides page (apps/user/app/(main)/history/page.tsx) exactly:
+// page-based history (Prev/Next, not infinite scroll) with client-side tab
+// filtering of the current page, a separate upcoming (scheduled) list with
+// its own cancel action, and a live active-ride card surfaced on the
+// Upcoming tab. Same three parallel fetches, same 30s focus-refetch throttle.
+const LIMIT = 20
 const FOCUS_REFETCH_THROTTLE_MS = 30_000
-const LOAD_ERROR_MESSAGE = "Couldn't load your trips. Check your connection and try again."
+const LOAD_ERROR_MESSAGE = "Couldn't load your rides. Check your connection and try again."
 
-type HistoryResponse = { rides: unknown[]; pagination: { page: number; pages: number } }
+type HistoryResponse = { rides: unknown[]; pagination: { total: number; page: number; pages: number } }
 type UpcomingResponse = { rides: unknown[] }
 
 export function useRideHistory() {
-  const [items, setItems] = useState<RideHistoryItem[]>([])
-  const [upcoming, setUpcoming] = useState<RideHistoryItem[]>([])
+  const [tab, setTab] = useState<HistoryTab>('upcoming')
+
+  const [rides, setRides] = useState<RideHistoryItem[]>([])
   const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
+  const [pages, setPages] = useState(1)
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const hasLoadedOnceRef = useRef(false)
-  const lastFetchedAtRef = useRef(0)
-  const inFlightRef = useRef(false)
+  const [upcoming, setUpcoming] = useState<UpcomingRide[]>([])
+  const [upcomingLoading, setUpcomingLoading] = useState(true)
+  const [upcomingError, setUpcomingError] = useState<string | null>(null)
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
 
-  const fetchAll = useCallback(async () => {
-    if (inFlightRef.current) return
-    inFlightRef.current = true
-    if (hasLoadedOnceRef.current) setRefreshing(true)
-    else setLoading(true)
-    setError(null)
+  const [activeRide, setActiveRide] = useState<RideDetail | null>(null)
+
+  const lastFetchedAtRef = useRef(0)
+
+  const fetchActive = useCallback(async () => {
     try {
-      const [historyRes, upcomingRes] = await Promise.all([
-        api.get<HistoryResponse>('/api/v1/rides/me/history', { params: { page: 1, limit: PAGE_SIZE } }),
-        api.get<UpcomingResponse>('/api/v1/rides/me/upcoming'),
-      ])
-      setItems(camelizeKeys<RideHistoryItem[]>(historyRes.data.rides))
-      setUpcoming(camelizeKeys<RideHistoryItem[]>(upcomingRes.data.rides))
-      setPage(1)
-      setHasMore(historyRes.data.pagination.page < historyRes.data.pagination.pages)
-      lastFetchedAtRef.current = Date.now()
+      const activeId = await fetchActiveRideId()
+      setActiveRide(activeId ? await fetchRide(activeId) : null)
     } catch {
-      setError(LOAD_ERROR_MESSAGE)
-    } finally {
-      hasLoadedOnceRef.current = true
-      setLoading(false)
-      setRefreshing(false)
-      inFlightRef.current = false
+      setActiveRide(null)
     }
   }, [])
 
-  const loadMore = useCallback(async () => {
-    if (inFlightRef.current || loadingMore || !hasMore) return
-    inFlightRef.current = true
-    setLoadingMore(true)
-    const nextPage = page + 1
+  const fetchHistory = useCallback(async (p: number) => {
+    setLoading(true); setError(null)
     try {
-      const res = await api.get<HistoryResponse>('/api/v1/rides/me/history', {
-        params: { page: nextPage, limit: PAGE_SIZE },
-      })
-      setItems((prev) => [...prev, ...camelizeKeys<RideHistoryItem[]>(res.data.rides)])
-      setPage(nextPage)
-      setHasMore(res.data.pagination.page < res.data.pagination.pages)
+      const res = await api.get<HistoryResponse>('/api/v1/rides/me/history', { params: { page: p, limit: LIMIT } })
+      setRides(camelizeKeys<RideHistoryItem[]>(res.data.rides))
+      setPage(res.data.pagination.page)
+      setPages(res.data.pagination.pages)
+      setTotal(res.data.pagination.total)
     } catch {
-      // Leave hasMore as-is so the next onEndReached retries the same page.
+      setError(LOAD_ERROR_MESSAGE)
     } finally {
-      setLoadingMore(false)
-      inFlightRef.current = false
+      setLoading(false)
     }
-  }, [page, hasMore, loadingMore])
+  }, [])
 
-  // Covers both the initial mount (lastFetchedAtRef starts at 0, always stale)
-  // and the Eng-phase focus-throttle finding: skip refetch on tab refocus if
-  // fetched within the last 30s. Pull-to-refresh bypasses this via refresh().
+  const fetchUpcoming = useCallback(async () => {
+    setUpcomingLoading(true); setUpcomingError(null)
+    try {
+      const res = await api.get<UpcomingResponse>('/api/v1/rides/me/upcoming')
+      setUpcoming(camelizeKeys<UpcomingRide[]>(res.data.rides))
+    } catch {
+      setUpcomingError(LOAD_ERROR_MESSAGE)
+    } finally {
+      setUpcomingLoading(false)
+    }
+  }, [])
+
+  const refreshAll = useCallback(() => {
+    lastFetchedAtRef.current = Date.now()
+    void fetchHistory(1)
+    void fetchUpcoming()
+    void fetchActive()
+  }, [fetchHistory, fetchUpcoming, fetchActive])
+
+  useEffect(() => { refreshAll() }, [refreshAll])
+
   useFocusEffect(
     useCallback(() => {
-      if (Date.now() - lastFetchedAtRef.current >= FOCUS_REFETCH_THROTTLE_MS) void fetchAll()
-    }, [fetchAll])
+      if (Date.now() - lastFetchedAtRef.current >= FOCUS_REFETCH_THROTTLE_MS) refreshAll()
+    }, [refreshAll])
   )
 
-  const refresh = useCallback(() => {
-    void fetchAll()
-  }, [fetchAll])
+  const cancelUpcoming = useCallback(async (rideId: string) => {
+    setCancellingId(rideId)
+    try {
+      await cancelRide(rideId, 'rider_cancelled_scheduled')
+      setUpcoming((prev) => prev.filter((r) => r.id !== rideId))
+    } catch {
+      setUpcomingError(LOAD_ERROR_MESSAGE)
+    } finally {
+      setCancellingId(null)
+    }
+  }, [])
 
-  return { items, upcoming, loading, refreshing, loadingMore, hasMore, error, refresh, loadMore }
+  return {
+    tab, setTab,
+    rides, page, pages, total, loading, error, fetchHistory,
+    upcoming, upcomingLoading, upcomingError, fetchUpcoming, cancellingId, cancelUpcoming,
+    activeRide,
+    refresh: refreshAll,
+  }
 }

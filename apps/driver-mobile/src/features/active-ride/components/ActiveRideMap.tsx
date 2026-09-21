@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
 import * as Location from 'expo-location'
-import { colors, spacing, typography } from '@ocar/mobile-shared'
+import { colors, simplifyPolyline, spacing, typography } from '@ocar/mobile-shared'
 import CarMarker from '@/features/map/components/CarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { useDriverLivePosition } from '../useDriverLivePosition'
+import { fetchRouteLeg } from '../api'
 
 export type ActiveRideLeg = 'to-pickup' | 'to-destination'
 
@@ -13,9 +14,24 @@ export type ActiveRideMapProps = {
   pickup: [number, number]
   destination: [number, number] | null
   leg: ActiveRideLeg
+  // Pending stops, routed through only on the to-destination leg (stops sit
+  // between pickup and drop, never before pickup) -- previously not accepted
+  // by this component at all, so an added stop was invisible on the driver's
+  // own map and the drawn line never reflected it.
+  stops?: [number, number][]
 }
 
 const DEFAULT_REGION = { latitude: 20.2961, longitude: 85.8245, latitudeDelta: 0.05, longitudeDelta: 0.05 }
+const ROUTE_STALE_MS = 20_000
+const ROUTE_DEVIATION_METRES = 200
+
+function distanceMetres(a: [number, number], b: [number, number]): number {
+  const R = 6_371_000
+  const dLat = (b[0] - a[0]) * Math.PI / 180
+  const dLng = (b[1] - a[1]) * Math.PI / 180
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
+}
 
 // Brief "here's the whole picture" beat whenever the leg changes (pickup ->
 // destination), then settles into following the driver -- same beat/duration
@@ -28,12 +44,16 @@ const NAVIGATION_ZOOM = 17
 // (fit-bounds, north-up) for a leg-change preview, NAVIGATION (heading = driver
 // bearing, flat pitch, follow) once settled. One map style everywhere in this
 // app -- no per-screen camera invention.
-export function ActiveRideMap({ pickup, destination, leg }: ActiveRideMapProps) {
+export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRideMapProps) {
   const mapRef = useRef<MapView>(null)
   const [permissionDenied, setPermissionDenied] = useState(false)
   const live = useDriverLivePosition(!permissionDenied)
   const [overview, setOverview] = useState(true)
   const prevLeg = useRef(leg)
+  const [routePoints, setRoutePoints] = useState<[number, number][]>([])
+  const routeFetchSeq = useRef(0)
+  const lastRouteFetch = useRef<{ leg: ActiveRideLeg; stopsKey: string; origin: [number, number]; at: number } | null>(null)
+  const stopsKey = stops.map(([lat, lng]) => `${lat},${lng}`).join('|')
 
   useEffect(() => {
     Location.getForegroundPermissionsAsync().then(({ status }) => {
@@ -69,6 +89,36 @@ export function ActiveRideMap({ pickup, destination, leg }: ActiveRideMapProps) 
     }
   }, [live, legTarget, overview])
 
+  // Real road-following route (was a bare two-point straight line between the
+  // driver and the leg target -- never actually called the routing API).
+  // Throttled like rider-mobile's tracking screen: refetch on leg change, on a
+  // pending-stop change, once the driver has moved meaningfully off the last
+  // fetched route, or after 20s -- not on every ~3s GPS tick.
+  useEffect(() => {
+    if (!live || !legTarget) return
+    const prev = lastRouteFetch.current
+    const legChanged = !prev || prev.leg !== leg || prev.stopsKey !== stopsKey
+    const deviated = prev ? distanceMetres(live.position, prev.origin) > ROUTE_DEVIATION_METRES : false
+    const stale = prev ? Date.now() - prev.at > ROUTE_STALE_MS : true
+    if (!legChanged && !deviated && !stale) return
+
+    const seq = ++routeFetchSeq.current
+    lastRouteFetch.current = { leg, stopsKey, origin: live.position, at: Date.now() }
+
+    const waypoints = leg === 'to-destination' ? stops : []
+    const pts: [number, number][] = [live.position, ...waypoints, legTarget]
+    Promise.all(pts.slice(0, -1).map((p, i) => fetchRouteLeg(p[0], p[1], pts[i + 1]![0], pts[i + 1]![1], false)))
+      .then((legs) => {
+        if (routeFetchSeq.current !== seq) return
+        const points = simplifyPolyline(legs.flatMap((l) => l.polyline))
+        setRoutePoints(points.length >= 2 ? points : [live.position, legTarget])
+      })
+      .catch(() => {
+        if (routeFetchSeq.current === seq) setRoutePoints([live.position, legTarget])
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stops re-fetch keyed by stopsKey, not the array reference
+  }, [live, legTarget, leg, stopsKey])
+
   if (permissionDenied) {
     return (
       <View style={[StyleSheet.absoluteFill, styles.fallback]}>
@@ -76,8 +126,6 @@ export function ActiveRideMap({ pickup, destination, leg }: ActiveRideMapProps) 
       </View>
     )
   }
-
-  const routePoints: [number, number][] = live && legTarget ? [live.position, legTarget] : []
 
   return (
     <View style={StyleSheet.absoluteFill}>
@@ -94,6 +142,9 @@ export function ActiveRideMap({ pickup, destination, leg }: ActiveRideMapProps) 
         loadingBackgroundColor={colors.surface}
       >
         <LocationPin position={pickup} variant="pickup" />
+        {leg === 'to-destination' ? stops.map(([lat, lng], i) => (
+          <LocationPin key={`stop-${i}-${lat}-${lng}`} position={[lat, lng]} variant="stop" />
+        )) : null}
         {destination ? <LocationPin position={destination} variant="drop" /> : null}
         {live ? <CarMarker position={live.position} heading={live.heading} headingKnown={live.headingKnown} /> : null}
         {routePoints.length >= 2 ? (

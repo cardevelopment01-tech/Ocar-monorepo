@@ -9,6 +9,10 @@ export type CarMarkerProps = {
   /** False until a real bearing has been derived from two GPS fixes -- renders
    *  at reduced opacity instead of a fake 0°/north snap (matches web's CarMarker). */
   headingKnown?: boolean
+  /** Overrides the headingKnown-derived opacity -- for callers (e.g. an idle
+   *  home screen) that want the marker to read as more solid without
+   *  dishonestly claiming a real bearing via headingKnown. */
+  opacity?: number
 }
 
 // Ported from rider-mobile's features/map/components/CarMarker.tsx (itself a
@@ -16,7 +20,7 @@ export type CarMarkerProps = {
 // silhouette everywhere in the product, not a driver-mobile-specific redesign.
 // react-native-maps rotates the whole Marker natively (rotation + flat), so no
 // manual transform is needed here.
-function CarMarker({ position, heading = 0, headingKnown = true }: CarMarkerProps) {
+function CarMarker({ position, heading = 0, headingKnown = true, opacity }: CarMarkerProps) {
   return (
     <Marker
       coordinate={{ latitude: position[0], longitude: position[1] }}
@@ -26,7 +30,7 @@ function CarMarker({ position, heading = 0, headingKnown = true }: CarMarkerProp
       tracksViewChanges={false}
       zIndex={10}
     >
-      <Svg width={22} height={36} viewBox="0 0 32 52" style={{ opacity: headingKnown ? 1 : 0.55 }}>
+      <Svg width={22} height={36} viewBox="0 0 32 52" style={{ opacity: opacity ?? (headingKnown ? 1 : 0.55) }}>
         <Path
           d="M4,20 C4,11 8,4 16,4 C24,4 28,11 28,20 L28,42 C28,48 23,51 16,51 C9,51 4,48 4,42 Z"
           fill={colors.ink900}
@@ -49,5 +53,6 @@ export default memo(CarMarker, (a, b) =>
   a.position[0] === b.position[0] &&
   a.position[1] === b.position[1] &&
   (a.heading ?? 0) === (b.heading ?? 0) &&
-  (a.headingKnown ?? true) === (b.headingKnown ?? true)
+  (a.headingKnown ?? true) === (b.headingKnown ?? true) &&
+  a.opacity === b.opacity
 )

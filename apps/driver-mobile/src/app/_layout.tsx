@@ -9,10 +9,12 @@ import { SplashOverlay, useAppFonts } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useRideRequestListener } from '@/features/ride-requests/useRideRequestListener'
 import { RideRequestOverlay } from '@/features/ride-requests/RideRequestOverlay'
+import { useSessionSyncListener } from '@/features/go-online/useSessionSyncListener'
 // Registers the background-location TaskManager task at module scope -- must run
 // unconditionally at app startup, since Android can invoke the task in a headless
 // JS instance after the app process was killed (see backgroundTask.ts).
 import '@/services/location/backgroundTask'
+import logoMarkImage from '../../assets/brand/logo-mark.png'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
 
@@ -25,6 +27,7 @@ export default function RootLayout() {
   // decision -- mounted once, same place the socket connect lifecycle lives,
   // never per-screen.
   useRideRequestListener()
+  useSessionSyncListener()
 
   useEffect(() => {
     if (hasHydrated && fontsLoaded) SplashScreen.hideAsync().catch(() => {})
@@ -51,7 +54,7 @@ export default function RootLayout() {
           <RideRequestOverlay />
           {showSplashOverlay ? (
             <SplashOverlay
-              logoSource={require('../../assets/brand/logo-mark.png')}
+              logoSource={logoMarkImage}
               onDone={() => setShowSplashOverlay(false)}
             />
           ) : null}

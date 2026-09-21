@@ -23,15 +23,28 @@ export type SelectRideMapProps = {
    *  the sheet's rounded top corner overlaps it (fare.tsx's negative
    *  marginTop), which clipped the banner right where it needed to be readable. */
   onNearbyDriversChange?: (hasPolled: boolean, count: number) => void
+  /** Full nearby-driver list (with category), for the parent to compute
+   *  per-category ETA -- same poll as onNearbyDriversChange, no second request. */
+  onDrivers?: (drivers: Array<{ driverId: string; lat: number; lng: number; categoryId: number }>) => void
+  /** Bump this to force an immediate re-poll (e.g. a "Retry now" tap on the
+   *  no-drivers banner) without waiting out the rest of the 8s interval. */
+  refreshSignal?: number
 }
 
 // Matches web's SelectRideMapScene: pickup/drop pins + route line, plus a
 // scattering of nearby driver car icons around pickup -- the "cars are close,
 // you'll be matched fast" reassurance beat. Polls the same nearby-drivers
 // endpoint the web select-ride page polls, at the same 8s cadence.
-export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDriversChange }: SelectRideMapProps) {
+export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDriversChange, onDrivers, refreshSignal }: SelectRideMapProps) {
   const mapRef = useRef<MapView>(null)
   const [nearbyDrivers, setNearbyDrivers] = useState<Array<{ driverId: string; lat: number; lng: number }>>([])
+  // react-native-maps' native view isn't ready for ref calls the instant it
+  // mounts -- calling fitToCoordinates from an effect that fires on mount
+  // silently no-ops, leaving the camera stuck on initialRegion (a tight box
+  // around pickup only). That's why the route/drop pin were invisible: they
+  // were drawn, just far outside the tiny area the camera never zoomed out
+  // from. onMapReady is the actual native-ready signal.
+  const [mapReady, setMapReady] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -41,6 +54,7 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
         if (!cancelled) {
           setNearbyDrivers(drivers)
           onNearbyDriversChange?.(true, drivers.length)
+          onDrivers?.(drivers)
         }
       } catch {
         // Nearby-drivers is a reassurance layer, not core booking data -- a
@@ -55,17 +69,24 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
     // restart this interval (and the "have we polled yet" banner state) on
     // every unrelated re-render instead of running a stable 8s cadence,
     // which is what made new drivers coming online look like they required
-    // leaving and re-entering the screen to show up.
+    // leaving and re-entering the screen to show up. refreshSignal is the one
+    // deliberate exception -- bumping it forces this same tear-down/recreate
+    // to fire poll() immediately, for a manual "Retry now" action.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickup[0], pickup[1]])
+  }, [pickup[0], pickup[1], refreshSignal])
 
   useEffect(() => {
+    if (!mapReady) return
     mapRef.current?.fitToCoordinates(
       [pickup, drop].map(([latitude, longitude]) => ({ latitude, longitude })),
-      { edgePadding: { top: 40, right: 40, bottom: 40, left: 40 }, animated: true }
+      // Top padding has to clear the floating header pill (fare.tsx's back
+      // button + breadcrumb, ~40px tall plus the safe-area inset) that sits
+      // on top of the map -- 40px wasn't enough, so the pickup pin (fitted
+      // right at that edge) rendered directly underneath it, invisible.
+      { edgePadding: { top: 110, right: 40, bottom: 40, left: 40 }, animated: true }
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickup[0], pickup[1], drop[0], drop[1]])
+  }, [mapReady, pickup[0], pickup[1], drop[0], drop[1]])
 
   return (
     <View style={fill ? styles.fillContainer : styles.container}>
@@ -73,6 +94,7 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         initialRegion={{ latitude: pickup[0], longitude: pickup[1], latitudeDelta: 0.05, longitudeDelta: 0.05 }}
+        onMapReady={() => setMapReady(true)}
         loadingEnabled
         loadingIndicatorColor={colors.primary}
         loadingBackgroundColor={colors.surface}

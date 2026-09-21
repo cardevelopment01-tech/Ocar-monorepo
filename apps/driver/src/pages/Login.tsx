@@ -8,6 +8,7 @@ import OtpInput from '@/components/ui/OtpInput'
 import api from '@/lib/api'
 import { registerPush } from '@/lib/push'
 import { useAuthStore, type DriverProfile } from '@/store/useAuthStore'
+import { TERMS_URL, PRIVACY_URL } from '@/lib/constants'
 
 type Step = 'phone' | 'otp'
 
@@ -307,7 +308,14 @@ export default function Login() {
       </motion.div>
 
       <p className="text-text-muted text-xs text-center mt-8 max-w-[280px] leading-relaxed">
-        By continuing, you agree to Ocar's Driver Partner Terms &amp; Conditions
+        By continuing, you agree to Ocar&apos;s{' '}
+        <a href={TERMS_URL} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary underline">
+          Driver Partner Terms &amp; Conditions
+        </a>
+        {' '}&amp;{' '}
+        <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary underline">
+          Privacy Policy
+        </a>
       </p>
     </div>
   )

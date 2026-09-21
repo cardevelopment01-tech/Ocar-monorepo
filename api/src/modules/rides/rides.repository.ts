@@ -572,6 +572,18 @@ const RIDE_SELECT_SQL = `SELECT
        u.phone      AS user_phone,
        u.name       AS user_name,
        u.rating_avg AS user_rating,
+       -- rides.rider_name is only ever set by the "book for someone else"
+       -- flow, which is currently disabled (see CLAUDE.md's Known UI
+       -- Caveats) -- so on every normal booking it's null, and the driver
+       -- app was showing a bare question-mark avatar / "Your rider"
+       -- fallback instead of the actual account name. Positioned after the
+       -- r.* above so this COALESCE'd value overwrites r.*'s raw
+       -- (usually-null) rider_name in the result row -- node-pg builds each
+       -- row by assigning fields in select-list order, so a later duplicate
+       -- column name wins. Mirrors web driver app's own client-side
+       -- fallback (App.tsx: ride.rider_name ?? ride.user_name), just done
+       -- once here instead of in every client.
+       COALESCE(r.rider_name, u.name) AS rider_name,
        d.full_name  AS driver_name,
        d.phone      AS driver_phone,
        d.rating_avg           AS driver_rating,

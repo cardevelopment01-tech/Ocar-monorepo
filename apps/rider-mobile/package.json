@@ -9,7 +9,8 @@
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "vitest run"
   },
   "dependencies": {
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.1",
@@ -47,6 +48,7 @@
     "eslint": "^9.0.0",
     "eslint-plugin-react-hooks": "^7.0.0",
     "typescript": "^5.0.0",
-    "typescript-eslint": "^8.0.0"
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^1.0.0"
   }
 }

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, shadows, spacing, typography, TERMS_URL } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { teardownPushNotifications } from '@/services/notifications'
 import { fetchProfile, updateProfile, type ProfileStats } from '@/features/profile/api'
@@ -118,8 +118,8 @@ export default function ProfileScreen() {
         <Animated.View entering={FadeInDown.delay(120).duration(360)}>
           <Text style={styles.sectionLabel}>ACCOUNT</Text>
           <View style={styles.menuCard}>
-            {MENU.map((item, i) => (
-              <Pressable key={item.label} style={[styles.menuRow, i < MENU.length - 1 ? styles.menuRowBorder : null]}>
+            {MENU.map((item) => (
+              <Pressable key={item.label} style={[styles.menuRow, styles.menuRowBorder]}>
                 <View style={styles.menuIcon}>
                   <Feather name={item.icon} size={15} color={colors.primary} />
                 </View>
@@ -130,6 +130,19 @@ export default function ProfileScreen() {
                 <Feather name="chevron-right" size={14} color={colors.ink400} />
               </Pressable>
             ))}
+            {/* The only functional row in this menu -- deep-links to apps/user's
+                hosted /legal/terms (which itself cross-links to /legal/privacy)
+                rather than duplicating the legal text natively. */}
+            <Pressable style={styles.menuRow} onPress={() => void Linking.openURL(TERMS_URL)}>
+              <View style={styles.menuIcon}>
+                <Feather name="file-text" size={15} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuLabel}>Terms & Privacy</Text>
+                <Text style={styles.menuSub}>Legal information</Text>
+              </View>
+              <Feather name="chevron-right" size={14} color={colors.ink400} />
+            </Pressable>
           </View>
         </Animated.View>
 

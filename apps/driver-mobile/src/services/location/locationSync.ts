@@ -10,10 +10,12 @@ import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 // Requiring inside the function defers evaluation until the module graph has
 // already settled.
 function getSocket(): typeof import('@/services/socket').socket {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deliberate lazy require, see file header comment
   return (require('@/services/socket') as typeof import('@/services/socket')).socket
 }
 
 function getApi(): typeof import('@/services/api').api {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deliberate lazy require, see file header comment
   return (require('@/services/api') as typeof import('@/services/api')).api
 }
 

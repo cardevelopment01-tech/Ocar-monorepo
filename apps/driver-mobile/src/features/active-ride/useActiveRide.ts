@@ -3,7 +3,7 @@ import axios from 'axios'
 import { useRoomJoin, type RideDetail } from '@ocar/mobile-shared'
 import { socket } from '@/services/socket'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
-import { fetchRide, markArrived as apiMarkArrived, submitCashCollection, submitEndOtp, submitStartOtp } from './api'
+import { fetchRide, fetchUnreadChatCount, markArrived as apiMarkArrived, submitCashCollection, submitEndOtp, submitStartOtp } from './api'
 import { activeRideReducer, displayStatus, type RideStatus } from './reducer'
 
 function isInvalidOtp(err: unknown): boolean {
@@ -25,6 +25,7 @@ export function useActiveRide(rideId: string) {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [unreadChatCount, setUnreadChatCount] = useState(0)
   const [state, dispatch] = useReducer(activeRideReducer, {
     confirmedStatus: 'accepted',
     pendingOptimisticStatus: null,
@@ -52,6 +53,18 @@ export function useActiveRide(rideId: string) {
   // shared room-join contract -- a bare reconnect doesn't replay whatever
   // changed while disconnected, so onRejoined re-fetches.
   useRoomJoin(socket, rideId, load)
+
+  useEffect(() => {
+    fetchUnreadChatCount(rideId).then(setUnreadChatCount).catch(() => {})
+  }, [rideId])
+
+  useEffect(() => {
+    function onChatMessage(payload: { senderType: 'user' | 'driver' }) {
+      if (payload.senderType === 'user') setUnreadChatCount((c) => c + 1)
+    }
+    socket.on('chat:message', onChatMessage)
+    return () => { socket.off('chat:message', onChatMessage) }
+  }, [])
 
   const status = displayStatus(state)
 
@@ -127,6 +140,8 @@ export function useActiveRide(rideId: string) {
     loadError,
     status,
     actionError,
+    unreadChatCount,
+    clearUnreadChatCount: () => setUnreadChatCount(0),
     reload: load,
     markArrivedAction,
     submitStartOtpAction,

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronRight, Star, MapPin, CreditCard, Bell,
-  Shield, HelpCircle, LogOut, User, Mail, X, Check,
+  Shield, HelpCircle, LogOut, User, Mail, X, Check, FileText,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
@@ -30,6 +30,7 @@ const MENU = [
   { Icon: Bell,       label: 'Notifications',   sub: 'Push & SMS alerts',    href: '/notifications'   },
   { Icon: Shield,     label: 'Safety',          sub: 'Emergency contacts',   href: '/safety'          },
   { Icon: HelpCircle, label: 'Help & Support',  sub: 'FAQs, raise a ticket', href: '/help'            },
+  { Icon: FileText,   label: 'Terms & Privacy', sub: 'Legal information',    href: '/legal/terms'     },
 ]
 
 interface UserStats {

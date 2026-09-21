@@ -5,7 +5,7 @@ import Svg, { Path, Ellipse, Circle } from 'react-native-svg'
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
 import { colors } from '@ocar/mobile-shared'
 
-export type PinVariant = 'pickup' | 'drop'
+export type PinVariant = 'pickup' | 'drop' | 'stop'
 
 export type LocationPinProps = {
   position: [number, number]
@@ -33,7 +33,7 @@ function PulsingHalo() {
 }
 
 function LocationPin({ position, variant }: LocationPinProps) {
-  const fill = variant === 'pickup' ? colors.success : colors.error
+  const fill = variant === 'pickup' ? colors.success : variant === 'drop' ? colors.error : colors.warning
 
   return (
     <Marker coordinate={{ latitude: position[0], longitude: position[1] }} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={false}>

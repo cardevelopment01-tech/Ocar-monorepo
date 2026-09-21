@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Redirect, Tabs, useRouter } from 'expo-router'
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
+import { Feather } from '@expo/vector-icons'
 import { colors } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { fetchActiveRideId } from '@/features/ride-tracking/api'
@@ -27,7 +27,11 @@ export default function TabsLayout() {
 
   // tabBarIcon was never set on any of these three tabs -- the bar rendered
   // labels only, no icons at all. Icon choices match the web user app's
-  // BottomNav.tsx (Home/Car/User).
+  // BottomNav.tsx (Home/Car/User) in spirit, but Feather (used for Home and
+  // Profile) has no car glyph -- pulling MaterialCommunityIcons in just for
+  // "car" put a solid-filled icon between two thin-stroke ones, visibly
+  // mismatched in weight. "list" (trip history) stays within Feather so all
+  // three tabs share one consistent stroke weight.
   return (
     <Tabs
       screenOptions={{
@@ -42,7 +46,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="trips"
-        options={{ title: 'My Trips', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="car" size={size} color={color} /> }}
+        options={{ title: 'My Trips', tabBarIcon: ({ color, size }) => <Feather name="list" size={size} color={color} /> }}
       />
       <Tabs.Screen
         name="profile"

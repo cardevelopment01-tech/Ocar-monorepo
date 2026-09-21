@@ -18,6 +18,7 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { scheduleOnRN } from 'react-native-worklets'
 import { router } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
@@ -125,6 +126,7 @@ export function RideRequestOverlay() {
   const setActiveRide = useDriverSessionStore((s) => s.setActiveRide)
 
   const { height } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
   const reduced = useReducedMotion()
 
   const [status, setStatus] = useState<'show' | Resolved>('show')
@@ -377,7 +379,10 @@ export function RideRequestOverlay() {
 
         <GestureDetector gesture={pan}>
           <Animated.View style={[styles.sheetWrap, sheetStyle]}>
-            <View style={styles.sheet}>
+            {/* Modal draws edge-to-edge (edgeToEdgeEnabled, gradle.properties) --
+                a fixed bottom padding here left Accept/Decline sitting right at
+                or behind a 3-button nav bar; this is the real safe-area inset. */}
+            <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.xl + 12) }]}>
               <View style={styles.handleRow}>
                 <View style={styles.handle} />
               </View>
@@ -582,7 +587,6 @@ const styles = StyleSheet.create({
   },
   sheet: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl + 12,
     gap: spacing.md,
   },
   handleRow: { alignItems: 'center', paddingTop: spacing.sm + 2, paddingBottom: spacing.xs },

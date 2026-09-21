@@ -24,6 +24,13 @@ const POPULAR = [
   { from: 'Puri', to: 'Bhubaneswar' },
 ]
 
+// A deeper, less saturated take on colors.primaryDark (#087C89) for this
+// hero specifically -- same brand hue, desaturated and darkened so it reads
+// as a considered dark surface rather than a saturated flat color block.
+// Scoped to this screen, not the shared token: colors.primaryDark backs
+// other screens/components across both apps and isn't this request's scope.
+const HERO_BG = '#0B4A50'
+
 // Same empty-string-on-invalid-date guard as RideHistoryRow.tsx's formatDate --
 // a malformed/missing createdAt must never render the literal "Invalid Date".
 function formatTripDate(iso: string): string {
@@ -52,7 +59,7 @@ export default function HomeScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const user = useAuthStore((s) => s.user)
-  const { items, loading } = useRideHistory()
+  const { rides, loading } = useRideHistory()
   const setRideType = useBookingDraftStore((s) => s.setRideType)
   const firstName = user?.name?.split(' ')[0] ?? 'there'
 
@@ -72,8 +79,8 @@ export default function HomeScreen() {
   }
 
   const recentTrips = useMemo(
-    () => items.filter((r) => r.status === 'completed').slice(0, 2),
-    [items]
+    () => rides.filter((r) => r.status === 'completed').slice(0, 2),
+    [rides]
   )
 
   // Scroll offset drives the hero's collapse -- state indication (you've
@@ -89,7 +96,16 @@ export default function HomeScreen() {
   const greetingStyle = useAnimatedStyle(() => {
     const h = greetingHeight.get()
     if (h === 0) return { opacity: 1 }
-    const collapse = interpolate(scrollY.get(), [0, 24], [1, 0], 'clamp')
+    // Overscroll bounce (or gesture arbitration when a touch starts near the
+    // screen edge, e.g. Android's edge-swipe-back zone fighting the
+    // ScrollView for the gesture) reports small negative/jittery offsets
+    // around 0, not a clean monotonic scroll. A 24px collapse range was
+    // narrow enough that this jitter alone snapped the header between fully
+    // expanded and fully collapsed many times a second -- visible as
+    // shaking. Clamping the input to >=0 drops negative-offset noise
+    // entirely, and widening the range makes any remaining jitter a
+    // fraction of a percent of travel instead of the whole animation.
+    const collapse = interpolate(Math.max(0, scrollY.get()), [0, 64], [1, 0], 'clamp')
     return {
       opacity: collapse,
       height: h * collapse,
@@ -195,7 +211,7 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle} numberOfLines={1}>{r.destinationAddress ?? 'Unknown destination'}</Text>
-                  <Text style={styles.rowSub}>{formatTripDate(r.createdAt)}</Text>
+                  <Text style={styles.rowSub}>{formatTripDate(r.requestedAt)}</Text>
                 </View>
                 <Feather name="chevron-right" size={14} color={colors.ink400} />
               </PressableScale>
@@ -232,7 +248,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   hero: {
-    backgroundColor: colors.primaryDark,
+    backgroundColor: HERO_BG,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
     borderBottomLeftRadius: 28,
@@ -245,7 +261,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   greetingWrap: { overflow: 'hidden' },
-  logoText: { ...typography.title, color: colors.inkInverse, fontWeight: '700' },
+  // typography.display, not .title -- the wordmark is the one place in this
+  // header that should read as a brand mark, not body chrome. Web's header
+  // uses a real vector logo (OcarLogoMark); no equivalent asset exists for
+  // mobile yet, so this at least stops it looking like plain system text.
+  logoText: { fontFamily: typography.display.fontFamily, fontSize: 22, letterSpacing: -0.4, color: colors.inkInverse },
   heroActions: { flexDirection: 'row', gap: spacing.xs },
   heroIconButton: {
     width: 40,
@@ -253,7 +273,12 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    // 0.1 fill read as almost no button at all against the (now-darker) hero --
+    // bumped fill and added a hairline border so the tap target has a visible
+    // edge instead of relying on near-invisible contrast alone.
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   greetingLabel: { ...typography.label, color: 'rgba(255,255,255,0.5)' },
   greetingName: { ...typography.headline, color: colors.inkInverse, marginTop: 2 },
@@ -265,6 +290,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: spacing.md,
+    // Matches web's floating white search bar (boxShadow 0 8px 32px
+    // rgba(0,0,0,0.26)) -- without this it sits flat on the hero instead of
+    // reading as an elevated surface, the single biggest "premium" cue web has
+    // that mobile was missing.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.26,
+    shadowRadius: 16,
+    elevation: 8,
   },
   searchBarPressed: { opacity: 0.85 },
   searchPlaceholder: { ...typography.body, color: colors.ink400, flex: 1 },

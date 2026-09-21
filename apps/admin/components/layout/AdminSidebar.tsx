@@ -13,6 +13,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { AdminRole } from '@/lib/mock-data'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import { TERMS_URL, PRIVACY_URL } from '@/lib/legal'
 
 interface NavItem {
   href: string
@@ -158,6 +159,15 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
           )
         })}
       </nav>
+
+      {/* Legal */}
+      <div className="hidden md:block px-6 pb-2">
+        <p className="text-text-muted text-[10px]">
+          <a href={TERMS_URL} target="_blank" rel="noopener noreferrer" className="hover:text-text-secondary transition-colors">Terms</a>
+          {' · '}
+          <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="hover:text-text-secondary transition-colors">Privacy</a>
+        </p>
+      </div>
 
       {/* Bottom profile */}
       <div className="border-t border-sidebar-border mx-4 pt-4 pb-5">

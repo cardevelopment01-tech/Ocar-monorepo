@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated'
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens'
 import type { SOSTriggerResult } from '../api/types'
@@ -10,13 +11,21 @@ export type SOSButtonProps = {
   enabled: boolean
   onTrigger: () => Promise<SOSTriggerResult>
   emergencyPhoneNumber?: string | null
+  // 'bottom-right' (default) matches rider-mobile's tracking screen, which has
+  // no persistent full-width bottom button to collide with. Active-ride screens
+  // that DO dock a full-width primary CTA to the bottom (driver-mobile's "I've
+  // arrived"/OTP/cash sheets) need 'top-right' instead -- matches web driver's
+  // NavigateToPickup.tsx, which anchors SOS just below the top instruction card
+  // specifically to keep it clear of the bottom sheet's CTA.
+  anchor?: 'top-right' | 'bottom-right'
 }
 
 type FailureState = null | { reason: 'rate_limited' | 'error' }
 
 const SUCCESS_PILL_MS = 2000
 
-export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber }: SOSButtonProps) {
+export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = 'bottom-right' }: SOSButtonProps) {
+  const insets = useSafeAreaInsets()
   const [sending, setSending] = useState(false)
   const [failure, setFailure] = useState<FailureState>(null)
   const [canCall, setCanCall] = useState(false)
@@ -78,8 +87,10 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber }: SOSButto
     if (emergencyPhoneNumber) Linking.openURL(`tel:${emergencyPhoneNumber}`)
   }
 
+  const anchorStyle = anchor === 'top-right' ? { top: insets.top + spacing.md } : { bottom: spacing.xl }
+
   return (
-    <View style={styles.wrap} pointerEvents="box-none">
+    <View style={[styles.wrap, anchorStyle]} pointerEvents="box-none">
       <Animated.View style={pulseStyle}>
         <Pressable
           onPress={handlePress}
@@ -126,7 +137,7 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber }: SOSButto
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: 'absolute', bottom: spacing.xl, right: spacing.md, zIndex: 10, alignItems: 'flex-end', gap: spacing.xs },
+  wrap: { position: 'absolute', right: spacing.md, zIndex: 10, alignItems: 'flex-end', gap: spacing.xs },
   circle: {
     width: 56,
     height: 56,

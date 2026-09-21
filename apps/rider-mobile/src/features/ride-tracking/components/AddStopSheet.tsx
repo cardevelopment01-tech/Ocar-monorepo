@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import Animated, { useAnimatedStyle } from 'react-native-reanimated'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, useKeyboardOffset } from '@ocar/mobile-shared'
 import { PlaceAutocompleteField } from '@/features/booking/components/PlaceAutocompleteField'
 import type { StopInput } from '../api'
 
@@ -15,12 +16,17 @@ export type AddStopSheetProps = {
 
 export function AddStopSheet({ visible, originLat, originLng, onClose, onSelect }: AddStopSheetProps) {
   const [picked, setPicked] = useState<{ address: string; lat: number; lng: number } | null>(null)
+  const keyboardOffset = useKeyboardOffset()
+  // This Modal had no keyboard handling at all -- the sheet is docked to the
+  // bottom (justifyContent: 'flex-end'), so the search input sat directly
+  // behind the keyboard the instant it was focused, with zero reflow.
+  const keyboardStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -keyboardOffset.get() }] }))
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.sheet}>
+        <Animated.View style={[styles.sheet, keyboardStyle]}>
           <View style={styles.handle} />
           <View style={styles.headerRow}>
             <Text style={styles.title}>Add a stop</Text>
@@ -39,7 +45,7 @@ export function AddStopSheet({ visible, originLat, originLng, onClose, onSelect 
               onSelect(place)
             }}
           />
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   )

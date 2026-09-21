@@ -568,6 +568,9 @@ importers:
       typescript-eslint:
         specifier: ^8.0.0
         version: 8.60.1(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@22.19.20)(jsdom@20.0.3)(lightningcss@1.33.0)(terser@5.51.2)
 
   apps/user:
     dependencies:

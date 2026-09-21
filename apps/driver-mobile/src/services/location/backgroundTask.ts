@@ -3,6 +3,8 @@ import * as TaskManager from 'expo-task-manager'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { emitLocationTick } from './locationSync'
 import { useDriverPositionStore } from './driverPositionStore'
+import { useDriverSessionStore } from '@/store/useDriverSessionStore'
+import { IDLE_INTERVAL_MS, intervalForRideState, isAccurateEnough } from './locationPolicy'
 
 // Dev-only verification log, kept from the Day 5 spike for manual on-device
 // verification (__DEV__-gated in useLocationSpikeTest.ts) -- separate from the
@@ -27,6 +29,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     const { locations } = (data as { locations: Location.LocationObject[] }) ?? { locations: [] }
     const latest = locations[locations.length - 1]
     if (!latest) return
+    if (!isAccurateEnough(latest.coords.accuracy)) return
 
     // Real backend sync (Days 8-10) -- no-ops if the driver isn't online
     // (emitLocationTick reads the current sessionId itself).
@@ -66,10 +69,20 @@ export async function clearLoggedFixes(): Promise<void> {
   await AsyncStorage.removeItem(LOG_KEY)
 }
 
-export async function startBackgroundTracking(): Promise<void> {
+let unsubscribeActiveRide: (() => void) | null = null
+let currentIntervalMs: number | null = null
+
+async function applyInterval(intervalMs: number): Promise<void> {
+  if (currentIntervalMs === intervalMs) return
+  const isTracking = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)
+  if (!isTracking) return
+  currentIntervalMs = intervalMs
+  // expo-location updates an already-running task's options in place when
+  // startLocationUpdatesAsync is called again with the same task name --
+  // no stop/start flicker, no gap in coverage.
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
     accuracy: Location.Accuracy.Balanced,
-    timeInterval: 3000,
+    timeInterval: intervalMs,
     distanceInterval: 0,
     foregroundService: {
       notificationTitle: 'Ocar is tracking your location',
@@ -78,7 +91,31 @@ export async function startBackgroundTracking(): Promise<void> {
   })
 }
 
+export async function startBackgroundTracking(): Promise<void> {
+  currentIntervalMs = IDLE_INTERVAL_MS
+  await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+    accuracy: Location.Accuracy.Balanced,
+    timeInterval: IDLE_INTERVAL_MS,
+    distanceInterval: 0,
+    foregroundService: {
+      notificationTitle: 'Ocar is tracking your location',
+      notificationBody: "Required while you're online to receive ride requests.",
+    },
+  })
+
+  unsubscribeActiveRide?.()
+  unsubscribeActiveRide = useDriverSessionStore.subscribe((state) => {
+    void applyInterval(intervalForRideState(!!state.activeRide))
+  })
+  // Pick up a ride that was already active when tracking (re)started (e.g. app
+  // relaunch mid-ride), not just the next status change.
+  if (useDriverSessionStore.getState().activeRide) void applyInterval(intervalForRideState(true))
+}
+
 export async function stopBackgroundTracking(): Promise<void> {
+  unsubscribeActiveRide?.()
+  unsubscribeActiveRide = null
+  currentIntervalMs = null
   const isTracking = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)
   if (isTracking) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME)
 }
