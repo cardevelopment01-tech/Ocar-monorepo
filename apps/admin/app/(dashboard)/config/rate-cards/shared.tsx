@@ -1,4 +1,4 @@
-export const CATEGORY_ORDER = ['hatchback', 'sedan', 'suv', 'luxury', 'van']
+export const CATEGORY_ORDER = ['hatchback', 'sedan', 'suv', 'luxury', 'van', 'auto_rickshaw']
 
 export function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes} min`

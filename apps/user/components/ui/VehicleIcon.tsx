@@ -140,12 +140,34 @@ function Van({ color, wheel }: { color: string; wheel: string }) {
   )
 }
 
+function AutoRickshaw({ color, wheel }: { color: string; wheel: string }) {
+  return (
+    <>
+      {/* Rounded canopy cab: short snub nose, domed roof, open-sided body */}
+      <path
+        d="M10 33 L10 22 Q10 15 17 13 L20 12 Q22 9 27 9 L52 9 Q58 9 60 14 L63 22 L66 22 Q69 22 69 25 L69 33 Q69 35 66 35 L13 35 Q10 35 10 33 Z"
+        fill={color}
+      />
+      {/* Domed windshield + open side glass */}
+      <path d="M23 21 L26 13 Q27 12 29 12 L50 12 Q54 12 56 15 L59 21 Z" fill={WINDOW_FILL} />
+      {/* Canopy support seam */}
+      <line x1="40" y1="12" x2="40" y2="21" stroke={WINDOW_FILL} strokeWidth="1" />
+      {/* Single small front wheel, two larger rear wheels (3-wheeler stance) */}
+      <circle cx="18" cy="37" r="5.5" fill={wheel} />
+      <circle cx="52" cy="37" r="7" fill={wheel} />
+      <circle cx="18" cy="37" r="2.5" fill={WINDOW_FILL} />
+      <circle cx="52" cy="37" r="3" fill={WINDOW_FILL} />
+    </>
+  )
+}
+
 const BODIES: Record<string, (p: { color: string; wheel: string }) => React.JSX.Element> = {
   hatchback: Hatchback,
   sedan: Sedan,
   suv: Suv,
   luxury: Luxury,
   van: Van,
+  auto_rickshaw: AutoRickshaw,
 }
 
 export function VehicleIcon({ slug, size = 44, color = '#0F172A', className }: VehicleIconProps) {
