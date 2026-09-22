@@ -3,7 +3,16 @@ import axios from 'axios'
 import { useRoomJoin, type RideDetail } from '@ocar/mobile-shared'
 import { socket } from '@/services/socket'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
-import { fetchRide, fetchUnreadChatCount, markArrived as apiMarkArrived, submitCashCollection, submitEndOtp, submitStartOtp } from './api'
+import {
+  cancelRideAsDriver,
+  fetchRide,
+  fetchUnreadChatCount,
+  markArrived as apiMarkArrived,
+  startReturn,
+  submitCashCollection,
+  submitEndOtp,
+  submitStartOtp,
+} from './api'
 import { activeRideReducer, displayStatus, type RideStatus } from './reducer'
 
 function isInvalidOtp(err: unknown): boolean {
@@ -29,7 +38,6 @@ export function useActiveRide(rideId: string) {
   const [state, dispatch] = useReducer(activeRideReducer, {
     confirmedStatus: 'accepted',
     pendingOptimisticStatus: null,
-    rideType: '',
   })
   const setActiveRideSummary = useDriverSessionStore((s) => s.setActiveRide)
 
@@ -38,7 +46,7 @@ export function useActiveRide(rideId: string) {
     fetchRide(rideId)
       .then((detail) => {
         setRide(detail as RideDetailSettled)
-        dispatch({ type: 'confirmed', status: detail.status as RideStatus, rideType: detail.rideType })
+        dispatch({ type: 'confirmed', status: detail.status as RideStatus })
         setLoadError(false)
       })
       .catch(() => setLoadError(true))
@@ -114,6 +122,18 @@ export function useActiveRide(rideId: string) {
     [rideId]
   )
 
+  const startReturnAction = useCallback(async () => {
+    dispatch({ type: 'optimistic_advance', to: 'returning' })
+    setActionError(null)
+    try {
+      await startReturn(rideId)
+      dispatch({ type: 'confirmed', status: 'returning' })
+    } catch {
+      dispatch({ type: 'reverted' })
+      setActionError('Could not start the return leg. Try again.')
+    }
+  }, [rideId])
+
   const collectCashAction = useCallback(
     async (input: { collectedAmount?: number; notCollected?: boolean; note?: string }) => {
       setActionError(null)
@@ -134,6 +154,16 @@ export function useActiveRide(rideId: string) {
     [rideId, load]
   )
 
+  // Left un-wrapped (throws instead of swallowing into actionError) -- CancelSheet's
+  // own onConfirm contract expects a rejected promise to show its built-in
+  // submitError/timeout states (packages/mobile-shared/src/ui/CancelSheet.tsx).
+  const cancelRideAction = useCallback(
+    async (reasonCode: string) => {
+      await cancelRideAsDriver(rideId, reasonCode)
+    },
+    [rideId]
+  )
+
   return {
     ride,
     loading,
@@ -147,5 +177,7 @@ export function useActiveRide(rideId: string) {
     submitStartOtpAction,
     submitEndOtpAction,
     collectCashAction,
+    cancelRideAction,
+    startReturnAction,
   }
 }
