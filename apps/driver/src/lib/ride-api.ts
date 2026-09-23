@@ -277,9 +277,9 @@ export const driverRideApi = {
     return res.data as { success: boolean; rideId: string; finalFare?: number }
   },
 
-  triggerMaskedCall: async (rideId: string): Promise<{ status: string; sid: string }> => {
+  triggerMaskedCall: async (rideId: string): Promise<{ status: string }> => {
     const res = await api.post(`/api/v1/rides/${rideId}/call`)
-    return res.data as { status: string; sid: string }
+    return res.data as { status: string }
   },
 
   getRoute: async (

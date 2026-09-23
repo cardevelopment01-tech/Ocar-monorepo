@@ -54,24 +54,17 @@ const envSchema = z.object({
   // (NOT the API key id — see RazorpayX dashboard > Accounts)
   RAZORPAYX_ACCOUNT_NUMBER: z.string().default(''),
 
-  // Exotel (call masking)
-  EXOTEL_SID: z.string().default(''),
-  EXOTEL_API_KEY: z.string().default(''),
-  EXOTEL_API_TOKEN: z.string().default(''),
-  EXOTEL_SUBDOMAIN: z.string().default('api.exotel.com'),
-  EXOTEL_STATUS_CALLBACK_URL: z.string().default(''),
-  EXOTEL_WAIT_AUDIO_URL: z.string().default(''),
-  // Shared secret checked as ?token= on the StatusCallback webhook — Exotel
-  // has no HMAC signing like Razorpay's webhook, so this is the standard
-  // workaround to stop arbitrary callers from injecting fake call events.
-  EXOTEL_WEBHOOK_SECRET: z.string().default(''),
-
   // SMS
   MSG91_AUTH_KEY: z.string().default(''),
   MSG91_SENDER_ID: z.string().default(''),
   BULKSMSPLANS_API_ID: z.string().default(''),
   BULKSMSPLANS_API_PASSWORD: z.string().default(''),
   BULKSMSPLANS_SENDER_ID: z.string().default(''),
+  // Call masking (IVR) — reuses BULKSMSPLANS_API_ID/PASSWORD above, same account,
+  // different product. This is the single shared virtual number the vendor
+  // assigned; bulksmsplans has no per-ride number pool, so every masked call
+  // is bridged through this one number regardless of how many rides are active.
+  BULKSMSPLANS_IVR_NUMBER: z.string().default(''),
   // DLT-approved template — login OTP only (see notifications.worker.ts otp_sms handler)
   BULKSMSPLANS_OTP_TEMPLATE_ID: z.string().default(''),
   ADMIN_PHONE: z.string().default(''),

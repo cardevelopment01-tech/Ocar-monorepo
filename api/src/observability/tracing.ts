@@ -26,6 +26,12 @@ const sdk = new NodeSDK({
       // GPS-ping-hot-path noise — see MUST-DO #3's level-gate note, same
       // reasoning applies to trace volume as it does to log volume.
       '@opentelemetry/instrumentation-fs': { enabled: false },
+      // bulksmsplans check_ivr_credit is a GET with api_password in the query
+      // string; an outbound-fetch span would export that URL to Tempo. Skip
+      // tracing any request that carries the credential.
+      '@opentelemetry/instrumentation-undici': {
+        ignoreRequestHook: (req: { path: string }) => req.path.includes('api_password='),
+      },
     }),
   ],
 })

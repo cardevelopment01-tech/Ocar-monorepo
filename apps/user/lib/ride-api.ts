@@ -332,8 +332,8 @@ export const rideApi = {
     return (res.data as { count: number }).count
   },
 
-  triggerMaskedCall: async (rideId: string): Promise<{ status: string; sid: string }> => {
+  triggerMaskedCall: async (rideId: string): Promise<{ status: string }> => {
     const res = await api.post(`/api/v1/rides/${rideId}/call`)
-    return res.data as { status: string; sid: string }
+    return res.data as { status: string }
   },
 }

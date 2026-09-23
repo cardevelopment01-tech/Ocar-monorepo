@@ -29,10 +29,17 @@ export function RiderActionsRow({ rideId, riderName, navigateTo, unreadChatCount
     setCallError(null)
     try {
       await triggerMaskedCall(rideId)
+      // The IVR rings this phone first, then bridges the other party. Hold
+      // the button disabled while that happens -- each extra tap re-dials
+      // both parties and burns the ride's call cap.
+      setCallError('Your phone will ring shortly')
+      setTimeout(() => {
+        setCallError(null)
+        setCalling(false)
+      }, 20000)
     } catch {
       setCallError('Could not connect the call')
       setTimeout(() => setCallError(null), 4000)
-    } finally {
       setCalling(false)
     }
   }

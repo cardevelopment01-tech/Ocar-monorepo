@@ -5,65 +5,56 @@ import request from 'supertest'
 // Same pattern as tests/unit/middleware/error-middleware-logging.test.ts —
 // mount just the router under test on a bare express app instead of the
 // full app.ts (which needs a real DB/Redis at import time).
-// REDIS_URL must be present: call-masking.service also now imports
-// @/lib/cache/reference-cache directly (system_config caching) -> @/db/redis,
-// which builds a real Redis client from config.REDIS_URL at import time.
-vi.mock('@/config', () => ({ config: { EXOTEL_WEBHOOK_SECRET: 'sekret', EXOTEL_WAIT_AUDIO_URL: '', EXOTEL_STATUS_CALLBACK_URL: '', REDIS_URL: 'redis://localhost:6379', NODE_ENV: 'test' } }))
-vi.mock('@/modules/call-masking/call-masking.repository')
 vi.mock('@/modules/call-masking/call-masking.service')
-// call-masking.service now pulls in @/db/client and the notifications
-// service (for the sweep/budget jobs). Automocking either one with a bare
-// vi.mock() still imports the real module first to introspect its exports —
-// notifications.service transitively reaches @/websocket/socket.server ->
-// @/db/redis, which builds a Redis client from config.REDIS_URL at import
-// time, and that's not in the minimal @/config mock above. Factory mocks
-// skip loading the real modules entirely, so nothing here needs a real DB/Redis.
-vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
-vi.mock('@/modules/notifications/notifications.service', () => ({ notifyAllAdmins: vi.fn() }))
-vi.mock('@/middleware/auth.middleware', () => ({ authenticate: () => (_req: unknown, _res: unknown, next: () => void) => next() }))
+vi.mock('@/middleware/auth.middleware', () => ({
+  authenticate: () => (req: express.Request, _res: express.Response, next: () => void) => {
+    if (req.headers['x-test-role'] === 'driver') req.driver = { id: 9n } as never
+    else req.user = { id: 1n } as never
+    next()
+  },
+}))
 vi.mock('@/middleware/rateLimit.middleware', () => ({ maskedCallLimiter: (_req: unknown, _res: unknown, next: () => void) => next() }))
 
-import * as repo from '@/modules/call-masking/call-masking.repository'
+import * as service from '@/modules/call-masking/call-masking.service'
+import { CallMaskingError } from '@/modules/call-masking/call-masking.types'
 import callMaskingRouter from '@/modules/call-masking/call-masking.routes'
 
 function buildApp() {
   const app = express()
-  app.use(express.urlencoded({ extended: true }))
   app.use(express.json())
   app.use(callMaskingRouter)
   return app
 }
 
-describe('POST /webhooks/exotel/status — token auth', () => {
+describe('POST /rides/:id/call', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('rejects with 401 when ?token= is missing', async () => {
+  it('triggers the call and returns 200 on success', async () => {
+    vi.mocked(service.triggerCall).mockResolvedValue(undefined)
     const app = buildApp()
-    await request(app)
-      .post('/webhooks/exotel/status')
-      .send({ CallSid: 'CA1', CustomField: '1' })
-      .expect(401)
-    expect(repo.recordCallEvent).not.toHaveBeenCalled()
+    await request(app).post('/rides/1/call').expect(200, { status: 'calling' })
+    expect(service.triggerCall).toHaveBeenCalledWith({ rideId: 1n, callerRole: 'user', callerId: 1n })
   })
 
-  it('rejects with 401 when ?token= does not match EXOTEL_WEBHOOK_SECRET', async () => {
+  it('resolves the caller as driver when the request is driver-authenticated', async () => {
+    vi.mocked(service.triggerCall).mockResolvedValue(undefined)
     const app = buildApp()
-    await request(app)
-      .post('/webhooks/exotel/status?token=wrong')
-      .send({ CallSid: 'CA1', CustomField: '1' })
-      .expect(401)
-    expect(repo.recordCallEvent).not.toHaveBeenCalled()
+    await request(app).post('/rides/1/call').set('x-test-role', 'driver').expect(200)
+    expect(service.triggerCall).toHaveBeenCalledWith({ rideId: 1n, callerRole: 'driver', callerId: 9n })
   })
 
-  it('accepts and records the event when ?token= matches', async () => {
-    vi.mocked(repo.recordCallEvent).mockResolvedValue(true)
+  it('maps a CallMaskingError to a 409 with its code', async () => {
+    vi.mocked(service.triggerCall).mockRejectedValue(new CallMaskingError('CALL_LIMIT_REACHED', 'too many calls'))
     const app = buildApp()
-    await request(app)
-      .post('/webhooks/exotel/status?token=sekret')
-      .send({ CallSid: 'CA1', CustomField: '1', Status: 'completed' })
-      .expect(200)
-    expect(repo.recordCallEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ callSid: 'CA1', rideCallMaskId: 1n, callStatus: 'completed' })
-    )
+    await request(app).post('/rides/1/call').expect(409, { error: 'too many calls', code: 'CALL_LIMIT_REACHED' })
+  })
+
+  it('passes an unexpected error to the error middleware (500)', async () => {
+    vi.mocked(service.triggerCall).mockRejectedValue(new Error('boom'))
+    const app = buildApp()
+    app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      res.status(500).json({ error: 'internal' })
+    })
+    await request(app).post('/rides/1/call').expect(500)
   })
 })

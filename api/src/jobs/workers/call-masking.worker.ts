@@ -8,8 +8,7 @@ const log = createWorkerLogger('call-masking')
 export const callMaskingWorker = new Worker(
   QUEUE_NAMES.CALL_MASKING,
   async (job) => {
-    if (job.name === 'sweep_expired_masks') return service.sweepExpiredMasks()
-    if (job.name === 'check_daily_spend') return service.checkDailySpend()
+    if (job.name === 'check_credit_balance') return service.checkCreditBalance()
   },
   { connection: redisConnection }
 )
