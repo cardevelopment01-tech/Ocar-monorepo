@@ -1,41 +1,65 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/modules/call-masking/call-masking.repository')
 vi.mock('@/lib/system-config')
-vi.mock('@/modules/call-masking/call-masking.exotel-client')
+vi.mock('@/config', () => ({
+  config: { BULKSMSPLANS_API_ID: 'id', BULKSMSPLANS_API_PASSWORD: 'pw', BULKSMSPLANS_IVR_NUMBER: '0800000000' },
+}))
+vi.mock('@/modules/call-masking/call-masking.bulksmsplans-client')
 vi.mock('@/modules/rides/rides.repository')
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
+vi.mock('@/db/redis', () => ({ client: { incr: vi.fn(async () => 1), expire: vi.fn(), decr: vi.fn(async () => 0) } }))
+vi.mock('@/lib/cache/reference-cache', () => ({ invalidate: vi.fn() }))
 vi.mock('@/modules/notifications/notifications.service', () => ({ notifyAllAdmins: vi.fn() }))
 
-import * as repo from '@/modules/call-masking/call-masking.repository'
 import * as sysConfig from '@/lib/system-config'
-import * as exotel from '@/modules/call-masking/call-masking.exotel-client'
+import * as ivr from '@/modules/call-masking/call-masking.bulksmsplans-client'
 import * as ridesRepo from '@/modules/rides/rides.repository'
+import { client as redis } from '@/db/redis'
 import { pool } from '@/db/client'
 import { notifyAllAdmins } from '@/modules/notifications/notifications.service'
 import * as service from '@/modules/call-masking/call-masking.service'
 
-// Minimal ride shape — triggerCall only reads user_id/driver_id off it.
-const rideFor = (userId: string, driverId: string | null) =>
-  ({ user_id: userId, driver_id: driverId }) as unknown as Awaited<ReturnType<typeof ridesRepo.getRideCoreById>>
+// Minimal ride shape — triggerCall only reads a handful of fields off it.
+const rideFor = (overrides: Partial<{
+  user_id: string
+  driver_id: string | null
+  status: string
+  rider_phone: string | null
+  user_phone: string | null
+  driver_phone: string | null
+}>) =>
+  ({
+    user_id: '1',
+    driver_id: '9',
+    status: 'in_progress',
+    rider_phone: null,
+    user_phone: '+919000000002',
+    driver_phone: '+919000000001',
+    ...overrides,
+  }) as unknown as Awaited<ReturnType<typeof ridesRepo.getRideById>>
+
+function mockConfig(overrides: Record<string, string>) {
+  vi.mocked(sysConfig.getConfigValue).mockImplementation(async (key: string, fallback: string) =>
+    overrides[key] ?? fallback
+  )
+}
 
 describe('call-masking service — triggerCall', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Default: caller (userId 1n) is the ride's rider — most tests aren't
-    // exercising the ownership check itself.
-    vi.mocked(ridesRepo.getRideCoreById).mockResolvedValue(rideFor('1', '9'))
+    mockConfig({ call_masking_enabled: 'true' })
+    vi.mocked(ridesRepo.getRideById).mockResolvedValue(rideFor({}))
+    vi.mocked(redis.incr).mockResolvedValue(1)
   })
 
   it('throws RIDE_NOT_FOUND when the ride does not exist', async () => {
-    vi.mocked(ridesRepo.getRideCoreById).mockResolvedValue(null)
+    vi.mocked(ridesRepo.getRideById).mockResolvedValue(null)
     await expect(
       service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 1n })
     ).rejects.toMatchObject({ appCode: 'RIDE_NOT_FOUND' })
   })
 
   it('throws AUTH_FORBIDDEN when the caller is not this ride\'s rider or driver', async () => {
-    vi.mocked(ridesRepo.getRideCoreById).mockResolvedValue(rideFor('1', '9'))
     await expect(
       service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 999n })
     ).rejects.toMatchObject({ appCode: 'AUTH_FORBIDDEN' })
@@ -45,123 +69,114 @@ describe('call-masking service — triggerCall', () => {
   })
 
   it('throws MASKING_DISABLED when the kill switch is off', async () => {
-    vi.mocked(sysConfig.getConfigValue).mockResolvedValue('false')
+    mockConfig({ call_masking_enabled: 'false' })
     await expect(
       service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 1n })
-    ).rejects.toMatchObject({
-      code: 'MASKING_DISABLED',
-    })
+    ).rejects.toMatchObject({ code: 'MASKING_DISABLED' })
   })
 
-  it('throws CALL_LIMIT_REACHED when the ride has hit its per-ride call cap', async () => {
-    vi.mocked(sysConfig.getConfigValue).mockImplementation(async (key: string) =>
-      key === 'exotel_masking_enabled' ? 'true' : key === 'exotel_max_calls_per_ride' ? '5' : '600'
-    )
-    vi.mocked(repo.getActiveMaskForRide).mockResolvedValue({
-      id: 1n,
-      rideId: 1n,
-      virtualNumber: '+911111111111',
-      driverPhone: '+919000000001',
-      riderPhone: '+919000000002',
-      callCount: 5,
-      expiresAt: new Date(Date.now() + 60_000),
-    })
+  it('throws CALL_NOT_AVAILABLE when the ride is not in an active status', async () => {
+    vi.mocked(ridesRepo.getRideById).mockResolvedValue(rideFor({ status: 'completed' }))
     await expect(
       service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 1n })
-    ).rejects.toMatchObject({
-      code: 'CALL_LIMIT_REACHED',
-    })
+    ).rejects.toMatchObject({ code: 'CALL_NOT_AVAILABLE' })
   })
 
-  it('throws MASK_EXPIRED when the active mask is past its TTL', async () => {
-    vi.mocked(sysConfig.getConfigValue).mockImplementation(async (key: string) =>
-      key === 'exotel_masking_enabled' ? 'true' : key === 'exotel_max_calls_per_ride' ? '5' : '600'
-    )
-    vi.mocked(repo.getActiveMaskForRide).mockResolvedValue({
-      id: 1n,
-      rideId: 1n,
-      virtualNumber: '+911111111111',
-      driverPhone: '+919000000001',
-      riderPhone: '+919000000002',
-      callCount: 0,
-      expiresAt: new Date(Date.now() - 60_000),
-    })
+  it('throws CALL_LIMIT_REACHED once the per-ride call cap is exceeded', async () => {
+    mockConfig({ call_masking_enabled: 'true', call_masking_max_calls_per_ride: '5' })
+    vi.mocked(redis.incr).mockResolvedValue(6)
     await expect(
       service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 1n })
-    ).rejects.toMatchObject({
-      code: 'MASK_EXPIRED',
-    })
+    ).rejects.toMatchObject({ code: 'CALL_LIMIT_REACHED' })
   })
 
-  it('calls Exotel with the rider as From and the driver as To when the rider taps call', async () => {
-    vi.mocked(sysConfig.getConfigValue).mockImplementation(async (key: string) =>
-      key === 'exotel_masking_enabled' ? 'true' : key === 'exotel_max_calls_per_ride' ? '5' : '600'
-    )
-    vi.mocked(repo.getActiveMaskForRide).mockResolvedValue({
-      id: 1n,
-      rideId: 1n,
-      virtualNumber: '+911111111111',
-      driverPhone: '+919000000001',
-      riderPhone: '+919000000002',
-      callCount: 0,
-      expiresAt: new Date(Date.now() + 60_000),
-    })
-    vi.mocked(exotel.connectTwoNumbers).mockResolvedValue({ sid: 'CAxxx', status: 'in-progress' })
+  it('dials with the rider as agent_number and driver as receiver_number when the rider taps call', async () => {
+    vi.mocked(ivr.makeCall).mockResolvedValue(undefined)
 
     await service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 1n })
 
-    expect(exotel.connectTwoNumbers).toHaveBeenCalledWith(
-      expect.objectContaining({
-        from: '+919000000002',
-        to: '+919000000001',
-        callerId: '+911111111111',
-      })
-    )
-    expect(repo.incrementCallCount).toHaveBeenCalledWith(1n)
+    expect(ivr.makeCall).toHaveBeenCalledWith({
+      receiverNumber: '+919000000001', // driver
+      agentNumber: '+919000000002', // rider (falls back to user_phone since rider_phone is null)
+    })
+  })
+
+  it('dials with the driver as agent_number and rider as receiver_number when the driver taps call', async () => {
+    vi.mocked(ivr.makeCall).mockResolvedValue(undefined)
+
+    await service.triggerCall({ rideId: 1n, callerRole: 'driver', callerId: 9n })
+
+    expect(ivr.makeCall).toHaveBeenCalledWith({
+      receiverNumber: '+919000000002',
+      agentNumber: '+919000000001',
+    })
+  })
+
+  it('throws CALL_FAILED when the vendor call fails', async () => {
+    vi.mocked(ivr.makeCall).mockRejectedValue(new Error('vendor down'))
+    await expect(
+      service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 1n })
+    ).rejects.toMatchObject({ code: 'CALL_FAILED' })
+  })
+
+  it('gives the attempt back when the vendor call fails', async () => {
+    vi.mocked(ivr.makeCall).mockRejectedValue(new Error('vendor down'))
+    await expect(
+      service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 1n })
+    ).rejects.toMatchObject({ code: 'CALL_FAILED' })
+    expect(redis.decr).toHaveBeenCalledWith('callcount:ride:1')
+  })
+
+  it('falls back to the default cap when the configured cap is non-numeric', async () => {
+    mockConfig({ call_masking_enabled: 'true', call_masking_max_calls_per_ride: 'abc' })
+    vi.mocked(redis.incr).mockResolvedValue(11)
+    await expect(
+      service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 1n })
+    ).rejects.toMatchObject({ code: 'CALL_LIMIT_REACHED' })
   })
 })
 
-describe('call-masking service — checkDailySpend', () => {
+describe('call-masking service — checkCreditBalance', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(sysConfig.getConfigValue).mockResolvedValue('500')
-    vi.mocked(repo.getTodaySpendInr).mockResolvedValue(600)
+    mockConfig({ call_masking_credit_floor: '500' })
   })
 
-  it('flips the kill switch and notifies admins on the first tick that crosses budget', async () => {
+  it('flips the kill switch and notifies admins on the first tick that crosses the floor', async () => {
+    vi.mocked(ivr.checkCredit).mockResolvedValue(100)
     vi.mocked(pool.query).mockResolvedValue({ rowCount: 1 } as never)
 
-    await service.checkDailySpend()
+    await service.checkCreditBalance()
 
     expect(pool.query).toHaveBeenCalledTimes(1)
     expect(notifyAllAdmins).toHaveBeenCalledTimes(1)
   })
 
   it('does not re-notify on a later tick once the switch is already off', async () => {
+    vi.mocked(ivr.checkCredit).mockResolvedValue(100)
     vi.mocked(pool.query).mockResolvedValue({ rowCount: 0 } as never)
 
-    await service.checkDailySpend()
+    await service.checkCreditBalance()
 
     expect(pool.query).toHaveBeenCalledTimes(1)
     expect(notifyAllAdmins).not.toHaveBeenCalled()
   })
 
-  it('does nothing when spend is under budget', async () => {
-    vi.mocked(repo.getTodaySpendInr).mockResolvedValue(100)
+  it('does nothing when credit is above the floor', async () => {
+    vi.mocked(ivr.checkCredit).mockResolvedValue(1000)
 
-    await service.checkDailySpend()
+    await service.checkCreditBalance()
 
     expect(pool.query).not.toHaveBeenCalled()
     expect(notifyAllAdmins).not.toHaveBeenCalled()
   })
-})
 
-describe('call-masking service — sweepExpiredMasks', () => {
-  beforeEach(() => vi.clearAllMocks())
+  it('does nothing when the credit check itself fails', async () => {
+    vi.mocked(ivr.checkCredit).mockRejectedValue(new Error('network error'))
 
-  it('delegates to the repository sweep', async () => {
-    vi.mocked(repo.releaseExpiredMasks).mockResolvedValue(3)
-    await service.sweepExpiredMasks()
-    expect(repo.releaseExpiredMasks).toHaveBeenCalledTimes(1)
+    await service.checkCreditBalance()
+
+    expect(pool.query).not.toHaveBeenCalled()
+    expect(notifyAllAdmins).not.toHaveBeenCalled()
   })
 })

@@ -21,16 +21,11 @@ export type RideStatus = 'accepted' | 'driver_arrived' | 'in_progress' | 'return
 export type ActiveRideReducerState = {
   confirmedStatus: RideStatus
   pendingOptimisticStatus: RideStatus | null
-  // Threaded from RideDetail.rideType (already fetched, never read until now).
-  // 'one_way' | 'round_trip' | 'rental' in practice; kept as `string` here
-  // to match RideDetail's own field type rather than re-declaring a union
-  // that could drift from the shared type.
-  rideType: string
 }
 
 export type ActiveRideReducerAction =
   | { type: 'optimistic_advance'; to: RideStatus }
-  | { type: 'confirmed'; status: RideStatus; rideType?: string }
+  | { type: 'confirmed'; status: RideStatus }
   | { type: 'reverted' }
 
 export function activeRideReducer(
@@ -41,12 +36,7 @@ export function activeRideReducer(
     case 'optimistic_advance':
       return { ...state, pendingOptimisticStatus: action.to }
     case 'confirmed':
-      return {
-        ...state,
-        confirmedStatus: action.status,
-        pendingOptimisticStatus: null,
-        ...(action.rideType !== undefined ? { rideType: action.rideType } : {}),
-      }
+      return { ...state, confirmedStatus: action.status, pendingOptimisticStatus: null }
     case 'reverted':
       return { ...state, pendingOptimisticStatus: null }
   }

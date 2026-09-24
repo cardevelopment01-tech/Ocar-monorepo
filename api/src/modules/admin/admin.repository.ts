@@ -1357,8 +1357,13 @@ export async function approveDriverDoc(
   // this query ever runs — an exact-equality compare would reject almost every
   // real request with a false optimistic-lock conflict.
   const res = await pool.query(
+    // profile_photo never expires (it's a selfie, not a document with a validity
+    // period) — force NULL regardless of what's passed in, so a stale client or a
+    // direct API call can't re-introduce the same-day-expiry bug this replaced.
     `UPDATE driver_documents
-     SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now(),
+     SET status = 'approved',
+         verified_valid_until = CASE WHEN doc_type = 'profile_photo' THEN NULL ELSE $1 END,
+         reviewed_by = $2, reviewed_at = now(), updated_at = now(),
          rejection_count = 0, rejection_note = NULL
      WHERE id = $3 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $4::timestamptz)
      RETURNING driver_id`,

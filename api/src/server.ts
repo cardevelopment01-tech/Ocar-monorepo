@@ -145,13 +145,12 @@ async function start(): Promise<void> {
 
   void callMaskingWorker
   logger.info('call masking worker started')
+  // Exotel-era repeat schedules persist in Redis across deploys and would keep
+  // firing as silent no-ops — drop them (idempotent if already gone).
+  await callMaskingQueue.removeRepeatable('sweep_expired_masks', { every: 300_000 }).catch(() => undefined)
+  await callMaskingQueue.removeRepeatable('check_daily_spend', { every: 900_000 }).catch(() => undefined)
   await callMaskingQueue.add(
-    'sweep_expired_masks',
-    {},
-    { repeat: { every: 5 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
-  )
-  await callMaskingQueue.add(
-    'check_daily_spend',
+    'check_credit_balance',
     {},
     { repeat: { every: 15 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
   )

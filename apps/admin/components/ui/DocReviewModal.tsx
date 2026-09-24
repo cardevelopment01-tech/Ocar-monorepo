@@ -202,48 +202,71 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10)
 }
 
-function ApproveForm({ claimedValidUntil, loading, error, onSubmit, onCancel }: {
-  claimedValidUntil: string | null; loading: boolean; error: string | null
+// One calendar day past today, as YYYY-MM-DD — the earliest allowed expiry.
+// "Today" itself is deliberately excluded: a doc "valid until today" reads as
+// already-expired by the very next goOnline check (verified_valid_until <
+// CURRENT_DATE), which is exactly how a same-day expiry slipped through before.
+function minExpiryIso() {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+// A selfie has no validity period — asking for one just invites an admin to
+// pick "today" (the easiest date in the picker), which expires it immediately.
+// The backend forces verified_valid_until to NULL for this doc type regardless
+// of what's sent; PLACEHOLDER only needs to pass the ">today" validation gate.
+const NO_EXPIRY_DOC_TYPES = new Set(['profile_photo'])
+const NO_EXPIRY_PLACEHOLDER = '9999-12-31'
+
+function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onCancel }: {
+  docType: string; claimedValidUntil: string | null; loading: boolean; error: string | null
   onSubmit: (verifiedValidUntil: string) => void; onCancel: () => void
 }) {
+  const noExpiry = NO_EXPIRY_DOC_TYPES.has(docType)
+
   // Postgres DATE columns round-trip through JSON as a full ISO datetime
   // (e.g. "2027-06-15T00:00:00.000Z"); <input type="date"> requires exactly
   // YYYY-MM-DD or it silently renders empty instead of the prefilled value.
   const claimedDate = claimedValidUntil ? claimedValidUntil.slice(0, 10) : null
-  const claimedIsFuture = !!claimedDate && claimedDate >= todayIso()
+  const claimedIsFuture = !!claimedDate && claimedDate >= minExpiryIso()
   const [value, setValue] = useState(claimedIsFuture ? claimedDate! : '')
-  const valid = value >= todayIso()
+  const valid = noExpiry || value >= minExpiryIso()
 
   return (
     <div className="space-y-3">
       <p className="text-sm font-semibold text-text-primary">Approve Document</p>
-      <div>
-        <label htmlFor="verified-valid-until" className="block text-xs font-medium text-text-muted mb-1">
-          Verified expiry date
-        </label>
-        <input
-          id="verified-valid-until"
-          type="date"
-          value={value}
-          min={todayIso()}
-          autoFocus
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && valid && !loading) { e.preventDefault(); onSubmit(value) }
-          }}
-          className={cn(
-            'w-full sm:w-56 border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary',
-            error ? 'border-danger' : 'border-border'
-          )}
-        />
-        <p className="text-xs text-text-muted mt-1.5">
-          Driver claims: {claimedDate ? claimedDate : 'not provided'}
-        </p>
-        {error && <p className="text-xs text-danger mt-1.5">{error}</p>}
-      </div>
+      {noExpiry ? (
+        <p className="text-xs text-text-muted">This document type doesn&apos;t expire.</p>
+      ) : (
+        <div>
+          <label htmlFor="verified-valid-until" className="block text-xs font-medium text-text-muted mb-1">
+            Verified expiry date
+          </label>
+          <input
+            id="verified-valid-until"
+            type="date"
+            value={value}
+            min={minExpiryIso()}
+            autoFocus
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && valid && !loading) { e.preventDefault(); onSubmit(value) }
+            }}
+            className={cn(
+              'w-full sm:w-56 border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary',
+              error ? 'border-danger' : 'border-border'
+            )}
+          />
+          <p className="text-xs text-text-muted mt-1.5">
+            Driver claims: {claimedDate ? claimedDate : 'not provided'}
+          </p>
+          {error && <p className="text-xs text-danger mt-1.5">{error}</p>}
+        </div>
+      )}
       <div className="flex items-center gap-2.5">
         <button
-          onClick={() => onSubmit(value)}
+          onClick={() => onSubmit(noExpiry ? NO_EXPIRY_PLACEHOLDER : value)}
           disabled={!valid || loading}
           className="px-4 py-2 text-sm font-semibold rounded-xl transition-colors disabled:opacity-45 bg-success text-white hover:bg-emerald-600"
         >
@@ -878,6 +901,7 @@ export default function DocReviewModal({
                 {!driverMode && !rejectDoc && approveDoc && (
                   <motion.div key="doc-approve-form" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.15 }}>
                     <ApproveForm
+                      docType={doc.docType}
                       claimedValidUntil={doc.claimedValidUntil}
                       loading={docLoading}
                       error={approveError}

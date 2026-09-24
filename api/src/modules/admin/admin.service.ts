@@ -342,6 +342,12 @@ export async function approveDriverDoc(
   if (!verifiedValidUntil) {
     throw httpError(422, 'Verified expiry date is required to approve a document.', 'VALIDATION_ERROR')
   }
+  // Strictly after today, not >= — a doc "valid until today" is already stale by
+  // tomorrow's goOnline check. (driver_documents.approveDriverDoc still forces
+  // NULL for profile_photo regardless of this value — it never expires.)
+  if (verifiedValidUntil <= new Date().toISOString().slice(0, 10)) {
+    throw httpError(422, 'Verified expiry date must be in the future.', 'VALIDATION_ERROR')
+  }
   if (!seenUpdatedAt) {
     throw httpError(400, 'Missing document version. Refresh and try again.', 'VALIDATION_ERROR')
   }
@@ -379,6 +385,9 @@ export async function approveVehicleDoc(
 ) {
   if (!verifiedValidUntil) {
     throw httpError(422, 'Verified expiry date is required to approve a document.', 'VALIDATION_ERROR')
+  }
+  if (verifiedValidUntil <= new Date().toISOString().slice(0, 10)) {
+    throw httpError(422, 'Verified expiry date must be in the future.', 'VALIDATION_ERROR')
   }
   if (!seenUpdatedAt) {
     throw httpError(400, 'Missing document version. Refresh and try again.', 'VALIDATION_ERROR')

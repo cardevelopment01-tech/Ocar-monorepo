@@ -7,6 +7,7 @@ import CarMarker from '@/features/map/components/CarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { useDriverLivePosition } from '../useDriverLivePosition'
 import { fetchRouteLeg } from '../api'
+import { haversineMetres } from '../geo'
 
 export type ActiveRideLeg = 'to-pickup' | 'to-destination'
 
@@ -14,24 +15,20 @@ export type ActiveRideMapProps = {
   pickup: [number, number]
   destination: [number, number] | null
   leg: ActiveRideLeg
-  // Pending stops, routed through only on the to-destination leg (stops sit
-  // between pickup and drop, never before pickup) -- previously not accepted
-  // by this component at all, so an added stop was invisible on the driver's
-  // own map and the drawn line never reflected it.
+  // Pending stops, routed through whenever any exist -- gated on `stops`
+  // itself, not on `leg`, so a stop that's still pending during the
+  // round-trip return leg (leg='to-pickup') still gets a pin and a routed
+  // waypoint instead of silently vanishing from the map while the RideSheet's
+  // StopCard/StopTimeline still show it as blocking (code-review finding,
+  // 2026-09-22). Previously gated on leg === 'to-destination' only, from
+  // back when 'to-pickup' meant "before pickup, no stops possible yet" --
+  // 'returning' didn't exist yet when that was written.
   stops?: [number, number][]
 }
 
 const DEFAULT_REGION = { latitude: 20.2961, longitude: 85.8245, latitudeDelta: 0.05, longitudeDelta: 0.05 }
 const ROUTE_STALE_MS = 20_000
 const ROUTE_DEVIATION_METRES = 200
-
-function distanceMetres(a: [number, number], b: [number, number]): number {
-  const R = 6_371_000
-  const dLat = (b[0] - a[0]) * Math.PI / 180
-  const dLng = (b[1] - a[1]) * Math.PI / 180
-  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
-}
 
 // Brief "here's the whole picture" beat whenever the leg changes (pickup ->
 // destination), then settles into following the driver -- same beat/duration
@@ -98,14 +95,14 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
     if (!live || !legTarget) return
     const prev = lastRouteFetch.current
     const legChanged = !prev || prev.leg !== leg || prev.stopsKey !== stopsKey
-    const deviated = prev ? distanceMetres(live.position, prev.origin) > ROUTE_DEVIATION_METRES : false
+    const deviated = prev ? haversineMetres(live.position, prev.origin) > ROUTE_DEVIATION_METRES : false
     const stale = prev ? Date.now() - prev.at > ROUTE_STALE_MS : true
     if (!legChanged && !deviated && !stale) return
 
     const seq = ++routeFetchSeq.current
     lastRouteFetch.current = { leg, stopsKey, origin: live.position, at: Date.now() }
 
-    const waypoints = leg === 'to-destination' ? stops : []
+    const waypoints = stops
     const pts: [number, number][] = [live.position, ...waypoints, legTarget]
     Promise.all(pts.slice(0, -1).map((p, i) => fetchRouteLeg(p[0], p[1], pts[i + 1]![0], pts[i + 1]![1], false)))
       .then((legs) => {
@@ -142,9 +139,9 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
         loadingBackgroundColor={colors.surface}
       >
         <LocationPin position={pickup} variant="pickup" />
-        {leg === 'to-destination' ? stops.map(([lat, lng], i) => (
+        {stops.map(([lat, lng], i) => (
           <LocationPin key={`stop-${i}-${lat}-${lng}`} position={[lat, lng]} variant="stop" />
-        )) : null}
+        ))}
         {destination ? <LocationPin position={destination} variant="drop" /> : null}
         {live ? <CarMarker position={live.position} heading={live.heading} headingKnown={live.headingKnown} /> : null}
         {routePoints.length >= 2 ? (

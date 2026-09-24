@@ -1,5 +1,14 @@
 import { camelizeKeys, decodePolyline, type RideDetail } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
+import type { SpeedLimitCity } from './speedAlert'
+
+// Raw snake_case, unmapped -- same convention web's TripInProgress.tsx uses
+// for this endpoint (SpeedLimitCity's fields are consumed as-is by
+// classifyLimit, no camelCase call site needs them).
+export async function fetchSpeedLimitCities(): Promise<SpeedLimitCity[]> {
+  const res = await api.get<SpeedLimitCity[]>('/api/v1/geo/cities')
+  return res.data ?? []
+}
 
 export type RouteLeg = { polyline: [number, number][]; etaMin: number; distanceKm: number }
 
@@ -31,6 +40,13 @@ export async function markArrived(rideId: string): Promise<void> {
   await api.post(`/api/v1/rides/${rideId}/arrived`)
 }
 
+// Round-trip only -- backend rejects otherwise (rides.service.ts's startReturn,
+// 422 for a non-round_trip ride_type). Same endpoint web driver's
+// handleStartReturn hits (ride-api.ts's startReturn).
+export async function startReturn(rideId: string): Promise<void> {
+  await api.post(`/api/v1/rides/${rideId}/start-return`)
+}
+
 // Same endpoint rider-mobile's triggerMaskedCall hits -- rides.routes.ts's
 // call handler checks req.user OR req.driver as the ride owner, so this
 // works unchanged for the driver side too.
@@ -58,6 +74,12 @@ export async function submitEndOtp(rideId: string, otp: string): Promise<void> {
 // indication why.
 export async function markStopStatus(rideId: string, sequence: number, status: 'reached' | 'skipped'): Promise<void> {
   await api.patch(`/api/v1/rides/${rideId}/stops/${sequence}`, { status })
+}
+
+// Web driver's counterpart: apps/driver/src/lib/ride-api.ts's cancelRideAsDriver,
+// same /cancel-driver endpoint (separate from rider's /cancel -- rides.routes.ts:214,223).
+export async function cancelRideAsDriver(rideId: string, reasonCode: string): Promise<void> {
+  await api.post(`/api/v1/rides/${rideId}/cancel-driver`, { reasonCode })
 }
 
 export type CashCollectionResult = { collected: number; discrepancy: boolean }

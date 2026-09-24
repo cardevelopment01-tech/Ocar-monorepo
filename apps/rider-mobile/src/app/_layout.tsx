@@ -9,6 +9,7 @@ import { SplashOverlay, useAppFonts } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useLocationStore } from '@/store/useLocationStore'
 import { MapWarmup } from '@/features/map/components/MapWarmup'
+import { usePushNotificationRouting } from '@/features/notifications/usePushNotificationRouting'
 import logoMarkImage from '../../assets/brand/logo-mark.png'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
@@ -17,6 +18,8 @@ export default function RootLayout() {
   const hasHydrated = useAuthStore((s) => s.hasHydrated)
   const fontsLoaded = useAppFonts()
   const [showSplashOverlay, setShowSplashOverlay] = useState(true)
+
+  usePushNotificationRouting()
 
   useEffect(() => {
     if (hasHydrated && fontsLoaded) SplashScreen.hideAsync().catch(() => {})
