@@ -98,7 +98,6 @@ describe('call-masking service — triggerCall', () => {
     expect(ivr.makeCall).toHaveBeenCalledWith({
       receiverNumber: '+919000000001', // driver
       agentNumber: '+919000000002', // rider (falls back to user_phone since rider_phone is null)
-      dial: 'Customer',
     })
   })
 
@@ -110,7 +109,6 @@ describe('call-masking service — triggerCall', () => {
     expect(ivr.makeCall).toHaveBeenCalledWith({
       receiverNumber: '+919000000002',
       agentNumber: '+919000000001',
-      dial: 'Agent',
     })
   })
 

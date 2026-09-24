@@ -13,24 +13,23 @@ function toLocalNumber(phone: string): string {
 
 const REQUEST_TIMEOUT_MS = 8000
 
+// Mirrors the request the vendor confirmed working: GET with query params and
+// a lowercase dial=agent (agent_number is rung first, then receiver_number).
+// The api_password-in-URL span is skipped by tracing.ts's undici ignoreRequestHook.
 export async function makeCall(params: {
   receiverNumber: string
   agentNumber: string
-  dial: 'Agent' | 'Customer'
 }): Promise<void> {
-  const body = {
+  const query = new URLSearchParams({
     api_id: config.BULKSMSPLANS_API_ID,
     api_password: config.BULKSMSPLANS_API_PASSWORD,
     ivr_number: config.BULKSMSPLANS_IVR_NUMBER,
-    dial: params.dial,
+    dial: 'agent',
     receiver_number: toLocalNumber(params.receiverNumber),
     agent_number: toLocalNumber(params.agentNumber),
-  }
+  })
 
-  const res = await fetch('https://www.bulksmsplans.com/api/ivr/makeACall', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+  const res = await fetch(`https://www.bulksmsplans.com/api/ivr/makeACall?${query.toString()}`, {
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   })
   const json = await res.json() as { code?: number; message?: string }

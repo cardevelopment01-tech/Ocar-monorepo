@@ -82,7 +82,6 @@ export async function triggerCall(params: {
     await ivr.makeCall({
       receiverNumber: params.callerRole === 'user' ? driverPhone : riderPhone,
       agentNumber: params.callerRole === 'user' ? riderPhone : driverPhone,
-      dial: params.callerRole === 'user' ? 'Customer' : 'Agent',
     })
   } catch (err) {
     // A vendor failure isn't a connected call — give the attempt back so an
