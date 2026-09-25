@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2 } from 'lucide-react'
 
@@ -8,13 +9,20 @@ import { CheckCircle2 } from 'lucide-react'
 // Distinct from NotificationToast (components/layout), which is wired to the
 // push-notification feed/socket and shouldn't be used for ad-hoc UI feedback.
 export default function SuccessToast({ message, onDismiss }: { message: string | null; onDismiss: () => void }) {
+  // Portalled to <body>: the dashboard wrapper's animate-fade-in (forwards) leaves a transform on it,
+  // and a `fixed` child of a transformed element positions against that element, not the viewport.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
   useEffect(() => {
     if (!message) return
     const t = setTimeout(onDismiss, 2500)
     return () => clearTimeout(t)
   }, [message, onDismiss])
 
-  return (
+  if (!mounted) return null
+
+  return createPortal(
     <AnimatePresence>
       {message && (
         <motion.div
@@ -33,6 +41,7 @@ export default function SuccessToast({ message, onDismiss }: { message: string |
           {message}
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }
