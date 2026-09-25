@@ -22,7 +22,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   '/settlements':           { title: 'Settlements',    subtitle: 'Driver payout management' },
   '/refunds':               { title: 'Refunds',        subtitle: 'Refund processing' },
   '/config/rate-cards':     { title: 'Rate Cards',     subtitle: 'Fare configuration' },
-  '/config/system-config':  { title: 'System Config',  subtitle: 'Platform configuration keys' },
+  '/config/system-config':  { title: 'System Config',  subtitle: 'Fees, payouts, switches' },
   '/config/feature-flags':  { title: 'Feature Flags',  subtitle: 'Toggle platform features' },
   '/config/notification-templates': { title: 'Notification Templates', subtitle: 'SMS & push message copy' },
   '/admins':                { title: 'Admins',         subtitle: 'Admin accounts & invitations' },

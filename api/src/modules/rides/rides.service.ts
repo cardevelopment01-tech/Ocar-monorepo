@@ -39,10 +39,13 @@ import {
 import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner } from '@/modules/notifications/notifications.service'
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
-import { calculateFare } from '@/lib/fare'
+import { calculateFare, settleRentalFare } from '@/lib/fare'
 import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
-import { MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES } from '@/constants/limits'
+import {
+  MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
+  RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
+} from '@/constants/limits'
 import { logger } from '@/lib/logger'
 import * as callMasking from '@/modules/call-masking/call-masking.service'
 
@@ -574,8 +577,14 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
        estimated_km, estimated_min, stop_count, trip_hours,
        base_fare, distance_fare, time_fare,
        stop_fare, hour_surcharge, surge_fare,
-       total_estimated, status
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'estimate')`,
+       total_estimated, status,
+       rental_km_limit, rental_duration_minutes, rental_extra_per_km, rental_extra_per_min
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'estimate',
+       -- pin the package terms quoted now; admins edit packages in place (migration 099)
+       (SELECT km_limit         FROM rental_packages WHERE id = $3),
+       (SELECT duration_minutes FROM rental_packages WHERE id = $3),
+       (SELECT extra_per_km     FROM rental_packages WHERE id = $3),
+       (SELECT extra_per_min    FROM rental_packages WHERE id = $3))`,
     [
       ride.id,
       fareEstimate.rate_card_id,
@@ -1894,8 +1903,8 @@ export async function verifyEndOTP(
   // GPS-breadcrumb-derived distance/duration for round_trip fare reconciliation
   // (see calculateFare call below) — falls back to the client-reported values
   // when there isn't enough GPS data (see getGpsTrackedDistanceKm).
-  const gpsDistanceKm = ride.ride_type === 'round_trip' && ride.started_at != null
-    ? await repo.getGpsTrackedDistanceKm(rideId, new Date(ride.started_at))
+  const gpsDistanceKm = (ride.ride_type === 'round_trip' || ride.ride_type === 'rental') && ride.started_at != null
+    ? await repo.getGpsTrackedDistanceKm(rideId, new Date(ride.started_at), { skipCeiling: ride.ride_type === 'rental' })
     : null
   const gpsDurationMin = ride.started_at != null
     ? (new Date(completedAt).getTime() - new Date(ride.started_at).getTime()) / 60000
@@ -1922,7 +1931,49 @@ export async function verifyEndOTP(
 
   let finalFare: number | null = null
 
-  if (actualDistanceKm != null && actualDurationMin != null) {
+  // Rental: package fare + overage beyond the package's km/hours (plus grace), measured
+  // from GPS breadcrumbs and server timestamps — not the client-reported actuals, which
+  // are optional and unreliable. Time is always billable; km only when GPS is trustworthy.
+  let rentalSettled = false
+  if (ride.ride_type === 'rental' && gpsDurationMin != null) {
+    const rental = await repo.getRentalSettlementInputs(rideId)
+    if (rental) {
+      const s = settleRentalFare({
+        pkg: {
+          km_limit:         parseFloat(rental.km_limit),
+          duration_minutes: rental.duration_minutes,
+          extra_per_km:     parseFloat(rental.extra_per_km),
+          extra_per_min:    parseFloat(rental.extra_per_min),
+        },
+        base_fare:        parseFloat(rental.base_fare),
+        surge_multiplier: parseFloat(rental.surge_multiplier),
+        gps_km:           gpsDistanceKm,
+        elapsed_min:      gpsDurationMin,
+        grace:            { km: RENTAL_OVERAGE_GRACE_KM, min: RENTAL_OVERAGE_GRACE_MIN },
+        max_avg_kmh:      RENTAL_MAX_PLAUSIBLE_AVG_KMH,
+      })
+      // actual_km is the GPS-measured value only — never the client's straight-line
+      // estimate, so a reviewer can trust that a non-null value was actually measured.
+      await pool.query(
+        `UPDATE fare_snapshots
+         SET actual_km      = $2,
+             actual_min     = $3,
+             overage_km     = $4,
+             overage_min    = $5,
+             overage_fare   = $6,
+             total_final    = $7,
+             status         = 'final',
+             finalised_at   = now()
+         WHERE ride_id = $1`,
+        [rideId, s.measured_km, gpsDurationMin, s.overage_km, s.overage_min, s.overage_fare, s.total]
+      )
+      finalFare = s.total
+      rentalSettled = true
+      if (s.review_reason) await repo.flagRideForReview(rideId, s.review_reason)
+    }
+  }
+
+  if (!rentalSettled && actualDistanceKm != null && actualDurationMin != null) {
     let totalFinal: number | null = null
     let earlyTermKm:  number | null = null
     let earlyTermMin: number | null = null
