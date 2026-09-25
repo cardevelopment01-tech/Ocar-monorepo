@@ -57,7 +57,14 @@ export default function RideChatScreen() {
 
   const insets = useSafeAreaInsets()
   const keyboardOffset = useKeyboardOffset()
-  const keyboardStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -keyboardOffset.get() }] }))
+  // Pad (not translate) by the keyboard height: the message list shrinks and the
+  // header/back button stay on screen. The input row's safe-area padding fades
+  // out as the keyboard covers that strip, so there's no gap above the keyboard.
+  const restingBottomPad = Math.max(insets.bottom, spacing.md)
+  const keyboardStyle = useAnimatedStyle(() => ({ paddingBottom: keyboardOffset.get() }))
+  const inputRowPadStyle = useAnimatedStyle(() => ({
+    paddingBottom: Math.max(restingBottomPad - keyboardOffset.get(), spacing.md),
+  }))
 
   const [messages, setMessages] = useState<LocalMessage[]>([])
   const [loading, setLoading] = useState(true)
@@ -233,6 +240,8 @@ export default function RideChatScreen() {
           keyExtractor={(m) => m.clientMsgId}
           contentContainerStyle={styles.list}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+          // List shrinks when the keyboard opens -- keep the latest message visible
+          onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
           renderItem={({ item }) => <Bubble msg={item} onRetry={() => retry(item)} />}
         />
       )}
@@ -264,7 +273,7 @@ export default function RideChatScreen() {
               </Pressable>
             ))}
           </ScrollView>
-          <View style={[styles.inputRow, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+          <Animated.View style={[styles.inputRow, inputRowPadStyle]}>
             <TextInput
               value={draft}
               onChangeText={setDraft}
@@ -283,7 +292,7 @@ export default function RideChatScreen() {
             >
               <Feather name="send" size={16} color={colors.inkInverse} />
             </Pressable>
-          </View>
+          </Animated.View>
         </>
       )}
     </Animated.View>

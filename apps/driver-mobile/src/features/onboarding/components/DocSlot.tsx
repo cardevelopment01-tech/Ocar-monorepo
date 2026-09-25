@@ -18,9 +18,9 @@ export type DocSlotProps = {
   onPick: (file: PickedFile) => void
 }
 
-// Phone-camera photos are commonly 4-12MB; expo-image-picker's own `quality`
-// (JPEG re-encode at capture/pick time) does the downscaling web's separate
-// canvas-based compressImage() step handles -- no extra native module needed.
+// Phone-camera photos are commonly 4-12MB. `quality` only re-encodes (it never
+// shrinks dimensions); the 1600px downscale happens at upload time in
+// services/uploadImage.ts, mirroring web's compressDocImage().
 const PICK_QUALITY = 0.7
 
 async function pickFrom(source: 'camera' | 'library'): Promise<PickedFile | null> {

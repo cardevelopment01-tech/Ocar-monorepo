@@ -1,10 +1,10 @@
 import { Image, type ImageStyle, type StyleProp } from 'react-native'
-import hatchbackImg from '../assets/vehicles/hatchback.png'
-import sedanImg from '../assets/vehicles/sedan.png'
-import suvImg from '../assets/vehicles/suv.png'
-import luxuryImg from '../assets/vehicles/luxury.png'
-import vanImg from '../assets/vehicles/van.png'
-import autoRickshawImg from '../assets/vehicles/auto_rickshaw.png'
+import hatchbackImg from '../assets/vehicles/hatchback.webp'
+import sedanImg from '../assets/vehicles/sedan.webp'
+import suvImg from '../assets/vehicles/suv.webp'
+import luxuryImg from '../assets/vehicles/luxury.webp'
+import vanImg from '../assets/vehicles/van.webp'
+import autoRickshawImg from '../assets/vehicles/auto_rickshaw.webp'
 
 /**
  * VehicleIcon: studio-rendered vehicle illustrations for the ride selection
