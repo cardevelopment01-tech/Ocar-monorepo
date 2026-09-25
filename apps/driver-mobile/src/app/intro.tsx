@@ -1,9 +1,9 @@
 import { useRouter } from 'expo-router'
 import { IntroCarousel, type IntroPage } from '@ocar/mobile-shared'
 import { useOnboardingIntroStore } from '@/store/useOnboardingIntroStore'
-import introPage1 from '../../assets/onboarding/page-1.png'
-import introPage2 from '../../assets/onboarding/page-2.png'
-import introPage3 from '../../assets/onboarding/page-3.png'
+import introPage1 from '../../assets/onboarding/page-1.webp'
+import introPage2 from '../../assets/onboarding/page-2.webp'
+import introPage3 from '../../assets/onboarding/page-3.webp'
 
 const PAGES: IntroPage[] = [
   {

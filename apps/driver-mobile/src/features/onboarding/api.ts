@@ -1,4 +1,5 @@
 import { api } from '@/services/api'
+import { prepareImageForUpload } from '@/services/uploadImage'
 
 // ── Types (mirrors apps/driver/src/lib/onboarding-api.ts) ──────────────────────
 
@@ -101,7 +102,8 @@ export const onboardingApi = {
     return res.data
   },
 
-  uploadDriverDoc: async (file: PickedFile, docType: string, validUntil?: string) => {
+  uploadDriverDoc: async (picked: PickedFile, docType: string, validUntil?: string) => {
+    const file = await prepareImageForUpload(picked)
     const { upload_url, key } = (await api.post('/api/v1/drivers/onboarding/documents/upload-init', {
       doc_type: docType,
       content_type: file.mimeType,
@@ -118,7 +120,8 @@ export const onboardingApi = {
     return res.data as { doc_type: string; file_url: string; status: string }
   },
 
-  uploadVehicleDoc: async (file: PickedFile, docType: string, docNumber?: string, validUntil?: string) => {
+  uploadVehicleDoc: async (picked: PickedFile, docType: string, docNumber?: string, validUntil?: string) => {
+    const file = await prepareImageForUpload(picked)
     const { upload_url, key } = (await api.post('/api/v1/drivers/onboarding/documents/vehicle-upload-init', {
       doc_type: docType,
       content_type: file.mimeType,
