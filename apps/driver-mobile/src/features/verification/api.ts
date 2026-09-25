@@ -1,4 +1,5 @@
 import { api } from '@/services/api'
+import { prepareImageForUpload } from '@/services/uploadImage'
 
 export type DailyVerificationStatus = {
   selfieDone: boolean
@@ -45,7 +46,11 @@ async function uploadOne(file: PickedPhoto, kind: 'selfie' | 'plate'): Promise<s
 }
 
 export async function submitVerification(selfie: PickedPhoto, plate: PickedPhoto): Promise<{ complete: true }> {
-  const [selfieKey, plateKey] = await Promise.all([uploadOne(selfie, 'selfie'), uploadOne(plate, 'plate')])
+  // Downscale one at a time (two concurrent full-res decodes can OOM low-end
+  // Android), then upload the small results in parallel.
+  const preparedSelfie = await prepareImageForUpload(selfie)
+  const preparedPlate = await prepareImageForUpload(plate)
+  const [selfieKey, plateKey] = await Promise.all([uploadOne(preparedSelfie, 'selfie'), uploadOne(preparedPlate, 'plate')])
   const res = await api.post('/api/v1/drivers/daily-verification', { selfie_key: selfieKey, plate_key: plateKey })
   return res.data as { complete: true }
 }
