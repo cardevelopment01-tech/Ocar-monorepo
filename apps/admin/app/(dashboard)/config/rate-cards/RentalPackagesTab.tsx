@@ -8,6 +8,7 @@ import Toggle from '@/components/ui/Toggle'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { rentalPackageApi, type RentalPackageAdmin } from '@/lib/pricing-api'
 import { type AdminCity } from '@/lib/city-api'
+import { extractErrorMessage } from '@/lib/http-errors'
 import { CATEGORY_ORDER, formatDuration, numFmt, SkeletonRows, inputCls, labelCls } from './shared'
 
 function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackageAdmin; cities: AdminCity[]; onUpdated: () => void }) {
@@ -51,8 +52,7 @@ function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackag
       })
       setOpen(false); onUpdated()
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Failed to update package.')
+      setError(extractErrorMessage(err, 'Failed to update package.'))
     } finally { setLoading(false) }
   }
 
@@ -183,8 +183,7 @@ function CreateRentalPackageDialog({
       })
       setOpen(false); onCreated()
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Failed to create package. A package with this duration, km limit, and city may already exist for this category.')
+      setError(extractErrorMessage(err, 'Failed to create package. A package with this duration, km limit, and city may already exist for this category.'))
     } finally { setLoading(false) }
   }
 
@@ -313,8 +312,7 @@ function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
       })
       setOpen(false); onCreated()
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Failed to create override.')
+      setError(extractErrorMessage(err, 'Failed to create override.'))
     } finally { setLoading(false) }
   }
 
