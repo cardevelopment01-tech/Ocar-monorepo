@@ -808,6 +808,71 @@ export async function patchAdminCity(
   }
 }
 
+export async function getAdminCityBoundary(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    res.json(await service.getAdminCityBoundary(BigInt(req.params["id"]!)));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postAdminCityBoundaryPreview(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    res.json(
+      await service.previewAdminCityBoundary(BigInt(req.params["id"]!), req.body.geojson),
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function putAdminCityBoundary(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    res.json(
+      await service.saveAdminCityBoundary(
+        BigInt(req.params["id"]!),
+        req.body.geojson,
+        String(req.body.expectedUpdatedAt ?? ""),
+        req.admin!.id,
+        req.ip ?? null,
+      ),
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteAdminCityBoundary(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    res.json(
+      await service.deleteAdminCityBoundary(
+        BigInt(req.params["id"]!),
+        String(req.body.expectedUpdatedAt ?? ""),
+        req.admin!.id,
+        req.ip ?? null,
+      ),
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ─── Package tiers / driver package wallet ────────────────────────────────────
 
 export async function getPackageTiers(
