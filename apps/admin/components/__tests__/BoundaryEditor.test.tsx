@@ -85,6 +85,7 @@ vi.mock('@/lib/boundary-api', () => ({ boundaryApi }))
 vi.mock('@/lib/city-api', () => ({ cityApi }))
 
 import BoundaryEditor from '../BoundaryEditor'
+import { saveDraft, loadDraft, draftKey } from '@/lib/boundary-draft'
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,7 @@ const saveButton = () => screen.getByRole('button', { name: /^Save/ })
 
 beforeEach(() => {
   vi.clearAllMocks()
+  localStorage.clear()
   td.instances.length = 0
   td.rejectFeatures = false
   infoWindows.length = 0
@@ -485,6 +487,174 @@ describe('BoundaryEditor', () => {
       setup(OWN, [{ id: 9, name: 'Angul', boundary: null }])
       await openEditor()
       expect(infoWindows).toHaveLength(0)
+    })
+  })
+
+  describe('unsaved-work protection', () => {
+    const EDITED_POLY: CityBoundaryGeoJson = { type: 'Polygon', coordinates: [EDITED] }
+    const closeAttempt = async (user: ReturnType<typeof userEvent.setup>) => { await user.keyboard('{Escape}') }
+    const confirmDialog = () => screen.queryByRole('alertdialog')
+
+    describe('local draft autosave', () => {
+      it('saves an edited shape as a draft with the version it was based on', async () => {
+        setup(OWN)
+        await openEditor()
+        await drawShape(EDITED)
+        await waitFor(() => expect(loadDraft(CITY.id)?.polygon).toEqual(EDITED_POLY))
+        expect(loadDraft(CITY.id)?.baseUpdatedAt).toBe('v1')
+      })
+
+      it('writes nothing for an untouched shape', async () => {
+        setup(OWN)
+        await openEditor()
+        await new Promise(r => setTimeout(r, 700))
+        expect(localStorage.getItem(draftKey(CITY.id))).toBeNull()
+      })
+
+      it('clears the draft once the shape is saved', async () => {
+        setup(OWN)
+        boundaryApi.save.mockResolvedValue({ boundary: EDITED_POLY, previousBoundary: OWN, updatedAt: 'v2' })
+        const user = await openEditor()
+        await drawShape(EDITED)
+        await waitFor(() => expect(loadDraft(CITY.id)).not.toBeNull())
+        await waitFor(() => expect(saveButton()).toBeEnabled())
+        await user.click(saveButton())
+        await screen.findByText(/Saved — riders/)
+        expect(loadDraft(CITY.id)).toBeNull()
+      })
+    })
+
+    describe('resuming a draft', () => {
+      it('offers to resume a draft on open, and Resume loads it as an editable, unsaved change', async () => {
+        setup(OWN)
+        saveDraft(CITY.id, 'v1', EDITED_POLY)
+        const user = await openEditor()
+        expect(await screen.findByText(/Unsaved draft/)).toBeInTheDocument()
+        expect(screen.queryByText(/changed since/i)).not.toBeInTheDocument() // same version: no stale warning
+        await user.click(screen.getByRole('button', { name: 'Resume draft' }))
+        expect(td.instances.at(-1)!.snapshot[0]!.geometry.coordinates).toEqual([EDITED])
+        await waitFor(() => expect(saveButton()).toBeEnabled())
+        expect(screen.queryByText(/Unsaved draft/)).not.toBeInTheDocument()
+      })
+
+      it('warns when the boundary changed since the draft was started, and still lets the admin choose', async () => {
+        setup(OWN)
+        saveDraft(CITY.id, 'an-older-version', EDITED_POLY)
+        const user = await openEditor()
+        expect(await screen.findByText(/changed since/i)).toBeInTheDocument()
+        await user.click(screen.getByRole('button', { name: 'Resume draft' }))
+        await waitFor(() => expect(saveButton()).toBeEnabled())
+        // Saving still goes against the CURRENT server version, so nothing is overwritten unseen.
+        boundaryApi.save.mockResolvedValue({ boundary: EDITED_POLY, previousBoundary: OWN, updatedAt: 'v2' })
+        await user.click(saveButton())
+        expect(boundaryApi.save).toHaveBeenCalledWith(CITY.id, EDITED_POLY, 'v1')
+      })
+
+      it('Discard removes the draft and the banner', async () => {
+        setup(OWN)
+        saveDraft(CITY.id, 'v1', EDITED_POLY)
+        const user = await openEditor()
+        await user.click(await screen.findByRole('button', { name: 'Discard draft' }))
+        expect(screen.queryByText(/Unsaved draft/)).not.toBeInTheDocument()
+        expect(loadDraft(CITY.id)).toBeNull()
+      })
+
+      it('silently drops a draft identical to the saved boundary', async () => {
+        setup(OWN)
+        saveDraft(CITY.id, 'v1', OWN)
+        await openEditor()
+        await waitFor(() => expect(loadDraft(CITY.id)).toBeNull())
+        expect(screen.queryByText(/Unsaved draft/)).not.toBeInTheDocument()
+      })
+    })
+
+    describe('closing with unsaved changes', () => {
+      it('closes straight away when nothing changed', async () => {
+        setup(OWN)
+        const user = await openEditor()
+        await closeAttempt(user)
+        await waitFor(() => expect(screen.queryByText('Edit boundary: Puri')).not.toBeInTheDocument())
+        expect(confirmDialog()).not.toBeInTheDocument()
+      })
+
+      it('asks first when there are unsaved changes, and Keep editing stays put', async () => {
+        setup(OWN)
+        const user = await openEditor()
+        await drawShape(EDITED)
+        await closeAttempt(user)
+        expect(await screen.findByRole('alertdialog')).toHaveTextContent('unsaved')
+        await user.click(screen.getByRole('button', { name: 'Keep editing' }))
+        expect(confirmDialog()).not.toBeInTheDocument()
+        expect(screen.getByText('Edit boundary: Puri')).toBeInTheDocument()
+      })
+
+      it('"Close, keep draft" closes and leaves the draft for next time', async () => {
+        setup(OWN)
+        const user = await openEditor()
+        await drawShape(EDITED)
+        await closeAttempt(user)
+        await user.click(await screen.findByRole('button', { name: 'Close, keep draft' }))
+        await waitFor(() => expect(screen.queryByText('Edit boundary: Puri')).not.toBeInTheDocument())
+        expect(loadDraft(CITY.id)?.polygon).toEqual(EDITED_POLY)
+      })
+
+      it('"Discard changes" closes and removes the draft', async () => {
+        setup(OWN)
+        const user = await openEditor()
+        await drawShape(EDITED)
+        await closeAttempt(user)
+        await user.click(await screen.findByRole('button', { name: 'Discard changes' }))
+        await waitFor(() => expect(screen.queryByText('Edit boundary: Puri')).not.toBeInTheDocument())
+        expect(loadDraft(CITY.id)).toBeNull()
+      })
+
+      it('says the work will be lost (and offers no keep-draft) when the browser cannot store a draft', async () => {
+        setup(OWN)
+        vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError') })
+        const user = await openEditor()
+        await drawShape(EDITED)
+        await new Promise(r => setTimeout(r, 700)) // let the autosave attempt run and fail
+        await closeAttempt(user)
+        expect(await screen.findByRole('alertdialog')).toHaveTextContent(/will be lost/i)
+        expect(screen.queryByRole('button', { name: 'Close, keep draft' })).not.toBeInTheDocument()
+        vi.restoreAllMocks()
+      })
+    })
+
+    describe('leaving the page', () => {
+      const fireUnload = () => {
+        const e = new Event('beforeunload', { cancelable: true })
+        window.dispatchEvent(e)
+        return e.defaultPrevented
+      }
+
+      it('warns on reload/tab close only while there are unsaved changes', async () => {
+        setup(OWN)
+        await openEditor()
+        expect(fireUnload()).toBe(false) // clean: no listener, no nag
+        await drawShape(EDITED)
+        await waitFor(() => expect(fireUnload()).toBe(true))
+      })
+
+      it('removes the listener when the editor closes', async () => {
+        setup(OWN)
+        const user = await openEditor()
+        await drawShape(EDITED)
+        await waitFor(() => expect(fireUnload()).toBe(true))
+        await closeAttempt(user)
+        await user.click(await screen.findByRole('button', { name: 'Discard changes' }))
+        await waitFor(() => expect(fireUnload()).toBe(false))
+      })
+
+      it('flushes the draft immediately when the tab is hidden', async () => {
+        setup(OWN)
+        await openEditor()
+        await drawShape(EDITED)
+        Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+        document.dispatchEvent(new Event('visibilitychange'))
+        expect(loadDraft(CITY.id)?.polygon).toEqual(EDITED_POLY) // no debounce wait
+        Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+      })
     })
   })
 })
