@@ -10,6 +10,7 @@ import { boundaryApi, type CityBoundaryGeoJson, type CityBoundaryAnalysis } from
 import { cityApi, type AdminCity } from '@/lib/city-api'
 import { extractErrorMessage, extractErrorCode } from '@/lib/http-errors'
 import { parsePastedPolygon, sameShape, boundaryWarnings } from '@/lib/boundary-utils'
+import { saveDraft, loadDraft, clearDraft } from '@/lib/boundary-draft'
 
 // BoundaryEditor: admin "Edit boundary" dialog. Implements the 9 design
 // decisions from docs/superpowers/specs/2026-09-25-admin-city-boundary-
@@ -20,6 +21,15 @@ import { parsePastedPolygon, sameShape, boundaryWarnings } from '@/lib/boundary-
 // itself is mouse-only — decision 8's accepted, documented gap.
 
 const PREVIEW_DEBOUNCE_MS = 400
+const DRAFT_DEBOUNCE_MS = 500
+
+function timeAgo(ms: number): string {
+  const min = Math.max(0, Math.round((Date.now() - ms) / 60_000))
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min} min ago`
+  const h = Math.round(min / 60)
+  return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} d ago`
+}
 
 function toClosedRing(feature: { geometry: { coordinates: unknown } }): CityBoundaryGeoJson {
   return { type: 'Polygon', coordinates: feature.geometry.coordinates as [number, number][][] }
@@ -300,6 +310,10 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const [pasteError, setPasteError] = useState('')
+  // A browser-local draft found on open, waiting for Resume/Discard.
+  const [resumable, setResumable] = useState<{ polygon: CityBoundaryGeoJson; stale: boolean; savedAt: number } | null>(null)
+  const [closeConfirm, setCloseConfirm] = useState(false)
+  const [persistFailed, setPersistFailed] = useState(false)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewSeqRef = useRef(0)
@@ -313,6 +327,11 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
       setBoundary(own.boundary)
       setDraft(own.boundary)
       setUpdatedAt(own.updatedAt)
+      const saved = loadDraft(city.id)
+      if (saved && sameShape(saved.polygon, own.boundary)) clearDraft(city.id) // nothing left to recover
+      setResumable(saved && !sameShape(saved.polygon, own.boundary)
+        ? { polygon: saved.polygon, stale: saved.baseUpdatedAt !== own.updatedAt, savedAt: saved.savedAt }
+        : null)
       setAnalysis(null)
       setSavedBanner(null)
       const others = allCities.filter(c => c.id !== city.id)
@@ -413,6 +432,7 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
       setUpdatedAt(result.updatedAt)
       setSavedBanner({ previousBoundary: result.previousBoundary })
       setConflict(null)
+      clearDraft(city.id)
     } catch (err) {
       if (extractErrorCode(err) === 'BOUNDARY_CHANGED') {
         await enterConflict()
@@ -442,6 +462,7 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
       }
       setSavedBanner(null)
       setAnalysis(null)
+      clearDraft(city.id)
     } catch (err) {
       setError(extractErrorMessage(err, 'Undo failed — refresh and try again.'))
     } finally {
@@ -461,6 +482,7 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
       setAnalysis(null)
       setDeleteOpen(false)
       setDeleteConfirmText('')
+      clearDraft(city.id)
     } catch (err) {
       if (extractErrorCode(err) === 'BOUNDARY_CHANGED') {
         setDeleteOpen(false)
@@ -474,12 +496,56 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
   }
 
   const warnings = boundaryWarnings(analysis)
+  const shapeChanged = !sameShape(draft, boundary)
+  // Unsaved work exists once the editor has loaded and the shape differs from what is saved.
+  const dirty = open && !loading && shapeChanged
+
+  // Autosave the in-progress shape to this browser (debounced; flushed at once when the
+  // tab is hidden, the one reliable "user is leaving" signal). Paused while an older
+  // draft is waiting on Resume/Discard so it cannot be overwritten unseen.
+  useEffect(() => {
+    if (!dirty || resumable || !draft) return
+    const write = () => setPersistFailed(!saveDraft(city.id, updatedAt, draft))
+    const timer = setTimeout(write, DRAFT_DEBOUNCE_MS)
+    const onHide = () => { if (document.visibilityState === 'hidden') { clearTimeout(timer); write() } }
+    document.addEventListener('visibilitychange', onHide)
+    return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', onHide) }
+  }, [dirty, resumable, draft, city.id, updatedAt])
+
+  // Native "leave this page?" prompt, installed only while there is something to lose.
+  useEffect(() => {
+    if (!dirty) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [dirty])
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next && dirty) { setCloseConfirm(true); return }
+    if (!next) { setResumable(null); setPersistFailed(false) }
+    setOpen(next)
+  }
+  const finishClose = () => { setCloseConfirm(false); setResumable(null); setPersistFailed(false); setOpen(false) }
+  const closeKeepingDraft = () => {
+    // Flush now: the debounced write may not have fired yet.
+    if (draft && saveDraft(city.id, updatedAt, draft)) finishClose()
+    else setPersistFailed(true)
+  }
+  const closeDiscarding = () => { clearDraft(city.id); finishClose() }
+
+  const resumeDraft = () => {
+    if (!resumable) return
+    const err = loadFeatureRef.current ? loadFeatureRef.current(resumable.polygon) : 'the map is still loading, try again in a moment'
+    if (err) { setError(`Could not resume the draft: ${err}`); return }
+    setError('')
+    setResumable(null)
+  }
+  const discardDraft = () => { clearDraft(city.id); setResumable(null) }
   // Invalid shapes are blocked here (server also re-validates on Save).
   const canSave = !!draft && !saving && !previewing && !previewError && analysis?.isValid !== false
-  const shapeChanged = !sameShape(draft, boundary)
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Trigger asChild>
         <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-light rounded-lg transition-colors" title="Edit boundary" aria-label={`Edit boundary for ${city.name}`}>
           <MapPin size={14} />
@@ -524,12 +590,25 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
 
               {/* Status strip + controls — ~30% width */}
               <div className="md:basis-[30%] md:max-w-sm border-t md:border-t-0 md:border-l border-border-light p-4 space-y-3 overflow-y-auto">
+                {resumable && (
+                  <div className="admin-card !p-4 !bg-warning-light space-y-2">
+                    <p className="text-sm font-semibold text-warning">Unsaved draft from {timeAgo(resumable.savedAt)}</p>
+                    {resumable.stale && (
+                      <p className="text-xs text-text-secondary">This boundary has changed since you started the draft. Resuming keeps your shape; saving replaces the current one.</p>
+                    )}
+                    <div className="flex gap-2">
+                      <button onClick={resumeDraft} className="btn-secondary flex-1 justify-center !text-xs">Resume draft</button>
+                      <button onClick={discardDraft} className="btn-secondary flex-1 justify-center !text-xs">Discard draft</button>
+                    </div>
+                  </div>
+                )}
+
                 {conflict && (
                   <div role="alert" className="admin-card !p-4 !bg-warning-light space-y-2">
                     <p className="text-sm font-semibold text-warning">Someone else saved a newer boundary</p>
                     <div className="flex gap-2">
                       <button onClick={() => void doSave(conflict.updatedAt)} disabled={saving} className="btn-secondary flex-1 justify-center !text-xs">Overwrite with mine</button>
-                      <button onClick={() => { setUpdatedAt(conflict.updatedAt); void load() }} disabled={saving} className="btn-secondary flex-1 justify-center !text-xs">Discard mine, reload theirs</button>
+                      <button onClick={() => { clearDraft(city.id); setUpdatedAt(conflict.updatedAt); void load() }} disabled={saving} className="btn-secondary flex-1 justify-center !text-xs">Discard mine, reload theirs</button>
                     </div>
                   </div>
                 )}
@@ -601,6 +680,26 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
           )}
         </Dialog.Content>
       </Dialog.Portal>
+
+      {/* Closing with unsaved work: autosave makes this recoverable, so say so honestly */}
+      <Dialog.Root open={closeConfirm} onOpenChange={setCloseConfirm}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[80] bg-text-primary/40 backdrop-blur-sm" />
+          <Dialog.Content role="alertdialog" className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[420px] bg-surface rounded-2xl shadow-hover p-6 z-[80]">
+            <Dialog.Title className="text-lg font-bold text-text-primary mb-2">Close with unsaved changes?</Dialog.Title>
+            <Dialog.Description className="text-sm text-text-secondary mb-4">
+              {persistFailed
+                ? 'You have unsaved changes to this boundary. This browser could not store a draft, so they will be lost if you close.'
+                : 'You have unsaved changes to this boundary. A draft is kept in this browser, and you can resume it next time you open this city.'}
+            </Dialog.Description>
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button onClick={() => setCloseConfirm(false)} className="btn-secondary">Keep editing</button>
+              {!persistFailed && <button onClick={closeKeepingDraft} className="btn-secondary">Close, keep draft</button>}
+              <button onClick={closeDiscarding} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-danger text-white text-sm font-semibold hover:bg-red-600 transition-colors">Discard changes</button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* Delete confirm — typed confirmation, matches drivers/[id]/page.tsx's precedent */}
       <Dialog.Root open={deleteOpen} onOpenChange={setDeleteOpen}>
