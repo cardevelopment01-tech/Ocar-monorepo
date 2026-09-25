@@ -78,6 +78,12 @@ router.get('/geo/cities',       requireAdmin('super_admin', 'ops_admin'), contro
 router.post('/geo/cities',      requireAdmin('super_admin', 'ops_admin'), controller.postAdminCity)
 router.patch('/geo/cities/:id', requireAdmin('super_admin', 'ops_admin'), controller.patchAdminCity)
 
+// City boundary editor — both roles per plan decision R5 (D6: "both roles can save and delete").
+router.get('/geo/cities/:id/boundary',         requireAdmin('super_admin', 'ops_admin'), controller.getAdminCityBoundary)
+router.post('/geo/cities/:id/boundary/preview', requireAdmin('super_admin', 'ops_admin'), controller.postAdminCityBoundaryPreview)
+router.put('/geo/cities/:id/boundary',         requireAdmin('super_admin', 'ops_admin'), controller.putAdminCityBoundary)
+router.delete('/geo/cities/:id/boundary',      requireAdmin('super_admin', 'ops_admin'), controller.deleteAdminCityBoundary)
+
 // ─── Package tiers / driver package wallet (city billing_mode = 'package') ──
 router.get('/package-tiers',       requireAdmin('super_admin', 'ops_admin'), controller.getPackageTiers)
 router.post('/package-tiers',      requireAdmin('super_admin', 'ops_admin'), controller.postPackageTier)

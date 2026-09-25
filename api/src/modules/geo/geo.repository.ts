@@ -79,11 +79,22 @@ export async function findContainingCity(
   destLng: number,
 ): Promise<{ id: number; name: string } | null> {
   const res = await pool.query(
+    // status = 'active': a draft/inactive city's boundary (e.g. Puri before
+    // launch) must not affect trip classification — see plan decision R7.
+    // ORDER BY: boundaries can overlap (Bhubaneswar/Cuttack share one box —
+    // see 055/096_*.sql), so LIMIT 1 needs a deterministic tie-break instead
+    // of an arbitrary row: smallest boundary wins, then whichever city's
+    // centroid is closest to the origin, then id — see plan decision R2.
     `SELECT id::int, name
      FROM cities
-     WHERE boundary IS NOT NULL
+     WHERE status = 'active'
+       AND boundary IS NOT NULL
        AND ST_Contains(boundary, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326))
        AND ST_Contains(boundary, ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326))
+     ORDER BY
+       ST_Area(boundary::geography) ASC,
+       ST_Distance(centroid, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography) ASC,
+       id ASC
      LIMIT 1`,
     [originLat, originLng, destLat, destLng]
   )

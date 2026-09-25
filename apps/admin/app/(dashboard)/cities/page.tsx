@@ -4,6 +4,7 @@ import { MapPin, Plus, Pencil, CheckCircle2, Clock } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
 import Toggle from '@/components/ui/Toggle'
 import { cityApi, type AdminCity } from '@/lib/city-api'
+import BoundaryEditor from '@/components/BoundaryEditor'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -406,7 +407,10 @@ export default function CitiesPage() {
                 <td className="!text-center"><Check on={city.is_return_cab_enabled} /></td>
                 <td className="font-mono">{city.default_speed_limit_kmph} km/h</td>
                 <td className="!text-right">
-                  <EditCityDialog city={city} onUpdated={fetchCities} />
+                  <div className="inline-flex items-center gap-1">
+                    <BoundaryEditor city={city} />
+                    <EditCityDialog city={city} onUpdated={fetchCities} />
+                  </div>
                 </td>
               </tr>
             ))}

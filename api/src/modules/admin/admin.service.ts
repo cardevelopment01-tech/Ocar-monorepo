@@ -2,7 +2,9 @@ import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
-import type { DriverStatus, UpdateDriverStatusPayload, UpdateDriverProfilePayload, UpdateDriverVehiclePayload } from './admin.types'
+import type { DriverStatus, UpdateDriverStatusPayload, UpdateDriverProfilePayload, UpdateDriverVehiclePayload, CityBoundaryGeoJson, CityBoundaryAnalysis, CityBoundaryWrite } from './admin.types'
+import { cityBoundaryGeoJsonSchema } from './admin.types'
+import { CITY_BOUNDARY_MIN_AREA_KM2, CITY_BOUNDARY_MAX_AREA_KM2 } from '@/constants/limits'
 import { forceResolveRide as resolveStuckRide, getRideAssignCandidates as getAssignCandidatesForRide, adminAssignDriver } from '@/modules/rides/rides.service'
 import { getRideStops } from '@/modules/rides/rides.repository'
 import { listMessages as listRideMessages } from '@/modules/ride-chat/ride-chat.repository'
@@ -683,6 +685,94 @@ export async function updateAdminCity(
   const updated = await repo.updateAdminCity(id, data)
   if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
   return updated
+}
+
+// ─── City boundary editor ──────────────────────────────────────────────────────
+// See docs/superpowers/specs/2026-09-25-admin-city-boundary-editor-plan.md.
+
+// GeoJSON polygon rings must be closed (first position === last), but an
+// editor UI naturally produces an unclosed ring — close it server-side
+// (plan §3) rather than rejecting an otherwise-valid shape.
+function closeBoundaryRing(geo: CityBoundaryGeoJson): CityBoundaryGeoJson {
+  const ring = geo.coordinates[0]!
+  const [first] = ring
+  const last = ring[ring.length - 1]!
+  if (!first || (first[0] === last[0] && first[1] === last[1])) return geo
+  return { type: 'Polygon', coordinates: [[...ring, first]] }
+}
+
+function parseBoundaryInput(geojson: unknown): CityBoundaryGeoJson {
+  const result = cityBoundaryGeoJsonSchema.safeParse(geojson)
+  if (!result.success) {
+    throw httpError(422, result.error.issues[0]?.message ?? 'Invalid boundary shape', 'VALIDATION_ERROR')
+  }
+  return closeBoundaryRing(result.data)
+}
+
+export async function getAdminCityBoundary(cityId: bigint) {
+  const city = await repo.getCityBoundary(cityId)
+  if (!city) throw createHttpError(AppErrors.NOT_FOUND)
+  return city
+}
+
+export async function previewAdminCityBoundary(cityId: bigint, geojsonInput: unknown): Promise<CityBoundaryAnalysis> {
+  const city = await repo.getCityBoundary(cityId)
+  if (!city) throw createHttpError(AppErrors.NOT_FOUND)
+  const geojson = parseBoundaryInput(geojsonInput)
+  return repo.analyzeCityBoundary(cityId, geojson)
+}
+
+export async function saveAdminCityBoundary(
+  cityId: bigint,
+  geojsonInput: unknown,
+  expectedUpdatedAt: string,
+  adminId: bigint,
+  ipAddress: string | null,
+): Promise<CityBoundaryWrite> {
+  if (!expectedUpdatedAt) throw httpError(400, 'Missing boundary version. Refresh and try again.', 'VALIDATION_ERROR')
+  const geojson = parseBoundaryInput(geojsonInput)
+
+  // Save always re-runs the same check Preview does (decision 9) — a client
+  // that skipped Preview cannot skip validation too.
+  const analysis = await repo.analyzeCityBoundary(cityId, geojson)
+  if (!analysis.isValid) {
+    throw httpError(422, analysis.invalidReason ?? 'This shape is not a valid polygon', 'VALIDATION_ERROR')
+  }
+  if (analysis.areaKm2 < CITY_BOUNDARY_MIN_AREA_KM2 || analysis.areaKm2 > CITY_BOUNDARY_MAX_AREA_KM2) {
+    throw httpError(
+      422,
+      `Boundary area (${analysis.areaKm2.toFixed(1)} km²) must be between ${CITY_BOUNDARY_MIN_AREA_KM2} and ${CITY_BOUNDARY_MAX_AREA_KM2} km²`,
+      'VALIDATION_ERROR',
+    )
+  }
+
+  const result = await repo.putCityBoundary(cityId, geojson, expectedUpdatedAt)
+  if (result === 'not_found') throw createHttpError(AppErrors.NOT_FOUND)
+  if (result === 'conflict') throw httpError(409, 'Someone else saved a newer boundary for this city. Refresh and try again.', 'BOUNDARY_CHANGED')
+
+  await recordAuditLog({
+    adminId, action: 'cities.boundary.save', targetTable: 'cities', targetId: cityId,
+    beforeState: { boundary: result.previousBoundary }, afterState: { boundary: result.boundary }, ipAddress,
+  })
+  return result
+}
+
+export async function deleteAdminCityBoundary(
+  cityId: bigint,
+  expectedUpdatedAt: string,
+  adminId: bigint,
+  ipAddress: string | null,
+) {
+  if (!expectedUpdatedAt) throw httpError(400, 'Missing boundary version. Refresh and try again.', 'VALIDATION_ERROR')
+  const result = await repo.deleteCityBoundary(cityId, expectedUpdatedAt)
+  if (result === 'not_found') throw createHttpError(AppErrors.NOT_FOUND)
+  if (result === 'conflict') throw httpError(409, 'Someone else saved a newer boundary for this city. Refresh and try again.', 'BOUNDARY_CHANGED')
+
+  await recordAuditLog({
+    adminId, action: 'cities.boundary.delete', targetTable: 'cities', targetId: cityId,
+    beforeState: { boundary: result.previousBoundary }, afterState: { boundary: null }, ipAddress,
+  })
+  return result
 }
 
 // ─── Package tiers / driver package wallet ────────────────────────────────────
