@@ -5,6 +5,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Search, AlertTriangle, ChevronDown, Loader2 } from 'lucide-react'
 import { adminRideApi, type AdminRideItem, type AssignCandidate } from '@/lib/admin-api'
 import SlideOver from '@/components/ui/SlideOver'
+import { extractErrorMessage } from '@/lib/http-errors'
 
 interface Props {
   ride: AdminRideItem | null
@@ -63,8 +64,7 @@ export default function AssignDriverDrawer({ ride, onClose, onAssigned }: Props)
       await adminRideApi.assignDriver(ride.id, candidate.driver_id, mode, !candidate.eligible)
       onAssigned()
     } catch (err) {
-      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setAssignError({ id: candidate.driver_id, message: message ?? 'Assignment failed — the ride may have already been accepted.' })
+      setAssignError({ id: candidate.driver_id, message: extractErrorMessage(err, 'Assignment failed — the ride may have already been accepted.') })
     } finally {
       setAssigningId(null)
       setConfirmingId(null)

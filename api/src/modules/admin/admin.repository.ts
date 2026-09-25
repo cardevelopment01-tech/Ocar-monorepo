@@ -32,6 +32,9 @@ import type {
   AdminRentalPackage,
   AdminAccountListItem,
   UpdateDriverProfilePayload,
+  CityBoundaryGeoJson,
+  CityBoundaryAnalysis,
+  CityBoundaryWrite,
 } from "./admin.types";
 import type {
   PackageTier,
@@ -1585,6 +1588,165 @@ export async function updateAdminCity(
   );
   await invalidate(CITIES_ALL_KEY, cityByIdKey(id));
   return res.rows[0] ?? null;
+}
+
+// ─── City boundary editor ──────────────────────────────────────────────────────
+// See docs/superpowers/specs/2026-09-25-admin-city-boundary-editor-plan.md.
+// boundary is not in ADMIN_CITY_COLS / CITY_COLS and is never cached, so none
+// of these functions touch the cities reference cache.
+
+export async function getCityBoundary(
+  cityId: bigint,
+): Promise<{ name: string; boundary: CityBoundaryGeoJson | null; updatedAt: string } | null> {
+  const res = await pool.query(
+    `SELECT name, ST_AsGeoJSON(boundary)::json AS boundary, updated_at
+     FROM cities WHERE id = $1`,
+    [cityId],
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    name: row.name as string,
+    boundary: (row.boundary as CityBoundaryGeoJson | null) ?? null,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+export async function analyzeCityBoundary(
+  cityId: bigint,
+  geojson: CityBoundaryGeoJson,
+): Promise<CityBoundaryAnalysis> {
+  const geojsonText = JSON.stringify(geojson);
+  try {
+    const res = await pool.query(
+      `WITH candidate AS (
+         SELECT ST_SetSRID(ST_GeomFromGeoJSON($2::text), 4326) AS geom
+       ),
+       city AS (
+         SELECT centroid::geometry AS centroid_geom FROM cities WHERE id = $1
+       )
+       SELECT
+         ST_IsValid(candidate.geom) AS is_valid,
+         CASE WHEN ST_IsValid(candidate.geom) THEN NULL ELSE ST_IsValidReason(candidate.geom) END AS invalid_reason,
+         ST_NPoints(candidate.geom) AS vertex_count,
+         ST_Area(candidate.geom::geography) / 1000000.0 AS area_km2,
+         ST_Distance(
+           ST_SetSRID(ST_MakePoint(ST_XMin(candidate.geom), ST_YMin(candidate.geom)), 4326)::geography,
+           ST_SetSRID(ST_MakePoint(ST_XMax(candidate.geom), ST_YMin(candidate.geom)), 4326)::geography
+         ) / 1000.0 AS bbox_width_km,
+         ST_Distance(
+           ST_SetSRID(ST_MakePoint(ST_XMin(candidate.geom), ST_YMin(candidate.geom)), 4326)::geography,
+           ST_SetSRID(ST_MakePoint(ST_XMin(candidate.geom), ST_YMax(candidate.geom)), 4326)::geography
+         ) / 1000.0 AS bbox_height_km,
+         CASE
+           WHEN NOT ST_IsValid(candidate.geom) THEN NULL
+           WHEN city.centroid_geom IS NULL THEN NULL
+           ELSE ST_Contains(candidate.geom, city.centroid_geom)
+         END AS centroid_inside,
+         -- CASE guarantees short-circuit (unlike a WHERE clause's AND, whose
+         -- evaluation order Postgres does not promise) — ST_Intersects/
+         -- ST_Intersection never run against an invalid candidate geometry.
+         CASE WHEN NOT ST_IsValid(candidate.geom) THEN '[]'::jsonb ELSE COALESCE((
+           SELECT jsonb_agg(jsonb_build_object(
+             'cityId', c.id::int,
+             'name', c.name,
+             'pctOfNew', ROUND((ST_Area(ST_Intersection(candidate.geom, c.boundary)::geography) / NULLIF(ST_Area(candidate.geom::geography), 0) * 100)::numeric, 1)
+           ))
+           FROM cities c
+           WHERE c.id != $1
+             AND c.boundary IS NOT NULL
+             AND ST_Intersects(candidate.geom, c.boundary)
+         ), '[]'::jsonb) END AS overlaps
+       FROM candidate
+       LEFT JOIN city ON true`,
+      [cityId, geojsonText],
+    );
+    const row = res.rows[0];
+    return {
+      isValid: row.is_valid as boolean,
+      invalidReason: (row.invalid_reason as string | null) ?? null,
+      vertexCount: Number(row.vertex_count),
+      areaKm2: Number(row.area_km2),
+      bboxKm: { widthKm: Number(row.bbox_width_km), heightKm: Number(row.bbox_height_km) },
+      centroidInside: (row.centroid_inside as boolean | null) ?? null,
+      overlaps: row.overlaps as Array<{ cityId: number; name: string; pctOfNew: number }>,
+    };
+  } catch (err) {
+    // ST_GeomFromGeoJSON raises SQLSTATE XX000 for GeoJSON it cannot parse (probed
+    // against PostGIS: non-JSON, wrong type, missing/badly nested coordinates).
+    // That is the ONLY error that means "bad input" — surface it as an ordinary
+    // invalid-boundary result, and never leak the raw Postgres text (security rule).
+    // Anything else (ECONNREFUSED, 57014 timeout, 08xxx/53xxx, no code) is an
+    // infrastructure fault: rethrow so it is a 500 with an error-level log, not a
+    // misleading "your shape is invalid".
+    if ((err as { code?: string }).code !== 'XX000') throw err;
+    logger.warn({ err, cityId: cityId.toString() }, 'city boundary GeoJSON failed to parse in PostGIS');
+    return {
+      isValid: false,
+      invalidReason: 'Could not parse this shape as a valid polygon',
+      vertexCount: 0,
+      areaKm2: 0,
+      bboxKm: { widthKm: 0, heightKm: 0 },
+      centroidInside: null,
+      overlaps: [],
+    };
+  }
+}
+
+export async function putCityBoundary(
+  cityId: bigint,
+  geojson: CityBoundaryGeoJson,
+  expectedUpdatedAt: string,
+): Promise<CityBoundaryWrite | 'conflict' | 'not_found'> {
+  return withTransaction(async (client) => {
+    const current = await client.query(
+      `SELECT ST_AsGeoJSON(boundary)::json AS boundary FROM cities WHERE id = $1 FOR UPDATE`,
+      [cityId],
+    );
+    if (current.rowCount === 0) return 'not_found' as const;
+    const previousBoundary = (current.rows[0]!.boundary as CityBoundaryGeoJson | null) ?? null;
+
+    // Same millisecond-precision optimistic-concurrency pattern as
+    // approveDriverDoc/approveVehicleDoc above.
+    const updated = await client.query(
+      `UPDATE cities
+       SET boundary = ST_SetSRID(ST_GeomFromGeoJSON($2::text), 4326), updated_at = now()
+       WHERE id = $1 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $3::timestamptz)
+       RETURNING ST_AsGeoJSON(boundary)::json AS boundary, updated_at`,
+      [cityId, JSON.stringify(geojson), expectedUpdatedAt],
+    );
+    if (updated.rowCount === 0) return 'conflict' as const;
+    const row = updated.rows[0]!;
+    return {
+      boundary: row.boundary as CityBoundaryGeoJson,
+      previousBoundary,
+      updatedAt: row.updated_at as string,
+    };
+  });
+}
+
+export async function deleteCityBoundary(
+  cityId: bigint,
+  expectedUpdatedAt: string,
+): Promise<{ previousBoundary: CityBoundaryGeoJson | null; updatedAt: string } | 'conflict' | 'not_found'> {
+  return withTransaction(async (client) => {
+    const current = await client.query(
+      `SELECT ST_AsGeoJSON(boundary)::json AS boundary FROM cities WHERE id = $1 FOR UPDATE`,
+      [cityId],
+    );
+    if (current.rowCount === 0) return 'not_found' as const;
+    const previousBoundary = (current.rows[0]!.boundary as CityBoundaryGeoJson | null) ?? null;
+
+    const updated = await client.query(
+      `UPDATE cities
+       SET boundary = NULL, updated_at = now()
+       WHERE id = $1 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $2::timestamptz)
+       RETURNING updated_at`,
+      [cityId, expectedUpdatedAt],
+    );
+    if (updated.rowCount === 0) return 'conflict' as const;
+    return { previousBoundary, updatedAt: updated.rows[0]!.updated_at as string };
+  });
 }
 
 // ─── Pricing ──────────────────────────────────────────────────────────────────
