@@ -83,11 +83,6 @@ export const RETURN_CAB_MATCH_RADIUS_METRES = 2000
 // one_way/round_trip as "book a City Ride instead" when the trip is actually short.
 export const IN_CITY_MAX_TRIP_DISTANCE_METRES = 15_000
 
-// City boundary editor (admin) — see docs/superpowers/specs/2026-09-25-admin-city-boundary-editor-plan.md
-export const CITY_BOUNDARY_MAX_VERTICES = 10_000
-export const CITY_BOUNDARY_MIN_AREA_KM2 = 0.5
-export const CITY_BOUNDARY_MAX_AREA_KM2 = 5_000
-
 // Rental overage: extra km/min are only billed once the trip runs past the package
 // limit PLUS this tolerance (GPS jitter / a few minutes of hand-over shouldn't cost
 // the rider). Only the part beyond limit + grace is charged.
@@ -97,6 +92,11 @@ export const RENTAL_OVERAGE_GRACE_MIN = 5
 // stops included) is treated as noise (ST_Length over a jumpy trail) — km overage is
 // skipped and the ride is flagged. City rentals rarely average anywhere near this.
 export const RENTAL_MAX_PLAUSIBLE_AVG_KMH = 60
+
+// City boundary editor (admin) — see docs/superpowers/specs/2026-09-25-admin-city-boundary-editor-plan.md
+export const CITY_BOUNDARY_MAX_VERTICES = 10_000
+export const CITY_BOUNDARY_MIN_AREA_KM2 = 0.5
+export const CITY_BOUNDARY_MAX_AREA_KM2 = 5_000
 
 export const PAGINATION_DEFAULT_LIMIT = 20
 export const PAGINATION_MAX_LIMIT = 100
