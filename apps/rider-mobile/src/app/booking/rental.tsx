@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Skeleton, VehicleIcon, colors, radii, spacing, typography } from '@ocar/mobile-shared'
 import type { RentalPackage, VehicleCategory } from '@ocar/mobile-shared'
-import { createBooking, fetchRentalPackages, fetchVehicleCategories, fetchFareEstimate, resolveBookingError } from '@/features/booking/api'
+import { createBooking, fetchRentalPackages, fetchRoute, fetchVehicleCategories, fetchFareEstimate, resolveBookingError } from '@/features/booking/api'
+import { recommendPackage } from '@/features/booking/recommendPackage'
 import { useBookingDraftStore } from '@/features/booking/store'
 import { socket } from '@/services/socket'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
@@ -64,15 +65,41 @@ export default function RentalScreen() {
       .catch(() => {})
   }, [])
 
+  // Route pickup → stops → drop. Not traffic-aware: package tiers are coarse, so live
+  // traffic wouldn't change the pick but would double routing cost per lookup.
+  const [trip, setTrip] = useState<{ km: number; min: number } | null>(null)
+  // False while the route is in flight, so we don't preselect a package and then
+  // immediately flip to the recommended one (fare flicker + wasted estimate call).
+  const [tripReady, setTripReady] = useState(false)
+  useEffect(() => {
+    if (!pickup || !drop) { setTrip(null); setTripReady(true); return }
+    let cancelled = false
+    setTripReady(false)
+    const pts = [pickup, ...stops, drop]
+    Promise.all(pts.slice(0, -1).map((p, i) => fetchRoute(p.lat, p.lng, pts[i + 1]!.lat, pts[i + 1]!.lng)))
+      .then((legs) => {
+        if (cancelled) return
+        setTrip({
+          km: Math.round(legs.reduce((s, l) => s + l.distanceKm, 0) * 10) / 10,
+          min: Math.round(legs.reduce((s, l) => s + l.durationMin, 0)),
+        })
+        setTripReady(true)
+      })
+      .catch(() => { if (!cancelled) { setTrip(null); setTripReady(true) } })
+    return () => { cancelled = true }
+  }, [pickup, drop, stops])
+
+  // Selection follows the recommendation until the rider picks a package themselves.
+  const [userPickedPkg, setUserPickedPkg] = useState(false)
   const loadPackages = useCallback(async (catId: number) => {
     setPkgsLoading(true)
     setPackages([])
     setSelectedPkgId(null)
+    setUserPickedPkg(false)
     setEstimate(null)
     try {
       const pkgs = await fetchRentalPackages(catId, originCityId)
       setPackages(pkgs)
-      if (pkgs[0]) setSelectedPkgId(pkgs[0].id)
     } catch {
       setPackages([])
     } finally {
@@ -103,6 +130,15 @@ export default function RentalScreen() {
       .finally(() => { if (!cancelled) setEstLoading(false) })
     return () => { cancelled = true }
   }, [selectedPkgId, selectedCatId, originCityId])
+
+  const recommendation = useMemo(
+    () => (trip ? recommendPackage(packages, trip.km, trip.min) : null),
+    [packages, trip],
+  )
+  useEffect(() => {
+    if (userPickedPkg || !tripReady || packages.length === 0) return
+    setSelectedPkgId(recommendation?.packageId ?? packages[0]!.id)
+  }, [packages, recommendation, userPickedPkg, tripReady])
 
   const selectedCat = categories.find((c) => c.id === selectedCatId)
   const selectedPkg = packages.find((p) => p.id === selectedPkgId) ?? null
@@ -208,7 +244,7 @@ export default function RentalScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
               >
-                <Feather name="truck" size={18} color={active ? colors.primary : colors.ink600} />
+                <VehicleIcon slug={cat.slug} size={28} />
                 <Text style={[styles.catName, active ? styles.catNameActive : null]}>{cat.displayName}</Text>
                 <View style={styles.catSeatsRow}>
                   <Feather name="users" size={9} color={active ? colors.primary : colors.ink400} />
@@ -219,7 +255,10 @@ export default function RentalScreen() {
           })}
         </ScrollView>
 
-        <Text style={styles.sectionLabel}>PACKAGE</Text>
+        <View style={styles.pkgHeader}>
+          <Text style={styles.sectionLabel}>PACKAGE</Text>
+          {trip ? <Text style={styles.routeSummary}>{`Your route · ${trip.km} km · ~${formatDuration(trip.min)}`}</Text> : null}
+        </View>
         {pkgsLoading ? (
           <View style={styles.pkgList}>
             <Skeleton width="100%" height={72} borderRadius={16} />
@@ -233,14 +272,22 @@ export default function RentalScreen() {
           <View style={styles.pkgList}>
             {packages.map((pkg) => {
               const active = pkg.id === selectedPkgId
+              const isRec = recommendation?.packageId === pkg.id
               return (
                 <Pressable
                   key={pkg.id}
-                  onPress={() => setSelectedPkgId(pkg.id)}
-                  style={[styles.pkgRow, active ? styles.pkgRowActive : null]}
+                  onPress={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
+                  style={[styles.pkgRow, isRec ? styles.pkgRowRec : null, active ? styles.pkgRowActive : null]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
+                  accessibilityHint={isRec ? 'Recommended for your trip' : undefined}
                 >
+                  {isRec ? (
+                    <View style={styles.recTag}>
+                      <Feather name="star" size={9} color={colors.inkInverse} />
+                      <Text style={styles.recTagText}>Recommended for your trip</Text>
+                    </View>
+                  ) : null}
                   <View style={[styles.pkgIconWrap, active ? styles.pkgIconWrapActive : null]}>
                     <Feather name="clock" size={16} color={active ? colors.primary : colors.ink400} />
                   </View>
@@ -254,6 +301,18 @@ export default function RentalScreen() {
                 </Pressable>
               )
             })}
+            {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) ? (
+              <View style={styles.warnCard}>
+                <Feather name="info" size={14} color={colors.warning} />
+                <Text style={styles.warnText}>
+                  {`Your route (~${trip.km} km, ${formatDuration(trip.min)}) is longer than our biggest package.${
+                    recommendation.overKm > 0 ? ` About ${recommendation.overKm} km over` : ''
+                  }${recommendation.overKm > 0 && recommendation.overMin > 0 ? ' and' : ''}${
+                    recommendation.overMin > 0 ? ` ${formatDuration(recommendation.overMin)} over` : ''
+                  } will be charged as extra.`}
+                </Text>
+              </View>
+            ) : null}
           </View>
         )}
 
@@ -341,7 +400,14 @@ const styles = StyleSheet.create({
   catNameActive: { color: colors.primaryDark },
   catSeatsRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   catSeats: { fontSize: 9, color: colors.ink400 },
+  pkgHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  routeSummary: { ...typography.caption, color: colors.ink600, fontWeight: '500' },
   pkgList: { gap: spacing.xs },
+  pkgRowRec: { marginTop: spacing.sm, borderColor: colors.primary },
+  recTag: { position: 'absolute', top: -10, left: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: 3 },
+  recTagText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: colors.inkInverse },
+  warnCard: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, backgroundColor: colors.warningLight, borderRadius: 16, padding: spacing.md },
+  warnText: { ...typography.caption, flex: 1, color: colors.ink900, lineHeight: 17 },
   pkgRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface2, borderRadius: 16, borderWidth: 1, borderColor: 'transparent', padding: spacing.sm + 4 },
   pkgRowActive: { backgroundColor: colors.primarySubtle, borderColor: colors.primary },
   pkgIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },

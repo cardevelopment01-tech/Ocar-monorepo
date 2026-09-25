@@ -907,6 +907,30 @@ export async function findStaleAcceptedOrArrivedRides(
   return res.rows
 }
 
+/**
+ * Quoted package + rates for settling a rental ride (null if not a package rental).
+ * Reads the terms pinned on the snapshot at booking (migration 099); COALESCE falls back
+ * to the live package only for rides booked before that migration.
+ */
+export async function getRentalSettlementInputs(rideId: bigint) {
+  const res = await pool.query<{
+    base_fare: string; surge_multiplier: string
+    km_limit: string; duration_minutes: number
+    extra_per_km: string; extra_per_min: string
+  }>(
+    `SELECT fs.base_fare, fs.surge_multiplier,
+            COALESCE(fs.rental_km_limit,         rp.km_limit)         AS km_limit,
+            COALESCE(fs.rental_duration_minutes, rp.duration_minutes) AS duration_minutes,
+            COALESCE(fs.rental_extra_per_km,     rp.extra_per_km)     AS extra_per_km,
+            COALESCE(fs.rental_extra_per_min,    rp.extra_per_min)    AS extra_per_min
+     FROM fare_snapshots fs
+     JOIN rental_packages rp ON rp.id = fs.rental_package_id
+     WHERE fs.ride_id = $1`,
+    [rideId]
+  )
+  return res.rows[0] ?? null
+}
+
 export async function flagRideForReview(rideId: bigint, reason: string) {
   await pool.query(
     `UPDATE rides SET review_flagged_at = now(), review_reason = $2
@@ -1523,7 +1547,14 @@ export async function getDriverEarningsSummary(
  * that has ever existed. No upper bound is needed: ride_id already scopes
  * this to one ride.
  */
-export async function getGpsTrackedDistanceKm(rideId: bigint, since: Date): Promise<number | null> {
+export async function getGpsTrackedDistanceKm(
+  rideId: bigint,
+  since: Date,
+  // Rentals roam freely — the booked km is only the route to the drop-off, so the
+  // 2.5x-of-booked ceiling below would null out exactly the long trips that overrun.
+  // Rental callers apply their own speed-based plausibility check instead.
+  opts?: { skipCeiling?: boolean },
+): Promise<number | null> {
   const res = await pool.query<{ km: string | null; booked_km: string | null }>(
     `SELECT
        CASE WHEN count(*) >= 2
@@ -1544,7 +1575,7 @@ export async function getGpsTrackedDistanceKm(rideId: bigint, since: Date): Prom
   // detours/reroutes); beyond that, return null so verifyEndOTP falls back to the
   // client estimate — the same fallback the <2-points case already triggers.
   const bookedKm = row?.booked_km != null ? parseFloat(row.booked_km) : null
-  if (bookedKm != null && bookedKm > 0 && km > bookedKm * 2.5) {
+  if (!opts?.skipCeiling && bookedKm != null && bookedKm > 0 && km > bookedKm * 2.5) {
     logger.warn(
       { rideId, gpsKm: km, bookedKm, ceilingKm: bookedKm * 2.5 },
       'GPS-tracked distance implausible, falling back to booked estimate'
