@@ -6,7 +6,11 @@ export async function sendSms(phone: string, message: string, templateId?: strin
     return
   }
 
-  const stripped = phone.replace(/^\+?91/, '')
+  // Only strips a leading country code when there are actually more than 10
+  // digits left afterwards — a bare `/^\+?91/` also matched (and corrupted)
+  // a valid 10-digit number that happens to start with "91", e.g. 9123456789.
+  const allDigits = phone.replace(/\D/g, '')
+  const stripped = allDigits.length > 10 && allDigits.startsWith('91') ? allDigits.slice(2) : allDigits
 
   const body: Record<string, string> = {
     api_id: config.BULKSMSPLANS_API_ID,
