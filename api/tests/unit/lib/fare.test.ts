@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateFare } from '@/lib/fare'
+import { calculateFare, rentalOverage, settleRentalFare } from '@/lib/fare'
 
 const sedanCard = {
   rate_per_km: 10.00,
@@ -232,5 +232,69 @@ describe('calculateFare', () => {
     expect(result.overage_km).toBe(7.5) // rounded for display
     expect(result.overage_fare).toBe(75.05) // from raw 7.5049999...km, not rounded 7.5km
     expect(result.total).toBe(2875.05) // 2500 + 75.05 + 300 allowance
+  })
+})
+
+describe('rentalOverage + rental settlement', () => {
+  const pkg = { km_limit: 40, duration_minutes: 240 }
+  const grace = { km: 2, min: 5 }
+
+  it('bills nothing within limit + grace', () => {
+    expect(rentalOverage(pkg, 41.9, 244, grace)).toEqual({ overage_km: 0, overage_min: 0 })
+  })
+  it('bills only the part beyond limit + grace', () => {
+    expect(rentalOverage(pkg, 52, 260, grace)).toEqual({ overage_km: 10, overage_min: 15 })
+  })
+  it('skips km overage when distance is unmeasurable, still bills time', () => {
+    expect(rentalOverage(pkg, null, 260, grace)).toEqual({ overage_km: 0, overage_min: 15 })
+  })
+  it('feeds calculateFare: package + overage, surge applied to both', () => {
+    const { overage_km, overage_min } = rentalOverage(pkg, 52, 260, grace)
+    const r = calculateFare({
+      rate_card: { rate_per_km: 0, rate_per_min: 0, min_fare: 0 },
+      ride_type: 'rental', is_return_cab: false, estimated_km: 0, estimated_min: 0,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 0, surge_multiplier: 1,
+      package_fare: 900, overage_km, overage_min, extra_per_km: 12, extra_per_min: 2,
+    })
+    expect(r.overage_fare).toBe(150) // 10*12 + 15*2
+    expect(r.total).toBe(1050)
+  })
+})
+
+describe('settleRentalFare', () => {
+  const base = {
+    pkg: { km_limit: 40, duration_minutes: 240, extra_per_km: 12, extra_per_min: 2 },
+    base_fare: 900, surge_multiplier: 1,
+    grace: { km: 2, min: 5 }, max_avg_kmh: 60,
+  }
+
+  it('within package: package fare only, no flag', () => {
+    const r = settleRentalFare({ ...base, gps_km: 35, elapsed_min: 200 })
+    expect(r).toMatchObject({ measured_km: 35, overage_fare: 0, total: 900, review_reason: null })
+  })
+  it('bills km + time overage and flags the GPS-billed km for verification', () => {
+    const r = settleRentalFare({ ...base, gps_km: 52, elapsed_min: 260 })
+    expect(r).toMatchObject({ overage_km: 10, overage_min: 15, overage_fare: 150, total: 1050 })
+    expect(r.review_reason).toMatch(/billed from GPS/)
+  })
+  it('implausible GPS (avg speed over cap): km overage skipped, time still billed, flagged', () => {
+    // 4h trip at 60 km/h cap => 240 km max; 300 km is noise
+    const r = settleRentalFare({ ...base, gps_km: 300, elapsed_min: 245 })
+    expect(r.measured_km).toBeNull()
+    expect(r).toMatchObject({ overage_km: 0, overage_min: 0, total: 900 }) // 245 is inside 5 min grace
+    expect(r.review_reason).toMatch(/not billed/)
+  })
+  it('missing GPS on a short trip: nothing could have overrun, so no flag', () => {
+    const r = settleRentalFare({ ...base, gps_km: null, elapsed_min: 30 }) // 30 km max < 40 limit
+    expect(r).toMatchObject({ measured_km: null, total: 900, review_reason: null })
+  })
+  it('missing GPS on a long trip still bills the time overage', () => {
+    const r = settleRentalFare({ ...base, gps_km: null, elapsed_min: 300 })
+    expect(r).toMatchObject({ overage_km: 0, overage_min: 55, total: 1010 })
+    expect(r.review_reason).toMatch(/not billed/)
+  })
+  it('applies surge to package and overage alike', () => {
+    const r = settleRentalFare({ ...base, surge_multiplier: 1.5, gps_km: 52, elapsed_min: 260 })
+    expect(r.total).toBe(1575) // (900 + 150) * 1.5
   })
 })

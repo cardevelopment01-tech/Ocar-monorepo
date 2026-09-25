@@ -160,6 +160,70 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+/**
+ * Rental overage: only the part beyond package limit + grace is billable.
+ * `actualKm` null = distance couldn't be measured reliably → no km overage
+ * (never bill a rider on a number we don't trust); time is always measurable.
+ */
+export function rentalOverage(
+  pkg: { km_limit: number; duration_minutes: number },
+  actualKm: number | null,
+  actualMin: number,
+  grace: { km: number; min: number },
+): { overage_km: number; overage_min: number } {
+  return {
+    overage_km:  actualKm == null ? 0 : round2(Math.max(0, actualKm  - pkg.km_limit         - grace.km)),
+    overage_min: round2(Math.max(0, actualMin - pkg.duration_minutes - grace.min)),
+  }
+}
+
+export interface RentalSettlement {
+  /** GPS km used for billing; null when unmeasurable/implausible (km overage skipped). */
+  measured_km: number | null
+  overage_km: number
+  overage_min: number
+  overage_fare: number
+  total: number
+  /** Ops-review reason, or null. See settleRentalFare. */
+  review_reason: string | null
+}
+
+/**
+ * Final fare for a package rental: quoted package fare + overage (with grace), surged
+ * like the estimate. GPS km is trusted only if it implies a plausible average speed
+ * over the whole trip; otherwise km overage is skipped. Flags for ops when km overage
+ * was billed from raw GPS (verify) or was skipped on a trip long enough to have mattered.
+ */
+export function settleRentalFare(p: {
+  pkg: { km_limit: number; duration_minutes: number; extra_per_km: number; extra_per_min: number }
+  base_fare: number
+  surge_multiplier: number
+  gps_km: number | null
+  elapsed_min: number
+  grace: { km: number; min: number }
+  max_avg_kmh: number
+}): RentalSettlement {
+  const maxKm = (p.elapsed_min / 60) * p.max_avg_kmh
+  const measured_km = p.gps_km != null && p.gps_km <= maxKm ? p.gps_km : null
+  const { overage_km, overage_min } = rentalOverage(p.pkg, measured_km, p.elapsed_min, p.grace)
+  const fare = calculateFare({
+    rate_card: { rate_per_km: 0, rate_per_min: 0, min_fare: 0 },
+    ride_type: 'rental', is_return_cab: false,
+    estimated_km: 0, estimated_min: 0, stop_count: 0, charge_per_stop: 0, trip_hours: 0,
+    surge_multiplier: p.surge_multiplier,
+    package_fare: p.base_fare,
+    overage_km, overage_min,
+    extra_per_km: p.pkg.extra_per_km, extra_per_min: p.pkg.extra_per_min,
+  })
+  let review_reason: string | null = null
+  if (overage_km > 0) {
+    review_reason = 'Rental km overage billed from GPS distance — verify against the route'
+  } else if (measured_km == null && maxKm > p.pkg.km_limit) {
+    review_reason = 'Rental km overage not billed — GPS distance unavailable or implausible'
+  }
+  return { measured_km, overage_km, overage_min, overage_fare: fare.overage_fare, total: fare.total, review_reason }
+}
+
 export function estimateFare(params: {
   rate_card: RateCardInput
   ride_type: 'one_way' | 'round_trip' | 'rental'

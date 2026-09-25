@@ -1,9 +1,9 @@
 'use client'
 
-import { Suspense, useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   ArrowLeft, MapPin, Clock,
-  CreditCard, Zap, Users, Navigation,
+  CreditCard, Zap, Users, Navigation, Sparkles, Info,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
@@ -11,6 +11,8 @@ import { cn, swapAt } from '@/lib/utils'
 import { isAxiosError } from 'axios'
 import { rideApi, type RentalPackage, type FareEstimate, type StopInput } from '@/lib/ride-api'
 import { vehicleApi, type VehicleCategory } from '@/lib/vehicle-api'
+import { geoApi } from '@/lib/geo-api'
+import { recommendPackage } from '@/lib/recommend-package'
 import { getPaymentChannel } from '@/lib/payment-channel'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
@@ -164,16 +166,49 @@ function RentalContent() {
   const [bookError,       setBookError]       = useState<string | null>(null)
   const [paymentNote,     setPaymentNote]     = useState<string | null>(null)
 
-  // Fetch packages whenever category changes; auto-select first
+  // Route pickup → stops → drop (drive distance/time). Non-traffic-aware: package tiers
+  // are coarse (hours/tens of km), so live traffic wouldn't change the pick but would
+  // double the routing cost per lookup.
+  const [trip, setTrip] = useState<{ km: number; min: number } | null>(null)
+  // False while the route is in flight, so we don't preselect a package and then
+  // immediately flip to the recommended one (fare flicker + wasted estimate call).
+  const [tripReady, setTripReady] = useState(false)
+  const stopsKey = stops.map(s => `${s.lat},${s.lng}`).join('|')
+  useEffect(() => {
+    if (!hasOrigin || !destLat || !destLng) { setTrip(null); setTripReady(true); return }
+    let cancelled = false
+    setTripReady(false)
+    const pts: Array<[number, number]> = [
+      [originLat, originLng],
+      ...stops.map((s): [number, number] => [s.lat, s.lng]),
+      [parseFloat(destLat), parseFloat(destLng)],
+    ]
+    Promise.all(pts.slice(0, -1).map((p, i) => geoApi.getRoute(p[0], p[1], pts[i + 1]![0], pts[i + 1]![1])))
+      .then(legs => {
+        if (cancelled) return
+        setTrip({
+          km:  Math.round(legs.reduce((s, l) => s + l.distanceKm, 0) * 10) / 10,
+          min: Math.round(legs.reduce((s, l) => s + l.durationMin, 0)),
+        })
+        setTripReady(true)
+      })
+      .catch(() => { if (!cancelled) { setTrip(null); setTripReady(true) } })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasOrigin, originLat, originLng, destLat, destLng, stopsKey])
+
+  // Fetch packages whenever category changes; selection follows the recommendation
+  // until the rider picks one themselves.
+  const [userPickedPkg, setUserPickedPkg] = useState(false)
   const loadPackages = useCallback(async (catId: number, cityId: number | undefined) => {
     setPkgsLoading(true)
     setPackages([])
     setSelectedPkgId(null)
+    setUserPickedPkg(false)
     setEstimate(null)
     try {
       const pkgs = await rideApi.getRentalPackages(catId, cityId)
       setPackages(pkgs)
-      if (pkgs[0]) setSelectedPkgId(pkgs[0].id)
     } catch {
       setPackages([])
     } finally {
@@ -204,7 +239,9 @@ function RentalContent() {
   }, [categories, selectedCatId])
 
   // Fetch estimate whenever the selected package changes
+  const estReq = useRef(0)
   const loadEstimate = useCallback(async (pkgId: number, catId: number) => {
+    const reqId = ++estReq.current // drop responses from superseded selections
     setEstLoading(true)
     setEstimate(null)
     try {
@@ -216,17 +253,26 @@ function RentalContent() {
         durationMin:     0,
         originCityId,
       })
-      setEstimate(est)
+      if (reqId === estReq.current) setEstimate(est)
     } catch {
-      setEstimate(null)
+      if (reqId === estReq.current) setEstimate(null)
     } finally {
-      setEstLoading(false)
+      if (reqId === estReq.current) setEstLoading(false)
     }
   }, [originCityId])
 
   useEffect(() => {
     if (selectedPkgId !== null) void loadEstimate(selectedPkgId, selectedCatId)
   }, [selectedPkgId, selectedCatId, loadEstimate])
+
+  const recommendation = useMemo(
+    () => (trip ? recommendPackage(packages, trip.km, trip.min) : null),
+    [packages, trip],
+  )
+  useEffect(() => {
+    if (userPickedPkg || !tripReady || packages.length === 0) return
+    setSelectedPkgId(recommendation?.packageId ?? packages[0]!.id)
+  }, [packages, recommendation, userPickedPkg, tripReady])
 
   const selectedCat = categories.find(c => c.id === selectedCatId)
   const selectedPkg = packages.find(p => p.id === selectedPkgId) ?? null
@@ -417,9 +463,16 @@ function RentalContent() {
 
           {/* Package selector */}
           <motion.section {...fadeUp(0.06)}>
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
-              Package
-            </p>
+            <div className="flex items-baseline justify-between mb-3">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
+                Package
+              </p>
+              {trip && (
+                <p className="text-[11px] font-medium text-slate-500 tabular-nums">
+                  Your route · {trip.km} km · ~{formatDuration(trip.min)}
+                </p>
+              )}
+            </div>
 
             {pkgsLoading ? (
               <div className="space-y-2">
@@ -438,17 +491,29 @@ function RentalContent() {
                   const fare   = num(pkg.package_fare)
                   const xKm    = num(pkg.extra_per_km)
                   const xMin   = num(pkg.extra_per_min)
+                  const isRec  = recommendation?.packageId === pkg.id
                   return (
                     <button
                       key={pkg.id}
-                      onClick={() => setSelectedPkgId(pkg.id)}
+                      onClick={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
                       className={cn(
-                        'w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all duration-150 text-left',
+                        'relative w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all duration-150 text-left',
                         active
                           ? 'bg-violet-50 border-violet-300 shadow-sm'
-                          : 'bg-slate-50 border-slate-100 active:bg-slate-100'
+                          : 'bg-slate-50 border-slate-100 active:bg-slate-100',
+                        isRec && !active && 'border-violet-200',
+                        isRec && 'mt-2.5'
                       )}
                     >
+                      {isRec && (
+                        <span
+                          className="absolute -top-2.5 left-4 flex items-center gap-1 rounded-full px-2.5 py-[3px] text-[10px] font-bold tracking-wide text-white shadow-sm"
+                          style={{ background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)' }}
+                        >
+                          <Sparkles size={9} strokeWidth={2.5} />
+                          Recommended for your trip
+                        </span>
+                      )}
                       {/* Icon */}
                       <div className={cn(
                         'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0',
@@ -488,6 +553,18 @@ function RentalContent() {
                     </button>
                   )
                 })}
+                {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) && (
+                  <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3">
+                    <Info size={14} strokeWidth={2.2} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-[11.5px] leading-relaxed text-amber-800">
+                      Your route (~{trip.km} km, {formatDuration(trip.min)}) is longer than our biggest package.
+                      {recommendation.overKm > 0 && <> About {recommendation.overKm} km over</>}
+                      {recommendation.overKm > 0 && recommendation.overMin > 0 && ' and'}
+                      {recommendation.overMin > 0 && <> {formatDuration(recommendation.overMin)} over</>}
+                      {' '}will be charged as extra.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </motion.section>
