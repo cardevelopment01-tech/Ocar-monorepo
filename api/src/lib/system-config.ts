@@ -2,6 +2,7 @@ import { pool } from '@/db/client'
 import { cachedRead, invalidate } from '@/lib/cache/reference-cache'
 import { configKey } from '@/constants/redis-keys'
 import { CONFIG_CACHE_TTL_SECONDS } from '@/constants/limits'
+import { getConfigBounds } from '@/lib/system-config-bounds'
 
 export async function getConfigValue(key: string, fallback: string): Promise<string> {
   const value = await cachedRead('system_config', configKey(key), CONFIG_CACHE_TTL_SECONDS, () =>
@@ -27,6 +28,9 @@ export interface SystemConfigRow {
   isPublic: boolean
   status: string
   updatedAt: string
+  /** Inclusive numeric range enforced on PATCH (system-config-bounds.ts); null = unbounded. */
+  min: number | null
+  max: number | null
 }
 
 interface ConfigRow {
@@ -41,6 +45,7 @@ interface ConfigRow {
 }
 
 function toConfig(row: ConfigRow): SystemConfigRow {
+  const bounds = getConfigBounds(row.key)
   return {
     id: row.id,
     key: row.key,
@@ -50,6 +55,8 @@ function toConfig(row: ConfigRow): SystemConfigRow {
     isPublic: row.is_public,
     status: row.status,
     updatedAt: row.updated_at.toISOString(),
+    min: bounds?.min ?? null,
+    max: bounds?.max ?? null,
   }
 }
 
@@ -84,15 +91,33 @@ export function validateConfigValue(valueType: string, value: string): string | 
   }
 }
 
-export async function updateConfigValue(id: bigint, value: string, updatedBy: bigint): Promise<SystemConfigRow | null> {
+/**
+ * `expectedUpdatedAt` (the updatedAt the admin's screen was showing) makes the write
+ * conditional: if someone else saved since, no row matches and we return 'conflict'
+ * instead of silently overwriting their change. Millisecond compare because
+ * toISOString() (what the client echoes back) is ms-precision while updated_at is µs.
+ */
+export async function updateConfigValue(
+  id: bigint,
+  value: string,
+  updatedBy: bigint,
+  expectedUpdatedAt?: string,
+): Promise<SystemConfigRow | null | 'conflict'> {
   const res = await pool.query<ConfigRow>(
     `UPDATE system_config SET value = $2, updated_by = $3
      WHERE id = $1 AND status = 'active'
+       AND ($4::timestamptz IS NULL
+            OR date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $4::timestamptz))
      RETURNING ${CONFIG_COLUMNS}`,
-    [id, value, updatedBy]
+    [id, value, updatedBy, expectedUpdatedAt ?? null]
   )
   const row = res.rows[0]
-  if (!row) return null
+  if (!row) {
+    if (expectedUpdatedAt === undefined) return null
+    // Distinguish "gone/inactive" from "changed under you".
+    const exists = await pool.query(`SELECT 1 FROM system_config WHERE id = $1 AND status = 'active'`, [id])
+    return (exists.rowCount ?? 0) > 0 ? 'conflict' : null
+  }
   await invalidate(configKey(row.key))
   return toConfig(row)
 }
