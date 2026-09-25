@@ -131,6 +131,14 @@ export function createApp(): Application {
   )
 
   // 4. Body parsing
+  // City boundary editor: a pasted OSM-import polygon (see
+  // 083_backfill_city_boundaries.sql) can exceed the platform-wide 100kb limit
+  // below. Mounted first, on this path prefix only — body-parser skips a body
+  // that's already been parsed, so every other route still gets the 100kb
+  // parser right after. See docs/superpowers/specs/2026-09-25-admin-city-
+  // boundary-editor-plan.md, decision R1 (D2).
+  app.use('/api/v1/admin/geo/cities', express.json({ limit: '1mb' }))
+
   // `verify` stashes the exact raw bytes alongside the normal parse — the
   // Razorpay webhook signature is computed over these, not a re-serialized
   // req.body, which isn't guaranteed to byte-match what Razorpay signed.

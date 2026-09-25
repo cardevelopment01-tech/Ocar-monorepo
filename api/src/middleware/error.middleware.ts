@@ -23,6 +23,15 @@ export const errorMiddleware: ErrorRequestHandler = (err, req, res, _next) => {
     status = appErr.httpStatus
     body = { error: appErr.message, code: appErr.appCode, requestId }
     if (appErr.missing) body['missing'] = appErr.missing
+  } else if ((err as { type?: string }).type === 'entity.too.large') {
+    // body-parser's own error (express.json/urlencoded limit) — carries `status`,
+    // not this app's `httpStatus`, so it used to fall through to the 500 branch.
+    status = 413
+    body = { error: 'Request body too large', code: 'PAYLOAD_TOO_LARGE', requestId }
+  } else if ((err as { type?: string }).type === 'entity.parse.failed') {
+    // Fixed message on purpose: the parser's own text quotes the offending input.
+    status = 400
+    body = { error: 'Malformed JSON body', code: 'INVALID_JSON', requestId }
   } else if (err instanceof ZodError) {
     status = 422
     body = { error: 'Validation failed', code: 'VALIDATION_ERROR', fields: err.flatten().fieldErrors, requestId }

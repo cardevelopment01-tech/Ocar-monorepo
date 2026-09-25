@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import axios from 'axios'
 import { maintenanceApi, type MaintenanceStatus } from '@/lib/maintenance-api'
+import { extractErrorMessage } from '@/lib/http-errors'
 
 export default function MaintenancePage() {
   const [status, setStatus] = useState<MaintenanceStatus>({ enabled: false })
@@ -26,7 +26,7 @@ export default function MaintenancePage() {
     try {
       setStatus(await maintenanceApi.update(next))
     } catch (err) {
-      setError(axios.isAxiosError(err) ? err.response?.data?.error ?? 'Update failed' : 'Update failed')
+      setError(extractErrorMessage(err, 'Update failed'))
     } finally {
       setSaving(false)
     }

@@ -83,6 +83,11 @@ export const RETURN_CAB_MATCH_RADIUS_METRES = 2000
 // one_way/round_trip as "book a City Ride instead" when the trip is actually short.
 export const IN_CITY_MAX_TRIP_DISTANCE_METRES = 15_000
 
+// City boundary editor (admin) — see docs/superpowers/specs/2026-09-25-admin-city-boundary-editor-plan.md
+export const CITY_BOUNDARY_MAX_VERTICES = 10_000
+export const CITY_BOUNDARY_MIN_AREA_KM2 = 0.5
+export const CITY_BOUNDARY_MAX_AREA_KM2 = 5_000
+
 export const PAGINATION_DEFAULT_LIMIT = 20
 export const PAGINATION_MAX_LIMIT = 100
 

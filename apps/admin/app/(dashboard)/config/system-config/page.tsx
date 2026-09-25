@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import axios from 'axios'
 import { Pencil, Check, X } from 'lucide-react'
 import SlideOver from '@/components/ui/SlideOver'
 import { systemConfigApi, type SystemConfig } from '@/lib/system-config-api'
+import { extractErrorMessage } from '@/lib/http-errors'
 
 export default function SystemConfigPage() {
   const [config, setConfig] = useState<SystemConfig[]>([])
@@ -40,7 +40,7 @@ export default function SystemConfigPage() {
       setConfig(prev => prev.map(c => c.id === updated.id ? updated : c))
       setEditing(null)
     } catch (err) {
-      setError(axios.isAxiosError(err) ? err.response?.data?.error ?? 'Update failed' : 'Update failed')
+      setError(extractErrorMessage(err, 'Update failed'))
     } finally {
       setSaving(false)
     }

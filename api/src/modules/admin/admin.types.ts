@@ -270,6 +270,65 @@ export interface AdminCity {
   created_at: string
 }
 
+// ─── City boundary editor ──────────────────────────────────────────────────────
+// See docs/superpowers/specs/2026-09-25-admin-city-boundary-editor-plan.md
+
+import { z } from 'zod'
+import { CITY_BOUNDARY_MAX_VERTICES } from '@/constants/limits'
+
+// A GeoJSON position: [lng, lat] — longitude first, per the GeoJSON spec and
+// this repo's ST_MakePoint convention (see CLAUDE.md PostGIS section).
+const cityBoundaryPositionSchema = z.tuple([
+  z.number().min(-180).max(180),
+  z.number().min(-90).max(90),
+])
+
+// Loose bounding box around Odisha with a comfortable margin, so an obviously
+// wrong shape (e.g. swapped lat/lng) is rejected before it reaches PostGIS.
+const ODISHA_SANITY_BBOX = { minLng: 80, maxLng: 88, minLat: 17, maxLat: 23 }
+
+// Polygon only (no MultiPolygon, no holes) — see plan decision R6, "one outline
+// per city". The ring need not already be closed; the service closes it.
+export const cityBoundaryGeoJsonSchema = z
+  .object({
+    type: z.literal('Polygon'),
+    coordinates: z
+      .array(
+        z.array(cityBoundaryPositionSchema).min(3, 'A boundary ring needs at least 3 distinct points')
+      )
+      .length(1, 'City boundaries are a single outline — holes and MultiPolygon are not supported')
+  })
+  .refine(
+    (geo) => geo.coordinates[0]!.length <= CITY_BOUNDARY_MAX_VERTICES,
+    { message: `A boundary can have at most ${CITY_BOUNDARY_MAX_VERTICES} vertices` }
+  )
+  .refine(
+    (geo) => geo.coordinates[0]!.every(
+      ([lng, lat]) =>
+        lng >= ODISHA_SANITY_BBOX.minLng && lng <= ODISHA_SANITY_BBOX.maxLng &&
+        lat >= ODISHA_SANITY_BBOX.minLat && lat <= ODISHA_SANITY_BBOX.maxLat
+    ),
+    { message: `Coordinates must fall within the service region (lng ${ODISHA_SANITY_BBOX.minLng}-${ODISHA_SANITY_BBOX.maxLng}, lat ${ODISHA_SANITY_BBOX.minLat}-${ODISHA_SANITY_BBOX.maxLat})` }
+  )
+
+export type CityBoundaryGeoJson = z.infer<typeof cityBoundaryGeoJsonSchema>
+
+export interface CityBoundaryAnalysis {
+  isValid: boolean
+  invalidReason: string | null
+  vertexCount: number
+  areaKm2: number
+  bboxKm: { widthKm: number; heightKm: number }
+  centroidInside: boolean | null
+  overlaps: Array<{ cityId: number; name: string; pctOfNew: number }>
+}
+
+export interface CityBoundaryWrite {
+  boundary: CityBoundaryGeoJson
+  previousBoundary: CityBoundaryGeoJson | null
+  updatedAt: string
+}
+
 // ─── Active driver sessions (live map) ───────────────────────────────────────
 
 export interface ActiveDriverSession {
