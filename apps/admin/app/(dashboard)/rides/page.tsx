@@ -18,12 +18,12 @@ function fmt(iso: string | null) {
   return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/)
+function initials(name: string | null | undefined) {
+  const parts = (name ?? '').trim().split(/\s+/)
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '')).toUpperCase()
 }
 
-function Avatar({ name, tone = 'primary' }: { name: string; tone?: 'primary' | 'muted' }) {
+function Avatar({ name, tone = 'primary' }: { name: string | null | undefined; tone?: 'primary' | 'muted' }) {
   return (
     <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-[11px] font-semibold shrink-0 ${
       tone === 'primary' ? 'bg-primary/10 text-primary' : 'bg-surface-2 text-text-muted border border-border-light'
