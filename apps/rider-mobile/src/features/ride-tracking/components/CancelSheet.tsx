@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import Animated, { useAnimatedStyle } from 'react-native-reanimated'
 import { Feather } from '@expo/vector-icons'
@@ -30,6 +30,18 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
   const [selected, setSelected] = useState<string | null>(null)
   const [otherText, setOtherText] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  // The sheet stays mounted between opens (only the Modal toggles), so without this the last
+  // reason and note reappear pre-selected the next time it opens.
+  useEffect(() => {
+    if (!visible) {
+      setSelected(null)
+      setOtherText('')
+      setSubmitting(false)
+      setFailed(false)
+    }
+  }, [visible])
 
   const reasons = feeWarning ? AFTER_REASONS : BEFORE_REASONS
   const canSubmit = selected !== null && (selected !== 'other' || otherText.trim().length > 0)
@@ -42,8 +54,15 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
   async function handleConfirm() {
     if (!selected || submitting) return
     setSubmitting(true)
-    await onConfirm(selected, selected === 'other' ? otherText.trim() : undefined)
-    setSubmitting(false)
+    setFailed(false)
+    try {
+      await onConfirm(selected, selected === 'other' ? otherText.trim() : undefined)
+    } catch {
+      // Stay open and say so: closing silently made a failed cancel look like it worked.
+      setFailed(true)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -101,6 +120,12 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
             />
           ) : null}
 
+          {failed ? (
+            <Text style={styles.failedText} accessibilityLiveRegion="polite">
+              We could not cancel the ride. Check your connection and try again.
+            </Text>
+          ) : null}
+
           <Pressable
             onPress={handleConfirm}
             disabled={!canSubmit || submitting}
@@ -136,6 +161,7 @@ const styles = StyleSheet.create({
   reasonLabelActive: { color: colors.error },
   otherInput: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.md, minHeight: 72, textAlignVertical: 'top', marginBottom: spacing.md },
   confirmBtn: { backgroundColor: colors.error, borderRadius: radii.lg, paddingVertical: spacing.md, alignItems: 'center', marginBottom: spacing.sm },
+  failedText: { ...typography.caption, color: colors.error, marginBottom: spacing.sm },
   disabled: { opacity: 0.4 },
   pressedScale: { transform: [{ scale: 0.97 }] },
   confirmText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },

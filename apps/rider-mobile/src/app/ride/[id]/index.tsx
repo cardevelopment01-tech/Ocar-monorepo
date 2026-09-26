@@ -88,13 +88,10 @@ export default function RideTrackingScreen() {
   }
 
   async function handleCancelConfirm(reasonCode: string, reason?: string) {
-    try {
-      await cancelRide(rideId, reasonCode, reason)
-      setShowCancelSheet(false)
-      router.replace('/(tabs)/home')
-    } catch {
-      setShowCancelSheet(false)
-    }
+    // A failure throws to the sheet, which stays open and shows the error.
+    await cancelRide(rideId, reasonCode, reason)
+    setShowCancelSheet(false)
+    router.replace('/(tabs)/home')
   }
 
   async function handleAddStop(stop: StopInput) {
