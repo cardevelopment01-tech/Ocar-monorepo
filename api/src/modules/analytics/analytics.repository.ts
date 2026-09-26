@@ -100,24 +100,34 @@ export async function getTopDrivers(days: number): Promise<TopDriver[]> {
 }
 
 export async function getCityBreakdown(days: number): Promise<CityBreakdown[]> {
+  // DISTINCT r.id: the payments join can repeat a ride if it has several completed payments.
   const rows = await analyticsQuery<QueryResultRow>(
     `SELECT
        c.name             AS city_name,
-       COUNT(r.id)        AS ride_count,
-       COALESCE(SUM(p.amount), 0) AS revenue
+       COUNT(DISTINCT r.id) FILTER (WHERE r.status = 'completed') AS ride_count,
+       COUNT(DISTINCT r.id) FILTER (WHERE r.status = 'cancelled') AS cancelled_count,
+       COALESCE(SUM(p.amount) FILTER (WHERE r.status = 'completed'), 0) AS revenue,
+       (SELECT COUNT(*) FROM drivers d WHERE d.city_id = c.id AND d.status = 'active') AS active_drivers
      FROM cities c
-     LEFT JOIN rides r ON r.origin_city_id = c.id AND r.status = 'completed'
+     LEFT JOIN rides r ON r.origin_city_id = c.id AND r.status IN ('completed', 'cancelled')
        AND r.requested_at >= NOW() - ($1 || ' days')::INTERVAL
      LEFT JOIN payments p ON p.ride_id = r.id AND p.status = 'completed'
      GROUP BY c.id, c.name
      ORDER BY ride_count DESC`,
     [days]
   )
-  return rows.map(r => ({
-    city_name:  r.city_name as string,
-    ride_count: parseInt(r.ride_count as string, 10),
-    revenue:    parseFloat(r.revenue as string),
-  }))
+  return rows.map(r => {
+    const completed = parseInt(r.ride_count as string, 10)
+    const cancelled = parseInt(r.cancelled_count as string, 10)
+    return {
+      city_name:         r.city_name as string,
+      ride_count:        completed,
+      revenue:           parseFloat(r.revenue as string),
+      cancelled_count:   cancelled,
+      cancellation_rate: completed + cancelled === 0 ? 0 : cancelled / (completed + cancelled),
+      active_drivers:    parseInt(r.active_drivers as string, 10),
+    }
+  })
 }
 
 export async function getCategoryBreakdown(days: number): Promise<CategoryBreakdown[]> {

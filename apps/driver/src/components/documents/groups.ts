@@ -77,6 +77,12 @@ export const ALL_KEYS   = ALL_GROUPS.flatMap(g => g.slots.map(s => s.key))
 
 export function initSlotState(): Record<string, SlotState> {
   return Object.fromEntries(
-    ALL_KEYS.map(k => [k, { state: 'idle', url: null, error: null, docStatus: null, rejectionNote: null }])
+    ALL_KEYS.map(k => [k, { state: 'idle', url: null, error: null, docStatus: null, rejectionNote: null, rejectionCount: 0 }])
   )
 }
+
+// key -> "Group Label" or "Group Label (Slot)" for a two-slot group, built from the same
+// group data the wizard and settings screen already render, so it can't drift from either.
+export const SLOT_LABELS: Record<string, string> = Object.fromEntries(
+  ALL_GROUPS.flatMap(g => g.slots.map(s => [s.key, s.slotLabel ? `${g.label} (${s.slotLabel})` : g.label]))
+)

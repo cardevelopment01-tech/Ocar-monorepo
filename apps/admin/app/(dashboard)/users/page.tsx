@@ -1,7 +1,7 @@
 'use client'
 import React from 'react'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Users } from 'lucide-react'
+import { Users, UserRound } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
@@ -15,7 +15,7 @@ function fmt(iso: string) {
 }
 
 function initials(name: string | null) {
-  if (!name) return '?'
+  if (!name) return ''
   return name.split(' ').map(p => p[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
 }
 
@@ -98,10 +98,10 @@ export default function UsersPage() {
       render: (u: AdminUserItem) => (
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-info-light flex items-center justify-center flex-shrink-0">
-            <span className="font-bold text-info text-xs">{initials(u.name)}</span>
+            <span className="font-bold text-info text-xs">{u.name ? initials(u.name) : <UserRound size={14} />}</span>
           </div>
           <div>
-            <p className="font-semibold text-text-primary">{u.name}</p>
+            <p className="font-semibold text-text-primary">{u.name ?? <span className="italic font-normal text-text-muted">Unnamed</span>}</p>
             <p className="text-xs text-text-muted">{u.email ?? '—'}</p>
           </div>
         </div>
@@ -184,16 +184,16 @@ export default function UsersPage() {
         )}
       </div>
 
-      <SlideOver isOpen={!!selected} onClose={() => { setSelected(null); setActionError('') }} title={selected?.name ?? ''}>
+      <SlideOver isOpen={!!selected} onClose={() => { setSelected(null); setActionError('') }} title={selected?.name ?? selected?.phone ?? ''}>
         {selected && (
           <div className="p-6 space-y-5">
             <div className="flex items-center gap-3">
               <div className="w-16 h-16 rounded-full bg-info-light flex items-center justify-center">
-                <span className="font-black text-info text-xl">{initials(selected.name)}</span>
+                <span className="font-black text-info text-xl">{selected.name ? initials(selected.name) : <UserRound size={24} />}</span>
               </div>
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <p className="text-xl font-bold text-text-primary">{selected.name}</p>
+                  <p className="text-xl font-bold text-text-primary">{selected.name ?? 'Unnamed rider'}</p>
                   <StatusPill status={selected.status} />
                 </div>
                 <p className="text-sm text-text-secondary">{selected.phone}</p>

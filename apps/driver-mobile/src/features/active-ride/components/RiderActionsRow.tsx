@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Linking, Pressable, StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { triggerMaskedCall } from '../api'
 
 export type RiderActionsRowProps = {
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
   wrap: { gap: spacing.sm },
   riderInfo: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { ...typography.body, color: colors.primary, fontWeight: '700' },
+  avatarInitial: { ...typography.body, color: colors.primary, fontFamily: fonts.bold },
   riderName: { ...typography.title, color: colors.ink900, flexShrink: 1 },
   actionsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   btn: {
@@ -104,10 +104,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     backgroundColor: colors.primarySubtle,
   },
-  btnLabel: { ...typography.label, color: colors.primary, fontWeight: '700' },
+  btnLabel: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
   badge: { position: 'absolute', top: 4, right: 10, minWidth: 14, height: 14, paddingHorizontal: 3, borderRadius: 7, backgroundColor: colors.error, alignItems: 'center', justifyContent: 'center' },
-  badgeText: { fontSize: 8, fontWeight: '700', color: colors.inkInverse },
+  badgeText: { fontSize: 8, fontFamily: fonts.bold, color: colors.inkInverse },
   navigateBtn: { flex: 1.3, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: radii.lg, backgroundColor: colors.primary },
-  navigateText: { ...typography.label, color: colors.inkInverse, fontWeight: '700' },
+  navigateText: { ...typography.label, color: colors.inkInverse, fontFamily: fonts.bold },
   error: { position: 'absolute', top: -28, right: 0, ...typography.caption, color: colors.error, backgroundColor: colors.errorLight, paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.sm },
 })

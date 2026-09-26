@@ -1,11 +1,10 @@
 import { memo, useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Marker } from 'react-native-maps'
-import Svg, { Path, Ellipse, Circle } from 'react-native-svg'
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
-import { colors } from '@ocar/mobile-shared'
+import { PinGlyph, type PinVariant } from './PinGlyph'
 
-export type PinVariant = 'pickup' | 'drop' | 'stop'
+export type { PinVariant }
 
 export type LocationPinProps = {
   position: [number, number]
@@ -33,8 +32,6 @@ function PulsingHalo() {
 }
 
 function LocationPin({ position, variant }: LocationPinProps) {
-  const fill = variant === 'pickup' ? colors.success : variant === 'drop' ? colors.error : colors.warning
-
   return (
     <Marker
       coordinate={{ latitude: position[0], longitude: position[1] }}
@@ -49,16 +46,7 @@ function LocationPin({ position, variant }: LocationPinProps) {
     >
       <View style={styles.wrap}>
         {variant === 'pickup' ? <PulsingHalo /> : null}
-        <Svg width={28} height={38} viewBox="0 0 28 38">
-          <Ellipse cx={14} cy={36.5} rx={5} ry={1.5} fill="rgba(0,0,0,0.18)" />
-          <Path
-            d="M14 1C6.82 1 1 6.82 1 14C1 21.2 7.4 28.6 14 37C20.6 28.6 27 21.2 27 14C27 6.82 21.18 1 14 1Z"
-            fill={fill}
-            stroke="#ffffff"
-            strokeWidth={2}
-          />
-          <Circle cx={14} cy={13.5} r={4.5} fill="#ffffff" opacity={0.9} />
-        </Svg>
+        <PinGlyph variant={variant} />
       </View>
     </Marker>
   )
@@ -66,7 +54,7 @@ function LocationPin({ position, variant }: LocationPinProps) {
 
 const styles = StyleSheet.create({
   wrap: { width: 28, height: 38, alignItems: 'center', justifyContent: 'flex-end' },
-  halo: { position: 'absolute', top: -6, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(34,197,94,0.25)' },
+  halo: { position: 'absolute', top: -6, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(14,143,163,0.25)' },
 })
 
 export default memo(LocationPin, (a, b) =>

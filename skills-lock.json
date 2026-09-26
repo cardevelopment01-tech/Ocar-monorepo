@@ -5083,6 +5083,12 @@
       "skillPath": "skills/verifying-build-provenance-with-slsa-sigstore/SKILL.md",
       "computedHash": "9faa94032edef1f920330e4c39699ccd0ae3851e47afc91d0e440ec6507afa12"
     },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/web-design-guidelines/SKILL.md",
+      "computedHash": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474"
+    },
     "write-swift": {
       "source": "emilkowalski/skills",
       "sourceType": "github",

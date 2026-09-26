@@ -13,13 +13,15 @@ const log = logger.child({ module: 'sos-service' })
 const SOS_DEDUP_WINDOW_SECONDS = 30
 const SOS_HOURLY_CAP = 5
 const SOS_HOURLY_WINDOW_SECONDS = 3600
+// From the moment a driver accepts: a driver heading to pickup, or a rider waiting for one, can need help too.
+const SOS_ELIGIBLE_STATUSES = new Set(['accepted', 'driver_arrived', 'in_progress', 'returning'])
 
 export async function triggerSos(input: TriggerSosInput) {
   const ride = await repo.getRideBasic(input.rideId)
   if (!ride) {
     throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
   }
-  if (ride.status !== 'in_progress' && ride.status !== 'driver_arrived' && ride.status !== 'returning') {
+  if (!SOS_ELIGIBLE_STATUSES.has(ride.status)) {
     throw httpError(400, 'SOS can only be triggered during an active ride', 'RIDE_NOT_ACTIVE')
   }
 

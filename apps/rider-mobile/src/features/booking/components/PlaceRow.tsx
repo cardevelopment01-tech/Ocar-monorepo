@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, spacing, typography, fonts } from '@ocar/mobile-shared'
 
 export type PlaceRowProps = {
   icon: React.ComponentProps<typeof Feather>['name']
@@ -39,9 +39,9 @@ export function PlaceRow({ icon, label, address, onPress, last }: PlaceRowProps)
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm + 4 },
   rowPressed: { opacity: 0.6 },
-  iconWrap: { width: 36, height: 36, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  iconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   textCol: { flex: 1, gap: 1 },
-  label: { ...typography.body, color: colors.ink900, fontWeight: '600' },
+  label: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   address: { ...typography.caption, color: colors.ink400 },
-  divider: { marginLeft: 36 + spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderLight, borderStyle: 'dashed' },
+  divider: { marginLeft: 40 + spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderLight, borderStyle: 'dashed' },
 })

@@ -1,6 +1,6 @@
 import { forwardRef } from 'react'
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native'
-import { colors, radii, spacing, typography } from '../theme/tokens'
+import { colors, fonts, spacing, typography } from '../theme/tokens'
 
 export type InputProps = TextInputProps & {
   label?: string
@@ -30,16 +30,17 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: typography.label.fontSize,
-    fontWeight: typography.label.fontWeight,
+    fontFamily: fonts.medium,
     color: colors.ink600,
   },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingVertical: spacing.sm,
+    borderRadius: 16,
+    paddingVertical: 14,
     paddingHorizontal: spacing.md,
     fontSize: typography.body.fontSize,
+    fontFamily: fonts.regular,
     color: colors.ink900,
     backgroundColor: colors.surface,
   },
@@ -48,6 +49,7 @@ const styles = StyleSheet.create({
   },
   error: {
     fontSize: typography.caption.fontSize,
+    fontFamily: fonts.regular,
     color: colors.error,
   },
 })

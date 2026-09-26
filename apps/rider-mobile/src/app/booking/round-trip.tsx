@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { useBookingDraftStore } from '@/features/booking/store'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { ScheduleSheet, formatPickupTime } from '@/features/booking/components/ScheduleSheet'
@@ -172,35 +172,35 @@ export default function RoundTripScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
-  backButton: { width: 40, height: 40, borderRadius: 16, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
+  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(20,23,26,0.08)', boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
   pressedScale: { transform: [{ scale: 0.97 }] },
   headerText: { flex: 1 },
-  title: { ...typography.title, color: colors.ink900, fontWeight: '700' },
+  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   subtitle: { ...typography.caption, color: colors.ink400, marginTop: 1 },
   headerIcon: { width: 40, height: 40, borderRadius: 16, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
   riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface2, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, maxWidth: 110 },
-  riderPillText: { ...typography.caption, color: colors.ink900, fontWeight: '700' },
+  riderPillText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.bold },
   scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: colors.primarySubtle, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2 },
-  scheduleChipText: { ...typography.caption, color: colors.primaryDark, fontWeight: '700' },
+  scheduleChipText: { ...typography.caption, color: colors.primaryDark, fontFamily: fonts.bold },
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.md },
   routeCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.md },
-  routeText: { ...typography.body, color: colors.ink900, fontWeight: '600', flex: 1 },
+  routeText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold, flex: 1 },
   routeMeta: { ...typography.caption, color: colors.ink600 },
   hourCard: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.md, gap: spacing.sm },
-  hourLabel: { ...typography.label, color: colors.ink600, fontWeight: '600' },
+  hourLabel: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
   hourRow: { flexDirection: 'row', gap: spacing.xs },
   hourChip: { flex: 1, paddingVertical: spacing.sm + 2, borderRadius: 12, backgroundColor: colors.primarySubtle, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center' },
   hourChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  hourChipText: { ...typography.label, color: colors.primary, fontWeight: '700' },
+  hourChipText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
   hourChipTextActive: { color: colors.inkInverse },
   hourHint: { ...typography.caption, color: colors.ink400 },
   includedCard: { backgroundColor: colors.primarySubtle, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
   includedRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
   includedDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginTop: 6 },
-  includedText: { ...typography.caption, color: colors.primaryDark, fontWeight: '500', flex: 1 },
+  includedText: { ...typography.caption, color: colors.primaryDark, fontFamily: fonts.medium, flex: 1 },
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight, backgroundColor: colors.bg },
-  proceedBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 52 },
+  proceedBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 54, boxShadow: '0 10px 24px rgba(14,143,163,0.28)' },
   disabled: { opacity: 0.5 },
-  proceedText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  proceedText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
 })

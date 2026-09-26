@@ -1,9 +1,9 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 
 export default function ModeSelectionScreen() {
   const router = useRouter()
@@ -21,7 +21,7 @@ export default function ModeSelectionScreen() {
       <View style={styles.content}>
         <Animated.View entering={FadeInDown.duration(360).delay(0)}>
           <Pressable onPress={() => router.push('/go-online/standard')} style={styles.card}>
-            <View style={[styles.iconTile, { backgroundColor: '#0F172A' }]}>
+            <View style={[styles.iconTile, { backgroundColor: '#14171A' }]}>
               <Feather name="truck" size={24} color={colors.inkInverse} />
             </View>
             <View style={styles.cardBodyWrap}>
@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
   backBtn: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  title: { ...typography.headline, color: colors.ink900, fontWeight: '800', flex: 1 },
+  title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
   content: { paddingHorizontal: spacing.lg, gap: spacing.sm },
   card: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radii['2xl'], padding: spacing.lg, borderWidth: 1, borderColor: colors.border, position: 'relative' },
   iconTile: { width: 56, height: 56, borderRadius: radii.xl, alignItems: 'center', justifyContent: 'center' },
@@ -85,14 +85,14 @@ const styles = StyleSheet.create({
   // room (space-between only has the row's leftover width to distribute,
   // and a long title + badge leaves almost none). A status label doesn't
   // need to fight the heading for the same line.
-  cardTitle: { ...typography.title, color: colors.ink900, fontWeight: '800', marginBottom: 4 },
+  cardTitle: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, marginBottom: 4 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: spacing.xs },
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
-  statusText: { fontSize: 9, fontWeight: '700', color: colors.ink400, textTransform: 'uppercase', letterSpacing: 0.5 },
+  statusText: { fontSize: 9, fontFamily: fonts.bold, color: colors.ink400, textTransform: 'uppercase', letterSpacing: 0.5 },
   cardBody: { ...typography.body, color: colors.ink600, marginBottom: spacing.sm },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   tag: { paddingHorizontal: spacing.sm + 2, paddingVertical: 4, borderRadius: radii.full, backgroundColor: colors.surface3 },
-  tagText: { fontSize: 11, fontWeight: '700', color: colors.ink600 },
+  tagText: { fontSize: 11, fontFamily: fonts.bold, color: colors.ink600 },
   tagGreen: { backgroundColor: colors.successLight },
   tagTextGreen: { color: colors.success },
   chevron: { position: 'absolute', right: spacing.lg, top: '50%', marginTop: -9 },

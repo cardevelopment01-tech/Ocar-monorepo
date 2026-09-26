@@ -12,11 +12,13 @@ interface DocSlotProps {
 }
 
 export default function DocSlot({ slot, state, inputRef, onTrigger, onFileChange, onPreview }: DocSlotProps) {
-  const { state: uploadState, url, error, docStatus, rejectionNote } = state
+  const { state: uploadState, url, error, docStatus, rejectionNote, rejectionCount } = state
   const isDone      = uploadState === 'done'
   const isUploading = uploadState === 'uploading'
   const isError     = uploadState === 'error'
   const isRejected  = isDone && docStatus === 'rejected'
+  const isPending   = isDone && docStatus === 'pending'
+  const doneLabel   = isRejected ? 'Rejected' : isPending ? 'Pending review' : 'Verified'
 
   return (
     <div>
@@ -43,10 +45,15 @@ export default function DocSlot({ slot, state, inputRef, onTrigger, onFileChange
             ? <AlertCircle  size={20} className="text-amber-500" />
             : <CheckCircle2 size={20} className="text-green-500" />}
           <p className={`text-[10px] font-bold ${isRejected ? 'text-amber-500' : 'text-green-600'}`}>
-            {isRejected ? 'Rejected' : 'Uploaded'}
+            {doneLabel}
           </p>
           {isRejected && rejectionNote && (
             <p className="text-[9px] text-amber-600 text-center px-2 leading-snug">{rejectionNote}</p>
+          )}
+          {isRejected && rejectionCount >= 2 && (
+            <p className="text-[9px] font-semibold text-amber-700 text-center px-2 leading-snug">
+              Rejected {rejectionCount} times
+            </p>
           )}
           {/* Action row: in natural flow, no absolute crowding */}
           <div className="flex gap-1 mt-1">

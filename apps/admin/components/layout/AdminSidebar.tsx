@@ -101,16 +101,16 @@ export default function AdminSidebar({ role, adminName, adminInitials, sosActive
   return (
     <aside
       className="fixed top-0 left-0 h-full w-16 md:w-[240px] bg-sidebar/80 backdrop-blur-xl flex flex-col z-40"
-      style={{ boxShadow: '1px 0 0 #E8EAFF' }}
+      style={{ boxShadow: '1px 0 0 #DCEBEE' }}
     >
       {/* Logo */}
       <div className="px-3 md:px-5 pt-5 pb-4">
         <div className="flex items-center justify-center md:justify-start gap-2.5 mb-1">
-          <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center flex-shrink-0 md:hidden">
             <span className="text-white font-black text-sm tracking-tight">O</span>
           </div>
           <div className="hidden md:block">
-            <span className="text-text-primary font-black text-lg leading-none">car</span>
+            <span className="text-text-primary font-black text-xl leading-none tracking-tight">Ocar</span>
             <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary-light text-primary">
               Admin
             </span>

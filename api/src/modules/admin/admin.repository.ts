@@ -18,6 +18,8 @@ import type { PoolClient, QueryResult, QueryResultRow } from "pg";
 import { recordAuditLog } from "@/lib/audit-log";
 import type {
   AdminDriverListRow,
+  AdminDriverListSummary,
+  AdminDriverListFacets,
   AdminDriverDetail,
   DriverStatus,
   AdminVehicleCategory,
@@ -126,53 +128,125 @@ export async function setAdminStatus(params: {
   return after;
 }
 
-export async function listDrivers(filters: {
+export interface DriverListFilters {
   status?: string;
   search?: string;
-  limit: number;
-  offset: number;
-}): Promise<{ rows: AdminDriverListRow[]; total: number }> {
+  cityIds?: number[];
+  includeNoCity?: boolean;
+  categoryIds?: number[];
+}
+
+// A driver's current vehicle = the primary, non-blacklisted one (same predicate as
+// driver_vehicles_one_primary_idx), so a driver never appears twice.
+const DRIVER_LIST_FROM = `FROM drivers d
+     LEFT JOIN driver_vehicles v ON v.driver_id = d.id AND v.is_primary = true AND v.status != 'blacklisted'
+     LEFT JOIN vehicle_categories vc ON vc.id = v.category_id
+     LEFT JOIN cities c ON c.id = d.city_id`;
+
+// omit: a facet must ignore its own dimension so the other options keep their counts.
+function buildDriverWhere(
+  f: DriverListFilters,
+  omit?: "city" | "vehicle" | "status",
+): { where: string; params: unknown[] } {
   const conditions: string[] = [];
   const params: unknown[] = [];
   let p = 1;
 
-  if (filters.status) {
+  if (omit !== "status" && f.status) {
     conditions.push(`d.status = $${p++}`);
-    params.push(filters.status);
+    params.push(f.status);
   }
-
-  if (filters.search) {
+  if (f.search) {
     conditions.push(
       `(d.phone ILIKE $${p} OR d.full_name ILIKE $${p} OR d.code ILIKE $${p})`,
     );
-    params.push(`%${filters.search}%`);
+    params.push(`%${f.search}%`);
     p++;
   }
+  if (omit !== "city" && (f.cityIds?.length || f.includeNoCity)) {
+    const parts: string[] = [];
+    if (f.cityIds?.length) {
+      parts.push(`d.city_id = ANY($${p++}::bigint[])`);
+      params.push(f.cityIds);
+    }
+    if (f.includeNoCity) parts.push("d.city_id IS NULL");
+    conditions.push(`(${parts.join(" OR ")})`);
+  }
+  if (omit !== "vehicle" && f.categoryIds?.length) {
+    conditions.push(`v.category_id = ANY($${p++}::bigint[])`);
+    params.push(f.categoryIds);
+  }
 
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-
-  const countRes = await pool.query(
-    `SELECT COUNT(*) FROM drivers d ${where}`,
+  return {
+    where: conditions.length ? `WHERE ${conditions.join(" AND ")}` : "",
     params,
-  );
-  const total = parseInt(countRes.rows[0].count as string, 10);
+  };
+}
 
-  const dataRes = await pool.query(
-    `SELECT
-       d.id, d.code, d.phone, d.full_name, d.email,
-       d.status, d.onboarding_step, d.created_at,
-       v.number_plate, v.vehicle_name,
-       vc.display_name AS vehicle_category,
-       (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id) AS docs_submitted,
-       (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'approved') AS docs_approved
-     FROM drivers d
-     LEFT JOIN driver_vehicles v ON v.driver_id = d.id
-     LEFT JOIN vehicle_categories vc ON vc.id = v.category_id
-     ${where}
-     ORDER BY d.created_at DESC
-     LIMIT $${p} OFFSET $${p + 1}`,
-    [...params, filters.limit, filters.offset],
-  );
+export async function listDrivers(
+  filters: DriverListFilters & { limit: number; offset: number },
+): Promise<{
+  rows: AdminDriverListRow[];
+  total: number;
+  summary: AdminDriverListSummary;
+  facets: AdminDriverListFacets;
+}> {
+  const main = buildDriverWhere(filters);
+  // cards break the view down by status, so they ignore the status filter (else other statuses read 0)
+  const cards = buildDriverWhere(filters, "status");
+  const cityFacet = buildDriverWhere(filters, "city");
+  const vehicleFacet = buildDriverWhere(filters, "vehicle");
+  const n = main.params.length;
+
+  const [dataRes, totalRes, summaryRes, cityRes, catRes] = await Promise.all([
+    pool.query(
+      `SELECT
+         d.id, d.code, d.phone, d.full_name, d.email,
+         d.status, d.onboarding_step, d.created_at,
+         d.city_id, c.name AS city_name,
+         v.number_plate, v.vehicle_name,
+         vc.display_name AS vehicle_category,
+         (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id) AS docs_submitted,
+         (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'approved') AS docs_approved
+       ${DRIVER_LIST_FROM}
+       ${main.where}
+       ORDER BY d.created_at DESC
+       LIMIT $${n + 1} OFFSET $${n + 2}`,
+      [...main.params, filters.limit, filters.offset],
+    ),
+    pool.query(`SELECT COUNT(*) AS total ${DRIVER_LIST_FROM} ${main.where}`, main.params),
+    pool.query(
+      `SELECT COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE d.status = 'active') AS active,
+              COUNT(*) FILTER (WHERE d.status = 'pending_approval') AS pending_approval,
+              COUNT(*) FILTER (WHERE d.status = 'suspended') AS suspended
+       ${DRIVER_LIST_FROM} ${cards.where}`,
+      cards.params,
+    ),
+    pool.query(
+      `SELECT d.city_id, COUNT(*) AS n ${DRIVER_LIST_FROM} ${cityFacet.where} GROUP BY d.city_id`,
+      cityFacet.params,
+    ),
+    pool.query(
+      `SELECT v.category_id, COUNT(*) AS n ${DRIVER_LIST_FROM} ${vehicleFacet.where} GROUP BY v.category_id`,
+      vehicleFacet.params,
+    ),
+  ]);
+
+  const s = summaryRes.rows[0];
+  const summary: AdminDriverListSummary = {
+    total: parseInt(s.total as string, 10),
+    active: parseInt(s.active as string, 10),
+    pending_approval: parseInt(s.pending_approval as string, 10),
+    suspended: parseInt(s.suspended as string, 10),
+  };
+
+  const facets: AdminDriverListFacets = { cities: {}, categories: {} };
+  for (const r of cityRes.rows)
+    facets.cities[r.city_id === null ? "none" : String(r.city_id)] = parseInt(r.n as string, 10);
+  for (const r of catRes.rows)
+    if (r.category_id !== null)
+      facets.categories[String(r.category_id)] = parseInt(r.n as string, 10);
 
   const rows: AdminDriverListRow[] = dataRes.rows.map((r) => ({
     id: String(r.id),
@@ -183,6 +257,9 @@ export async function listDrivers(filters: {
     status: r.status as DriverStatus,
     onboarding_step: r.onboarding_step as string,
     created_at: r.created_at as string,
+    city: r.city_id
+      ? { id: String(r.city_id), name: r.city_name as string }
+      : null,
     vehicle: r.number_plate
       ? {
           number_plate: r.number_plate as string,
@@ -194,7 +271,7 @@ export async function listDrivers(filters: {
     docs_approved: parseInt(r.docs_approved as string, 10),
   }));
 
-  return { rows, total };
+  return { rows, total: parseInt(totalRes.rows[0].total as string, 10), summary, facets };
 }
 
 export async function getDriverById(

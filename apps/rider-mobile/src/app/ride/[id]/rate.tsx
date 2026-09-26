@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Feather } from '@expo/vector-icons'
-import { Button, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Feather, Ionicons } from '@expo/vector-icons'
+import { Button, Skeleton, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { fetchRide } from '@/features/ride-tracking/api'
 import type { RideDetailExtra } from '@/features/ride-tracking/types'
 import { fetchRatingTags, submitRating } from '@/features/safety/api'
@@ -13,6 +13,8 @@ import type { RatingTag } from '@ocar/mobile-shared'
 // a dedicated post-ride screen rather than an inline sheet, matching web's own
 // rider-side pattern (driver web uses an inline sheet on TripEnd instead -- that
 // asymmetry is intentional, ported per-platform, not copied wholesale).
+const RATING_WORDS = ['', 'Poor', 'Below average', 'Okay', 'Good', 'Excellent']
+
 export default function RateRideScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const rideId = id ?? ''
@@ -78,7 +80,9 @@ export default function RateRideScreen() {
   if (submitted) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <Text style={styles.celebrateEmoji}>🎉</Text>
+        <View style={styles.starBadge}>
+          <Feather name="check" size={30} color={colors.primary} />
+        </View>
         <Text style={styles.celebrateTitle}>Thanks for rating!</Text>
         <Text style={styles.celebrateBody}>Your feedback helps drivers improve</Text>
         <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.lg }} />
@@ -90,7 +94,7 @@ export default function RateRideScreen() {
     return (
       <View style={[styles.container, styles.centered]}>
         <View style={styles.starBadge}>
-          <Text style={styles.starBadgeEmoji}>⭐</Text>
+          <Ionicons name="star" size={30} color={colors.accent} />
         </View>
         <Text style={styles.celebrateTitle}>You already rated this trip</Text>
         <Text style={styles.celebrateBody}>Thanks for your feedback on this ride.</Text>
@@ -120,9 +124,19 @@ export default function RateRideScreen() {
 
       {(ride?.originAddress || ride?.destinationAddress || fare) ? (
         <View style={styles.tripCard}>
-          <View style={{ flex: 1 }}>
-            {ride?.originAddress ? <Text style={styles.tripAddress} numberOfLines={1}>{ride.originAddress}</Text> : null}
-            {ride?.destinationAddress ? <Text style={styles.tripAddress} numberOfLines={1}>→ {ride.destinationAddress}</Text> : null}
+          <View style={{ flex: 1, gap: 8 }}>
+            {ride?.originAddress ? (
+              <View style={styles.tripRow}>
+                <View style={styles.dotFrom} />
+                <Text style={styles.tripAddress} numberOfLines={1}>{ride.originAddress}</Text>
+              </View>
+            ) : null}
+            {ride?.destinationAddress ? (
+              <View style={styles.tripRow}>
+                <View style={styles.dotTo} />
+                <Text style={styles.tripAddress} numberOfLines={1}>{ride.destinationAddress}</Text>
+              </View>
+            ) : null}
           </View>
           {fare ? <Text style={styles.tripFare}>{`₹${Math.round(parseFloat(fare))}`}</Text> : null}
         </View>
@@ -131,15 +145,12 @@ export default function RateRideScreen() {
       <View style={styles.starsRow}>
         {[1, 2, 3, 4, 5].map((star) => (
           <Pressable key={star} onPress={() => setRating(star)} hitSlop={8}>
-            <Feather
-              name="star"
-              size={36}
-              color={rating >= star ? colors.warning : colors.border}
-              style={rating >= star ? styles.starFilled : undefined}
-            />
+            <Ionicons name={rating >= star ? 'star' : 'star-outline'} size={40} color={rating >= star ? colors.accent : '#C9D1D3'} />
           </Pressable>
         ))}
       </View>
+
+      <Text style={styles.ratingWord}>{rating > 0 ? RATING_WORDS[rating] : 'Tap a star to rate'}</Text>
 
       {rating > 0 && filteredTags.length > 0 ? (
         <View style={styles.tagsSection}>
@@ -178,21 +189,25 @@ const styles = StyleSheet.create({
   centered: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
   content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
   header: { alignItems: 'center', gap: 4 },
-  photo: { width: 64, height: 64, borderRadius: 32, marginBottom: spacing.sm },
+  photo: { width: 84, height: 84, borderRadius: 42, marginBottom: spacing.sm, borderWidth: 3, borderColor: colors.surface },
   photoFallback: { backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  title: { ...typography.headline, color: colors.ink900, fontWeight: '800' },
+  title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold },
   subtitle: { ...typography.body, color: colors.ink600 },
-  tripCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface2, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
-  tripAddress: { ...typography.caption, color: colors.ink400 },
-  tripFare: { ...typography.title, color: colors.ink900, fontWeight: '800' },
-  starsRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
+  tripCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
+  tripRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  tripAddress: { ...typography.caption, color: colors.ink600, flex: 1 },
+  dotFrom: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: colors.primary },
+  dotTo: { width: 9, height: 9, borderRadius: 2, backgroundColor: colors.ink900 },
+  ratingWord: { ...typography.title, color: colors.ink900, textAlign: 'center', fontFamily: fonts.bold, marginTop: -spacing.xs },
+  tripFare: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
+  starsRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm + 2 },
   starFilled: {},
   tagsSection: { gap: spacing.sm },
-  tagsLabel: { ...typography.title, color: colors.ink900, fontWeight: '700' },
+  tagsLabel: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   tagChip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   tagChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tagText: { ...typography.label, color: colors.ink600, fontWeight: '600' },
+  tagText: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
   tagTextActive: { color: colors.inkInverse },
   error: { ...typography.body, color: colors.error, textAlign: 'center' },
   footer: { gap: spacing.sm, marginTop: 'auto' },
@@ -201,6 +216,6 @@ const styles = StyleSheet.create({
   starBadge: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   starBadgeEmoji: { fontSize: 30 },
   celebrateEmoji: { fontSize: 56, marginBottom: spacing.md },
-  celebrateTitle: { ...typography.headline, color: colors.ink900, fontWeight: '800', textAlign: 'center', marginBottom: 4 },
+  celebrateTitle: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold, textAlign: 'center', marginBottom: 4 },
   celebrateBody: { ...typography.body, color: colors.ink400, textAlign: 'center' },
 })

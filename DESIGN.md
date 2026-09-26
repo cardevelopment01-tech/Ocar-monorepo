@@ -2,24 +2,24 @@
 name: Ocar
 description: Intercity cab booking for Odisha. Reliable, efficient, local.
 colors:
-  primary: "#4F46E5"
-  primary-dark: "#4338CA"
-  primary-bright: "#6366F1"
-  primary-light: "#C7D2FE"
-  primary-subtle: "#EEF2FF"
-  accent-violet: "#7C3AED"
+  primary: "#0E8FA3"
+  primary-dark: "#0A6F80"
+  primary-bright: "#14ABBD"
+  primary-light: "#BFE6EC"
+  primary-subtle: "#E6F3F5"
+  accent-bright: "#14ABBD"
   accent-violet-light: "#EDE9FE"
   accent-orange: "#F97316"
   accent-orange-light: "#FFF7ED"
-  bg: "#F5F7FF"
+  bg: "#F6FBFB"
   surface: "#FFFFFF"
-  surface-2: "#F5F7FF"
-  surface-3: "#EEF0FF"
+  surface-2: "#F6FBFB"
+  surface-3: "#E6F0F2"
   ink-900: "#0F172A"
   ink-600: "#475569"
   ink-400: "#64748B"
   ink-inverse: "#FFFFFF"
-  border: "#E8EEFF"
+  border: "#DCEBEE"
   border-light: "#F1F5FF"
   success: "#10B981"
   success-light: "#D1FAE5"
@@ -152,49 +152,49 @@ components:
 
 **Creative North Star: "The Reliable Route"**
 
-Ocar's visual system is built around one principle: reliability made visible. Every radius, shadow, and color decision signals that this product was made for the people of Odisha, not adapted from a global template and dropped in. The aesthetic is confident without being loud. Indigo is used as an accent, not a wash. Surfaces are clean and purposeful; there is no decoration that does not reduce cognitive load.
+Ocar's visual system is built around one principle: reliability made visible. Every radius, shadow, and color decision signals that this product was made for the people of Odisha, not adapted from a global template and dropped in. The aesthetic is confident without being loud. Teal is used as an accent, not a wash. Surfaces are clean and purposeful; there is no decoration that does not reduce cognitive load.
 
-This system avoids two failure modes. First, the generic SaaS-indigo template: the gradient-text hero, the white card grid with eyebrow labels, the full-saturation primary color plastered across most of every screen. Ocar's indigo stays restrained enough that its use is meaningful. Second, the legacy Indian cab app aesthetic: cluttered, low-contrast, banner-heavy, with the primary action buried several scrolls down. On Ocar, the primary action on any screen is unmissable.
+This system avoids two failure modes. First, the generic SaaS-blue template: the gradient-text hero, the white card grid with eyebrow labels, the full-saturation primary color plastered across most of every screen. Ocar's teal stays restrained enough that its use is meaningful. Second, the legacy Indian cab app aesthetic: cluttered, low-contrast, banner-heavy, with the primary action buried several scrolls down. On Ocar, the primary action on any screen is unmissable.
 
 The three apps share one visual grammar but serve three different contexts. The user app is mobile, in-transit, possibly one-handed. The driver app is mobile, outdoor, in-motion. The admin portal is desktop-primary, task-dense, information-rich. Motion is purposeful across all three: 150-250 ms for state changes, never choreography for its own sake.
 
 **Key Characteristics:**
-- Indigo-tinted ambient shadows: brand color in the shadow, never neutral gray
+- Teal-tinted ambient shadows: brand color in the shadow, never neutral gray
 - Full-pill buttons for user CTAs; 2xl-rounded for driver CTAs; never mixed on the same screen
 - Space Grotesk carries Display/Headline; Plus Jakarta Sans carries Title/Body/Label/Caption — one deliberate display/body pairing, identical across all three apps
 - Orange (#F97316) is operational, never decorative. Driver and admin only.
 - `prefers-reduced-motion` respected everywhere, including the brand splash screen
 
-## 2. Colors: The Confident Indigo Palette
+## 2. Colors: The Ocar Teal Palette
 
-A restrained palette anchored by one saturated indigo. The accent only appears where it earns its place.
+A restrained palette anchored by one saturated teal. The accent only appears where it earns its place.
 
 ### Primary
-- **Confident Indigo** (`#4F46E5`): The brand anchor. Used on primary CTAs, active nav items, the brand mark gradient, active states, and focus rings. Never used decoratively or on more than 25% of any screen surface.
-- **Indigo Deep** (`#4338CA`): Hover/pressed state for primary elements. Provides visible depth without adding a new color to the system.
-- **Indigo Bright** (`#6366F1`): Gradient endpoint and highlight. Used as the lighter stop in the brand logomark arc gradient.
-- **Indigo Light** (`#C7D2FE`): Tinted fills for info chips, selected state backgrounds, and focus overlays at low opacity.
-- **Indigo Subtle** (`#EEF2FF`): The faintest indigo tint. Used for selected list items, hover backgrounds on nav items, and light-mode chip fills.
+- **Ocar Teal** (`#0E8FA3`): The brand anchor. Used on primary CTAs, active nav items, the brand mark gradient, active states, and focus rings. Never used decoratively or on more than 25% of any screen surface.
+- **Teal Deep** (`#0A6F80`): Hover/pressed state for primary elements. Provides visible depth without adding a new color to the system.
+- **Teal Bright** (`#14ABBD`): Gradient endpoint and highlight. Used as the lighter stop in the brand logomark arc gradient.
+- **Teal Light** (`#BFE6EC`): Tinted fills for info chips, selected state backgrounds, and focus overlays at low opacity.
+- **Teal Subtle** (`#E6F3F5`): The faintest teal tint. Used for selected list items, hover backgrounds on nav items, and light-mode chip fills.
 
 ### Secondary
-- **Arc Violet** (`#7C3AED`): The gradient partner to Confident Indigo. Used exclusively in the brand logomark arc (gradient endpoint) and the splash screen glow. Not used as a standalone UI color.
-- **Violet Light** (`#EDE9FE`): Pale violet tint for secondary info surfaces when a second accent color is needed (rare; prefer indigo-subtle first).
+- **Arc Bright** (`#14ABBD`): The gradient partner to Ocar Teal. Used exclusively in the brand logomark arc (gradient endpoint) and the splash screen glow. Not used as a standalone UI color.
+- **Violet Light** (`#EDE9FE`): Pale violet tint for secondary info surfaces when a second accent color is needed (rare; prefer teal-subtle first).
 
 ### Tertiary: Operational Orange
 - **Go-Online Orange** (`#F97316`): Driver and admin apps only. Signals the driver's active/online state, go-online CTA, and operational alerts in the admin portal. It does not appear in the user-facing booking or tracking flow; the absence is intentional. Orange means "operational layer."
 - **Orange Light** (`#FFF7ED`): Pale fill for orange-adjacent badges and highlights in driver/admin contexts.
 
 ### Neutral
-- **Background** (`#F5F7FF`): The indigo-tinted near-white used as the page background in the user and driver apps. The tint (approximately 0.008 chroma toward indigo) prevents the surface from reading as a generic default white.
+- **Background** (`#F6FBFB`): The teal-tinted near-white used as the page background in the user and driver apps. The tint (approximately 0.008 chroma toward teal) prevents the surface from reading as a generic default white.
 - **Surface** (`#FFFFFF`): Cards, sheets, modals, and any elevated surface that sits above the background.
-- **Surface 2** (`#F5F7FF`): Input backgrounds, secondary cards, and list items at rest. Same value as Background, which creates flush groupings without a visible card edge. **Divergence:** driver's `tailwind.config.ts` defines `surface-2: '#F0F4FD'`, close but not identical, an unintentional drift. User app matches the documented value exactly.
-- **Surface 3** (`#EEF0FF`): Stronger indigo-tinted fill for selected states, active tabs, and highlighted rows.
+- **Surface 2** (`#F6FBFB`): Input backgrounds, secondary cards, and list items at rest. Same value as Background, which creates flush groupings without a visible card edge. **Divergence:** driver's `tailwind.config.ts` defines `surface-2: '#F0F4FD'`, close but not identical, an unintentional drift. User app matches the documented value exactly.
+- **Surface 3** (`#E6F0F2`): Stronger teal-tinted fill for selected states, active tabs, and highlighted rows.
 - **Ink 900** (`#0F172A`): Primary text: headlines, body, labels. Near-black with a cool undertone.
 - **Ink 600** (`#475569`): Secondary text: supporting labels, metadata, form hints. Passes 4.5:1 on white.
 - **Ink 400** (`#64748B`): Muted text: placeholders, disabled labels, nav items at rest. Passes 4.5:1 on white/surface (the prior `#94A3B8` value only reached ~2.6:1 and failed WCAG AA — corrected). Still verify contrast against any tinted background.
-- **Border** (`#E8EEFF`): Default border with an indigo tint, separating surfaces without adding visual weight. **Divergence:** admin and driver's `tailwind.config.ts` both define `border: '#E2E8F0'` (plain slate, no indigo tint) instead, an unintentional drift, not a documented per-app choice. New work in those apps should move to `#E8EEFF`.
+- **Border** (`#DCEBEE`): Default border with an teal tint, separating surfaces without adding visual weight. **Divergence:** admin and driver's `tailwind.config.ts` both define `border: '#E2E8F0'` (plain slate, no teal tint) instead, an unintentional drift, not a documented per-app choice. New work in those apps should move to `#DCEBEE`.
 - **Border Light** (`#F1F5FF`): The lightest divider, for internal row separators inside cards.
-- **Splash Background** (`#0F0D1A`): The near-black used only on the brand splash screen. A deep indigo-dark that lets the gradient logomark glow.
+- **Splash Background** (`#0F0D1A`): The near-black used only on the brand splash screen. A near-black with a faint violet cast that lets the teal logomark glow.
 
 ### Semantic
 - **Success** (`#10B981`) on **Success Light** (`#D1FAE5`): Completed rides, verified status, positive earnings.
@@ -203,9 +203,9 @@ A restrained palette anchored by one saturated indigo. The accent only appears w
 - **Info** (`#0EA5E9`) on **Info Light** (`#E0F2FE`): Neutral informational states, trip details.
 
 ### Named Rules
-**The Indigo Shadow Rule.** Every shadow in the Ocar system is tinted with `rgba(79,70,229,X)`. Never neutral gray. The brand color in the shadow unifies the three apps even when the surface itself is neutral white. If you reach for `rgba(0,0,0,X)` on a shadow, replace it.
+**The Teal Shadow Rule.** Every shadow in the Ocar system is tinted with `rgba(14,143,163,X)`. Never neutral gray. The brand color in the shadow unifies the three apps even when the surface itself is neutral white. If you reach for `rgba(0,0,0,X)` on a shadow, replace it.
 
-**The Route Rule.** Primary (`#4F46E5`) appears on 25% or less of any screen. Its saturation is the punctuation, not the sentence. A screen where indigo is everywhere is a screen where nothing is primary.
+**The Route Rule.** Primary (`#0E8FA3`) appears on 25% or less of any screen. Its saturation is the punctuation, not the sentence. A screen where teal is everywhere is a screen where nothing is primary.
 
 **The Orange Boundary Rule.** Orange (`#F97316`) is operational. It means: driver going online, admin alert, active session. It does not mean "accent on the user booking flow." One misplaced orange on the user app breaks the system's trust language.
 
@@ -233,22 +233,22 @@ A restrained palette anchored by one saturated indigo. The accent only appears w
 
 ## 4. Elevation
 
-Ocar uses a tonal ambient shadow system: every shadow is an indigo-tinted ambient glow, never a sharp directional drop shadow. Elevation signals context and focus, not simulated 3D depth. At rest, most surfaces carry only the card shadow. Sheets and modals carry stronger shadows that mark them as temporarily elevated surfaces the user must interact with.
+Ocar uses a tonal ambient shadow system: every shadow is an teal-tinted ambient glow, never a sharp directional drop shadow. Elevation signals context and focus, not simulated 3D depth. At rest, most surfaces carry only the card shadow. Sheets and modals carry stronger shadows that mark them as temporarily elevated surfaces the user must interact with.
 
-The splash screen is the single exception: it sits on the darkest possible surface (`#0F0D1A`) with an ambient radial indigo glow, a special case that sits outside the three-app system.
+The splash screen is the single exception: it sits on the darkest possible surface (`#0F0D1A`) with an ambient radial teal glow, a special case that sits outside the three-app system.
 
 ### Shadow Vocabulary
-- **Card** (`box-shadow: 0 2px 16px rgba(79,70,229,0.07)`): Default card on the user app. Barely perceptible at rest; enough to separate the card from the background on the tinted near-white surface.
-- **Card Admin** (`box-shadow: 0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(79,70,229,0.06)`): Two-layer shadow for the admin portal's denser tables and panels. The first layer (slate-tinted) provides structural separation; the second (indigo) preserves brand character.
-- **Button Primary** (`box-shadow: 0 4px 20px rgba(79,70,229,0.40)`): Applied to the indigo CTA in the user app. The shadow is the visual affordance that the button is the primary action. It lifts the button off the surface without the button moving.
+- **Card** (`box-shadow: 0 2px 16px rgba(14,143,163,0.07)`): Default card on the user app. Barely perceptible at rest; enough to separate the card from the background on the tinted near-white surface.
+- **Card Admin** (`box-shadow: 0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(14,143,163,0.06)`): Two-layer shadow for the admin portal's denser tables and panels. The first layer (slate-tinted) provides structural separation; the second (teal) preserves brand character.
+- **Button Primary** (`box-shadow: 0 4px 20px rgba(14,143,163,0.40)`): Applied to the teal CTA in the user app. The shadow is the visual affordance that the button is the primary action. It lifts the button off the surface without the button moving.
 - **Button Go-Online** (`box-shadow: 0 4px 14px rgba(249,115,22,0.35)`): Orange ambient shadow for the driver go-online CTA. Matches the button's accent color.
-- **Sheet** (`box-shadow: 0 -6px 32px rgba(79,70,229,0.10)`): Applied to bottom sheets in user and driver apps. Directional (upward) to separate the sheet from the scrollable content behind it.
-- **Float** (`box-shadow: 0 4px 20px rgba(79,70,229,0.12)`): For floating action chips, the location search bar when active, and the trip-type selector.
-- **Glow** (`box-shadow: 0 6px 32px rgba(79,70,229,0.35)`): Used on focus rings and hover states of primary elements in the admin portal. Stronger presence signal for desktop contexts.
-- **Splash Glow** (radial-gradient ellipse, `rgba(79,70,229,0.22)`, CSS not box-shadow): The ambient indigo radial gradient behind the logomark on the splash screen. Not a shadow in the CSS sense; carries the same brand-color-as-depth principle.
+- **Sheet** (`box-shadow: 0 -6px 32px rgba(14,143,163,0.10)`): Applied to bottom sheets in user and driver apps. Directional (upward) to separate the sheet from the scrollable content behind it.
+- **Float** (`box-shadow: 0 4px 20px rgba(14,143,163,0.12)`): For floating action chips, the location search bar when active, and the trip-type selector.
+- **Glow** (`box-shadow: 0 6px 32px rgba(14,143,163,0.35)`): Used on focus rings and hover states of primary elements in the admin portal. Stronger presence signal for desktop contexts.
+- **Splash Glow** (radial-gradient ellipse, `rgba(14,143,163,0.22)`, CSS not box-shadow): The ambient teal radial gradient behind the logomark on the splash screen. Not a shadow in the CSS sense; carries the same brand-color-as-depth principle.
 
 ### Named Rules
-**The Indigo Shadow Rule** (carries forward from Colors): every shadow uses `rgba(79,70,229,X)` as the color component. Neutral `rgba(0,0,0,X)` shadows are not part of this system.
+**The Teal Shadow Rule** (carries forward from Colors): every shadow uses `rgba(14,143,163,X)` as the color component. Neutral `rgba(0,0,0,X)` shadows are not part of this system.
 
 **The Flat-by-Default Rule.** Interactive elements are flat at rest. The shadow appears on the primary CTA to mark it as primary, not on every card or every button. Shadow is a priority signal, not a surface treatment.
 
@@ -258,7 +258,7 @@ Reversal from an earlier version of this system, which banned blur/glass surface
 
 **Where glass belongs:** floating chrome that sits above scrolling content and needs to feel like a physical pane — sheet handles/headers, sticky nav/tab bars, the onboarding progress header, toasts, and any modal that isn't full-bleed. It marks "this is a temporary layer above your content," which is exactly the depth cue full-opacity white cannot give.
 
-**Where it doesn't:** body content, form fields, list rows, cards holding text a user reads at length. A page of glass cards has nothing to be "above," and it fights the tonal shadow vocabulary in section 4. Base surfaces stay solid white with the Indigo/Teal Shadow Rule; glass is reserved for the floating layer above them.
+**Where it doesn't:** body content, form fields, list rows, cards holding text a user reads at length. A page of glass cards has nothing to be "above," and it fights the tonal shadow vocabulary in section 4. Base surfaces stay solid white with the Teal/Teal Shadow Rule; glass is reserved for the floating layer above them.
 
 ### Vocabulary
 - **Light material** (`rgba(255,255,255,0.65)` + blur 20, saturate 180%): default glass for headers, sheet chrome, floating pills over a light background.
@@ -285,24 +285,24 @@ Ocar's component vocabulary is conservative. The same button shape appears consi
 
 - **Shape (user):** `border-radius: 9999px` (pill). Full-width on booking CTAs.
 - **Shape (driver):** `border-radius: 24px`. Full-width on CTA rows.
-- **Primary (user):** Indigo-to-violet gradient (`linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)`), white text, `font-weight: 600`, Button Primary shadow. Hover: shadow intensifies. Active: `scale(0.98)`, shadow reduces.
+- **Primary (user):** Teal-to-bright-teal gradient (`linear-gradient(135deg, #0E8FA3 0%, #14ABBD 100%)`), white text, `font-weight: 600`, Button Primary shadow. Hover: shadow intensifies. Active: `scale(0.98)`, shadow reduces.
 - **Primary (driver):** Same gradient. `border-radius: 24px`. Same shadow rule.
 - **Go-Online:** Orange gradient (`linear-gradient(135deg, #FB923C 0%, #F97316 100%)`), white text, `font-weight: 700`, Button Go-Online shadow. Driver app only.
-- **Secondary:** White surface, Ink 900 text, Border color ring (`border: 1px solid #E8EEFF`), no shadow. Used for back/cancel/skip actions.
+- **Secondary:** White surface, Ink 900 text, Border color ring (`border: 1px solid #DCEBEE`), no shadow. Used for back/cancel/skip actions.
 - **Danger:** Error color (`#EF4444`), white text, `border-radius: 24px`. Admin and safety flows only.
 - **Disabled:** `opacity: 0.50`, `cursor: not-allowed`. All variants.
 
 ### Cards
 
 - **Shape:** `border-radius: 24px` (2xl). White surface (`#FFFFFF`).
-- **Shadow:** Card shadow (`0 2px 16px rgba(79,70,229,0.07)`) on the user app. Card Admin shadow on the admin portal.
+- **Shadow:** Card shadow (`0 2px 16px rgba(14,143,163,0.07)`) on the user app. Card Admin shadow on the admin portal.
 - **Padding:** `16px` internal padding standard. Content-dense admin rows use `12px 16px`.
 - **Anti-pattern:** Nested cards are never used. A card inside a card means the outer structure is wrong.
 
 ### Inputs
 
-- **Shape:** `border-radius: 20px` (xl). Background `#F5F7FF` (Surface 2). Border `1px solid #E8EEFF`.
-- **Focus:** `border-color: #4F46E5`, `box-shadow: 0 0 0 3px rgba(79,70,229,0.10)`. The focus ring uses the brand color at low opacity; there is no separate "focus blue."
+- **Shape:** `border-radius: 20px` (xl). Background `#F6FBFB` (Surface 2). Border `1px solid #DCEBEE`.
+- **Focus:** `border-color: #0E8FA3`, `box-shadow: 0 0 0 3px rgba(14,143,163,0.10)`. The focus ring uses the brand color at low opacity; there is no separate "focus blue."
 - **Placeholder:** Ink 400 (`#94A3B8`). Passes 3:1 against Surface 2; verify if background changes.
 - **Error state:** `border-color: #EF4444`, error message in Ink 600 below the input. Never red text alone as the only indicator.
 
@@ -313,34 +313,34 @@ Ocar's component vocabulary is conservative. The same button shape appears consi
 - **Warning:** `#FEF3C7` bg, `#F59E0B` text.
 - **Error/Danger:** `#FEE2E2` bg, `#EF4444` text.
 - **Info:** `#E0F2FE` bg, `#0EA5E9` text.
-- **Muted:** `#F5F7FF` bg, `#94A3B8` text. For inactive/unknown states.
+- **Muted:** `#F6FBFB` bg, `#94A3B8` text. For inactive/unknown states.
 - **Selected Chip (filter/tab):** Primary bg, white text. Unselected: Surface 2 bg, Ink 600 text. Never use a border to mark selection; use background fill.
 
 ### Bottom Sheets (User and Driver)
 
 - **Shape:** `border-radius: 32px 32px 0 0` (3xl, top corners only). White surface.
-- **Shadow:** Sheet shadow (`0 -6px 32px rgba(79,70,229,0.10)`), directional upward.
-- **Handle:** 40x4px pill, `rgba(79,70,229,0.15)` color, `border-radius: 9999px`, centered at `margin: 12px auto 16px`.
-- **Drag behavior:** The handle is the visual affordance for dragging. Its color tints with the brand indigo at very low opacity rather than being neutral gray.
+- **Shadow:** Sheet shadow (`0 -6px 32px rgba(14,143,163,0.10)`), directional upward.
+- **Handle:** 40x4px pill, `rgba(14,143,163,0.15)` color, `border-radius: 9999px`, centered at `margin: 12px auto 16px`.
+- **Drag behavior:** The handle is the visual affordance for dragging. Its color tints with the brand teal at very low opacity rather than being neutral gray.
 
 ### Admin Navigation
 
 - **Shape:** `border-radius: 12px` (md). Full-bleed within the sidebar column.
 - **At rest:** Surface background (transparent), Ink 400 text, icon same color.
-- **Hover:** Surface 2 background (`#F5F7FF`), Ink 600 text.
-- **Active:** Primary background (`#4F46E5`), white text, white icon.
+- **Hover:** Surface 2 background (`#F6FBFB`), Ink 600 text.
+- **Active:** Primary background (`#0E8FA3`), white text, white icon.
 - **Typography:** Label size (13px, 500 weight). No icon-only nav items; always paired with a text label.
 
 ### Data Tables (Admin)
 
 - **Row height:** 48px minimum. Rows are never short enough to fail touch targets (44px minimum).
-- **Header:** Label size (13px, 600), Ink 600 color, `background: #F5F7FF`, `border-bottom: 1px solid #E8EEFF`.
-- **Row:** Body size (14px, 400), Ink 900. Hover: `background: #F5F7FF` (no elevation change).
+- **Header:** Label size (13px, 600), Ink 600 color, `background: #F6FBFB`, `border-bottom: 1px solid #DCEBEE`.
+- **Row:** Body size (14px, 400), Ink 900. Hover: `background: #F6FBFB` (no elevation change).
 - **Pagination:** Label size, Ink 600. Active page: Primary color, no background (text-primary is enough).
 
 ### Brand Logomark (OcarLogoMark)
 
-- **Ring:** 270-degree arc path `M 78.284 78.284 A 40 40 0 1 0 21.716 78.284`, `stroke-width: 7.5`, `stroke-linecap: round`. Gradient: `#4F46E5` to `#7C3AED`.
+- **Ring:** 270-degree arc path `M 78.284 78.284 A 40 40 0 1 0 21.716 78.284`, `stroke-width: 7.5`, `stroke-linecap: round`. Gradient: `#0E8FA3` to `#14ABBD`.
 - **Dot:** `cx=78.284 cy=78.284 r=8`. Same gradient. Sits at the open end of the arc, the "speed ring" visual.
 - **Wordmark:** "ocar" lowercase, Space Grotesk 700, `letter-spacing: -0.03em`, `font-size: 22px`. Color: Ink 900 on light surfaces, white on dark.
 - **Sizes:** sm (20px ring), md (28px), lg (40px), xl (64px).
@@ -359,7 +359,7 @@ A comet-taper arc: a 120-degree rotating arc with a gradient from opaque head to
 ### Splash Screen
 
 - **Background:** `#0F0D1A` (Splash Background). Not a card or sheet; a full-viewport fixed overlay.
-- **Ambient glow:** `radial-gradient(ellipse 55% 45% at 50% 50%, rgba(79,70,229,0.22) 0%, transparent 100%)`.
+- **Ambient glow:** `radial-gradient(ellipse 55% 45% at 50% 50%, rgba(14,143,163,0.22) 0%, transparent 100%)`.
 - **Animation sequence:** Container: `opacity:1` on mount (no fade-in prevents FOUC). Logo group: `scale(0.96, opacity:0)` to `scale(1, opacity:1)`, 0.5s `[0.16,1,0.3,1]` ease-out-expo. Arc: `pathLength` 0 to 1, 0.7s ease-in-out. Dot: `scale(0.4, opacity:0)` to `scale(1, opacity:1)`, 0.25s ease-out, 0.55s delay. Wordmark: `opacity:0` to `opacity:1`, 0.3s, 0.5s delay. Exit: `opacity:0`, 0.35s ease-in-out.
 - **Duration:** 1600ms total display (400ms when `prefers-reduced-motion`). Timer-only; no `onAnimationComplete` chaining.
 - **Gate:** `sessionStorage('ocar_splash_shown')`, once per browser session. Uses `useLayoutEffect` (fires before browser paint) to prevent FOUC.
@@ -370,10 +370,10 @@ A comet-taper arc: a 120-degree rotating arc with a gradient from opaque head to
 ### Do's
 
 **Color**
-- Use `rgba(79,70,229,X)` for all shadows: carry the brand color into the shadow layer
+- Use `rgba(14,143,163,X)` for all shadows: carry the brand color into the shadow layer
 - Reserve orange (`#F97316`) for the driver app and admin operational states only
-- Use Surface 2 (`#F5F7FF`) as the input background: it provides subtle depth without a visible border at rest
-- Use Indigo Subtle (`#EEF2FF`) for selected/active states that shouldn't carry the full primary weight
+- Use Surface 2 (`#F6FBFB`) as the input background: it provides subtle depth without a visible border at rest
+- Use Teal Subtle (`#E6F3F5`) for selected/active states that shouldn't carry the full primary weight
 
 **Typography**
 - Use Space Grotesk for Display/Headline and Plus Jakarta Sans for everything else; no new font imports from any app
@@ -383,11 +383,11 @@ A comet-taper arc: a 120-degree rotating arc with a gradient from opaque head to
 **Buttons**
 - Use pill shape (`border-radius: 9999px`) for user-app primary CTAs
 - Use rounded-2xl (`border-radius: 24px`) for driver-app primary CTAs
-- Include the Button Primary shadow (`0 4px 20px rgba(79,70,229,0.40)`) on every indigo primary button; it is the affordance signal
+- Include the Button Primary shadow (`0 4px 20px rgba(14,143,163,0.40)`) on every teal primary button; it is the affordance signal
 
 **Layout**
 - Keep the primary action on any screen unmissable. If the user has to look for the button, the layout is wrong.
-- Use Bottom Sheet shadow for all sheet components: `0 -6px 32px rgba(79,70,229,0.10)`
+- Use Bottom Sheet shadow for all sheet components: `0 -6px 32px rgba(14,143,163,0.10)`
 - Constrain user and driver apps to the 430px max-width centered layout; admin is full-width on desktop
 
 **Accessibility**
@@ -404,9 +404,9 @@ A comet-taper arc: a 120-degree rotating arc with a gradient from opaque head to
 
 **Color**
 - Do not use orange (`#F97316`) in the user booking flow: not on buttons, chips, status indicators, or highlights. It belongs to the operational layer.
-- Do not use neutral gray shadows (`rgba(0,0,0,X)`); always use the indigo-tinted variant.
-- Do not use full-saturation primary on inactive states; use Indigo Subtle or Surface 2 instead.
-- Do not flood the screen with indigo. If more than 25% of the surface carries the primary color, redesign the hierarchy.
+- Do not use neutral gray shadows (`rgba(0,0,0,X)`); always use the teal-tinted variant.
+- Do not use full-saturation primary on inactive states; use Teal Subtle or Surface 2 instead.
+- Do not flood the screen with teal. If more than 25% of the surface carries the primary color, redesign the hierarchy.
 
 **Typography**
 - Do not import Poppins or DM Sans for new work; they are legacy divergences being phased out.

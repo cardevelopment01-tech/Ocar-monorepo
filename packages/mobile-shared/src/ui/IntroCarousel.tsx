@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated'
 import { Button } from './Button'
-import { colors, spacing, typography } from '../theme/tokens'
+import { colors, spacing, typography, fonts } from '../theme/tokens'
 
 export type IntroPage = {
   image: ImageSourcePropType
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
     backgroundColor: 'rgba(15,23,42,0.45)',
   },
-  skipText: { ...typography.label, color: colors.inkInverse, fontWeight: '700' },
+  skipText: { ...typography.label, color: colors.inkInverse, fontFamily: fonts.bold },
   page: { flex: 1 },
   // 56% previously left textArea (the remaining 44%) far taller than two lines
   // of copy need, so even bottom-anchoring the text just moved the dead space

@@ -40,7 +40,9 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
     case 'document_rejected':
     case 'document_expiring':
     case 'document_expired':
-      return '/onboarding/documents'
+      // Standalone screen (not the onboarding wizard route), an active driver fixing one flagged
+      // document shouldn't be dropped into 'Step 3 of 4' wizard chrome.
+      return '/documents'
 
     case 'wallet_low_balance':
       return '/wallet'

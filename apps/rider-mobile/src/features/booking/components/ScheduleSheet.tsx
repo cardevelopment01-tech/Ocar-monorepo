@@ -1,7 +1,7 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { formatPickupTime } from '@/lib/formatPickupTime'
 
 export type ScheduleSheetProps = {
@@ -71,11 +71,11 @@ export function ScheduleSheet({ visible, onClose, onChange }: ScheduleSheetProps
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.48)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingTop: spacing.sm, paddingHorizontal: spacing.lg, gap: spacing.xs },
-  handle: { width: 36, height: 4, borderRadius: radii.full, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.sm },
-  title: { ...typography.headline, color: colors.ink900, fontWeight: '700', marginBottom: spacing.xs },
+  backdrop: { flex: 1, backgroundColor: 'rgba(20,23,26,0.45)' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: spacing.sm, paddingHorizontal: spacing.lg, gap: spacing.xs },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.sm },
+  title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold, marginBottom: spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2, paddingVertical: spacing.sm + 4 },
   iconWrap: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  rowText: { ...typography.body, color: colors.ink900, fontWeight: '600' },
+  rowText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
 })

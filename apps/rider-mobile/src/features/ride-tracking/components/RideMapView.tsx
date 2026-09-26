@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
-import { colors } from '@ocar/mobile-shared'
+import { OCAR_MAP_PROPS, ROUTE } from '@/theme/mapStyle'
 import CarMarker from '@/features/map/components/CarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 
@@ -48,6 +48,8 @@ export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHead
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stops re-fit keyed by stopsKey, not the array reference
   }, [mapReady, pickup, drop, driverPos, showDrop, stopsKey])
 
+  const routeCoords = routePoints.map(([latitude, longitude]) => ({ latitude, longitude }))
+
   return (
     <View style={styles.container}>
       <MapView
@@ -56,8 +58,7 @@ export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHead
         initialRegion={{ latitude: pickup[0], longitude: pickup[1], latitudeDelta: 0.05, longitudeDelta: 0.05 }}
         onMapReady={() => setMapReady(true)}
         loadingEnabled
-        loadingIndicatorColor={colors.primary}
-        loadingBackgroundColor={colors.surface}
+        {...OCAR_MAP_PROPS}
       >
         <LocationPin position={pickup} variant="pickup" />
         {stops.map(([lat, lng], i) => (
@@ -68,11 +69,10 @@ export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHead
           <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} />
         ) : null}
         {routePoints.length >= 2 ? (
-          <Polyline
-            coordinates={routePoints.map(([latitude, longitude]) => ({ latitude, longitude }))}
-            strokeColor={colors.primary}
-            strokeWidth={4}
-          />
+          <>
+            <Polyline coordinates={routeCoords} strokeColor={ROUTE.casing} strokeWidth={ROUTE.casingWidth} lineCap="round" lineJoin="round" />
+            <Polyline coordinates={routeCoords} strokeColor={ROUTE.core} strokeWidth={ROUTE.coreWidth} lineCap="round" lineJoin="round" />
+          </>
         ) : null}
       </MapView>
     </View>

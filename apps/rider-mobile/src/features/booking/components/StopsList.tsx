@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import type { BookingPlace } from '../store'
 
 export type StopsListProps = {
@@ -44,10 +44,10 @@ export function StopsList({ stops, maxStops, onAdd, onRemove, onSwap }: StopsLis
 
 const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.md, gap: spacing.sm },
-  label: { ...typography.caption, color: colors.ink400, fontWeight: '700' },
+  label: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
-  address: { ...typography.body, color: colors.ink900, fontWeight: '500', flex: 1 },
+  address: { ...typography.body, color: colors.ink900, fontFamily: fonts.medium, flex: 1 },
   addRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  addText: { ...typography.label, color: colors.primary, fontWeight: '700' },
+  addText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
 })

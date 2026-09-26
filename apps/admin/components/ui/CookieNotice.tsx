@@ -34,7 +34,7 @@ export default function CookieNotice() {
     <AnimatePresence>
       {visible && (
         <motion.div
-          className="fixed left-4 bottom-4 z-40 max-w-sm"
+          className="fixed bottom-4 right-4 left-[72px] sm:left-auto z-40 max-w-sm"
           initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 16 }}

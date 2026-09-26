@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
-import { colors } from '@ocar/mobile-shared'
+import { OCAR_MAP_PROPS, ROUTE } from '@/theme/mapStyle'
 import CarMarker from '@/features/map/components/CarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { fetchNearbyDrivers } from '@/features/booking/api'
@@ -88,6 +88,8 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, pickup[0], pickup[1], drop[0], drop[1]])
 
+  const routeCoords = routePoints.map(([latitude, longitude]) => ({ latitude, longitude }))
+
   return (
     <View style={fill ? styles.fillContainer : styles.container}>
       <MapView
@@ -96,15 +98,13 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
         initialRegion={{ latitude: pickup[0], longitude: pickup[1], latitudeDelta: 0.05, longitudeDelta: 0.05 }}
         onMapReady={() => setMapReady(true)}
         loadingEnabled
-        loadingIndicatorColor={colors.primary}
-        loadingBackgroundColor={colors.surface}
+        {...OCAR_MAP_PROPS}
       >
         {routePoints.length >= 2 ? (
-          <Polyline
-            coordinates={routePoints.map(([latitude, longitude]) => ({ latitude, longitude }))}
-            strokeColor={colors.primary}
-            strokeWidth={4}
-          />
+          <>
+            <Polyline coordinates={routeCoords} strokeColor={ROUTE.casing} strokeWidth={ROUTE.casingWidth} lineCap="round" lineJoin="round" />
+            <Polyline coordinates={routeCoords} strokeColor={ROUTE.core} strokeWidth={ROUTE.coreWidth} lineCap="round" lineJoin="round" />
+          </>
         ) : null}
         <LocationPin position={pickup} variant="pickup" />
         <LocationPin position={drop} variant="drop" />

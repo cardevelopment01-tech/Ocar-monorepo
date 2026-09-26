@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { BlurView } from 'expo-blur'
-import { colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 
 export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
@@ -160,9 +160,9 @@ export function PickerField({
 
 const styles = StyleSheet.create({
   fieldWrap: { gap: spacing.xs },
-  fieldLabel: { ...typography.caption, color: colors.ink600, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
+  fieldLabel: { ...typography.caption, color: colors.ink600, fontFamily: fonts.bold, textTransform: 'uppercase', letterSpacing: 0.4 },
   fieldHint: { ...typography.caption, color: colors.ink400 },
-  fieldError: { ...typography.caption, color: colors.error, fontWeight: '600' },
+  fieldError: { ...typography.caption, color: colors.error, fontFamily: fonts.semibold },
   // Explicit border, not shadow-only -- a live device showed the multiline
   // Residential Address field (same `input` style as every other text field)
   // rendering with no visible boundary at all, while shadows.card's
@@ -171,37 +171,37 @@ const styles = StyleSheet.create({
   // compositing differs for a multiline TextInput, give every input the same
   // explicit border the surrounding `card` sections already use -- a real
   // border can't silently fail to render the way a shadow effect can.
-  input: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, ...shadows.card },
+  input: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs + 2 },
   pressedScale: { transform: [{ scale: 0.97 }] },
   chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.sm, borderRadius: radii.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface, minHeight: 44, justifyContent: 'center' },
   chipActive: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },
-  chipText: { ...typography.caption, color: colors.ink600, fontWeight: '700' },
+  chipText: { ...typography.caption, color: colors.ink600, fontFamily: fonts.bold },
   chipTextActive: { color: colors.primary },
-  stepperCard: { alignItems: 'center', backgroundColor: colors.surface, borderRadius: radii.xl, paddingVertical: spacing.md, ...shadows.card },
+  stepperCard: { alignItems: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.xl, paddingVertical: spacing.md },
   // No fontFamily was set at all here (silently fell back to the OS default
   // font), and '800' was dead weight on top of that -- 700 is the heaviest
   // weight useAppFonts loads.
-  stepperValue: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 32, fontWeight: '700', color: colors.ink900 },
-  stepperUnit: { ...typography.caption, color: colors.ink400, fontWeight: '700', textTransform: 'uppercase', marginBottom: spacing.sm },
+  stepperValue: { fontSize: 32, fontFamily: fonts.bold, color: colors.ink900 },
+  stepperUnit: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold, textTransform: 'uppercase', marginBottom: spacing.sm },
   stepperBtnRow: { flexDirection: 'row', gap: spacing.md },
   stepperBtn: { width: 32, height: 32, borderRadius: radii.full, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
   stepperBtnDisabled: { opacity: 0.3 },
-  pickerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, minHeight: 52, ...shadows.card },
+  pickerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, minHeight: 52 },
   pickerBtnDisabled: { opacity: 0.5 },
-  pickerText: { ...typography.body, color: colors.ink900, fontWeight: '600' },
-  pickerPlaceholder: { color: colors.ink400, fontWeight: '400' },
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' },
+  pickerText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
+  pickerPlaceholder: { color: colors.ink400, fontFamily: fonts.regular },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
   // Opaque, not translucent -- BlurView here had no blurMethod set, which on
   // Android renders fully transparent (not even a tint), leaving 0.75 alpha
   // white as the only real layer -- confirmed on a live device letting the
   // page underneath (e.g. the Continue button, other field values) visibly
   // ghost through the sheet. blurMethod is now set above; this base stays
   // opaque regardless, since it's the only guaranteed layer on Android.
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, maxHeight: '75%', overflow: 'hidden' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, maxHeight: '75%', overflow: 'hidden' },
   sheetTopEdge: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.5)' },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.md },
-  sheetTitle: { ...typography.title, color: colors.ink900, fontWeight: '700', marginBottom: spacing.sm },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.md },
+  sheetTitle: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, marginBottom: spacing.sm },
   searchInput: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.sm },
   optionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.sm + 4, borderBottomWidth: 1, borderBottomColor: colors.border },
   optionRowPressed: { backgroundColor: colors.surface2 },

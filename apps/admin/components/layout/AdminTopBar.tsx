@@ -48,8 +48,8 @@ export default function AdminTopBar({
     <header
       className="sticky top-0 z-30 h-14 flex items-center px-6 gap-4 bg-surface"
       style={{
-        borderBottom: '1px solid #E8EAFF',
-        boxShadow: '0 1px 0 #E8EAFF, 0 4px 24px rgba(79,70,229,0.04)',
+        borderBottom: '1px solid #DCEBEE',
+        boxShadow: '0 1px 0 #DCEBEE, 0 4px 24px rgba(14,143,163,0.04)',
       }}
     >
       {/* Title */}
@@ -81,7 +81,7 @@ export default function AdminTopBar({
               {unreadCount > 0 && (
                 <span
                   className="absolute top-1 right-1 w-4 h-4 text-white text-[9px] font-bold rounded-full flex items-center justify-center"
-                  style={{ background: '#EF4444', boxShadow: '0 0 0 2px #F8FAFF' }}
+                  style={{ background: '#EF4444', boxShadow: '0 0 0 2px #F6FBFB' }}
                 >
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
@@ -93,7 +93,7 @@ export default function AdminTopBar({
               align="end"
               sideOffset={8}
               className="z-50 bg-surface border border-border rounded-xl min-w-[340px] max-w-[380px] max-h-[420px] overflow-hidden flex flex-col animate-fade-in"
-              style={{ boxShadow: '0 8px 32px rgba(15,23,42,0.12), 0 0 0 1px #E8EAFF' }}
+              style={{ boxShadow: '0 8px 32px rgba(15,23,42,0.12), 0 0 0 1px #DCEBEE' }}
             >
               <div className="px-3.5 py-2.5 border-b border-border flex items-center justify-between flex-shrink-0">
                 <p className="text-sm font-bold text-text-primary">Notifications</p>
@@ -140,7 +140,7 @@ export default function AdminTopBar({
                         >
                           <span
                             className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-                            style={{ background: unread ? 'rgba(79,70,229,0.10)' : '#F1F5F9' }}
+                            style={{ background: unread ? 'rgba(14,143,163,0.10)' : '#F1F5F9' }}
                           >
                             <Icon size={13} strokeWidth={1.8} className={unread ? 'text-primary' : 'text-text-muted'} />
                           </span>
@@ -190,7 +190,7 @@ export default function AdminTopBar({
               align="end"
               sideOffset={8}
               className="z-50 bg-surface border border-border rounded-xl py-1 min-w-[180px] animate-fade-in"
-              style={{ boxShadow: '0 8px 32px rgba(15,23,42,0.12), 0 0 0 1px #E8EAFF' }}
+              style={{ boxShadow: '0 8px 32px rgba(15,23,42,0.12), 0 0 0 1px #DCEBEE' }}
             >
               <div className="px-3 py-2.5 border-b border-border mb-1">
                 <p className="text-xs font-bold text-text-primary">{adminName}</p>

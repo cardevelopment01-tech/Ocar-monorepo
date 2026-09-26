@@ -19,11 +19,15 @@ export async function getDrivers(
     const q: {
       status?: string;
       search?: string;
+      city?: string;
+      vehicle?: string;
       page?: number;
       limit?: number;
     } = {};
     if (req.query["status"]) q.status = req.query["status"] as string;
     if (req.query["search"]) q.search = req.query["search"] as string;
+    if (req.query["city"]) q.city = req.query["city"] as string;
+    if (req.query["vehicle"]) q.vehicle = req.query["vehicle"] as string;
     if (req.query["page"]) q.page = parseInt(req.query["page"] as string, 10);
     if (req.query["limit"])
       q.limit = parseInt(req.query["limit"] as string, 10);

@@ -44,7 +44,7 @@ export default function Documents() {
         const merged: Record<string, SlotState> = initSlotState()
         for (const [k, v] of Object.entries({ ...status.photos, ...status.vehicle_docs })) {
           if (k in merged) {
-            merged[k] = { state: v.uploaded ? 'done' : 'idle', url: v.url, error: null, docStatus: v.status, rejectionNote: v.rejection_note }
+            merged[k] = { state: v.uploaded ? 'done' : 'idle', url: v.url, error: null, docStatus: v.status, rejectionNote: v.rejection_note, rejectionCount: v.rejection_count ?? 0 }
           }
         }
         setSlotState(merged)
@@ -67,7 +67,7 @@ export default function Documents() {
       const result = slot.isVehicle
         ? await onboardingApi.uploadVehicleDoc(file, slot.key, undefined, expiry)
         : await onboardingApi.uploadDriverDoc(file, slot.key, expiry)
-      setSlot(slot.key, { state: 'done', url: result.file_url, error: null, docStatus: 'pending', rejectionNote: null })
+      setSlot(slot.key, { state: 'done', url: result.file_url, error: null, docStatus: 'pending', rejectionNote: null, rejectionCount: 0 })
     } catch {
       setSlot(slot.key, { state: 'error', error: 'Upload failed. Tap to retry.' })
     }

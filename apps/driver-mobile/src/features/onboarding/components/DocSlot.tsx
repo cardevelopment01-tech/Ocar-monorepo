@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, View } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 import { getInfoAsync } from 'expo-file-system/legacy'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import type { PickedFile } from '../api'
 
 export type DocSlotState = 'idle' | 'uploading' | 'done' | 'error'
@@ -91,7 +91,7 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
           <View style={styles.statusRow}>
             <Feather name={rejected ? 'alert-circle' : 'check-circle'} size={12} color={rejected ? colors.error : colors.success} />
             <Text style={[styles.statusText, rejected ? styles.statusRejected : styles.statusDone]}>
-              {rejected ? 'Rejected — tap to reupload' : docStatus === 'pending' ? 'Pending review' : 'Uploaded'}
+              {rejected ? 'Rejected. Tap to reupload' : docStatus === 'pending' ? 'Pending review' : docStatus === 'approved' ? 'Verified' : 'Uploaded'}
             </Text>
           </View>
         ) : error ? (
@@ -107,16 +107,16 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
 }
 
 const styles = StyleSheet.create({
-  slot: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.sm + 4, ...shadows.card },
+  slot: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.sm + 4 },
   slotRejected: { borderWidth: 1, borderColor: colors.error },
   thumb: { width: 48, height: 48, borderRadius: radii.md },
   thumbEmpty: { backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
-  label: { ...typography.body, color: colors.ink900, fontWeight: '600' },
+  label: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   statusText: { ...typography.caption },
   statusMuted: { ...typography.caption, color: colors.ink400, marginTop: 2 },
-  statusDone: { color: colors.success, fontWeight: '600' },
-  statusRejected: { ...typography.caption, color: colors.error, fontWeight: '600', marginTop: 2 },
+  statusDone: { color: colors.success, fontFamily: fonts.semibold },
+  statusRejected: { ...typography.caption, color: colors.error, fontFamily: fonts.semibold, marginTop: 2 },
   rejectionNote: { ...typography.caption, color: colors.ink400, marginTop: 2 },
   pressedScale: { transform: [{ scale: 0.97 }] },
 })

@@ -92,31 +92,35 @@ export function useActiveRide(rideId: string) {
     }
   }, [rideId])
 
+  // No optimistic advance: the OTP sheet stays open on "Verifying" until the server confirms,
+  // so a wrong code never flashes the next screen. Resolves true only on success.
   const submitStartOtpAction = useCallback(
-    async (otp: string) => {
-      dispatch({ type: 'optimistic_advance', to: 'in_progress' })
+    async (otp: string): Promise<boolean> => {
       setActionError(null)
       try {
         await submitStartOtp(rideId, otp)
         dispatch({ type: 'confirmed', status: 'in_progress' })
+        return true
       } catch (err) {
-        dispatch({ type: 'reverted' })
         setActionError(isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.')
+        return false
       }
     },
     [rideId]
   )
 
+  // No optimistic advance: the OTP sheet stays open on "Verifying" until the server confirms,
+  // so a wrong code never flashes the next screen. Resolves true only on success.
   const submitEndOtpAction = useCallback(
-    async (otp: string) => {
-      dispatch({ type: 'optimistic_advance', to: 'completed' })
+    async (otp: string): Promise<boolean> => {
       setActionError(null)
       try {
         await submitEndOtp(rideId, otp)
         dispatch({ type: 'confirmed', status: 'completed' })
+        return true
       } catch (err) {
-        dispatch({ type: 'reverted' })
         setActionError(isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.')
+        return false
       }
     },
     [rideId]

@@ -294,10 +294,12 @@ export async function completeVehicleDocumentUpload(
   return { doc_type: doc.doc_type, file_url: await getPresignedUrl(doc.file_url), status: doc.status }
 }
 
+export type DocumentStatusEntry = { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null; rejection_count: number }
+
 export async function getDocumentStatus(driverId: bigint): Promise<{
   identity: { license_number: string | null; aadhaar_number: string | null }
-  photos: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null }>
-  vehicle_docs: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null }>
+  photos: Record<string, DocumentStatusEntry>
+  vehicle_docs: Record<string, DocumentStatusEntry>
   all_required_complete: boolean
   rejection_reason: string | null
 }> {
@@ -308,7 +310,7 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
   const docMap = new Map(docs.map((d) => [d.doc_type, d]))
 
   const photoTypes = ['profile_photo', 'driving_license', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
-  const photos: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null }> = {}
+  const photos: Record<string, DocumentStatusEntry> = {}
   for (const dt of photoTypes) {
     const doc = docMap.get(dt)
     photos[dt] = {
@@ -316,11 +318,12 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
       url: doc?.file_url ? await getPresignedUrl(doc.file_url) : null,
       status: doc?.status ?? null,
       rejection_note: doc?.rejection_note ?? null,
+      rejection_count: doc?.rejection_count ?? 0,
     }
   }
 
   const vehicleDocTypes = ['vehicle_rc', 'insurance', 'permit', 'pollution_cert', 'fitness_cert']
-  const vehicleDocs: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null }> = {}
+  const vehicleDocs: Record<string, DocumentStatusEntry> = {}
   const vehicle = await repo.findVehicleByDriverId(driverId)
   const vehicleDocList = vehicle ? await repo.findVehicleDocuments(vehicle.id) : []
   const vehicleDocMap = new Map(vehicleDocList.map((d) => [d.doc_type, d]))
@@ -331,6 +334,7 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
       url: doc?.file_url ? await getPresignedUrl(doc.file_url) : null,
       status: doc?.status ?? null,
       rejection_note: doc?.rejection_note ?? null,
+      rejection_count: doc?.rejection_count ?? 0,
     }
   }
 

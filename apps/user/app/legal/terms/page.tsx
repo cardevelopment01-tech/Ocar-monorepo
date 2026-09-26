@@ -1,14 +1,17 @@
-'use client'
+import Link from 'next/link'
 
 import { LegalDocument, type LegalSection } from '../LegalDocument'
+import { COMPANY, formatAddress } from '@/lib/company'
+
+export const metadata = { title: 'Terms and Conditions' }
 
 const SECTIONS: LegalSection[] = [
   {
     heading: '1. Acceptance of these terms',
     body: (
       <p>
-        By creating an Ocar account or using the Ocar rider or driver app, you agree to these Terms &amp;
-        Conditions and to our <span className="font-semibold text-text-primary">Privacy Policy</span>. If you
+        By creating an Ocar account or using the Ocar rider or driver app, you agree to these Terms and
+        Conditions and to our <Link href="/legal/privacy">Privacy Policy</Link>. If you
         do not agree, please do not use the platform.
       </p>
     ),
@@ -19,7 +22,7 @@ const SECTIONS: LegalSection[] = [
       <p>
         You must be at least 18 years old and able to form a legally binding contract to use Ocar. You must
         provide a valid Indian mobile number to register, and keep the one-time passwords sent to it
-        confidential — you are responsible for all activity on your account. Drivers must additionally hold a
+        confidential - you are responsible for all activity on your account. Drivers must additionally hold a
         valid driving licence and vehicle documents, and pass Ocar&apos;s verification process before
         accepting rides.
       </p>
@@ -31,7 +34,7 @@ const SECTIONS: LegalSection[] = [
       <p>
         Ocar is a technology platform that connects riders who need a trip with independent, verified drivers
         operating in Bhubaneswar, Cuttack, and Puri. Ocar is an intermediary under the Motor Vehicle Aggregator
-        Guidelines, 2020 — drivers are independent and responsible for the actual provision of transportation.
+        Guidelines, 2020 - drivers are independent and responsible for the actual provision of transportation.
         Ocar is not itself a taxi or transport operator.
       </p>
     ),
@@ -57,9 +60,12 @@ const SECTIONS: LegalSection[] = [
     heading: '5. Payments',
     body: (
       <p>
-        You agree to pay the full fare for every completed ride, by cash to the driver or online through
-        Razorpay, or from your Ocar wallet balance. If you dispute a charge, contact Ocar support within a
-        reasonable time of the ride; we will investigate and, where a discrepancy is confirmed, correct it.
+        You agree to pay the full fare for every completed ride, by cash to the driver, online (UPI, cards and
+        net banking) through our RBI-authorised payment gateway partners, or from your Ocar wallet balance. Ocar
+        does not store your card or bank credentials; they are handled by the payment gateway. If you dispute a
+        charge, contact Ocar support within a reasonable time of the ride; we will investigate and, where a
+        discrepancy is confirmed, correct it. Refunds are governed by our{' '}
+        <Link href="/legal/refund-cancellation">Refund and Cancellation Policy</Link>.
       </p>
     ),
   },
@@ -144,9 +150,18 @@ const SECTIONS: LegalSection[] = [
   {
     heading: '13. Contact us',
     body: (
-      <p className="text-text-primary font-medium">
-        [support@ocar.app] · [registered business address, Odisha]
-      </p>
+      <>
+        <p>
+          <span className="font-semibold text-text-primary">{COMPANY.legalName}</span>
+          <br />
+          {formatAddress()}
+        </p>
+        <p>
+          Email: <a href={`mailto:${COMPANY.supportEmail}`}>{COMPANY.supportEmail}</a>
+          <br />
+          Phone: {COMPANY.supportPhone}
+        </p>
+      </>
     ),
   },
 ]
@@ -154,9 +169,9 @@ const SECTIONS: LegalSection[] = [
 export default function TermsPage() {
   return (
     <LegalDocument
-      title="Terms & Conditions"
-      crossLinkLabel="Read our Privacy Policy"
-      crossLinkHref="/legal/privacy"
+      title="Terms and Conditions"
+      intro="The rules for using Ocar to book intercity cab rides in Bhubaneswar, Cuttack and Puri, for riders and drivers."
+      currentHref="/legal/terms"
       sections={SECTIONS}
     />
   )

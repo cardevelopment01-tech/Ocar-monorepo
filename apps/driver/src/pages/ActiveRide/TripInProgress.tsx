@@ -915,12 +915,12 @@ export default function TripInProgress() {
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
               className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-3xl border-t border-border px-5 pt-5"
-              style={{ zIndex: 30, paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+              style={{ zIndex: 30, maxHeight: '92dvh', overflowY: 'auto', paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
             >
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-text-primary font-bold text-lg">End Ride OTP</h2>
-                  <p className="text-text-muted text-xs">Ask the rider for their end OTP</p>
+                  <h2 className="text-text-primary font-bold text-lg">End OTP</h2>
+                  <p className="text-text-muted text-xs">Ask for this once you reach the drop</p>
                 </div>
                 <button
                   onClick={() => { setShowEndOtp(false); setOtp(''); setOtpError(false) }}

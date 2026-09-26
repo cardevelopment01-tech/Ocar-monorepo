@@ -39,7 +39,7 @@ describe('triggerSos', () => {
     expect(repo.insertSosAlert).not.toHaveBeenCalled()
   })
 
-  it.each(['requested', 'accepted', 'completed', 'cancelled', 'no_drivers', 'scheduled'])(
+  it.each(['requested', 'completed', 'cancelled', 'no_drivers', 'scheduled'])(
     'throws 400 RIDE_NOT_ACTIVE for ride status "%s" and inserts no alert',
     async (status) => {
       vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status, user_id: 1n } as never)
@@ -51,7 +51,7 @@ describe('triggerSos', () => {
     }
   )
 
-  it.each(['in_progress', 'driver_arrived', 'returning'])(
+  it.each(['accepted', 'in_progress', 'driver_arrived', 'returning'])(
     'accepts SOS for ride status "%s": inserts the alert and marks the ride sos-triggered',
     async (status) => {
       vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status, user_id: 1n } as never)

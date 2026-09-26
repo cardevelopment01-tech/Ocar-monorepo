@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { fetchCities, fetchMyVehicle } from '@/features/go-online/api'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   backBtn: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  title: { ...typography.headline, color: colors.ink900, fontWeight: '800' },
+  title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold },
   subtitle: { ...typography.caption, color: colors.ink400, marginTop: 2 },
   content: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xl },
   gateCard: { flexDirection: 'row', gap: spacing.sm, backgroundColor: colors.errorLight, borderRadius: radii.lg, padding: spacing.sm + 4 },
@@ -118,13 +118,13 @@ const styles = StyleSheet.create({
   heroWrap: { alignItems: 'center', marginVertical: spacing.sm },
   heroIcon: { width: 80, height: 80, borderRadius: radii['2xl'], backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center' },
   card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.md, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
-  cardTitle: { ...typography.body, color: colors.ink900, fontWeight: '700', marginBottom: spacing.xs },
+  cardTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold, marginBottom: spacing.xs },
   hint: { ...typography.caption, color: colors.ink400, marginTop: spacing.xs },
-  hintStrong: { color: colors.ink600, fontWeight: '700' },
+  hintStrong: { color: colors.ink600, fontFamily: fonts.bold },
   warningText: { ...typography.caption, color: colors.ink600, textAlign: 'center' },
   errorText: { ...typography.caption, color: colors.error, textAlign: 'center' },
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   ctaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.success, borderRadius: radii.xl, paddingVertical: spacing.md, minHeight: 56 },
   disabled: { opacity: 0.4 },
-  ctaText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  ctaText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
 })

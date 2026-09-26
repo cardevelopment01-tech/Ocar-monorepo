@@ -54,8 +54,8 @@ export interface VehicleModel {
 
 export interface DocumentStatus {
   identity: { license_number: string | null; aadhaar_number: string | null }
-  photos: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null }>
-  vehicle_docs: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null }>
+  photos: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null; rejection_count: number }>
+  vehicle_docs: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null; rejection_count: number }>
   all_required_complete: boolean
   rejection_reason: string | null
 }

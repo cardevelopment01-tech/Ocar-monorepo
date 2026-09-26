@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
 import * as Location from 'expo-location'
-import { colors, simplifyPolyline, spacing, typography } from '@ocar/mobile-shared'
+import { OCAR_MAP_PROPS, colors, simplifyPolyline, spacing, typography, Text } from '@ocar/mobile-shared'
 import CarMarker from '@/features/map/components/CarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { useDriverLivePosition } from '../useDriverLivePosition'
@@ -135,8 +135,7 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
             : DEFAULT_REGION
         }
         loadingEnabled
-        loadingIndicatorColor={colors.primary}
-        loadingBackgroundColor={colors.surface}
+        {...OCAR_MAP_PROPS}
       >
         <LocationPin position={pickup} variant="pickup" />
         {stops.map(([lat, lng], i) => (

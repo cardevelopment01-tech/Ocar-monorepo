@@ -5,25 +5,25 @@ const config: Config = {
   theme: {
     extend: {
       backgroundImage: {
-        brand: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+        brand: 'linear-gradient(135deg, #0E8FA3 0%, #14ABBD 100%)',
       },
       colors: {
         // Sidebar (white/light, premium SaaS style)
         sidebar:               '#FFFFFF',
-        'sidebar-hover':       '#F5F7FF',
-        'sidebar-active':      '#4F46E5',
-        'sidebar-border':      '#E8EAFF',
+        'sidebar-hover':       '#EEF7F8',
+        'sidebar-active':      '#0E8FA3',
+        'sidebar-border':      '#DCEBEE',
         'sidebar-text':        '#5B6B85',
         'sidebar-active-text': '#FFFFFF',
         // Canvas & surfaces
-        canvas:      '#F8FAFF',
+        canvas:      '#F6FBFB',
         surface:     '#FFFFFF',
-        'surface-2': '#F5F7FF',
-        'surface-3': '#EEF0FF',
-        // Brand (indigo, premium, modern, tech)
-        primary:         '#4F46E5',
-        'primary-dark':  '#4338CA',
-        'primary-light': '#EEF2FF',
+        'surface-2': '#EEF7F8',
+        'surface-3': '#E6F0F2',
+        // Brand (Ocar teal, shared with the rider and driver apps)
+        primary:         '#0E8FA3',
+        'primary-dark':  '#0A6F80',
+        'primary-light': '#E6F3F5',
         // Warm accent (cab/transport)
         accent:         '#F97316',
         'accent-light': '#FFF7ED',
@@ -62,11 +62,11 @@ const config: Config = {
         '3xl': ['28px', { lineHeight: '36px' }],
       },
       boxShadow: {
-        card:         '0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(79,70,229,0.06)',
-        'card-hover': '0 4px 16px rgba(15,23,42,0.08), 0 12px 40px rgba(79,70,229,0.12)',
-        hover:        '0 8px 30px rgba(79,70,229,0.18)',
-        sidebar:      '1px 0 0 #E8EAFF',
-        topbar:       '0 1px 0 #E8EAFF, 0 4px 20px rgba(79,70,229,0.05)',
+        card:         '0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(14,143,163,0.06)',
+        'card-hover': '0 4px 16px rgba(15,23,42,0.08), 0 12px 40px rgba(14,143,163,0.12)',
+        hover:        '0 8px 30px rgba(14,143,163,0.18)',
+        sidebar:      '1px 0 0 #DCEBEE',
+        topbar:       '0 1px 0 #DCEBEE, 0 4px 20px rgba(14,143,163,0.05)',
       },
       keyframes: {
         'fade-in': {

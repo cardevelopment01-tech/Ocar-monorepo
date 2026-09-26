@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Redirect } from 'expo-router'
-import { Text, View } from 'react-native'
-import { Button, Card, colors, spacing, typography } from '@ocar/mobile-shared'
+import { View } from 'react-native'
+import { Button, Card, colors, spacing, typography, Text } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useOnboardingIntroStore } from '@/store/useOnboardingIntroStore'
 import { fetchActiveRideForRelaunch } from '@/features/active-ride/relaunchApi'
@@ -16,9 +16,11 @@ type CheckState = 'checking' | 'done' | 'failed'
 // Mirrors the web app's ProtectedRoute requireApproved gate: a driver who
 // hasn't finished (or was rejected/suspended/banned past) onboarding gets
 // routed into the wizard at their saved step instead of the tab shell.
-// docs_rejected is a returning driver hitting a snag, not a first-time
-// applicant -- sent into pending-review (which handles that status itself),
-// never back into the wizard.
+// docs_rejected is deliberately excluded from `needsOnboarding` below: it's a
+// returning driver (or one revoked from active) hitting a snag, not a
+// first-time applicant, so they go into the tab shell like any active driver
+//, Home's rejection banner and Profile's Documents row (both linking to
+// /documents) are the actionable surfaces, not the onboarding wizard.
 const ONBOARDING_STEP_ROUTES: Record<string, string> = {
   personal_info: '/onboarding/personal',
   vehicle_info: '/onboarding/vehicle',

@@ -9,6 +9,7 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { driverRideApi } from '@/lib/ride-api'
 import api from '@/lib/api'
 import { unregisterPush } from '@/lib/push'
+import { useDocumentGate } from '@/lib/useDocumentGate'
 import { TERMS_URL } from '@/lib/constants'
 
 type MenuAction = 'vehicle' | 'documents' | 'personal' | 'email' | 'terms'
@@ -64,6 +65,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 
 export default function Profile() {
   const navigate = useNavigate()
+  const { hasRejected } = useDocumentGate()
   const { driver, refreshToken, clearAuth, updateDriver } = useAuthStore()
   const { isOnline } = useSessionStore()
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
@@ -226,7 +228,9 @@ export default function Profile() {
             <p className="text-text-muted text-xs font-medium px-1 mb-2">{section.title}</p>
             <div className="card-glossy rounded-3xl p-0 overflow-hidden">
               {section.items.map((item, i) => {
-                const pendingCount = item.action === 'documents' ? onboarding?.missing_documents.length ?? 0 : 0
+                const isDocs = item.action === 'documents'
+                const pendingCount = isDocs ? onboarding?.missing_documents.length ?? 0 : 0
+                const needsFix = isDocs && hasRejected
                 return (
                   <button
                     key={item.label}
@@ -237,10 +241,18 @@ export default function Profile() {
                   >
                     <div className="text-left">
                       <p className="text-text-primary font-semibold text-sm">{item.label}</p>
-                      {item.sub && <p className="text-text-muted text-xs mt-0.5">{item.sub}</p>}
+                      {(needsFix || item.sub) && (
+                        <p className={`text-xs mt-0.5 ${needsFix ? 'text-red-600 font-semibold' : 'text-text-muted'}`}>
+                          {needsFix ? 'Action needed' : item.sub}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {pendingCount > 0 && (
+                      {needsFix ? (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-500/10 text-red-600">
+                          Fix now
+                        </span>
+                      ) : pendingCount > 0 && (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600">
                           {pendingCount} pending
                         </span>

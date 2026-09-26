@@ -14,7 +14,7 @@ export default function NotificationToast() {
         <motion.button
           onClick={() => { dismissToast(); openPanel() }}
           className="fixed top-4 right-6 z-50 flex items-center gap-3 rounded-2xl bg-surface border border-border px-4 py-3.5 text-left max-w-[360px] cursor-pointer"
-          style={{ boxShadow: '0 8px 32px rgba(15,23,42,0.16), 0 0 0 1px #E8EAFF' }}
+          style={{ boxShadow: '0 8px 32px rgba(15,23,42,0.16), 0 0 0 1px #DCEBEE' }}
           initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -12 }}

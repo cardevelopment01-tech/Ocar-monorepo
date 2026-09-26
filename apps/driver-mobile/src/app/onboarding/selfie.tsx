@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react'
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
+import { ActivityIndicator, Image, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { getInfoAsync } from 'expo-file-system/legacy'
 import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type PickedFile } from '@/features/onboarding/api'
 import { OnboardingShell } from '@/features/onboarding/components/OnboardingShell'
@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
   // headline, not title -- this gate card is the only content on the screen
   // and should read with the same weight as OnboardingShell's own step title,
   // not a smaller card-subsection size. 700 is the heaviest loaded weight.
-  gateTitle: { ...typography.headline, color: colors.ink900, fontWeight: '700' },
+  gateTitle: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold },
   gateBody: { ...typography.body, color: colors.ink600, textAlign: 'center' },
   permissionWarning: { flexDirection: 'row', gap: spacing.xs, backgroundColor: colors.errorLight, borderRadius: radii.md, padding: spacing.sm, marginTop: spacing.sm },
   permissionText: { ...typography.caption, color: colors.error, flex: 1 },
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   previewImage: { width: 220, height: 220, borderRadius: radii['2xl'] },
   errorText: { ...typography.caption, color: colors.error, textAlign: 'center', marginBottom: spacing.xs },
   submittingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
-  submittingText: { ...typography.body, color: colors.ink600, fontWeight: '600' },
+  submittingText: { ...typography.body, color: colors.ink600, fontFamily: fonts.semibold },
   pressedScale: { transform: [{ scale: 0.97 }] },
 
   cameraScreen: { flex: 1, backgroundColor: '#000000' },
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   cameraHeader: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.xl + spacing.md, zIndex: 15 },
   cameraBackBtn: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
   chipTop: { position: 'absolute', top: spacing.xl + spacing.xl + spacing.md, left: 0, right: 0, alignItems: 'center', zIndex: 15 },
-  chipTopText: { ...typography.caption, color: colors.inkInverse, fontWeight: '700', letterSpacing: 0.3, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radii.full, overflow: 'hidden' },
+  chipTopText: { ...typography.caption, color: colors.inkInverse, fontFamily: fonts.bold, letterSpacing: 0.3, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radii.full, overflow: 'hidden' },
   chipBottom: { position: 'absolute', bottom: 180, left: spacing.lg, right: spacing.lg, alignItems: 'center', zIndex: 15 },
   chipBottomText: { ...typography.caption, color: 'rgba(255,255,255,0.9)', textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm + 2, borderRadius: radii.full, overflow: 'hidden' },
   shutterRow: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#000000', paddingTop: spacing.lg, paddingBottom: spacing.xl + spacing.sm, alignItems: 'center', gap: spacing.sm },

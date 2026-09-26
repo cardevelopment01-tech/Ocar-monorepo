@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { Skeleton, VehicleIcon, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Skeleton, VehicleIcon, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import type { RentalPackage, VehicleCategory } from '@ocar/mobile-shared'
 import { createBooking, fetchRentalPackages, fetchRoute, fetchVehicleCategories, fetchFareEstimate, resolveBookingError } from '@/features/booking/api'
 import { recommendPackage } from '@/features/booking/recommendPackage'
@@ -12,6 +12,7 @@ import { socket } from '@/services/socket'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { ScheduleSheet, formatPickupTime } from '@/features/booking/components/ScheduleSheet'
 import { StopsList } from '@/features/booking/components/StopsList'
+import { sectionLabel } from '@/theme/homeTokens'
 
 const MAX_STOPS = 3
 
@@ -330,7 +331,7 @@ export default function RentalScreen() {
               ) : estimate != null ? (
                 <Text style={styles.fareTotalValue}>{`₹${Math.round(estimate.breakdown.total)}`}</Text>
               ) : (
-                <Text style={styles.fareTotalUnavailable}>—</Text>
+                <Text style={styles.fareTotalUnavailable}>-</Text>
               )}
             </View>
           </View>
@@ -379,33 +380,39 @@ export default function RentalScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
-  backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  backButton: { width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(20,23,26,0.08)',
+    boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
   pressedScale: { transform: [{ scale: 0.97 }] },
   headerText: { flex: 1 },
-  title: { ...typography.title, color: colors.ink900, fontWeight: '700' },
+  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   subtitle: { ...typography.caption, color: colors.ink400, marginTop: 1 },
   riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface2, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, maxWidth: 110 },
-  riderPillText: { ...typography.caption, color: colors.ink900, fontWeight: '700' },
+  riderPillText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.bold },
   scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: colors.primarySubtle, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, marginBottom: spacing.xs },
-  scheduleChipText: { ...typography.caption, color: colors.primaryDark, fontWeight: '700' },
+  scheduleChipText: { ...typography.caption, color: colors.primaryDark, fontFamily: fonts.bold },
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.sm },
   routeCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.primarySubtle, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.xs },
-  routeText: { ...typography.body, color: colors.primaryDark, fontWeight: '600', flex: 1 },
-  sectionLabel: { ...typography.caption, color: colors.ink400, fontWeight: '700', letterSpacing: 0.5, marginTop: spacing.xs },
+  routeText: { ...typography.body, color: colors.primaryDark, fontFamily: fonts.semibold, flex: 1 },
+  sectionLabel: { ...sectionLabel, marginTop: spacing.xs },
   catRow: { flexGrow: 0, marginBottom: spacing.xs },
   catChip: { alignItems: 'center', gap: 4, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 16, backgroundColor: colors.surface2, marginRight: spacing.xs, minWidth: 76 },
   catChipActive: { backgroundColor: colors.primarySubtle, borderWidth: 1, borderColor: colors.primary },
-  catName: { ...typography.caption, color: colors.ink600, fontWeight: '600' },
+  catName: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
   catNameActive: { color: colors.primaryDark },
   catSeatsRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   catSeats: { fontSize: 9, color: colors.ink400 },
   pkgHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  routeSummary: { ...typography.caption, color: colors.ink600, fontWeight: '500' },
+  routeSummary: { ...typography.caption, color: colors.ink600, fontFamily: fonts.medium },
   pkgList: { gap: spacing.xs },
   pkgRowRec: { marginTop: spacing.sm, borderColor: colors.primary },
   recTag: { position: 'absolute', top: -10, left: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: 3 },
-  recTagText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: colors.inkInverse },
+  recTagText: { fontSize: 10, fontFamily: fonts.bold, letterSpacing: 0.3, color: colors.inkInverse },
   warnCard: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, backgroundColor: colors.warningLight, borderRadius: 16, padding: spacing.md },
   warnText: { ...typography.caption, flex: 1, color: colors.ink900, lineHeight: 17 },
   pkgRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface2, borderRadius: 16, borderWidth: 1, borderColor: 'transparent', padding: spacing.sm + 4 },
@@ -413,23 +420,23 @@ const styles = StyleSheet.create({
   pkgIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   pkgIconWrapActive: { backgroundColor: colors.surface },
   pkgInfo: { flex: 1, gap: 2 },
-  pkgTitle: { ...typography.label, color: colors.ink900, fontWeight: '700' },
+  pkgTitle: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
   pkgTitleActive: { color: colors.primaryDark },
   pkgMeta: { ...typography.caption, color: colors.ink400 },
-  pkgFare: { ...typography.title, color: colors.ink900, fontWeight: '800' },
+  pkgFare: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   emptyPkg: { height: 64, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   emptyPkgText: { ...typography.body, color: colors.ink400 },
   fareCard: { backgroundColor: colors.surface2, borderRadius: 16, padding: spacing.md, gap: 4, marginTop: spacing.xs },
-  fareCardTitle: { ...typography.label, color: colors.ink600, fontWeight: '600' },
+  fareCardTitle: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
   fareCardSub: { ...typography.caption, color: colors.ink400 },
   fareDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
   fareTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  fareTotalLabel: { ...typography.body, color: colors.ink900, fontWeight: '700' },
-  fareTotalValue: { ...typography.headline, color: colors.primaryDark, fontWeight: '800' },
+  fareTotalLabel: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
+  fareTotalValue: { ...typography.headline, color: colors.primaryDark, fontFamily: fonts.bold },
   fareTotalUnavailable: { ...typography.body, color: colors.ink400 },
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight, backgroundColor: colors.bg },
   error: { ...typography.body, color: colors.error, marginBottom: spacing.xs, textAlign: 'center' },
-  bookBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 52 },
+  bookBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 54, boxShadow: '0 10px 24px rgba(14,143,163,0.28)' },
   disabled: { opacity: 0.5 },
-  bookText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  bookText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
 })

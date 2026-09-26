@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Map, TrendingUp, Wallet, User } from 'lucide-react'
 import { motion, useReducedMotion } from 'framer-motion'
+import { useDocumentGate } from '@/lib/useDocumentGate'
 const TABS = [
   { path: '/',         Icon: Map,        label: 'Home'     },
   { path: '/earnings', Icon: TrendingUp,  label: 'Earnings' },
@@ -19,6 +20,9 @@ export default function BottomNav() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const prefersReducedMotion = useReducedMotion()
+  // Mounted once at the app root (see App.tsx), so this one fetch covers every screen, a driver
+  // browsing Earnings or Wallet still sees the dot on Profile, not just on Home's own banner.
+  const { hasRejected } = useDocumentGate()
 
   if (!MAIN.has(pathname)) return null
 
@@ -70,6 +74,12 @@ export default function BottomNav() {
                 strokeWidth={active ? 2.4 : 1.75}
                 className={`relative z-10 transition-colors duration-150 ${active ? 'text-white' : 'text-text-muted'}`}
               />
+              {path === '/profile' && hasRejected && (
+                <span className="absolute z-20 flex h-2 w-2" style={{ top: 6, right: 8 }} aria-label="A document was rejected">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
+                </span>
+              )}
             </div>
             <span className={`text-[10px] font-semibold transition-colors duration-150 ${active ? 'text-primary' : 'text-text-muted'}`}>
               {label}

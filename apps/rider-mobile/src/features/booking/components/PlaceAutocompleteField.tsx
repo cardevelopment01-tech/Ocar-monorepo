@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { Input, colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { Input, colors, radii, shadows, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { useAutocomplete } from '../hooks/useAutocomplete'
 import type { BookingPlace } from '../store'
 import { fetchPlaceDetail } from '../api'
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   skeletonRow: { height: 18, borderRadius: radii.sm, backgroundColor: colors.surface3 },
   errorRow: { padding: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   errorText: { ...typography.body, color: colors.error, flex: 1 },
-  retryText: { ...typography.label, color: colors.primary, fontWeight: '700' },
+  retryText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
   emptyRow: { padding: spacing.md },
   emptyText: { ...typography.body, color: colors.ink400 },
   resultRow: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderLight },

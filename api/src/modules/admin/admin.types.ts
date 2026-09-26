@@ -9,6 +9,7 @@ export interface AdminDriverListRow {
   status: DriverStatus
   onboarding_step: string
   created_at: string
+  city: { id: string; name: string } | null
   vehicle: {
     number_plate: string
     vehicle_name: string
@@ -16,6 +17,19 @@ export interface AdminDriverListRow {
   } | null
   docs_submitted: number
   docs_approved: number
+}
+
+export interface AdminDriverListSummary {
+  total: number
+  active: number
+  pending_approval: number
+  suspended: number
+}
+
+// city keys are city ids, plus "none" for drivers with no city; category keys are category ids
+export interface AdminDriverListFacets {
+  cities: Record<string, number>
+  categories: Record<string, number>
 }
 
 export interface AdminDriverDetail {

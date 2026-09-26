@@ -110,12 +110,12 @@ export default function TripReplayMap({ disputeId }: { disputeId: string }) {
             <Polyline path={plannedPath} strokeColor="#9CA3AF" strokeWeight={4} strokeOpacity={0.8} zIndex={1} />
           )}
           {actualPath.length >= 2 && (
-            <Polyline path={actualPath} strokeColor="#4F46E5" strokeWeight={4} strokeOpacity={0.95} zIndex={2} />
+            <Polyline path={actualPath} strokeColor="#0E8FA3" strokeWeight={4} strokeOpacity={0.95} zIndex={2} />
           )}
           <AdvancedMarker position={markerPosition}>
             <div style={{
               width: 16, height: 16, borderRadius: '50%',
-              background: '#4F46E5', border: '2.5px solid #ffffff',
+              background: '#0E8FA3', border: '2.5px solid #ffffff',
               boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
             }} />
           </AdvancedMarker>
@@ -145,7 +145,7 @@ export default function TripReplayMap({ disputeId }: { disputeId: string }) {
       </div>
 
       <p className="text-[11px] text-text-muted flex items-center gap-1">
-        <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#4F46E5' }} /> Actual path
+        <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#0E8FA3' }} /> Actual path
         {plannedPath && (
           <>
             <span className="inline-block w-2 h-2 rounded-full ml-3" style={{ background: '#9CA3AF' }} /> Planned route

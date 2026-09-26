@@ -118,32 +118,44 @@ export const notificationsWorker = new Worker(
         lng:         number
         triggeredAt: string
       }
+      // In-app + push to every admin goes first and on its own: an SMS vendor outage must never
+      // silence the alert. Retries re-run this job, so only the first attempt notifies (otherwise
+      // every SMS retry would page the admins again).
+      if (job.attemptsMade === 0) {
+        try {
+          const { subject, body } = await renderTemplate('sos_alert', 'push', { rideId: data.rideId })
+          await notifService.notifyAllAdmins({
+            type: 'sos',
+            title: subject ?? 'SOS ALERT',
+            body,
+            payload: { lat: data.lat, lng: data.lng },
+            rideId: BigInt(data.rideId),
+          })
+        } catch (err) {
+          log.error({ err }, 'notify failed for sos_alert')
+        }
+      }
+
       const lp: LogParams = { jobName: job.name, payload: data as Record<string, unknown> }
       if (config.ADMIN_PHONE) lp.recipientPhone = config.ADMIN_PHONE
       const logId = await notifService.logNotification(lp)
-      try {
-        const { body: message } = await renderTemplate('sos_alert', 'sms', {
-          userPhone: data.userPhone, rideId: data.rideId,
-          lat: String(data.lat), lng: String(data.lng), triggeredAt: data.triggeredAt,
-        })
-        if (config.ADMIN_PHONE) await sendSms(config.ADMIN_PHONE, message)
-        await notifService.markSent(logId)
-      } catch (err) {
-        await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
-        throw err
-      }
-
-      try {
-        const { subject, body } = await renderTemplate('sos_alert', 'push', { rideId: data.rideId })
-        await notifService.notifyAllAdmins({
-          type: 'sos',
-          title: subject ?? 'SOS ALERT',
-          body,
-          payload: { lat: data.lat, lng: data.lng },
-          rideId: BigInt(data.rideId),
-        })
-      } catch (err) {
-        log.error({ err }, 'notify failed for sos_alert')
+      if (!config.ADMIN_PHONE) {
+        // Nothing to send to: record it as failed instead of claiming "sent", so a missing
+        // ADMIN_PHONE shows up in the log. Not thrown, retrying cannot fix a missing setting.
+        log.warn({ rideId: data.rideId }, 'ADMIN_PHONE not configured, SOS SMS not sent')
+        await notifService.markFailed(logId, 'ADMIN_PHONE not configured')
+      } else {
+        try {
+          const { body: message } = await renderTemplate('sos_alert', 'sms', {
+            userPhone: data.userPhone, rideId: data.rideId,
+            lat: String(data.lat), lng: String(data.lng), triggeredAt: data.triggeredAt,
+          })
+          await sendSms(config.ADMIN_PHONE, message)
+          await notifService.markSent(logId)
+        } catch (err) {
+          await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
+          throw err
+        }
       }
     } else if (job.name === 'ride_accepted') {
       const data = job.data as {

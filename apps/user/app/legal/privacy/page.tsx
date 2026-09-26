@@ -1,15 +1,16 @@
-'use client'
-
 import { LegalDocument, type LegalSection } from '../LegalDocument'
+import { COMPANY, formatAddress } from '@/lib/company'
+
+export const metadata = { title: 'Privacy Policy' }
 
 const SECTIONS: LegalSection[] = [
   {
     heading: '1. Who this policy covers',
     body: (
       <p>
-        This Privacy Policy applies to everyone who uses the Ocar platform — riders booking rides, drivers
+        This Privacy Policy applies to everyone who uses the Ocar platform - riders booking rides, drivers
         accepting them, and the web and mobile apps through which either happens (Ocar rider app, Ocar driver
-        app, and ocar.app). Ocar operates an intercity cab booking service across Bhubaneswar, Cuttack, and
+        app, and ocarindia.com). Ocar operates an intercity cab booking service across Bhubaneswar, Cuttack, and
         Puri, Odisha. It describes what personal data we collect, why, who we share it with, and the choices
         you have.
       </p>
@@ -26,7 +27,7 @@ const SECTIONS: LegalSection[] = [
           they are online and during an active trip, for matching, routing, fare calculation, and safety
           monitoring.</p>
         <p><span className="font-semibold text-text-primary">Trip &amp; payment data:</span> ride history,
-          fares, cancellations, the payment method you use (cash or online via Razorpay), and your Ocar wallet
+          fares, cancellations, the payment method you use (cash, online via our payment gateway, or wallet), and your Ocar wallet
           balance and transaction ledger.</p>
         <p><span className="font-semibold text-text-primary">Driver verification data (drivers only):</span>
           driving licence, vehicle registration certificate, insurance, a selfie, and periodic daily-verification
@@ -36,7 +37,7 @@ const SECTIONS: LegalSection[] = [
         <p><span className="font-semibold text-text-primary">Safety data:</span> SOS alerts (including your
           location at the time), ratings you give or receive, and any dispute or support messages you send us.</p>
         <p><span className="font-semibold text-text-primary">Technical data:</span> device type, app version,
-          and crash/performance diagnostics, collected in aggregate to keep the service reliable — not used for
+          and crash/performance diagnostics, collected in aggregate to keep the service reliable - not used for
           advertising.</p>
       </>
     ),
@@ -59,10 +60,10 @@ const SECTIONS: LegalSection[] = [
       <>
         <p><span className="font-semibold text-text-primary">Your matched driver or rider:</span> name, photo,
           rating, and vehicle details are shown to the other party on a trip. Phone numbers are never shared
-          directly — calls are connected through a masked number so neither side sees the other&apos;s real
+          directly - calls are connected through a masked number so neither side sees the other&apos;s real
           number.</p>
         <p><span className="font-semibold text-text-primary">Service providers acting on our behalf:</span>{' '}
-          Razorpay (payment processing), an SMS gateway (OTP delivery), Firebase Cloud Messaging (push
+          our RBI-authorised payment gateway partners (payment processing; card, UPI and bank details are entered on and stored by the gateway, never by Ocar), an SMS gateway (OTP delivery), Firebase Cloud Messaging (push
           notifications), and AWS (cloud hosting, database, and document storage). These providers only receive
           what they need to perform their function and are contractually restricted from using it for their own
           purposes.</p>
@@ -89,7 +90,7 @@ const SECTIONS: LegalSection[] = [
     body: (
       <p>
         Data in transit is encrypted (HTTPS/TLS). One-time passwords and session refresh tokens are never
-        stored in plain text — only their cryptographic hash is kept. On the driver and rider apps, your
+        stored in plain text - only their cryptographic hash is kept. On the driver and rider apps, your
         authentication token is stored using your device&apos;s secure hardware-backed storage (Android
         Keystore / iOS Keychain), not plain app storage. Access to production data is restricted to authorized
         personnel, and our infrastructure and code are continuously scanned for known vulnerabilities and
@@ -137,12 +138,14 @@ const SECTIONS: LegalSection[] = [
           In accordance with the Information Technology Act, 2000 and the rules made thereunder, the Grievance
           Officer for Ocar can be reached at:
         </p>
-        <p className="text-text-primary font-medium">
-          [Grievance Officer name] · [grievance-officer@ocar.app] · [registered business address, Odisha]
+        <p>
+          <span className="font-semibold text-text-primary">{COMPANY.grievanceOfficer.name}</span>
+          <br />
+          {COMPANY.legalName}, {formatAddress()}
+          <br />
+          Email: <a href={`mailto:${COMPANY.grievanceOfficer.email}`}>{COMPANY.grievanceOfficer.email}</a>
         </p>
-        <p className="text-[11.5px] italic">
-          Placeholder — to be filled in with the actual designated officer before this policy is published.
-        </p>
+        <p>We acknowledge complaints within 48 hours and aim to resolve them within 15 days.</p>
       </>
     ),
   },
@@ -162,8 +165,8 @@ export default function PrivacyPolicyPage() {
   return (
     <LegalDocument
       title="Privacy Policy"
-      crossLinkLabel="Read our Terms & Conditions"
-      crossLinkHref="/legal/terms"
+      intro="What personal data Ocar collects, why we collect it, who we share it with, and the choices you have."
+      currentHref="/legal/privacy"
       sections={SECTIONS}
     />
   )

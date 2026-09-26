@@ -1,42 +1,52 @@
 import { useEffect, useState } from 'react'
-import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, shadows, spacing, typography, TERMS_URL } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, fonts, useNavClearance, card, sectionLabel, Text } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { teardownPushNotifications } from '@/services/notifications'
 import { fetchDriverStats, updateDriverProfile, type DriverStats } from '@/features/profile/api'
+import { useDocumentGate } from '@/features/go-online/useDocumentGate'
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   active: { bg: colors.successLight, text: colors.success },
+  pending_docs: { bg: colors.surface2, text: colors.ink600 },
   pending_approval: { bg: colors.warningLight, text: colors.warning },
+  docs_rejected: { bg: colors.errorLight, text: colors.error },
   suspended: { bg: colors.errorLight, text: colors.error },
   banned: { bg: colors.errorLight, text: colors.error },
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  active: 'Active',
+  pending_docs: 'Pending documents',
+  pending_approval: 'Pending approval',
+  docs_rejected: 'Action needed',
+  suspended: 'Suspended',
+  banned: 'Banned',
 }
 
 // Vehicle/Documents/Personal-info detail screens don't exist on mobile yet (web's
 // /profile/vehicle, /profile/documents, /profile/personal have no mobile counterpart
 // built this pass) -- rows stay visual-parity placeholders, same "known gap, not a
 // stub" treatment as the driver-mobile Home screen's omitted Wallet row.
-const MENU = [
-  { icon: 'truck' as const, label: 'Vehicle Details', sub: 'Registered vehicle' },
-  { icon: 'file-text' as const, label: 'Documents', sub: 'Verified documents' },
-  { icon: 'user' as const, label: 'Personal & Emergency Info', sub: 'Address, ID & emergency contact' },
-]
+const PLACEHOLDER_MENU = [{ icon: 'truck' as const, label: 'Vehicle Details', sub: 'Registered vehicle' }]
 
 function normalizePhone(raw: string | null | undefined): string {
-  if (!raw) return '—'
+  if (!raw) return '-'
   return raw.replace('+91', '').trim()
 }
 
 export default function ProfileScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const clearance = useNavClearance()
   const driver = useAuthStore((s) => s.driver)
+  const documentGate = useDocumentGate()
   const clearAuth = useAuthStore((s) => s.clearAuth)
   const updateDriver = useAuthStore((s) => s.updateDriver)
   const isOnline = useDriverSessionStore((s) => s.isOnline)
@@ -95,7 +105,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md }]}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md, paddingBottom: clearance }]}>
         <Animated.View entering={FadeIn.duration(420)} style={styles.headerCard}>
           <View style={styles.headerRow}>
             <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
@@ -106,14 +116,14 @@ export default function ProfileScreen() {
               <Text style={styles.phone}>+91 {displayPhone}</Text>
               <View style={styles.badgeRow}>
                 <Feather name="star" size={12} color={colors.warning} />
-                <Text style={styles.badgeText}>{stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '—'}</Text>
+                <Text style={styles.badgeText}>{stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '-'}</Text>
                 <Feather name="truck" size={12} color={colors.ink400} style={{ marginLeft: spacing.xs }} />
                 <Text style={styles.badgeTextMuted}>{stats?.total_rides ?? 0} trips</Text>
               </View>
             </View>
             <View style={styles.headerActions}>
               <View style={[styles.statusPill, { backgroundColor: statusStyle.bg }]}>
-                <Text style={[styles.statusPillText, { color: statusStyle.text }]}>{driver?.status ?? '—'}</Text>
+                <Text style={[styles.statusPillText, { color: statusStyle.text }]}>{STATUS_LABELS[driver?.status ?? ''] ?? driver?.status ?? '-'}</Text>
               </View>
               <Pressable onPress={openEdit} style={styles.editBtn} accessibilityRole="button" accessibilityLabel="Edit profile">
                 <Feather name="edit-2" size={13} color={colors.ink600} />
@@ -135,22 +145,39 @@ export default function ProfileScreen() {
         <Animated.View entering={FadeInDown.delay(100).duration(360)}>
           <Text style={styles.sectionLabel}>VEHICLE & DOCUMENTS</Text>
           <View style={styles.menuCard}>
-            {MENU.slice(0, 2).map((item, i) => (
-              <Pressable key={item.label} style={[styles.menuRow, i === 0 ? styles.menuRowBorder : null]}>
+            <Pressable onPress={() => router.push('/documents')} style={[styles.menuRow, styles.menuRowBorder]} accessibilityRole="button">
+              <View style={[styles.menuIcon, documentGate.hasRejected ? styles.menuIconAlert : null]}>
+                <Feather name="file-text" size={15} color={documentGate.hasRejected ? colors.error : colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuLabel}>Documents</Text>
+                <Text style={styles.menuSub}>{documentGate.hasRejected ? 'Action needed' : 'Verified documents'}</Text>
+              </View>
+              {documentGate.hasRejected ? (
+                <View style={styles.alertBadge}>
+                  <Text style={styles.alertBadgeText}>Fix now</Text>
+                </View>
+              ) : missingDocs > 0 ? (
+                <View style={styles.pendingBadge}>
+                  <Text style={styles.pendingBadgeText}>{missingDocs} pending</Text>
+                </View>
+              ) : null}
+              <Feather name="chevron-right" size={14} color={colors.ink400} />
+            </Pressable>
+            {/* Not built yet, plain rows, no chevron, so they don't invite a tap that goes nowhere. */}
+            {PLACEHOLDER_MENU.map((item, i) => (
+              <View key={item.label} style={[styles.menuRow, i < PLACEHOLDER_MENU.length - 1 ? styles.menuRowBorder : null]}>
                 <View style={styles.menuIcon}>
-                  <Feather name={item.icon} size={15} color={colors.primary} />
+                  <Feather name={item.icon} size={15} color={colors.ink400} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuLabel}>{item.label}</Text>
                   <Text style={styles.menuSub}>{item.sub}</Text>
                 </View>
-                {item.icon === 'file-text' && missingDocs > 0 ? (
-                  <View style={styles.pendingBadge}>
-                    <Text style={styles.pendingBadgeText}>{missingDocs} pending</Text>
-                  </View>
-                ) : null}
-                <Feather name="chevron-right" size={14} color={colors.ink400} />
-              </Pressable>
+                <View style={styles.soonBadge}>
+                  <Text style={styles.soonBadgeText}>Soon</Text>
+                </View>
+              </View>
             ))}
           </View>
         </Animated.View>
@@ -168,16 +195,18 @@ export default function ProfileScreen() {
               </View>
               <Feather name="chevron-right" size={14} color={colors.ink400} />
             </Pressable>
-            <Pressable style={[styles.menuRow, styles.menuRowBorder]}>
+            <View style={[styles.menuRow, styles.menuRowBorder]}>
               <View style={styles.menuIcon}>
-                <Feather name="user" size={15} color={colors.primary} />
+                <Feather name="user" size={15} color={colors.ink400} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.menuLabel}>{MENU[2]!.label}</Text>
-                <Text style={styles.menuSub}>{MENU[2]!.sub}</Text>
+                <Text style={styles.menuLabel}>Personal & Emergency Info</Text>
+                <Text style={styles.menuSub}>Address, ID & emergency contact</Text>
               </View>
-              <Feather name="chevron-right" size={14} color={colors.ink400} />
-            </Pressable>
+              <View style={styles.soonBadge}>
+                <Text style={styles.soonBadgeText}>Soon</Text>
+              </View>
+            </View>
             {/* The only functional row in this section -- deep-links to apps/user's
                 hosted /legal/terms (which itself cross-links to /legal/privacy)
                 rather than duplicating the legal text natively. */}
@@ -273,45 +302,50 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl * 2 },
-  headerCard: { backgroundColor: colors.surface, borderRadius: radii['2xl'], padding: spacing.lg, ...shadows.card },
+  content: { padding: spacing.lg, gap: spacing.md },
+  headerCard: { ...card, padding: spacing.lg },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   avatar: { width: 60, height: 60, borderRadius: radii.xl, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 24, fontWeight: '800', color: colors.inkInverse },
+  avatarText: { fontSize: 24, fontFamily: fonts.bold, color: colors.inkInverse },
   headerInfo: { flex: 1, gap: 2 },
-  name: { ...typography.title, color: colors.ink900, fontWeight: '800' },
+  name: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   phone: { ...typography.caption, color: colors.ink600 },
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  badgeText: { ...typography.caption, color: colors.ink900, fontWeight: '700' },
+  badgeText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.bold },
   badgeTextMuted: { ...typography.caption, color: colors.ink400 },
   headerActions: { alignItems: 'flex-end', gap: spacing.xs },
   statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radii.full },
-  statusPillText: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
+  statusPillText: { fontSize: 11, fontFamily: fonts.bold },
   editBtn: { width: 32, height: 32, borderRadius: radii.lg, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   tag: { paddingHorizontal: spacing.sm + 2, paddingVertical: 4, borderRadius: radii.full, backgroundColor: colors.surface2 },
-  tagText: { ...typography.caption, color: colors.ink600, fontWeight: '600' },
-  sectionLabel: { ...typography.caption, color: colors.ink400, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: spacing.sm, marginTop: spacing.sm },
-  menuCard: { backgroundColor: colors.surface, borderRadius: radii.xl, overflow: 'hidden' },
+  tagText: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
+  sectionLabel: { ...sectionLabel, marginBottom: 10, marginTop: spacing.sm },
+  menuCard: { ...card, overflow: 'hidden' },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6 },
   menuRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  menuIcon: { width: 36, height: 36, borderRadius: radii.lg, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  menuLabel: { ...typography.body, color: colors.ink900, fontWeight: '600' },
+  menuIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  menuLabel: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   menuSub: { ...typography.caption, color: colors.ink400, marginTop: 1 },
+  menuIconAlert: { backgroundColor: colors.errorLight },
+  alertBadge: { paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.full, backgroundColor: colors.errorLight, marginRight: spacing.xs },
+  alertBadgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.error },
+  soonBadge: { paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.full, backgroundColor: colors.surface2 },
+  soonBadgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.ink400 },
   pendingBadge: { paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.full, backgroundColor: colors.warningLight, marginRight: spacing.xs },
-  pendingBadgeText: { fontSize: 10, fontWeight: '700', color: colors.warning },
-  signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.errorLight, borderWidth: 1, borderColor: colors.error, borderRadius: radii.xl, paddingVertical: spacing.sm + 6, marginTop: spacing.md },
-  signOutText: { ...typography.body, color: colors.error, fontWeight: '700' },
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, paddingBottom: spacing.xl },
+  pendingBadgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.warning },
+  signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: spacing.sm + 6, marginTop: spacing.md },
+  signOutText: { ...typography.body, color: colors.error, fontFamily: fonts.bold },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, paddingBottom: spacing.xl },
   handle: { width: 32, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.md },
-  sheetTitle: { ...typography.title, color: colors.ink900, fontWeight: '800' },
+  sheetTitle: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   sheetBody: { ...typography.body, color: colors.ink600, marginTop: spacing.xs, marginBottom: spacing.lg },
   sheetActions: { flexDirection: 'row', gap: spacing.sm },
   sheetCancelBtn: { flex: 1, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
-  sheetCancelText: { ...typography.body, color: colors.ink600, fontWeight: '600' },
+  sheetCancelText: { ...typography.body, color: colors.ink600, fontFamily: fonts.semibold },
   sheetConfirmBtn: { flex: 1, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, backgroundColor: colors.error, alignItems: 'center' },
-  sheetConfirmText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  sheetConfirmText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
   editHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
   closeBtn: { width: 32, height: 32, borderRadius: radii.full, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   input: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4, marginBottom: spacing.sm },
@@ -319,5 +353,5 @@ const styles = StyleSheet.create({
   saveBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 6, alignItems: 'center', marginTop: spacing.xs },
   disabled: { opacity: 0.5 },
   pressedScale: { transform: [{ scale: 0.97 }] },
-  saveText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  saveText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
 })

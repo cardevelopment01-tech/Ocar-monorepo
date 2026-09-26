@@ -59,6 +59,14 @@ export async function getCategoryDisplayName(categoryId: bigint): Promise<string
   return res.rows[0]?.display_name ?? null
 }
 
+export async function getCategorySlug(categoryId: bigint): Promise<string | null> {
+  const res = await pool.query<{ slug: string }>(
+    `SELECT slug FROM vehicle_categories WHERE id = $1`,
+    [categoryId]
+  )
+  return res.rows[0]?.slug ?? null
+}
+
 export async function createSession(data: {
   driverId: bigint
   vehicleId: bigint

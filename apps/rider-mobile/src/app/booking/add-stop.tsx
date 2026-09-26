@@ -3,11 +3,12 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { PlaceRow } from '@/features/booking/components/PlaceRow'
 import { fetchPlaceDetail } from '@/features/booking/api'
 import { useAutocomplete } from '@/features/booking/hooks/useAutocomplete'
 import { useBookingDraftStore } from '@/features/booking/store'
+import { sectionLabel } from '@/theme/homeTokens'
 
 // Matches web's AddStopSheet (apps/user/components/route/AddStopSheet.tsx) --
 // adapted to a full screen (this app's search/map-picker already use the
@@ -119,8 +120,14 @@ export default function AddStopScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
-  backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  title: { ...typography.title, color: colors.ink900, fontWeight: '700' },
+  backButton: { width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(20,23,26,0.08)',
+    boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
+  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginHorizontal: spacing.lg, marginBottom: spacing.sm, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
   searchInput: { ...typography.body, color: colors.ink900, flex: 1, padding: 0 },
   body: { flex: 1 },
@@ -129,7 +136,7 @@ const styles = StyleSheet.create({
   hint: { ...typography.body, color: colors.ink400, textAlign: 'center', paddingVertical: spacing.lg },
   errorRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md },
   errorText: { ...typography.body, color: colors.error, flex: 1 },
-  retryText: { ...typography.label, color: colors.primary, fontWeight: '700' },
+  retryText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
   section: { marginBottom: spacing.sm },
-  sectionLabel: { ...typography.caption, color: colors.ink400, fontWeight: '700', letterSpacing: 0.5, marginBottom: spacing.xs },
+  sectionLabel: { ...sectionLabel, marginBottom: spacing.xs },
 })

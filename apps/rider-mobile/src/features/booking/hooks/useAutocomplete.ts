@@ -44,7 +44,7 @@ export function useAutocomplete(query: string, bias: { lat?: number; lng?: numbe
       .catch((err) => {
         if (axios.isCancel(err)) return
         const code = axios.isAxiosError(err) ? (err.response?.data as { code?: string } | undefined)?.code : undefined
-        setError(code ? mapBookingErrorCode(code) : "Couldn't search — try again")
+        setError(code ? mapBookingErrorCode(code) : "Couldn't search. Please try again.")
         setLoading(false)
       })
     return () => controller.abort()

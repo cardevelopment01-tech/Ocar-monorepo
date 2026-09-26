@@ -53,6 +53,7 @@ export interface DriverDocument {
   file_url: string
   status: string
   rejection_note: string | null
+  rejection_count: number
   reviewed_by: string | null
   reviewed_at: Date | null
   created_at: Date
@@ -67,6 +68,7 @@ export interface DriverVehicleDocument {
   doc_number: string | null
   status: string
   rejection_note: string | null
+  rejection_count: number
   claimed_valid_until: string | null
   verified_valid_until: string | null
   created_at: Date

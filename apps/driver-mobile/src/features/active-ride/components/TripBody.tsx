@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { StyleSheet, View } from 'react-native'
+import { colors, radii, spacing, typography, Text } from '@ocar/mobile-shared'
 import type { RideStop } from '@ocar/mobile-shared'
 import { RiderActionsRow } from './RiderActionsRow'
 import { StopTimeline } from './StopTimeline'

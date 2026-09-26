@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, formatCurrency, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, formatCurrency, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { SlideToConfirm } from './SlideToConfirm'
 
 export type CashCollectionCardProps = {
@@ -61,7 +61,7 @@ export function CashCollectionCard({
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <SlideToConfirm
-        label={`Slide — collected ${formatCurrency(expectedFare)}`}
+        label={`Slide to confirm collected ${formatCurrency(expectedFare)}`}
         onConfirm={onConfirmFull}
         disabled={loading}
         color={colors.success}
@@ -94,7 +94,7 @@ export function CashCollectionCard({
 
           {pendingConfirm ? (
             <Text style={styles.deviationWarning}>
-              That's well off the {formatCurrency(expectedFare)} fare — tap again to confirm ₹{customAmount || '0'}.
+              That's well off the {formatCurrency(expectedFare)} fare. Tap again to confirm ₹{customAmount || '0'}.
             </Text>
           ) : null}
 
@@ -131,24 +131,24 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm,
     shadowColor: colors.success, shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: 0, height: 0 }, elevation: 6,
   },
-  heroLabel: { ...typography.label, color: colors.ink600, fontWeight: '600' },
-  heroFare: { fontSize: 48, fontWeight: '800', color: colors.ink900, lineHeight: 54 },
+  heroLabel: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
+  heroFare: { fontSize: 48, fontFamily: fonts.bold, color: colors.ink900, lineHeight: 54 },
   heroSub: { ...typography.caption, color: colors.ink400 },
   error: { ...typography.label, color: colors.error, textAlign: 'center' },
   altBtn: { paddingVertical: spacing.sm, alignItems: 'center' },
-  altBtnText: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
-  backdrop: { backgroundColor: 'rgba(15,23,42,0.5)' },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, gap: spacing.xs },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.sm },
+  altBtnText: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
+  backdrop: { backgroundColor: 'rgba(20,23,26,0.45)' },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, gap: spacing.xs },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.sm },
   sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: spacing.sm },
-  sheetTitle: { ...typography.title, color: colors.ink900, fontWeight: '800' },
-  inputLabel: { ...typography.caption, color: colors.ink600, fontWeight: '600', marginBottom: spacing.xs },
-  input: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4, fontSize: 18, fontWeight: '700', color: colors.ink900, marginBottom: spacing.sm },
+  sheetTitle: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
+  inputLabel: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold, marginBottom: spacing.xs },
+  input: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4, fontSize: 18, fontFamily: fonts.bold, color: colors.ink900, marginBottom: spacing.sm },
   deviationWarning: { ...typography.caption, color: colors.error, textAlign: 'center', marginBottom: spacing.sm },
   confirmBtn: { paddingVertical: spacing.sm + 6, borderRadius: radii.lg, backgroundColor: colors.primary, alignItems: 'center', marginBottom: spacing.sm },
   confirmBtnDanger: { backgroundColor: colors.error },
-  confirmBtnText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  confirmBtnText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
   notCollectedBtn: { paddingVertical: spacing.sm + 6, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.error, alignItems: 'center' },
-  notCollectedText: { ...typography.body, color: colors.error, fontWeight: '700' },
+  notCollectedText: { ...typography.body, color: colors.error, fontFamily: fonts.bold },
   disabled: { opacity: 0.6 },
 })

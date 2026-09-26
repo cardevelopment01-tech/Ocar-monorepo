@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import Animated, {
   Easing,
   cancelAnimation,
@@ -11,7 +11,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
-import { colors } from '@ocar/mobile-shared'
+import { colors, fonts, Text } from '@ocar/mobile-shared'
 
 export type OnlineToggleProps = {
   isOnline: boolean
@@ -57,7 +57,7 @@ export function OnlineToggle({ isOnline, onToggle, disabled = false }: OnlineTog
       >
         {isOnline ? (
           <LinearGradient
-            colors={['#FB923C', '#F97316', '#EA580C']}
+            colors={['#3DD598', '#25B87A', '#1B9A66']}
             start={{ x: 0.15, y: 0.1 }}
             end={{ x: 0.9, y: 1 }}
             style={[styles.button, styles.buttonOnlineShadow]}
@@ -67,7 +67,7 @@ export function OnlineToggle({ isOnline, onToggle, disabled = false }: OnlineTog
           </LinearGradient>
         ) : (
           <View style={[styles.button, styles.buttonOffline]}>
-            <Feather name="power" size={18} color={colors.ink400} strokeWidth={2.5} />
+            <Feather name="power" size={18} color={colors.primary} strokeWidth={2.5} />
             <Text style={[styles.label, styles.labelOffline]}>Offline</Text>
           </View>
         )}
@@ -80,12 +80,12 @@ const SIZE = 72
 
 const styles = StyleSheet.create({
   wrap: { width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center' },
-  ring: { position: 'absolute', width: SIZE, height: SIZE, borderRadius: SIZE / 2, backgroundColor: 'rgba(249,115,22,0.22)' },
+  ring: { position: 'absolute', width: SIZE, height: SIZE, borderRadius: SIZE / 2, backgroundColor: 'rgba(37,184,122,0.24)' },
   pressed: { transform: [{ scale: 0.97 }] },
   button: { width: SIZE, height: SIZE, borderRadius: SIZE / 2, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  buttonOnlineShadow: { shadowColor: '#F97316', shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
-  buttonOffline: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, shadowColor: colors.primary, shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
-  label: { fontSize: 9, fontWeight: '700' },
+  buttonOnlineShadow: { shadowColor: '#25B87A', shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
+  buttonOffline: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, shadowColor: '#14171A', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+  label: { fontSize: 9, fontFamily: fonts.bold },
   labelOnline: { color: colors.inkInverse },
-  labelOffline: { color: colors.ink400 },
+  labelOffline: { color: colors.ink600 },
 })

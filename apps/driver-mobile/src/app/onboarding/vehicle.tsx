@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
-import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts, Text, VehicleIcon } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type VehicleBrand, type VehicleCategory, type VehicleInfoPayload, type VehicleModel } from '@/features/onboarding/api'
 import { FUEL_TYPES, VEHICLE_COLORS } from '@/features/onboarding/constants'
@@ -175,7 +175,9 @@ export default function VehicleRegistrationScreen() {
                 onPress={() => setCategoryId(Number(c.id))}
                 style={({ pressed }) => [styles.categoryBtn, categoryId === Number(c.id) ? styles.categoryBtnActive : null, pressed ? styles.pressedScale : null]}
               >
-                <Text style={[styles.categoryText, categoryId === Number(c.id) ? styles.categoryTextActive : null]}>{c.display_name}</Text>
+                <VehicleIcon slug={c.slug} size={40} />
+                <Text style={[styles.categoryText, categoryId === Number(c.id) ? styles.categoryTextActive : null]} numberOfLines={1}>{c.display_name}</Text>
+                <Text style={styles.categorySeats}>{c.max_passengers} seats</Text>
               </Pressable>
             ))}
           </View>
@@ -242,17 +244,18 @@ const styles = StyleSheet.create({
   // unfinished next to personal.tsx and documents.tsx's titled sections.
   card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.md, gap: spacing.md, borderWidth: 1, borderColor: colors.border },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  cardTitle: { ...typography.body, color: colors.ink900, fontWeight: '700' },
+  cardTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
   categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs + 2 },
-  categoryBtn: { flexBasis: '48%', flexGrow: 1, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface2, alignItems: 'center' },
+  categoryBtn: { flexBasis: '47%', flexGrow: 1, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.xs, borderRadius: 16, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: colors.surface2, alignItems: 'center', gap: 2 },
   categoryBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },
-  categoryText: { ...typography.body, color: colors.ink600, fontWeight: '700' },
-  categoryTextActive: { color: colors.primary },
+  categoryText: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
+  categorySeats: { ...typography.caption, fontSize: 11, color: colors.ink400 },
+  categoryTextActive: { color: colors.primaryDark },
   stepperRow: { flexDirection: 'row', gap: spacing.sm },
   acRow: { flexDirection: 'row', gap: spacing.sm },
   acBtn: { flex: 1, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface2, alignItems: 'center' },
   acBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },
-  acText: { ...typography.body, color: colors.ink600, fontWeight: '700' },
+  acText: { ...typography.body, color: colors.ink600, fontFamily: fonts.bold },
   acTextActive: { color: colors.primary },
   pressedScale: { transform: [{ scale: 0.97 }] },
 })

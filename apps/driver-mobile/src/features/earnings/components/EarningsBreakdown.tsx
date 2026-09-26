@@ -1,5 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { StyleSheet, View } from 'react-native'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import type { EarningsSummary } from '../types'
 
 export function EarningsBreakdown({ breakdown }: { breakdown: EarningsSummary['breakdown'] }) {
@@ -27,9 +27,9 @@ export function EarningsBreakdown({ breakdown }: { breakdown: EarningsSummary['b
 
 const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderRadius: radii['2xl'], padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
-  title: { ...typography.body, color: colors.ink900, fontWeight: '700', marginBottom: spacing.sm },
+  title: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold, marginBottom: spacing.sm },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm + 2 },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
   label: { ...typography.body, color: colors.ink600 },
-  value: { ...typography.body, fontWeight: '700' },
+  value: { ...typography.body, fontFamily: fonts.bold },
 })

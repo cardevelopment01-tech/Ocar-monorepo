@@ -5,7 +5,7 @@ export const EASE = [0.22, 1, 0.36, 1] as const
 // links out to it instead of duplicating the legal text 5x. Override via
 // VITE_LEGAL_BASE_URL per environment; falls back to the domain already
 // assumed elsewhere in this app (see the old support@ocar.in mailto).
-const LEGAL_BASE_URL = (import.meta.env['VITE_LEGAL_BASE_URL'] as string | undefined) || 'https://ocar.in'
+const LEGAL_BASE_URL = (import.meta.env['VITE_LEGAL_BASE_URL'] as string | undefined) || 'https://ocarindia.com'
 export const TERMS_URL = `${LEGAL_BASE_URL}/legal/terms`
 export const PRIVACY_URL = `${LEGAL_BASE_URL}/legal/privacy`
 

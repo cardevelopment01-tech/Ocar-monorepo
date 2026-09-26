@@ -19,7 +19,13 @@ module.exports = {
     View: View,
     Text: Text,
   },
-  useSharedValue: (initial) => ({ value: initial }),
+  useSharedValue: (initial) => {
+    const sv = { value: initial }
+    sv.get = () => sv.value
+    sv.set = (v) => { sv.value = v }
+    return sv
+  },
+  Easing: { linear: (t) => t },
   useAnimatedStyle: (fn) => fn(),
   withRepeat: (toValue) => toValue,
   withSequence: (...values) => values[0],

@@ -1,8 +1,8 @@
 import { memo } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Marker } from 'react-native-maps'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, shadows, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 
 export type AddressCalloutProps = {
   position: [number, number]
@@ -28,7 +28,7 @@ function AddressCallout({ position, address }: AddressCalloutProps) {
           car clearance below. */}
       <View style={styles.wrap} collapsable={false}>
         <View style={styles.pill}>
-          <Feather name="map-pin" size={11} color={colors.ink600} />
+          <Feather name="map-pin" size={11} color={colors.primary} />
           <Text style={styles.pillText} numberOfLines={1}>{address}</Text>
         </View>
         <View style={styles.tail} />
@@ -49,20 +49,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
     maxWidth: 150,
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgb(253,254,254)',
     borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: 'rgba(14,143,163,0.22)',
     paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.xs + 2,
+    paddingVertical: spacing.xs + 3,
     ...shadows.card,
   },
-  pillText: { ...typography.caption, color: colors.ink900, fontWeight: '600', flexShrink: 1 },
+  pillText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.semibold, flexShrink: 1 },
   // A rotated square clipped to its bottom-right corner reads as a downward
   // triangle -- the standard RN "CSS triangle" trick, no image asset needed.
   tail: {
     width: 10,
     height: 10,
     marginTop: -5,
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgb(253,254,254)',
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(14,143,163,0.22)',
     transform: [{ rotate: '45deg' }],
     shadowColor: '#000',
     shadowOpacity: 0.08,

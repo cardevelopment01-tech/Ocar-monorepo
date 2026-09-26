@@ -85,7 +85,7 @@ function AdminLoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#F8FAFF' }}>
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#F6FBFB' }}>
       <div className="w-full max-w-sm">
 
         {/* Brand mark */}
@@ -142,7 +142,7 @@ function AdminLoginForm() {
                 disabled={verifying || !totpCode.trim()}
                 className={cn(
                   'w-full py-3 px-6 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed',
-                  verifying ? 'bg-[#6366F1]' : 'bg-brand shadow-[0_4px_16px_rgba(79,70,229,0.35)]'
+                  verifying ? 'bg-[#14ABBD]' : 'bg-brand shadow-[0_4px_16px_rgba(14,143,163,0.35)]'
                 )}
               >
                 {verifying ? (
@@ -219,7 +219,7 @@ function AdminLoginForm() {
               disabled={isLoading}
               className={cn(
                 'w-full py-3 px-6 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed',
-                isLoading ? 'bg-[#6366F1]' : 'bg-brand shadow-[0_4px_16px_rgba(79,70,229,0.35)]'
+                isLoading ? 'bg-[#14ABBD]' : 'bg-brand shadow-[0_4px_16px_rgba(14,143,163,0.35)]'
               )}
             >
               {isLoading ? (

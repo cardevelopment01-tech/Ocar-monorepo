@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native'
+import { BackHandler, Pressable, StyleSheet, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
-import { Button, CancelSheet, ErrorState, SOSButton, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, CancelSheet, ErrorState, SOSButton, Skeleton, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useActiveRide } from '@/features/active-ride/useActiveRide'
@@ -248,10 +248,8 @@ export default function ActiveRideScreen() {
               ) : (
                 <OtpEntryCard
                   key="end-otp"
-                  title="End Ride OTP"
-                  subtitle="Ask the rider for their end OTP"
-                  submitLabel="End trip"
-                  loading={false}
+                  phase="end"
+                  riderName={ride.riderName}
                   error={actionError}
                   onSubmit={(otp) => submitEndOtpAction(otp)}
                 />
@@ -277,10 +275,8 @@ export default function ActiveRideScreen() {
             primaryAction={
               <OtpEntryCard
                 key="end-otp"
-                title="End Ride OTP"
-                subtitle="Ask the rider for their end OTP"
-                submitLabel="End trip"
-                loading={false}
+                phase="end"
+                riderName={ride.riderName}
                 error={actionError}
                 onSubmit={(otp) => submitEndOtpAction(otp)}
               />
@@ -295,10 +291,8 @@ export default function ActiveRideScreen() {
           <RiderActionsRow rideId={rideId} riderName={ride.riderName} navigateTo={navigateTarget} unreadChatCount={unreadChatCount} onOpenChat={handleOpenChat} />
           <OtpEntryCard
             key="start-otp"
-            title="Rider OTP"
-            subtitle="Ask the rider for their 4-digit OTP"
-            submitLabel="Start trip"
-            loading={false}
+            phase="start"
+            riderName={ride.riderName}
             error={actionError}
             onSubmit={(otp) => submitStartOtpAction(otp)}
           />
@@ -348,5 +342,5 @@ const styles = StyleSheet.create({
   addressLabel: { ...typography.caption, color: colors.ink400 },
   addressValue: { ...typography.title, color: colors.ink900 },
   cancelLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: spacing.sm },
-  cancelLinkText: { ...typography.label, color: colors.error, fontWeight: '600' },
+  cancelLinkText: { ...typography.label, color: colors.error, fontFamily: fonts.semibold },
 })

@@ -1,5 +1,5 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native'
-import { colors, spacing, typography } from '@ocar/mobile-shared'
+import { ScrollView, StyleSheet, View } from 'react-native'
+import { colors, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import type { RideStop } from '@ocar/mobile-shared'
 
 export type StopTimelineProps = { stops: RideStop[] }
@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
   dot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
   line: { width: 2, flex: 1, minHeight: 20, backgroundColor: colors.border },
   textCol: { flex: 1, paddingBottom: spacing.sm },
-  label: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
-  address: { ...typography.body, color: colors.ink900, fontWeight: '500' },
-  status: { ...typography.caption, fontWeight: '700' },
+  label: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
+  address: { ...typography.body, color: colors.ink900, fontFamily: fonts.medium },
+  status: { ...typography.caption, fontFamily: fonts.bold },
 })

@@ -1,6 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { Button, colors, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import type { RideDetailSettled } from '../useActiveRide'
 
 export type TripCompletionCardProps = {
@@ -39,11 +39,11 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
         <Text style={styles.heroTitle}>Trip Complete!</Text>
         <View style={styles.routeRow}>
           <Feather name="map-pin" size={11} color={colors.primary} />
-          <Text style={styles.routeText} numberOfLines={1}>{ride.originAddress ?? '—'}</Text>
+          <Text style={styles.routeText} numberOfLines={1}>{ride.originAddress ?? '-'}</Text>
           {!isRental ? (
             <>
               <Feather name="arrow-right" size={10} color={colors.ink400} />
-              <Text style={styles.routeText} numberOfLines={1}>{ride.destinationAddress ?? '—'}</Text>
+              <Text style={styles.routeText} numberOfLines={1}>{ride.destinationAddress ?? '-'}</Text>
             </>
           ) : (
             <Text style={styles.routeText}>Flexible route</Text>
@@ -85,7 +85,7 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
         <View style={[styles.statCol, styles.statColBordered]}>
           <View style={styles.statRatingRow}>
             <Feather name="star" size={13} color={colors.warning} />
-            <Text style={styles.statValue}>{driverRating != null ? driverRating.toFixed(1) : '—'}</Text>
+            <Text style={styles.statValue}>{driverRating != null ? driverRating.toFixed(1) : '-'}</Text>
           </View>
           <Text style={styles.statLabel}>Your rating</Text>
         </View>
@@ -104,24 +104,24 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs,
     shadowColor: colors.success, shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: 0, height: 0 }, elevation: 6,
   },
-  heroTitle: { fontSize: 26, fontWeight: '800', color: colors.ink900 },
+  heroTitle: { fontSize: 26, fontFamily: fonts.bold, color: colors.ink900 },
   routeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, maxWidth: '90%' },
   routeText: { ...typography.caption, color: colors.ink600, flexShrink: 1 },
   earningsCard: { backgroundColor: colors.surface, borderRadius: 24, borderWidth: 1, borderColor: colors.border, padding: spacing.md + 4 },
-  earningsLabel: { ...typography.caption, color: colors.ink400, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: spacing.xs },
-  earningsAmount: { fontSize: 40, fontWeight: '800', color: colors.primary, marginBottom: spacing.sm },
+  earningsLabel: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: spacing.xs },
+  earningsAmount: { fontSize: 40, fontFamily: fonts.bold, color: colors.primary, marginBottom: spacing.sm },
   breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
   breakdownLabel: { ...typography.caption, color: colors.ink600, flexShrink: 1, paddingRight: spacing.sm },
-  breakdownValue: { ...typography.caption, color: colors.ink900, fontWeight: '700' },
-  breakdownValueNegative: { ...typography.caption, color: colors.error, fontWeight: '700' },
+  breakdownValue: { ...typography.caption, color: colors.ink900, fontFamily: fonts.bold },
+  breakdownValueNegative: { ...typography.caption, color: colors.error, fontFamily: fonts.bold },
   breakdownTotal: { borderTopWidth: 1, borderTopColor: colors.border, marginTop: spacing.xs, paddingTop: spacing.xs + 2 },
-  breakdownLabelBold: { ...typography.caption, color: colors.ink900, fontWeight: '800' },
-  breakdownValueBold: { ...typography.body, color: colors.primary, fontWeight: '800' },
+  breakdownLabelBold: { ...typography.caption, color: colors.ink900, fontFamily: fonts.bold },
+  breakdownValueBold: { ...typography.body, color: colors.primary, fontFamily: fonts.bold },
   cashNote: { ...typography.caption, color: colors.ink400, marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   statsCard: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 24, borderWidth: 1, borderColor: colors.border, padding: spacing.md + 4 },
   statCol: { flex: 1, alignItems: 'center' },
   statColBordered: { borderLeftWidth: 1, borderLeftColor: colors.border },
   statRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statValue: { fontSize: 20, fontWeight: '800', color: colors.ink900 },
+  statValue: { fontSize: 20, fontFamily: fonts.bold, color: colors.ink900 },
   statLabel: { ...typography.caption, color: colors.ink400, marginTop: 2 },
 })

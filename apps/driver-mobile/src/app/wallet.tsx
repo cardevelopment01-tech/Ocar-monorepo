@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
-import { EmptyState, ErrorState, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { EmptyState, ErrorState, Skeleton, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { fetchBillingMode, fetchDriverWallet, type DriverWallet, type LedgerEntry } from '@/features/wallet/api'
 
 // Same "temporarily disabled" gate as the web Wallet.tsx -- MIN_BALANCE is a
@@ -92,11 +93,11 @@ export default function WalletScreen() {
           <Skeleton height={144} borderRadius={24} />
         ) : (
           <>
-            <View style={[styles.balanceCard, { backgroundColor: isLow ? colors.warning : colors.success }]}>
+            <LinearGradient colors={isLow ? ['#7A5618', '#B98A32'] : ['#0B4A50', '#0E8FA3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.balanceCard}>
               <Text style={styles.balanceLabel}>Compliance deposit</Text>
               <Text style={styles.balanceValue}>₹{formatMoney(balance)}</Text>
               <Text style={styles.balanceHint}>Minimum required: ₹{MIN_BALANCE.toLocaleString('en-IN')}</Text>
-            </View>
+            </LinearGradient>
 
             {isLow ? (
               <View style={styles.warningBanner}>
@@ -156,27 +157,27 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   backBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  title: { ...typography.headline, color: colors.ink900, fontWeight: '800' },
+  title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold },
   subtitle: { ...typography.caption, color: colors.ink400 },
   refreshBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.md },
-  balanceCard: { borderRadius: radii['2xl'], padding: spacing.lg },
-  balanceLabel: { ...typography.label, color: 'rgba(255,255,255,0.7)', fontWeight: '700' },
-  balanceValue: { fontSize: 40, fontWeight: '800', color: colors.inkInverse, marginTop: 4 },
+  balanceCard: { borderRadius: 22, padding: spacing.lg, boxShadow: '0 12px 28px rgba(14,143,163,0.22)' },
+  balanceLabel: { ...typography.label, color: 'rgba(255,255,255,0.7)', fontFamily: fonts.bold },
+  balanceValue: { fontSize: 40, fontFamily: fonts.bold, color: colors.inkInverse, marginTop: 4 },
   balanceHint: { ...typography.caption, color: 'rgba(255,255,255,0.7)', marginTop: spacing.sm },
   warningBanner: { flexDirection: 'row', gap: spacing.sm, backgroundColor: colors.warningLight, borderRadius: radii.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.warning },
-  warningTitle: { ...typography.body, color: colors.warning, fontWeight: '700' },
+  warningTitle: { ...typography.body, color: '#8A6420', fontFamily: fonts.bold },
   warningBody: { ...typography.caption, color: colors.ink600, marginTop: 2 },
   errorBanner: { flexDirection: 'row', gap: spacing.sm, backgroundColor: colors.errorLight, borderRadius: radii.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.error },
-  errorTitle: { ...typography.body, color: colors.error, fontWeight: '700' },
+  errorTitle: { ...typography.body, color: colors.error, fontFamily: fonts.bold },
   errorBody: { ...typography.caption, color: colors.ink600, marginTop: 2 },
   ledgerCard: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.md, borderWidth: 1, borderColor: colors.border },
-  ledgerTitle: { ...typography.body, color: colors.ink900, fontWeight: '700', marginBottom: spacing.sm },
+  ledgerTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold, marginBottom: spacing.sm },
   emptyText: { ...typography.body, color: colors.ink400, textAlign: 'center', paddingVertical: spacing.md },
   ledgerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm + 4 },
   ledgerRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
   ledgerIcon: { width: 36, height: 36, borderRadius: radii.full, alignItems: 'center', justifyContent: 'center' },
-  ledgerLabel: { ...typography.body, color: colors.ink900, fontWeight: '600' },
+  ledgerLabel: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   ledgerDate: { ...typography.caption, color: colors.ink400, marginTop: 1 },
-  ledgerAmount: { ...typography.body, fontWeight: '700' },
+  ledgerAmount: { ...typography.body, fontFamily: fonts.bold },
 })

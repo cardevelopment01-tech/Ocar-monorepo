@@ -17,16 +17,20 @@ interface FilterBarProps {
   filters?: FilterOption[]
   onExport?: () => void
   actions?: React.ReactNode
+  /** controls rendered before the select filters (e.g. multi-select popovers) */
+  leading?: React.ReactNode
+  /** give the search box its own row below 1280px */
+  wrapSearch?: boolean
 }
 
 export default function FilterBar({
   search, onSearch, searchPlaceholder = 'Search…',
-  filters = [], onExport, actions,
+  filters = [], onExport, actions, leading, wrapSearch,
 }: FilterBarProps) {
   return (
     <div className="flex items-center gap-3 flex-wrap">
       {/* Search */}
-      <div className="relative flex-1 min-w-[200px]">
+      <div className={cn('relative flex-1 min-w-[200px]', wrapSearch && 'max-[1279px]:basis-full')}>
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
         <input
           type="text"
@@ -36,6 +40,8 @@ export default function FilterBar({
           className="w-full pl-8 pr-3 py-2 text-sm bg-surface border border-border rounded-xl text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
         />
       </div>
+
+      {leading}
 
       {/* Filter dropdowns */}
       {filters.map(f => (

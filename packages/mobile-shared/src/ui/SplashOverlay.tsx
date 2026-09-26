@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Image, StyleSheet, type ImageSourcePropType } from 'react-native'
+import { Image, StyleSheet, View, type ImageSourcePropType } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import Animated, {
   Easing,
@@ -48,7 +48,6 @@ export function SplashOverlay({ logoSource, onDone, durationMs = 1450 }: SplashO
     // A slow continuous drift for the life of the splash -- rotation gives the
     // gradient actual motion instead of sitting there as a flat tinted shape,
     // and the breathing scale reads as "alive" without ever looking gestural.
-    glowRotate.value = withRepeat(withTiming(360, { duration: 9000, easing: Easing.linear }), -1)
     glowBreath.value = withRepeat(
       withSequence(
         withTiming(1.08, { duration: 1400, easing: Easing.inOut(Easing.sin) }),
@@ -89,12 +88,12 @@ export function SplashOverlay({ logoSource, onDone, durationMs = 1450 }: SplashO
 
   return (
     <Animated.View style={[styles.overlay, overlayStyle]} pointerEvents="none">
-      <Animated.View style={[styles.glow, glowStyle]}>
-        <LinearGradient
-          colors={['#DC3E93', '#0A9FB0', 'transparent']}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
+      <Animated.View style={[styles.riderGlow, glowStyle]}>
+          <View style={[styles.ring, { width: 340, height: 340, borderRadius: 170, opacity: 0.07 }]} />
+          <View style={[styles.ring, { width: 240, height: 240, borderRadius: 120, opacity: 0.11 }]} />
+          <View style={[styles.ring, { width: 150, height: 150, borderRadius: 75, opacity: 0.18 }]} />
+        </Animated.View>
+
       <Animated.View style={[styles.logoClip, logoStyle]}>
         <Image source={logoSource} style={styles.logo} resizeMode="contain" />
         <Animated.View style={[styles.sweep, sweepStyle]}>
@@ -122,6 +121,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 999,
   },
+  riderGlow: { position: 'absolute', width: 340, height: 340, alignItems: 'center', justifyContent: 'center' },
+  ring: { position: 'absolute', backgroundColor: '#14ABBD' },
   glow: {
     position: 'absolute',
     width: 320,

@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native'
-import { colors, spacing, typography } from '../theme/tokens'
+import { colors, fonts, spacing, typography } from '../theme/tokens'
 import { Button } from './Button'
 
 export type ErrorStateProps = {
@@ -24,6 +24,7 @@ const styles = StyleSheet.create({
   },
   message: {
     fontSize: typography.body.fontSize,
+    fontFamily: fonts.regular,
     color: colors.ink600,
     textAlign: 'center',
   },
