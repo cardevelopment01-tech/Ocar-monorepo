@@ -11,6 +11,7 @@ export interface DriverListItem {
   status: DriverStatus
   onboarding_step: string
   created_at: string
+  city: { id: string; name: string } | null
   vehicle: {
     number_plate: string
     vehicle_name: string
@@ -18,6 +19,19 @@ export interface DriverListItem {
   } | null
   docs_submitted: number
   docs_approved: number
+}
+
+export interface DriverListSummary {
+  total: number
+  active: number
+  pending_approval: number
+  suspended: number
+}
+
+// city keys: city id or "none" (no city assigned); categories keys: vehicle category id
+export interface DriverListFacets {
+  cities: Record<string, number>
+  categories: Record<string, number>
 }
 
 export interface DriverDetail {
@@ -74,6 +88,8 @@ export interface DriverDetail {
 export interface DriversResponse {
   drivers: DriverListItem[]
   pagination: { total: number; page: number; limit: number; pages: number }
+  summary: DriverListSummary
+  facets: DriverListFacets
 }
 
 export interface DriverPaymentRow {
@@ -107,6 +123,8 @@ export const adminDriverApi = {
   list: async (params: {
     status?: string
     search?: string
+    city?: string     // comma list of city ids, or "none"
+    vehicle?: string  // comma list of vehicle category ids
     page?: number
     limit?: number
   }): Promise<DriversResponse> => {
@@ -489,7 +507,12 @@ export const adminSessionsApi = {
 export interface DailyRevenue   { day: string; revenue: number; ride_count: number }
 export interface RideFunnel     { requested: number; accepted: number; completed: number; cancelled: number }
 export interface TopDriver      { driver_id: string; driver_name: string | null; driver_code: string; trip_count: number; total_earnings: number; rating_avg: string | null }
-export interface CityBreakdown  { city_name: string; ride_count: number; revenue: number }
+export interface CityBreakdown  {
+  city_name: string; ride_count: number; revenue: number
+  cancelled_count: number
+  cancellation_rate: number // 0-1
+  active_drivers: number
+}
 export interface CategoryBreakdown { category_name: string; ride_count: number; revenue: number }
 
 export interface AnalyticsSummary {

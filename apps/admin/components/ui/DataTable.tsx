@@ -15,7 +15,11 @@ interface DataTableProps<T extends Record<string, unknown>> {
   isLoading?: boolean
   emptyMessage?: string
   emptyIcon?: React.ReactNode
+  /** keep the first column pinned while the table scrolls sideways below 1280px */
+  pinFirstColumn?: boolean
 }
+
+const PIN_CLASS = 'max-[1279px]:sticky max-[1279px]:left-0 max-[1279px]:z-[1] max-[1279px]:bg-surface'
 
 function SkeletonRow({ cols }: { cols: number }) {
   return (
@@ -30,15 +34,15 @@ function SkeletonRow({ cols }: { cols: number }) {
 }
 
 export default function DataTable<T extends Record<string, unknown>>({
-  columns, data, onRowClick, isLoading = false, emptyMessage = 'No records found', emptyIcon,
+  columns, data, onRowClick, isLoading = false, emptyMessage = 'No records found', emptyIcon, pinFirstColumn = false,
 }: DataTableProps<T>) {
   return (
     <div className="overflow-x-auto">
       <table className="data-table">
         <thead>
           <tr>
-            {columns.map(col => (
-              <th key={col.key} style={col.width ? { width: col.width } : undefined}>
+            {columns.map((col, ci) => (
+              <th key={col.key} style={col.width ? { width: col.width } : undefined} className={pinFirstColumn && ci === 0 ? PIN_CLASS : undefined}>
                 {col.header}
               </th>
             ))}
@@ -68,8 +72,8 @@ export default function DataTable<T extends Record<string, unknown>>({
                   onClick={() => onRowClick?.(row)}
                   className={cn(onRowClick && 'cursor-pointer')}
                 >
-                  {columns.map(col => (
-                    <td key={col.key}>
+                  {columns.map((col, ci) => (
+                    <td key={col.key} className={pinFirstColumn && ci === 0 ? PIN_CLASS : undefined}>
                       {col.render ? col.render(row) : String(row[col.key] ?? '')}
                     </td>
                   ))}

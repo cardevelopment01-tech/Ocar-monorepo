@@ -24,7 +24,7 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     // ESM deps bypass the CJS pin above (native ESM resolution finds radix's own
     // nested react) — inline them so the vite alias above applies to their imports.
-    server: { deps: { inline: [/@radix-ui/, /lucide-react/, /@testing-library/] } },
+    server: { deps: { inline: [/@radix-ui/, /@floating-ui/, /lucide-react/, /@testing-library/] } },
     pool: 'forks',
     poolOptions: { forks: { execArgv: ['--require', path.resolve(__dirname, 'vitest.react-pin.cjs')] } },
   },

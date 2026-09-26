@@ -257,12 +257,27 @@ export default function AnalyticsPage() {
           ) : city_breakdown.length === 0 ? (
             <p className="text-sm text-text-muted text-center py-4">No data</p>
           ) : (
-            <HBarChart items={city_breakdown.map(c => ({
+            <>
+              <HBarChart items={city_breakdown.map(c => ({
               label: c.city_name,
               value: c.ride_count,
               subLabel: `${c.ride_count} rides · ₹${new Intl.NumberFormat('en-IN').format(Math.round(c.revenue))}`,
               color: COLORS.primary,
             }))} />
+              <table className="data-table w-full mt-4 text-xs">
+                <thead><tr><th>City</th><th className="text-right">Cancelled</th><th className="text-right">Cancel %</th><th className="text-right">Active drivers</th></tr></thead>
+                <tbody>
+                  {city_breakdown.map(c => (
+                    <tr key={c.city_name}>
+                      <td className="font-medium text-text-primary">{c.city_name}</td>
+                      <td className="text-right tabular-nums">{c.cancelled_count}</td>
+                      <td className="text-right tabular-nums">{Math.round(c.cancellation_rate * 100)}%</td>
+                      <td className="text-right tabular-nums">{c.active_drivers}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </div>
 
