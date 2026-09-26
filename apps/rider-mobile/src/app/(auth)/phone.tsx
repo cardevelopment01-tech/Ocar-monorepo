@@ -12,7 +12,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Button, Input, OtpBoxInput, colors, spacing, typography, mapOtpErrorCode, TERMS_URL, PRIVACY_URL } from '@ocar/mobile-shared'
+import { Button, Input, OtpBoxInput, colors, spacing, typography, mapOtpErrorCode, TERMS_URL, PRIVACY_URL, fonts } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { setupPushNotifications } from '@/services/notifications'
 import { useAuthStore, type UserProfile } from '@/store/useAuthStore'
@@ -301,8 +301,8 @@ const styles = StyleSheet.create({
   sheet: {
     flex: 1,
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -6 },
     elevation: 10,
   },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: spacing.md },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', marginBottom: spacing.md },
   // The sheet fills the rest of the screen below the hero (so the rounded card
   // still reaches the bottom edge), but the logo+form is far shorter than that
   // on a tall phone. Deliberately top-anchored (flex-start), not centered or
@@ -332,5 +332,5 @@ const styles = StyleSheet.create({
   subtitle: { ...typography.body, color: colors.ink600 },
   error: { ...typography.label, color: colors.error },
   consent: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginTop: spacing.xs },
-  consentLink: { color: colors.primary, fontWeight: '700' },
+  consentLink: { color: colors.primary, fontFamily: fonts.bold },
 })

@@ -58,10 +58,10 @@ export default function OTPVerify() {
         </motion.div>
 
         <h1 className="font-display font-bold text-2xl text-text-primary text-center mb-2">
-          Rider OTP
+          Start OTP
         </h1>
         <p className="text-text-secondary text-sm text-center mb-2">
-          Ask the rider for their 4-digit OTP
+          Ask the rider for the 4-digit code once they are in the cab
         </p>
 
         {/* Route line */}

@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BackHandler, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
+import { BackHandler, Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
 import { LinearGradient } from 'expo-linear-gradient'
 import Animated, {
@@ -19,7 +19,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { scheduleOnRN } from 'react-native-worklets'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { acceptRideRequest } from './api'
@@ -36,26 +36,26 @@ const PAN_DISMISS_VELOCITY = 850
 // Named palette for this deliberate, dark, high-contrast "incoming call" moment --
 // the ride request steals the whole screen so a phone in a car mount reads clearly
 // in bright sunlight, exactly like the web driver app's TripRequestCard. Kept on
-// Ocar's brand hues (driver teal + driver orange) so it never drifts off-brand.
+// the brand system (deep ink-teal surface, brand teal, gold accent) so it never drifts off-brand.
 const C = {
-  surface: '#0F172A',
-  surfaceDeep: '#0B1220',
-  panel: '#1E293B',
-  text: '#F8FAFC',
-  textMuted: '#94A3B8',
-  textFaint: '#64748B',
-  divider: '#475569',
-  primary: '#0A9FB0',
-  primaryGlow: '#0A9FB0',
-  accent: '#F97316',
-  success: '#22C55E',
-  error: '#EF4444',
-  errorText: '#FCA5A5',
-  warning: '#F59E0B',
-  warningText: '#FDE68A',
-  warningSub: '#B45309',
-  info: '#38BDF8',
-  infoSub: '#0369A1',
+  surface: '#0B1417',
+  surfaceDeep: '#070E10',
+  panel: '#122024',
+  text: '#F6FBFB',
+  textMuted: '#9DB3B8',
+  textFaint: '#6E8489',
+  divider: '#2A3C40',
+  primary: '#14ABBD',
+  primaryGlow: '#14ABBD',
+  accent: '#D6A552',
+  success: '#25B87A',
+  error: '#E5484D',
+  errorText: '#F5A3A6',
+  warning: '#D6A552',
+  warningText: '#F3D9A6',
+  warningSub: '#8A6420',
+  info: '#14ABBD',
+  infoSub: '#0A6F80',
   violet: '#C084FC',
 } as const
 
@@ -528,7 +528,7 @@ export function RideRequestOverlay() {
                       style={({ pressed }) => [pressed && !isAccepting ? styles.pressed : null]}
                     >
                       <LinearGradient
-                        colors={accepted ? ['#16A34A', '#15803D'] : [colors.primary, '#0A7F8C']}
+                        colors={accepted ? ['#2FCB8B', '#1B9A66'] : ['#14ABBD', '#0E8FA3']}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
                         style={styles.accept}
@@ -598,19 +598,19 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: C.primaryGlow,
     letterSpacing: 1.4,
-    fontWeight: '700',
+    fontFamily: fonts.bold,
     textTransform: 'uppercase',
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs, flexWrap: 'wrap' },
-  title: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 20, lineHeight: 26, color: C.text },
+  title: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 26, color: C.text },
   badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radii.full, marginLeft: 2 },
-  badgeText: { fontSize: 10, fontWeight: '800' },
+  badgeText: { fontSize: 10, fontFamily: fonts.bold },
   etaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  etaStrong: { ...typography.label, color: C.text, fontWeight: '700', fontSize: 15 },
+  etaStrong: { ...typography.label, color: C.text, fontFamily: fonts.bold, fontSize: 15 },
   etaMuted: { ...typography.label, color: C.textMuted, fontFamily: 'PlusJakartaSans_500Medium' },
   fareRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
-  fare: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 34, lineHeight: 38, letterSpacing: -1.2, color: C.text },
-  fareMeta: { ...typography.caption, color: C.textFaint, fontWeight: '600' },
+  fare: { fontFamily: fonts.bold, fontSize: 34, lineHeight: 38, letterSpacing: -1.2, color: C.text },
+  fareMeta: { ...typography.caption, color: C.textFaint, fontFamily: fonts.semibold },
   routePanel: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -625,14 +625,14 @@ const styles = StyleSheet.create({
   routeTexts: { flex: 1, gap: spacing.lg, paddingTop: 2 },
   routeRow: { gap: 2 },
   routeLabel: { ...typography.caption, color: C.textFaint, textTransform: 'uppercase', letterSpacing: 0.6 },
-  routeAddress: { ...typography.body, color: C.text, fontWeight: '600', fontSize: 15, lineHeight: 22 },
+  routeAddress: { ...typography.body, color: C.text, fontFamily: fonts.semibold, fontSize: 15, lineHeight: 22 },
   disclosure: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start', borderRadius: radii.md, borderWidth: 1, padding: spacing.sm + 2 },
   disclosureTexts: { flex: 1, gap: 2 },
-  disclosureTitle: { ...typography.label, fontWeight: '700', fontSize: 13 },
+  disclosureTitle: { ...typography.label, fontFamily: fonts.bold, fontSize: 13 },
   disclosureBody: { ...typography.caption, fontSize: 12, lineHeight: 16 },
   error: { ...typography.label, color: C.error, textAlign: 'center', marginTop: spacing.xs },
   terminal: { paddingVertical: spacing.sm },
-  terminalText: { ...typography.title, color: C.text, textAlign: 'center', fontWeight: '700' },
+  terminalText: { ...typography.title, color: C.text, textAlign: 'center', fontFamily: fonts.bold },
   actions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
   decline: {
     width: 108,
@@ -644,12 +644,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  declineText: { ...typography.label, color: C.textMuted, fontWeight: '600', fontSize: 15 },
+  declineText: { ...typography.label, color: C.textMuted, fontFamily: fonts.semibold, fontSize: 15 },
   pressed: { transform: [{ scale: 0.97 }], opacity: 0.92 },
   acceptFrame: { flex: 1, height: 58, justifyContent: 'center' },
   accept: { flex: 1, margin: RING_STROKE, borderRadius: radii.lg - 2, alignItems: 'center', justifyContent: 'center' },
   acceptLabelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, justifyContent: 'center' },
-  acceptLabel: { ...typography.title, color: C.text, fontWeight: '700', fontSize: 15 },
+  acceptLabel: { ...typography.title, color: C.text, fontFamily: fonts.bold, fontSize: 15 },
   secondsPill: {
     backgroundColor: 'rgba(248,250,252,0.12)',
     borderRadius: radii.full,
@@ -658,5 +658,5 @@ const styles = StyleSheet.create({
     minWidth: 34,
     alignItems: 'center',
   },
-  secondsPillText: { color: C.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 13, fontVariant: ['tabular-nums'] },
+  secondsPillText: { color: C.text, fontFamily: fonts.bold, fontSize: 13, fontVariant: ['tabular-nums'] },
 })

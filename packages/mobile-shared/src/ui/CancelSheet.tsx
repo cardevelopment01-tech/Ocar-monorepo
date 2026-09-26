@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { buttonRadius, colors, gradientPrimary, radii, shadows, spacing, typography } from '../theme/tokens'
+import { buttonRadius, colors, gradientPrimary, radii, shadows, spacing, typography, fonts } from '../theme/tokens'
 
 export type CancelReason = { code: string; label: string }
 
@@ -91,8 +91,8 @@ export function CancelSheet({ visible, reasons, onClose, onConfirm }: CancelShee
             })}
           </View>
 
-          {timedOut ? <Text style={styles.timeoutText}>Taking longer than expected — try again.</Text> : null}
-          {submitError ? <Text style={styles.timeoutText}>Something went wrong — try again.</Text> : null}
+          {timedOut ? <Text style={styles.timeoutText}>Taking longer than expected. Please try again.</Text> : null}
+          {submitError ? <Text style={styles.timeoutText}>Something went wrong. Please try again.</Text> : null}
 
           <Pressable onPress={handleConfirm} disabled={!selected || submitting} style={styles.confirmWrap}>
             <LinearGradient
@@ -125,10 +125,10 @@ const styles = StyleSheet.create({
   reasonRow: { minHeight: spacing['2xl'], borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderLight, justifyContent: 'center', paddingHorizontal: spacing.md },
   reasonRowActive: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },
   reasonLabel: { ...typography.body, color: colors.ink900 },
-  reasonLabelActive: { color: colors.primary, fontWeight: '600' },
+  reasonLabelActive: { color: colors.primary, fontFamily: fonts.semibold },
   timeoutText: { ...typography.caption, color: colors.error, marginBottom: spacing.sm },
   confirmWrap: { borderRadius: buttonRadius, overflow: 'hidden' },
   confirmBtn: { height: spacing['2xl'], borderRadius: buttonRadius, alignItems: 'center', justifyContent: 'center' },
   disabled: { opacity: 0.5 },
-  confirmText: { ...typography.body, color: colors.inkInverse, fontWeight: '600' },
+  confirmText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.semibold },
 })

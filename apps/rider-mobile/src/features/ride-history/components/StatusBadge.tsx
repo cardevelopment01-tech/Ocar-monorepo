@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, typography } from '@ocar/mobile-shared'
+import { colors, radii, typography, fonts } from '@ocar/mobile-shared'
 import { statusKind } from '../statusKind'
 
 const KIND_STYLE = {
@@ -27,5 +27,5 @@ export function StatusBadge({ status }: { status: string }) {
 const styles = StyleSheet.create({
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full, alignSelf: 'flex-start' },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  text: { ...typography.caption, fontSize: 11, fontWeight: '600', textTransform: 'capitalize' },
+  text: { ...typography.caption, fontSize: 11, fontFamily: fonts.semibold, textTransform: 'capitalize' },
 })

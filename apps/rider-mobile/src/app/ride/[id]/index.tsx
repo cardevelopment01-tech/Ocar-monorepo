@@ -4,10 +4,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { Feather } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { ErrorState, SOSButton, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { ErrorState, SOSButton, Skeleton, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { triggerSos } from '@/features/safety/api'
 import { useLocationStore } from '@/store/useLocationStore'
+import { SearchingBar } from '@/features/ride-tracking/components/SearchingBar'
+import { RideActions } from '@/features/ride-tracking/components/RideActions'
 import { DriverCard } from '@/features/ride-tracking/components/DriverCard'
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
 import { StatusBanner } from '@/features/ride-tracking/components/StatusBanner'
@@ -168,12 +170,6 @@ export default function RideTrackingScreen() {
 
       <View style={[styles.mapOverlayTop, { paddingTop: insets.top + spacing.sm }]} pointerEvents="box-none">
         {!socketConnected ? <ReconnectBanner /> : null}
-        {canAddStop ? (
-          <Pressable onPress={() => setAddStopOpen(true)} style={styles.addStopBtn} accessibilityLabel="Add a stop">
-            <Feather name="plus" size={13} color={colors.ink600} />
-            <Text style={styles.addStopText}>Add stop</Text>
-          </Pressable>
-        ) : null}
         {addStopError ? <Text style={styles.addStopError}>{addStopError}</Text> : null}
       </View>
 
@@ -199,17 +195,16 @@ export default function RideTrackingScreen() {
 
           {isSearching ? (
             <View style={styles.searchingBlock}>
-              <Text style={styles.searchingTitle}>Finding your driver…</Text>
+              <SearchingBar />
               <Text style={styles.searchingBody}>Hang tight, we're matching you with a nearby driver.</Text>
               <Pressable
                 onPress={cancelSearch}
                 disabled={cancelling}
                 accessibilityRole="button"
                 accessibilityLabel="Cancel this ride request"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={styles.cancelButton}
               >
-                <Text style={styles.cancelButtonText}>{cancelling ? 'Cancelling…' : 'Cancel'}</Text>
+                <Text style={styles.cancelButtonText}>{cancelling ? 'Cancelling…' : 'Cancel request'}</Text>
               </Pressable>
             </View>
           ) : null}
@@ -219,7 +214,8 @@ export default function RideTrackingScreen() {
               ride={ride}
               stale={stale}
               otp={isAssigned ? ride.startOtp : isInProgress ? ride.endOtp : null}
-              otpLabel={isInProgress ? 'End PIN' : 'Start PIN'}
+              otpLabel={isInProgress ? 'End OTP' : 'Start OTP'}
+              otpHint={isInProgress ? 'Share only when you reach your drop' : 'Share only once you are in the cab'}
               rideId={rideId}
               canCall={canCall}
               unreadChatCount={unreadChatCount}
@@ -227,32 +223,23 @@ export default function RideTrackingScreen() {
             />
           ) : null}
 
-          {/* Address + fare live only here, collapsed by default -- available
-              on demand (Rapido's trip-detail expand) instead of a fare number
-              sitting permanently in front of the rider. Offered for any
-              driver-assigned ride, not just one with stops -- a stopless ride
-              (the common case) previously had no way to see the address at all. */}
+          {/* Ride actions as an icon-over-label strip (Uber's Share / Safety / Cancel row). Trip details (address
+              + fare) stays collapsed by default -- Rapido's trip-detail expand -- so the fare isn't permanently
+              in front of the rider; Cancel keeps its red, deliberate placement at the end of the row. */}
           {hasDriver ? (
-            <Pressable onPress={() => setDetailsExpanded((v) => !v)} style={styles.detailsToggle}>
-              <Text style={styles.detailsToggleText}>{detailsExpanded ? 'Hide trip details' : 'Trip details'}</Text>
-              <Feather name={detailsExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.ink400} />
-            </Pressable>
+            <RideActions
+              actions={[
+                { key: 'details', label: detailsExpanded ? 'Hide details' : 'Trip details', icon: detailsExpanded ? 'chevron-up' : 'file-text', onPress: () => setDetailsExpanded((v) => !v) },
+                ...(canAddStop ? [{ key: 'stop', label: 'Add stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),
+                ...(canCancel ? [{ key: 'cancel', label: 'Cancel ride', icon: 'x-circle' as const, destructive: true, onPress: () => setShowCancelSheet(true) }] : []),
+              ]}
+            />
           ) : null}
           {detailsExpanded && hasDriver ? (
             <View style={styles.detailsExpanded}>
               <TripDetailsCard ride={ride} fare={!isCompleted ? fare : null} />
               {ride.stops.length > 0 ? <StopTimeline stops={ride.stops} /> : null}
             </View>
-          ) : null}
-
-          {/* Low-emphasis text link, not an icon button floating in the open --
-              matches Ola/Uber's own "Cancel ride" placement, a deliberate
-              action tucked at the bottom of the sheet, not the loudest thing
-              on screen next to the fare. */}
-          {hasDriver && canCancel ? (
-            <Pressable onPress={() => setShowCancelSheet(true)} style={styles.cancelLink} hitSlop={8}>
-              <Text style={styles.cancelLinkText}>Cancel ride</Text>
-            </Pressable>
           ) : null}
 
           {isCompleted ? (
@@ -318,24 +305,20 @@ const styles = StyleSheet.create({
     bottom: 0,
     maxHeight: SCREEN_HEIGHT * MAX_SHEET_HEIGHT_RATIO,
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    shadowColor: 'rgba(15,23,42,1)',
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: -6 },
-    elevation: 12,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    boxShadow: '0 -10px 22px rgba(20,23,26,0.10)',
   },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginTop: spacing.sm, marginBottom: spacing.xs },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginTop: 10, marginBottom: 6 },
   sheetScroll: { flexGrow: 0 },
   sheetContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, gap: spacing.md },
-  searchingBlock: { gap: spacing.xs, alignItems: 'center', paddingVertical: spacing.sm },
+  searchingBlock: { gap: spacing.sm + 2, alignItems: 'center', paddingVertical: spacing.xs },
   searchingTitle: { ...typography.title, color: colors.ink900 },
   searchingBody: { ...typography.body, color: colors.ink600, textAlign: 'center' },
-  cancelButton: { marginTop: spacing.xs, padding: spacing.xs },
-  cancelButtonText: { ...typography.body, color: colors.error, fontWeight: '600' },
+  cancelButton: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  cancelButtonText: { ...typography.body, color: colors.error, fontFamily: fonts.semibold },
   cancelLink: { alignItems: 'center', paddingVertical: spacing.xs },
-  cancelLinkText: { ...typography.label, color: colors.error, fontWeight: '700' },
+  cancelLinkText: { ...typography.label, color: colors.error, fontFamily: fonts.bold },
   detailsExpanded: { gap: spacing.sm },
   // Floats on the map, top-right below the "Add stop" pill.
   addStopBtn: {
@@ -358,17 +341,17 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
-  addStopText: { ...typography.caption, color: colors.ink600, fontWeight: '600' },
+  addStopText: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
   addStopError: { ...typography.caption, color: colors.error, alignSelf: 'flex-end', backgroundColor: colors.surface, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radii.md },
   detailsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: spacing.xs },
-  detailsToggleText: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
+  detailsToggleText: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
   completeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.successLight, borderRadius: radii.lg, padding: spacing.sm + 4 },
-  completeText: { ...typography.body, color: colors.success, fontWeight: '700', flex: 1 },
-  completeFare: { ...typography.title, color: colors.ink900, fontWeight: '800' },
+  completeText: { ...typography.body, color: colors.success, fontFamily: fonts.bold, flex: 1 },
+  completeFare: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   rateBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.bg, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.sm + 4 },
-  rateBtnText: { ...typography.body, color: colors.ink900, fontWeight: '700', flex: 1 },
+  rateBtnText: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
   ratedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, justifyContent: 'center', paddingVertical: spacing.xs },
-  ratedText: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
+  ratedText: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
   cancelledRow: { alignItems: 'center', padding: spacing.md },
-  cancelledText: { ...typography.body, color: colors.error, fontWeight: '600' },
+  cancelledText: { ...typography.body, color: colors.error, fontFamily: fonts.semibold },
 })

@@ -15,7 +15,7 @@ const EMPTY_STATS: AdminDashboardStats = {
 const SECONDARY_ICONS = {
   'Completed Rides':    { color: '#10B981', bg: '#D1FAE5' },
   'Cancelled Rides':    { color: '#EF4444', bg: '#FEE2E2' },
-  'New Driver Signups': { color: '#4F46E5', bg: '#EEF2FF' },
+  'New Driver Signups': { color: '#0E8FA3', bg: '#E6F3F5' },
 }
 
 function fmtTime(iso: string) {
@@ -234,7 +234,7 @@ export default function OverviewPage() {
                     style={{
                       height: `${(v / maxBar) * 100}%`,
                       minHeight: 4,
-                      background: isLast ? '#4F46E5' : '#EEF2FF',
+                      background: isLast ? '#0E8FA3' : '#E6F3F5',
                     }}
                   />
                 )

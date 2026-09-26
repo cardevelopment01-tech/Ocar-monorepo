@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import axios from 'axios'
-import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type PersonalInfoPayload } from '@/features/onboarding/api'
 import { INDIA_STATES, INDIAN_LANGUAGES } from '@/features/onboarding/constants'
@@ -279,14 +279,14 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.md, gap: spacing.md, borderWidth: 1, borderColor: colors.border },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  cardTitle: { ...typography.body, color: colors.ink900, fontWeight: '700' },
+  cardTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
   hint: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginBottom: spacing.xs },
   experienceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface2, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, minHeight: 52 },
   stepBtn: { width: 40, height: 40, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  experienceText: { ...typography.body, color: colors.ink900, fontWeight: '700' },
-  moreLangs: { ...typography.caption, color: colors.primary, fontWeight: '700', marginTop: spacing.xs },
+  experienceText: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
+  moreLangs: { ...typography.caption, color: colors.primary, fontFamily: fonts.bold, marginTop: spacing.xs },
   phoneRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.surface2, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md },
-  phonePrefix: { ...typography.body, color: colors.ink600, fontWeight: '700' },
+  phonePrefix: { ...typography.body, color: colors.ink600, fontFamily: fonts.bold },
   // Cancels every visual layer `styles.input` (via ...shadows.card) puts on this
   // TextInput -- backgroundColor/borderWidth alone left the shadow/elevation
   // active, which on Android renders as an opaque white box with a shadow ring
@@ -294,5 +294,5 @@ const styles = StyleSheet.create({
   // stop an elevated view from compositing its own backing layer.
   phoneInput: { flex: 1, backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, shadowColor: 'transparent', shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 },
   addEmailBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: spacing.xs },
-  addEmailText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  addEmailText: { ...typography.caption, color: colors.primary, fontFamily: fonts.bold },
 })

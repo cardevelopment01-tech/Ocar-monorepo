@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native'
 import { Pressable } from 'react-native'
-import { colors, formatCurrency, radii, spacing, typography, type RideDetail } from '@ocar/mobile-shared'
+import { colors, formatCurrency, radii, spacing, typography, type RideDetail, fonts } from '@ocar/mobile-shared'
 import { RouteRow } from './RouteRow'
 
 const ACTIVE_STATUS_LABEL: Record<string, string> = {
@@ -32,7 +32,7 @@ export function ActiveRideCard({ ride, onOpen }: ActiveRideCardProps) {
           </View>
           {fare ? <Text style={styles.fare}>{fare}</Text> : null}
         </View>
-        <RouteRow origin={ride.originAddress ?? '—'} destination={ride.destinationAddress ?? '—'} />
+        <RouteRow origin={ride.originAddress ?? '-'} destination={ride.destinationAddress ?? '-'} />
       </View>
     </Pressable>
   )
@@ -44,6 +44,6 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   livePill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
   pulseDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.inkInverse },
-  liveText: { ...typography.caption, fontSize: 11, color: colors.inkInverse, fontWeight: '700' },
-  fare: { ...typography.label, fontSize: 14, color: colors.ink900, fontWeight: '700' },
+  liveText: { ...typography.caption, fontSize: 11, color: colors.inkInverse, fontFamily: fonts.bold },
+  fare: { ...typography.label, fontSize: 14, color: colors.ink900, fontFamily: fonts.bold },
 })

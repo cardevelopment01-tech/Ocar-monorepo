@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 
 // Direct port of the web Earnings page's bar chart -- same spring-in-from-zero
 // bar animation, same "empty bars go flat gray" rule (val > 0 gets the accent).
@@ -40,7 +40,7 @@ export function EarningsBarChart({ values, labels }: { values: number[]; labels:
 
 const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderRadius: radii['2xl'], padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
-  title: { ...typography.body, color: colors.ink900, fontWeight: '700', marginBottom: spacing.md },
+  title: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold, marginBottom: spacing.md },
   row: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.xs, height: 112 },
   barCol: { flex: 1, alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' },
   barTrack: { width: '100%', flex: 1, justifyContent: 'flex-end' },

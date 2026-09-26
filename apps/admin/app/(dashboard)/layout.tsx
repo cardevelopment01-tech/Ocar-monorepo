@@ -6,6 +6,7 @@ import AdminTopBar from '@/components/layout/AdminTopBar'
 import NotificationToast from '@/components/layout/NotificationToast'
 import { useAdminAuth } from '@/lib/auth-context'
 import type { AdminRole } from '@/lib/mock-data'
+import { getAdminSocket } from '@/lib/socket'
 import { safetyApi } from '@/lib/safety-api'
 
 const ACTIVE_SOS = new Set(['triggered', 'acknowledged', 'responding'])
@@ -22,7 +23,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   '/settlements':           { title: 'Settlements',    subtitle: 'Driver payout management' },
   '/refunds':               { title: 'Refunds',        subtitle: 'Refund processing' },
   '/config/rate-cards':     { title: 'Rate Cards',     subtitle: 'Fare configuration' },
-  '/config/system-config':  { title: 'System Config',  subtitle: 'Platform configuration keys' },
+  '/config/system-config':  { title: 'System Config',  subtitle: 'Fees, payouts, switches' },
   '/config/feature-flags':  { title: 'Feature Flags',  subtitle: 'Toggle platform features' },
   '/config/notification-templates': { title: 'Notification Templates', subtitle: 'SMS & push message copy' },
   '/admins':                { title: 'Admins',         subtitle: 'Admin accounts & invitations' },
@@ -51,7 +52,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
     void load()
     const id = setInterval(() => void load(), 30_000)
-    return () => clearInterval(id)
+    // A new alert should light the sidebar badge immediately, not on the next poll.
+    const socket = getAdminSocket()
+    const onAlert = () => void load()
+    socket.on('sos:alert', onAlert)
+    return () => { clearInterval(id); socket.off('sos:alert', onAlert) }
   }, [])
 
   const adminName = admin?.email?.split('@')[0] ?? 'Admin'

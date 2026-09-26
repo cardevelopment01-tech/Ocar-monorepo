@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated'
-import { colors, radii, shadows, spacing, typography } from '../theme/tokens'
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
+import { colors, radii, shadows, spacing, typography, fonts } from '../theme/tokens'
 import type { SOSTriggerResult } from '../api/types'
 
 export type { SOSTriggerResult } from '../api/types'
@@ -10,177 +11,160 @@ export type { SOSTriggerResult } from '../api/types'
 export type SOSButtonProps = {
   enabled: boolean
   onTrigger: () => Promise<SOSTriggerResult>
+  // India's unified emergency number. Always offered in the sheet, never only after a failure.
   emergencyPhoneNumber?: string | null
-  // 'bottom-right' (default) matches rider-mobile's tracking screen, which has
-  // no persistent full-width bottom button to collide with. Active-ride screens
-  // that DO dock a full-width primary CTA to the bottom (driver-mobile's "I've
-  // arrived"/OTP/cash sheets) need 'top-right' instead -- matches web driver's
-  // NavigateToPickup.tsx, which anchors SOS just below the top instruction card
-  // specifically to keep it clear of the bottom sheet's CTA.
+  // 'bottom-right' matches rider-mobile's tracking screen, which has no persistent full-width
+  // bottom button to collide with. Active-ride screens that dock a full-width primary CTA to the
+  // bottom (driver-mobile) need 'top-right'.
   anchor?: 'top-right' | 'bottom-right'
 }
 
-type FailureState = null | { reason: 'rate_limited' | 'error' }
+type Phase = 'idle' | 'sending' | 'sent' | 'error' | 'rate_limited'
 
-const SUCCESS_PILL_MS = 2000
+const HOLD_MS = 1200
+const DEFAULT_EMERGENCY_NUMBER = '112'
+const OPEN_LABEL = 'Emergency SOS, double tap for safety options'
 
+/**
+ * The floating SOS button. Tapping it opens a safety sheet instead of sending straight away, so a
+ * stray touch cannot page the safety team. The alert is sent by holding the red button for about a
+ * second; calling the emergency number is one tap and always available.
+ */
 export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = 'bottom-right' }: SOSButtonProps) {
   const insets = useSafeAreaInsets()
-  const [sending, setSending] = useState(false)
-  const [failure, setFailure] = useState<FailureState>(null)
-  const [canCall, setCanCall] = useState(false)
-  const [sent, setSent] = useState(false)
-  const pulse = useSharedValue(1)
-  const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }))
-  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [open, setOpen] = useState(false)
+  const [phase, setPhase] = useState<Phase>('idle')
+  const fill = useSharedValue(0)
+  const sending = useRef(false)
+  const number = emergencyPhoneNumber || DEFAULT_EMERGENCY_NUMBER
+  const fillStyle = useAnimatedStyle(() => ({ width: `${fill.get() * 100}%` }))
 
   useEffect(() => {
-    return () => {
-      if (successTimerRef.current) clearTimeout(successTimerRef.current)
+    if (!open) {
+      setPhase('idle')
+      fill.set(0)
     }
-  }, [])
+  }, [open, fill])
 
   if (!enabled) return null
 
-  function stopPulse() {
-    pulse.value = withTiming(1, { duration: 200 })
-  }
-
-  function showSentBriefly() {
-    setSent(true)
-    if (successTimerRef.current) clearTimeout(successTimerRef.current)
-    successTimerRef.current = setTimeout(() => setSent(false), SUCCESS_PILL_MS)
-  }
-
-  async function handlePress() {
-    setSending(true)
-    setFailure(null)
-    setSent(false)
-    const first = await onTrigger()
-    if (first.ok) {
-      setSending(false)
-      stopPulse()
-      showSentBriefly()
-      return
-    }
-    if (first.reason === 'rate_limited') {
-      setSending(false)
-      stopPulse()
-      setFailure({ reason: 'rate_limited' })
-      return
-    }
-    // One automatic retry, only for a plain error -- never for rate_limited.
-    const retry = await onTrigger()
-    setSending(false)
-    stopPulse()
-    if (retry.ok) {
-      showSentBriefly()
-      return
-    }
-    setFailure({ reason: retry.reason })
-    if (emergencyPhoneNumber) {
-      Linking.canOpenURL(`tel:${emergencyPhoneNumber}`).then(setCanCall)
+  async function send() {
+    if (sending.current) return
+    sending.current = true
+    setPhase('sending')
+    try {
+      let result = await onTrigger()
+      // One automatic retry for a plain error, never for a rate limit.
+      if (!result.ok && result.reason === 'error') result = await onTrigger()
+      setPhase(result.ok ? 'sent' : result.reason === 'rate_limited' ? 'rate_limited' : 'error')
+    } finally {
+      sending.current = false
+      fill.set(withTiming(0, { duration: 150 }))
     }
   }
 
-  function handleCall() {
-    if (emergencyPhoneNumber) Linking.openURL(`tel:${emergencyPhoneNumber}`)
+  function call() {
+    void Linking.openURL(`tel:${number}`)
   }
 
   const anchorStyle = anchor === 'top-right' ? { top: insets.top + spacing.md } : { bottom: spacing.xl }
+  const busy = phase === 'sending'
+  const canHold = phase === 'idle' || phase === 'error'
 
   return (
-    <View style={[styles.wrap, anchorStyle]} pointerEvents="box-none">
-      <Animated.View style={pulseStyle}>
+    <>
+      <View style={[styles.wrap, anchorStyle]} pointerEvents="box-none">
         <Pressable
-          onPress={handlePress}
-          disabled={sending}
+          onPress={() => setOpen(true)}
           hitSlop={8}
           accessible
-          accessibilityLabel="Emergency SOS, double tap to send alert"
+          accessibilityLabel={OPEN_LABEL}
           accessibilityRole="button"
           style={({ pressed }) => [styles.circle, pressed ? styles.pressed : null]}
-          onPressIn={() => {
-            pulse.value = withRepeat(withSequence(withTiming(1.02, { duration: 1500 }), withTiming(1, { duration: 1500 })), -1, true)
-          }}
         >
-          {sending ? <ActivityIndicator color={colors.inkInverse} testID="sos-sending-indicator" /> : <Text style={styles.icon}>SOS</Text>}
+          <Text style={styles.icon}>SOS</Text>
         </Pressable>
-      </Animated.View>
+      </View>
 
-      {sent ? (
-        <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(160)} style={styles.successPill}>
-          <Text style={styles.successText}>Alert sent</Text>
-        </Animated.View>
-      ) : null}
+      <Modal visible={open} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => !busy && setOpen(false)}>
+        <View style={styles.backdrop}>
+          <Pressable style={styles.scrim} onPress={() => !busy && setOpen(false)} accessibilityLabel="Close" />
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+            <View style={styles.handle} />
 
-      {failure ? (
-        <Animated.View entering={FadeIn.duration(160)} style={styles.failurePill}>
-          <Text style={styles.failureText}>
-            {failure.reason === 'rate_limited' ? 'Too many alerts sent. Contact support if this is urgent.' : 'SOS not sent — tap to retry'}
-          </Text>
-          {failure.reason === 'error' ? (
-            <Pressable onPress={handlePress} hitSlop={8}>
-              <Text style={styles.retryText}>Retry</Text>
+            {phase === 'sent' ? (
+              <View style={styles.block}>
+                <View style={styles.sentBadge}><Feather name="check" size={26} color={colors.success} /></View>
+                <Text style={styles.title}>Alert sent</Text>
+                <Text style={styles.body}>The Ocar safety team has your live location and will follow up. If you are in danger, call {number} now.</Text>
+              </View>
+            ) : (
+              <View style={styles.block}>
+                <Text style={styles.title}>Need help?</Text>
+                <Text style={styles.body}>Send an alert to the Ocar safety team with your live location, or call the emergency number.</Text>
+              </View>
+            )}
+
+            {phase === 'error' ? <Text style={styles.error} accessibilityLiveRegion="polite">The alert was not sent. Hold the button to try again, or call {number}.</Text> : null}
+            {phase === 'rate_limited' ? <Text style={styles.error} accessibilityLiveRegion="polite">Too many alerts sent. Call {number} or contact support if this is urgent.</Text> : null}
+
+            {phase !== 'sent' && phase !== 'rate_limited' ? (
+              <Pressable
+                delayLongPress={HOLD_MS}
+                disabled={!canHold}
+                onPressIn={() => fill.set(withTiming(1, { duration: HOLD_MS, easing: Easing.linear }))}
+                onPressOut={() => { if (!sending.current) fill.set(withTiming(0, { duration: 150 })) }}
+                onLongPress={() => void send()}
+                accessibilityRole="button"
+                accessibilityLabel="Send SOS alert, press and hold"
+                accessibilityActions={[{ name: 'activate', label: 'Send SOS alert' }]}
+                onAccessibilityAction={() => void send()}
+                style={styles.hold}
+              >
+                <Animated.View style={[styles.holdFill, fillStyle]} pointerEvents="none" />
+                <View style={styles.holdRow} pointerEvents="none">
+                  {busy ? <ActivityIndicator color={colors.inkInverse} testID="sos-sending-indicator" /> : <Feather name="alert-triangle" size={20} color={colors.inkInverse} />}
+                  <Text style={styles.holdText}>{busy ? 'Sending alert' : phase === 'error' ? 'Hold to try again' : 'Hold to send alert'}</Text>
+                </View>
+              </Pressable>
+            ) : null}
+
+            <Pressable onPress={call} accessibilityRole="button" accessibilityLabel={`Call ${number}`} style={({ pressed }) => [styles.call, pressed ? styles.callPressed : null]}>
+              <Feather name="phone" size={18} color={colors.error} />
+              <Text style={styles.callText}>Call {number}</Text>
             </Pressable>
-          ) : null}
-        </Animated.View>
-      ) : null}
 
-      {failure?.reason === 'error' && emergencyPhoneNumber && canCall ? (
-        <Pressable onPress={handleCall} style={[styles.callPill, !canCall ? styles.callPillFull : null]}>
-          <Text style={styles.callText}>Call emergency contact</Text>
-        </Pressable>
-      ) : null}
-    </View>
+            <Pressable onPress={() => !busy && setOpen(false)} accessibilityRole="button" style={styles.close} hitSlop={8}>
+              <Text style={styles.closeText}>{phase === 'sent' ? 'Done' : 'Cancel'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </>
   )
 }
 
 const styles = StyleSheet.create({
   wrap: { position: 'absolute', right: spacing.md, zIndex: 10, alignItems: 'flex-end', gap: spacing.xs },
-  circle: {
-    width: 56,
-    height: 56,
-    borderRadius: radii.full,
-    backgroundColor: colors.error,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.buttonPrimary,
-  },
+  circle: { width: 56, height: 56, borderRadius: radii.full, backgroundColor: colors.error, alignItems: 'center', justifyContent: 'center', ...shadows.buttonPrimary },
   pressed: { transform: [{ scale: 0.96 }] },
-  icon: { ...typography.label, color: colors.inkInverse, fontWeight: '700' },
-  failurePill: {
-    backgroundColor: colors.errorLight,
-    borderWidth: 1,
-    borderColor: colors.error,
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.xs + 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    maxWidth: 220,
-  },
-  failureText: { ...typography.caption, color: colors.error, flexShrink: 1 },
-  successPill: {
-    backgroundColor: colors.successLight,
-    borderWidth: 1,
-    borderColor: colors.success,
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.xs + 2,
-    maxWidth: 220,
-  },
-  successText: { ...typography.caption, color: colors.success },
-  retryText: { ...typography.label, color: colors.error, fontWeight: '700' },
-  callPill: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.xs + 2,
-  },
-  callPillFull: { alignSelf: 'stretch' },
-  callText: { ...typography.label, color: colors.ink900 },
+  icon: { ...typography.label, color: colors.inkInverse, fontFamily: fonts.bold },
+  backdrop: { flex: 1, justifyContent: 'flex-end' },
+  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(12,20,22,0.5)' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm, maxHeight: '96%' },
+  handle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: spacing.xs },
+  block: { gap: 6, alignItems: 'flex-start' },
+  sentBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.successLight, alignItems: 'center', justifyContent: 'center' },
+  title: { ...typography.title, color: colors.ink900 },
+  body: { ...typography.body, color: colors.ink600 },
+  error: { ...typography.caption, color: colors.error },
+  hold: { height: 60, borderRadius: radii.xl, backgroundColor: colors.error, overflow: 'hidden', justifyContent: 'center', marginTop: spacing.xs },
+  holdFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.28)' },
+  holdRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  holdText: { ...typography.label, fontFamily: fonts.bold, color: colors.inkInverse },
+  call: { height: 52, borderRadius: radii.xl, borderWidth: 1.5, borderColor: colors.error, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  callPressed: { backgroundColor: colors.errorLight },
+  callText: { ...typography.label, fontFamily: fonts.bold, color: colors.error },
+  close: { alignItems: 'center', paddingVertical: spacing.sm },
+  closeText: { ...typography.label, color: colors.ink600 },
 })

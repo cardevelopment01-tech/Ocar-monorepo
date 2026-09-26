@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import MapView, { type Region } from 'react-native-maps'
+import { OCAR_MAP_PROPS } from '@/theme/mapStyle'
+import { PinGlyph } from '@/features/map/components/PinGlyph'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import Svg, { Circle, Path } from 'react-native-svg'
-import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { fetchReverseGeocode } from '@/features/booking/api'
 import { useBookingDraftStore } from '@/features/booking/store'
 import { useLocationStore } from '@/store/useLocationStore'
@@ -89,8 +90,7 @@ export default function MapPickerScreen() {
         style={StyleSheet.absoluteFill}
         initialRegion={{ latitude: centerLat, longitude: centerLng, latitudeDelta: 0.02, longitudeDelta: 0.02 }}
         loadingEnabled
-        loadingIndicatorColor={colors.primary}
-        loadingBackgroundColor={colors.surface}
+        {...OCAR_MAP_PROPS}
         onRegionChangeComplete={handleRegionChangeComplete}
       >
         {otherPlace ? (
@@ -100,15 +100,7 @@ export default function MapPickerScreen() {
 
       {/* Screen-fixed pin -- the map moves underneath it, not the other way round. */}
       <View style={styles.centerPin} pointerEvents="none">
-        <Svg width={30} height={40} viewBox="0 0 28 38">
-          <Path
-            d="M14 1C6.82 1 1 6.82 1 14C1 21.2 7.4 28.6 14 37C20.6 28.6 27 21.2 27 14C27 6.82 21.18 1 14 1Z"
-            fill={isPickup ? colors.success : colors.error}
-            stroke="#ffffff"
-            strokeWidth={2}
-          />
-          <Circle cx={14} cy={13.5} r={4.5} fill="#ffffff" opacity={0.9} />
-        </Svg>
+        <PinGlyph variant={isPickup ? 'pickup' : 'drop'} width={30} height={40} />
       </View>
 
       <Pressable
@@ -169,9 +161,9 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
-  cardLabel: { ...typography.caption, color: colors.ink400, fontWeight: '700', letterSpacing: 0.5 },
+  cardLabel: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold, letterSpacing: 0.5 },
   addressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  addressText: { ...typography.body, color: colors.ink900, fontWeight: '600', flex: 1 },
+  addressText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold, flex: 1 },
 })
 
 // Cross-platform elevation without importing the shared `shadows` token set

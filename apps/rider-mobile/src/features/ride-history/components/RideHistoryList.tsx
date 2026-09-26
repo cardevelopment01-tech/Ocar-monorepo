@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { EmptyState, ErrorState, Skeleton, colors, radii, spacing, typography, type RideHistoryItem } from '@ocar/mobile-shared'
+import { useNavClearance } from '@/features/home/FloatingTabBar'
+import { EmptyState, ErrorState, Skeleton, colors, radii, spacing, typography, type RideHistoryItem, fonts } from '@ocar/mobile-shared'
 import { useRideHistory } from '../hooks/useRideHistory'
 import { RideHistoryRow } from './RideHistoryRow'
 import { UpcomingCard } from './UpcomingCard'
@@ -32,6 +33,7 @@ function RowSkeleton() {
 // each filtering the current page client-side same as web does.
 export function RideHistoryList() {
   const router = useRouter()
+  const clearance = useNavClearance()
   const {
     tab, setTab,
     rides, page, pages, total, loading, error, fetchHistory,
@@ -81,7 +83,7 @@ export function RideHistoryList() {
         <FlatList<UpcomingRide>
           data={upcoming}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: clearance }]}
           refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} tintColor={colors.primary} />}
           ListHeaderComponent={
             <View>
@@ -130,7 +132,7 @@ export function RideHistoryList() {
       <FlatList<RideHistoryItem>
         data={loading ? [] : filtered}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: clearance }]}
         refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} tintColor={colors.primary} />}
         renderItem={({ item }) => <RideHistoryRow item={item} onPress={openRide} />}
         ListHeaderComponent={loading ? <View><RowSkeleton /><RowSkeleton /><RowSkeleton /></View> : null}
@@ -181,24 +183,25 @@ export function RideHistoryList() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: spacing.sm },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.sm },
-  title: { ...typography.headline, color: colors.ink900 },
+  header: { paddingBottom: spacing.sm },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: 20, paddingBottom: 12 },
+  title: { ...typography.headline, color: colors.ink900, fontSize: 22 },
   totalPill: { backgroundColor: colors.surface2, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
-  totalPillText: { ...typography.caption, fontSize: 11, color: colors.ink400, fontWeight: '600' },
+  totalPillText: { ...typography.caption, fontSize: 11, color: colors.ink400, fontFamily: fonts.semibold },
   tabsRow: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.lg },
-  tabPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radii.full, backgroundColor: colors.surface2 },
-  tabPillActive: { backgroundColor: colors.primary },
-  tabPillText: { ...typography.caption, fontSize: 12, color: colors.ink400, fontWeight: '600' },
+  tabPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radii.full, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  tabPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  tabPillText: { ...typography.caption, fontSize: 12, color: colors.ink400, fontFamily: fonts.semibold },
   tabPillTextActive: { color: colors.inkInverse },
-  content: { paddingVertical: spacing.md, flexGrow: 1 },
+  // paddingBottom clears the floating tab bar (see (tabs)/_layout.tsx)
+  content: { paddingTop: spacing.md, flexGrow: 1 },
   skeletonRow: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
   centerState: { alignItems: 'center', paddingTop: spacing.xl, paddingHorizontal: spacing.lg, gap: spacing.sm },
-  ctaBtn: { marginTop: spacing.xs, backgroundColor: colors.primary, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm + 2, borderRadius: radii.full },
-  ctaText: { ...typography.label, color: colors.inkInverse, fontWeight: '700' },
+  ctaBtn: { marginTop: spacing.sm, backgroundColor: colors.primary, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 16, boxShadow: '0 10px 24px rgba(14,143,163,0.28)' },
+  ctaText: { ...typography.label, color: colors.inkInverse, fontFamily: fonts.bold },
   pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg },
   pagerBtn: { backgroundColor: colors.surface2, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.full },
   pagerBtnDisabled: { opacity: 0.4 },
-  pagerBtnText: { ...typography.label, color: colors.primary, fontWeight: '700' },
+  pagerBtnText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
   pagerLabel: { ...typography.caption, color: colors.ink400 },
 })

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, type TextInputProps } from 'react-native'
 import Animated, { Easing, useAnimatedStyle, withSequence, withSpring, withTiming } from 'react-native-reanimated'
-import { colors, radii } from '../theme/tokens'
+import { colors, radii, fonts } from '../theme/tokens'
 
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1)
 
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
   // apps are just `font-bold` (the default body font), never `font-display`.
   // Confirmed by reading both web OtpInput components directly: neither one
   // applies font-display anywhere. 700 is the heaviest weight useAppFonts loads.
-  digit: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 24, fontWeight: '700', color: colors.ink900 },
+  digit: { fontSize: 24, fontFamily: fonts.bold, color: colors.ink900 },
   digitFilled: { color: colors.primary },
   digitError: { color: colors.error },
 })

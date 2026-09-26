@@ -3,7 +3,7 @@ import { FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { Button, ErrorState, colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { Button, ErrorState, colors, radii, shadows, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { CategoryCard, type CategoryEta } from '@/features/booking/components/CategoryCard'
 import { SelectRideMap } from '@/features/booking/components/SelectRideMap'
 import { useFareEstimates } from '@/features/booking/hooks/useFareEstimates'
@@ -363,8 +363,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
   },
   breadcrumbHalf: { flex: 1, minWidth: 0 },
-  breadcrumbOrigin: { ...typography.caption, fontWeight: '500', color: colors.ink600 },
-  breadcrumbDest: { ...typography.caption, fontWeight: '700', color: colors.ink900 },
+  breadcrumbOrigin: { ...typography.caption, fontFamily: fonts.medium, color: colors.ink600 },
+  breadcrumbDest: { ...typography.caption, fontFamily: fonts.bold, color: colors.ink900 },
   pressedScale: { transform: [{ scale: 0.97 }] },
   sheetShadowWrap: {
     flex: 1,
@@ -397,14 +397,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs + 2,
     paddingHorizontal: spacing.sm,
   },
-  noDriversText: { ...typography.caption, color: colors.warning, fontWeight: '600', flex: 1 },
-  noDriversAction: { ...typography.caption, color: colors.warning, fontWeight: '700', textDecorationLine: 'underline' },
+  noDriversText: { ...typography.caption, color: colors.warning, fontFamily: fonts.semibold, flex: 1 },
+  noDriversAction: { ...typography.caption, color: colors.warning, fontFamily: fonts.bold, textDecorationLine: 'underline' },
   title: { ...typography.headline, color: colors.ink900 },
-  subtitle: { ...typography.caption, fontWeight: '600', color: colors.ink400 },
+  subtitle: { ...typography.caption, fontFamily: fonts.semibold, color: colors.ink400 },
   listFlex: { flex: 1 },
   list: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   returnCabSection: { marginBottom: spacing.xs },
-  returnCabLabel: { ...typography.caption, fontWeight: '700', color: colors.success, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: spacing.xs },
+  returnCabLabel: { ...typography.caption, fontFamily: fonts.bold, color: colors.success, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: spacing.xs },
   returnCabDivider: { height: 1, backgroundColor: colors.borderLight, marginTop: spacing.xs, marginBottom: spacing.sm },
   divider: { height: 1, backgroundColor: colors.borderLight, marginVertical: 2 },
   skeletonCard: { height: 72, borderRadius: 16, backgroundColor: colors.surface3, marginBottom: spacing.sm },
@@ -412,8 +412,8 @@ const styles = StyleSheet.create({
   paymentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
   paymentLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   paymentIconWrap: { width: 28, height: 28, borderRadius: 8, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
-  paymentLabel: { ...typography.label, fontWeight: '600', color: colors.ink600 },
-  paymentChange: { ...typography.caption, fontWeight: '700', color: colors.primaryDark },
+  paymentLabel: { ...typography.label, fontFamily: fonts.semibold, color: colors.ink600 },
+  paymentChange: { ...typography.caption, fontFamily: fonts.bold, color: colors.primaryDark },
   paymentNote: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginBottom: spacing.xs },
   error: { ...typography.body, color: colors.error, marginBottom: spacing.xs },
 })

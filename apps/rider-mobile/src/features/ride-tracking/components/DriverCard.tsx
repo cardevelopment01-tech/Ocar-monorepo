@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { Card, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, fonts, spacing, typography } from '@ocar/mobile-shared'
+import { card } from '@/theme/homeTokens'
 import { triggerMaskedCall } from '../api'
 import type { RideDetailExtra } from '../types'
 
@@ -15,17 +16,19 @@ export type DriverCardProps = {
   // placement: the PIN sits on the driver row itself).
   otp?: string | null
   otpLabel?: string
+  // One line telling the rider when to share the code; the end code must not be given early.
+  otpHint?: string
   // Call/chat actions live inside this same card, one compact row, matching
-  // web's DriverMiniRow -- they used to render as a separate sibling card
-  // next to this one, which starved the name column of width and forced
-  // "Sujal Kumar Ghosh" onto two lines instead of web's single line.
+  // web's DriverMiniRow.
   rideId: string
   canCall: boolean
   unreadChatCount: number
   onOpenChat: () => void
 }
 
-export function DriverCard({ ride, stale, otp, otpLabel, rideId, canCall, unreadChatCount, onOpenChat }: DriverCardProps) {
+// Driver card, ride-app style: photo, name + rating chip, vehicle, then a strip with the number plate
+// (the thing you actually match against the car in front of you) and the PIN as separate digit boxes.
+export function DriverCard({ ride, stale, otp, otpLabel, otpHint, rideId, canCall, unreadChatCount, onOpenChat }: DriverCardProps) {
   const vehicleLine = [ride.vehicleBrand, ride.vehicleModel].filter(Boolean).join(' ') || ride.vehicleName || 'Vehicle'
   const [calling, setCalling] = useState(false)
   const [callError, setCallError] = useState<string | null>(null)
@@ -52,7 +55,7 @@ export function DriverCard({ ride, stale, otp, otpLabel, rideId, canCall, unread
   }
 
   return (
-    <Card style={styles.card} accessibilityRole="summary" accessibilityLabel={`Driver ${ride.driverName ?? 'assigned'}`}>
+    <View style={styles.card} accessibilityRole="summary" accessibilityLabel={`Driver ${ride.driverName ?? 'assigned'}`}>
       {callError ? <Text style={styles.callError}>{callError}</Text> : null}
       <View style={styles.row}>
         {ride.driverPhoto ? (
@@ -63,19 +66,29 @@ export function DriverCard({ ride, stale, otp, otpLabel, rideId, canCall, unread
           </View>
         )}
         <View style={styles.info}>
-          <Text style={styles.name} numberOfLines={1}>{ride.driverName ?? 'Your driver'}</Text>
-          <Text style={styles.meta} numberOfLines={1}>
-            {ride.driverRating ? `★ ${ride.driverRating}` : 'New'} · {vehicleLine} · {ride.vehicleNumberPlate ?? '—'}
-          </Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.name} numberOfLines={1}>{ride.driverName ?? 'Your driver'}</Text>
+            {ride.driverRating ? (
+              <View style={styles.rating}>
+                <Feather name="star" size={10} color={colors.accent} />
+                <Text style={styles.ratingText}>{ride.driverRating}</Text>
+              </View>
+            ) : (
+              <View style={styles.rating}>
+                <Text style={styles.ratingText}>New</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.meta} numberOfLines={1}>{vehicleLine}</Text>
         </View>
         <View style={styles.actions}>
           {canCall ? (
-            <Pressable onPress={() => void handleCall()} disabled={calling} style={styles.actionBtn} accessibilityLabel="Call driver">
-              <Feather name="phone" size={15} color={colors.primary} />
+            <Pressable onPress={() => void handleCall()} disabled={calling} style={[styles.actionBtn, calling && styles.actionBusy]} accessibilityLabel="Call driver">
+              <Feather name="phone" size={17} color={colors.primary} />
             </Pressable>
           ) : null}
           <Pressable onPress={onOpenChat} style={styles.actionBtn} accessibilityLabel="Message driver">
-            <Feather name="message-circle" size={15} color={colors.primary} />
+            <Feather name="message-circle" size={17} color={colors.primary} />
             {unreadChatCount > 0 ? (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{unreadChatCount > 9 ? '9+' : unreadChatCount}</Text>
@@ -84,53 +97,66 @@ export function DriverCard({ ride, stale, otp, otpLabel, rideId, canCall, unread
           </Pressable>
         </View>
       </View>
+
+      <View style={styles.strip}>
+        <View style={styles.plate} accessibilityLabel={`Number plate ${ride.vehicleNumberPlate ?? 'unknown'}`}>
+          <Text style={styles.plateText} numberOfLines={1}>{ride.vehicleNumberPlate ?? '-'}</Text>
+        </View>
+      </View>
+
       {otp ? (
-        <View style={styles.pinRow} accessibilityLabel={`${otpLabel ?? 'PIN'}: ${otp.split('').join(' ')}`}>
-          <Text style={styles.pinLabel}>{otpLabel ?? 'PIN'}</Text>
-          <Text style={styles.pinDigits} maxFontSizeMultiplier={2}>{otp}</Text>
+        <View style={styles.pin} accessibilityLabel={`${otpLabel ?? 'OTP'}: ${otp.split('').join(' ')}. ${otpHint ?? ''}`}>
+          <View style={styles.pinText}>
+            <Text style={styles.pinLabel}>{otpLabel ?? 'OTP'}</Text>
+            {otpHint ? <Text style={styles.pinHint}>{otpHint}</Text> : null}
+          </View>
+          <View style={styles.pinBoxes}>
+            {otp.split('').map((d, i) => (
+              <View key={i} style={styles.pinBox}>
+                <Text style={styles.pinDigit} maxFontSizeMultiplier={1.4}>{d}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       ) : null}
+
       {stale ? (
         <Text style={styles.staleNote} accessibilityLiveRegion="polite">
           Driver's location hasn't updated in a few minutes
         </Text>
       ) : null}
-    </Card>
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
-  card: { gap: spacing.sm },
-  row: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
-  photo: { width: 44, height: 44, borderRadius: 22, flexShrink: 0 },
+  card: { ...card, padding: spacing.md, gap: 14 },
+  row: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  photo: { width: 52, height: 52, borderRadius: 26, flexShrink: 0, borderWidth: 2, borderColor: colors.surface },
   photoFallback: { backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
   photoInitial: { ...typography.title, color: colors.primary },
-  info: { flex: 1, minWidth: 0, gap: 1 },
-  name: { ...typography.label, fontSize: 15, fontWeight: '700', color: colors.ink900 },
+  info: { flex: 1, minWidth: 0, gap: 3 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  name: { ...typography.label, fontSize: 16, fontFamily: fonts.bold, color: colors.ink900, flexShrink: 1 },
+  rating: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.accentLight, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2 },
+  ratingText: { fontFamily: fonts.bold, fontSize: 11, color: '#8A6420' },
   meta: { ...typography.caption, color: colors.ink600 },
-  actions: { flexDirection: 'row', gap: spacing.xs, flexShrink: 0 },
-  actionBtn: { width: 36, height: 36, borderRadius: radii.md, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  badge: { position: 'absolute', top: -3, right: -3, minWidth: 14, height: 14, paddingHorizontal: 3, borderRadius: 7, backgroundColor: colors.error, alignItems: 'center', justifyContent: 'center' },
-  badgeText: { fontSize: 8, fontWeight: '700', color: colors.inkInverse },
+  actions: { flexDirection: 'row', gap: 8, flexShrink: 0 },
+  actionBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  actionBusy: { opacity: 0.5 },
+  badge: { position: 'absolute', top: -3, right: -3, minWidth: 16, height: 16, paddingHorizontal: 3, borderRadius: 8, backgroundColor: colors.error, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { fontSize: 9, fontFamily: fonts.bold, color: colors.inkInverse },
   callError: { ...typography.caption, color: colors.error },
-  pinRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.primarySubtle,
-    borderWidth: 1,
-    borderColor: colors.primaryLight,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs + 2,
-  },
-  pinLabel: { ...typography.caption, color: colors.primaryDark, fontWeight: '700', textTransform: 'uppercase', fontSize: 10 },
-  pinDigits: {
-    fontFamily: typography.display.fontFamily,
-    fontWeight: typography.display.fontWeight,
-    fontSize: 20,
-    letterSpacing: 3,
-    color: colors.ink900,
-  },
+  strip: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // registration-plate look: bordered, heavy, tracked
+  plate: { flexShrink: 1, borderWidth: 1.5, borderColor: colors.ink900, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: colors.surface2 },
+  plateText: { fontFamily: fonts.bold, fontSize: 13, letterSpacing: 1.2, color: colors.ink900 },
+  pin: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, backgroundColor: colors.primarySubtle, borderWidth: 1, borderColor: colors.primaryLight, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14 },
+  pinText: { flex: 1, minWidth: 0, gap: 3 },
+  pinLabel: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: colors.primaryDark },
+  pinHint: { ...typography.caption, color: colors.ink600 },
+  pinBoxes: { flexDirection: 'row', gap: 6 },
+  pinBox: { width: 38, height: 46, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
+  pinDigit: { fontFamily: fonts.bold, fontSize: 22, color: colors.ink900 },
   staleNote: { ...typography.caption, color: colors.warning },
 })

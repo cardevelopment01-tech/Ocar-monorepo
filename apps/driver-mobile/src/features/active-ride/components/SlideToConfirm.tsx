@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { StyleSheet, Text, Vibration, View } from 'react-native'
+import { StyleSheet, Vibration, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS, useAnimatedStyle, useSharedValue, withSpring,
 } from 'react-native-reanimated'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, typography } from '@ocar/mobile-shared'
+import { colors, radii, typography, fonts, Text } from '@ocar/mobile-shared'
 
 const HANDLE = 52
 const PAD = 4
@@ -71,7 +71,7 @@ export function SlideToConfirm({ label, onConfirm, disabled = false, color = col
 const styles = StyleSheet.create({
   track: { height: HANDLE, borderRadius: radii.full, backgroundColor: colors.primarySubtle, padding: PAD, justifyContent: 'center', overflow: 'hidden' },
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: radii.full, opacity: 0.16 },
-  label: { ...typography.body, fontWeight: '700', textAlign: 'center' },
+  label: { ...typography.body, fontFamily: fonts.bold, textAlign: 'center' },
   handle: {
     position: 'absolute', left: PAD, top: PAD,
     width: HANDLE - PAD * 2, height: HANDLE - PAD * 2, borderRadius: radii.full,

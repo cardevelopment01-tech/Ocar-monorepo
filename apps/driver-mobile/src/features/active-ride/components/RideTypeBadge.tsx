@@ -1,5 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { StyleSheet, View } from 'react-native'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 
 export type RideTypeBadgeProps = { kind: 'rental' | 'return' }
 
@@ -22,5 +22,5 @@ export function RideTypeBadge({ kind }: RideTypeBadgeProps) {
 
 const styles = StyleSheet.create({
   pill: { paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.full },
-  text: { ...typography.caption, fontWeight: '800', fontSize: 9, letterSpacing: 0.4 },
+  text: { ...typography.caption, fontFamily: fonts.bold, fontSize: 9, letterSpacing: 0.4 },
 })

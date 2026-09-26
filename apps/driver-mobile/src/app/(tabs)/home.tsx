@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Dimensions, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Dimensions, Modal, Pressable, StyleSheet, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, Card, colors, getCurrentOrLastKnownPosition, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { Button, Card, OCAR_MAP_PROPS, PulseDot, card, colors, geo, h, shadow, useNavBottom, getCurrentOrLastKnownPosition, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { OnlineToggle } from '@/features/go-online/components/OnlineToggle'
@@ -33,6 +33,9 @@ const SHEET_HEIGHT_ESTIMATE = WINDOW_HEIGHT * 0.42
 export default function HomeScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const navBottom = useNavBottom()
+  // the sheet floats above the tab pill: pill height + its own gap
+  const sheetBottom = navBottom + geo.navHeight + 12
   const driver = useAuthStore((s) => s.driver)
   const isOnline = useDriverSessionStore((s) => s.isOnline)
   const mode = useDriverSessionStore((s) => s.mode)
@@ -97,14 +100,16 @@ export default function HomeScreen() {
 
   const carPosition: [number, number] | null = live?.position ?? (hasFix ? [region.latitude, region.longitude] : null)
 
-  const blockedReason = documentGate.hasRejected
-    ? (documentGate.rejectionReason ?? 'A document was rejected. Check your profile.')
+  // Actionable, not just informational, tapping goes straight to the screen that fixes it, matching
+  // the rule every driver-app rejection writeup agrees on: never leave a driver guessing what to do next.
+  const blockedBanner = documentGate.hasRejected
+    ? { title: 'Document rejected', message: documentGate.rejectionReason ?? 'Reupload it to go online again.', actionLabel: 'Fix now', route: '/documents' as const }
     : walletGate.isFrozen
-      ? 'Your wallet is frozen. Contact support.'
+      ? { title: 'Wallet frozen', message: 'Contact support to go online again.', actionLabel: 'View wallet', route: '/wallet' as const }
       : null
 
   const toggleDisabled =
-    flow.sessionCheck !== 'ready' || flow.checkingVerification || (!isOnline && (!!blockedReason || !flow.vehicle))
+    flow.sessionCheck !== 'ready' || flow.checkingVerification || (!isOnline && (!!blockedBanner || !flow.vehicle))
 
   const firstName = driver?.full_name?.split(' ')[0] ?? 'Driver'
   const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
@@ -130,13 +135,12 @@ export default function HomeScreen() {
         // half the screen) instead of the open map area above it. Prop
         // omitted entirely (not passed as undefined -- exactOptionalPropertyTypes
         // forbids that) until mapReady, matching the guard below.
-        {...(mapReady ? { mapPadding: { top: 0, right: 0, bottom: sheetHeight, left: 0 } } : {})}
+        {...(mapReady ? { mapPadding: { top: 0, right: 0, bottom: sheetHeight + sheetBottom, left: 0 } } : {})}
         onMapReady={() => setMapReady(true)}
         showsUserLocation={false}
         showsMyLocationButton={false}
         loadingEnabled
-        loadingIndicatorColor={colors.primary}
-        loadingBackgroundColor={colors.surface}
+        {...OCAR_MAP_PROPS}
       >
         {/* Own car icon instead of the OS's generic blue dot. Live position once
             online (real bearing available); the pre-online one-shot fix has no
@@ -156,8 +160,8 @@ export default function HomeScreen() {
           point, out of the way in the corners. */}
       <View style={[styles.topRow, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
         <View style={styles.walletPill}>
-          <MaterialCommunityIcons name="currency-inr" size={13} color={colors.accentOrange} />
-          <Text style={styles.walletPillText}>{walletGate.loading ? '—' : Math.round(walletGate.balance).toLocaleString('en-IN')}</Text>
+          <MaterialCommunityIcons name="currency-inr" size={13} color={colors.accent} />
+          <Text style={styles.walletPillText}>{walletGate.loading ? '-' : Math.round(walletGate.balance).toLocaleString('en-IN')}</Text>
         </View>
         {/* No notifications feature exists yet in driver-mobile (unlike the
             web app) -- visual-parity placeholder only, same treatment as
@@ -167,7 +171,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <View style={styles.sheet} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
+      <View style={[styles.sheet, { bottom: sheetBottom }]} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.date}>{todayLabel}</Text>
@@ -194,10 +198,24 @@ export default function HomeScreen() {
           </Card>
         ) : null}
 
-        {blockedReason ? (
-          <Card style={styles.card}>
-            <Text style={styles.error}>{blockedReason}</Text>
-          </Card>
+        {blockedBanner ? (
+          <Pressable onPress={() => router.push(blockedBanner.route)} style={({ pressed }) => [styles.alertCard, pressed ? styles.pressedScale : null]} accessibilityRole="button">
+            {/* Pulse only for the rejected-doc case, a frozen wallet doesn't get worse by the minute
+                the way a rejected document review clock does, so it doesn't need the same urgency cue. */}
+            {documentGate.hasRejected ? (
+              <PulseDot color={colors.error} size={8} />
+            ) : (
+              <Feather name="alert-triangle" size={16} color={colors.error} />
+            )}
+            <View style={styles.alertBody}>
+              <Text style={styles.alertTitle}>{blockedBanner.title}</Text>
+              <Text style={styles.alertText} numberOfLines={2}>{blockedBanner.message}</Text>
+            </View>
+            <View style={styles.alertAction}>
+              <Text style={styles.alertActionText}>{blockedBanner.actionLabel}</Text>
+              <Feather name="chevron-right" size={14} color={colors.error} />
+            </View>
+          </Pressable>
         ) : null}
 
         {flow.error ? (
@@ -220,9 +238,9 @@ export default function HomeScreen() {
           <View style={styles.statsRow}>
             <View style={styles.statCol}>
               <View style={styles.statValueRow}>
-                <MaterialCommunityIcons name="currency-inr" size={13} color={colors.accentOrange} />
+                <MaterialCommunityIcons name="currency-inr" size={13} color="#8A6420" />
                 <Text style={[styles.statValue, styles.statValueOrange]}>
-                  {summary ? Math.round(summary.totalEarnings).toLocaleString('en-IN') : '—'}
+                  {summary ? Math.round(summary.totalEarnings).toLocaleString('en-IN') : '-'}
                 </Text>
               </View>
               <Text style={styles.statLabel}>Earned</Text>
@@ -230,14 +248,14 @@ export default function HomeScreen() {
             <View style={[styles.statCol, styles.statColDivider]}>
               <View style={styles.statValueRow}>
                 <Feather name="clock" size={11} color={colors.ink600} />
-                <Text style={styles.statValue}>{summary?.tripCount ?? '—'}</Text>
+                <Text style={styles.statValue}>{summary?.tripCount ?? '-'}</Text>
               </View>
               <Text style={styles.statLabel}>Trips</Text>
             </View>
             <View style={styles.statCol}>
               <View style={styles.statValueRow}>
                 <Feather name="star" size={11} color={colors.ink600} />
-                <Text style={styles.statValue}>{summary?.rating ?? '—'}</Text>
+                <Text style={styles.statValue}>{summary?.rating ?? '-'}</Text>
               </View>
               <Text style={styles.statLabel}>Rating</Text>
             </View>
@@ -259,7 +277,7 @@ export default function HomeScreen() {
         <View style={styles.statusLine}>
           <View style={[styles.statusDot, isOnline ? styles.statusDotOnline : styles.statusDotOffline]} />
           <Text style={styles.statusText}>
-            {isOnline ? 'Searching for nearby rides — stay in the area for faster matching' : 'Tap the toggle above to go online'}
+            {isOnline ? 'Searching for nearby rides. Stay in the area for faster matching.' : 'Tap the toggle above to go online'}
           </Text>
         </View>
       </View>
@@ -290,51 +308,53 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   mapDim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: `${colors.bg}59` },
   topRow: { position: 'absolute', left: spacing.md, right: spacing.md, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  walletPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.surface, borderRadius: radii.full, paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.xs + 2, ...shadows.card },
-  walletPillText: { ...typography.label, color: colors.ink900, fontWeight: '800' },
-  bellBtn: { width: 36, height: 36, borderRadius: radii.full, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', ...shadows.card },
+  walletPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.surface, borderRadius: radii.full, borderWidth: 1, borderColor: h.line08, height: 40, paddingHorizontal: spacing.sm + 6, boxShadow: shadow.sm },
+  walletPillText: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
+  bellBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: h.line08, alignItems: 'center', justifyContent: 'center', boxShadow: shadow.sm },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: spacing.md,
+    paddingHorizontal: 2,
   },
   headerText: { flex: 1, gap: 2 },
   date: { ...typography.caption, color: colors.ink400 },
-  greeting: { ...typography.headline, color: colors.ink900 },
+  greeting: { ...typography.headline, color: colors.ink900, fontSize: 22 },
   subtext: { ...typography.caption, color: colors.ink600 },
   card: { gap: spacing.sm },
   detail: { ...typography.body, color: colors.ink600 },
   error: { ...typography.label, color: colors.error },
+  alertCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.errorLight, borderWidth: 1, borderColor: colors.error, borderRadius: 20, padding: spacing.md },
+  alertBody: { flex: 1, gap: 2 },
+  alertTitle: { ...typography.label, color: colors.error, fontFamily: fonts.bold, fontSize: 14 },
+  alertText: { ...typography.caption, color: colors.ink600 },
+  alertAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  alertActionText: { ...typography.caption, color: colors.error, fontFamily: fonts.bold },
+  pressedScale: { transform: [{ scale: 0.98 }] },
   returnCabBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.successLight, borderRadius: 20, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   returnCabDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
-  returnCabText: { ...typography.caption, color: colors.success, fontWeight: '700' },
+  returnCabText: { ...typography.caption, color: colors.success, fontFamily: fonts.bold },
   sheet: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: spacing.lg,
-    paddingBottom: spacing.xl,
-    gap: spacing.sm,
+    left: geo.gutter,
+    right: geo.gutter,
+    ...card,
+    padding: spacing.md,
+    gap: 14,
+    boxShadow: shadow.lg,
   },
   unifiedCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
+    backgroundColor: colors.surface2,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   statsRow: { flexDirection: 'row', paddingVertical: spacing.sm },
   statCol: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
   statColDivider: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: colors.border },
   statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  statValue: { ...typography.label, color: colors.ink900, fontWeight: '800' },
-  statValueOrange: { color: colors.accentOrange },
-  statLabel: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
+  statValue: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
+  statValueOrange: { color: '#8A6420' },
+  statLabel: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -345,10 +365,10 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   actionLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
-  actionLabel: { ...typography.label, color: colors.ink900, fontWeight: '600' },
+  actionLabel: { ...typography.label, color: colors.ink900, fontFamily: fonts.semibold },
   statusLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingTop: spacing.xs },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusDotOnline: { backgroundColor: colors.accentOrange },
+  statusDotOnline: { backgroundColor: colors.success },
   statusDotOffline: { backgroundColor: colors.ink400 },
   statusText: { ...typography.caption, color: colors.ink600, flex: 1 },
   confirmBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: `${colors.ink900}72`, padding: spacing.lg },

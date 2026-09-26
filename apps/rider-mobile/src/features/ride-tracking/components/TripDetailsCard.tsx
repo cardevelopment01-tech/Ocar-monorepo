@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import type { RideDetailExtra } from '../types'
 
 export type TripDetailsCardProps = {
@@ -54,8 +54,8 @@ const styles = StyleSheet.create({
   dotDrop: { backgroundColor: colors.ink900 },
   line: { width: 1, flex: 1, minHeight: 20, backgroundColor: colors.border },
   textCol: { flex: 1, minWidth: 0, gap: spacing.sm },
-  label: { ...typography.caption, fontSize: 11, color: colors.ink400, fontWeight: '600' },
-  value: { ...typography.label, fontSize: 13, color: colors.ink900, fontWeight: '600' },
+  label: { ...typography.caption, fontSize: 11, color: colors.ink400, fontFamily: fonts.semibold },
+  value: { ...typography.label, fontSize: 13, color: colors.ink900, fontFamily: fonts.semibold },
   fareCol: { alignItems: 'flex-end', flexShrink: 0 },
-  fareValue: { ...typography.body, color: colors.ink900, fontWeight: '700' },
+  fareValue: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
 })

@@ -9,7 +9,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { STATUS_CONFIG, statusBg, type StatusKey } from '../statusConfig'
 
 export type StatusBannerProps = {
@@ -84,9 +84,9 @@ const styles = StyleSheet.create({
   dot: { width: 12, height: 12, borderRadius: 6, position: 'absolute' },
   dotPulse: { width: 12, height: 12, borderRadius: 6, position: 'absolute' },
   textCol: { flex: 1, gap: 2 },
-  label: { ...typography.label, color: colors.ink900, fontWeight: '700' },
+  label: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
   sub: { ...typography.caption, color: colors.ink600 },
   etaCol: { alignItems: 'flex-end' },
-  etaMin: { ...typography.label, color: colors.ink900, fontWeight: '700' },
+  etaMin: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
   etaKm: { ...typography.caption, color: colors.ink600 },
 })

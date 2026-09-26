@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 
 export type RiderSheetProps = {
   visible: boolean
@@ -127,20 +127,20 @@ export function RiderSheet({ visible, onClose, riderName, riderPhone, onCommit, 
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.48)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingTop: spacing.sm, paddingHorizontal: spacing.lg, gap: spacing.sm },
-  handle: { width: 36, height: 4, borderRadius: radii.full, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.sm },
-  title: { ...typography.headline, color: colors.ink900, fontWeight: '700', marginBottom: spacing.xs },
+  backdrop: { flex: 1, backgroundColor: 'rgba(20,23,26,0.45)' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: spacing.sm, paddingHorizontal: spacing.lg, gap: spacing.sm },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.sm },
+  title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold, marginBottom: spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.sm, borderRadius: radii.lg },
   rowActive: { backgroundColor: colors.primarySubtle },
   avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   avatarMuted: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   rowText: { flex: 1, gap: 1 },
-  rowTitle: { ...typography.body, color: colors.ink900, fontWeight: '600' },
+  rowTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   rowSub: { ...typography.caption, color: colors.primaryDark },
   radioActive: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.primary },
   addRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight },
-  addText: { ...typography.body, color: colors.primary, fontWeight: '600' },
+  addText: { ...typography.body, color: colors.primary, fontFamily: fonts.semibold },
   privacy: { ...typography.caption, color: colors.ink400, marginVertical: spacing.xs },
   formHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
   input: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4 },

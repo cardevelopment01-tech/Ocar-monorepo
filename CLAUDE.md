@@ -5,20 +5,6 @@ Turborepo + pnpm workspaces monorepo. Build is module-by-module (M01–M12).
 
 ---
 
-## Repo Structure
-
-```
-cab-booking-platform/
-├── api/                  Express + TypeScript backend
-├── apps/
-│   ├── user/             Next.js 16 (App Router) — passenger app
-│   ├── driver/           Vite 5 + React 19 + React Router v6 — driver app
-│   └── admin/            Next.js 16 (App Router) — ops portal
-└── packages/             (shared config only, no shared runtime code yet)
-```
-
----
-
 ## Stack
 
 | Layer | Tech |
@@ -83,17 +69,6 @@ ST_SetSRID(ST_MakePoint($lng::float8, $lat::float8), 4326)::geography
 -- or for LineString:
 ST_MakeLine(
   ST_SetSRID(ST_MakePoint($lng1::float8, $lat1::float8), 4326),
-### City boundaries are admin-owned
-`cities.boundary` (Polygon, 4326) is edited by admins in the app (`/cities` → "Edit boundary",
-`/api/v1/admin/geo/cities/:id/boundary[/preview]`), not by migrations. **Never write
-`UPDATE cities SET boundary ...` in a migration** once this ships — it silently overwrites what
-admins drew (083 clobbering 055 is exactly how Khordha↔Bhubaneswar broke until 096). Fresh DBs
-(dev `--fresh`, staging) start from the 096 baseline, not prod's edited shapes.
-`findContainingCity` only considers `status = 'active'` cities and breaks overlap ties by
-smallest area → nearest centroid → id, so overlapping boundaries (Bhubaneswar/Cuttack) are safe.
-Writes go through `admin.repository.ts` (`FOR UPDATE` + millisecond-precision `updated_at`
-compare; 409 `BOUNDARY_CHANGED` on a stale save) — never `geo.repository.updateCity`.
-
   ST_SetSRID(ST_MakePoint($lng2::float8, $lat2::float8), 4326)
 )::geography
 ```
@@ -107,6 +82,17 @@ Rate cards are city-scoped as of migration 078: `city_id IS NULL` = global defau
 `WHERE effective_to IS NULL AND (city_id = $cityId OR city_id IS NULL) ORDER BY city_id NULLS LAST LIMIT 1`.
 Uniqueness for "current row" is per `(COALESCE(city_id, 0), category_id, ride_type)`,
 not just `(category_id, ride_type)` — a city override and the global row can coexist.
+
+### City boundaries are admin-owned
+`cities.boundary` (Polygon, 4326) is edited by admins in the app (`/cities` → "Edit boundary",
+`/api/v1/admin/geo/cities/:id/boundary[/preview]`), not by migrations. **Never write
+`UPDATE cities SET boundary ...` in a migration** once this ships — it silently overwrites what
+admins drew (083 clobbering 055 is exactly how Khordha↔Bhubaneswar broke until 096). Fresh DBs
+(dev `--fresh`, staging) start from the 096 baseline, not prod's edited shapes.
+`findContainingCity` only considers `status = 'active'` cities and breaks overlap ties by
+smallest area → nearest centroid → id, so overlapping boundaries (Bhubaneswar/Cuttack) are safe.
+Writes go through `admin.repository.ts` (`FOR UPDATE` + millisecond-precision `updated_at`
+compare; 409 `BOUNDARY_CHANGED` on a stale save) — never `geo.repository.updateCity`.
 
 ### `exactOptionalPropertyTypes: true`
 Cannot pass `field: value | undefined` where `field?: value` is expected.
@@ -217,63 +203,6 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 
 ---
 
-## Migrations Map
-
-/api/v1/admin/geo/cities/:id/boundary — GET / PUT / DELETE (+ POST /preview): city boundary editor,
-                                          super_admin + ops_admin; 1 MB JSON body limit on this prefix only
-```
-001_extensions.sql     — PostGIS, pgcrypto, uuid-ossp
-002_enums.sql          — ALL application enums (30+ types)
-003_m1_auth.sql        — users, drivers, admins, refresh_tokens, otp_requests
-004_m2_vehicles.sql    — vehicle_categories, vehicle_brands, vehicle_models,
-                         driver_vehicles, driver_vehicle_documents,
-                         driver_documents, daily_verifications
-005_m3_geo.sql         — cities, gps_tracks (partitioned), place_geocode_cache
-                         + deferred FK DO blocks for driver_sessions/rides → cities
-006_m4_pricing.sql     — rate_cards, rate_card_history, stop_charges,
-                         rental_packages, surge_events, fare_snapshots
-007_m5_booking.sql     — driver_sessions, driver_session_history,
-                         driver_location_snapshots, return_cab_routes,
-                         rides, ride_status_history, ride_assignments,
-                         ride_stops, ride_otp_events, ride_cancellations,
-                         speed_alert_log
-                         + ALTER TABLE fare_snapshots ADD FK ride_id → rides
-                         + ALTER TABLE driver_session_history ADD FK ride_id → rides
-008_m6_payments.sql    — payments, razorpay_orders, gateway_events, settlements, refunds
-009_m7_safety.sql      — rating_tags, ratings, sos_alerts, dispute_messages, disputes,
-                         driver_warnings
-010_m8_config.sql      — STUB (system_config, feature_flags)
-011_wallet.sql         — driver_wallets, user_wallets, wallet_ledger entries
-012_audit.sql          — STUB
-013_messaging.sql      — STUB
-014_triggers.sql       — set_updated_at() function + triggers for M01-M03 tables
-015_indexes.sql        — STUB (additional composite indexes)
-016_seed.sql           — cities (Bhubaneswar/Cuttack/Puri), vehicle lookup data,
-                         rate cards (5 categories × 3 ride types), stop charges,
-                         rental packages (sedan + SUV)
-...
-034_device_tokens.sql        — device_tokens (FCM push token registry per owner)
-035_notifications_feed.sql   — replaces 013's notification_logs with a per-owner outbox:
-                                owner_type/owner_id, channel, status, type, title, body,
-                                payload, read_at (in-app read state). channel='in_app' rows
-                                are the feed; other channels are delivery-tracking only.
-                                Plain table, not partitioned (see file header for why).
-036_notification_templates.sql — notification_templates: slug/channel/locale-keyed
-                                templates with {{variable}} body/subject + variables_schema,
-                                seeded with the exact copy notifications.worker.ts used to
-                                hardcode. version bumps on edit.
-...
-081_ride_chat.sql             — ride_messages: append-only rider<->driver in-ride chat,
-                                one row per message scoped to ride_id, client_msg_id as
-                                retry-dedup/idempotency key. Plain table, not partitioned
-                                (same call as notification_logs).
-082_ride_chat_message_notification.sql — seeds the ride_chat_message push template
-                                (notification_templates row) used to notify the other
-                                participant of a new chat message.
-```
-
----
-
 ## API Routes (mounted in app.ts)
 
 ```
@@ -290,6 +219,8 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 /api/v1/notifications/*                — device token register/unregister; in-app feed:
                                           GET / (list, cursor-paginated), GET /unread-count,
                                           PATCH /:id/read, POST /read-all
+/api/v1/admin/geo/cities/:id/boundary — GET / PUT / DELETE (+ POST /preview): city boundary editor,
+                                          super_admin + ops_admin; 1 MB JSON body limit on this prefix only
 /api/v1/admin/notification-templates/* — super_admin only: GET / (list), PATCH /:id (edit,
                                           bumps version), PATCH /:id/active (toggle)
 /api/v1/rides/:id/messages             — POST (send, rate-limited), GET (list), PATCH /read
@@ -337,9 +268,6 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 - No remaining known caveats — overview, live-map, and analytics are all wired to real endpoints
 
 ---
-# Admin portal tests (vitest + RTL; jsdom component tests, see apps/admin/vitest.config.ts)
-cd apps/admin && pnpm test
-
 
 ## Key File Locations
 
@@ -409,158 +337,26 @@ cd apps/user && pnpm dev
 # API tests (unit only pass cleanly; integration tests need proper TEST_DATABASE_URL)
 cd api && pnpm test
 
+# Admin portal tests (vitest + RTL; jsdom component tests, see apps/admin/vitest.config.ts)
+cd apps/admin && pnpm test
+
 # TypeScript check
 cd api && npx tsc --noEmit
 ```
 
 ---
 
-## CI/CD
+## CI/CD, Deploy, Staging & Pending Ops
 
-Four workflow files, not two — `.github/workflows/ci.yml` (seven jobs on every push/PR:
-`security-scan` (Trivy, dependency CVEs + misconfig/secrets), `lint`, `typecheck-api`,
-`test-api`, `typecheck-user`, `typecheck-driver`, `typecheck-admin`), `.github/workflows/deploy.yml`
-(triggered by `workflow_run` off `ci.yml` completing on `main` for prod; `workflow_dispatch`
-for a manual staging deploy), `.github/workflows/terraform-plan.yml` (posts `terraform plan`
-as a PR comment whenever `infra/**` changes on a PR into `main`, read-only, never applies),
-and `.github/workflows/staging-infra.yml` (manual-only `apply`/`destroy` of the staging
-environment, never triggered by a push).
-A `changes` job in `deploy.yml` (hand-rolled SHA diff, not `dorny/paths-filter` — see the job's own
-comment for why) gates `build-push`/`deploy` so they only run when the diff since the last
-successful deploy touches `api/**`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, or
-`deploy.yml` itself.
-
-**Deploy is blue/green** (changed 2026-08-30 — see
-`docs/superpowers/specs/2026-08-28-blue-green-deployment-design.md` and
-`docs/superpowers/plans/2026-08-30-blue-green-deployment-implementation.md`, and
-`docs/OPS_RUNBOOK.md`'s "Deploy new API code" for the operational reference). No longer an
-in-place rolling `instance_refresh` on one shared ASG — two full ASG/target-group pairs
-(`blue`/`green`) exist at all times, `min_size=0` on both, Terraform-managed shape but
-runtime-managed capacity. Each deploy: builds/pushes the image → runs migrations against the
-shared RDS instance → scales up whichever color is currently idle → health-checks it → smoke-tests
-it through the ALB via a preview header (`X-Deploy-Preview: blue`/`green`) with zero live traffic
-routed to it yet → flips the ALB listener's default target group to it (the one atomic cutover
-moment) → bakes 10 minutes watching `HTTPCode_Target_5XX_Count` → scales the old color down once
-the bake is clean, or flips the listener back instantly if it isn't. Rollback (whichever stage
-triggers it) does NOT revert migrations (forward-only) — a bad migration must be fixed forward, not
-rolled back. `/ocar/prod/active-color` (SSM) is the source of truth for which color is currently
-live; blue kept its pre-blue/green resource names (`ocar-prod-asg`, `ocar-prod-api-tg`, no color
-suffix) since renaming a live ASG/target group forces a destroy/recreate — see `asg.tf`'s comment.
-
-The `deploy` job's YAML references `environment: production`, but no GitHub Environment protection
-rule is configured, so this is currently inert for gating — it only tags the deploy for GitHub's
-Environments/deployment-history UI. Deploys to `main` run automatically once all checks pass; there
-is no human-approval pause yet, and no branch protection on `main` either. See "Pending Ops Actions"
-below for the exact commands to close both gaps once repo admin access is available.
+Moved to `.claude/skills/deploy-ops/SKILL.md` (loads on demand when touching
+`.github/workflows/*`, `infra/terraform/*`, or deploy/staging/CI work) — covers
+the four CI/CD workflow files, blue/green deploy mechanics, the staging
+environment spin-up/teardown, the Terraform bootstrap module, and the full
+list of pending ops actions (kill switches, missing GitHub Environment gates,
+branch protection).
 
 ---
 
-## Staging Environment
-
-A second, infrastructure-identical copy of prod, provisioned on demand for
-client load tests -- not a permanent always-on environment. Same
-`instance_type`/ASG scaling policy/ElastiCache tier as prod (the whole
-point of a load-test environment is trustworthy numbers), but its own
-Terraform state (`staging/terraform.tfstate`, never `prod/terraform.tfstate`)
-and its own non-production secrets (Razorpay test-mode keys, a Neon DB
-branch, a separate JWT secret) -- see
-`docs/superpowers/specs/2026-08-14-staging-runbook.md` for the manual
-non-Terraform steps.
-
-**Spin up:** GitHub Actions -> "Staging Infra (apply/destroy)" -> Run
-workflow -> `action: apply` (or `pnpm infra:staging:apply` locally after
-`pnpm infra:staging:init` + `pnpm infra:staging:plan`).
-
-**Tear down:** same workflow with `action: destroy`, or
-`pnpm infra:staging:destroy`. Always tear down after a load test --
-this environment isn't meant to run continuously.
-
----
-
-## Terraform Bootstrap Module
-
-`infra/terraform/bootstrap/` holds account-wide singleton resources that
-don't belong to any one environment: the Terraform state bucket + its KMS
-key, and the GitHub Actions OIDC provider. Own state
-(`bootstrap/terraform.tfstate`, same bucket), applied once and almost never
-touched again -- the main prod/staging config only ever reads these via a
-`data` source, never creates or modifies them. If you ever need to touch
-this module: `cd infra/terraform/bootstrap && terraform init && terraform
-plan` (no `-var-file`/`-var="environment=..."` needed, it doesn't take one).
-
----
-
-## Pending Ops Actions
-
-- **cAdvisor is confirmed live on the fleet** (verified directly via `docker ps` on a running instance during the 2026-08-30 blue/green rollout — `ocar_cadvisor` up and healthy, scraped fine by Alloy). `ocar-overview.json`'s "Per-Container Resource Usage" panels are confirmed present in the live dashboard (Terraform-managed since 2026-09-08, see `infra/grafana/dashboards/README.md` — this class of "was it actually re-imported" uncertainty no longer applies). Once real/load-tested traffic exists, use that row's data to size `api`'s `mem_limit`/`cpus` (currently 2g/512m/1.5, a starting safety-net guess) from observed p95/p99 usage.
-
-- **S3 lifecycle rule needed on the docs bucket for `uploads/pending/` orphan cleanup.** The presigned-upload flow (driver document/selfie uploads, see `docs/superpowers/plans/2026-08-14-driver-doc-presigned-upload.md`) writes objects under `uploads/pending/drivers/{driverId}/...` before `*-complete` promotes them to their permanent `drivers/{id}/...` key. If a driver's app closes before calling `*-complete`, the pending object is orphaned (harmless, just wasted storage). Add an S3 lifecycle rule (S3 console → bucket → Management → Lifecycle rules) scoping to prefix `uploads/pending/` with a 1-day expiration. Not code — the docs bucket isn't Terraform-managed (`aws_s3_bucket` doesn't appear anywhere under `infra/terraform`). Delete this note once done.
-
-- **Evaluate a real secrets manager (e.g. Infisical) to replace the raw SSM `SecureString` workflow for the Terraform-managed prod EC2 fleet (`infra/terraform/iam.tf`, `api-env`/`ghcr-token`/`image-tag` parameters).** Not urgent, not a security problem — SSM `SecureString` is still a legitimate credential store. The pain is ergonomic: SSM only supports whole-value overwrite, so every edit (e.g. changing one line in `api-env`) means pulling the entire blob to a local file, hand-editing it, and re-uploading the whole thing — during the 2026-08-12 Redis-to-Valkey cutover this exact loop caused a real mistake (a human edit changed the `REDIS_URL` scheme but missed the hostname, since the whole value has to be eyeballed at once instead of editing one key). A secrets manager with per-key editing would remove that failure mode. Weigh against the cost: it's a new external dependency the EC2 boot script would need network access to and authenticate against (or a self-hosted instance to run and maintain) — evaluate calmly, not as a reactive swap. Delete this note once decided either way.
-
-- **Driver instant cash-out is behind a kill switch, `system_config.driver_payouts_enabled` (default `'false'`).** The driver app hides the "Cash Out Now" button and the API rejects the endpoint while it's off — this is intentional until RazorpayX payouts are confirmed working end-to-end in an environment (real `RAZORPAYX_ACCOUNT_NUMBER` set, webhook events `payout.processed`/`payout.failed`/`payout.reversed` enabled in the Razorpay dashboard, a real payout tested and confirmed to land). Once verified, flip it on:
-  ```sql
-  UPDATE system_config SET value = 'true' WHERE key = 'driver_payouts_enabled';
-  ```
-  No deploy needed — read live, cached 30s, invalidated immediately on admin update. Delete this note once flipped on for good.
-
-- **Driver ₹500 minimum-wallet-balance recharge gate — including the negative-balance (cash-dues) block — is temporarily disabled for client driver testing.** `system_config.driver_minimum_balance` should be `'-999999'` (was `'500'`, briefly `'0'`) — this is read live, cached 30s, invalidated immediately on admin update, by `goOnline()`, ride-broadcast driver filtering, and `/return-cab-available`, so it needs no deploy either way. **Apply this SQL manually** — it was not run as part of this change (no local DB connection at the time):
-  ```sql
-  UPDATE system_config SET value = '-999999' WHERE key = 'driver_minimum_balance';
-  ```
-  `apps/driver/src/lib/useWalletGate.ts`'s `MIN_BALANCE` mirror (gates the "Go Online" button client-side) is already updated to `-999999` — needs a driver-app redeploy to take effect. `apps/driver/src/pages/Wallet.tsx`'s `MIN_BALANCE` was deliberately left at `0` — it only drives the cosmetic "Low Balance" banner (not a gate), so it still correctly warns drivers about dues owed without blocking them. To re-enable once testing is done:
-  ```sql
-  UPDATE system_config SET value = '500' WHERE key = 'driver_minimum_balance';
-  ```
-  and revert `MIN_BALANCE` back to `500` in `useWalletGate.ts`. Delete this note once flipped back on for good.
-
-- **Before the client DB load test, enable observability in the Neon dashboard (can't be done from code):**
-  1. Enable the `pg_stat_statements` extension.
-  2. Set `log_min_duration_statement = 500` (log queries slower than 500ms).
-  3. Confirm the app's `DATABASE_URL` uses the `-pooler` host (see `api/.env.example`).
-  After the test, run `api/scripts/index-usage-audit.sql` to find unused indexes, dead-tuple pressure, and the slowest query shapes — that data decides whether to build keyset pagination and `ride_status_history` partitioning (both deliberately deferred until proven necessary — see `docs/superpowers/specs/2026-07-26-db-loadtest-readiness-design.md`). `ride_messages` (rider-driver in-app chat, added in 081_ride_chat.sql) should be included in the same test — it's the same one-row-per-event/high-write/read-by-`ride_id` shape as `ride_status_history`, so it should get the same partitioning decision from the same data, not bespoke scaling work.
-
-- **No `production` GitHub Environment / required-reviewer approval gate on deploy.** The `deploy` job already references `environment: production` in `.github/workflows/deploy.yml`, but the environment itself was never created, so it's currently inert (deploys run immediately once checks pass, no human approval pause). Skipped because the `gh` account used to build this pipeline has `push`/`triage` on the repo but not `admin` (confirmed via `gh api repos/cardevelopment01-tech/Ocar-monorepo --jq '.permissions'` → `{"admin":false,...}`), and creating an environment protection rule requires admin. Whoever has admin rights should run:
-  ```bash
-  gh api --method PUT repos/:owner/:repo/environments/production
-  REVIEWER_ID=$(gh api users/<your-github-username> --jq .id)
-  gh api --method PUT repos/:owner/:repo/environments/production \
-    -f "reviewers[][type]=User" \
-    -F "reviewers[][id]=$REVIEWER_ID"
-  ```
-  Replace `<your-github-username>` with the GitHub login that should approve production deploys. Verify in `Settings → Environments → production` that "Required reviewers" is checked. Delete this note once done.
-
-- **No `staging` GitHub Environment / required-reviewer approval gate on the staging-infra workflow.** `.github/workflows/staging-infra.yml`'s `environment: staging` reference is currently inert — no GitHub Environment exists with that name, so a `workflow_dispatch` run with `action: destroy` executes `terraform destroy -auto-approve` against real staging AWS infrastructure with zero human confirmation step. Same root cause as the production gap above (this `gh` account has `admin: false` on the repo, confirmed via `gh api repos/:owner/:repo --jq '.permissions'`). Whoever has admin rights should run:
-  ```bash
-  gh api --method PUT repos/:owner/:repo/environments/staging
-  REVIEWER_ID=$(gh api users/<your-github-username> --jq .id)
-  gh api --method PUT repos/:owner/:repo/environments/staging \
-    -f "reviewers[][type]=User" \
-    -F "reviewers[][id]=$REVIEWER_ID"
-  ```
-  Replace `<your-github-username>` with the GitHub login that should approve staging destroys. Verify in `Settings → Environments → staging` that "Required reviewers" is checked. Delete this note once done. (Full detail already in `docs/superpowers/specs/2026-08-14-staging-runbook.md`, step 1.)
-
-- **No branch protection on `main`.** Nothing currently stops a direct push to `main` (bypassing a PR) from landing bad code — the CI `needs:` gate stops that code from being *deployed*, but not from being *merged/pushed*. Skipped for the same admin-rights reason as above (branch protection is also an admin-only `gh api` call). Whoever has admin rights should run:
-  ```bash
-  gh api --method PUT repos/:owner/:repo/branches/main/protection \
-    -F "required_status_checks[strict]=true" \
-    -f "required_status_checks[contexts][]=Lint" \
-    -f "required_status_checks[contexts][]=Typecheck API" \
-    -f "required_status_checks[contexts][]=Test API" \
-    -f "required_status_checks[contexts][]=Typecheck User App" \
-    -f "required_status_checks[contexts][]=Typecheck Driver App" \
-    -f "required_status_checks[contexts][]=Typecheck Admin App" \
-    -F "enforce_admins=true" \
-    -F "required_pull_request_reviews[required_approving_review_count]=1" \
-    -F "restrictions=null"
-  ```
-  Verify in `Settings → Branches → main` that "Require status checks to pass before merging" (all six jobs listed) and "Require a pull request before merging" are both checked. Delete this note once done.
-
-- **Round-trip package defaults are placeholders, not real per-category pricing.** The `074_round_trip_package_billing.sql` migration backfilled `km_per_day=250`/`driver_allowance_per_day=300` for ALL 5 vehicle categories identically (a compact hatchback and a premium SUV doing the same outstation route should almost certainly have different values) — an admin must tune these per category via the rate-cards page before real customers are billed against them. Do it at `/config/rate-cards`, the "Package KM/day" and "Driver Allowance/day" fields for round_trip rows.
-
-- **Round-trip overage billing's driver-telemetry gap is mostly closed — one narrower risk remains.** `verifyEndOTP` (`api/src/modules/rides/rides.service.ts`) now prefers a GPS-breadcrumb-derived distance/duration (`getGpsTrackedDistanceKm`, computed from the `gps_tracks` table) over the client-reported `actualDistanceKm`/`actualDurationMin` for round_trip fare reconciliation, falling back to the client estimate only when fewer than 2 GPS points were recorded during the ride. The driver app already pings location every ~3s during any active ride, so no driver-app changes were needed — the fallback path (still a one-way straight-line estimate from `TripInProgress.tsx`'s `handleCompleteTrip`) should now be rare in production, assuming GPS tracking is functioning for a given ride. `getGpsTrackedDistanceKm` now also clamps its output to 2.5x the originally booked distance (`fare_snapshots.estimated_km`), falling back to `null` (same client-estimate path as the &lt;2-points case) when a noisy/jumpy breadcrumb trail exceeds that ceiling — closes the sanity-ceiling gap this note used to flag. Remaining known gap: the GPS-fallback case itself — if GPS tracking breaks or is sparse for a ride, billing still falls back to the unreliable client estimate. Delete this note once per-category rate-card tuning is also done.
-
-- **Durable log storage — done, superseding this note's original form.** `infra/alloy/config.alloy` ships Pino's stdout JSON to Grafana Cloud Loki (not Fluent Bit/CloudWatch as first proposed 2026-08-05 — Alloy was chosen instead once `docs/superpowers/specs/2026-08-08-observability-stack-design.md` unified logs+metrics+traces behind one agent). `requestId` stays a queried JSON field, not a Loki label, per that spec's cardinality rule. Tracing, metrics, and alerting (see `infra/terraform/observability/`) are also live. Delete this bullet entirely once confirmed nothing still links to the old Fluent Bit plan.
 ## Security Rules (non-negotiable)
 
 - No `error.message` in production API responses — only codes/safe messages

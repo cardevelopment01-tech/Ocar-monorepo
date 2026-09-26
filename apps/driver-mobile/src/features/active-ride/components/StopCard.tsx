@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { Button, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { markStopStatus } from '../api'
 
 export type StopCardProps = {
@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   iconWrap: { width: 44, height: 44, borderRadius: radii.lg, backgroundColor: colors.warningLight, alignItems: 'center', justifyContent: 'center' },
   textCol: { flex: 1, minWidth: 0, gap: 1 },
-  label: { ...typography.caption, color: colors.ink400, fontWeight: '700', textTransform: 'uppercase' },
+  label: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold, textTransform: 'uppercase' },
   address: { ...typography.title, color: colors.ink900 },
   error: { ...typography.label, color: colors.error },
 })

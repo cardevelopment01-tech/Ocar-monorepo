@@ -8,7 +8,7 @@ import DocGroupCard from '@/components/documents/DocGroupCard'
 import DocPreviewModal from '@/components/documents/DocPreviewModal'
 import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
 import type { SlotDef, SlotState } from '@/components/documents/types'
-import { DRIVER_GROUPS, VEHICLE_GROUPS, initSlotState } from '@/components/documents/groups'
+import { DRIVER_GROUPS, VEHICLE_GROUPS, initSlotState, SLOT_LABELS } from '@/components/documents/groups'
 import FieldError, { ShakeWrap, useShake } from '@/components/ui/FieldError'
 import { useAuthStore } from '@/store/useAuthStore'
 
@@ -17,10 +17,10 @@ import { useAuthStore } from '@/store/useAuthStore'
 // (immediate PATCH/upload calls) — there's no "Continue" gate here,
 // no forced order, no step to advance to.
 //
-// Exception: a docs_rejected driver is routed here too (ProtectedRoute) —
-// for them this screen doubles as "fix what got rejected," so it gets one
-// banner explaining why they're here. Not shown for a driver who navigated
-// here voluntarily from Profile.
+// The alert card is keyed on any rejected slot, not on driver.status === 'docs_rejected' --
+// a rejected optional doc (e.g. PUC) doesn't flip the account status (only a required-doc
+// rejection does, via syncDriverStatusAfterDocChange), but it still deserves the same
+// "here's exactly what's wrong" treatment as a required one.
 export default function DriverDocuments() {
   const { driver } = useAuthStore()
   const [licenseNumber, setLicenseNumber] = useState('')
@@ -50,7 +50,7 @@ export default function DriverDocuments() {
         const merged: Record<string, SlotState> = initSlotState()
         for (const [k, v] of Object.entries({ ...status.photos, ...status.vehicle_docs })) {
           if (k in merged) {
-            merged[k] = { state: v.uploaded ? 'done' : 'idle', url: v.url, error: null, docStatus: v.status, rejectionNote: v.rejection_note }
+            merged[k] = { state: v.uploaded ? 'done' : 'idle', url: v.url, error: null, docStatus: v.status, rejectionNote: v.rejection_note, rejectionCount: v.rejection_count ?? 0 }
           }
         }
         setSlotState(merged)
@@ -73,7 +73,7 @@ export default function DriverDocuments() {
       const result = slot.isVehicle
         ? await onboardingApi.uploadVehicleDoc(file, slot.key, undefined, expiry)
         : await onboardingApi.uploadDriverDoc(file, slot.key, expiry)
-      setSlot(slot.key, { state: 'done', url: result.file_url, error: null, docStatus: 'pending', rejectionNote: null })
+      setSlot(slot.key, { state: 'done', url: result.file_url, error: null, docStatus: 'pending', rejectionNote: null, rejectionCount: 0 })
     } catch {
       setSlot(slot.key, { state: 'error', error: 'Upload failed. Tap to retry.' })
     }
@@ -116,6 +116,10 @@ export default function DriverDocuments() {
   const driverSectionDone  = DRIVER_GROUPS.filter(g => g.required).every(g => g.slots.every(s => slotState[s.key]?.state === 'done'))
   const vehicleSectionDone = VEHICLE_GROUPS.filter(g => g.required).every(g => g.slots.every(s => slotState[s.key]?.state === 'done'))
 
+  // Named + reasoned, not just "a document was rejected", the escalation line matches the tiered
+  // copy admin.service.ts sends the driver by push/SMS (2nd time: check carefully; 3rd+: support notified).
+  const rejectedSlots = Object.entries(slotState).filter(([, v]) => v.docStatus === 'rejected')
+
   if (isFetching) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
@@ -132,17 +136,38 @@ export default function DriverDocuments() {
         <main className="flex-1 overflow-y-auto px-5 pt-6 pb-6">
           <div className="space-y-3">
 
-            {driver?.status === 'docs_rejected' && (
+            {rejectedSlots.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                className="flex items-center gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-3"
+                className="rounded-2xl border-2 border-accent-red/40 bg-surface-2 px-4 py-3.5 space-y-2.5"
               >
-                <AlertCircle size={16} className="text-amber-500 flex-shrink-0" />
-                <p className="text-amber-700 text-sm font-medium">
-                  A document needs fixing before you can go online again.
-                </p>
+                <div className="flex items-center gap-2">
+                  <span className="relative flex-shrink-0 h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                  </span>
+                  <p className="text-sm font-bold text-text-primary">
+                    {rejectedSlots.length === 1 ? '1 document needs your attention' : `${rejectedSlots.length} documents need your attention`}
+                  </p>
+                </div>
+                {rejectedSlots.map(([key, v]) => (
+                  <div key={key} className="pt-2 border-t border-accent-red/15 space-y-0.5">
+                    <p className="text-sm font-bold text-text-primary">{SLOT_LABELS[key] ?? key}</p>
+                    {v.rejectionNote && <p className="text-xs text-text-secondary leading-relaxed">{v.rejectionNote}</p>}
+                    {v.rejectionCount >= 3 ? (
+                      <p className="text-xs font-semibold text-accent-red">
+                        Rejected {v.rejectionCount} times. Our support team has been notified. Reupload below, or contact support if you need help.
+                      </p>
+                    ) : v.rejectionCount === 2 ? (
+                      <p className="text-xs font-semibold text-accent-red">This is the 2nd time. Check the requirements carefully before resubmitting.</p>
+                    ) : null}
+                  </div>
+                ))}
+                {driver?.status === 'docs_rejected' && (
+                  <p className="text-[10px] text-text-muted pt-0.5">You can't go online again until this is fixed.</p>
+                )}
               </motion.div>
             )}
 

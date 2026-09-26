@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { PlaceRow } from '@/features/booking/components/PlaceRow'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { fetchClassifyTrip, fetchNearestCityId, fetchPlaceDetail, fetchRoute, fetchSavedPlaces, type SavedPlace } from '@/features/booking/api'
@@ -13,6 +13,7 @@ import type { RideType } from '@/features/booking/api'
 import { useLocationStore } from '@/store/useLocationStore'
 import { useRecentSearchesStore } from '@/store/useRecentSearchesStore'
 import { RedirectToast } from '@/features/booking/components/RedirectToast'
+import { sectionLabel } from '@/theme/homeTokens'
 
 type ActiveField = 'pickup' | 'drop'
 
@@ -230,7 +231,7 @@ export default function BookingPickersScreen() {
         rideType === 'round_trip' ? '/booking/round-trip' : rideType === 'rental' ? '/booking/rental' : '/booking/fare'
       )
     } catch {
-      setContinueError("Couldn't work out that route — try again")
+      setContinueError("Couldn't work out that route. Please try again.")
       setContinuing(false)
     }
   }
@@ -483,35 +484,38 @@ const styles = StyleSheet.create({
   backButton: {
     width: 40,
     height: 40,
-    borderRadius: 12,
-    backgroundColor: colors.surface2,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(20,23,26,0.08)',
+    boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   pressedScale: { transform: [{ scale: 0.97 }] },
-  title: { ...typography.title, color: colors.ink900, fontWeight: '700', flex: 1 },
+  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
   riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface2, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, maxWidth: 110 },
-  riderPillText: { ...typography.caption, color: colors.ink900, fontWeight: '700' },
+  riderPillText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.bold },
   routeCard: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   connector: { width: 40, alignItems: 'center', paddingVertical: spacing.md },
-  dotPickup: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.success },
+  dotPickup: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary, boxShadow: '0 0 0 3px rgba(14,143,163,0.14)' },
   dashedLine: { flex: 1, width: 1, minHeight: 24, borderLeftWidth: 1, borderLeftColor: colors.border, borderStyle: 'dashed', marginVertical: 4 },
-  dotDrop: { width: 10, height: 10, borderRadius: 2, backgroundColor: colors.warning },
+  dotDrop: { width: 10, height: 10, borderRadius: 2, backgroundColor: colors.ink900 },
   fieldsColumn: { flex: 1 },
   fieldRow: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm + 2, borderBottomWidth: 1, borderBottomColor: colors.borderLight, justifyContent: 'center', minHeight: 44 },
   fieldRowLast: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm + 2, justifyContent: 'center', minHeight: 44 },
   fieldInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   fieldInput: { ...typography.body, color: colors.ink900, padding: 0, flex: 1 },
   clearBtn: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
-  fieldText: { ...typography.body, color: colors.ink900, fontWeight: '600' },
-  fieldPlaceholder: { color: colors.ink400, fontWeight: '400' },
+  fieldText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
+  fieldPlaceholder: { color: colors.ink400, fontFamily: fonts.regular },
   mapPill: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
@@ -524,19 +528,19 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  mapPillText: { ...typography.caption, color: colors.ink600, fontWeight: '700' },
+  mapPillText: { ...typography.caption, color: colors.ink600, fontFamily: fonts.bold },
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg },
   hintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
   hint: { ...typography.body, color: colors.ink400, textAlign: 'center', paddingVertical: spacing.lg },
   errorRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md },
   errorText: { ...typography.body, color: colors.error, flex: 1 },
-  retryText: { ...typography.label, color: colors.primary, fontWeight: '700' },
+  retryText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
   section: { marginBottom: spacing.sm },
-  sectionLabel: { ...typography.caption, color: colors.ink400, fontWeight: '700', letterSpacing: 0.5, marginBottom: spacing.xs },
+  sectionLabel: { ...sectionLabel, marginBottom: spacing.xs },
   error: { ...typography.body, color: colors.error, marginBottom: spacing.xs },
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight, backgroundColor: colors.bg },
-  continueBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 52 },
+  continueBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 54, boxShadow: '0 10px 24px rgba(14,143,163,0.28)' },
   disabled: { opacity: 0.5 },
-  continueText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  continueText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
 })

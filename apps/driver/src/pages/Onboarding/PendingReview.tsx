@@ -1,35 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, RefreshCw, XCircle, AlertTriangle, FileX } from 'lucide-react'
+import { Clock, RefreshCw, XCircle, AlertTriangle } from 'lucide-react'
 import { useAuthStore } from '@/store/useAuthStore'
-import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
 import api from '@/lib/api'
 import type { DriverProfile } from '@/store/useAuthStore'
-
-const DOC_LABELS: Record<string, string> = {
-  profile_photo: 'Profile Photo', driving_license: 'Driving Licence',
-  aadhaar_front: 'Aadhaar (Front)', aadhaar_back: 'Aadhaar (Back)',
-  driving_license_front: 'Driving Licence (Front)', driving_license_back: 'Driving Licence (Back)',
-  vehicle_rc: 'RC Book', insurance: 'Insurance Certificate', permit: 'Commercial Permit',
-  pollution_cert: 'Pollution Certificate (PUC)', fitness_cert: 'Fitness Certificate',
-}
 
 export default function PendingReview() {
   const navigate = useNavigate()
   const driver = useAuthStore(s => s.driver)
   const updateDriver = useAuthStore(s => s.updateDriver)
   const [checking, setChecking] = useState(false)
-  const [docStatus, setDocStatus] = useState<DocumentStatus | null>(null)
 
   useEffect(() => {
     if (driver?.status === 'active') navigate('/', { replace: true })
   }, [driver?.status, navigate])
 
-  useEffect(() => {
-    if (driver?.status === 'docs_rejected') {
-      onboardingApi.getDocumentStatus().then(setDocStatus).catch(() => {})
-    }
-  }, [driver?.status])
+  // docs_rejected drivers never land here, Login.tsx sends them straight to /profile/documents,
+  // and nothing else routes to this screen for that status (this component only ever renders for
+  // a driver still mid-first-application, i.e. pending_approval, suspended, or banned).
 
   useEffect(() => {
     const id = setInterval(() => { void checkStatus() }, 30_000)
@@ -48,61 +36,6 @@ export default function PendingReview() {
     } finally {
       setChecking(false)
     }
-  }
-
-  if (driver?.status === 'docs_rejected') {
-    const rejectedDocs = [
-      ...Object.entries(docStatus?.photos ?? {}).filter(([, v]) => v.status === 'rejected'),
-      ...Object.entries(docStatus?.vehicle_docs ?? {}).filter(([, v]) => v.status === 'rejected'),
-    ]
-
-    return (
-      <div className="min-h-screen bg-bg text-text-primary flex flex-col items-center justify-center px-8 text-center">
-        <div className="w-20 h-20 rounded-full bg-amber-500/10 flex items-center justify-center mb-6">
-          <FileX size={36} className="text-amber-500" />
-        </div>
-        <h1 className="text-2xl font-bold mb-3">Documents Need Fixing</h1>
-
-        {docStatus?.rejection_reason ? (
-          <p className="text-text-secondary text-sm leading-relaxed mb-6 max-w-xs">
-            {docStatus.rejection_reason}
-          </p>
-        ) : (
-          <p className="text-text-secondary text-sm leading-relaxed mb-6 max-w-xs">
-            Some of your documents were rejected. Please fix them and resubmit your application.
-          </p>
-        )}
-
-        {rejectedDocs.length > 0 && (
-          <div className="bg-surface-2 border border-border rounded-2xl px-5 py-4 w-full max-w-xs mb-6 text-left space-y-2">
-            <p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">Rejected Documents</p>
-            {rejectedDocs.map(([key, v]) => (
-              <div key={key} className="flex flex-col gap-0.5">
-                <p className="text-sm font-semibold text-amber-400">{DOC_LABELS[key] ?? key}</p>
-                {v.rejection_note && (
-                  <p className="text-xs text-text-muted leading-snug">{v.rejection_note}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <button
-          onClick={() => navigate('/onboarding/documents', { replace: true })}
-          className="btn-go w-full max-w-xs mb-4"
-          style={{ minHeight: 52 }}
-        >
-          Fix Documents
-        </button>
-
-        {driver.code && (
-          <div className="bg-surface-2 border border-border rounded-2xl px-6 py-3 w-full max-w-xs">
-            <p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-1">Your Driver Code</p>
-            <p className="text-text-secondary font-mono text-xl font-bold tracking-widest">{driver.code}</p>
-          </div>
-        )}
-      </div>
-    )
   }
 
   if (driver?.status === 'suspended') {
