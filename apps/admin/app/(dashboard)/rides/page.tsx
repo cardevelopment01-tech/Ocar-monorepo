@@ -3,7 +3,7 @@ import React from 'react'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Car, ArrowRight, RefreshCw, Clock, MapPin, Star, ChevronDown, Phone, Copy, Check, Activity, XCircle, Wallet, CalendarClock } from 'lucide-react'
+import { Car, MapPin, Star, ChevronDown, Phone, Copy, Check, Activity, XCircle, Wallet, CalendarClock } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
@@ -185,10 +185,10 @@ function RidesPageContent() {
       key: 'user', header: 'User',
       render: (r: AdminRideItem) => (
         <div className="flex items-center gap-2">
-          <Avatar name={r.user_name} />
+          {r.user_name ? <Avatar name={r.user_name} /> : null}
           <div className="min-w-0">
-            <p className="font-semibold text-text-primary truncate">{r.user_name}</p>
-            <p className="text-xs text-text-muted">{r.user_phone}</p>
+            <p className="font-semibold text-text-primary truncate">{r.user_name ?? r.user_phone}</p>
+            {r.user_name ? <p className="text-xs text-text-muted">{r.user_phone}</p> : null}
           </div>
         </div>
       ),
@@ -222,7 +222,7 @@ function RidesPageContent() {
     {
       key: 'route', header: 'Route',
       render: (r: AdminRideItem) => (
-        <div className="space-y-0.5 max-w-[260px]">
+        <div className="space-y-0.5 max-w-[170px]">
           <div className="flex items-start gap-1.5">
             <MapPin className="w-3 h-3 text-success mt-0.5 shrink-0" />
             <p className="text-xs text-text-secondary leading-snug line-clamp-1">{r.origin_address ?? '—'}</p>
@@ -236,21 +236,7 @@ function RidesPageContent() {
     },
     {
       key: 'ride_type', header: 'Type',
-      render: (r: AdminRideItem) => {
-        const icons: Record<string, React.ReactNode> = {
-          one_way:    <ArrowRight className="w-3 h-3" />,
-          round_trip: <RefreshCw  className="w-3 h-3" />,
-          rental:     <Clock      className="w-3 h-3" />,
-        }
-        return (
-          <span className="inline-flex items-center gap-1">
-            <StatusPill status={r.ride_type} />
-            {icons[r.ride_type] && (
-              <span className="text-text-muted">{icons[r.ride_type]}</span>
-            )}
-          </span>
-        )
-      },
+      render: (r: AdminRideItem) => <StatusPill status={r.ride_type} />,
     },
     {
       key: 'fare', header: 'Fare',
@@ -269,7 +255,7 @@ function RidesPageContent() {
     },
     {
       key: 'requested_at', header: 'Time',
-      render: (r: AdminRideItem) => <span className="text-text-muted text-xs">{fmt(r.requested_at)}</span>,
+      render: (r: AdminRideItem) => <span className="text-text-muted text-xs whitespace-nowrap">{fmt(r.requested_at)}</span>,
     },
     {
       key: 'actions', header: '',
@@ -278,7 +264,7 @@ function RidesPageContent() {
           <a
             href={`tel:${r.user_phone}`}
             onClick={e => e.stopPropagation()}
-            title={`Call ${r.user_name}`}
+            title={`Call ${r.user_name ?? r.user_phone}`}
             className="p-1.5 rounded-lg text-text-muted hover:text-primary hover:bg-surface-2 transition-colors"
           >
             <Phone className="w-3.5 h-3.5" />
@@ -742,7 +728,7 @@ function RidesPageContent() {
                       <span className="inline-flex items-center gap-0.5 font-medium text-text-primary">
                         {r.score} <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
                       </span>
-                      {r.comment && <p className="text-[11px] text-text-muted max-w-[200px]">{r.comment}</p>}
+                      {r.comment && <p className="text-[11px] text-text-muted max-w-[170px]">{r.comment}</p>}
                     </div>
                   </div>
                 ))}
