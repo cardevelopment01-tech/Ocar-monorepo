@@ -55,9 +55,27 @@ async function notifyDocumentRejected(driverId: bigint, docType: string, note: s
 
 const VALID_STATUSES = new Set<DriverStatus>(['pending_docs', 'pending_approval', 'active', 'suspended', 'banned', 'docs_rejected'])
 
+const MAX_FILTER_IDS = 50
+
+// "1,2,none" -> ids + noCity flag. Anything else is a 400, never silently dropped.
+function parseIdList(raw: string | undefined, allowNone: boolean): { ids: number[]; none: boolean } {
+  const out = { ids: [] as number[], none: false }
+  if (raw === undefined || raw === '') return out
+  const parts = raw.split(',')
+  if (parts.length > MAX_FILTER_IDS) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  for (const part of parts) {
+    if (allowNone && part === 'none') out.none = true
+    else if (/^[1-9]\d{0,14}$/.test(part)) out.ids.push(Number(part))
+    else throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
+  return out
+}
+
 export async function listDrivers(query: {
   status?: string
   search?: string
+  city?: string
+  vehicle?: string
   page?: number
   limit?: number
 }) {
@@ -65,14 +83,22 @@ export async function listDrivers(query: {
   const page  = Math.max(query.page ?? 1, 1)
   const offset = (page - 1) * limit
 
-  const repoQuery: { status?: string; search?: string; limit: number; offset: number } = { limit, offset }
+  const city = parseIdList(query.city, true)
+  const vehicle = parseIdList(query.vehicle, false)
+
+  const repoQuery: Parameters<typeof repo.listDrivers>[0] = { limit, offset }
   if (query.status !== undefined) repoQuery.status = query.status
   if (query.search !== undefined) repoQuery.search = query.search
-  const { rows, total } = await repo.listDrivers(repoQuery)
+  if (city.ids.length) repoQuery.cityIds = city.ids
+  if (city.none) repoQuery.includeNoCity = true
+  if (vehicle.ids.length) repoQuery.categoryIds = vehicle.ids
+  const { rows, total, summary, facets } = await repo.listDrivers(repoQuery)
 
   return {
     drivers: rows,
     pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+    summary,
+    facets,
   }
 }
 
