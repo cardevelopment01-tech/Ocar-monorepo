@@ -24,6 +24,9 @@ export interface CityBreakdown {
   city_name: string
   ride_count: number
   revenue: number
+  cancelled_count: number
+  cancellation_rate: number // cancelled / (completed + cancelled), 0 when no rides
+  active_drivers: number    // current, not period-scoped
 }
 
 export interface CategoryBreakdown {
