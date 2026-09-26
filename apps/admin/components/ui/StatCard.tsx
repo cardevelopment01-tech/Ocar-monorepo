@@ -61,7 +61,7 @@ export default function StatCard({ title, value, change, changeType, icon: Icon,
 
   return (
     <div className="admin-card cursor-default">
-      <div className="flex items-start justify-between mb-5">
+      <div className="flex flex-wrap items-start justify-between gap-2 mb-5">
         <div
           className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
           style={{ background: v.bg }}
@@ -70,7 +70,7 @@ export default function StatCard({ title, value, change, changeType, icon: Icon,
         </div>
         {loading ? <div className="skeleton h-6 w-16 rounded-full" /> : (
           <span className={cn(
-            'flex items-center gap-0.5 text-xs font-semibold px-2.5 py-1 rounded-full',
+            'flex items-center gap-0.5 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap',
             changeType === 'up'   ? 'bg-success-light text-success' :
             changeType === 'down' ? 'bg-danger-light text-danger' :
             'bg-surface-2 text-text-muted'
