@@ -20,6 +20,13 @@ export const BCRYPT_ROUNDS = 12
 export const BROADCAST_WINDOW_SECONDS = 20
 export const BROADCAST_MAX_DRIVERS = 5
 export const BROADCAST_ROUND_MAX = 3
+// Hard cap on driver-to-pickup distance for ride requests. Client spec; TBC Monday.
+// City = rental. Outstation = one_way + round_trip.
+export function maxPickupRadiusMetres(rideType: string, categorySlug: string | null, tripHours?: number): number {
+  if (rideType !== 'rental') return 10_000
+  if (tripHours !== undefined && tripHours > 2) return 4_000
+  return categorySlug === 'auto_rickshaw' ? 2_000 : 2_500
+}
 // A driver whose tab backgrounded (pauseAvailability, is_available=false,
 // ds.status stays 'online') within this many seconds is still matched into
 // broadcasts and push-notified immediately, rather than being invisible

@@ -1,6 +1,6 @@
 import { socketEvents } from '@/websocket/socket.server'
 import * as repo from '@/modules/rides/rides.repository'
-import { BROADCAST_WINDOW_SECONDS, BROADCAST_MAX_DRIVERS, BACKGROUND_ACCEPT_WINDOW_SECONDS } from '@/constants/limits'
+import { BROADCAST_WINDOW_SECONDS, BROADCAST_MAX_DRIVERS, BACKGROUND_ACCEPT_WINDOW_SECONDS, maxPickupRadiusMetres } from '@/constants/limits'
 import { rideAckKey } from '@/constants/redis-keys'
 import { client as redis } from '@/db/redis'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
@@ -66,6 +66,9 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     isBackgrounded: boolean
   }> = []
 
+  const slug = data.rideType === 'rental' ? await repo.getCategorySlug(categoryId) : null
+  const cap = maxPickupRadiusMetres(data.rideType, slug, data.tripHours)
+
   if (data.isReturnCab && data.destinationLat != null && data.destinationLng != null) {
     const returnDrivers = await repo.findReturnCabDrivers({
       pickupLat: data.originLat,
@@ -75,18 +78,20 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       categoryIds,
       minWalletBalance,
     })
-    drivers = returnDrivers.map(d => ({
+    // Unknown distance (null/undefined/NaN) fails the cap: it must never read as 0 m away.
+    // A driver without a usable location can't be matched, and we don't substitute the pickup point.
+    drivers = returnDrivers.filter(d => Number.isFinite(d.distance_metres) && d.distance_metres <= cap).map(d => ({
       driver_id:        BigInt(d.driver_id),
       session_id:       BigInt(d.session_id),
-      lat:              d.lat ?? data.originLat,
-      lng:              d.lng ?? data.originLng,
-      distance_metres:  d.distance_metres ?? 0,
+      lat:              d.lat,
+      lng:              d.lng,
+      distance_metres:  d.distance_metres,
       isBackgrounded:   false,
     }))
   }
 
   if (drivers.length < MAX_DRIVERS) {
-    const radiusMetres = data.radiusMetres ?? ROUND_RADII[data.broadcastRound] ?? 8000
+    const radiusMetres = Math.min(cap, data.radiusMetres ?? ROUND_RADII[data.broadcastRound] ?? 8000)
     const standardDrivers = await repo.findNearbyDrivers({
       lat: data.originLat,
       lng: data.originLng,
