@@ -35,14 +35,14 @@ html.overflow-hidden {
   /* ── Data table ── */
   .data-table { @apply w-full text-sm border-collapse; }
   .data-table th {
-    @apply sticky top-0 z-10 px-4 py-3 text-left text-xs font-semibold text-text-muted uppercase tracking-wide
+    @apply sticky top-0 z-10 px-3 py-3 text-left text-xs font-semibold text-text-muted uppercase tracking-wide
            border-b border-border bg-surface-2;
   }
   .data-table td {
-    @apply px-4 py-3.5 text-text-secondary border-b border-border-light transition-colors duration-150 align-middle;
+    @apply px-3 py-3.5 text-text-secondary border-b border-border-light transition-colors duration-150 align-middle;
   }
   .data-table tr { @apply cursor-pointer; }
-  .data-table tbody tr:nth-child(even) td { background-color: #FAFBFF; }
+  .data-table tbody tr:nth-child(even) td { background-color: #F8FCFC; }
   .data-table tr:hover td { background-color: #EEF7F8; }
   .data-table tr:last-child td { @apply border-b-0; }
 
