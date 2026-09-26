@@ -83,7 +83,7 @@ export default function PaymentsPage() {
       key: 'ride_id', header: 'Ride',
       render: (p: AdminPaymentItem) => <span className="font-mono text-xs text-text-muted">#{p.ride_id}</span>,
     },
-    { key: 'user_name',   header: 'User',   render: (p: AdminPaymentItem) => <span className="font-medium text-text-primary">{p.user_name}</span> },
+    { key: 'user_name',   header: 'User',   render: (p: AdminPaymentItem) => <span className="font-medium text-text-primary">{p.user_name ?? '—'}</span> },
     {
       key: 'driver_name', header: 'Driver',
       render: (p: AdminPaymentItem) => <span className="text-text-secondary">{p.driver_name ?? '—'}</span>,
