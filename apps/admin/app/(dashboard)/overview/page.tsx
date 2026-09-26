@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Car, Users, IndianRupee, AlertTriangle } from 'lucide-react'
+import { Car, Users, IndianRupee, AlertTriangle, CheckCircle2, XCircle, UserPlus } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
 import StatusPill from '@/components/ui/StatusPill'
 import { adminStatsApi, adminRideApi, type AdminDashboardStats, type AdminRideItem } from '@/lib/admin-api'
@@ -13,9 +13,9 @@ const EMPTY_STATS: AdminDashboardStats = {
 }
 
 const SECONDARY_ICONS = {
-  'Completed Rides':    { color: '#10B981', bg: '#D1FAE5' },
-  'Cancelled Rides':    { color: '#EF4444', bg: '#FEE2E2' },
-  'New Driver Signups': { color: '#0E8FA3', bg: '#E6F3F5' },
+  'Completed Rides':    { color: '#10B981', bg: '#D1FAE5', Icon: CheckCircle2 },
+  'Cancelled Rides':    { color: '#EF4444', bg: '#FEE2E2', Icon: XCircle },
+  'New Driver Signups': { color: '#0E8FA3', bg: '#E6F3F5', Icon: UserPlus },
 }
 
 function fmtTime(iso: string) {
@@ -83,7 +83,7 @@ export default function OverviewPage() {
         <StatCard
           title="Revenue Today"
           value={loading ? '—' : `₹${new Intl.NumberFormat('en-IN').format(Math.round(s.revenue_today))}`}
-          change="Captured payments"
+          change="Captured"
           changeType="up"
           icon={IndianRupee}
           gradient="amber"
@@ -113,9 +113,7 @@ export default function OverviewPage() {
                   className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ background: style.bg }}
                 >
-                  <span className="text-lg font-black" style={{ color: style.color }}>
-                    {c.label.slice(0, 1)}
-                  </span>
+                  <style.Icon size={20} style={{ color: style.color }} />
                 </div>
                 <div>
                   <p className="text-xs text-text-muted mb-0.5">{c.label}</p>
@@ -177,7 +175,7 @@ export default function OverviewPage() {
                   : rides.map(ride => (
                     <tr key={ride.id} className="group">
                       <td className="text-text-muted">{fmtTime(ride.requested_at)}</td>
-                      <td className="font-semibold text-text-primary">{ride.user_name}</td>
+                      <td className="font-semibold text-text-primary">{ride.user_name ?? '—'}</td>
                       <td>{ride.driver_name ?? <span className="text-text-muted italic">Unassigned</span>}</td>
                       <td>
                         <span className="text-text-primary">{ride.origin_address ?? '—'}</span>
