@@ -294,7 +294,7 @@ function DriversPageInner() {
 
       {bannerError && (
         <div role="alert" className="flex items-center justify-between gap-3 bg-warning-light border border-warning/20 rounded-2xl px-4 py-3 text-sm text-text-secondary">
-          Couldn't load drivers awaiting approval.
+          Couldn&apos;t load drivers awaiting approval.
           <button type="button" onClick={fetchBanner} className="px-3 py-1 text-xs font-semibold border border-border rounded-lg bg-surface hover:bg-surface-2">Retry</button>
         </div>
       )}
