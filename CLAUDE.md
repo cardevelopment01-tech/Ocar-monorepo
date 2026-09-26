@@ -69,6 +69,17 @@ ST_SetSRID(ST_MakePoint($lng::float8, $lat::float8), 4326)::geography
 -- or for LineString:
 ST_MakeLine(
   ST_SetSRID(ST_MakePoint($lng1::float8, $lat1::float8), 4326),
+### City boundaries are admin-owned
+`cities.boundary` (Polygon, 4326) is edited by admins in the app (`/cities` → "Edit boundary",
+`/api/v1/admin/geo/cities/:id/boundary[/preview]`), not by migrations. **Never write
+`UPDATE cities SET boundary ...` in a migration** once this ships — it silently overwrites what
+admins drew (083 clobbering 055 is exactly how Khordha↔Bhubaneswar broke until 096). Fresh DBs
+(dev `--fresh`, staging) start from the 096 baseline, not prod's edited shapes.
+`findContainingCity` only considers `status = 'active'` cities and breaks overlap ties by
+smallest area → nearest centroid → id, so overlapping boundaries (Bhubaneswar/Cuttack) are safe.
+Writes go through `admin.repository.ts` (`FOR UPDATE` + millisecond-precision `updated_at`
+compare; 409 `BOUNDARY_CHANGED` on a stale save) — never `geo.repository.updateCity`.
+
   ST_SetSRID(ST_MakePoint($lng2::float8, $lat2::float8), 4326)
 )::geography
 ```
@@ -268,6 +279,9 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 - No remaining known caveats — overview, live-map, and analytics are all wired to real endpoints
 
 ---
+# Admin portal tests (vitest + RTL; jsdom component tests, see apps/admin/vitest.config.ts)
+cd apps/admin && pnpm test
+
 
 ## Key File Locations
 

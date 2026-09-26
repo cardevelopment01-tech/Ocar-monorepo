@@ -8,6 +8,7 @@ import { CategoryCard, type CategoryEta } from '@/features/booking/components/Ca
 import { SelectRideMap } from '@/features/booking/components/SelectRideMap'
 import { useFareEstimates } from '@/features/booking/hooks/useFareEstimates'
 import { useBookingDraftStore } from '@/features/booking/store'
+import { resolveSelectedCategory } from '@/features/booking/resolveSelectedCategory'
 import { createBooking, resolveBookingError } from '@/features/booking/api'
 import { socket } from '@/services/socket'
 
@@ -63,26 +64,33 @@ export default function BookingFareScreen() {
   const [refreshSignal, setRefreshSignal] = useState(0)
   const [paymentNote, setPaymentNote] = useState<string | null>(null)
 
+  // Hide any category whose estimate fetch failed (e.g. no rate card for this
+  // ride_type -- auto_rickshaw only has `rental`) once loading has settled;
+  // keep showing all cards during the initial load so skeletons still render.
+  // Matches web's identical fix (apps/user/app/(main)/select-ride/page.tsx) --
+  // without this, a rental-only category shows up here too and 422s on booking.
+  const visibleCategories = categories.filter((cat) => loading || estimates[cat.id] !== undefined)
+
   // Per-category nearest-driver ETA, mirrors web's driverEta memo
   // (apps/user/app/(main)/select-ride/page.tsx) -- same nearby-drivers poll
   // the map already runs, just grouped by category instead of drawn as pins.
   const driverEta = useMemo(() => {
     const result: Record<number, CategoryEta> = {}
     if (!pickup) return result
-    for (const cat of categories) {
+    for (const cat of visibleCategories) {
       const inCat = nearbyDrivers.filter((d) => d.categoryId === cat.id)
       if (inCat.length === 0) { result[cat.id] = { count: 0, etaMin: -1 }; continue }
       const nearest = Math.min(...inCat.map((d) => haversineKm(pickup.lat, pickup.lng, d.lat, d.lng)))
       result[cat.id] = { count: inCat.length, etaMin: Math.max(1, Math.round(nearest / 0.5)) }
     }
     return result
-  }, [nearbyDrivers, categories, pickup])
+  }, [nearbyDrivers, visibleCategories, pickup])
 
-  const effectiveSelected = selectedCategoryId ?? categories[0]?.id ?? null
+  const effectiveSelected = resolveSelectedCategory(visibleCategories.map((c) => c.id), selectedCategoryId)
   const selectedFare = effectiveSelected != null
     ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])?.breakdown.total
     : undefined
-  const allUnavailable = driversPolled && categories.length > 0 && categories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
+  const allUnavailable = driversPolled && visibleCategories.length > 0 && visibleCategories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
   const selectedNoCars = driversPolled && effectiveSelected != null && (driverEta[effectiveSelected]?.count ?? 0) === 0
   const canBook = effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars
 
@@ -90,12 +98,12 @@ export default function BookingFareScreen() {
   // than left interleaved -- categories list order otherwise comes straight
   // from vehicle_categories (display order, not availability).
   const sortedCategories = driversPolled
-    ? [...categories].sort((a, b) => {
+    ? [...visibleCategories].sort((a, b) => {
         const aNo = (driverEta[a.id]?.count ?? 0) === 0 ? 1 : 0
         const bNo = (driverEta[b.id]?.count ?? 0) === 0 ? 1 : 0
         return aNo - bNo
       })
-    : categories
+    : visibleCategories
 
   async function handleBook() {
     if (!pickup || !drop || effectiveSelected == null || bookInFlightRef.current) return
@@ -236,7 +244,7 @@ export default function BookingFareScreen() {
                 rideType === 'one_way' && !scheduledFor && returnCabCategories.size > 0 ? (
                   <View style={styles.returnCabSection}>
                     <Text style={styles.returnCabLabel}>Return Cab Available</Text>
-                    {categories
+                    {visibleCategories
                       .filter((cat) => returnCabCategories.has(cat.id))
                       .map((cat) => {
                         const rcFare = returnCabEstimates[cat.id]?.breakdown.total

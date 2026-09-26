@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, FlatList, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import Animated, { FadeInDown, FadeInUp, useAnimatedStyle } from 'react-native-reanimated'
 import { Feather, Ionicons } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, useRoomJoin, fonts } from '@ocar/mobile-shared'
+import { colors, radii, shadows, spacing, typography, useKeyboardOffset, useRoomJoin, fonts } from '@ocar/mobile-shared'
 import { socket } from '@/services/socket'
 import { fetchChatMessages, fetchRide, markChatRead, sendChatMessage, type ChatMessage } from '@/features/ride-tracking/api'
 
@@ -47,10 +48,20 @@ function generateClientMsgId(): string {
 type DriverInfo = { name: string | null; photo: string | null; rating: string | null }
 
 export default function RideChatScreen() {
-  const insets = useSafeAreaInsets()
   const { id } = useLocalSearchParams<{ id: string }>()
   const rideId = id ?? ''
   const router = useRouter()
+
+  const insets = useSafeAreaInsets()
+  const keyboardOffset = useKeyboardOffset()
+  // Pad (not translate) by the keyboard height: the message list shrinks and the
+  // header/back button stay on screen. The input row's safe-area padding fades
+  // out as the keyboard covers that strip, so there's no gap above the keyboard.
+  const restingBottomPad = Math.max(insets.bottom, spacing.md)
+  const keyboardStyle = useAnimatedStyle(() => ({ paddingBottom: keyboardOffset.get() }))
+  const inputRowPadStyle = useAnimatedStyle(() => ({
+    paddingBottom: Math.max(restingBottomPad - keyboardOffset.get(), spacing.md),
+  }))
 
   const [messages, setMessages] = useState<LocalMessage[]>([])
   const [loading, setLoading] = useState(true)
@@ -185,11 +196,13 @@ export default function RideChatScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    // Not KeyboardAvoidingView -- `behavior="padding"` only actually does
+    // anything on iOS (Android's branch passes `undefined`, a no-op), and
+    // under edgeToEdgeEnabled, adjustResize doesn't reliably shrink content
+    // to compensate either. useKeyboardOffset is the proven-reliable fix used
+    // across the rest of this ride flow (AddStopSheet/CancelSheet) and driver
+    // app's own chat screen.
+    <Animated.View style={[styles.container, keyboardStyle]}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Back">
           <Feather name="chevron-left" size={20} color={colors.ink900} />
@@ -217,39 +230,54 @@ export default function RideChatScreen() {
           <ActivityIndicator color={colors.primary} />
         </View>
       ) : messages.length === 0 ? (
-        <View style={styles.centered}>
+        <Animated.View entering={FadeInUp.duration(280)} style={styles.centered}>
+          <View style={styles.emptyIconWrap}>
+            <Feather name="message-circle" size={22} color={colors.ink400} />
+          </View>
           <Text style={styles.emptyText}>No messages yet. Send a quick update below.</Text>
-        </View>
+        </Animated.View>
       ) : (
         <FlatList
           ref={listRef}
+          style={styles.messageList}
           data={messages}
           keyExtractor={(m) => m.clientMsgId}
           contentContainerStyle={styles.list}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+          // List shrinks when the keyboard opens -- keep the latest message visible
+          onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
           renderItem={({ item }) => <Bubble msg={item} onRetry={() => retry(item)} />}
         />
       )}
 
       {isClosed ? (
-        <View style={[styles.readOnlyBanner, { paddingBottom: insets.bottom + spacing.md }]}>
+        <Animated.View entering={FadeInUp.duration(280)} style={styles.readOnlyBanner}>
           <Text style={styles.readOnlyText}>This ride has ended · Chat is read-only</Text>
-        </View>
+        </Animated.View>
       ) : (
         <>
-          <FlatList
+          {/* Plain ScrollView, not FlatList -- CANNED_REPLIES is a small fixed
+              array (no virtualization benefit), and a horizontal FlatList with
+              no explicit `style` height here was stretching each chip's cross-axis
+              to fill the remaining screen height, rendering as a giant vertical
+              capsule instead of a compact pill (radii.full on a tall-narrow box). */}
+          <ScrollView
             horizontal
-            data={CANNED_REPLIES}
-            keyExtractor={(r) => r}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.cannedRow}
-            renderItem={({ item }) => (
-              <Pressable onPress={() => void send(item)} style={styles.cannedChip}>
-                <Text style={styles.cannedChipText}>{item}</Text>
+            style={styles.cannedScroll}
+          >
+            {CANNED_REPLIES.map((reply) => (
+              <Pressable
+                key={reply}
+                onPress={() => void send(reply)}
+                style={({ pressed }) => [styles.cannedChip, pressed ? styles.pressedScale : null]}
+              >
+                <Text style={styles.cannedChipText}>{reply}</Text>
               </Pressable>
-            )}
-          />
-          <View style={[styles.inputRow, { paddingBottom: insets.bottom + spacing.md }]}>
+            ))}
+          </ScrollView>
+          <Animated.View style={[styles.inputRow, inputRowPadStyle]}>
             <TextInput
               value={draft}
               onChangeText={setDraft}
@@ -268,10 +296,10 @@ export default function RideChatScreen() {
             >
               <Feather name="send" size={16} color={colors.inkInverse} />
             </Pressable>
-          </View>
+          </Animated.View>
         </>
       )}
-    </KeyboardAvoidingView>
+    </Animated.View>
   )
 }
 
@@ -280,8 +308,17 @@ function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
   const failed = msg.localStatus === 'failed'
 
   return (
-    <View style={[styles.bubbleRow, mine ? styles.bubbleRowMine : null]}>
-      <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, mine && msg.localStatus === 'sending' ? styles.bubbleSending : null]}>
+    <Animated.View
+      entering={FadeInDown.duration(220).springify().damping(18)}
+      style={[styles.bubbleRow, mine ? styles.bubbleRowMine : null]}
+    >
+      <View
+        style={[
+          styles.bubble,
+          mine ? styles.bubbleMine : styles.bubbleTheirs,
+          mine && msg.localStatus === 'sending' ? styles.bubbleSending : null,
+        ]}
+      >
         <Text style={[styles.bubbleText, mine ? styles.bubbleTextMine : null]}>{msg.body}</Text>
       </View>
       <View style={[styles.metaRow, mine ? styles.metaRowMine : null]}>
@@ -301,7 +338,7 @@ function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
           </Pressable>
         ) : null}
       </View>
-    </View>
+    </Animated.View>
   )
 }
 
@@ -317,16 +354,37 @@ const styles = StyleSheet.create({
   headerRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   headerRatingStar: { fontSize: 11, color: colors.warning },
   headerRatingValue: { ...typography.caption, fontFamily: fonts.semibold, color: colors.ink600 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, gap: spacing.sm },
+  emptyIconWrap: { width: 56, height: 56, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   emptyText: { ...typography.body, color: colors.ink400, textAlign: 'center', fontFamily: fonts.semibold },
+  messageList: { flex: 1 },
   list: { padding: spacing.md, gap: spacing.xs },
   bubbleRow: { alignItems: 'flex-start' },
   bubbleRowMine: { alignItems: 'flex-end' },
-  bubble: { maxWidth: '78%', borderRadius: radii.lg, paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.sm, marginBottom: 2 },
-  bubbleTheirs: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignSelf: 'flex-start' },
-  bubbleMine: { backgroundColor: colors.primary, alignSelf: 'flex-end' },
+  // Asymmetric corner (the "tail" corner squared off) matches web's Bubble --
+  // reads as a directional speech bubble instead of a uniform rounded box.
+  bubble: { maxWidth: '78%', paddingHorizontal: spacing.sm + 6, paddingVertical: spacing.sm + 2, marginBottom: 2 },
+  bubbleTheirs: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignSelf: 'flex-start',
+    borderTopLeftRadius: radii.lg,
+    borderTopRightRadius: radii.lg,
+    borderBottomRightRadius: radii.lg,
+    borderBottomLeftRadius: 4,
+  },
+  bubbleMine: {
+    backgroundColor: colors.primary,
+    alignSelf: 'flex-end',
+    borderTopLeftRadius: radii.lg,
+    borderTopRightRadius: radii.lg,
+    borderBottomLeftRadius: radii.lg,
+    borderBottomRightRadius: 4,
+    ...shadows.card,
+  },
   bubbleSending: { opacity: 0.7 },
-  bubbleText: { ...typography.body, color: colors.ink900 },
+  bubbleText: { ...typography.body, color: colors.ink900, lineHeight: 21 },
   bubbleTextMine: { color: colors.inkInverse },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 2, marginBottom: spacing.xs },
   metaRowMine: { alignSelf: 'flex-end' },
@@ -335,8 +393,13 @@ const styles = StyleSheet.create({
   metaFailed: { fontSize: 10.5, fontFamily: fonts.bold, color: colors.error },
   readOnlyBanner: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm + 4, paddingBottom: spacing.md },
   readOnlyText: { ...typography.caption, fontFamily: fonts.semibold, color: colors.primaryDark, backgroundColor: colors.primarySubtle, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, borderRadius: radii.full, overflow: 'hidden' },
-  cannedRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.xs, gap: spacing.xs },
-  cannedChip: { paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.xs + 4, borderRadius: radii.full, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+  // Fixed height, flexGrow: 0 -- without an explicit bound here, this row
+  // previously stretched to fill the screen's remaining flex space, and each
+  // chip's radii.full on a tall-narrow box rendered as a giant vertical
+  // capsule instead of a compact pill.
+  cannedScroll: { flexGrow: 0, height: 44 },
+  cannedRow: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.xs, gap: spacing.xs },
+  cannedChip: { height: 34, justifyContent: 'center', paddingHorizontal: spacing.sm + 4, borderRadius: radii.full, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
   cannedChipText: { ...typography.caption, fontFamily: fonts.semibold, color: colors.ink600 },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
   inputWrap: { flex: 1, ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, maxHeight: 100 },

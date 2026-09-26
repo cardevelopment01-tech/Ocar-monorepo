@@ -9,6 +9,7 @@ import { testConnection } from '@/db/client'
 import { testConnection as testRedis } from '@/db/redis'
 import { errorMiddleware } from '@/middleware/error.middleware'
 import { maintenanceCheck } from '@/middleware/maintenance.middleware'
+import { compressResponses } from '@/middleware/compression.middleware'
 import { generalLimiter, authLimiter } from '@/middleware/rateLimit.middleware'
 import authRouter from '@/modules/auth/auth.routes'
 import driversRouter from '@/modules/drivers/drivers.routes'
@@ -122,6 +123,9 @@ export function createApp(): Application {
 
   // 2. Security headers
   app.use(helmet())
+
+  // 2b. Response compression (Brotli/gzip) — must sit before every route
+  app.use(compressResponses)
 
   // 3. CORS
   app.use(

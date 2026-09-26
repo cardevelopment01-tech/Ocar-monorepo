@@ -16,7 +16,7 @@ import { Button, Input, OtpBoxInput, colors, spacing, typography, mapOtpErrorCod
 import { api } from '@/services/api'
 import { setupPushNotifications } from '@/services/notifications'
 import { useAuthStore, type UserProfile } from '@/store/useAuthStore'
-import loginHeroImage from '../../../assets/brand/login-hero.png'
+import loginHeroImage from '../../../assets/brand/login-hero.webp'
 import logoMarkImage from '../../../assets/brand/logo-mark.png'
 
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1)
