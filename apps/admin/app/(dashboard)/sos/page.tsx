@@ -1,10 +1,11 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Shield, CheckCircle, Clock, AlertTriangle, ExternalLink } from 'lucide-react'
+import { Shield, ShieldAlert, CheckCircle, Clock, AlertTriangle, ExternalLink, Phone, MapPin } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { safetyApi, type SosAlert } from '@/lib/safety-api'
+import { getAdminSocket } from '@/lib/socket'
 
 const ACTIVE_STATUSES = new Set(['triggered', 'acknowledged', 'responding'])
 
@@ -46,9 +47,26 @@ export default function SOSPage() {
     }
   }, [])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    void load()
+    // A new alert arrives over the ops socket; the poll is the fallback if the socket is down.
+    const socket = getAdminSocket()
+    const onAlert = () => void load()
+    socket.on('sos:alert', onAlert)
+    const poll = setInterval(() => void load(), 15_000)
+    return () => { socket.off('sos:alert', onAlert); clearInterval(poll) }
+  }, [load])
 
-  const active    = alerts.filter(a => ACTIVE_STATUSES.has(a.status))
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Oldest unresolved first: the alert that has waited longest is the most urgent.
+  const active    = alerts
+    .filter(a => ACTIVE_STATUSES.has(a.status))
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
   const resolved  = alerts.filter(a => a.status === 'resolved').length
   const falseAlarm = alerts.filter(a => a.status === 'false_alarm').length
 
@@ -76,18 +94,21 @@ export default function SOSPage() {
     <div className="space-y-5">
       {!loading && active.length > 0 && (
         <div
+          role="alert"
           className="rounded-2xl px-5 py-4 border-2 border-danger flex items-center gap-4"
-          style={{ background: 'rgba(239,68,68,0.08)', animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite' }}
+          style={{ background: 'rgba(239,68,68,0.08)' }}
         >
-          <span className="text-2xl">🚨</span>
-          <div className="flex-1">
-            <p className="font-black text-danger text-lg">ACTIVE SOS</p>
-            <p className="text-sm text-danger/80">
-              {active[0]?.driver_name ?? active[0]?.user_name ?? 'Unknown'} ·{' '}
+          <ShieldAlert size={28} className="text-danger flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="font-black text-danger text-lg">
+              {active.length === 1 ? '1 active SOS alert' : `${active.length} active SOS alerts`}
+            </p>
+            <p className="text-sm text-danger/80 truncate">
+              Longest waiting: {active[0]?.driver_name ?? active[0]?.user_name ?? 'Unknown'} ·{' '}
               {active[0]?.origin_address ?? '—'} → {active[0]?.destination_address ?? '—'}
             </p>
           </div>
-          <span className="text-danger font-bold text-sm">{active[0] ? elapsed(active[0].created_at) : ''}</span>
+          <span className="text-danger font-bold text-sm whitespace-nowrap">{active[0] ? elapsed(active[0].created_at) : ''}</span>
         </div>
       )}
 
@@ -115,24 +136,39 @@ export default function SOSPage() {
                       <p className="font-bold text-text-primary text-lg">
                         {sos.driver_name ?? sos.user_name ?? 'Unknown'}
                       </p>
-                      <span className="font-mono text-xs text-text-muted">
-                        {sos.driver_phone ?? sos.user_phone ?? ''}
+                      {(sos.driver_phone ?? sos.user_phone) && (
+                        <a
+                          href={`tel:${sos.driver_phone ?? sos.user_phone}`}
+                          className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
+                        >
+                          <Phone size={12} />
+                          {sos.driver_phone ?? sos.user_phone}
+                        </a>
+                      )}
+                      <span className="text-xs text-text-muted">
+                        {sos.triggered_by_driver ? 'Driver alert' : 'Rider alert'}
                       </span>
                     </div>
                     <p className="text-sm text-text-secondary">
                       {sos.origin_address ?? '—'} → {sos.destination_address ?? '—'}
                     </p>
                     {(sos.location_lat && sos.location_lng) && (
-                      <p className="text-xs text-text-muted mt-1">
-                        📍 {parseFloat(sos.location_lat).toFixed(4)}, {parseFloat(sos.location_lng).toFixed(4)}
-                      </p>
+                      <a
+                        href={`https://www.google.com/maps?q=${sos.location_lat},${sos.location_lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+                      >
+                        <MapPin size={12} />
+                        {parseFloat(sos.location_lat).toFixed(4)}, {parseFloat(sos.location_lng).toFixed(4)} (open map)
+                      </a>
                     )}
                     {sos.notes && <p className="text-xs text-text-muted mt-1">Note: {sos.notes}</p>}
                     <p className="text-xs text-danger font-semibold mt-2">{elapsed(sos.created_at)}</p>
                   </div>
                   <span className={`pill ${severityClass(sos.severity)}`}>{sos.severity}</span>
                 </div>
-                <div className="flex gap-2 mt-4">
+                <div className="flex flex-wrap gap-2 mt-4">
                   {sos.status === 'triggered' && (
                     <button
                       disabled={actingId === sos.id}

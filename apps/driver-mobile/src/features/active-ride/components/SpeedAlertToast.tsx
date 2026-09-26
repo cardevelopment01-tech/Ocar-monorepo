@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
-import { colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, shadows, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 
 export type SpeedAlertToastProps = {
   /** Bumps on every new alert -- re-triggers the show/auto-dismiss cycle even
@@ -56,7 +56,7 @@ export function SpeedAlertToast({ alertKey, limitKmph }: SpeedAlertToastProps) {
     <Animated.View pointerEvents="none" style={[styles.wrap, { top: insets.top + spacing.md }, animatedStyle]}>
       <View style={styles.pill}>
         <Feather name="alert-triangle" size={15} color={colors.warning} />
-        <Text style={styles.text}>Slow down — limit {limitKmph} km/h</Text>
+        <Text style={styles.text}>Slow down. Limit {limitKmph} km/h</Text>
       </View>
     </Animated.View>
   )
@@ -76,5 +76,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     ...shadows.buttonPrimary,
   },
-  text: { ...typography.label, color: colors.ink900, fontWeight: '700' },
+  text: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
 })

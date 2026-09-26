@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { fetchMyVehicle } from '@/features/go-online/api'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
@@ -122,29 +122,29 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   backBtn: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  title: { ...typography.headline, color: colors.ink900, fontWeight: '800', flex: 1 },
+  title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
   content: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xl },
   gateCard: { flexDirection: 'row', gap: spacing.sm, backgroundColor: colors.errorLight, borderRadius: radii.lg, padding: spacing.sm + 4 },
   gateText: { ...typography.caption, color: colors.ink900, flex: 1 },
-  vehicleCard: { flexDirection: 'row', gap: spacing.md, backgroundColor: '#0F172A', borderRadius: radii['2xl'], padding: spacing.lg, alignItems: 'center' },
+  vehicleCard: { flexDirection: 'row', gap: spacing.md, backgroundColor: '#14171A', borderRadius: radii['2xl'], padding: spacing.lg, alignItems: 'center' },
   vehicleIconTile: { width: 56, height: 56, borderRadius: radii.xl, backgroundColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
   plateBadge: { alignSelf: 'flex-start', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: radii.md, paddingHorizontal: spacing.sm + 4, paddingVertical: 4, marginBottom: 4 },
-  plateText: { fontSize: 20, fontWeight: '800', color: colors.inkInverse, letterSpacing: 2 },
+  plateText: { fontSize: 20, fontFamily: fonts.bold, color: colors.inkInverse, letterSpacing: 2 },
   vehicleMeta: { ...typography.caption, color: 'rgba(255,255,255,0.5)' },
-  vehicleMissing: { ...typography.body, color: 'rgba(255,255,255,0.6)', fontWeight: '600' },
+  vehicleMissing: { ...typography.body, color: 'rgba(255,255,255,0.6)', fontFamily: fonts.semibold },
   checklistCard: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.md, borderWidth: 1, borderColor: colors.border },
   checklistHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm },
-  checklistTitle: { ...typography.body, color: colors.ink900, fontWeight: '700' },
+  checklistTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
   checklistHint: { ...typography.caption, color: colors.ink400, marginLeft: 'auto' },
   checklistRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
   checkbox: { width: 22, height: 22, borderRadius: radii.full, borderWidth: 2, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  checkboxOn: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
-  checklistText: { ...typography.body, color: colors.ink900, fontWeight: '500' },
+  checkboxOn: { backgroundColor: '#14171A', borderColor: '#14171A' },
+  checklistText: { ...typography.body, color: colors.ink900, fontFamily: fonts.medium },
   checklistTextOff: { color: colors.ink400, textDecorationLine: 'line-through' },
   warningText: { ...typography.caption, color: colors.ink600, textAlign: 'center' },
   errorText: { ...typography.caption, color: colors.error, textAlign: 'center' },
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  ctaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: '#0F172A', borderRadius: radii.xl, paddingVertical: spacing.md, minHeight: 56 },
+  ctaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: '#14171A', borderRadius: radii.xl, paddingVertical: spacing.md, minHeight: 56 },
   disabled: { opacity: 0.4 },
-  ctaText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  ctaText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
 })

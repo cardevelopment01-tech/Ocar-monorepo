@@ -6,6 +6,7 @@ export interface SlotState {
   error: string | null
   docStatus: string | null
   rejectionNote: string | null
+  rejectionCount: number
 }
 
 export interface SlotDef {

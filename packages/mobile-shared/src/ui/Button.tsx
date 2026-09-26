@@ -2,7 +2,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View, type PressablePro
 import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
-import { buttonRadius, colors, gradientPrimary, shadows, spacing, typography } from '../theme/tokens'
+import { buttonRadius, colors, fonts, gradientPrimary, shadows, spacing } from '../theme/tokens'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost'
 
@@ -53,7 +53,7 @@ export function Button({ label, variant = 'primary', loading = false, success = 
     >
       {variant === 'primary' ? (
         <LinearGradient
-          colors={looksDisabled ? [colors.ink400, colors.ink400] : gradientPrimary}
+          colors={looksDisabled ? (['#86C7D2', '#86C7D2']) : gradientPrimary}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.base, shadows.buttonPrimary]}
@@ -69,10 +69,11 @@ export function Button({ label, variant = 'primary', loading = false, success = 
 
 const styles = StyleSheet.create({
   pressWrapper: { borderRadius: buttonRadius },
-  pressed: { transform: [{ scale: 0.97 }] },
+  pressed: { transform: [{ scale: 0.98 }] },
   base: {
     borderRadius: buttonRadius,
-    paddingVertical: spacing.sm + 4,
+    // CTAs match the home screen's 16px-padding buttons (both apps)
+    paddingVertical: 15,
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
@@ -81,8 +82,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   label: {
-    fontSize: typography.body.fontSize,
-    fontWeight: typography.title.fontWeight,
+    fontSize: 14.5,
+    fontFamily: fonts.bold,
   },
   labelInverse: {
     color: colors.inkInverse,

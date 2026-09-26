@@ -35,7 +35,7 @@ export default function SaveBar({ changeCount, invalidCount, saving, onDiscard, 
             role="region"
             aria-label="Unsaved changes"
             className="pointer-events-auto flex w-full max-w-[640px] flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-2xl border border-border bg-surface px-5 py-3"
-            style={{ boxShadow: '0 8px 32px rgba(79,70,229,0.16), 0 1px 3px rgba(15,23,42,0.06)' }}
+            style={{ boxShadow: '0 8px 32px rgba(14,143,163,0.16), 0 1px 3px rgba(15,23,42,0.06)' }}
           >
             <p className="text-md font-semibold text-text-primary" aria-live="polite">
               {changeCount} unsaved {changeCount === 1 ? 'change' : 'changes'}

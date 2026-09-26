@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Feather } from '@expo/vector-icons'
 import { BlurView } from 'expo-blur'
-import { colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { Field } from './FormPrimitives'
 
 export type DateFieldProps = {
@@ -97,18 +97,18 @@ export function DateField({ label, value, onChange, minDate, maxDate, placeholde
 }
 
 const styles = StyleSheet.create({
-  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, minHeight: 52, ...shadows.card },
-  text: { ...typography.body, color: colors.ink900, fontWeight: '600' },
-  placeholder: { color: colors.ink400, fontWeight: '400' },
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' },
+  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, minHeight: 52 },
+  text: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
+  placeholder: { color: colors.ink400, fontFamily: fonts.regular },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
   // Opaque, not translucent -- same fix as FormPrimitives.tsx's PickerField
   // sheet: BlurView with no blurMethod renders fully transparent on Android,
   // so 0.75-alpha white was the only real layer, letting content underneath
   // ghost through.
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, overflow: 'hidden' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, overflow: 'hidden' },
   sheetTopEdge: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.5)' },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.sm },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.sm },
   doneBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 6, alignItems: 'center', marginTop: spacing.sm },
-  doneText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  doneText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
   pressedScale: { transform: [{ scale: 0.97 }] },
 })

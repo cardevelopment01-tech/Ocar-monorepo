@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { FadeInDown, FadeInUp, useAnimatedStyle } from 'react-native-reanimated'
 import { Feather, Ionicons } from '@expo/vector-icons'
-import { colors, radii, shadows, spacing, typography, useKeyboardOffset, useRoomJoin } from '@ocar/mobile-shared'
+import { colors, radii, shadows, spacing, typography, useKeyboardOffset, useRoomJoin, fonts } from '@ocar/mobile-shared'
 import { socket } from '@/services/socket'
 import { fetchChatMessages, fetchRide, markChatRead, sendChatMessage, type ChatMessage } from '@/features/ride-tracking/api'
 
@@ -344,19 +344,19 @@ function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
-  backBtn: { width: 36, height: 36, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.bg },
+  backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(20,23,26,0.08)' },
   headerPhoto: { width: 36, height: 36, borderRadius: radii.md },
   headerPhotoFallback: { backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  headerPhotoInitial: { ...typography.label, color: colors.primary, fontWeight: '700' },
+  headerPhotoInitial: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
   headerInfo: { flex: 1, minWidth: 0, gap: 1 },
-  headerName: { ...typography.label, fontSize: 15, fontWeight: '700', color: colors.ink900 },
+  headerName: { ...typography.label, fontSize: 15, fontFamily: fonts.bold, color: colors.ink900 },
   headerRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   headerRatingStar: { fontSize: 11, color: colors.warning },
-  headerRatingValue: { ...typography.caption, fontWeight: '600', color: colors.ink600 },
+  headerRatingValue: { ...typography.caption, fontFamily: fonts.semibold, color: colors.ink600 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, gap: spacing.sm },
   emptyIconWrap: { width: 56, height: 56, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { ...typography.body, color: colors.ink400, textAlign: 'center', fontWeight: '600' },
+  emptyText: { ...typography.body, color: colors.ink400, textAlign: 'center', fontFamily: fonts.semibold },
   messageList: { flex: 1 },
   list: { padding: spacing.md, gap: spacing.xs },
   bubbleRow: { alignItems: 'flex-start' },
@@ -388,11 +388,11 @@ const styles = StyleSheet.create({
   bubbleTextMine: { color: colors.inkInverse },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 2, marginBottom: spacing.xs },
   metaRowMine: { alignSelf: 'flex-end' },
-  metaTime: { fontSize: 10.5, fontWeight: '600', color: colors.ink400 },
+  metaTime: { fontSize: 10.5, fontFamily: fonts.semibold, color: colors.ink400 },
   metaSending: { fontSize: 10.5, color: colors.ink400 },
-  metaFailed: { fontSize: 10.5, fontWeight: '700', color: colors.error },
+  metaFailed: { fontSize: 10.5, fontFamily: fonts.bold, color: colors.error },
   readOnlyBanner: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm + 4, paddingBottom: spacing.md },
-  readOnlyText: { ...typography.caption, fontWeight: '600', color: colors.primaryDark, backgroundColor: colors.primarySubtle, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, borderRadius: radii.full, overflow: 'hidden' },
+  readOnlyText: { ...typography.caption, fontFamily: fonts.semibold, color: colors.primaryDark, backgroundColor: colors.primarySubtle, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, borderRadius: radii.full, overflow: 'hidden' },
   // Fixed height, flexGrow: 0 -- without an explicit bound here, this row
   // previously stretched to fill the screen's remaining flex space, and each
   // chip's radii.full on a tall-narrow box rendered as a giant vertical
@@ -400,7 +400,7 @@ const styles = StyleSheet.create({
   cannedScroll: { flexGrow: 0, height: 44 },
   cannedRow: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.xs, gap: spacing.xs },
   cannedChip: { height: 34, justifyContent: 'center', paddingHorizontal: spacing.sm + 4, borderRadius: radii.full, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
-  cannedChipText: { ...typography.caption, fontWeight: '600', color: colors.ink600 },
+  cannedChipText: { ...typography.caption, fontFamily: fonts.semibold, color: colors.ink600 },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
   inputWrap: { flex: 1, ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, maxHeight: 100 },
   sendBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },

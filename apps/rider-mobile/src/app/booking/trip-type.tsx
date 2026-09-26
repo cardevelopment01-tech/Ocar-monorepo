@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import type { FareEstimate } from '@ocar/mobile-shared'
 import { fetchFareEstimate } from '@/features/booking/api'
 import { useBookingDraftStore } from '@/features/booking/store'
@@ -156,24 +156,30 @@ export default function TripTypeScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  backButton: { width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(20,23,26,0.08)',
+    boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
   pressedScale: { transform: [{ scale: 0.97 }] },
-  headerLabel: { ...typography.label, color: colors.ink600, fontWeight: '600', flex: 1 },
+  headerLabel: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold, flex: 1 },
   routeCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginHorizontal: spacing.lg, marginTop: spacing.md },
-  routeText: { ...typography.body, color: colors.ink900, fontWeight: '700', flex: 1 },
+  routeText: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
   routeMeta: { ...typography.caption, color: colors.ink400, marginHorizontal: spacing.lg, marginTop: spacing.xs },
   body: { flex: 1 },
   bodyContent: { padding: spacing.lg, gap: spacing.md },
   card: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.md + 4 },
   bestFareBadge: { flexDirection: 'row', alignSelf: 'flex-end', alignItems: 'center', gap: 4, backgroundColor: colors.successLight, borderRadius: radii.full, paddingHorizontal: spacing.xs + 2, paddingVertical: 4, marginBottom: spacing.xs },
-  bestFareText: { ...typography.caption, color: colors.success, fontWeight: '700', fontSize: 10 },
+  bestFareText: { ...typography.caption, color: colors.success, fontFamily: fonts.bold, fontSize: 10 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   iconWrap: { width: 44, height: 44, borderRadius: 16, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  cardTitle: { ...typography.body, color: colors.ink900, fontWeight: '700' },
+  cardTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
   cardSub: { ...typography.caption, color: colors.ink400 },
   fareRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.xs },
-  fareAmount: { ...typography.headline, color: colors.ink900, fontWeight: '800' },
-  fareUnit: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
+  fareAmount: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold },
+  fareUnit: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
   fareUnavailable: { ...typography.body, color: colors.ink400 },
   fareSkeleton: { width: 80, height: 28, borderRadius: 8, backgroundColor: colors.surface2 },
 })

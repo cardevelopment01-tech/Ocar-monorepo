@@ -1,5 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native'
-import { Card, colors, formatCurrency, spacing, typography } from '@ocar/mobile-shared'
+import { StyleSheet, View } from 'react-native'
+import { Card, colors, formatCurrency, spacing, typography, Text } from '@ocar/mobile-shared'
 import type { Trip } from './types'
 
 export function TripRow({ item }: { item: Trip }) {

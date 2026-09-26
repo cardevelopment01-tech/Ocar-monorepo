@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { Card, colors, formatCurrency, spacing, typography, type RideHistoryItem } from '@ocar/mobile-shared'
+import { Card, colors, formatCurrency, spacing, typography, type RideHistoryItem, fonts } from '@ocar/mobile-shared'
 import { StatusBadge } from './StatusBadge'
 import { RouteRow } from './RouteRow'
 
@@ -32,7 +32,7 @@ function RideHistoryRowBase({ item, onPress }: RideHistoryRowProps) {
           </View>
         </View>
 
-        <RouteRow origin={item.originAddress ?? '—'} destination={item.destinationAddress ?? '—'} />
+        <RouteRow origin={item.originAddress ?? '-'} destination={item.destinationAddress ?? '-'} />
 
         {item.driverName ? (
           <View style={styles.driverRow}>
@@ -54,9 +54,9 @@ const styles = StyleSheet.create({
   card: { gap: spacing.sm },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   topRight: { alignItems: 'flex-end', gap: 2 },
-  fare: { ...typography.label, fontSize: 14, color: colors.ink900, fontWeight: '700' },
+  fare: { ...typography.label, fontSize: 14, color: colors.ink900, fontFamily: fonts.bold },
   date: { ...typography.caption, fontSize: 11, color: colors.ink400 },
   driverRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   driverText: { ...typography.caption, color: colors.ink400 },
-  driverName: { color: colors.ink600, fontWeight: '600' },
+  driverName: { color: colors.ink600, fontFamily: fonts.semibold },
 })

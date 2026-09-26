@@ -4,7 +4,7 @@
 // via NEXT_PUBLIC_LEGAL_BASE_URL per environment; falls back to the domain
 // already assumed elsewhere in this codebase (apps/driver's old ocar.in
 // links, support@ocar.in mailto).
-const LEGAL_BASE_URL = process.env['NEXT_PUBLIC_LEGAL_BASE_URL'] || 'https://ocar.in'
+const LEGAL_BASE_URL = process.env['NEXT_PUBLIC_LEGAL_BASE_URL'] || 'https://ocarindia.com'
 
 export const TERMS_URL = `${LEGAL_BASE_URL}/legal/terms`
 export const PRIVACY_URL = `${LEGAL_BASE_URL}/legal/privacy`

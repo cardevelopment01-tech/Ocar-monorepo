@@ -252,7 +252,7 @@ function OtpBadge({ otp, phase }: { otp: string | null; phase: 'start' | 'end' }
   const accentClass = phase === 'start' ? 'text-status-success' : 'text-accent'
   const borderAccentClass = phase === 'start' ? 'border-status-success' : 'border-accent'
   const bgClass      = phase === 'start' ? 'bg-money-light' : 'bg-accent-light'
-  const label  = phase === 'start' ? 'Trip OTP' : 'End OTP'
+  const label  = phase === 'start' ? 'Start OTP' : 'End OTP'
 
   if (!otp) {
     return (
@@ -270,6 +270,9 @@ function OtpBadge({ otp, phase }: { otp: string | null; phase: 'start' | 'end' }
         <span className={`text-[11px] font-medium ${accentClass}`}>{label}</span>
         <span className="text-lg font-bold tabular-nums text-text-primary" style={{ letterSpacing: '0.14em' }}>{otp}</span>
       </div>
+      <span className="text-[11px] leading-tight text-text-secondary max-w-[120px]">
+        {phase === 'start' ? 'Share only once you are in the cab' : 'Share only when you reach your drop'}
+      </span>
     </div>
   )
 }

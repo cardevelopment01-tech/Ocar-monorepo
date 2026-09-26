@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import { h } from '@/theme/homeTokens'
+import { useNavClearance } from '@/features/home/FloatingTabBar'
+import { card, sectionLabel } from '@/theme/homeTokens'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, shadows, spacing, typography, TERMS_URL } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, fonts } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { teardownPushNotifications } from '@/services/notifications'
 import { fetchProfile, updateProfile, type ProfileStats } from '@/features/profile/api'
@@ -22,13 +25,14 @@ const MENU = [
 ]
 
 function normalizePhone(raw: string | null | undefined): string {
-  if (!raw) return '—'
+  if (!raw) return '-'
   const d = raw.replace(/\D/g, '')
   return d.length === 12 && d.startsWith('91') ? d.slice(2) : d
 }
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets()
+  const clearance = useNavClearance()
   const user = useAuthStore((s) => s.user)
   const clearAuth = useAuthStore((s) => s.clearAuth)
   const updateUser = useAuthStore((s) => s.updateUser)
@@ -82,7 +86,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md }]}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md, paddingBottom: clearance }]}>
         <Animated.View entering={FadeIn.duration(420)} style={styles.headerCard}>
           <View style={styles.headerRow}>
             <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
@@ -101,7 +105,7 @@ export default function ProfileScreen() {
           <View style={styles.statsRow}>
             {[
               { value: String(stats?.total_rides ?? 0), label: 'Rides' },
-              { value: stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '—', label: 'Rating', star: true },
+              { value: stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '-', label: 'Rating', star: true },
               { value: `₹${stats?.wallet_balance ?? 0}`, label: 'Wallet' },
             ].map((s) => (
               <View key={s.label} style={styles.statTile}>
@@ -231,43 +235,44 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl * 2 },
-  headerCard: { backgroundColor: colors.surface, borderRadius: radii['2xl'], padding: spacing.lg, ...shadows.card },
+  container: { flex: 1, backgroundColor: h.canvas },
+  // paddingBottom clears the floating tab bar (see _layout.tsx)
+  content: { padding: spacing.lg, gap: spacing.md },
+  headerCard: { ...card, padding: spacing.lg },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  avatar: { width: 64, height: 64, borderRadius: radii.xl, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 26, fontWeight: '700', color: colors.inkInverse },
+  avatar: { width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 26, fontFamily: fonts.bold, color: colors.inkInverse },
   headerInfo: { flex: 1, gap: 2 },
-  name: { ...typography.title, color: colors.ink900, fontWeight: '800' },
+  name: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, fontSize: 17 },
   phone: { ...typography.caption, color: colors.ink600 },
   email: { ...typography.caption, color: colors.ink400 },
   editBtn: { paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.xs + 2, borderRadius: radii.lg, backgroundColor: colors.primarySubtle },
-  editBtnText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  editBtnText: { ...typography.caption, color: colors.primary, fontFamily: fonts.bold },
   statsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.borderLight },
   statTile: { flex: 1, alignItems: 'center', backgroundColor: colors.surface2, borderRadius: radii.lg, paddingVertical: spacing.sm + 4 },
   statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statValue: { ...typography.title, color: colors.ink900, fontWeight: '700' },
+  statValue: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   statLabel: { ...typography.caption, color: colors.ink400, marginTop: 2 },
-  sectionLabel: { ...typography.caption, color: colors.ink400, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: spacing.sm, marginTop: spacing.sm },
-  menuCard: { backgroundColor: colors.surface, borderRadius: radii.xl, overflow: 'hidden' },
+  sectionLabel: { ...sectionLabel, marginBottom: 10, marginTop: spacing.sm },
+  menuCard: { ...card, overflow: 'hidden' },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6 },
   menuRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  menuIcon: { width: 36, height: 36, borderRadius: radii.lg, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  menuLabel: { ...typography.body, color: colors.ink900, fontWeight: '600' },
+  menuIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  menuLabel: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   menuSub: { ...typography.caption, color: colors.ink400, marginTop: 1 },
-  signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.xl, paddingVertical: spacing.sm + 6, marginTop: spacing.md, ...shadows.card },
-  signOutText: { ...typography.body, color: colors.error, fontWeight: '700' },
+  signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: spacing.sm + 6, marginTop: spacing.md },
+  signOutText: { ...typography.body, color: colors.error, fontFamily: fonts.bold },
   version: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginTop: spacing.md },
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, paddingBottom: spacing.xl },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.md },
-  sheetTitle: { ...typography.title, color: colors.ink900, fontWeight: '800' },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, paddingBottom: spacing.xl },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.md },
+  sheetTitle: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   sheetBody: { ...typography.body, color: colors.ink600, marginTop: spacing.xs, marginBottom: spacing.lg },
   sheetActions: { flexDirection: 'row', gap: spacing.sm },
   sheetCancelBtn: { flex: 1, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
-  sheetCancelText: { ...typography.body, color: colors.ink600, fontWeight: '600' },
+  sheetCancelText: { ...typography.body, color: colors.ink600, fontFamily: fonts.semibold },
   sheetConfirmBtn: { flex: 1, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, backgroundColor: colors.error, alignItems: 'center' },
-  sheetConfirmText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  sheetConfirmText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
   editHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
   closeBtn: { width: 32, height: 32, borderRadius: radii.full, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   inputWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.sm + 4, marginBottom: spacing.sm },
@@ -278,5 +283,5 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
   pressedScale: { transform: [{ scale: 0.97 }] },
   saveGradient: { paddingVertical: spacing.sm + 6, alignItems: 'center' },
-  saveText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  saveText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
 })

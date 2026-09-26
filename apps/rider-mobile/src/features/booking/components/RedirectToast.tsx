@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import Animated, { FadeInDown, FadeOutDown, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { useEffect } from 'react'
 
 // Ported from web's RedirectToast (apps/user/components/ui/RedirectToast.tsx) --
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  text: { ...typography.caption, color: colors.inkInverse, fontWeight: '600', flex: 1 },
+  text: { ...typography.caption, color: colors.inkInverse, fontFamily: fonts.semibold, flex: 1 },
   track: { height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', overflow: 'hidden' },
   bar: { height: '100%', borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.8)' },
 })

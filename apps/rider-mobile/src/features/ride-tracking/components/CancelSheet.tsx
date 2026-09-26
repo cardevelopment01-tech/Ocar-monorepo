@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import Animated, { useAnimatedStyle } from 'react-native-reanimated'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, useKeyboardOffset } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, useKeyboardOffset, fonts } from '@ocar/mobile-shared'
 
 // Same reason lists + copy as apps/user/app/(main)/ride/[id]/CancelSheet.tsx.
 const BEFORE_REASONS = [
@@ -118,27 +118,27 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, paddingBottom: spacing.xl },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.md },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, paddingBottom: spacing.xl },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.md },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
-  title: { ...typography.title, color: colors.ink900, fontWeight: '800' },
+  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   feeWarning: { flexDirection: 'row', gap: spacing.sm, backgroundColor: colors.warningLight, borderWidth: 1, borderColor: colors.warning, borderRadius: radii.lg, padding: spacing.sm + 4, marginBottom: spacing.md },
-  feeWarningText: { ...typography.body, color: colors.ink900, flex: 1, fontWeight: '500' },
-  reasonHeading: { ...typography.caption, color: colors.ink400, fontWeight: '700', letterSpacing: 0.5, marginBottom: spacing.sm },
+  feeWarningText: { ...typography.body, color: colors.ink900, flex: 1, fontFamily: fonts.medium },
+  reasonHeading: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold, letterSpacing: 0.5, marginBottom: spacing.sm },
   reasonList: { gap: spacing.sm, marginBottom: spacing.md },
   reasonRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border },
   reasonRowActive: { backgroundColor: colors.errorLight, borderColor: colors.error },
   radio: { width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: colors.border },
   radioActive: { borderWidth: 5, borderColor: colors.error },
-  reasonLabel: { ...typography.body, color: colors.ink600, fontWeight: '500' },
+  reasonLabel: { ...typography.body, color: colors.ink600, fontFamily: fonts.medium },
   reasonLabelActive: { color: colors.error },
   otherInput: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.md, minHeight: 72, textAlignVertical: 'top', marginBottom: spacing.md },
   confirmBtn: { backgroundColor: colors.error, borderRadius: radii.lg, paddingVertical: spacing.md, alignItems: 'center', marginBottom: spacing.sm },
   disabled: { opacity: 0.4 },
   pressedScale: { transform: [{ scale: 0.97 }] },
-  confirmText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  confirmText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
   keepBtn: { backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, paddingVertical: spacing.sm + 4, alignItems: 'center' },
-  keepText: { ...typography.body, color: colors.ink600, fontWeight: '600' },
+  keepText: { ...typography.body, color: colors.ink600, fontFamily: fonts.semibold },
 })

@@ -10,89 +10,69 @@
 
 import Constants from 'expo-constants'
 
-const driverColors = {
-  primary: '#0A9FB0',
-  primaryDark: '#087C89',
-  primaryBright: '#0A9FB0',
-  primaryLight: '#B8E9EE',
-  primarySubtle: '#E4F8FA',
-  accent: '#F97316',
-  accentLight: '#FFF7ED',
-  accentOrange: '#F97316',
-  accentOrangeLight: '#FFF7ED',
-  // Driver web shows earnings in plain ink (Earnings.tsx), not a green accent --
-  // kept as its own token (rather than reusing ink900 at call sites) so both
-  // palettes expose the same shape.
-  money: '#0F172A',
-  moneyLight: '#F1F5F9',
-  bg: '#F5F8FF',
-  surface: '#FFFFFF',
-  surface2: '#F0F4FD',
-  surface3: '#E8EEFA',
-  ink900: '#0F172A',
-  ink600: '#475569',
-  ink400: '#64748B',
-  inkInverse: '#FFFFFF',
-  border: '#E2E8F0',
-  borderLight: '#F1F5F9',
-  success: '#22C55E',
-  successLight: '#DCFCE7',
-  warning: '#F59E0B',
-  warningLight: '#FEF3C7',
-  error: '#EF4444',
-  errorLight: '#FEE2E2',
-  info: '#3B82F6',
-  infoLight: '#DBEAFE',
-  splashBg: '#0F172A',
-} as const
 
+
+// Rider palette = the redesigned home screen's system (ocar-homepage reference): a pale teal canvas,
+// warm-neutral chips, near-black ink and a single deep-teal brand colour. The old teal->pink brand
+// gradient and pink accent are retired here; gold is the only secondary accent (Elite / stops / badges).
 const riderColors = {
-  primary: '#0A9FB0',
-  primaryDark: '#087C89',
-  primaryBright: '#22B8C9',
-  primaryLight: '#B8E9EE',
-  primarySubtle: '#E4F8FA',
-  accent: '#DC3E93',
-  accentLight: '#FBE0EE',
+  primary: '#0E8FA3',
+  primaryDark: '#0A6F80',
+  primaryBright: '#14ABBD',
+  primaryLight: '#BFE6EC',
+  primarySubtle: '#E6F3F5',
+  accent: '#D6A552',
+  accentLight: '#FBF3E6',
   // Driver's own brand orange, used cross-app to mark the driver's live-location pin
-  // on the rider's map -- intentionally not the rider's own pink accent.
+  // on the rider's map, intentionally not the rider's own accent.
   accentOrange: '#F97316',
   accentOrangeLight: '#FFF7ED',
   money: '#059669',
   moneyLight: '#D1FAE5',
-  bg: '#F5F7FF',
+  bg: '#F6FBFB',
   surface: '#FFFFFF',
-  surface2: '#F8FAFF',
-  surface3: '#EEF3FF',
-  ink900: '#0F172A',
-  ink600: '#475569',
-  ink400: '#64748B',
+  surface2: '#F7F6F1',
+  surface3: '#EEF5F5',
+  ink900: '#14171A',
+  ink600: '#5F666A',
+  ink400: '#8A9094',
   inkInverse: '#FFFFFF',
-  border: '#E8EEFF',
-  borderLight: '#F1F5FF',
-  success: '#10B981',
-  successLight: '#D1FAE5',
-  warning: '#F59E0B',
-  warningLight: '#FEF3C7',
-  error: '#EF4444',
-  errorLight: '#FEE2E2',
-  info: '#0EA5E9',
-  infoLight: '#E0F2FE',
+  border: '#E4EAEB',
+  borderLight: '#EEF3F3',
+  success: '#25B87A',
+  successLight: '#DDF5EA',
+  warning: '#D6A552',
+  warningLight: '#FBF3E6',
+  error: '#E5484D',
+  errorLight: '#FDECEC',
+  info: '#0E8FA3',
+  infoLight: '#E6F3F5',
   splashBg: '#0F0F23',
 } as const
 
-const isRider = Constants.expoConfig?.slug === 'ocar-rider'
+// Driver = the same brand palette as the rider (one product, one look). Driver-specific: earnings accents use
+// the gold accent (was orange), and `money` stays plain ink like the driver web app.
+const driverColors = {
+  ...riderColors,
+  accentOrange: '#D6A552',
+  accentOrangeLight: '#FBF3E6',
+  money: '#14171A',
+  moneyLight: '#F7F6F1',
+  splashBg: '#0F0D1A',
+} as const
+
+export const isRider = Constants.expoConfig?.slug === 'ocar-rider'
 
 export const colors = isRider ? riderColors : driverColors
 
 // Both web apps' .btn-primary is this exact teal->pink gradient (apps/driver/src/index.css,
 // apps/user/app/globals.css's bg-gradient-primary) -- fixed, not part of either app's own
 // palette split above, since it's identical on both sites regardless of their other colors.
-export const gradientPrimary = ['#0A9FB0', '#DC3E93'] as const
+export const gradientPrimary = ['#14A0B5', '#0E8FA3'] as readonly [string, string]
 
 // Driver's buttons are rounded-2xl everywhere; rider's are rounded-full (pill) everywhere --
 // a real per-app shape rule in both sites' CSS, not just a color difference.
-export const buttonRadius = isRider ? 9999 : 16
+export const buttonRadius = 16
 
 // Font family names match what useAppFonts() (see fonts.ts) registers via
 // @expo-google-fonts -- these packages ship one file per weight, not a single
@@ -111,18 +91,13 @@ export const buttonRadius = isRider ? 9999 : 16
 // home page greeting -- so every rider heading is really just bold Plus
 // Jakarta Sans. A single shared `typography` object previously gave
 // rider-mobile Space Grotesk headlines it was never supposed to have.
-const driverDisplay = {
-  display: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 28, fontWeight: '700', lineHeight: 34, letterSpacing: -0.84 },
-  headline: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 22, fontWeight: '700', lineHeight: 29, letterSpacing: -0.44 },
-} as const
-
 const riderDisplay = {
   display: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 26, fontWeight: '700', lineHeight: 32 },
   headline: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 20, fontWeight: '700', lineHeight: 26 },
 } as const
 
 export const typography = {
-  ...(isRider ? riderDisplay : driverDisplay),
+  ...riderDisplay,
   title: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 18, fontWeight: '600', lineHeight: 25 },
   body: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 16, fontWeight: '400', lineHeight: 26 },
   label: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 13, fontWeight: '500', lineHeight: 18 },
@@ -152,8 +127,18 @@ export const spacing = {
 // (their shared brand teal) instead of neutral gray -- same tint works for both
 // apps here since it's identical in both tailwind configs.
 export const shadows = {
-  card: { shadowColor: 'rgba(10,159,176,1)', shadowOpacity: 0.07, shadowRadius: 16, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
-  buttonPrimary: { shadowColor: 'rgba(10,159,176,1)', shadowOpacity: 0.4, shadowRadius: 20, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  // neutral ink shadows + a teal-tinted CTA glow, matching the home screen's card / button shadows
+  card: { shadowColor: '#14171A', shadowOpacity: 0.07, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  buttonPrimary: { shadowColor: '#0E8FA3', shadowOpacity: 0.28, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
+} as const
+
+// Font family per weight. The @expo-google-fonts packages ship one file per weight, so RN's fontWeight
+// does nothing on them, components that only set fontWeight silently fell back to the system font.
+export const fonts = {
+  regular: 'PlusJakartaSans_400Regular',
+  medium: 'PlusJakartaSans_500Medium',
+  semibold: 'PlusJakartaSans_600SemiBold',
+  bold: 'PlusJakartaSans_700Bold',
 } as const
 
 export const theme = { colors, typography, radii, spacing, shadows } as const

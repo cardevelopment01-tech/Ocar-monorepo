@@ -2,13 +2,13 @@
 // (inline styles, Recharts props, Google Maps markers) — must stay in sync
 // with the same tokens in tailwind.config.ts `theme.extend.colors`.
 export const COLORS = {
-  primary: '#4F46E5',
+  primary: '#0E8FA3',
   success: '#10B981',
   warning: '#F59E0B',
   danger: '#EF4444',
   info: '#0EA5E9',
   purple: '#8B5CF6',
-  primaryLight: '#EEF2FF',
+  primaryLight: '#E6F3F5',
   successLight: '#D1FAE5',
   warningLight: '#FEF3C7',
   dangerLight: '#FEE2E2',

@@ -1,4 +1,3 @@
-import { AlertCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -33,7 +32,12 @@ export default function DocumentGateCard({ loading, hasRejected, rejectionReason
           className="rounded-2xl px-4 py-3.5 mb-3 bg-red-50 border border-red-200"
         >
           <div className="flex items-start gap-3">
-            <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
+            {/* animate-ping is Tailwind's built-in expanding-ring keyframe, same "needs attention
+                right now" cue as the mobile app's PulseDot, no custom animation code needed here. */}
+            <span className="relative flex-shrink-0 mt-1.5 h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+            </span>
             <div className="flex-1">
               <p className="text-text-primary text-sm font-bold">Document needs attention</p>
               <p className="text-text-secondary text-[12px] mt-1 leading-relaxed">

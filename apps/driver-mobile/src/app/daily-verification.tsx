@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react'
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
+import { ActivityIndicator, Image, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { getInfoAsync } from 'expo-file-system/legacy'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { OvalOverlay } from '@/components/camera/OvalOverlay'
 import { RectOverlay } from '@/components/camera/RectOverlay'
 import { submitVerification, type PickedPhoto } from '@/features/verification/api'
@@ -212,9 +212,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   backBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  stepLabel: { ...typography.caption, color: colors.ink400, fontWeight: '700' },
+  stepLabel: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold },
   content: { flex: 1, paddingHorizontal: spacing.lg, gap: spacing.sm },
-  title: { ...typography.headline, color: colors.ink900, fontWeight: '800' },
+  title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold },
   instruction: { ...typography.body, color: colors.ink600, marginBottom: spacing.md },
   gateCard: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.xl, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   iconCircle: { width: 64, height: 64, borderRadius: radii.full, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
@@ -225,9 +225,9 @@ const styles = StyleSheet.create({
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 8 },
   disabled: { opacity: 0.5 },
-  primaryText: { ...typography.body, color: colors.inkInverse, fontWeight: '700' },
+  primaryText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
   secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, paddingVertical: spacing.sm + 4, marginTop: spacing.xs },
-  secondaryText: { ...typography.body, color: colors.ink600, fontWeight: '600' },
+  secondaryText: { ...typography.body, color: colors.ink600, fontFamily: fonts.semibold },
 
   cameraScreen: { flex: 1, backgroundColor: '#000000' },
   loadingVeil: { backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center', zIndex: 20 },
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
   cameraBackBtn: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
   pressedScale: { transform: [{ scale: 0.97 }] },
   chipTop: { position: 'absolute', top: spacing.xl + spacing.xl + spacing.md, left: 0, right: 0, alignItems: 'center', zIndex: 15 },
-  chipTopText: { ...typography.caption, color: colors.inkInverse, fontWeight: '700', letterSpacing: 0.3, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radii.full, overflow: 'hidden' },
+  chipTopText: { ...typography.caption, color: colors.inkInverse, fontFamily: fonts.bold, letterSpacing: 0.3, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radii.full, overflow: 'hidden' },
   shutterRow: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#000000', paddingTop: spacing.lg, paddingBottom: spacing.xl + spacing.sm, alignItems: 'center', gap: spacing.sm },
   shutterBtn: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center' },
   shutterRing: { position: 'absolute', width: 76, height: 76, borderRadius: 38, borderWidth: 2, borderColor: 'rgba(255,255,255,0.6)' },

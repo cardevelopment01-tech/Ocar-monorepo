@@ -1,7 +1,8 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { Skeleton, VehicleIcon, colors, spacing, typography } from '@ocar/mobile-shared'
+import { Skeleton, VehicleIcon, colors, spacing, typography, fonts } from '@ocar/mobile-shared'
 import type { VehicleCategory } from '@ocar/mobile-shared'
+import { fleetImageFor } from '@/features/home/fleet'
 
 export type CategoryEta = { count: number; etaMin: number }
 
@@ -47,7 +48,11 @@ export function CategoryCard({
       accessibilityState={{ selected: active, disabled: noCars }}
     >
       <View style={[styles.iconWrap, active ? styles.iconWrapSelected : null]}>
-        <VehicleIcon slug={category.slug} size={36} />
+        {fleetImageFor(category.slug) ? (
+          <Image source={fleetImageFor(category.slug)!} style={styles.vehicleImg} resizeMode="contain" accessibilityIgnoresInvertColors />
+        ) : (
+          <VehicleIcon slug={category.slug} size={36} />
+        )}
       </View>
 
       <View style={styles.info}>
@@ -85,7 +90,7 @@ export function CategoryCard({
         ) : fareTotal != null ? (
           <Text style={[styles.fare, active ? (isReturnCab ? { color: colors.success } : styles.nameSelected) : null]}>{`₹${Math.round(fareTotal)}`}</Text>
         ) : (
-          <Text style={styles.fareUnavailable}>—</Text>
+          <Text style={styles.fareUnavailable}>-</Text>
         )}
       </View>
     </Pressable>
@@ -97,19 +102,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.sm,
-    borderLeftWidth: 2,
-    borderLeftColor: 'transparent',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    borderRadius: 18,
     marginBottom: spacing.xs,
   },
-  rowSelected: { backgroundColor: colors.primarySubtle, borderLeftColor: colors.primary, borderRadius: 12 },
-  rowSelectedReturnCab: { backgroundColor: colors.successLight, borderLeftColor: colors.success, borderRadius: 12 },
+  // selected = a full teal outline on a teal wash (Uber's selected ride row), not a left bar
+  rowSelected: { backgroundColor: colors.primarySubtle, borderColor: colors.primary },
+  rowSelectedReturnCab: { backgroundColor: colors.successLight, borderColor: colors.success },
   rowDisabled: { opacity: 0.35 },
   rowPressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
+  vehicleImg: { width: 54, height: 44 },
   iconWrap: {
-    width: 64,
-    height: 48,
+    width: 72,
+    height: 56,
     borderRadius: 16,
     backgroundColor: colors.surface2,
     alignItems: 'center',
@@ -117,21 +125,21 @@ const styles = StyleSheet.create({
   },
   iconWrapSelected: { backgroundColor: colors.surface },
   info: { flex: 1, gap: 2 },
-  name: { ...typography.title, color: colors.ink900 },
+  name: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, fontSize: 16 },
   nameSelected: { color: colors.primaryDark },
   seatsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   returnCabBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   returnCabBadge: {
-    ...typography.caption, fontSize: 9, fontWeight: '700', color: colors.success,
+    ...typography.caption, fontSize: 9, fontFamily: fonts.bold, color: colors.success,
     backgroundColor: colors.successLight, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2,
     overflow: 'hidden', letterSpacing: 0.4,
   },
-  savingsText: { ...typography.caption, fontWeight: '600', color: colors.success },
+  savingsText: { ...typography.caption, fontFamily: fonts.semibold, color: colors.success },
   seatsText: { ...typography.caption, color: colors.ink400 },
   etaRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 4 },
-  etaText: { ...typography.caption, fontWeight: '600' },
-  noCarsText: { ...typography.caption, color: colors.error, fontWeight: '600', marginLeft: 4 },
+  etaText: { ...typography.caption, fontFamily: fonts.semibold },
+  noCarsText: { ...typography.caption, color: colors.error, fontFamily: fonts.semibold, marginLeft: 4 },
   fareBlock: { minWidth: 56, alignItems: 'flex-end' },
-  fare: { ...typography.title, color: colors.ink900 },
+  fare: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, fontSize: 17 },
   fareUnavailable: { ...typography.body, color: colors.ink400 },
 })

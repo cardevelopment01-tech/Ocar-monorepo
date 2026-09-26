@@ -1,5 +1,5 @@
-import { Modal, StyleSheet, Text, View } from 'react-native'
-import { Button, colors, spacing, typography } from '@ocar/mobile-shared'
+import { Modal, StyleSheet, View } from 'react-native'
+import { Button, colors, spacing, typography, Text } from '@ocar/mobile-shared'
 
 export interface LocationDisclosureProps {
   visible: boolean

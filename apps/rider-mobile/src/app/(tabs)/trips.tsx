@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { colors } from '@ocar/mobile-shared'
+import { h } from '@/theme/homeTokens'
 import { RideHistoryList } from '@/features/ride-history/components/RideHistoryList'
 
 export default function TripsScreen() {
@@ -13,5 +13,5 @@ export default function TripsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: h.canvas },
 })

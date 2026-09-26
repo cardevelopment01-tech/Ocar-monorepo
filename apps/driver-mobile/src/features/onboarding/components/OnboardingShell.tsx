@@ -1,11 +1,10 @@
 import { useState, type ReactNode } from 'react'
-import { LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { LayoutChangeEvent, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { BlurView } from 'expo-blur'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
-import { colors, radii, shadows, spacing, typography } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 
 const STEPS = ['personal_info', 'vehicle_info', 'documents', 'selfie'] as const
 
@@ -22,12 +21,8 @@ export type OnboardingShellProps = {
 // onboarding/OnboardingShell.tsx): back + step counter + animated progress bars
 // up top, scrollable content, footer pinned to the bottom.
 //
-// Glossy-white pass: the step header is now a real floating glass layer
-// (BlurView "light material" per DESIGN.md's Materials & Glass section) that
-// sits absolutely over the scrolling content instead of a plain colored band
-// -- content actually scrolls underneath it, which is the whole point of
-// glass as a depth cue (Floating-Layer Rule). Body content stays solid white
-// per that same rule; only this floating chrome gets the material.
+// Header and footer are solid app-canvas layers over the scrolling content (the old BlurView was a no-op on
+// Android and logged a runtime warning); content cards stay white on the canvas like the rest of the app.
 export function OnboardingShell({ stepIndex, title, subtitle = 'Progress is saved automatically', children, footer, onBack }: OnboardingShellProps) {
   const router = useRouter()
   const insets = useSafeAreaInsets()
@@ -58,12 +53,6 @@ export function OnboardingShell({ stepIndex, title, subtitle = 'Progress is save
       </ScrollView>
 
       <View style={styles.headerFloat} onLayout={onHeaderLayout}>
-        {/* expo-blur's Android BlurView is a no-op (renders fully transparent,
-            not even a tint) unless blurMethod is explicitly set -- default is
-            'none'. Without this the "glass" header was just invisible on
-            Android, letting scrolled content bleed straight through it. */}
-        <BlurView intensity={50} tint="light" blurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
-        <View style={styles.headerTopEdge} />
         <View style={[styles.headerInner, { paddingTop: Math.max(insets.top, 24) }]}>
           <View style={styles.headerRow}>
             <Pressable
@@ -97,7 +86,6 @@ export function OnboardingShell({ stepIndex, title, subtitle = 'Progress is save
         entering={FadeInDown.duration(220)}
         style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
       >
-        <BlurView intensity={50} tint="light" blurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
         <View style={styles.footerTopEdge} />
         {footer}
       </Animated.View>
@@ -106,7 +94,7 @@ export function OnboardingShell({ stepIndex, title, subtitle = 'Progress is save
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
+  container: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.md },
   contentFade: { gap: spacing.md },
@@ -129,7 +117,7 @@ const styles = StyleSheet.create({
     // renders on top wherever blurTarget is eventually wired up; until then
     // this stays a plain solid header, which is correct over "glassy but
     // broken".
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bg,
   },
   headerTopEdge: {
     position: 'absolute',
@@ -141,21 +129,21 @@ const styles = StyleSheet.create({
   },
   headerInner: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
-  backBtn: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: 'rgba(255,255,255,0.6)', alignItems: 'center', justifyContent: 'center' },
-  stepLabel: { ...typography.caption, color: colors.ink400, fontWeight: '600' },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(20,23,26,0.08)', boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
+  stepLabel: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: colors.primary },
   // 700 is the heaviest weight useAppFonts loads for this family -- '800' here
   // silently rendered identical to 700 (RN doesn't synthesize bold on a custom
   // font with no bold file loaded).
-  title: { ...typography.headline, color: colors.ink900, fontWeight: '700' },
+  title: { ...typography.headline, fontSize: 22, lineHeight: 28, color: colors.ink900, fontFamily: fonts.bold },
   barsRow: { flexDirection: 'row', gap: 6 },
-  bar: { flex: 1, height: 5, borderRadius: radii.full, backgroundColor: 'rgba(15,23,42,0.08)' },
-  barActive: { backgroundColor: colors.primary, ...shadows.buttonPrimary, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 },
+  bar: { flex: 1, height: 4, borderRadius: radii.full, backgroundColor: 'rgba(20,23,26,0.08)' },
+  barActive: { backgroundColor: colors.primary },
   footer: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     overflow: 'hidden',
     // Same opaque-base fix as headerFloat above.
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bg,
   },
   footerTopEdge: {
     position: 'absolute',
@@ -163,6 +151,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: 'rgba(15,23,42,0.06)',
+    backgroundColor: 'rgba(20,23,26,0.06)',
   },
 })

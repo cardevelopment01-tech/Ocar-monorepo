@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Modal, Pressable, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import axios from 'axios'
-import { Button, colors, radii, spacing, typography, type RatingTag } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, type RatingTag, fonts, Text } from '@ocar/mobile-shared'
 import { fetchRiderTags, rateRider } from '../safety-api'
 
 export type RateRiderSheetProps = {
@@ -121,18 +121,18 @@ export function RateRiderSheet({ visible, rideId, riderName, onClose }: RateRide
 }
 
 const styles = StyleSheet.create({
-  backdrop: { backgroundColor: 'rgba(15,23,42,0.5)' },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, gap: spacing.sm },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.sm },
+  backdrop: { backgroundColor: 'rgba(20,23,26,0.45)' },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, gap: spacing.sm },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.sm },
   header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  title: { ...typography.title, color: colors.ink900, fontWeight: '800' },
+  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   starsRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm, marginVertical: spacing.md },
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, justifyContent: 'center', marginBottom: spacing.xs },
   tagChip: { paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.xs + 2, borderRadius: radii.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg },
   tagChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tagText: { ...typography.caption, color: colors.ink600, fontWeight: '600' },
+  tagText: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
   tagTextActive: { color: colors.inkInverse },
   submittedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, paddingVertical: spacing.md },
-  submittedText: { ...typography.body, color: colors.ink900, fontWeight: '600' },
+  submittedText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   error: { ...typography.caption, color: colors.error, textAlign: 'center', marginTop: spacing.xs },
 })

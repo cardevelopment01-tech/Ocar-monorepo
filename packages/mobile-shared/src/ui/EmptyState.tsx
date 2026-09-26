@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native'
-import { colors, spacing, typography } from '../theme/tokens'
+import { colors, spacing, typography, fonts } from '../theme/tokens'
 
 export type EmptyStateProps = {
   title: string
@@ -23,11 +23,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: typography.title.fontSize,
-    fontWeight: typography.title.fontWeight,
+    fontFamily: fonts.semibold,
     color: colors.ink900,
   },
   description: {
     fontSize: typography.body.fontSize,
+    fontFamily: fonts.regular,
     color: colors.ink600,
     textAlign: 'center',
   },

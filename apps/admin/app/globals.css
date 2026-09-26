@@ -8,7 +8,7 @@ html.overflow-hidden {
 
 @layer base {
   html { font-family: var(--font-sans), sans-serif; }
-  body { background: #F8FAFF; color: #0F172A; }
+  body { background: #F6FBFB; color: #0F172A; }
   * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 }
 
@@ -43,7 +43,7 @@ html.overflow-hidden {
   }
   .data-table tr { @apply cursor-pointer; }
   .data-table tbody tr:nth-child(even) td { background-color: #FAFBFF; }
-  .data-table tr:hover td { background-color: #F5F7FF; }
+  .data-table tr:hover td { background-color: #EEF7F8; }
   .data-table tr:last-child td { @apply border-b-0; }
 
   /* ── Sidebar nav item ── */
@@ -57,11 +57,11 @@ html.overflow-hidden {
   /* ── Admin card ── */
   .admin-card {
     @apply bg-surface rounded-2xl p-6;
-    box-shadow: 0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(79,70,229,0.06);
+    box-shadow: 0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(14,143,163,0.06);
     transition: box-shadow 200ms ease;
   }
   .admin-card:hover {
-    box-shadow: 0 4px 16px rgba(15,23,42,0.08), 0 12px 40px rgba(79,70,229,0.10);
+    box-shadow: 0 4px 16px rgba(15,23,42,0.08), 0 12px 40px rgba(14,143,163,0.10);
   }
 
   /* ── Page layout ── */
@@ -72,7 +72,7 @@ html.overflow-hidden {
   /* ── Shimmer skeleton ── */
   .skeleton {
     @apply rounded-md;
-    background: linear-gradient(90deg, #EEF2FF 25%, #F5F7FF 50%, #EEF2FF 75%);
+    background: linear-gradient(90deg, #E6F3F5 25%, #EEF7F8 50%, #E6F3F5 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite linear;
   }
@@ -81,10 +81,10 @@ html.overflow-hidden {
   .btn-primary {
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold
            hover:bg-primary-dark transition-all duration-150 cursor-pointer;
-    box-shadow: 0 2px 8px rgba(79,70,229,0.30);
+    box-shadow: 0 2px 8px rgba(14,143,163,0.30);
   }
   .btn-primary:hover {
-    box-shadow: 0 4px 16px rgba(79,70,229,0.40);
+    box-shadow: 0 4px 16px rgba(14,143,163,0.40);
     transform: translateY(-1px);
   }
   .btn-secondary {

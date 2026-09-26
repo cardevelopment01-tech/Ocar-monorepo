@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { Card, colors, formatCurrency, spacing, typography } from '@ocar/mobile-shared'
+import { Card, colors, formatCurrency, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { formatPickupTime } from '@/lib/formatPickupTime'
 import { RouteRow } from './RouteRow'
 import type { UpcomingRide } from '../types'
@@ -33,7 +33,7 @@ export function UpcomingCard({ ride, onOpen, onCancel, cancelling }: UpcomingCar
         </View>
 
         <Pressable onPress={onOpen} accessibilityRole="button">
-          <RouteRow origin={ride.originAddress ?? '—'} destination={ride.destinationAddress ?? '—'} />
+          <RouteRow origin={ride.originAddress ?? '-'} destination={ride.destinationAddress ?? '-'} />
         </Pressable>
 
         <Pressable
@@ -55,10 +55,10 @@ const styles = StyleSheet.create({
   card: { gap: spacing.sm },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   scheduledPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.infoLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  scheduledText: { ...typography.caption, fontSize: 11, color: colors.info, fontWeight: '700' },
+  scheduledText: { ...typography.caption, fontSize: 11, color: colors.info, fontFamily: fonts.bold },
   topRight: { alignItems: 'flex-end', gap: 2 },
-  fare: { ...typography.label, fontSize: 14, color: colors.ink900, fontWeight: '700' },
+  fare: { ...typography.label, fontSize: 14, color: colors.ink900, fontFamily: fonts.bold },
   time: { ...typography.caption, fontSize: 11, color: colors.ink400 },
   cancelBtn: { paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, alignItems: 'center' },
-  cancelText: { ...typography.caption, color: colors.error, fontWeight: '700' },
+  cancelText: { ...typography.caption, color: colors.error, fontFamily: fonts.bold },
 })

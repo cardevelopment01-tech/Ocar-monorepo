@@ -2,13 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Plus_Jakarta_Sans, Space_Grotesk } from 'next/font/google'
 
 import './globals.css'
-import { AuthProvider } from '@/lib/auth-context'
-import { NotificationsProvider } from '@/lib/notifications-context'
-import { LocationProvider } from '@/lib/location-context'
-import SplashWrapper from '@/components/ui/SplashWrapper'
-import NotificationToast from '@/components/ui/NotificationToast'
-import CookieNotice from '@/components/ui/CookieNotice'
-import MaintenanceProvider from '@/components/providers/MaintenanceProvider'
+import AppProviders from '@/components/providers/AppProviders'
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -25,8 +19,11 @@ const spaceGrotesk = Space_Grotesk({
 })
 
 export const metadata: Metadata = {
-  title: 'Ocar',
-  description: 'Book a cab in seconds. Ocar is the fastest way to get a ride.',
+  metadataBase: new URL('https://ocarindia.com'),
+  title: { default: 'Ocar | Intercity cabs in Odisha', template: '%s | Ocar' },
+  description:
+    'Ocar is an intercity cab booking platform for Bhubaneswar, Cuttack and Puri. Verified drivers, upfront fares and live trip tracking.',
+  openGraph: { siteName: 'Ocar', type: 'website', locale: 'en_IN' },
 }
 
 export const viewport: Viewport = {
@@ -40,21 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${plusJakarta.variable} ${spaceGrotesk.variable}`}>
       <body>
-        <main className="min-h-[100dvh] bg-background">
-          <div className="mx-auto max-w-[430px] min-h-[100dvh] bg-background relative">
-            <MaintenanceProvider>
-              <LocationProvider>
-                <AuthProvider>
-                  <NotificationsProvider>
-                    <SplashWrapper>{children}</SplashWrapper>
-                    <NotificationToast />
-                    <CookieNotice />
-                  </NotificationsProvider>
-                </AuthProvider>
-              </LocationProvider>
-            </MaintenanceProvider>
-          </div>
-        </main>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   )

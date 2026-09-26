@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
-import { Button, Input, colors, spacing, typography } from '@ocar/mobile-shared'
+import { Feather } from '@expo/vector-icons'
+import { Button, Input, colors, fonts, spacing, typography } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { updateProfile } from '@/features/profile/api'
 
@@ -53,22 +54,27 @@ export default function OnboardingScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.hero}>
-        <Text style={styles.title}>Almost there!</Text>
-        <Text style={styles.subtitle}>Just tell us your name</Text>
+        <View style={styles.badge}>
+          <Feather name="user" size={22} color={colors.primary} />
+        </View>
+        <Text style={styles.title}>What should we call you?</Text>
+        <Text style={styles.subtitle}>Your driver sees your first name when they arrive.</Text>
       </View>
 
       <View style={styles.form}>
         <Input
           value={fullName}
           onChangeText={(t) => { setFullName(t); setError('') }}
-          placeholder="Your full name"
+          label="Full name"
+          placeholder="e.g. Ananya Mohanty"
           accessibilityLabel="Full name"
           autoFocus
         />
         <Input
           value={email}
           onChangeText={setEmail}
-          placeholder="Email address (optional)"
+          label="Email (optional)"
+          placeholder="For trip receipts"
           keyboardType="email-address"
           accessibilityLabel="Email address"
         />
@@ -77,7 +83,8 @@ export default function OnboardingScreen() {
             {error}
           </Text>
         ) : null}
-        <Button label="Get Started" onPress={handleSubmit} loading={loading} disabled={!isValid} />
+        <Button label="Get started" onPress={handleSubmit} loading={loading} disabled={!isValid} />
+        <Text style={styles.footnote}>You can change this anytime in Account.</Text>
       </View>
     </ScrollView>
   )
@@ -85,9 +92,11 @@ export default function OnboardingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg },
-  hero: { alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xl },
-  title: { ...typography.display, color: colors.ink900 },
-  subtitle: { ...typography.body, color: colors.ink600 },
+  hero: { alignItems: 'flex-start', gap: 8, marginBottom: spacing.xl },
+  badge: { width: 52, height: 52, borderRadius: 16, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
+  title: { ...typography.display, color: colors.ink900, fontSize: 28, lineHeight: 34, letterSpacing: -0.5 },
+  subtitle: { ...typography.body, color: colors.ink600, fontSize: 15, lineHeight: 22 },
   form: { gap: spacing.md },
+  footnote: { ...typography.caption, color: colors.ink400, textAlign: 'center', fontFamily: fonts.medium },
   error: { ...typography.label, color: colors.error },
 })

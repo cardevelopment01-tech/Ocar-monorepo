@@ -84,9 +84,9 @@ function BoundaryMapLayer({
         modes: [
           new TerraDrawPolygonMode({
             styles: {
-              fillColor: '#4F46E5', fillOpacity: 0.15,
-              outlineColor: '#4F46E5', outlineWidth: 2, outlineOpacity: 1,
-              closingPointColor: '#4F46E5', closingPointWidth: 6, closingPointOutlineColor: '#FFFFFF', closingPointOutlineWidth: 2,
+              fillColor: '#0E8FA3', fillOpacity: 0.15,
+              outlineColor: '#0E8FA3', outlineWidth: 2, outlineOpacity: 1,
+              closingPointColor: '#0E8FA3', closingPointWidth: 6, closingPointOutlineColor: '#FFFFFF', closingPointOutlineWidth: 2,
             },
           }),
           new TerraDrawSelectMode({
@@ -99,9 +99,9 @@ function BoundaryMapLayer({
               },
             },
             styles: {
-              selectedPolygonColor: '#4F46E5', selectedPolygonFillOpacity: 0.15,
-              selectedPolygonOutlineColor: '#4F46E5', selectedPolygonOutlineWidth: 2,
-              selectionPointColor: '#4F46E5', selectionPointWidth: 6, selectionPointOutlineColor: '#FFFFFF', selectionPointOutlineWidth: 2,
+              selectedPolygonColor: '#0E8FA3', selectedPolygonFillOpacity: 0.15,
+              selectedPolygonOutlineColor: '#0E8FA3', selectedPolygonOutlineWidth: 2,
+              selectionPointColor: '#0E8FA3', selectionPointWidth: 6, selectionPointOutlineColor: '#FFFFFF', selectionPointOutlineWidth: 2,
               midPointColor: '#C7D2FE', midPointWidth: 5, midPointOutlineColor: '#FFFFFF', midPointOutlineWidth: 2,
             },
           }),
