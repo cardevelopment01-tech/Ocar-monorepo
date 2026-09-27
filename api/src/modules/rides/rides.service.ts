@@ -45,6 +45,7 @@ import { getStopCharge } from '@/modules/pricing/pricing.repository'
 import {
   MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
   RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
+  PICKUP_EDIT_RADIUS_METRES,
 } from '@/constants/limits'
 import { logger } from '@/lib/logger'
 import * as callMasking from '@/modules/call-masking/call-masking.service'
@@ -1088,6 +1089,65 @@ export async function addRideStop(
   }
 
   return newStop!
+}
+
+// ── Pickup pin edit (post-booking, bounded-radius correction) ──
+//
+// Uber/Ola/Rapido's own pattern: the rider can nudge the pickup point after
+// booking, bounded to a small radius so it reads as a GPS correction, not a
+// new pickup choice — no fare recompute needed (the delta never crosses a
+// rate bucket). Same statuses as STOP_ADDABLE_STATUSES minus in_progress:
+// once the driver has arrived, "where do I pick you up" no longer applies.
+const PICKUP_EDITABLE_STATUSES = ['requested', 'accepted']
+
+export async function updateRidePickup(
+  userId: bigint,
+  rideId: bigint,
+  lat: number,
+  lng: number,
+  address: string | null
+) {
+  const ride = await repo.getRideCoreById(rideId)
+  if (!ride) throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
+  if (BigInt(ride.user_id) !== userId) {
+    throw httpError(403, 'Not your ride', 'FORBIDDEN')
+  }
+  if (!PICKUP_EDITABLE_STATUSES.includes(ride.status)) {
+    throw httpError(409, 'Pickup can only be adjusted before the driver arrives', 'PICKUP_NOT_EDITABLE')
+  }
+
+  const movedMetres = distanceMetres(lat, lng, ride.origin_lat, ride.origin_lng)
+  if (movedMetres > PICKUP_EDIT_RADIUS_METRES) {
+    throw httpError(422, 'New pickup point is outside the allowed area', 'PICKUP_OUT_OF_RANGE')
+  }
+
+  // The status guard above is re-checked atomically inside this single UPDATE
+  // (WHERE status = ANY(...)) — a null return means the ride's status moved
+  // on between our read and this write (e.g. driver arrived in the interim).
+  const updated = await repo.updateRidePickup(rideId, lat, lng, address, PICKUP_EDITABLE_STATUSES)
+  if (!updated) {
+    throw httpError(409, 'Ride status changed — refresh and try again', 'PICKUP_UPDATE_CONFLICT')
+  }
+
+  if (updated.driver_id != null) {
+    const driverId = BigInt(updated.driver_id)
+    socketEvents.sendPickupUpdated(rideId.toString(), { lat, lng, address })
+    try {
+      await notifyOwner({
+        ownerType: 'driver',
+        ownerId: driverId,
+        type: 'pickup_updated',
+        title: 'Pickup point updated',
+        body: 'The rider adjusted their pickup location — check the map.',
+        rideId,
+        tag: `pickup:${rideId}`,
+      })
+    } catch (err) {
+      log.error({ err }, 'pickup_updated notification failed')
+    }
+  }
+
+  return updated
 }
 
 // ── Ride cancellation ─────────────────────────────────────────

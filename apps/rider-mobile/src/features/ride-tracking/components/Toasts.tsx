@@ -21,6 +21,14 @@ export function UpgradeToast({ categoryName }: { categoryName: string }) {
   )
 }
 
+export function PickupUpdatedToast({ driverNotified }: { driverNotified: boolean }) {
+  return (
+    <View style={styles.upgradeContainer}>
+      <Text style={styles.upgradeText}>Pickup updated{driverNotified ? ' — driver notified' : ''}.</Text>
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
   driftContainer: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.warningLight, borderWidth: 1, borderColor: colors.warning, borderRadius: radii.lg, padding: spacing.sm + 4 },
   driftLabel: { ...typography.caption, color: colors.warning, fontFamily: fonts.bold, letterSpacing: 0.5 },

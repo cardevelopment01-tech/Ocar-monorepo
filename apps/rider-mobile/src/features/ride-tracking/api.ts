@@ -69,6 +69,14 @@ export async function addStop(rideId: string, stop: StopInput) {
   return camelizeKeys(res.data)
 }
 
+export type PickupUpdate = { lat: number; lng: number; address: string | null }
+export type PickupUpdateResult = { originLat: number; originLng: number; originAddress: string | null }
+
+export async function updatePickup(rideId: string, pickup: PickupUpdate): Promise<PickupUpdateResult> {
+  const res = await api.patch(`/api/v1/rides/${rideId}/pickup`, pickup)
+  return camelizeKeys<PickupUpdateResult>(res.data)
+}
+
 export async function fetchUnreadChatCount(rideId: string): Promise<number> {
   const res = await api.get<{ count: number }>(`/api/v1/rides/${rideId}/messages/unread-count`)
   return res.data.count

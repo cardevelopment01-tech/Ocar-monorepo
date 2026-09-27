@@ -26,7 +26,7 @@ export function decodePolyline(encoded: string): [number, number][] {
   return points
 }
 
-function haversineMetres(a: [number, number], b: [number, number]): number {
+export function haversineMetres(a: [number, number], b: [number, number]): number {
   const R = 6_371_000
   const dLat = (b[0] - a[0]) * Math.PI / 180
   const dLng = (b[1] - a[1]) * Math.PI / 180

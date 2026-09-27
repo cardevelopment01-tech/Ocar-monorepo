@@ -701,6 +701,46 @@ export async function updateRideStatus(
   )
 }
 
+// Post-booking pickup-pin edit. Single atomic UPDATE with the status guard
+// in the WHERE clause — no separate SELECT/transaction needed: Postgres
+// re-checks the current row's status at write time, so a driver-status
+// change racing this edit simply matches zero rows (caller treats null as a
+// 409 conflict) rather than needing an app-level FOR UPDATE lock.
+export async function updateRidePickup(
+  rideId: bigint,
+  lat: number,
+  lng: number,
+  address: string | null,
+  allowedStatuses: string[]
+): Promise<{
+  id: string
+  driver_id: string | null
+  origin_lat: number
+  origin_lng: number
+  origin_address: string | null
+  status: string
+} | null> {
+  const res = await pool.query<{
+    id: string
+    driver_id: string | null
+    origin_lat: number
+    origin_lng: number
+    origin_address: string | null
+    status: string
+  }>(
+    `UPDATE rides
+     SET origin = ST_SetSRID(ST_MakePoint($2::float8, $3::float8), 4326)::geography,
+         origin_address = $4,
+         updated_at = now()
+     WHERE id = $1 AND status = ANY($5::ride_status[])
+     RETURNING id, driver_id,
+       ST_Y(origin::geometry) AS origin_lat, ST_X(origin::geometry) AS origin_lng,
+       origin_address, status`,
+    [rideId, lng, lat, address, allowedStatuses]
+  )
+  return res.rows[0] ?? null
+}
+
 export async function logStatusHistory(data: {
   rideId: bigint
   fromStatus: string | null
