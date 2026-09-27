@@ -9,6 +9,9 @@ export type PlaceSuggestion = {
   description: string
   mainText: string
   secondaryText: string
+  /** Straight-line distance from the biasing origin, in metres. Present only when
+   *  autocomplete() was called with lat/lng (Google's `origin` param triggers it). */
+  distanceMetres?: number
 }
 
 export type PlaceDetail = {
@@ -104,6 +107,8 @@ export async function autocomplete(
   if (lat !== undefined && lng !== undefined) {
     params['location'] = `${lat},${lng}`
     params['radius'] = '200000'
+    // Triggers Google to compute straight-line distance_meters per prediction.
+    params['origin'] = `${lat},${lng}`
   } else {
     params['location'] = '20.9517,85.0985'
     params['radius'] = '300000'
@@ -115,6 +120,7 @@ export async function autocomplete(
       place_id: string
       description: string
       structured_formatting?: { main_text: string; secondary_text: string }
+      distance_meters?: number
     }>
   }>
 
@@ -128,6 +134,7 @@ export async function autocomplete(
     description: p.description,
     mainText: p.structured_formatting?.main_text ?? p.description,
     secondaryText: p.structured_formatting?.secondary_text ?? '',
+    ...(p.distance_meters !== undefined && { distanceMetres: p.distance_meters }),
   }))
 }
 

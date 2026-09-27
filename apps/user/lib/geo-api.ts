@@ -5,6 +5,7 @@ export type PlaceSuggestion = {
   description: string
   mainText: string
   secondaryText: string
+  distanceMetres?: number
 }
 
 export type PlaceDetail = {
