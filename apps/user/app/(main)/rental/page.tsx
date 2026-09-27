@@ -1,12 +1,12 @@
 'use client'
 
-import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
 import {
   ArrowLeft, MapPin, Clock,
-  CreditCard, Zap, Users, Navigation, Sparkles, Info,
+  CreditCard, Zap, Users, Navigation, ChevronDown, Info, Sparkles,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { cn, swapAt } from '@/lib/utils'
 import { isAxiosError } from 'axios'
 import { rideApi, type RentalPackage, type FareEstimate, type StopInput } from '@/lib/ride-api'
@@ -68,6 +68,13 @@ function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
   return m === 0 ? `${h} hr${h > 1 ? 's' : ''}` : `${h}h ${m}m`
+}
+
+// Luxury carries the app's own gold "premium tier" signal (same family as the
+// Ocar Elite home-screen banner) so the top-of-fleet vehicle reads as genuinely
+// premium rather than just another row in the list.
+function isPremiumSlug(slug: string) {
+  return slug === 'luxury'
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
@@ -156,10 +163,15 @@ function RentalContent() {
   if (stops.length < MAX_STOPS) rentalStopNodes.push({ kind: 'add', onTap: () => setAddStopOpen(true) })
 
   const [categories,      setCategories]      = useState<Category[]>(FALLBACK_CATEGORIES)
-  const [selectedCatId,   setSelectedCatId]  = useState<number>(FALLBACK_CATEGORIES[1]!.id)
-  const [packages,        setPackages]        = useState<RentalPackage[]>([])
+  // Every category's packages are fetched up front (not just the selected one) so
+  // every row can show a real "from ₹X" before the rider taps anything — the whole
+  // point of a vertical list is comparing options without committing first.
+  const [packagesByCat,   setPackagesByCat]   = useState<Record<number, RentalPackage[]>>({})
   const [pkgsLoading,     setPkgsLoading]     = useState(true)
+  // Which vehicle's accordion row is open. null = every row collapsed.
+  const [openCatId,       setOpenCatId]       = useState<number | null>(null)
   const [selectedPkgId,   setSelectedPkgId]  = useState<number | null>(null)
+  const [userPickedPkg,   setUserPickedPkg]  = useState(false)
   const [estimate,        setEstimate]        = useState<FareEstimate | null>(null)
   const [estLoading,      setEstLoading]      = useState(false)
   const [isBooking,       setIsBooking]       = useState(false)
@@ -170,8 +182,6 @@ function RentalContent() {
   // are coarse (hours/tens of km), so live traffic wouldn't change the pick but would
   // double the routing cost per lookup.
   const [trip, setTrip] = useState<{ km: number; min: number } | null>(null)
-  // False while the route is in flight, so we don't preselect a package and then
-  // immediately flip to the recommended one (fare flicker + wasted estimate call).
   const [tripReady, setTripReady] = useState(false)
   const stopsKey = stops.map(s => `${s.lat},${s.lng}`).join('|')
   useEffect(() => {
@@ -197,26 +207,19 @@ function RentalContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasOrigin, originLat, originLng, destLat, destLng, stopsKey])
 
-  // Fetch packages whenever category changes; selection follows the recommendation
-  // until the rider picks one themselves.
-  const [userPickedPkg, setUserPickedPkg] = useState(false)
-  const loadPackages = useCallback(async (catId: number, cityId: number | undefined) => {
+  // Fetch every category's packages in parallel whenever the category list or city changes.
+  const loadAllPackages = useCallback(async (cats: Category[], cityId: number | undefined) => {
     setPkgsLoading(true)
-    setPackages([])
-    setSelectedPkgId(null)
-    setUserPickedPkg(false)
-    setEstimate(null)
-    try {
-      const pkgs = await rideApi.getRentalPackages(catId, cityId)
-      setPackages(pkgs)
-    } catch {
-      setPackages([])
-    } finally {
-      setPkgsLoading(false)
-    }
+    const entries = await Promise.allSettled(
+      cats.map(async cat => [cat.id, await rideApi.getRentalPackages(cat.id, cityId)] as const)
+    )
+    const next: Record<number, RentalPackage[]> = {}
+    for (const r of entries) if (r.status === 'fulfilled') next[r.value[0]] = r.value[1]
+    setPackagesByCat(next)
+    setPkgsLoading(false)
   }, [])
 
-  useEffect(() => { void loadPackages(selectedCatId, originCityId) }, [selectedCatId, originCityId, loadPackages])
+  useEffect(() => { void loadAllPackages(categories, originCityId) }, [categories, originCityId, loadAllPackages])
 
   useEffect(() => {
     if (!hasOrigin) router.replace('/home')
@@ -228,63 +231,73 @@ function RentalContent() {
     vehicleApi.getCategories().then(setCategories).catch(() => {})
   }, [])
 
-  // selectedCatId defaults to FALLBACK_CATEGORIES' sedan id, which may not
-  // exist once the real list loads (categories can be added/removed/reordered
-  // from admin) — re-point to the first available category instead of
-  // leaving selectedCat unresolved.
+  // Default-open the sedan-equivalent row (or the first category) once the
+  // category list settles, so the sheet never opens fully collapsed.
   useEffect(() => {
-    if (categories.length > 0 && !categories.some(c => c.id === selectedCatId)) {
-      setSelectedCatId(categories[0]!.id)
-    }
-  }, [categories, selectedCatId])
+    setOpenCatId(prev => {
+      if (prev !== null && categories.some(c => c.id === prev)) return prev
+      if (categories.length === 0) return null
+      return (categories.find(c => c.slug === 'sedan') ?? categories[0])!.id
+    })
+  }, [categories])
 
-  // Fetch estimate whenever the selected package changes
-  const estReq = useRef(0)
-  const loadEstimate = useCallback(async (pkgId: number, catId: number) => {
-    const reqId = ++estReq.current // drop responses from superseded selections
+  const openPackages = useMemo(
+    () => (openCatId !== null ? (packagesByCat[openCatId] ?? []) : []),
+    [openCatId, packagesByCat],
+  )
+  const recommendation = useMemo(
+    () => (trip ? recommendPackage(openPackages, trip.km, trip.min) : null),
+    [openPackages, trip],
+  )
+
+  // Selection follows the recommendation until the rider picks a package themselves,
+  // and resets whenever a different vehicle's row is opened.
+  useEffect(() => {
+    if (userPickedPkg || !tripReady || openPackages.length === 0) { if (openPackages.length === 0) setSelectedPkgId(null); return }
+    setSelectedPkgId(recommendation?.packageId ?? openPackages[0]!.id)
+  }, [openCatId, openPackages, recommendation, userPickedPkg, tripReady])
+
+  useEffect(() => {
+    if (selectedPkgId === null || openCatId === null) { setEstimate(null); return }
+    let cancelled = false
     setEstLoading(true)
     setEstimate(null)
-    try {
-      const est = await rideApi.getEstimate({
-        categoryId:      catId,
-        rideType:        'rental',
-        rentalPackageId: pkgId,
-        distanceKm:      0,
-        durationMin:     0,
-        originCityId,
-      })
-      if (reqId === estReq.current) setEstimate(est)
-    } catch {
-      if (reqId === estReq.current) setEstimate(null)
-    } finally {
-      if (reqId === estReq.current) setEstLoading(false)
+    rideApi.getEstimate({
+      categoryId:      openCatId,
+      rideType:        'rental',
+      rentalPackageId: selectedPkgId,
+      distanceKm:      0,
+      durationMin:     0,
+      originCityId,
+    })
+      .then(est => { if (!cancelled) setEstimate(est) })
+      .catch(() => { if (!cancelled) setEstimate(null) })
+      .finally(() => { if (!cancelled) setEstLoading(false) })
+    return () => { cancelled = true }
+  }, [selectedPkgId, openCatId, originCityId])
+
+  function toggleCategory(catId: number) {
+    if (openCatId === catId) {
+      setOpenCatId(null)
+      setSelectedPkgId(null)
+      return
     }
-  }, [originCityId])
+    setOpenCatId(catId)
+    setUserPickedPkg(false)
+    setSelectedPkgId(null)
+  }
 
-  useEffect(() => {
-    if (selectedPkgId !== null) void loadEstimate(selectedPkgId, selectedCatId)
-  }, [selectedPkgId, selectedCatId, loadEstimate])
-
-  const recommendation = useMemo(
-    () => (trip ? recommendPackage(packages, trip.km, trip.min) : null),
-    [packages, trip],
-  )
-  useEffect(() => {
-    if (userPickedPkg || !tripReady || packages.length === 0) return
-    setSelectedPkgId(recommendation?.packageId ?? packages[0]!.id)
-  }, [packages, recommendation, userPickedPkg, tripReady])
-
-  const selectedCat = categories.find(c => c.id === selectedCatId)
-  const selectedPkg = packages.find(p => p.id === selectedPkgId) ?? null
-  const canBook     = selectedPkgId !== null && estimate !== null && !estLoading && !isBooking && hasDestination
+  const selectedCat = categories.find(c => c.id === openCatId)
+  const selectedPkg = openPackages.find(p => p.id === selectedPkgId) ?? null
+  const canBook = openCatId !== null && selectedPkgId !== null && estimate !== null && !estLoading && !isBooking && hasDestination
 
   async function handleBook() {
-    if (selectedPkgId === null || !selectedPkg) return
+    if (openCatId === null || selectedPkgId === null || !selectedPkg) return
     setIsBooking(true)
     setBookError(null)
     try {
       const params: Parameters<typeof rideApi.createBooking>[0] = {
-        categoryId:      selectedCatId,
+        categoryId:      openCatId,
         rideType:        'rental',
         originLat,
         originLng,
@@ -340,7 +353,7 @@ function RentalContent() {
         <div className="flex-1 min-w-0">
           <p className="text-[15px] font-bold text-slate-900 leading-tight">City Rides</p>
           <div className="flex items-center gap-1 mt-0.5">
-            <MapPin size={10} strokeWidth={2.5} className="text-violet-500 flex-shrink-0" />
+            <MapPin size={10} strokeWidth={2.5} className="text-primary flex-shrink-0" />
             <p className="text-[11px] text-slate-400 truncate">{originAddress}</p>
           </div>
         </div>
@@ -349,7 +362,7 @@ function RentalContent() {
           className="flex items-center gap-1.5 h-11 pl-2.5 pr-2 rounded-full bg-slate-100 flex-shrink-0 max-w-[130px]"
         >
           <span className="w-5 h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
-            <Users size={11} strokeWidth={2} className="text-violet-600" />
+            <Users size={11} strokeWidth={2} className="text-primary" />
           </span>
           <span className="text-xs font-semibold text-slate-800 truncate">
             {bookingForOther ? riderName : 'For me'}
@@ -371,262 +384,215 @@ function RentalContent() {
         className="flex-1 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:hidden"
         style={{ scrollbarWidth: 'none' }}
       >
-        <div className="px-4 pt-5 pb-6 space-y-6">
+        <div className="px-4 pt-5 pb-6 space-y-5">
 
-          {/* Pickup time, own section, above vehicle/package selection */}
-          <motion.section {...fadeUp(0)}>
-            <PickupTimeChip
-              value={scheduledFor}
-              pickerOpen={schedulePickerOpen}
-              onOpenPicker={() => setSchedulePickerOpen(true)}
-              onClosePicker={() => setSchedulePickerOpen(false)}
-              onChange={setScheduledFor}
-            />
-          </motion.section>
-
-          {/* Drop-off (required) */}
-          <motion.section {...fadeUp(0)}>
+          {/* Trip summary card: time + drop-off + stops unified into one glanceable card */}
+          <motion.section {...fadeUp(0)} className="rounded-2xl bg-white border border-border-light shadow-card p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <PickupTimeChip
+                value={scheduledFor}
+                pickerOpen={schedulePickerOpen}
+                onOpenPicker={() => setSchedulePickerOpen(true)}
+                onClosePicker={() => setSchedulePickerOpen(false)}
+                onChange={setScheduledFor}
+              />
+              {trip && (
+                <span className="text-[11px] font-semibold text-slate-400 tabular-nums">{trip.km} km · ~{formatDuration(trip.min)}</span>
+              )}
+            </div>
+            <div className="h-px bg-border-light" />
             {hasDestination ? (
-              <motion.button
-                key="dest-chip"
-                initial={{ opacity: 0, scale: 0.94 }}
-                animate={{ opacity: 1, scale: 1 }}
-                onClick={addDestination}
-                className="w-full flex items-center gap-2.5 rounded-2xl px-4 py-3 text-left"
-                style={{ background: '#F1F0FE', border: '1px solid #DDD9FB' }}
-              >
-                <Navigation size={13} strokeWidth={2.2} className="text-violet-600 flex-shrink-0" />
-                <span className="flex-1 min-w-0 text-[12px] font-semibold text-violet-700 truncate">{destAddress}</span>
-                <span className="text-[10px] font-bold text-violet-500 flex-shrink-0">Change</span>
-              </motion.button>
+              <button onClick={addDestination} className="w-full flex items-center gap-2.5 text-left">
+                <Navigation size={13} strokeWidth={2.2} className="text-primary flex-shrink-0" />
+                <span className="flex-1 min-w-0 text-[13px] font-bold text-slate-900 truncate">{destAddress}</span>
+                <span className="text-[10px] font-bold text-primary flex-shrink-0">Change</span>
+              </button>
             ) : (
               <button
                 onClick={addDestination}
-                className="w-full flex items-center gap-2.5 rounded-2xl px-4 py-3 text-left transition-colors active:bg-slate-50"
+                className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors active:bg-slate-50"
                 style={{ border: '1.5px dashed #CBD5E1' }}
               >
                 <Navigation size={13} strokeWidth={2.2} className="text-slate-400 flex-shrink-0" />
                 <span className="flex-1 text-[12px] font-medium text-slate-400">Add a drop-off</span>
               </button>
             )}
+            <button
+              onClick={() => setAddStopOpen(true)}
+              className="w-full flex items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors active:bg-slate-50"
+              style={{ border: '1.5px dashed #CBD5E1' }}
+            >
+              <span className="text-slate-400 text-[13px] leading-none">+</span>
+              <span className="text-[12px] font-medium text-slate-400">Add a stop · optional</span>
+            </button>
           </motion.section>
 
-          {/* Plan your stops — free itinerary, never touches fare (§2.2 of the plan) */}
-          <motion.section {...fadeUp(0)} className="space-y-2">
-            <div className="px-1">
-              <p className="text-[12px] font-bold" style={{ color: '#0F172A' }}>Plan your stops · optional</p>
-              <p className="text-[11px] mt-0.5" style={{ color: '#64748B' }}>
-                Tell your driver where you plan to go — you can always change your mind during the ride
-              </p>
-            </div>
-            <RouteTimeline nodes={rentalStopNodes} />
-          </motion.section>
-
-          {/* Vehicle category */}
-          <motion.section {...fadeUp(0)}>
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
-              Vehicle
-            </p>
-            <div className="grid grid-cols-5 gap-1.5">
-              {categories.map(cat => {
-                const active = cat.id === selectedCatId
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedCatId(cat.id)}
-                    className={cn(
-                      'flex flex-col items-center gap-1 py-2.5 rounded-2xl border transition-all duration-150',
-                      active
-                        ? 'bg-violet-50 border-violet-300 shadow-sm'
-                        : 'bg-slate-50 border-slate-100 active:bg-slate-100'
-                    )}
-                  >
-                    <VehicleIcon slug={cat.slug} size={26} color={active ? '#0A9FB0' : '#64748B'} />
-                    <span className={cn(
-                      'text-[10px] font-semibold leading-none',
-                      active ? 'text-violet-700' : 'text-slate-500'
-                    )}>
-                      {cat.display_name}
-                    </span>
-                    <span className={cn(
-                      'flex items-center gap-0.5 text-[9px]',
-                      active ? 'text-violet-400' : 'text-slate-400'
-                    )}>
-                      <Users size={8} strokeWidth={2.5} />
-                      {cat.max_passengers}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </motion.section>
-
-          {/* Package selector */}
-          <motion.section {...fadeUp(0.06)}>
-            <div className="flex items-baseline justify-between mb-3">
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
-                Package
-              </p>
-              {trip && (
-                <p className="text-[11px] font-medium text-slate-500 tabular-nums">
-                  Your route · {trip.km} km · ~{formatDuration(trip.min)}
-                </p>
-              )}
-            </div>
-
-            {pkgsLoading ? (
-              <div className="space-y-2">
-                {[1, 2].map(i => (
-                  <div key={i} className="h-[72px] rounded-2xl bg-slate-100 animate-pulse" />
-                ))}
-              </div>
-            ) : packages.length === 0 ? (
-              <div className="h-16 rounded-2xl bg-slate-50 border border-dashed border-slate-200 flex items-center justify-center">
-                <p className="text-sm text-slate-400">No packages for this vehicle type</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {packages.map(pkg => {
-                  const active = pkg.id === selectedPkgId
-                  const fare   = num(pkg.package_fare)
-                  const xKm    = num(pkg.extra_per_km)
-                  const xMin   = num(pkg.extra_per_min)
-                  const isRec  = recommendation?.packageId === pkg.id
-                  return (
-                    <button
-                      key={pkg.id}
-                      onClick={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
-                      className={cn(
-                        'relative w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all duration-150 text-left',
-                        active
-                          ? 'bg-violet-50 border-violet-300 shadow-sm'
-                          : 'bg-slate-50 border-slate-100 active:bg-slate-100',
-                        isRec && !active && 'border-violet-200',
-                        isRec && 'mt-2.5'
-                      )}
-                    >
-                      {isRec && (
-                        <span
-                          className="absolute -top-2.5 left-4 flex items-center gap-1 rounded-full px-2.5 py-[3px] text-[10px] font-bold tracking-wide text-white shadow-sm"
-                          style={{ background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)' }}
-                        >
-                          <Sparkles size={9} strokeWidth={2.5} />
-                          Recommended for your trip
-                        </span>
-                      )}
-                      {/* Icon */}
-                      <div className={cn(
-                        'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0',
-                        active ? 'bg-violet-100' : 'bg-white border border-slate-200'
-                      )}>
-                        <Clock size={16} strokeWidth={2} className={active ? 'text-violet-600' : 'text-slate-400'} />
-                      </div>
-
-                      {/* Details */}
-                      <div className="flex-1 min-w-0">
-                        <p className={cn(
-                          'text-[14px] font-bold leading-tight',
-                          active ? 'text-violet-900' : 'text-slate-900'
-                        )}>
-                          {formatDuration(pkg.duration_minutes)} · {pkg.km_limit} km
-                        </p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Extra ₹{xKm}/km · ₹{xMin}/min beyond limit
-                        </p>
-                      </div>
-
-                      {/* Price + radio */}
-                      <div className="flex-shrink-0 flex items-center gap-2.5">
-                        <p className={cn(
-                          'text-[17px] font-black tabular-nums',
-                          active ? 'text-violet-900' : 'text-slate-900'
-                        )}>
-                          ₹{Math.round(fare)}
-                        </p>
-                        <div className={cn(
-                          'w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-150',
-                          active ? 'border-violet-500' : 'border-slate-200'
-                        )}>
-                          {active && <div className="w-2.5 h-2.5 rounded-full bg-violet-500" />}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
-                {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) && (
-                  <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3">
-                    <Info size={14} strokeWidth={2.2} className="text-amber-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-[11.5px] leading-relaxed text-amber-800">
-                      Your route (~{trip.km} km, {formatDuration(trip.min)}) is longer than our biggest package.
-                      {recommendation.overKm > 0 && <> About {recommendation.overKm} km over</>}
-                      {recommendation.overKm > 0 && recommendation.overMin > 0 && ' and'}
-                      {recommendation.overMin > 0 && <> {formatDuration(recommendation.overMin)} over</>}
-                      {' '}will be charged as extra.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </motion.section>
-
-          {/* Fare summary, only once a package is selected */}
-          {selectedPkg && (
-            <motion.section {...fadeUp(0.18)}>
-              <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 space-y-3">
-
-                {/* Package header */}
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-[12px] font-semibold text-slate-700">
-                      {selectedCat?.display_name} · {formatDuration(selectedPkg.duration_minutes)} / {selectedPkg.km_limit} km
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Overage charged at end of trip
-                    </p>
-                  </div>
-                  {estimate != null && estimate.surge_multiplier > 1 && (
-                    <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500 flex-shrink-0">
-                      <Zap size={9} />{estimate.surge_multiplier}×
-                    </span>
-                  )}
-                </div>
-
-                {/* Breakdown rows */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-[12px]">
-                    <span className="text-slate-500">Package fare</span>
-                    <span className="font-semibold text-slate-700">
-                      ₹{Math.round(num(selectedPkg.package_fare))}
-                    </span>
-                  </div>
-
-                  {estimate != null && estimate.breakdown.surge_fare > 0 && (
-                    <div className="flex justify-between text-[12px]">
-                      <span className="text-amber-600">Surge ({estimate.surge_multiplier}×)</span>
-                      <span className="font-semibold text-amber-600">
-                        +₹{Math.round(estimate.breakdown.surge_fare)}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="h-px bg-slate-200 my-1" />
-
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-[13px] font-bold text-slate-900">Total</span>
-                    {estLoading ? (
-                      <div className="w-16 h-5 bg-slate-200 rounded animate-pulse" />
-                    ) : estimate != null ? (
-                      <span className="text-[19px] font-black text-violet-700 tabular-nums">
-                        ₹<AnimatedNumber value={Math.round(estimate.breakdown.total)} />
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 text-sm">—</span>
-                    )}
-                  </div>
-                </div>
-              </div>
+          {rentalStopNodes.length > 1 && (
+            <motion.section {...fadeUp(0)}>
+              <RouteTimeline nodes={rentalStopNodes} />
             </motion.section>
           )}
+
+          {/* Vehicle list — every option visible on one vertical scroll. Tap a row to
+              open it; its package tiers render as chips inline, nothing hidden off-screen. */}
+          <motion.section {...fadeUp(0.04)} className="space-y-2">
+            <div className="flex items-baseline justify-between">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Choose your ride</p>
+              <p className="text-[10px] font-semibold text-slate-400">{categories.length} options</p>
+            </div>
+
+            {categories.map(cat => {
+              const isOpen = openCatId === cat.id
+              const pkgs = packagesByCat[cat.id] ?? []
+              const fromFare = pkgs.length > 0 ? Math.min(...pkgs.map(p => num(p.package_fare))) : null
+              const premium = isPremiumSlug(cat.slug)
+              const noPkgs = !pkgsLoading && pkgs.length === 0
+
+              return (
+                <div
+                  key={cat.id}
+                  className={cn(
+                    'rounded-2xl border overflow-hidden transition-all duration-150',
+                    isOpen ? 'border-primary shadow-float bg-white' : 'border-border-light bg-white'
+                  )}
+                >
+                  <button
+                    onClick={() => !noPkgs && toggleCategory(cat.id)}
+                    disabled={noPkgs}
+                    className={cn('w-full flex items-center gap-3 p-3 text-left', noPkgs && 'opacity-40 cursor-not-allowed')}
+                  >
+                    <div
+                      className={cn(
+                        'w-[52px] h-11 rounded-xl flex items-center justify-center flex-shrink-0',
+                        premium ? '' : isOpen ? 'bg-primary-subtle' : 'bg-surface-2'
+                      )}
+                      style={premium ? { background: 'linear-gradient(135deg, #F3D9A6 0%, #E0B662 55%, #C9974A 100%)', boxShadow: '0 4px 12px rgba(201,151,74,0.30)' } : undefined}
+                    >
+                      <VehicleIcon slug={cat.slug} size={26} color={premium ? '#FFFFFF' : isOpen ? '#0A9FB0' : '#64748B'} />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[14px] font-bold text-slate-900">{cat.display_name}</span>
+                        {premium && (
+                          <span className="inline-flex items-center gap-1 text-[9.5px] font-bold tracking-wide px-1.5 py-0.5 rounded-full" style={{ color: '#8A6323', background: '#FBF3E6' }}>
+                            <Sparkles size={8} />PREMIUM FLEET
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 mt-0.5 text-[11px] text-slate-400">
+                        <Users size={9} strokeWidth={2.5} />{cat.max_passengers} seats
+                      </div>
+                    </div>
+
+                    <div className="text-right flex-shrink-0">
+                      {noPkgs ? (
+                        <span className="text-[11px] font-semibold text-slate-400">No packages</span>
+                      ) : pkgsLoading ? (
+                        <div className="w-16 h-4 rounded bg-slate-100 animate-pulse ml-auto" />
+                      ) : isOpen && selectedPkg ? (
+                        <span className="text-[15px] font-black text-slate-900 tabular-nums">₹{Math.round(num(selectedPkg.package_fare))}</span>
+                      ) : fromFare != null ? (
+                        <span className="text-[14px] font-black text-slate-900 tabular-nums">from ₹{Math.round(fromFare)}</span>
+                      ) : null}
+                    </div>
+                    <ChevronDown size={14} strokeWidth={2.5} className={cn('text-slate-300 flex-shrink-0 transition-transform', isOpen && 'rotate-180 text-primary')} />
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {isOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: EASE }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mx-1.5 mb-1.5 rounded-xl bg-surface-2 p-3">
+                          {pkgsLoading ? (
+                            <div className="flex gap-2">
+                              {[1, 2, 3].map(i => <div key={i} className="h-12 w-20 rounded-xl bg-slate-100 animate-pulse" />)}
+                            </div>
+                          ) : (
+                            <>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Package · {pkgs.length} tiers</p>
+                              <div className="flex gap-2 overflow-x-auto pt-3 pb-1 mb-3 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+                                {pkgs.map(pkg => {
+                                  const active = pkg.id === selectedPkgId
+                                  const isRec = recommendation?.packageId === pkg.id
+                                  return (
+                                    <button
+                                      key={pkg.id}
+                                      onClick={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
+                                      className={cn(
+                                        'relative flex-shrink-0 px-3.5 py-2 rounded-xl text-center transition-all',
+                                        active ? 'bg-primary shadow-button' : 'bg-white border border-border-light'
+                                      )}
+                                    >
+                                      {isRec && (
+                                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-white text-primary-dark whitespace-nowrap shadow-sm">
+                                          BEST FIT
+                                        </span>
+                                      )}
+                                      <p className={cn('text-[11.5px] font-bold', active ? 'text-white' : 'text-slate-900')}>
+                                        {formatDuration(pkg.duration_minutes)}
+                                      </p>
+                                      <p className={cn('text-[9.5px]', active ? 'text-primary-light' : 'text-slate-400')}>
+                                        {pkg.km_limit} km
+                                      </p>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                              {selectedPkg && (
+                                <>
+                                  <div className="h-px bg-border-light mb-2.5" />
+                                  <div className="flex items-center justify-between">
+                                    <div className="min-w-0">
+                                      <p className="text-[11.5px] text-slate-500 font-medium truncate">
+                                        {formatDuration(selectedPkg.duration_minutes)} · {selectedPkg.km_limit} km ·{' '}
+                                        <span className="font-bold text-primary-dark">extra ₹{num(selectedPkg.extra_per_km)}/km</span>
+                                      </p>
+                                      {estimate != null && estimate.surge_multiplier > 1 && (
+                                        <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500 mt-0.5">
+                                          <Zap size={9} />{estimate.surge_multiplier}× surge
+                                        </span>
+                                      )}
+                                    </div>
+                                    {estLoading ? (
+                                      <div className="w-14 h-5 bg-slate-200 rounded animate-pulse flex-shrink-0" />
+                                    ) : estimate != null ? (
+                                      <span className="text-[19px] font-black text-primary tabular-nums flex-shrink-0">
+                                        ₹<AnimatedNumber value={Math.round(estimate.breakdown.total)} />
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400 text-sm flex-shrink-0">—</span>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                              {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) && (
+                                <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5 mt-2.5">
+                                  <Info size={13} strokeWidth={2.2} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                                  <p className="text-[11px] leading-relaxed text-amber-800">
+                                    Your route (~{trip.km} km, {formatDuration(trip.min)}) is longer than the biggest package.
+                                    {recommendation.overKm > 0 && <> About {recommendation.overKm} km over</>}
+                                    {recommendation.overKm > 0 && recommendation.overMin > 0 && ' and'}
+                                    {recommendation.overMin > 0 && <> {formatDuration(recommendation.overMin)} over</>}
+                                    {' '}will be charged as extra.
+                                  </p>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )
+            })}
+          </motion.section>
         </div>
 
         <p className="mx-4 mb-2 text-[11px] font-medium leading-relaxed text-slate-400">
@@ -648,7 +614,7 @@ function RentalContent() {
             <span className="text-sm font-semibold text-slate-700">Cash</span>
           </div>
           <button
-            className="text-xs font-bold text-violet-600"
+            className="text-xs font-bold text-primary"
             onClick={() => { setPaymentNote('Cash only for now'); setTimeout(() => setPaymentNote(null), 2000) }}
           >
             Change
@@ -663,11 +629,8 @@ function RentalContent() {
         <button
           onClick={handleBook}
           disabled={!canBook}
-          className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
-          style={{
-            background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)',
-            minHeight: 52,
-          }}
+          className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40 bg-gradient-primary shadow-button"
+          style={{ minHeight: 52 }}
         >
           {isBooking
             ? 'Booking…'
