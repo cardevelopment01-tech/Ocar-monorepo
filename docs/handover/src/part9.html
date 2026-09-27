@@ -1,0 +1,293 @@
+<!-- ════════════════ 17 ════════════════ -->
+<h2 id="s17" class="pagebreak"><span class="num">Section 17</span>Known gaps and risk register</h2>
+
+<p class="lead">
+Eighteen items, each verified against the current codebase. Severity reflects operational
+consequence, not effort to fix. Several are deliberate trade-offs with sound reasoning; those are
+marked as accepted rather than outstanding.
+</p>
+
+<h3>17.1 Summary</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:9%">Ref</th><th style="width:12%">Severity</th><th style="width:40%">Issue</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td><code>G-01</code></td><td><span class="chip gap">High</span></td><td><code>/health</code> returns 200 when the database is down</td><td>Outstanding</td></tr>
+    <tr><td><code>G-02</code></td><td><span class="chip gap">High</span></td><td>Staging IAM role cannot create RDS — staging apply fails</td><td>Outstanding</td></tr>
+    <tr><td><code>G-05</code></td><td><span class="chip gap">High</span></td><td>Unguarded <code>terraform destroy</code> on staging</td><td>Blocked on repo admin</td></tr>
+    <tr><td><code>G-06</code></td><td><span class="chip gap">High</span></td><td>No branch protection; no deploy approval gate</td><td>Blocked on repo admin</td></tr>
+    <tr><td><code>G-13</code></td><td><span class="chip gap">High</span></td><td>Minimal automated test coverage; no coverage gate</td><td>Outstanding</td></tr>
+    <tr><td><code>G-14</code></td><td><span class="chip gap">High</span></td><td>Admin TOTP enforcement disabled by a hardcoded bypass</td><td>Outstanding</td></tr>
+    <tr><td><code>G-03</code></td><td><span class="chip part">Medium</span></td><td>Plan role lacks <code>rds:Describe*</code></td><td>Outstanding</td></tr>
+    <tr><td><code>G-09</code></td><td><span class="chip part">Medium</span></td><td>Scaling threshold is an unvalidated estimate</td><td>Awaiting load test</td></tr>
+    <tr><td><code>G-10</code></td><td><span class="chip part">Medium</span></td><td>Single-AZ database, single-node cache</td><td>Accepted at current scale</td></tr>
+    <tr><td><code>G-11</code></td><td><span class="chip part">Medium</span></td><td>Scale-readiness report contradicts deployed scaling config</td><td>Outstanding — documentation</td></tr>
+    <tr><td><code>G-12</code></td><td><span class="chip part">Medium</span></td><td>Cache transit encryption is <code>preferred</code>, not <code>required</code></td><td>Outstanding</td></tr>
+    <tr><td><code>G-15</code></td><td><span class="chip part">Medium</span></td><td>Dependency scanning gates on <code>CRITICAL</code> only</td><td>Accepted, revisitable</td></tr>
+    <tr><td><code>G-16</code></td><td><span class="chip part">Medium</span></td><td><code>t3</code> Unlimited burst mode not enabled</td><td>Awaiting load test</td></tr>
+    <tr><td><code>G-04</code></td><td><span class="chip na">Low</span></td><td>IAM policy comment is stale and misleading</td><td>Outstanding — documentation</td></tr>
+    <tr><td><code>G-07</code></td><td><span class="chip na">Low</span></td><td>ASG sizing hardcoded rather than variable</td><td>Outstanding</td></tr>
+    <tr><td><code>G-08</code></td><td><span class="chip na">Low</span></td><td>Network resource names not environment-scoped</td><td>Outstanding — cosmetic</td></tr>
+    <tr><td><code>G-17</code></td><td><span class="chip na">Low</span></td><td>Container limits shipped in code but not applied to running instances</td><td>Outstanding</td></tr>
+    <tr><td><code>G-18</code></td><td><span class="chip na">Info</span></td><td>Deregistration delay left at the AWS default</td><td>Accepted</td></tr>
+  </tbody>
+</table>
+
+<h3>17.2 Detail on the high-severity items</h3>
+
+<h4><code>G-01</code> — The health endpoint cannot fail</h4>
+<p>
+<code>api/src/app.ts</code> checks database and Redis connectivity, reports the result in the
+response body, and then unconditionally returns HTTP&nbsp;200:
+</p>
+<pre><code>const [dbOk, redisOk] = await Promise.all([testConnection(), testRedis()])
+res.<span class="k">status(200)</span>.json({ status: <span class="s">'ok'</span>, db: dbOk ? <span class="s">'ok'</span> : <span class="s">'error'</span>, … })</code></pre>
+<p>
+The ALB target group matches on <code>200</code>. An instance whose database connection has
+failed therefore remains <strong>healthy</strong> and continues receiving traffic indefinitely.
+The ASG will not replace it. The deploy pipeline's health check will pass.
+</p>
+<p>
+The smoke test against <code>/api/v1/geo/cities</code> is currently the only automated check that
+would catch this, and it runs once per deploy rather than continuously. Suggested fix: return 503
+when <code>dbOk</code> is false, keeping the diagnostic body intact. Consider whether Redis
+failure should also fail the check — it degrades real-time delivery but leaves core HTTP working,
+so it may warrant a separate readiness endpoint rather than the same one.
+</p>
+
+<h4><code>G-02</code> — Staging cannot be provisioned through CI</h4>
+<p>
+<code>rds.tf</code> was added to the shared configuration, but the
+<code>ocar-prod-gha-staging</code> role's policy in <code>github-oidc.tf</code> grants only
+<code>ec2</code>, <code>elasticloadbalancing</code>, <code>autoscaling</code>,
+<code>elasticache</code> and <code>acm</code>. There is no <code>rds:*</code> statement, and no
+<code>secretsmanager:*</code> — which <code>manage_master_user_password</code> also requires.
+</p>
+<p>
+A staging apply will proceed until it reaches the database resources and then fail on
+<code>AccessDenied</code>. Because this is the environment the load test depends on, this blocks
+<code>OPS-09</code>, which in turn blocks the load test, which in turn blocks the capacity
+validation the entire scale-readiness report defers to.
+</p>
+
+<h4><code>G-05</code> / <code>G-06</code> — Missing approval gates</h4>
+<p>
+Three protections referenced in the workflows do not actually exist:
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:28%">Declared</th><th style="width:20%">Reality</th><th>Consequence</th></tr></thead>
+  <tbody>
+    <tr><td><code>environment: production</code> in <code>deploy.yml</code></td><td>Environment never created</td><td>Deploys to production run with no human approval pause.</td></tr>
+    <tr><td><code>environment: staging</code> in <code>staging-infra.yml</code></td><td>Environment never created</td><td><code>terraform destroy -auto-approve</code> can be dispatched by anyone with workflow-run access.</td></tr>
+    <tr><td>Branch protection on <code>main</code></td><td>Not configured</td><td>A direct push bypasses review. CI still gates <em>deploy</em>, but nothing gates <em>merge</em>.</td></tr>
+  </tbody>
+</table>
+<p>
+All three require repository admin rights, which the account used to build this pipeline does not
+hold (<code>gh api repos/:owner/:repo --jq '.permissions'</code> returns
+<code>admin: false</code>). The exact <code>gh api</code> commands to close each are documented in
+<code>CLAUDE.md</code> under "Pending Ops Actions". <strong>This is the single highest-value item
+on this list for whoever holds admin rights</strong> — it is minutes of work and closes three
+distinct paths to unreviewed production change.
+</p>
+
+<h4><code>G-14</code> — Admin TOTP enforcement is bypassed</h4>
+<p>
+<code>api/src/middleware/auth.middleware.ts</code> line 125:
+</p>
+<pre><code><span class="c">// TODO(SHIP-BLOCKER): hardcoded bypass, see TOTP_DEV_NOTE.md — remove before shipping</span>
+const mustEnrollTotp = <span class="k">false</span> && MANDATORY_TOTP_ROLES.has(adminRole) && !totpEnabled</code></pre>
+<p>
+The leading <code>false &&</code> short-circuits the entire expression, so
+<code>super_admin</code> and <code>finance_admin</code> accounts are never required to enrol in
+two-factor authentication despite the surrounding logic being complete and correct. The
+enrolment endpoints work; the enforcement is simply switched off. The comment marks it as a ship
+blocker. It is flagged here because these are the roles with the broadest access in the system.
+</p>
+
+<h4><code>G-13</code> — Test coverage</h4>
+<p>
+Five test files exist in the API — four covering ride assignment and broadcast, one covering
+maintenance middleware. There are none for payments, wallet, settlements, authentication, OTP,
+safety or ride chat. <code>vitest</code> and
+<code>@vitest/coverage-v8</code> are installed and <code>pnpm test:coverage</code> is defined, but
+CI runs <code>pnpm test</code> with no threshold.
+</p>
+<p>
+This is worth stating plainly: the delivery pipeline is well-built and the gates are structurally
+sound, but a gate is only as strong as the checks behind it. Payments and authentication are the
+two areas where a regression is most expensive and where there is currently no automated
+protection at all.
+</p>
+
+<h3>17.3 Notes on selected medium and low items</h3>
+<table>
+  <thead><tr><th style="width:9%">Ref</th><th>Detail</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>G-04</code></td>
+      <td>The comment above <code>aws_iam_role_policy_attachment.ssm_session_manager_debug</code> in
+      <code>iam.tf</code> describes it as temporary debugging access to be removed once boot is
+      confirmed working. That is now wrong and dangerous — <code>deploy.yml</code> routes migrations
+      through <code>ssm:SendCommand</code>, which requires instances to be registered SSM managed
+      instances. Acting on the comment would break every deploy. The attachment should stay; the
+      comment must be corrected.</td>
+    </tr>
+    <tr>
+      <td><code>G-07</code></td>
+      <td><code>min_size</code>, <code>desired_capacity</code> and <code>max_size</code> are literals in
+      <code>asg.tf</code>, not variables. Staging therefore provisions the same 2/2/4 fleet as
+      production. For a load-test environment that is arguably correct — the numbers must be
+      comparable — but it removes the option of a cheaper single-instance staging for functional
+      testing.</td>
+    </tr>
+    <tr>
+      <td><code>G-08</code></td>
+      <td>The VPC, subnets, internet gateway, route table and the two core security groups are named
+      <code>${var.project_name}-*</code> without the environment segment, unlike every other resource.
+      Both environments would produce identically-named resources. They live in separate VPCs and
+      separate state, so nothing collides functionally — but console navigation with both environments
+      running is needlessly confusing.</td>
+    </tr>
+    <tr>
+      <td><code>G-17</code></td>
+      <td>cAdvisor and the <code>ocar_api</code> resource limits are committed to
+      <code>docker-compose.prod.yml</code>, which reaches instances through an SSM parameter sourced
+      from that file at <code>terraform apply</code> time. Until an apply runs and the fleet rolls,
+      running instances do not have them. Applying also requires re-importing
+      <code>infra/grafana/dashboards/ocar-overview.json</code> for the per-container row to render.</td>
+    </tr>
+    <tr>
+      <td><code>G-18</code></td>
+      <td>No <code>deregistration_delay</code> is set on the target group, so it uses the AWS default
+      of 300 seconds. For long-lived WebSocket connections this is generous rather than
+      insufficient — the concern with an unset value is usually the opposite. Worth setting
+      explicitly so the value is visible in code rather than implied.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>17.4 Suggested order of work</h3>
+<ol>
+  <li><strong><code>G-06</code>, <code>G-05</code></strong> — create the GitHub Environments and branch
+  protection. Minutes of work, closes three unreviewed-change paths. Requires admin.</li>
+  <li><strong><code>G-01</code></strong> — make <code>/health</code> return 503 on database failure. A
+  few lines, and it is what makes the ASG's self-healing actually cover a real failure mode.</li>
+  <li><strong><code>G-14</code></strong> — remove the TOTP bypass, or record an explicit decision to
+  defer it with a date.</li>
+  <li><strong><code>G-02</code>, <code>G-03</code></strong> — add the missing IAM permissions. Unblocks
+  staging, which unblocks the load test.</li>
+  <li><strong>Load test</strong> — resolves <code>G-09</code> and <code>G-16</code> with data rather
+  than estimates, and validates the capacity claims in the readiness report.</li>
+  <li><strong><code>G-13</code></strong> — payments and auth test coverage. The largest effort here, and
+  the one that most changes the pipeline's real value.</li>
+  <li><strong><code>G-11</code>, <code>G-04</code></strong> — reconcile the documentation with reality.</li>
+</ol>
+
+<!-- ════════════════ 18 ════════════════ -->
+<h2 id="s18"><span class="num">Section 18</span>Appendices</h2>
+
+<h3>A — Where everything lives</h3>
+<pre><code>.github/workflows/
+  ci.yml                     7 parallel checks; gates everything downstream
+  deploy.yml                 build → migrate → refresh → verify → rollback
+  terraform-plan.yml         posts a plan on any PR touching infra/**
+  staging-infra.yml          manual apply/destroy for staging
+
+infra/terraform/
+  providers.tf               versions; deliberately empty S3 backend block
+  variables.tf               every tunable input and its default
+  prod.backend.hcl           state key: prod/terraform.tfstate
+  staging.backend.hcl        state key: staging/terraform.tfstate
+  staging.tfvars             the only two values staging overrides
+  vpc.tf                     VPC, 2 public subnets, IGW, route table
+  security-groups.tf         alb-sg and ec2-sg
+  alb.tf                     ALB, target group, listeners, maintenance rule
+  asg.tf                     Auto Scaling Group + target-tracking policy
+  launch-template.tf         AMI lookup, instance type, user_data
+  templates/user_data.sh.tpl the entire instance boot sequence
+  iam.tf                     EC2 instance role and SSM parameter names
+  github-oidc.tf             the three GitHub Actions roles
+  rds.tf                     Postgres instance and parameter group
+  elasticache.tf             Valkey replication group and parameter group
+  ssm-observability.tf       repo files published as SSM parameters
+  bootstrap/                 state bucket, KMS key, OIDC provider (own state)
+  observability/             Grafana alerts, SLOs, synthetics (own state)
+
+api/
+  Dockerfile                 4-stage build; runs as non-root
+  entrypoint.sh              migrate, then start the server
+  src/app.ts                 middleware chain, /health, /metrics
+  src/server.ts              worker startup and graceful shutdown
+  src/websocket/socket.server.ts   Socket.io, Redis adapter, rooms
+  src/db/migrations/         forward-only, numerically ordered
+
+docker-compose.prod.yml      the five containers each instance runs
+infra/alloy/config.alloy     log, metric and trace pipelines
+infra/grafana/dashboards/    ocar-overview.json
+load-tests/                  k6 suite, seeding and verification
+docs/OPS_RUNBOOK.md          the short-form operational reference
+CLAUDE.md                    living project state and pending actions</code></pre>
+
+<h3>B — Command quick reference</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:44%">Purpose</th><th>Command</th></tr></thead>
+  <tbody>
+    <tr><td>Who am I / which account</td><td><code>aws sts get-caller-identity</code></td></tr>
+    <tr><td>Find the ASG</td><td><code>aws autoscaling describe-auto-scaling-groups --query 'AutoScalingGroups[].AutoScalingGroupName'</code></td></tr>
+    <tr><td>Fleet state</td><td><code>aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names &lt;ASG&gt;</code></td></tr>
+    <tr><td>Target health</td><td><code>aws elbv2 describe-target-health --target-group-arn &lt;TG_ARN&gt;</code></td></tr>
+    <tr><td>Currently deployed version</td><td><code>aws ssm get-parameter --name /ocar/prod/image-tag</code></td></tr>
+    <tr><td>Start a fleet roll</td><td><code>aws autoscaling start-instance-refresh --auto-scaling-group-name &lt;ASG&gt; --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'</code></td></tr>
+    <tr><td>Refresh progress</td><td><code>aws autoscaling describe-instance-refreshes --auto-scaling-group-name &lt;ASG&gt; --max-records 1</code></td></tr>
+    <tr><td>Cancel a refresh</td><td><code>aws autoscaling cancel-instance-refresh --auto-scaling-group-name &lt;ASG&gt;</code></td></tr>
+    <tr><td>Shell into an instance</td><td><code>aws ssm start-session --target &lt;INSTANCE_ID&gt;</code></td></tr>
+    <tr><td>Health / smoke</td><td><code>curl -s https://ocar-api.clienttesting.in/health | jq</code></td></tr>
+    <tr><td>Terraform, production</td><td><code>pnpm infra:prod:init | :plan | :apply</code></td></tr>
+    <tr><td>Terraform, staging</td><td><code>pnpm infra:staging:init | :plan | :apply | :destroy</code></td></tr>
+  </tbody>
+</table>
+
+<h3>C — Glossary</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:26%">Term</th><th>Meaning in this system</th></tr></thead>
+  <tbody>
+    <tr><td>Instance refresh</td><td>The EC2 Auto Scaling mechanism that replaces instances in a group according to a policy. Used here for both deploys and infrastructure changes.</td></tr>
+    <tr><td>Launch before terminating</td><td>Replacement method triggered by <code>MinHealthyPercentage = 100</code>: a new instance must be healthy before the old one is terminated.</td></tr>
+    <tr><td>Target tracking</td><td>Scaling policy type where AWS maintains a metric at a target value and manages the alarms itself.</td></tr>
+    <tr><td><code>ALBRequestCountPerTarget</code></td><td>Requests per healthy target per one-minute period. Target value 1000 ≈ 16.7 req/sec per instance.</td></tr>
+    <tr><td>Deregistration delay</td><td>How long the load balancer lets in-flight work finish on a target being removed. 300 s here.</td></tr>
+    <tr><td>Health check grace period</td><td>How long a newly launched instance is exempt from health evaluation. 240 s here.</td></tr>
+    <tr><td>OIDC federation</td><td>Short-lived AWS credentials issued against a signed GitHub identity token, replacing stored access keys.</td></tr>
+    <tr><td>Drift</td><td>Divergence between real infrastructure and Terraform state. Created deliberately by <code>OPS-04</code>; otherwise a problem.</td></tr>
+    <tr><td>Forward-only migration</td><td>Schema changes are never reverted. A bad migration is corrected by a new one.</td></tr>
+  </tbody>
+</table>
+
+<h3>D — Verification record</h3>
+<p>
+Every claim in this document was checked against the repository at <code>main</code> @
+<span class="mono">4a07a95</span> on 20 August 2026. The following were read in full rather than
+sampled: all four workflow files; all sixteen Terraform files in
+<code>infra/terraform/</code>; <code>user_data.sh.tpl</code>;
+<code>docker-compose.prod.yml</code>; <code>api/Dockerfile</code>;
+<code>api/entrypoint.sh</code>; <code>api/src/server.ts</code>;
+<code>api/src/websocket/socket.server.ts</code>; <code>api/src/middleware/auth.middleware.ts</code>;
+<code>infra/alloy/config.alloy</code>; <code>docs/OPS_RUNBOOK.md</code>; and the health-check
+portion of <code>api/src/app.ts</code>.
+</p>
+<p>
+Two behaviours that depend on AWS semantics rather than on this repository's code were verified
+against AWS's current published documentation rather than inferred: the effect of
+<code>MinHealthyPercentage</code> and <code>MaxHealthyPercentage</code> both set to 100, and the
+default target-group deregistration delay of 300 seconds.
+</p>
+<p class="small" style="margin-top:26px;padding-top:16px;border-top:1px solid var(--rule)">
+Where this document and the codebase disagree, the codebase is correct and this document is out of
+date — please raise it. Where this document and
+<code>docs/architecture/2026-08-04-production-scale-readiness-report.md</code> disagree, see gap
+<code>G-11</code>; that report predates several of the decisions described here.
+</p>
+
+</div>
+</body>
+</html>

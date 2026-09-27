@@ -1,0 +1,25 @@
+Table,Count Before,Count After,Delta,Expected to Grow?,Notes
+users,,,,No (unless new synthetic phones used),pre-seeded by generate-test-tokens.js
+drivers,,,,No,pre-seeded by generate-test-tokens.js
+driver_verifications,,,,Rarely,only if daily verification re-stamped
+rides,,,,Yes,one row per POST /rides call across all scenarios
+ride_stops,,,,Only if stops used,not currently exercised by these k6 scripts
+fare_snapshots,,,,Yes,1:1 with rides created
+ride_status_history,,,,Yes,multiple rows per ride (see api-table-matrix.csv notes)
+ride_advance_meta,,,,No,scheduled bookings only, not exercised by main.js/smoke.js
+ride_assignments,,,,Yes - grows fastest,one row per candidate driver per broadcast round, NOT 1:1 with rides
+ride_cancellations,,,,Yes,one row per cancel call
+driver_sessions,,,,Yes,one row per online/offline cycle
+driver_location_snapshots,,,,No (upsert),row count should stay ~= driver count; watch for upsert failures inflating it
+return_cab_routes,,,,Only if return_cab mode used,
+driver_wallets,,,,No (upsert on first touch),
+driver_wallet_ledger,,,,Yes,cancellation compensation entries
+user_wallets,,,,No (upsert on first touch),
+user_wallet_ledger,,,,Yes,cancellation fee entries
+payments,,,,No,not created by these endpoints (booking/cancel/accept) -- only by real ride completion, out of scope for these scripts
+gps_tracks,,,,Yes - if live_tracking scenario runs,lags the socket pings by GPS_FLUSH queue drain time; also grows from bulk seeder if --gps-per-ride was set
+rate_cards,,,,No,read-only, cached
+stop_charges,,,,No,read-only, cached
+surge_events,,,,No,read-only, cached
+rental_packages,,,,No,read-only, cached
+cities,,,,No,read-only

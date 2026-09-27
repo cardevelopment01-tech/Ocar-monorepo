@@ -1,0 +1,320 @@
+<!-- ════════════════ 10 ════════════════ -->
+<h2 id="s10"><span class="num">Section 10</span>Changing instance type and size</h2>
+
+<p class="lead">
+Instance type is a single Terraform variable. The mechanics are trivial; the judgement about
+<em>which</em> type, and the awareness that applying it restarts the fleet, are the parts that
+matter.
+</p>
+
+<h3>10.1 Where it is defined</h3>
+<p>
+<code>var.instance_type</code> in <code>infra/terraform/variables.tf</code>, default
+<code>t3.medium</code>. It is consumed in exactly one place —
+<code>aws_launch_template.api</code> in <code>launch-template.tf</code>. Nothing else references
+it, so changing it has one direct effect: a new launch template version.
+</p>
+<p>
+Because the ASG pins <code>version = aws_launch_template.api.latest_version</code>, that new
+version is a real Terraform diff on the ASG, and the <code>instance_refresh</code> block turns
+the apply into a rolling replacement of the whole fleet (§7.4). This is the intended behaviour —
+it is how the change actually reaches running instances — but it must be expected rather than
+discovered.
+</p>
+
+<h3>10.2 Understanding the current choice</h3>
+<p>
+<code>t3.medium</code> is 2 vCPU / 4 GiB from AWS's burstable family. Burstable instances earn CPU
+credits while running below a baseline utilisation and spend them to burst above it. For
+<code>t3.medium</code> the baseline is 20% of each vCPU.
+</p>
+<p>
+This suits the workload's shape: thousands of mostly-idle WebSocket connections punctuated by
+short bursts of work when GPS pings arrive or a ride is booked. Paying for fixed 24/7 performance
+to cover load that only spikes would be waste.
+</p>
+<div class="note warn">
+<span class="label">The risk this creates</span>
+<p>
+Sustained high traffic — precisely a marketing surge — can exhaust the credit balance. The
+instance then throttles to baseline. The failure mode is a silent performance cliff, not a clean
+scale-out signal, and it can defeat CPU-based autoscaling (which is one reason this fleet scales
+on request count instead). Two mitigations exist: enable <strong>Unlimited</strong> burst mode, so
+the instance bursts past its credit balance for a small per-vCPU-hour surcharge instead of
+throttling; or move to a fixed-performance family. Unlimited mode is <strong>not currently
+enabled</strong> — recorded as <span class="chip gap">G-16</span>.
+</p>
+</div>
+
+<h3>10.3 Candidate types</h3>
+<table>
+  <thead><tr><th style="width:16%">Type</th><th style="width:13%">vCPU / RAM</th><th style="width:16%">Family</th><th>When it is the right answer</th></tr></thead>
+  <tbody>
+    <tr><td><code>t3.medium</code> <span class="chip live">current</span></td><td>2 / 4 GiB</td><td>Burstable x86</td><td>Present workload: low baseline, spiky. Cheapest option that meets the shape.</td></tr>
+    <tr><td><code>t3.large</code></td><td>2 / 8 GiB</td><td>Burstable x86</td><td>Memory pressure without CPU pressure — the container limit is already 2 GiB, so headroom is thin if a leak appears.</td></tr>
+    <tr><td><code>m5.large</code> / <code>m6i.large</code></td><td>2 / 8 GiB</td><td>Fixed x86</td><td>The load test shows credits draining. No credit mechanic, predictable performance, roughly double the cost.</td></tr>
+    <tr><td><code>c6i.large</code></td><td>2 / 4 GiB</td><td>Compute-optimised</td><td>CPU-bound rather than memory-bound. Unlikely for this workload.</td></tr>
+    <tr><td><code>t4g.medium</code> / <code>m6g.large</code></td><td>2 / 4–8 GiB</td><td>Graviton (ARM)</td><td>Roughly 20% cheaper for equivalent performance — <strong>but requires an ARM image and an ARM AMI</strong>. See the warning below.</td></tr>
+  </tbody>
+</table>
+<div class="note danger">
+<span class="label">Architecture change — not a drop-in</span>
+<p>
+Switching to any Graviton type (<code>t4g</code>, <code>m6g</code>, <code>c7g</code>) is
+<strong>not</strong> a one-variable change. Three things must move together, or instances will
+boot and fail to run the container:
+</p>
+<ul style="margin-top:8px">
+  <li>The AMI filter in <code>launch-template.tf</code> is hardcoded to
+  <code>ubuntu-noble-24.04-<strong>amd64</strong>-server-*</code> and must become
+  <code>arm64</code>.</li>
+  <li>The container image is built for a single architecture. <code>build-push</code> in
+  <code>deploy.yml</code> must produce a multi-architecture manifest
+  (<code>platforms: linux/amd64,linux/arm64</code> in <code>docker/build-push-action</code>), or the
+  pull succeeds and <code>exec</code> fails.</li>
+  <li>Every sidecar image — Alloy, node-exporter, cAdvisor, postgres-exporter — must have an
+  <code>arm64</code> variant at the pinned tag. Verify each before switching.</li>
+</ul>
+<p style="margin-top:8px">
+Do this as its own deliberate change, validated on staging first. It is worthwhile — the saving is
+real — but it is a project, not an edit.
+</p>
+</div>
+
+<h3>10.4 Sizing the container limits alongside the instance</h3>
+<p>
+Changing the instance type does not change the container's limits. <code>ocar_api</code> is
+capped at <code>mem_limit: 2g</code>, <code>cpus: 1.5</code> in
+<code>docker-compose.prod.yml</code> regardless of what it runs on. Moving to an 8 GiB instance
+without raising <code>mem_limit</code> leaves 6 GiB unusable by the application.
+</p>
+<p>
+Node 22 is container-aware and sizes its V8 heap from the cgroup limit, so no
+<code>--max-old-space-size</code> flag is needed — but it reads the <em>container</em> limit, not
+the instance's memory. The two must be changed together. Note also that
+<code>docker-compose.prod.yml</code> reaches instances via an SSM parameter sourced from the repo
+file, so a change to it requires a <code>terraform apply</code> to update the parameter and a
+fleet roll to take effect — it does not ride along with an application deploy.
+</p>
+<div class="note">
+<span class="label">Sizing from data, not guesswork</span>
+<p>
+The current limits are explicitly a safety ceiling, not a tuned value. Their purpose is to stop an
+unbounded leak from taking down the whole instance by letting the kernel OOM-killer pick an
+arbitrary victim container. The cAdvisor "Per-Container Resource Usage" row on the
+<code>ocar-overview</code> Grafana dashboard reports working set, percentage of limit, CPU cores
+and OOM events per container. Size the final values from observed p95/p99 there once real or
+load-test traffic exists.
+</p>
+</div>
+
+<!-- ════════════════ 11 ════════════════ -->
+<h2 id="s11"><span class="num">Section 11</span>Configuration and secret management</h2>
+
+<p class="lead">
+All runtime configuration lives in SSM Parameter Store. Instances read it once, at boot. Nothing
+is baked into the image, and no secret is stored in Terraform state or in the repository.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Configuration flow from SSM to running containers">
+  <defs>
+    <style>
+      .b6{fill:#fff;stroke:#c9d3de;stroke-width:1.2;rx:6}
+      .b6s{fill:#fdf6e7;stroke:#c99a26;stroke-width:1.2;rx:6}
+      .b6a{fill:#eaf4f6;stroke:#0e7490;stroke-width:1.4;rx:6}
+      .l6{font:600 10px Inter,sans-serif;fill:#12181f}
+      .s6{font:400 8.6px Inter,sans-serif;fill:#6b7788}
+      .m6{font:500 8.3px SFMono-Regular,monospace;fill:#0b5563}
+      .f6{stroke:#5b6b7d;stroke-width:1.3;fill:none;marker-end:url(#ar)}
+      .fl6{font:500 8.4px Inter,sans-serif;fill:#5b6b7d}
+      .z6{fill:none;stroke:#b9c6d3;stroke-width:1.1;stroke-dasharray:5 4;rx:9}
+      .zl6{font:650 8.5px Inter,sans-serif;fill:#7c8b9c;letter-spacing:.08em}
+    </style>
+  </defs>
+
+  <rect class="z6" x="16" y="30" width="300" height="286"/>
+  <text class="zl6" x="30" y="48">SSM PARAMETER STORE  ·  /ocar/&lt;env&gt;/</text>
+
+  <rect class="b6" x="32" y="58" width="268" height="34"/>
+  <text class="m6" x="44" y="73">image-tag</text>
+  <text class="s6" x="44" y="85">String · written by the deploy workflow</text>
+
+  <rect class="b6s" x="32" y="100" width="268" height="34"/>
+  <text class="m6" x="44" y="115">ghcr-token</text>
+  <text class="s6" x="44" y="127">SecureString · hand-maintained</text>
+
+  <rect class="b6s" x="32" y="142" width="268" height="42"/>
+  <text class="m6" x="44" y="157">api-env</text>
+  <text class="s6" x="44" y="169">SecureString · hand-maintained · the whole .env</text>
+  <text class="s6" x="44" y="180">DB URL, JWT secrets, Razorpay, Grafana, S3…</text>
+
+  <rect class="b6s" x="32" y="192" width="268" height="34"/>
+  <text class="m6" x="44" y="207">migration-database-url</text>
+  <text class="s6" x="44" y="219">SecureString · hand-maintained</text>
+
+  <rect class="b6" x="32" y="234" width="268" height="34"/>
+  <text class="m6" x="44" y="249">docker-compose-prod</text>
+  <text class="s6" x="44" y="261">String · Terraform-managed from the repo file</text>
+
+  <rect class="b6" x="32" y="276" width="268" height="34"/>
+  <text class="m6" x="44" y="291">alloy-config</text>
+  <text class="s6" x="44" y="303">String · Terraform-managed from the repo file</text>
+
+  <path class="f6" d="M316,170 L368,170"/>
+  <text class="fl6" x="322" y="162">GetParameter</text>
+  <text class="fl6" x="322" y="184">+ kms:Decrypt</text>
+
+  <rect class="b6a" x="372" y="76" width="212" height="186"/>
+  <text class="l6" x="384" y="96">EC2 boot — user_data.sh.tpl</text>
+  <text class="s6" x="384" y="114">1 · install Docker, Compose, AWS CLI</text>
+  <text class="s6" x="384" y="130">2 · read image-tag from SSM</text>
+  <text class="s6" x="384" y="146">3 · read ghcr-token (tracing off)</text>
+  <text class="s6" x="384" y="162">4 · write api-env → /opt/ocar/.env.prod</text>
+  <text class="s6" x="384" y="178">5 · append ALLOY_HOSTNAME=$INSTANCE_ID</text>
+  <text class="s6" x="384" y="194">6 · write compose file + alloy config</text>
+  <text class="s6" x="384" y="210">7 · docker login ghcr.io</text>
+  <text class="s6" x="384" y="226">8 · compose pull, then compose up -d</text>
+  <text class="m6" x="384" y="248">→ /var/log/user-data.log</text>
+
+  <path class="f6" d="M584,170 L636,170"/>
+
+  <rect class="b6" x="640" y="96" width="216" height="146"/>
+  <text class="l6" x="652" y="116">Running containers</text>
+  <text class="m6" x="652" y="136">ocar_api</text>
+  <text class="s6" x="652" y="148">env_file: .env.prod</text>
+  <text class="m6" x="652" y="166">ocar_alloy</text>
+  <text class="s6" x="652" y="178">holds the Grafana credentials</text>
+  <text class="m6" x="652" y="196">ocar_postgres_exporter</text>
+  <text class="s6" x="652" y="208">maps DATABASE_URL → DSN</text>
+  <text class="s6" x="652" y="228">ocar_node_exporter · ocar_cadvisor</text>
+
+  <text class="fl6" x="372" y="292">Configuration is read ONCE, at boot. Changing a parameter has no effect on a running instance —</text>
+  <text class="fl6" x="372" y="308">an instance refresh is always required to pick up a new value. This is the single most common</text>
+  <text class="fl6" x="372" y="324">operational surprise in this system. See procedure OPS-06.</text>
+</svg>
+<figcaption>
+<b>Figure 7 — Configuration flow.</b> Amber marks <code>SecureString</code> parameters, encrypted
+with the <code>alias/aws/ssm</code> KMS key. Two parameters are Terraform-managed and sourced
+directly from repository files; four are hand-maintained.
+</figcaption>
+</figure>
+
+<h3>11.1 Parameter inventory</h3>
+<table>
+  <thead><tr><th style="width:26%">Parameter</th><th style="width:14%">Type</th><th style="width:17%">Managed by</th><th>Contents</th></tr></thead>
+  <tbody>
+    <tr><td><code>image-tag</code></td><td>String</td><td>Deploy workflow</td><td>Which image version instances boot. The rollback anchor.</td></tr>
+    <tr><td><code>ghcr-token</code></td><td>SecureString</td><td>Manual</td><td>GHCR pull credential.</td></tr>
+    <tr><td><code>api-env</code></td><td>SecureString</td><td>Manual</td><td>The application's entire environment file.</td></tr>
+    <tr><td><code>migration-database-url</code></td><td>SecureString</td><td>Manual</td><td>Direct database URL for the migration step.</td></tr>
+    <tr><td><code>docker-compose-prod</code></td><td>String, Advanced tier</td><td>Terraform</td><td>Sourced from the repo file at apply time.</td></tr>
+    <tr><td><code>alloy-config</code></td><td>String, Advanced tier</td><td>Terraform</td><td>Sourced from the repo file at apply time.</td></tr>
+  </tbody>
+</table>
+<p>
+Both Terraform-managed parameters use the Advanced tier because they exceed the Standard tier's
+4096-character limit — the Compose file crossed it when cAdvisor and the resource limits were
+added, and the Alloy config when the postgres-exporter scrape block was added. Advanced tier
+costs $0.05 per parameter per month.
+</p>
+
+<h3>11.2 How secrets stay out of logs</h3>
+<p>
+The boot script runs under <code>set -x</code>, which traces variable <em>assignments</em>, not
+just commands. A plain <code>GHCR_TOKEN=$(aws ssm get-parameter …)</code> would print the resolved
+secret into <code>/var/log/user-data.log</code>. The script therefore disables tracing around
+both the assignment and the subsequent <code>docker login</code>, and re-enables it immediately
+after. This is worth preserving if the script is ever edited.
+</p>
+
+<h3>11.3 The known ergonomic problem</h3>
+<div class="note warn">
+<span class="label">Whole-value overwrite</span>
+<p>
+SSM supports only whole-value replacement. Changing one line in <code>api-env</code> means
+pulling the entire decrypted blob to a local file, editing it by hand, and pushing the whole
+thing back. During the Redis-to-Valkey migration on 12 August 2026 this caused a real incident: a
+hand edit changed the <code>REDIS_URL</code> scheme but missed the hostname, because the whole
+value has to be reviewed at once instead of editing one key.
+</p>
+<p>
+A per-key secrets manager would remove this failure mode. It is on the backlog and deliberately
+not urgent — SSM <code>SecureString</code> is a legitimate credential store, the problem is
+ergonomics rather than security. Procedure <code>OPS-06</code> gives the safe sequence for
+editing it today.
+</p>
+</div>
+
+<!-- ════════════════ 12 ════════════════ -->
+<h2 id="s12"><span class="num">Section 12</span>Data layer</h2>
+
+<h3>12.1 RDS PostgreSQL</h3>
+<div class="kv">
+  <dt>Engine</dt><dd>PostgreSQL 18.4 with PostGIS</dd>
+  <dt>Class / storage</dt><dd><code>db.t4g.small</code> · gp3, 20 GB auto-scaling to 100 GB, encrypted at rest</dd>
+  <dt>Availability</dt><dd>Single-AZ. No read replica. <span class="chip part">accepted at current scale</span></dd>
+  <dt>Backups</dt><dd>7-day automated retention; final snapshot on destroy in prod only</dd>
+  <dt>Deletion protection</dt><dd>Enabled in prod; disabled in staging</dd>
+  <dt>Network</dt><dd><code>publicly_accessible = false</code>; reachable only from the EC2 security group</dd>
+  <dt>Master password</dt><dd>Generated and rotated by AWS in Secrets Manager — never in Terraform state</dd>
+  <dt>Observability</dt><dd>Performance Insights (7-day retention); <code>postgresql</code> and <code>upgrade</code> logs to CloudWatch</dd>
+</div>
+<p>
+<code>manage_master_user_password = true</code> means the password never appears in state or in a
+<code>.tfvars</code> file. Retrieve it once after apply to construct the connection string that
+goes into <code>api-env</code>:
+</p>
+<pre><code>aws secretsmanager get-secret-value \
+  --secret-id <span class="v">$(terraform output -raw rds_master_user_secret_arn)</span> \
+  --query SecretString --output text</code></pre>
+
+<h4>Parameter group — three settings that cannot be fixed later without downtime</h4>
+<table class="t-tight">
+  <thead><tr><th style="width:26%">Parameter</th><th style="width:13%">Value</th><th style="width:14%">Apply method</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td><code>rds.logical_replication</code></td><td><code>1</code></td><td>pending-reboot</td><td>Required for RDS to act as a logical replication subscriber during the Neon-to-RDS migration.</td></tr>
+    <tr><td><code>shared_preload_libraries</code></td><td><code>pg_stat_statements</code></td><td>pending-reboot</td><td>RDS does not preload this by default. Without it, <code>CREATE EXTENSION</code> fails outright and the postgres-exporter scrape breaks permanently.</td></tr>
+    <tr><td><code>rds.force_ssl</code></td><td><code>1</code></td><td>dynamic</td><td>RDS does not enforce TLS out of the box; unencrypted connections would otherwise be silently accepted.</td></tr>
+    <tr><td><code>log_min_duration_statement</code></td><td><code>500</code></td><td>dynamic</td><td>Logs queries slower than 500 ms to CloudWatch. Without it the log export has nothing duration-based to record.</td></tr>
+  </tbody>
+</table>
+<p>
+The two <code>pending-reboot</code> parameters are static and require an instance reboot to take
+effect. They must be applied and the instance rebooted <em>before</em> the operations that depend
+on them are attempted.
+</p>
+
+<h3>12.2 ElastiCache Valkey</h3>
+<div class="kv">
+  <dt>Engine</dt><dd>Valkey 8.0, single node (<code>num_cache_clusters = 1</code>, failover disabled)</dd>
+  <dt>Node type</dt><dd><code>cache.t4g.micro</code></dd>
+  <dt>Eviction policy</dt><dd><code>noeviction</code> — <strong>required</strong>, see below</dd>
+  <dt>Encryption</dt><dd>At rest and in transit; transit mode currently <code>preferred</code></dd>
+  <dt>Roles</dt><dd>Socket.io pub/sub adapter · BullMQ queues · rate-limit counters · OTP and session cache</dd>
+</div>
+<div class="note">
+<span class="label">Why <code>noeviction</code> is not optional</span>
+<p>
+BullMQ stores job payloads in Redis. The ElastiCache default parameter group uses
+<code>volatile-lru</code>, which evicts keys under memory pressure — meaning queued jobs
+(notifications, GPS flushes, settlements) can silently disappear. This exact misconfiguration was
+observed on the previous Redis Cloud instance. Do not change this parameter.
+</p>
+</div>
+<div class="note warn">
+<span class="label">Two open items</span>
+<p>
+<strong>Transit encryption is in <code>preferred</code> mode</strong>, which accepts both
+<code>rediss://</code> and plaintext <code>redis://</code>. This was the correct choice for
+migrating without a hard cutover, but it should be flipped to <code>required</code> once every
+instance is confirmed on <code>rediss://</code>. Recorded as <span class="chip part">G-12</span>.
+</p>
+<p>
+<strong>The cache is a single point of failure.</strong> There is no replica and automatic
+failover is disabled. If the node fails, Socket.io fan-out, BullMQ and rate limiting all stop.
+Cache contents are genuinely disposable, so the recovery is a node replacement rather than a data
+loss event — but it is an outage. Adding a replica is a one-line change when the availability
+requirement justifies the cost.
+</p>
+</div>

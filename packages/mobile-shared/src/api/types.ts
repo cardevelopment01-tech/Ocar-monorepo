@@ -127,6 +127,7 @@ export type RideHistoryItem = {
 export type GeoAutocompleteResult = {
   placeId: string
   description: string
+  distanceMetres?: number
 }
 
 export type GeoPlaceDetail = {

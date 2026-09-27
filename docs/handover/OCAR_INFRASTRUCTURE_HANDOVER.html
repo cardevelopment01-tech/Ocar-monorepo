@@ -1,0 +1,2920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ocar — Infrastructure &amp; Delivery Pipeline Handover</title>
+<style>
+:root{
+  --ink:#12181f;
+  --ink-2:#3c4757;
+  --ink-3:#6b7788;
+  --rule:#dde3ea;
+  --rule-2:#eef2f6;
+  --paper:#ffffff;
+  --tint:#f6f8fa;
+  --accent:#0b5563;
+  --accent-2:#0e7490;
+  --accent-tint:#eaf4f6;
+  --warn:#8a5a00;
+  --warn-tint:#fdf6e7;
+  --warn-rule:#e8d5a8;
+  --danger:#9b2226;
+  --danger-tint:#fdf0f0;
+  --danger-rule:#f0cdcd;
+  --ok:#1f6f43;
+  --ok-tint:#eef7f1;
+  --ok-rule:#c6e2d1;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --sans:"Inter","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  font-family:var(--sans);
+  font-size:10.6pt;
+  line-height:1.62;
+  color:var(--ink);
+  background:#e9edf1;
+  font-feature-settings:"kern" 1,"liga" 1,"calt" 1;
+  text-rendering:optimizeLegibility;
+}
+
+.sheet{
+  max-width:920px;
+  margin:0 auto;
+  background:var(--paper);
+  padding:64px 76px 96px;
+  box-shadow:0 1px 3px rgba(16,24,40,.06),0 12px 40px rgba(16,24,40,.08);
+}
+
+/* ── Cover ─────────────────────────────────────────────── */
+.cover{
+  min-height:88vh;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  padding-bottom:36px;
+  border-bottom:1px solid var(--rule);
+  margin-bottom:52px;
+}
+.cover-top{padding-top:24px}
+.brandmark{display:flex;align-items:center;gap:13px;margin-bottom:76px}
+.brandmark .glyph{
+  width:38px;height:38px;border-radius:9px;
+  background:linear-gradient(145deg,var(--accent) 0%,var(--accent-2) 100%);
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:700;font-size:16px;letter-spacing:-.5px;
+}
+.brandmark .wordmark{font-weight:640;font-size:15.5px;letter-spacing:-.15px;color:var(--ink)}
+.brandmark .wordmark span{display:block;font-weight:450;font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
+
+.cover h1{
+  font-size:39px;line-height:1.14;font-weight:660;letter-spacing:-.9px;
+  margin:0 0 20px;max-width:16.5ch;color:var(--ink);
+}
+.cover .standfirst{
+  font-size:14.5px;line-height:1.58;color:var(--ink-2);
+  max-width:60ch;font-weight:400;margin:0;
+}
+.cover .rule{width:56px;height:3px;background:var(--accent);margin:0 0 26px;border-radius:2px}
+
+.docctl{
+  display:grid;grid-template-columns:repeat(2,1fr);
+  gap:0;border-top:1px solid var(--rule);padding-top:22px;
+}
+.docctl div{padding:9px 20px 9px 0}
+.docctl dt{
+  font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--ink-3);font-weight:600;margin:0 0 3px;
+}
+.docctl dd{margin:0;font-size:12.5px;color:var(--ink);font-weight:500}
+
+/* ── Typography ────────────────────────────────────────── */
+h2{
+  font-size:20.5px;font-weight:640;letter-spacing:-.42px;
+  margin:56px 0 6px;padding-top:22px;
+  border-top:1px solid var(--rule);color:var(--ink);
+  page-break-after:avoid;
+}
+h2 .num{
+  display:block;font-size:10px;font-weight:650;color:var(--accent-2);
+  letter-spacing:.13em;text-transform:uppercase;margin-bottom:9px;
+}
+h2:first-of-type{margin-top:0}
+h3{
+  font-size:14.6px;font-weight:620;letter-spacing:-.2px;
+  margin:34px 0 9px;color:var(--ink);page-break-after:avoid;
+}
+h4{
+  font-size:12.4px;font-weight:640;margin:24px 0 7px;color:var(--ink-2);
+  letter-spacing:.005em;page-break-after:avoid;
+}
+p{margin:0 0 13px;max-width:74ch}
+ul,ol{margin:0 0 14px;padding-left:21px;max-width:74ch}
+li{margin-bottom:6px}
+li>ul,li>ol{margin-top:6px;margin-bottom:2px}
+strong{font-weight:620;color:var(--ink)}
+a{color:var(--accent-2);text-decoration:none;border-bottom:1px solid rgba(14,116,144,.3)}
+
+code{
+  font-family:var(--mono);font-size:.885em;
+  background:var(--rule-2);padding:1.5px 5px;border-radius:4px;
+  color:#0d3d47;overflow-wrap:break-word;
+}
+pre{
+  font-family:var(--mono);font-size:9.6pt;line-height:1.58;
+  background:#0f1720;color:#dbe4ec;
+  padding:15px 18px;border-radius:8px;
+  overflow-x:auto;margin:0 0 15px;
+  border:1px solid #1d2733;
+}
+/* Wrap rather than clip: long AWS CLI invocations must stay fully readable
+   on a printed page, where there is no horizontal scrollbar to reach for. */
+pre code{
+  background:none;padding:0;color:inherit;font-size:1em;
+  white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;
+}
+pre .c{color:#7c8b9c;font-style:italic}
+pre .k{color:#7fd1c1}
+pre .s{color:#e5c07b}
+pre .v{color:#9cc4e8}
+
+/* ── Tables ────────────────────────────────────────────── */
+table{
+  width:100%;border-collapse:collapse;margin:6px 0 18px;
+  font-size:9.9pt;page-break-inside:avoid;
+}
+th{
+  text-align:left;font-weight:620;font-size:9pt;
+  text-transform:uppercase;letter-spacing:.055em;color:var(--ink-3);
+  padding:0 12px 8px 0;border-bottom:1.5px solid var(--ink-2);
+  vertical-align:bottom;
+}
+td{
+  padding:9px 12px 9px 0;border-bottom:1px solid var(--rule);
+  vertical-align:top;line-height:1.5;
+}
+td:last-child,th:last-child{padding-right:0}
+tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+table code{font-size:.86em;white-space:normal}
+.t-tight td,.t-tight th{padding-top:6.5px;padding-bottom:6.5px}
+.t-fixed{table-layout:fixed}
+
+/* ── Callouts ──────────────────────────────────────────── */
+.note{
+  border-left:3px solid var(--accent);background:var(--accent-tint);
+  padding:13px 17px;margin:16px 0;border-radius:0 6px 6px 0;
+  font-size:10.1pt;page-break-inside:avoid;
+}
+.note.warn{border-left-color:#c99a26;background:var(--warn-tint)}
+.note.danger{border-left-color:var(--danger);background:var(--danger-tint)}
+.note.ok{border-left-color:var(--ok);background:var(--ok-tint)}
+.note p:last-child{margin-bottom:0}
+.note .label{
+  display:block;font-size:8.8px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;margin-bottom:5px;color:var(--accent);
+}
+.note.warn .label{color:var(--warn)}
+.note.danger .label{color:var(--danger)}
+.note.ok .label{color:var(--ok)}
+
+/* ── Figures ───────────────────────────────────────────── */
+figure{margin:22px 0 24px;page-break-inside:avoid}
+figure svg{display:block;width:100%;height:auto}
+figcaption{
+  font-size:9.4pt;color:var(--ink-3);margin-top:10px;
+  padding-top:9px;border-top:1px solid var(--rule-2);line-height:1.5;
+}
+figcaption b{color:var(--ink-2);font-weight:620}
+
+/* ── TOC ───────────────────────────────────────────────── */
+.toc{
+  background:var(--tint);border:1px solid var(--rule);
+  border-radius:9px;padding:26px 30px;margin:0 0 12px;
+}
+.toc h2{
+  border:none;margin:0 0 16px;padding:0;font-size:12px;
+  text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);font-weight:670;
+}
+.toc ol{list-style:none;padding:0;margin:0;columns:2;column-gap:38px;max-width:none}
+.toc li{
+  margin-bottom:7px;font-size:10.2pt;break-inside:avoid;
+  display:flex;gap:9px;line-height:1.42;
+}
+.toc li .n{color:var(--accent-2);font-weight:640;font-variant-numeric:tabular-nums;min-width:17px}
+.toc a{color:var(--ink-2);border:none}
+.toc a:hover{color:var(--accent-2)}
+
+/* ── Chips / status ────────────────────────────────────── */
+.chip{
+  display:inline-block;font-size:8.4pt;font-weight:640;
+  padding:2px 8px;border-radius:20px;letter-spacing:.03em;
+  border:1px solid;white-space:nowrap;line-height:1.5;
+}
+.chip.live{color:var(--ok);background:var(--ok-tint);border-color:var(--ok-rule)}
+.chip.gap{color:var(--danger);background:var(--danger-tint);border-color:var(--danger-rule)}
+.chip.part{color:var(--warn);background:var(--warn-tint);border-color:var(--warn-rule)}
+.chip.na{color:var(--ink-3);background:var(--rule-2);border-color:var(--rule)}
+
+/* ── Procedure blocks ──────────────────────────────────── */
+.proc{
+  border:1px solid var(--rule);border-radius:9px;
+  margin:18px 0 24px;overflow:hidden;page-break-inside:avoid;
+}
+.proc>header{
+  background:var(--tint);border-bottom:1px solid var(--rule);
+  padding:12px 20px;display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;
+}
+.proc>header .pid{
+  font-family:var(--mono);font-size:9.2pt;font-weight:600;
+  color:#fff;background:var(--accent);padding:2px 8px;border-radius:4px;
+}
+.proc>header .ptitle{font-weight:640;font-size:12.6px;color:var(--ink)}
+.proc>header .pmeta{
+  font-size:9.2pt;color:var(--ink-3);margin-left:auto;
+}
+.proc .body{padding:18px 20px 6px}
+.proc .body>*:last-child{margin-bottom:12px}
+.proc ol{counter-reset:step;list-style:none;padding-left:0}
+.proc ol>li{
+  counter-increment:step;position:relative;padding-left:30px;margin-bottom:11px;
+}
+.proc ol>li::before{
+  content:counter(step);position:absolute;left:0;top:1px;
+  width:20px;height:20px;border-radius:50%;
+  background:var(--accent-tint);color:var(--accent);
+  font-size:9.4pt;font-weight:660;
+  display:flex;align-items:center;justify-content:center;
+  font-variant-numeric:tabular-nums;
+}
+.proc ol ul{padding-left:18px;list-style:disc}
+.proc ol ul li{padding-left:0}
+.proc ol ul li::before{display:none}
+
+/* ── Misc ──────────────────────────────────────────────── */
+.kv{display:grid;grid-template-columns:190px 1fr;gap:0;margin:12px 0 20px;font-size:10.1pt}
+.kv dt{
+  padding:8px 16px 8px 0;border-bottom:1px solid var(--rule-2);
+  color:var(--ink-3);font-weight:560;
+}
+.kv dd{margin:0;padding:8px 0;border-bottom:1px solid var(--rule-2)}
+.lead{font-size:11.6pt;line-height:1.6;color:var(--ink-2);max-width:70ch;margin-bottom:20px}
+.pagebreak{page-break-before:always}
+.nobreak{page-break-inside:avoid}
+hr.soft{border:none;border-top:1px solid var(--rule-2);margin:26px 0}
+.small{font-size:9.4pt;color:var(--ink-3)}
+.center{text-align:center}
+.mono{font-family:var(--mono);font-size:.9em}
+.stack-2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media print{
+  body{background:#fff;font-size:9.9pt}
+  .sheet{box-shadow:none;max-width:none;padding:0;margin:0}
+  h2{page-break-before:auto}
+  .cover{min-height:0;page-break-after:always}
+  pre{border:1px solid #ccc}
+  a{color:inherit;border:none}
+}
+@media(max-width:860px){
+  .sheet{padding:32px 24px 60px}
+  .toc ol{columns:1}
+  .kv{grid-template-columns:1fr}
+  .stack-2{grid-template-columns:1fr}
+  .docctl{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<!-- ════════════════ COVER ════════════════ -->
+<section class="cover">
+  <div class="cover-top">
+    <div class="brandmark">
+      <div class="glyph">O</div>
+      <div class="wordmark">Ocar<span>Intercity Cab Platform · Odisha</span></div>
+    </div>
+    <div class="rule"></div>
+    <h1>Infrastructure &amp; Delivery Pipeline Handover</h1>
+    <p class="standfirst">
+      A complete operational reference for the Ocar production platform: how code reaches
+      production, how traffic is distributed, how capacity is added and removed, and the exact
+      procedures for every routine and emergency operation. Written for an engineer taking
+      independent operational control of the AWS account and GitHub repository.
+    </p>
+  </div>
+
+  <dl class="docctl">
+    <div><dt>Document</dt><dd>Infrastructure &amp; Delivery Handover</dd></div>
+    <div><dt>Revision</dt><dd>1.0 — 20 August 2026</dd></div>
+    <div><dt>Repository</dt><dd class="mono">cardevelopment01-tech/Ocar-monorepo</dd></div>
+    <div><dt>AWS Account / Region</dt><dd class="mono">822127610728 · ap-south-1</dd></div>
+    <div><dt>Source of truth</dt><dd>Verified against <code>main</code> @ <span class="mono">4a07a95</span></dd></div>
+    <div><dt>Classification</dt><dd>Confidential — client engineering</dd></div>
+  </dl>
+</section>
+
+<!-- ════════════════ TOC ════════════════ -->
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><span class="n">1</span><a href="#s1">Scope, method and how to read this</a></li>
+    <li><span class="n">2</span><a href="#s2">System architecture</a></li>
+    <li><span class="n">3</span><a href="#s3">Environment and state isolation</a></li>
+    <li><span class="n">4</span><a href="#s4">Access model and credentials</a></li>
+    <li><span class="n">5</span><a href="#s5">Continuous integration</a></li>
+    <li><span class="n">6</span><a href="#s6">Continuous delivery</a></li>
+    <li><span class="n">7</span><a href="#s7">Deployment strategy and its alternatives</a></li>
+    <li><span class="n">8</span><a href="#s8">Request distribution and routing rules</a></li>
+    <li><span class="n">9</span><a href="#s9">Capacity: scaling out and in</a></li>
+    <li><span class="n">10</span><a href="#s10">Changing instance type and size</a></li>
+    <li><span class="n">11</span><a href="#s11">Configuration and secret management</a></li>
+    <li><span class="n">12</span><a href="#s12">Data layer: Postgres and Valkey</a></li>
+    <li><span class="n">13</span><a href="#s13">Observability</a></li>
+    <li><span class="n">14</span><a href="#s14">Operational procedures</a></li>
+    <li><span class="n">15</span><a href="#s15">Failure modes and recovery</a></li>
+    <li><span class="n">16</span><a href="#s16">Load testing</a></li>
+    <li><span class="n">17</span><a href="#s17">Known gaps and risk register</a></li>
+    <li><span class="n">18</span><a href="#s18">Appendices</a></li>
+  </ol>
+</nav>
+
+<!-- ════════════════ 1 ════════════════ -->
+<h2 id="s1"><span class="num">Section 01</span>Scope, method and how to read this</h2>
+
+<p class="lead">
+This document describes the system as it is actually configured today, not as it was designed
+or intended. Every value, filename, job name and command was read directly out of the repository
+at the commit named on the cover page.
+</p>
+
+<h3>1.1 What this covers</h3>
+<p>
+The delivery pipeline (CI and CD), the AWS runtime environment, and the operational procedures
+for running it. It deliberately does not cover application-level product behaviour — ride
+matching, fare calculation, payment reconciliation — which is documented separately in
+<code>CLAUDE.md</code> and the module design specs under <code>docs/superpowers/specs/</code>.
+</p>
+
+<h3>1.2 Method and verifiability</h3>
+<p>
+Nothing here is asserted from memory or convention. Each factual claim is traceable to a file in
+the repository, and the relevant file path is named alongside it so any statement can be checked
+in under a minute. Where behaviour depends on an AWS semantic rather than on our code — for
+example what <code>MinHealthyPercentage&nbsp;=&nbsp;100</code> actually causes the Auto Scaling
+service to do — the claim was verified against AWS's own current documentation rather than
+inferred.
+</p>
+<p>
+Section&nbsp;17 lists what is <em>not</em> right. It is deliberately placed in the same document
+rather than omitted, because a handover that only describes the working parts is not a handover.
+Several items in it are consequential.
+</p>
+
+<h3>1.3 Reading paths</h3>
+<table>
+  <thead><tr><th style="width:31%">If you want to…</th><th>Read</th></tr></thead>
+  <tbody>
+    <tr><td>Understand the shape of the system</td><td>Sections 2, 3, 8</td></tr>
+    <tr><td>Ship a change and watch it land</td><td>Sections 5, 6, 7</td></tr>
+    <tr><td>Add or remove capacity</td><td>Sections 9, 10</td></tr>
+    <tr><td>Perform a specific operation</td><td>Section 14 (procedures <code>OPS-01</code>…<code>OPS-12</code>)</td></tr>
+    <tr><td>Respond to an incident</td><td>Section 15, then Section 14</td></tr>
+    <tr><td>Assess risk before signing off</td><td>Section 17</td></tr>
+  </tbody>
+</table>
+
+<h3>1.4 Conventions</h3>
+<table class="t-tight">
+  <tbody>
+    <tr><td style="width:120px"><span class="chip live">Live</span></td><td>Implemented, deployed, and verified working in production.</td></tr>
+    <tr><td><span class="chip part">Partial</span></td><td>Implemented in code but not fully rolled out, or working with a known limitation.</td></tr>
+    <tr><td><span class="chip gap">Gap</span></td><td>Not implemented, or implemented incorrectly. Tracked in Section 17.</td></tr>
+    <tr><td><span class="chip na">N/A</span></td><td>Deliberately out of scope at current scale, with reasoning given.</td></tr>
+  </tbody>
+</table>
+<p>
+Commands shown as <code>$</code>-free single lines are safe to copy directly. Any command that
+mutates production state is marked in its procedure block with an explicit blast-radius note.
+Placeholders appear in angle brackets: <code>&lt;ASG_NAME&gt;</code>.
+</p>
+<!-- ════════════════ 2 ════════════════ -->
+<h2 id="s2"><span class="num">Section 02</span>System architecture</h2>
+
+<p class="lead">
+A single-region, load-balanced Node.js fleet on EC2, fronted by an Application Load Balancer,
+backed by managed Postgres and Valkey inside the same VPC. There is no container orchestrator
+and no service mesh; this is deliberate and is explained in §2.4.
+</p>
+
+<figure>
+<svg viewBox="0 0 900 610" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ocar production architecture diagram"><rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/><defs><marker id="ar-f1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6b7d"/></marker><marker id="ara-f1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e7490"/></marker><marker id="ard-f1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9b2226"/></marker></defs>
+  
+
+  <!-- clients -->
+  <rect x="34" y="24" width="118" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="93" y="44" text-anchor="middle" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">Rider app</text>
+  <text x="93" y="58" text-anchor="middle" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">Next.js 16</text>
+
+  <rect x="168" y="24" width="118" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="227" y="44" text-anchor="middle" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">Driver app</text>
+  <text x="227" y="58" text-anchor="middle" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">Vite + React 19</text>
+
+  <rect x="302" y="24" width="118" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="361" y="44" text-anchor="middle" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">Admin portal</text>
+  <text x="361" y="58" text-anchor="middle" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">Next.js 16</text>
+
+  <!-- cloudflare -->
+  <rect x="120" y="104" width="214" height="42" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="227" y="122" text-anchor="middle" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">Cloudflare — DNS</text>
+  <text x="227" y="136" text-anchor="middle" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,ui-monospace,monospace">ocar-api.clienttesting.in</text>
+
+  <path d="M93,70 L93,88 L215,88 L215,104" stroke="#5b6b7d" stroke-width="1.4" fill="none" marker-end="url(#ar-f1)"/>
+  <path d="M227,70 L227,104" stroke="#5b6b7d" stroke-width="1.4" fill="none" marker-end="url(#ar-f1)"/>
+  <path d="M361,70 L361,88 L240,88 L240,104" stroke="#5b6b7d" stroke-width="1.4" fill="none" marker-end="url(#ar-f1)"/>
+
+  <!-- AWS zone -->
+  <rect x="18" y="172" width="864" height="416" fill="none" stroke="#b9c6d3" stroke-width="1.1" stroke-dasharray="5 4" rx="11"/>
+  <text x="34" y="190" fill="#7c8b9c" letter-spacing=".09em" font-weight="650" font-size="9px" font-family="Inter,sans-serif">AWS · AP-SOUTH-1 (MUMBAI)</text>
+
+  <!-- VPC -->
+  <rect x="34" y="202" width="600" height="370" style="stroke:#a8b8c8" fill="none" stroke="#b9c6d3" stroke-width="1.1" stroke-dasharray="5 4" rx="11"/>
+  <text x="48" y="220" fill="#7c8b9c" letter-spacing=".09em" font-weight="650" font-size="9px" font-family="Inter,sans-serif">VPC 10.0.0.0/16 — 2 PUBLIC SUBNETS, NO NAT</text>
+
+  <!-- ALB -->
+  <rect x="60" y="234" width="230" height="58" style="stroke:#0e7490;stroke-width:1.6" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="175" y="254" text-anchor="middle" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">Application Load Balancer</text>
+  <text x="175" y="268" text-anchor="middle" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">TLS 1.3 terminates here · ACM cert</text>
+  <text x="175" y="282" text-anchor="middle" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,ui-monospace,monospace">:443 → tg :4000   ·   :80 → 301</text>
+
+  <path d="M227,146 L227,234" stroke="#0e7490" stroke-width="1.7" fill="none" marker-end="url(#ara-f1)"/>
+  <text x="236" y="196" fill="#0e7490" font-weight="600" font-size="8.8px" font-family="Inter,sans-serif">HTTPS / WSS</text>
+
+  <!-- ASG box -->
+  <rect x="60" y="312" width="230" height="176" style="stroke:#c9d3de;stroke-dasharray:3 3" fill="none" stroke="#b9c6d3" stroke-width="1.1" stroke-dasharray="5 4" rx="11"/>
+  <text x="72" y="329" fill="#7c8b9c" letter-spacing=".09em" font-weight="650" font-size="9px" font-family="Inter,sans-serif">AUTO SCALING GROUP · MIN 2 / MAX 4</text>
+
+  <!-- instance 1 -->
+  <rect x="74" y="338" width="202" height="66" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="86" y="356" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">EC2 · t3.medium · AZ-1a</text>
+  <text x="86" y="370" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">ocar_api · ocar_alloy · ocar_cadvisor</text>
+  <text x="86" y="382" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">ocar_node_exporter · ocar_postgres_exporter</text>
+  <text x="86" y="396" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,ui-monospace,monospace">Express + Socket.io + BullMQ workers</text>
+
+  <!-- instance 2 -->
+  <rect x="74" y="412" width="202" height="66" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="86" y="430" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">EC2 · t3.medium · AZ-1b</text>
+  <text x="86" y="444" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">identical image, identical containers</text>
+  <text x="86" y="456" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">tag written by CD to SSM image-tag</text>
+  <text x="86" y="470" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,ui-monospace,monospace">every instance runs every worker</text>
+
+  <path d="M175,292 L175,338" stroke="#0e7490" stroke-width="1.7" fill="none" marker-end="url(#ara-f1)"/>
+  <text x="184" y="318" fill="#0e7490" font-weight="600" font-size="8.8px" font-family="Inter,sans-serif">round-robin</text>
+
+  <!-- RDS -->
+  <rect x="344" y="338" width="270" height="60" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="360" y="357" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">RDS PostgreSQL 18.4 + PostGIS</text>
+  <text x="360" y="371" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">db.t4g.small · gp3 20→100 GB · encrypted</text>
+  <text x="360" y="386" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,ui-monospace,monospace">private · SG-restricted to EC2 SG only</text>
+
+  <!-- Valkey -->
+  <rect x="344" y="412" width="270" height="60" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="360" y="431" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">ElastiCache Valkey 8.0</text>
+  <text x="360" y="445" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">cache.t4g.micro · 1 node · TLS in transit</text>
+  <text x="360" y="460" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,ui-monospace,monospace">Socket.io adapter · BullMQ · cache · OTP</text>
+
+  <path d="M276,368 L344,368" stroke="#5b6b7d" stroke-width="1.4" fill="none" marker-end="url(#ar-f1)"/>
+  <text x="284" y="362" fill="#5b6b7d" font-weight="500" font-size="8.8px" font-family="Inter,sans-serif">:5432</text>
+  <path d="M276,442 L344,442" stroke="#5b6b7d" stroke-width="1.4" fill="none" marker-end="url(#ar-f1)"/>
+  <text x="284" y="436" fill="#5b6b7d" font-weight="500" font-size="8.8px" font-family="Inter,sans-serif">:6379</text>
+
+  <!-- pubsub loop -->
+  <path d="M175,478 L175,506 L640,506 L640,442 L614,442" stroke-dasharray="4 3" stroke="#5b6b7d" stroke-width="1.4" fill="none" marker-end="url(#ar-f1)"/>
+  <text x="330" y="500" fill="#5b6b7d" font-weight="500" font-size="8.8px" font-family="Inter,sans-serif">Socket.io pub/sub fan-out across instances</text>
+
+  <!-- external services -->
+  <rect x="654" y="202" width="212" height="370" style="stroke:#a8b8c8" fill="none" stroke="#b9c6d3" stroke-width="1.1" stroke-dasharray="5 4" rx="11"/>
+  <text x="668" y="220" fill="#7c8b9c" letter-spacing=".09em" font-weight="650" font-size="9px" font-family="Inter,sans-serif">MANAGED / EXTERNAL</text>
+
+  <rect x="668" y="234" width="184" height="52" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="682" y="252" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">Grafana Cloud</text>
+  <text x="682" y="266" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">Loki · Mimir · Tempo</text>
+  <text x="682" y="278" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">alerts · SLOs · synthetics</text>
+
+  <rect x="668" y="298" width="184" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="682" y="316" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">GitHub Registry (GHCR)</text>
+  <text x="682" y="330" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,ui-monospace,monospace">ghcr.io/…/ocar-api</text>
+
+  <rect x="668" y="356" width="184" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="682" y="374" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">SSM Parameter Store</text>
+  <text x="682" y="388" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">image-tag · api-env · ghcr-token</text>
+
+  <rect x="668" y="414" width="184" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="682" y="432" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">S3 · Secrets Manager</text>
+  <text x="682" y="446" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">documents · RDS master password</text>
+
+  <rect x="668" y="472" width="184" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="682" y="490" fill="#12181f" font-weight="600" font-size="11.5px" font-family="Inter,Segoe UI,sans-serif">Razorpay · SMS · FCM</text>
+  <text x="682" y="504" fill="#6b7788" font-weight="400" font-size="9.5px" font-family="Inter,Segoe UI,sans-serif">payments · OTP SMS · push</text>
+
+  <path d="M290,352 L290,306 L640,306 L660,306" stroke-dasharray="4 3" stroke="#5b6b7d" stroke-width="1.4" fill="none" marker-end="url(#ar-f1)"/>
+  <text x="392" y="300" fill="#5b6b7d" font-weight="500" font-size="8.8px" font-family="Inter,sans-serif">metrics · logs · traces (Alloy) → Grafana Cloud</text>
+</svg>
+<figcaption>
+<b>Figure 1 — Production topology.</b> Solid teal marks the live request path. Every EC2 instance
+is identical and stateless at the process level: it terminates WebSockets, serves HTTP, and runs
+the full set of BullMQ background workers. Cross-instance coordination happens exclusively
+through Valkey — the Socket.io Redis adapter for real-time fan-out, and BullMQ for queued work.
+</figcaption>
+</figure>
+
+<h3>2.1 Component inventory</h3>
+<table>
+  <thead><tr><th style="width:23%">Component</th><th style="width:26%">Configuration</th><th>Defined in</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Load balancer</strong></td><td>ALB, internet-facing, 2 AZs, <code>drop_invalid_header_fields</code> on</td><td><code>infra/terraform/alb.tf</code></td></tr>
+    <tr><td><strong>TLS</strong></td><td>ACM cert, DNS-validated; policy <code>ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09</code></td><td><code>acm.tf</code>, <code>alb.tf</code></td></tr>
+    <tr><td><strong>Compute</strong></td><td>ASG, <code>min 2 / desired 2 / max 4</code>, <code>t3.medium</code>, Ubuntu 24.04</td><td><code>asg.tf</code>, <code>launch-template.tf</code></td></tr>
+    <tr><td><strong>Database</strong></td><td>RDS Postgres 18.4, <code>db.t4g.small</code>, single-AZ, 7-day backups</td><td><code>rds.tf</code></td></tr>
+    <tr><td><strong>Cache / queue / pub-sub</strong></td><td>ElastiCache Valkey 8.0, one node, <code>maxmemory-policy=noeviction</code></td><td><code>elasticache.tf</code></td></tr>
+    <tr><td><strong>Network</strong></td><td>One VPC, two public subnets, IGW, no NAT, no private subnets</td><td><code>vpc.tf</code></td></tr>
+    <tr><td><strong>Isolation</strong></td><td>Security-group chaining — see §2.3</td><td><code>security-groups.tf</code>, <code>rds.tf</code>, <code>elasticache.tf</code></td></tr>
+    <tr><td><strong>Image registry</strong></td><td>GHCR, private, pulled with a PAT held in SSM</td><td><code>deploy.yml</code>, <code>user_data.sh.tpl</code></td></tr>
+    <tr><td><strong>Observability</strong></td><td>One Grafana Alloy agent per instance → Grafana Cloud</td><td><code>infra/alloy/config.alloy</code></td></tr>
+  </tbody>
+</table>
+
+<h3>2.2 What runs on an instance</h3>
+<p>
+Each instance runs five containers, started by Docker Compose from the boot script. There is no
+process manager, no systemd unit for the app, and no SSH-based deployment — an instance is
+disposable and rebuilds itself entirely from SSM at boot.
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:24%">Container</th><th style="width:23%">Image</th><th>Role and limits</th></tr></thead>
+  <tbody>
+    <tr><td><code>ocar_api</code></td><td><code>ghcr.io/…/ocar-api</code></td><td>Express + Socket.io + all BullMQ workers. <code>mem_limit 2g</code>, <code>mem_reservation 512m</code>, <code>cpus 1.5</code>.</td></tr>
+    <tr><td><code>ocar_alloy</code></td><td><code>grafana/alloy:v1.18.1</code></td><td>Ships logs, metrics and traces to Grafana Cloud. Holds the only copy of the Grafana credentials.</td></tr>
+    <tr><td><code>ocar_node_exporter</code></td><td><code>prom/node-exporter:v1.9.1</code></td><td>Host-level CPU, memory, disk, network.</td></tr>
+    <tr><td><code>ocar_cadvisor</code></td><td><code>ghcr.io/google/cadvisor:v0.60.5</code></td><td>Per-container CPU and memory. <code>mem_limit 200m</code>, <code>--docker_only</code>, 30 s housekeeping.</td></tr>
+    <tr><td><code>ocar_postgres_exporter</code></td><td><code>postgres-exporter:v0.20.1</code></td><td>Postgres internals including <code>pg_stat_statements</code>.</td></tr>
+  </tbody>
+</table>
+<div class="note">
+<span class="label">Note</span>
+<p><code>docker-compose.prod.yml</code> also defines an <code>nginx</code> service. It is <strong>not started</strong>
+on ASG instances — the boot script names services explicitly
+(<code>up -d api alloy node_exporter postgres_exporter cadvisor</code>) and omits it, because the
+ALB terminates TLS. The service definition is retained only for the legacy single-box deployment.</p>
+</div>
+
+<h3>2.3 Isolation model</h3>
+<p>
+There are no private subnets, so isolation is enforced by security groups rather than by network
+placement. This is a deliberate trade — a NAT gateway costs roughly $32–45/month plus data
+processing charges, which is not justified at current scale. The security boundary is equivalent
+provided the groups are correct, and they are chained by group ID rather than by CIDR:
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:26%">Group</th><th style="width:37%">Inbound</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>ocar-alb-sg</code></td><td>:80, :443 from <code>0.0.0.0/0</code></td><td>The only internet-reachable surface.</td></tr>
+    <tr><td><code>ocar-ec2-sg</code></td><td>:4000 from <code>ocar-alb-sg</code> only</td><td>Instances are unreachable from the internet despite holding public IPs.</td></tr>
+    <tr><td><code>ocar-&lt;env&gt;-rds-sg</code></td><td>:5432 from <code>ocar-ec2-sg</code> only</td><td>Database unreachable from anywhere but the fleet. <code>publicly_accessible = false</code>.</td></tr>
+    <tr><td><code>ocar-&lt;env&gt;-valkey-sg</code></td><td>:6379 from <code>ocar-ec2-sg</code> only</td><td>Cache unreachable from anywhere but the fleet.</td></tr>
+  </tbody>
+</table>
+<p>
+SSH is closed by default. <code>var.ssh_debug_cidr</code> defaults to <code>null</code>, which
+removes the rule entirely rather than leaving it open to a placeholder range. Administrative
+shell access, when required, is via SSM Session Manager — see §4.4.
+</p>
+
+<h3>2.4 Architectural decisions worth stating explicitly</h3>
+<table>
+  <thead><tr><th style="width:27%">Decision</th><th>Reasoning</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Modular monolith, not microservices</strong></td>
+      <td>One deployable unit with clean internal module boundaries (<code>api/src/modules/*</code>).
+      At 1–2k rides/day with a team of this size, service decomposition adds network failure modes,
+      distributed transactions and deployment coordination without removing any current constraint.
+      The boundaries are already drawn in code, so extraction later is refactoring, not a rewrite.</td>
+    </tr>
+    <tr>
+      <td><strong>EC2 + Compose, not ECS or Kubernetes</strong></td>
+      <td>The fleet is two to four identical instances running one application. An orchestrator's
+      value is bin-packing heterogeneous workloads and managing large-scale scheduling, neither of
+      which applies. ASG instance refresh already provides rolling, health-gated replacement.</td>
+    </tr>
+    <tr>
+      <td><strong>Raw SQL, no ORM</strong></td>
+      <td>The platform is geospatially heavy (PostGIS <code>ST_MakePoint</code>/<code>ST_MakeLine</code>
+      casts throughout) and uses append-only versioning patterns for rate cards that most ORMs
+      default against. Documented at length in <code>docs/architecture/2026-08-04-production-deployment-discussion-notes.md</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>Single region</strong></td>
+      <td>The user base is Odisha. Multi-region adds replication lag, split-brain risk and roughly
+      double the infrastructure cost for no latency benefit to the actual audience.</td>
+    </tr>
+    <tr>
+      <td><strong>Workers co-located with the API</strong></td>
+      <td>Every instance runs every BullMQ worker. BullMQ's Redis-backed locking makes this safe.
+      Splitting workers onto their own ASG is the correct move once queue load and request load
+      need to scale independently; today they do not.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ════════════════ 3 ════════════════ -->
+<h2 id="s3"><span class="num">Section 03</span>Environment and state isolation</h2>
+
+<p class="lead">
+Two environments share one Terraform configuration and are separated by explicit backend
+selection. There is no <code>terraform workspace</code> anywhere in this repository — that was a
+deliberate choice, because workspaces switch state invisibly.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Terraform state isolation"><rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/><defs><marker id="ar-f2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6b7d"/></marker><marker id="ara-f2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e7490"/></marker><marker id="ard-f2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9b2226"/></marker></defs>
+  
+
+  <rect x="316" y="20" width="248" height="56" style="stroke:#0e7490;stroke-width:1.6" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="440" y="41" text-anchor="middle" fill="#12181f" font-weight="600" font-size="11px" font-family="Inter,sans-serif">One Terraform configuration</text>
+  <text x="440" y="57" text-anchor="middle" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,monospace">infra/terraform/*.tf</text>
+  <text x="440" y="70" text-anchor="middle" fill="#6b7788" font-weight="400" font-size="9.3px" font-family="Inter,sans-serif">identical resource shape for both environments</text>
+
+  <path d="M380,76 L380,104 L214,104 L214,132" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f2)"/>
+  <path d="M500,76 L500,104 L666,104 L666,132" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f2)"/>
+
+  <!-- prod -->
+  <rect x="40" y="132" width="348" height="146" fill="none" stroke="#b9c6d3" stroke-width="1.1" stroke-dasharray="5 4" rx="10"/>
+  <text x="54" y="150" fill="#7c8b9c" letter-spacing=".09em" font-weight="650" font-size="8.7px" font-family="Inter,sans-serif">PRODUCTION</text>
+
+  <rect x="56" y="160" width="316" height="44" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="70" y="178" fill="#12181f" font-weight="600" font-size="11px" font-family="Inter,sans-serif">Backend selector</text>
+  <text x="70" y="194" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,monospace">terraform init -backend-config=prod.backend.hcl</text>
+
+  <rect x="56" y="214" width="152" height="48" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="70" y="232" fill="#6b7788" font-weight="400" font-size="9.3px" font-family="Inter,sans-serif">state object</text>
+  <text x="70" y="248" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,monospace">prod/terraform.tfstate</text>
+
+  <rect x="220" y="214" width="152" height="48" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="234" y="232" fill="#6b7788" font-weight="400" font-size="9.3px" font-family="Inter,sans-serif">variables</text>
+  <text x="234" y="248" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,monospace">-var environment=prod</text>
+
+  <!-- staging -->
+  <rect x="492" y="132" width="348" height="146" fill="none" stroke="#b9c6d3" stroke-width="1.1" stroke-dasharray="5 4" rx="10"/>
+  <text x="506" y="150" fill="#7c8b9c" letter-spacing=".09em" font-weight="650" font-size="8.7px" font-family="Inter,sans-serif">STAGING — ON DEMAND ONLY</text>
+
+  <rect x="508" y="160" width="316" height="44" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="522" y="178" fill="#12181f" font-weight="600" font-size="11px" font-family="Inter,sans-serif">Backend selector</text>
+  <text x="522" y="194" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,monospace">terraform init -backend-config=staging.backend.hcl</text>
+
+  <rect x="508" y="214" width="152" height="48" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="522" y="232" fill="#6b7788" font-weight="400" font-size="9.3px" font-family="Inter,sans-serif">state object</text>
+  <text x="522" y="248" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,monospace">staging/terraform.tfstate</text>
+
+  <rect x="672" y="214" width="152" height="48" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="686" y="232" fill="#6b7788" font-weight="400" font-size="9.3px" font-family="Inter,sans-serif">variables</text>
+  <text x="686" y="248" fill="#0b5563" font-weight="500" font-size="9px" font-family="SFMono-Regular,monospace">-var-file=staging.tfvars</text>
+</svg>
+<figcaption>
+<b>Figure 2 — State isolation.</b> The <code>backend "s3" {}</code> block in
+<code>providers.tf</code> is intentionally empty. A bare <code>terraform init</code> with no
+flags therefore fails rather than silently defaulting to production — which is exactly what it
+used to do before staging existed.
+</figcaption>
+</figure>
+
+<h3>3.1 Environment matrix</h3>
+<table>
+  <thead><tr><th style="width:22%">Property</th><th style="width:39%">Production</th><th>Staging</th></tr></thead>
+  <tbody>
+    <tr><td>Lifecycle</td><td>Permanent</td><td>Created on demand for load tests, destroyed after</td></tr>
+    <tr><td>State key</td><td><code>prod/terraform.tfstate</code></td><td><code>staging/terraform.tfstate</code></td></tr>
+    <tr><td>Backend file</td><td><code>prod.backend.hcl</code></td><td><code>staging.backend.hcl</code></td></tr>
+    <tr><td>Variables</td><td><code>-var="environment=prod"</code></td><td><code>-var-file=staging.tfvars</code></td></tr>
+    <tr><td>Domain</td><td><code>ocar-api.clienttesting.in</code></td><td><code>staging.ocar-api.clienttesting.in</code></td></tr>
+    <tr><td>Instance type</td><td><code>t3.medium</code></td><td><code>t3.medium</code> — identical, by design</td></tr>
+    <tr><td>ASG sizing</td><td>2 / 2 / 4</td><td>2 / 2 / 4 — see gap <span class="chip gap">G-07</span></td></tr>
+    <tr><td>Deletion protection</td><td>Enabled on RDS</td><td>Disabled; <code>skip_final_snapshot = true</code></td></tr>
+    <tr><td>Applied by</td><td>Manual <code>terraform apply</code> from a workstation</td><td><code>staging-infra.yml</code> workflow dispatch, or locally</td></tr>
+  </tbody>
+</table>
+<p>
+Staging intentionally matches production's infrastructure shape. The entire purpose of the
+environment is to produce load-test numbers that can be trusted, which is impossible if it runs
+on smaller instances or a different cache tier. <code>staging.tfvars</code> therefore overrides
+only two values — <code>environment</code> and <code>domain_name</code> — and leaves everything
+else at the shared default.
+</p>
+
+<h3>3.2 Shared, account-wide resources</h3>
+<p>
+Three things are deliberately <em>not</em> owned by either environment's state, because they are
+account-level singletons that both environments read:
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:30%">Resource</th><th style="width:26%">Owned by</th><th>Consumed as</th></tr></thead>
+  <tbody>
+    <tr><td>Terraform state bucket + KMS key</td><td><code>infra/terraform/bootstrap/</code></td><td><code>data.aws_s3_bucket</code>, <code>data.aws_kms_key</code></td></tr>
+    <tr><td>GitHub Actions OIDC provider</td><td><code>infra/terraform/bootstrap/</code></td><td><code>data.aws_iam_openid_connect_provider</code></td></tr>
+    <tr><td>Grafana Cloud alerts, SLOs, synthetics</td><td><code>infra/terraform/observability/</code></td><td>Own state at <code>observability/terraform.tfstate</code></td></tr>
+  </tbody>
+</table>
+<p>
+The bootstrap module is applied once and then effectively never touched. Both prod and staging
+reference its outputs through <code>data</code> sources only, so neither can create, modify or
+destroy them. State locking uses S3's native <code>use_lockfile</code> rather than the older
+DynamoDB table pattern, so there is no separate lock table to maintain.
+</p>
+<!-- ════════════════ 4 ════════════════ -->
+<h2 id="s4"><span class="num">Section 04</span>Access model and credentials</h2>
+
+<p class="lead">
+Nothing in the pipeline authenticates to AWS with a long-lived access key. All three GitHub
+Actions roles are assumed through OIDC federation, scoped by the workflow's own signed identity
+claim, and expire with the job.
+</p>
+
+<h3>4.1 The three CI roles</h3>
+<p>
+Defined in <code>infra/terraform/github-oidc.tf</code>. Each is trusted only for a specific
+GitHub OIDC subject claim, so a workflow cannot assume a role it was not designed for even if
+someone edits the workflow file.
+</p>
+<table>
+  <thead><tr><th style="width:20%">Role</th><th style="width:28%">Trusted subject</th><th>Permitted actions</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>ocar-prod-gha-deploy</code></td>
+      <td><code>repo:…:environment:production</code></td>
+      <td><code>ssm:GetParameter</code>/<code>PutParameter</code> on the image-tag parameter only;
+      <code>autoscaling:StartInstanceRefresh</code>/<code>CancelInstanceRefresh</code> on this ASG only;
+      <code>DescribeInstanceRefreshes</code>; <code>ec2:DescribeInstances</code>;
+      <code>ssm:SendCommand</code> + <code>GetCommandInvocation</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ocar-prod-gha-plan</code></td>
+      <td><code>repo:…:pull_request</code></td>
+      <td>Read-only across the services this config manages, plus read/write on the
+      <code>prod/*</code> state prefix and the state KMS key. Never runs on <code>main</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ocar-prod-gha-staging</code></td>
+      <td><code>repo:…:environment:staging</code></td>
+      <td>Full apply/destroy, but only on the <code>staging/*</code> state prefix,
+      <code>/ocar/staging/*</code> parameters, and <code>ocar-staging-*</code> IAM roles.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note">
+<span class="label">Detail worth knowing</span>
+<p>
+The deploy role's trust policy matches on <code>environment:production</code>, not on
+<code>ref:refs/heads/main</code>. This is not arbitrary — when a job declares
+<code>environment:</code>, GitHub changes the OIDC subject claim format. The ref-based condition
+was tried first, failed, and the actual rejected claim was read out of CloudTrail to determine
+the correct form. If you add a new deploy job, it must declare the same environment or the
+assume-role will fail.
+</p>
+</div>
+
+<h3>4.2 The EC2 instance role</h3>
+<p>
+Instances assume <code>ocar-&lt;env&gt;-ec2-role</code> (<code>infra/terraform/iam.tf</code>).
+It grants <code>ssm:GetParameter</code> on exactly six named parameters and
+<code>kms:Decrypt</code> on the <code>alias/aws/ssm</code> key — nothing broader:
+</p>
+<ul>
+  <li><code>/ocar/&lt;env&gt;/image-tag</code> — which image version to run</li>
+  <li><code>/ocar/&lt;env&gt;/ghcr-token</code> — GHCR pull credential <span class="small">(SecureString)</span></li>
+  <li><code>/ocar/&lt;env&gt;/api-env</code> — the application's entire environment file <span class="small">(SecureString)</span></li>
+  <li><code>/ocar/&lt;env&gt;/migration-database-url</code> — direct DB URL for migrations <span class="small">(SecureString)</span></li>
+  <li><code>/ocar/&lt;env&gt;/docker-compose-prod</code> — Compose file, Terraform-managed</li>
+  <li><code>/ocar/&lt;env&gt;/alloy-config</code> — Alloy config, Terraform-managed</li>
+</ul>
+<p>
+The AWS-managed <code>AmazonSSMManagedInstanceCore</code> policy is also attached. Its inline
+comment still describes it as temporary debugging access, which is now <strong>out of
+date</strong> — the deploy pipeline routes database migrations to a live instance through
+<code>ssm:SendCommand</code>, and that requires the instance to be a registered SSM managed
+instance. Removing this attachment would break every deploy. See gap
+<span class="chip gap">G-04</span>.
+</p>
+
+<h3>4.3 What you are receiving</h3>
+<table>
+  <thead><tr><th style="width:26%">Credential</th><th style="width:20%">Scope</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>GitHub repository access</td><td>Per contract</td><td>Grants ability to read all workflow definitions, run workflows, and read Actions logs.</td></tr>
+    <tr><td>AWS console / CLI access</td><td>Per contract</td><td>Region <code>ap-south-1</code>. Verify your effective permissions with <code>aws sts get-caller-identity</code> and <code>aws iam simulate-principal-policy</code> before assuming a capability.</td></tr>
+  </tbody>
+</table>
+<div class="note warn">
+<span class="label">Operational safety</span>
+<p>
+Three destructive capabilities exist and have no confirmation gate today. Please read gaps
+<span class="chip gap">G-05</span> and <span class="chip gap">G-06</span> before using them:
+running <code>staging-infra.yml</code> with <code>action: destroy</code> executes
+<code>terraform destroy -auto-approve</code> against real infrastructure with no approval step;
+a push directly to <code>main</code> bypasses review entirely; and a merge to <code>main</code>
+that touches <code>api/**</code> deploys to production automatically with no human pause.
+</p>
+</div>
+
+<h3>4.4 Getting a shell on an instance</h3>
+<p>
+SSH is not open. Use SSM Session Manager, which is authenticated by IAM and audited in
+CloudTrail:
+</p>
+<pre><code><span class="c"># list instances belonging to the ASG</span>
+aws ec2 describe-instances \
+  --filters <span class="s">"Name=tag:aws:autoscaling:groupName,Values=&lt;ASG_NAME&gt;"</span> \
+             <span class="s">"Name=instance-state-name,Values=running"</span> \
+  --query <span class="s">'Reservations[].Instances[].[InstanceId,PrivateIpAddress,Placement.AvailabilityZone]'</span> \
+  --output table
+
+<span class="c"># open a shell</span>
+aws ssm start-session --target &lt;INSTANCE_ID&gt;
+
+<span class="c"># once inside — the app lives here</span>
+cd /opt/ocar
+sudo docker compose -f docker-compose.prod.yml ps
+sudo docker logs --tail 200 -f ocar_api
+sudo cat /var/log/user-data.log   <span class="c"># full boot transcript</span></code></pre>
+<div class="note">
+<span class="label">Note</span>
+<p>
+<code>/var/log/user-data.log</code> is the single most useful file when an instance fails to
+become healthy. The boot script runs under <code>set -x</code>, so it contains a complete trace
+of every step — with credential assignments explicitly untraced so tokens never land in the log.
+</p>
+</div>
+
+<!-- ════════════════ 5 ════════════════ -->
+<h2 id="s5"><span class="num">Section 05</span>Continuous integration</h2>
+
+<p class="lead">
+<code>.github/workflows/ci.yml</code>. Seven independent jobs, no dependency edges between them,
+all starting simultaneously. Triggered on every push to every branch and on every pull request
+targeting <code>main</code>.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CI job graph"><rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/><defs><marker id="ar-f3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6b7d"/></marker><marker id="ara-f3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e7490"/></marker><marker id="ard-f3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9b2226"/></marker></defs>
+  
+
+  <rect x="24" y="20" width="180" height="52" style="stroke:#0e7490;stroke-width:1.5" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="38" y="40" fill="#12181f" font-weight="600" font-size="10.4px" font-family="Inter,sans-serif">Trigger</text>
+  <text x="38" y="55" fill="#0b5563" font-weight="500" font-size="8.4px" font-family="SFMono-Regular,monospace">push: ["**"]</text>
+  <text x="38" y="66" fill="#0b5563" font-weight="500" font-size="8.4px" font-family="SFMono-Regular,monospace">pull_request: [main]</text>
+
+  <path d="M204,46 L246,46" stroke="#5b6b7d" stroke-width="1.3" fill="none" marker-end="url(#ar-f3)"/>
+
+  <!-- jobs -->
+  <rect x="250" y="14" width="196" height="42" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="262" y="32" fill="#12181f" font-weight="600" font-size="10.4px" font-family="Inter,sans-serif">Security Scan (Trivy)</text>
+  <text x="262" y="46" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">two passes — vuln / secret+misconfig</text>
+
+  <rect x="250" y="62" width="196" height="34" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="262" y="80" fill="#12181f" font-weight="600" font-size="10.4px" font-family="Inter,sans-serif">Lint</text>
+  <text x="262" y="92" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">turbo run lint — all workspaces</text>
+
+  <rect x="250" y="102" width="196" height="34" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="262" y="120" fill="#12181f" font-weight="600" font-size="10.4px" font-family="Inter,sans-serif">Typecheck API</text>
+  <text x="262" y="132" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">tsc --noEmit</text>
+
+  <rect x="250" y="142" width="196" height="48" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="262" y="160" fill="#12181f" font-weight="600" font-size="10.4px" font-family="Inter,sans-serif">Test API</text>
+  <text x="262" y="174" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">postgis:17-3.5 + redis:7 services</text>
+  <text x="262" y="186" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">migrate, then vitest</text>
+
+  <rect x="250" y="196" width="196" height="34" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="262" y="214" fill="#12181f" font-weight="600" font-size="10.4px" font-family="Inter,sans-serif">Typecheck User App</text>
+
+  <rect x="250" y="236" width="196" height="34" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="262" y="254" fill="#12181f" font-weight="600" font-size="10.4px" font-family="Inter,sans-serif">Typecheck Driver App</text>
+
+  <rect x="250" y="276" width="196" height="34" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="262" y="294" fill="#12181f" font-weight="600" font-size="10.4px" font-family="Inter,sans-serif">Typecheck Admin App</text>
+
+  <path d="M446,35 L520,35 L520,158" stroke="#5b6b7d" stroke-width="1.3" fill="none" marker-end="url(#ar-f3)"/>
+  <path d="M446,79 L508,79 L508,158" stroke="#5b6b7d" stroke-width="1.3" fill="none" marker-end="url(#ar-f3)"/>
+  <path d="M446,119 L496,119 L496,158" stroke="#5b6b7d" stroke-width="1.3" fill="none" marker-end="url(#ar-f3)"/>
+  <path d="M446,166 L484,166" stroke="#5b6b7d" stroke-width="1.3" fill="none" marker-end="url(#ar-f3)"/>
+  <path d="M446,213 L496,213 L496,176" stroke="#5b6b7d" stroke-width="1.3" fill="none" marker-end="url(#ar-f3)"/>
+  <path d="M446,253 L508,253 L508,176" stroke="#5b6b7d" stroke-width="1.3" fill="none" marker-end="url(#ar-f3)"/>
+  <path d="M446,293 L520,293 L520,176" stroke="#5b6b7d" stroke-width="1.3" fill="none" marker-end="url(#ar-f3)"/>
+
+  <rect x="556" y="140" width="164" height="54" fill="#eaf4f6" stroke="#0e7490" stroke-width="1.5" rx="7"/>
+  <text x="638" y="162" text-anchor="middle" fill="#12181f" font-weight="600" font-size="10.4px" font-family="Inter,sans-serif">All seven green?</text>
+  <text x="638" y="178" text-anchor="middle" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">workflow conclusion = success</text>
+
+  <path d="M720,167 L772,167" stroke="#0e7490" marker-end="url(#ara-f3)" stroke-width="1.3" fill="none"/>
+  <rect x="776" y="142" width="88" height="50" style="stroke:#0e7490;stroke-width:1.5" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="820" y="163" text-anchor="middle" fill="#12181f" font-weight="600" font-size="10.4px" font-family="Inter,sans-serif">Deploy</text>
+  <text x="820" y="178" text-anchor="middle" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">§6</text>
+
+  <text x="556" y="216" fill="#5b6b7d" font-weight="500" font-size="8.5px" font-family="Inter,sans-serif">A red result on any single job means the</text>
+  <text x="556" y="230" fill="#5b6b7d" font-weight="500" font-size="8.5px" font-family="Inter,sans-serif">Deploy workflow never starts — it keys off</text>
+  <text x="556" y="244" fill="#5b6b7d" font-weight="500" font-size="8.5px" font-family="Inter,sans-serif">the whole CI run's conclusion, not per-job.</text>
+</svg>
+<figcaption>
+<b>Figure 3 — CI job graph.</b> The seven jobs are fully parallel. Deploy is chained off the
+overall run conclusion via <code>workflow_run</code>, which is what makes a single failing check
+structurally block deployment rather than merely discouraging it.
+</figcaption>
+</figure>
+
+<h3>5.1 Job reference</h3>
+<table>
+  <thead><tr><th style="width:23%">Job (display name)</th><th style="width:34%">What it does</th><th>Fails when</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Security Scan (Trivy)</strong></td>
+      <td>Two separate filesystem scans of the whole repo.</td>
+      <td>Pass 1 — dependency CVEs at <code>CRITICAL</code> only. Pass 2 — secrets and IaC misconfiguration at <code>CRITICAL</code> and <code>HIGH</code>.</td>
+    </tr>
+    <tr><td><strong>Lint</strong></td><td><code>pnpm turbo run lint</code> across every workspace.</td><td>Any lint error in any package.</td></tr>
+    <tr><td><strong>Typecheck API</strong></td><td><code>tsc --noEmit</code> on <code>@ocar/api</code>.</td><td>Any type error. Note <code>exactOptionalPropertyTypes</code> is on, so this is stricter than default.</td></tr>
+    <tr>
+      <td><strong>Test API</strong></td>
+      <td>Boots real <code>postgis/postgis:17-3.5</code> and <code>redis:7-alpine</code> service containers, writes a test <code>.env</code>, runs the full migration chain, then <code>vitest</code>.</td>
+      <td>A migration fails to apply, or any test fails.</td>
+    </tr>
+    <tr><td><strong>Typecheck User / Driver / Admin App</strong></td><td>Three separate <code>tsc --noEmit</code> jobs, one per frontend.</td><td>Any type error in that app.</td></tr>
+  </tbody>
+</table>
+
+<h3>5.2 Design points</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:29%">Choice</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Trivy pinned to a commit SHA</td>
+      <td><code>aquasecurity/trivy-action@ed142fd0…</code> rather than <code>@v0.36.0</code>. Version
+      tags on that action were force-pushed during a March 2026 supply-chain incident; a mutable
+      tag is not a trustworthy reference for a security-scanning step.</td>
+    </tr>
+    <tr>
+      <td>Dependency scan is <code>CRITICAL</code>-only</td>
+      <td>The monorepo carries roughly 27 pre-existing <code>HIGH</code> transitive findings, mostly
+      DoS-class and largely in frontend packages. Gating on them would block every pull request
+      indefinitely and train the team to ignore the scanner. Secrets and misconfiguration — where
+      a finding is nearly always real and actionable — stay at <code>HIGH</code>.
+      This is a conscious, revisitable trade-off, recorded as <span class="chip part">G-15</span>.</td>
+    </tr>
+    <tr>
+      <td>Migrations run in CI against a real Postgres</td>
+      <td>A migration that fails to apply cleanly fails the build before it can reach production.
+      This is the only place the full migration chain is exercised from empty on every change.</td>
+    </tr>
+    <tr>
+      <td>Per-job <code>concurrency</code> with cancel-in-progress</td>
+      <td>Pushing twice in quick succession cancels the superseded run per job, saving runner
+      minutes without cancelling unrelated branches.</td>
+    </tr>
+    <tr>
+      <td>Node 22, pnpm 9, frozen lockfile</td>
+      <td><code>--frozen-lockfile</code> means CI fails rather than silently resolving a different
+      dependency tree than the one committed.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note warn">
+<span class="label">Known weakness</span>
+<p>
+Test coverage is thin. Five test files exist in the API — four covering ride assignment and
+broadcast, one covering maintenance middleware — and there are none for payments, authentication,
+OTP, wallet or settlement.
+<code>vitest</code> and <code>@vitest/coverage-v8</code> are installed and a
+<code>test:coverage</code> script exists, but no coverage threshold is enforced in CI. Recorded
+as <span class="chip gap">G-13</span>. The <em>pipeline</em> is production-grade; the
+<em>test suite it runs</em> is not yet.
+</p>
+</div>
+<!-- ════════════════ 6 ════════════════ -->
+<h2 id="s6"><span class="num">Section 06</span>Continuous delivery</h2>
+
+<p class="lead">
+<code>.github/workflows/deploy.yml</code>. Three jobs — <code>changes</code>,
+<code>build-push</code>, <code>deploy</code> — chained by <code>needs:</code>. Triggered by
+<code>workflow_run</code> when the CI workflow completes on <code>main</code>, and gated on that
+run having concluded successfully.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Deploy pipeline sequence"><rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/><defs><marker id="ar-f4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6b7d"/></marker><marker id="ara-f4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e7490"/></marker><marker id="ard-f4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9b2226"/></marker></defs>
+  
+
+  <!-- lanes -->
+  <rect x="14" y="34" width="150" height="646" fill="#f6f8fa" stroke="#e2e8ef" stroke-width="1" rx="6"/>
+  <text x="26" y="52" fill="#7c8b9c" letter-spacing=".07em" font-weight="650" font-size="8.6px" font-family="Inter,sans-serif">GITHUB ACTIONS</text>
+  <rect x="172" y="34" width="330" height="646" fill="#f6f8fa" stroke="#e2e8ef" stroke-width="1" rx="6"/>
+  <text x="184" y="52" fill="#7c8b9c" letter-spacing=".07em" font-weight="650" font-size="8.6px" font-family="Inter,sans-serif">AWS CONTROL PLANE</text>
+  <rect x="510" y="34" width="356" height="646" fill="#f6f8fa" stroke="#e2e8ef" stroke-width="1" rx="6"/>
+  <text x="522" y="52" fill="#7c8b9c" letter-spacing=".07em" font-weight="650" font-size="8.6px" font-family="Inter,sans-serif">RUNNING FLEET</text>
+
+  <!-- 1 changes -->
+  <rect x="26" y="66" width="126" height="52" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="36" y="82" fill="#0e7490" font-weight="700" font-size="8.5px" font-family="Inter,sans-serif">01</text>
+  <text x="36" y="96" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Detect changes</text>
+  <text x="36" y="109" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">diff vs last deployed SHA</text>
+
+  <rect x="26" y="130" width="126" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="36" y="146" fill="#0e7490" font-weight="700" font-size="8.5px" font-family="Inter,sans-serif">02</text>
+  <text x="36" y="160" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Build &amp; push image</text>
+  <text x="36" y="171" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">tag: sha-&lt;short&gt;</text>
+
+  <rect x="26" y="188" width="126" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="36" y="204" fill="#0e7490" font-weight="700" font-size="8.5px" font-family="Inter,sans-serif">03</text>
+  <text x="36" y="218" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Assume AWS role</text>
+  <text x="36" y="229" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">OIDC, no static keys</text>
+
+  <path d="M89,118 L89,130" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+  <path d="M89,176 L89,188" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+
+  <!-- 4 find instance -->
+  <path d="M152,211 L200,211 L200,246" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+  <rect x="188" y="246" width="300" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="200" y="262" fill="#0e7490" font-weight="700" font-size="8.5px" font-family="Inter,sans-serif">04</text>
+  <text x="200" y="276" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Locate a running ASG instance</text>
+  <text x="200" y="287" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">ec2:DescribeInstances — filter by ASG tag</text>
+
+  <!-- 5 migrations -->
+  <path d="M488,269 L560,269" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+  <rect x="560" y="240" width="292" height="60" fill="#eaf4f6" stroke="#0e7490" stroke-width="1.4" rx="6"/>
+  <text x="572" y="256" fill="#0e7490" font-weight="700" font-size="8.5px" font-family="Inter,sans-serif">05</text>
+  <text x="572" y="270" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Run migrations on that instance</text>
+  <text x="572" y="283" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">ssm:SendCommand → docker run --name db_migrate</text>
+  <text x="572" y="294" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">old code still serving traffic throughout</text>
+
+  <!-- gate -->
+  <path d="M706,300 L706,318" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+  <rect x="596" y="318" width="220" height="34" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="706" y="339" text-anchor="middle" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Migration succeeded?  ── gate</text>
+
+  <!-- 6 record + set tag -->
+  <path d="M596,335 L520,335 L520,372 L488,372" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+  <rect x="188" y="350" width="300" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="200" y="366" fill="#0e7490" font-weight="700" font-size="8.5px" font-family="Inter,sans-serif">06</text>
+  <text x="200" y="380" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Record current tag, then write new tag</text>
+  <text x="200" y="391" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">/ocar/prod/image-tag  ← rollback anchor</text>
+
+  <!-- 7 refresh -->
+  <path d="M338,396 L338,414" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+  <rect x="188" y="414" width="300" height="52" fill="#eaf4f6" stroke="#0e7490" stroke-width="1.4" rx="6"/>
+  <text x="200" y="430" fill="#0e7490" font-weight="700" font-size="8.5px" font-family="Inter,sans-serif">07</text>
+  <text x="200" y="444" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Start instance refresh</text>
+  <text x="200" y="456" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">MinHealthy 100 / MaxHealthy 100 → one at a time</text>
+
+  <!-- fleet rolling -->
+  <path d="M488,440 L560,440" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+  <rect x="560" y="414" width="292" height="52" fill="#eaf4f6" stroke="#0e7490" stroke-width="1.4" rx="6"/>
+  <text x="572" y="430" fill="#0e7490" font-weight="700" font-size="8.5px" font-family="Inter,sans-serif">08</text>
+  <text x="572" y="444" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Rolling replacement — see Figure 5</text>
+  <text x="572" y="456" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">launch → healthy → drain → terminate → repeat</text>
+
+  <!-- 9 wait -->
+  <path d="M338,466 L338,484" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+  <rect x="188" y="484" width="300" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="200" y="500" fill="#0e7490" font-weight="700" font-size="8.5px" font-family="Inter,sans-serif">09</text>
+  <text x="200" y="514" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Poll refresh status</text>
+  <text x="200" y="525" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">60 attempts × 30 s — 30 min ceiling</text>
+
+  <!-- 10 health -->
+  <path d="M488,507 L560,507" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+  <rect x="560" y="484" width="292" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="572" y="500" fill="#0e7490" font-weight="700" font-size="8.5px" font-family="Inter,sans-serif">10</text>
+  <text x="572" y="514" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">ALB health check</text>
+  <text x="572" y="525" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">GET /health — 8 attempts × 5 s</text>
+
+  <!-- 11 smoke -->
+  <path d="M706,530 L706,548" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+  <rect x="560" y="548" width="292" height="46" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="572" y="564" fill="#0e7490" font-weight="700" font-size="8.5px" font-family="Inter,sans-serif">11</text>
+  <text x="572" y="578" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Smoke test a real DB-backed route</text>
+  <text x="572" y="589" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">GET /api/v1/geo/cities — body must contain "slug"</text>
+
+  <!-- success -->
+  <path d="M706,594 L706,614" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f4)"/>
+  <rect x="596" y="614" width="220" height="34" fill="#eaf4f6" stroke="#0e7490" stroke-width="1.4" rx="6"/>
+  <text x="706" y="635" text-anchor="middle" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Deploy complete</text>
+
+  <!-- rollback -->
+  <path d="M560,571 L520,571 L520,660 L340,660" stroke="#9b2226" stroke-width="1.3" fill="none" marker-end="url(#ard-f4)" stroke-dasharray="4 3"/>
+  <rect x="188" y="638" width="150" height="44" fill="#fdf0f0" stroke="#9b2226" stroke-width="1.3" rx="6"/>
+  <text x="200" y="656" style="fill:#9b2226" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Roll back</text>
+  <text x="200" y="669" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">restore prior tag + refresh</text>
+  <path d="M560,507 L536,507 L536,668 L340,668" stroke="#9b2226" stroke-width="1.3" fill="none" marker-end="url(#ard-f4)" stroke-dasharray="4 3"/>
+  <path d="M188,507 L172,507 L172,668 L188,668" stroke="#9b2226" stroke-width="1.3" fill="none" marker-end="url(#ard-f4)" stroke-dasharray="4 3"/>
+</svg>
+<figcaption>
+<b>Figure 4 — Deploy sequence.</b> Steps 5 and 7–8 are the two moments production state actually
+changes. Everything after step 9 is verification, and any failure in steps 9, 10 or 11 triggers
+the same rollback path (dashed red). Migrations run <em>before</em> the rollout and gate it — if
+they fail, no instance is ever replaced.
+</figcaption>
+</figure>
+
+<h3>6.1 Step-by-step, with the reasoning</h3>
+
+<h4>Step 1 — Change detection</h4>
+<p>
+<code>workflow_run</code> triggers do not support <code>on.paths:</code> filtering, so this job
+implements it manually. It queries the Deploy workflow's own run history for the last
+<em>successful</em> deploy's commit SHA and diffs against that, falling back to <code>HEAD^</code>
+only if no prior successful run exists.
+</p>
+<p>Deployment proceeds only if the diff touches one of:</p>
+<pre><code>api/            pnpm-lock.yaml      pnpm-workspace.yaml
+package.json    .github/workflows/deploy.yml</code></pre>
+<p>
+Two real incidents shaped this. First, an earlier version of the filter included
+<code>infra/**</code> and <code>docker-compose.prod.yml</code>; an infrastructure-only pull
+request that added an IAM role rebuilt the image and cycled the entire ASG for nothing. Neither
+path is ever copied into the image — <code>api/Dockerfile</code> only <code>COPY</code>s the lock
+files, the root <code>package.json</code>, and <code>api/</code>. Second, diffing against
+<code>HEAD^</code> instead of the last deployed SHA silently skipped five commits when someone
+pushed six commits directly to <code>main</code> and only the last was documentation.
+</p>
+
+<h4>Step 2 — Build and push</h4>
+<p>
+Multi-stage build from <code>api/Dockerfile</code>. Four stages: install all dependencies,
+compile TypeScript, produce a symlink-free production <code>node_modules</code> via
+<code>pnpm deploy --prod</code>, then assemble a minimal <code>node:22.16-alpine</code> runtime
+image. The final image runs as the non-root <code>node</code> user and carries its own
+<code>HEALTHCHECK</code>.
+</p>
+<p>
+Images are tagged <code>sha-&lt;short-sha&gt;</code>, plus <code>latest</code> on the default
+branch. The immutable SHA tag is what the deployment actually references — <code>latest</code>
+exists for convenience only and is never what an instance boots from.
+</p>
+
+<h4>Steps 4–5 — Migrations, and why they run through SSM</h4>
+<p>
+RDS is not publicly reachable; only the EC2 security group can open port 5432. A GitHub-hosted
+runner therefore cannot connect to the database directly. Rather than punch a hole in the
+security group or introduce a bastion, the workflow finds a live ASG instance and asks SSM to run
+the migration container <em>there</em>:
+</p>
+<pre><code>docker run --rm --name db_migrate \
+  -e MIGRATION_DATABASE_URL=<span class="s">"$DB_URL"</span> \
+  --entrypoint node ghcr.io/&lt;owner&gt;/ocar-api:&lt;tag&gt; dist/db/migrate.js</code></pre>
+<p>Three properties of this arrangement are worth understanding:</p>
+<ul>
+  <li>
+    <strong>No secret crosses the runner.</strong> The instance reads the database URL from SSM
+    itself using its own IAM role. The command text sent by the workflow contains a parameter
+    <em>name</em>, never a value.
+  </li>
+  <li>
+    <strong>Migrations run against the new image but before the rollout.</strong> The old
+    application version is still serving every request while this happens, which means migrations
+    must be backward-compatible with the currently-running code. Additive changes are safe;
+    dropping or renaming a column that live code still reads is not.
+  </li>
+  <li>
+    <strong><code>--name db_migrate</code> is load-bearing.</strong> Without an explicit name,
+    Docker assigns a random one, cAdvisor discovers it as a new container, and every deploy
+    permanently added active series to the Grafana Cloud metrics tenant. That caused a real
+    cardinality incident on 19 August 2026. Alloy's relabel rules now keep only containers matching
+    <code>ocar_*</code>, so this container is filtered out by name.
+  </li>
+</ul>
+<div class="note">
+<span class="label">Idempotency</span>
+<p>
+<code>dist/db/migrate.js</code> also runs on every container start via
+<code>api/entrypoint.sh</code>. So on a normal deploy the migration runner executes several
+times — once from this step, then once per replacement instance. This is safe because the runner
+skips already-applied files and serialises concurrent invocations with a
+<code>pg_advisory_lock</code>. The explicit step exists purely to <em>gate</em> the rollout on
+migration success rather than discovering a failure one instance at a time.
+</p>
+</div>
+
+<h4>Steps 6–7 — Tag swap and refresh</h4>
+<p>
+The current value of <code>/ocar/prod/image-tag</code> is captured first — this is the rollback
+anchor, and capturing it before overwriting is the entire reason automatic rollback is possible.
+The new tag is then written, and an instance refresh is started. Note that instances read the tag
+<strong>only at boot</strong>; writing the parameter changes nothing until instances are replaced.
+</p>
+
+<h4>Steps 9–11 — Verification</h4>
+<table class="t-tight">
+  <thead><tr><th style="width:22%">Check</th><th style="width:24%">Budget</th><th>Proves</th></tr></thead>
+  <tbody>
+    <tr><td>Refresh status poll</td><td>60 × 30 s ≈ 30 min</td><td>AWS considers every replacement instance healthy in the target group.</td></tr>
+    <tr><td><code>GET /health</code></td><td>8 × 5 s</td><td>The ALB is routing and an instance answers.</td></tr>
+    <tr><td><code>GET /api/v1/geo/cities</code></td><td>3 × 3 s</td><td>A real database-backed route returns real rows — the response body must contain <code>"slug"</code>.</td></tr>
+  </tbody>
+</table>
+<p>
+Both HTTP checks are issued against the ALB's DNS name with <code>curl -k</code> and an explicit
+<code>Host: ocar-api.clienttesting.in</code> header. The certificate is issued for the domain,
+not for the ALB hostname, so verification is skipped deliberately at this step; the header is
+what makes the request route correctly.
+</p>
+<p>
+The smoke test matters more than the health check. As documented in gap
+<span class="chip gap">G-01</span>, <code>/health</code> currently returns HTTP 200 even when the
+database is unreachable — so the smoke test is the only step in the pipeline that genuinely
+proves the database path works end to end.
+</p>
+
+<h4>Step 12 — Rollback</h4>
+<p>
+Any failure at steps 9, 10 or 11 restores the previously recorded tag and starts a second
+instance refresh, then exits non-zero. Two limits apply:
+</p>
+<ul>
+  <li><strong>Migrations are not reverted.</strong> Schema changes are forward-only. If the migration
+  itself is the fault, it must be fixed with a new migration, not undone.</li>
+  <li><strong>Rollback depth is one.</strong> Only the immediately preceding tag is recorded. Going
+  back further is a manual operation — procedure <code>OPS-02</code>.</li>
+</ul>
+
+<!-- ════════════════ 7 ════════════════ -->
+<h2 id="s7"><span class="num">Section 07</span>Deployment strategy and its alternatives</h2>
+
+<p class="lead">
+The strategy is a <strong>rolling replacement with launch-before-terminate</strong>, implemented
+through EC2 Auto Scaling instance refresh. It is not blue/green and not canary. This section
+explains precisely what it does, and why the alternatives were not chosen.
+</p>
+
+<h3>7.1 What <code>100 / 100</code> actually means</h3>
+<p>
+Both <code>asg.tf</code> and the deploy workflow set
+<code>MinHealthyPercentage = 100</code> and <code>MaxHealthyPercentage = 100</code>. Per AWS's
+documentation, setting the minimum healthy percentage to 100 changes the replacement method to
+<em>launch before terminating</em>: a replacement instance is launched and must pass health
+checks before the instance it replaces is terminated. Setting both values to 100 additionally
+constrains the group to replacing <strong>one instance at a time</strong>.
+</p>
+<p>
+The practical consequence is that serving capacity never drops below the desired count during a
+deploy. Any other combination permits a dip — with <code>min = 50</code> on a two-instance group,
+capacity can legitimately fall to one instance mid-deploy.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Rolling instance refresh timeline"><rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/><defs><marker id="ar-f5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6b7d"/></marker><marker id="ara-f5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e7490"/></marker><marker id="ard-f5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9b2226"/></marker></defs>
+  
+
+  <text x="20" y="24" fill="#12181f" font-weight="650" font-size="9.4px" font-family="Inter,sans-serif">Two-instance group, one deploy — capacity over time</text>
+
+  <!-- phase headers -->
+  <text x="96"  y="46" text-anchor="middle" fill="#7c8b9c" letter-spacing=".06em" font-weight="650" font-size="8.2px" font-family="Inter,sans-serif">T0 · STEADY</text>
+  <text x="252" y="46" text-anchor="middle" fill="#7c8b9c" letter-spacing=".06em" font-weight="650" font-size="8.2px" font-family="Inter,sans-serif">T1 · LAUNCH</text>
+  <text x="408" y="46" text-anchor="middle" fill="#7c8b9c" letter-spacing=".06em" font-weight="650" font-size="8.2px" font-family="Inter,sans-serif">T2 · HEALTHY</text>
+  <text x="564" y="46" text-anchor="middle" fill="#7c8b9c" letter-spacing=".06em" font-weight="650" font-size="8.2px" font-family="Inter,sans-serif">T3 · DRAIN</text>
+  <text x="720" y="46" text-anchor="middle" fill="#7c8b9c" letter-spacing=".06em" font-weight="650" font-size="8.2px" font-family="Inter,sans-serif">T4 · REPEAT</text>
+  <text x="840" y="46" text-anchor="middle" fill="#7c8b9c" letter-spacing=".06em" font-weight="650" font-size="8.2px" font-family="Inter,sans-serif">T5 · DONE</text>
+
+  <!-- lanes -->
+  <line x1="20" y1="196" x2="866" y2="196" stroke="#c9d3de" stroke-width="1"/>
+
+  <!-- T0 -->
+  <rect x="46" y="122" width="46" height="30" fill="#e6ebf0" stroke="#adbac7" stroke-width="1" rx="4"/><text x="69" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">A old</text>
+  <rect x="100" y="122" width="46" height="30" fill="#e6ebf0" stroke="#adbac7" stroke-width="1" rx="4"/><text x="123" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">B old</text>
+  <text x="96" y="172" text-anchor="middle" fill="#0b5563" font-weight="600" font-size="8.4px" font-family="Inter,sans-serif">serving: 2</text>
+
+  <!-- T1 -->
+  <rect x="188" y="122" width="42" height="30" fill="#e6ebf0" stroke="#adbac7" stroke-width="1" rx="4"/><text x="209" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">A old</text>
+  <rect x="236" y="122" width="42" height="30" fill="#e6ebf0" stroke="#adbac7" stroke-width="1" rx="4"/><text x="257" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">B old</text>
+  <rect x="284" y="122" width="42" height="30" stroke-dasharray="3 2" fill="#d9edf1" stroke="#0e7490" stroke-width="1.2" rx="4"/><text x="305" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">C boot</text>
+  <text x="252" y="172" text-anchor="middle" fill="#0b5563" font-weight="600" font-size="8.4px" font-family="Inter,sans-serif">serving: 2  ·  booting: 1</text>
+
+  <!-- T2 -->
+  <rect x="344" y="122" width="42" height="30" fill="#e6ebf0" stroke="#adbac7" stroke-width="1" rx="4"/><text x="365" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">A old</text>
+  <rect x="392" y="122" width="42" height="30" fill="#e6ebf0" stroke="#adbac7" stroke-width="1" rx="4"/><text x="413" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">B old</text>
+  <rect x="440" y="122" width="42" height="30" fill="#d9edf1" stroke="#0e7490" stroke-width="1.2" rx="4"/><text x="461" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">C new</text>
+  <text x="408" y="172" text-anchor="middle" fill="#0b5563" font-weight="600" font-size="8.4px" font-family="Inter,sans-serif">serving: 3  ·  peak</text>
+
+  <!-- T3 -->
+  <rect x="500" y="122" width="42" height="30" fill="#fdf6e7" stroke="#c99a26" stroke-width="1" rx="4"/><text x="521" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">A drain</text>
+  <rect x="548" y="122" width="42" height="30" fill="#e6ebf0" stroke="#adbac7" stroke-width="1" rx="4"/><text x="569" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">B old</text>
+  <rect x="596" y="122" width="42" height="30" fill="#d9edf1" stroke="#0e7490" stroke-width="1.2" rx="4"/><text x="617" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">C new</text>
+  <text x="564" y="172" text-anchor="middle" fill="#0b5563" font-weight="600" font-size="8.4px" font-family="Inter,sans-serif">serving: 2  ·  A draining</text>
+
+  <!-- T4 -->
+  <rect x="660" y="122" width="42" height="30" fill="#fdf6e7" stroke="#c99a26" stroke-width="1" rx="4"/><text x="681" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">B drain</text>
+  <rect x="708" y="122" width="42" height="30" fill="#d9edf1" stroke="#0e7490" stroke-width="1.2" rx="4"/><text x="729" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">C new</text>
+  <rect x="756" y="122" width="42" height="30" stroke-dasharray="3 2" fill="#d9edf1" stroke="#0e7490" stroke-width="1.2" rx="4"/><text x="777" y="141" text-anchor="middle" fill="#6b7788" font-weight="500" font-size="8.6px" font-family="Inter,sans-serif">D boot</text>
+  <text x="720" y="172" text-anchor="middle" fill="#0b5563" font-weight="600" font-size="8.4px" font-family="Inter,sans-serif">serving: ≥2 throughout</text>
+
+  <!-- T5 -->
+  <rect x="812" y="122" width="24" height="30" fill="#d9edf1" stroke="#0e7490" stroke-width="1.2" rx="4"/>
+  <rect x="840" y="122" width="24" height="30" fill="#d9edf1" stroke="#0e7490" stroke-width="1.2" rx="4"/>
+  <text x="838" y="172" text-anchor="middle" fill="#0b5563" font-weight="600" font-size="8.4px" font-family="Inter,sans-serif">2 new</text>
+
+  <text x="20" y="222" fill="#6b7788" font-weight="400" font-size="8.5px" font-family="Inter,sans-serif">Capacity never falls below the desired count. The transient peak of 3 is what "launch before terminating" costs — a few minutes of one extra instance.</text>
+  <text x="20" y="240" fill="#6b7788" font-weight="400" font-size="8.5px" font-family="Inter,sans-serif">Health gating at T2 uses the target group's /health check, with a 240 s grace period before the ASG will judge a new instance at all.</text>
+  <text x="20" y="258" fill="#6b7788" font-weight="400" font-size="8.5px" font-family="Inter,sans-serif">Draining at T3 respects the target group's deregistration delay — currently the AWS default of 300 s, giving in-flight requests and WebSocket sessions time to finish.</text>
+  <text x="20" y="276" fill="#6b7788" font-weight="400" font-size="8.5px" font-family="Inter,sans-serif">Total wall-clock for a two-instance deploy is typically 8–14 minutes; the pipeline allows up to 30 before declaring a timeout.</text>
+</svg>
+<figcaption>
+<b>Figure 5 — Rolling replacement timeline.</b> The sequence repeats once per instance in the
+group. A four-instance group takes roughly twice as long as a two-instance one; this is the
+deliberate cost of never dipping below full capacity.
+</figcaption>
+</figure>
+
+<h3>7.2 Health gating during replacement</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:29%">Control</th><th style="width:15%">Value</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>health_check_type</code></td><td><code>ELB</code></td><td>Health is the target group's verdict, not merely "is the EC2 instance running". An instance whose container has crashed fails this; it would pass an <code>EC2</code>-type check.</td></tr>
+    <tr><td><code>health_check_grace_period</code></td><td><code>240</code> s</td><td>How long a new instance is exempt from health judgement. Raised from 60 s after the observability sidecars pushed real time-to-healthy past the old limit and healthy instances were being cycled.</td></tr>
+    <tr><td>Target group <code>interval</code></td><td><code>15</code> s</td><td>Probe frequency.</td></tr>
+    <tr><td><code>healthy_threshold</code></td><td><code>3</code></td><td>Three consecutive passes before traffic is sent — a minimum of 45 s after the grace period.</td></tr>
+    <tr><td><code>unhealthy_threshold</code></td><td><code>3</code></td><td>Three consecutive failures before removal, tolerating transient blips.</td></tr>
+    <tr><td>Deregistration delay</td><td><code>300</code> s <span class="small">(AWS default — not set explicitly)</span></td><td>Drain window for in-flight work before a target is fully removed.</td></tr>
+  </tbody>
+</table>
+
+<h3>7.3 Why not blue/green</h3>
+<p>
+Blue/green stands up a complete parallel environment, shifts traffic at the load balancer, and
+keeps the old environment ready for an instant switch back. It is the right answer in several
+situations. None of them currently apply here, and one of them actively argues against it:
+</p>
+<table>
+  <thead><tr><th style="width:24%">Dimension</th><th style="width:36%">Rolling refresh (current)</th><th>Blue/green</th></tr></thead>
+  <tbody>
+    <tr><td>Extra compute during deploy</td><td>One additional instance, for a few minutes</td><td>A full duplicate fleet, for the whole cutover window</td></tr>
+    <tr><td>Rollback speed</td><td>Minutes — requires a second rolling refresh</td><td>Seconds — flip the listener back</td></tr>
+    <tr><td>Database compatibility</td><td>Both versions run simultaneously; migrations must be backward-compatible</td><td><strong>Same constraint.</strong> Both fleets share one database — blue/green does not solve this</td></tr>
+    <tr><td>Long-lived WebSockets</td><td>Drains per instance, gradually, over the deregistration delay</td><td>Cutover disconnects every socket on the blue fleet at once</td></tr>
+    <tr><td>Moving parts</td><td>One AWS-native primitive already in use for scaling</td><td>Duplicate target groups, listener-swap automation, environment-tracking state</td></tr>
+  </tbody>
+</table>
+<p>
+The database row is the decisive one. The most commonly cited benefit of blue/green — instant,
+safe rollback — is materially weaker here because both fleets would share a single RDS instance.
+A schema change that breaks the old version breaks it whether that version is running on the
+green fleet or the blue one. The forward-only migration constraint documented in §6.1 is a
+property of sharing one database, not a property of rolling deploys, and switching strategies
+would not remove it.
+</p>
+<p>
+The WebSocket row is the second. Ocar's traffic is dominated by long-lived Socket.io connections
+carrying live driver locations. A rolling replacement disconnects a fraction of clients per
+instance, spread over the deploy, and each reconnects to a healthy target within seconds. An
+atomic blue/green cutover disconnects every connected rider and driver simultaneously.
+</p>
+<div class="note">
+<span class="label">When to revisit</span>
+<p>
+Blue/green becomes worth the additional machinery when deploys are frequent enough that
+multi-minute rollback is a genuine business cost, or when the fleet is large enough that a
+rolling replacement takes more than about half an hour. Neither is true at two to four instances.
+Canary — routing a weighted percentage to a new version via ALB weighted target groups — is the
+more natural next step, and would layer onto the existing setup without replacing it.
+</p>
+</div>
+
+<h3>7.4 Deploys triggered by infrastructure changes</h3>
+<p>
+There is a second, easily-missed path to a rolling replacement. The ASG's
+<code>launch_template</code> block references <code>aws_launch_template.api.latest_version</code>
+— a real numeric version, not the literal string <code>$Latest</code>. Any Terraform change that
+produces a new launch template version (a new AMI, a different instance type, an edited boot
+script) therefore appears as a genuine diff on the ASG, and the <code>instance_refresh</code>
+block causes <code>terraform apply</code> to roll the whole fleet automatically.
+</p>
+<div class="note warn">
+<span class="label">Important</span>
+<p>
+This means <strong><code>terraform apply</code> can restart your entire production fleet</strong>.
+It is intended behaviour — without it, a launch template change would silently apply only to
+instances that happened to be replaced later for unrelated reasons. But it makes reading the plan
+output before applying non-optional. If the plan shows a change to
+<code>aws_launch_template.api</code>, expect a full rolling replacement.
+</p>
+</div>
+<!-- ════════════════ 8 ════════════════ -->
+<h2 id="s8"><span class="num">Section 08</span>Request distribution and routing rules</h2>
+
+<p class="lead">
+One ALB, one listener, one target group, one rule. The routing configuration is deliberately
+minimal — path-based routing and per-service target groups would only be justified if the fleet
+served more than one application, which it does not.
+</p>
+
+<h3>8.1 Listeners</h3>
+<table>
+  <thead><tr><th style="width:12%">Port</th><th style="width:15%">Protocol</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td><code>80</code></td><td>HTTP</td><td>Unconditional <code>HTTP_301</code> redirect to port 443. No plaintext traffic ever reaches a target.</td></tr>
+    <tr><td><code>443</code></td><td>HTTPS</td><td>TLS terminates here using the ACM certificate. Default action forwards to the API target group. Policy: <code>ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09</code> — TLS 1.3 with post-quantum key exchange, restricted cipher set.</td></tr>
+  </tbody>
+</table>
+<p>
+<code>drop_invalid_header_fields</code> is enabled on the load balancer. This mitigates HTTP
+request-smuggling and desync attacks by discarding malformed headers before they reach a target.
+It is off by default in AWS and is worth confirming stays on.
+</p>
+
+<h3>8.2 Target group and algorithm</h3>
+<div class="kv">
+  <dt>Target type</dt><dd><code>instance</code> — registered by the ASG automatically, never by hand</dd>
+  <dt>Port / protocol</dt><dd><code>4000</code> / HTTP (TLS already terminated at the ALB)</dd>
+  <dt>Routing algorithm</dt><dd>Round-robin — the ALB default; not overridden</dd>
+  <dt>Stickiness</dt><dd><strong>Not enabled</strong> — deliberate, see below</dd>
+  <dt>Health check</dt><dd><code>GET /health</code>, expects HTTP 200, every 15 s, 5 s timeout, 3 up / 3 down</dd>
+  <dt>Deregistration delay</dt><dd>300 s (AWS default, not set explicitly in Terraform)</dd>
+</div>
+
+<h4>Why there is no session stickiness</h4>
+<p>
+This is the single most counter-intuitive routing decision in the system, and it is correct.
+Socket.io is configured with <code>transports: ['websocket']</code> only — HTTP long-polling is
+disabled entirely (<code>api/src/websocket/socket.server.ts</code>).
+</p>
+<p>
+Long-polling is what normally forces sticky sessions: each poll is a separate HTTP request, and
+every one must land on the instance holding that client's Engine.IO session. A pure WebSocket
+upgrade has no such requirement — the connection is pinned to one instance for its entire
+lifetime by the TCP connection itself. Enabling stickiness would add a cookie and reduce
+distribution quality for zero benefit.
+</p>
+<p>
+Cross-instance delivery is handled at the application layer instead. The
+<code>@socket.io/redis-adapter</code> publishes every room emit through Valkey, so
+<code>io.to('ride:123').emit(...)</code> reaches that ride's participants regardless of which
+instance each is connected to.
+</p>
+
+<h4>ALB idle timeout and Socket.io heartbeats</h4>
+<p>
+The ALB's idle timeout is at its default of 60 seconds — a connection with no bytes in either
+direction for 60 seconds is closed. Socket.io's server-side <code>pingInterval</code> is 25
+seconds, so an idle WebSocket still exchanges Engine.IO heartbeat frames roughly every 25
+seconds, comfortably inside the window. <strong>These two values are coupled.</strong> Raising
+<code>pingInterval</code> above 60 seconds, or lowering the ALB idle timeout below roughly 30,
+would start dropping idle connections. Change either only with the other in mind.
+</p>
+
+<h3>8.3 Maintenance mode</h3>
+<p>
+<code>alb.tf</code> defines a <code>maintenance_mode</code> boolean. Setting it creates a
+priority-1 listener rule matching <code>/*</code> that returns a fixed JSON 503 response,
+bypassing the target group entirely:
+</p>
+<pre><code>terraform apply -var=<span class="s">"environment=prod"</span> -var maintenance_mode=true</code></pre>
+<p>
+This is the mechanism to use when the API fleet itself may be unavailable — during a botched
+instance refresh, for example — and the application-level Redis-backed maintenance flag cannot
+run because nothing is running. Because ELB health checks probe registered targets directly
+rather than routing through listener rules, this rule does not interfere with health checking,
+and instances continue to be evaluated normally while it is active.
+</p>
+
+<h3>8.4 Full request path</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:6%">#</th><th style="width:24%">Hop</th><th>What happens</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Client</td><td>Resolves <code>ocar-api.clienttesting.in</code>.</td></tr>
+    <tr><td>2</td><td>Cloudflare</td><td>DNS. Proxy/WAF features are available but the ACM validation record must remain DNS-only, not proxied.</td></tr>
+    <tr><td>3</td><td>ALB :443</td><td>TLS termination; malformed headers dropped; forwarded to the target group.</td></tr>
+    <tr><td>4</td><td>Target selection</td><td>Round-robin across healthy targets in both AZs.</td></tr>
+    <tr><td>5</td><td>EC2 :4000</td><td>Security group permits this only from the ALB's security group.</td></tr>
+    <tr><td>6</td><td><code>ocar_api</code></td><td>Express middleware chain: Helmet, CORS, rate limiting (Redis-backed, so limits are fleet-wide), body parsing, routing.</td></tr>
+    <tr><td>7</td><td>Data layer</td><td>RDS over TLS (<code>rds.force_ssl = 1</code>); Valkey over <code>rediss://</code>.</td></tr>
+  </tbody>
+</table>
+<p>
+Rate limiting deserves a note: it uses <code>rate-limit-redis</code> rather than in-memory
+counters. With in-memory state, a limit of 100 requests per minute across four instances is
+effectively 400. Backing it with Valkey makes the limit hold across the fleet, and is a
+prerequisite for horizontal scaling that is easy to overlook.
+</p>
+
+<!-- ════════════════ 9 ════════════════ -->
+<h2 id="s9"><span class="num">Section 09</span>Capacity: scaling out and in</h2>
+
+<p class="lead">
+Capacity moves three ways: automatically, within the configured bounds; manually, for a planned
+event; and structurally, by changing the bounds themselves. Each has a different mechanism, a
+different blast radius, and a different reversal path.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Scaling decision paths"><rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/><defs><marker id="ar-f6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6b7d"/></marker><marker id="ara-f6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e7490"/></marker><marker id="ard-f6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9b2226"/></marker></defs>
+  
+
+  <rect x="330" y="16" width="220" height="46" fill="#eaf4f6" stroke="#0e7490" stroke-width="1.4" rx="7"/>
+  <text x="440" y="36" text-anchor="middle" fill="#12181f" font-weight="640" font-size="10.6px" font-family="Inter,sans-serif">Need to change capacity</text>
+  <text x="440" y="51" text-anchor="middle" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">what kind of change?</text>
+
+  <path d="M380,62 L380,86 L146,86 L146,112" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f6)"/>
+  <path d="M440,62 L440,112" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f6)"/>
+  <path d="M500,62 L500,86 L734,86 L734,112" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f6)"/>
+
+  <!-- A -->
+  <rect x="26" y="112" width="240" height="94" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <rect x="26" y="112" width="240" height="20" fill="#1f6f43" rx="7"/>
+  <rect x="26" y="124" width="240" height="8" fill="#1f6f43"/>
+  <text x="38" y="126" fill="#fff" font-weight="700" font-size="8px" font-family="Inter,sans-serif">A · AUTOMATIC — NO ACTION</text>
+  <text x="38" y="152" fill="#12181f" font-weight="640" font-size="10.6px" font-family="Inter,sans-serif">Load rises within 2–4</text>
+  <text x="38" y="168" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">Target-tracking policy adds or</text>
+  <text x="38" y="180" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">removes instances on its own.</text>
+  <text x="38" y="196" fill="#0b5563" font-weight="500" font-size="8.4px" font-family="SFMono-Regular,monospace">ALBRequestCountPerTarget = 1000</text>
+
+  <!-- B -->
+  <rect x="320" y="112" width="240" height="94" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <rect x="320" y="112" width="240" height="20" fill="#0e7490" rx="7"/>
+  <rect x="320" y="124" width="240" height="8" fill="#0e7490"/>
+  <text x="332" y="126" fill="#fff" font-weight="700" font-size="8px" font-family="Inter,sans-serif">B · MANUAL — TEMPORARY</text>
+  <text x="332" y="152" fill="#12181f" font-weight="640" font-size="10.6px" font-family="Inter,sans-serif">Planned event, known window</text>
+  <text x="332" y="168" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">Raise desired capacity by CLI.</text>
+  <text x="332" y="180" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">Terraform state now drifts —</text>
+  <text x="332" y="192" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">must be reverted. See OPS-04.</text>
+
+  <!-- C -->
+  <rect x="614" y="112" width="240" height="94" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <rect x="614" y="112" width="240" height="20" fill="#8a5a00" rx="7"/>
+  <rect x="614" y="124" width="240" height="8" fill="#8a5a00"/>
+  <text x="626" y="126" fill="#fff" font-weight="700" font-size="8px" font-family="Inter,sans-serif">C · STRUCTURAL — PERMANENT</text>
+  <text x="626" y="152" fill="#12181f" font-weight="640" font-size="10.6px" font-family="Inter,sans-serif">The 2–4 range is wrong</text>
+  <text x="626" y="168" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">Edit asg.tf, plan, apply.</text>
+  <text x="626" y="180" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">Terraform remains the source</text>
+  <text x="626" y="192" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">of truth. See OPS-05.</text>
+
+  <path d="M146,206 L146,236" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f6)"/>
+  <path d="M440,206 L440,236" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f6)"/>
+  <path d="M734,206 L734,236" stroke="#5b6b7d" stroke-width="1.35" fill="none" marker-end="url(#ar-f6)"/>
+
+  <rect x="26" y="236" width="240" height="52" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="38" y="256" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">Watch the ASG activity history</text>
+  <text x="38" y="270" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">to confirm it acted. Nothing to</text>
+  <text x="38" y="282" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">undo — it scales back in too.</text>
+
+  <rect x="320" y="236" width="240" height="52" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="332" y="256" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">Set a calendar reminder to</text>
+  <text x="332" y="270" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">restore. Next terraform apply</text>
+  <text x="332" y="282" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">will silently revert it anyway.</text>
+
+  <rect x="614" y="236" width="240" height="52" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="7"/>
+  <text x="626" y="256" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">Read the plan carefully — a</text>
+  <text x="626" y="270" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">launch template diff triggers a</text>
+  <text x="626" y="282" fill="#6b7788" font-weight="400" font-size="8.8px" font-family="Inter,sans-serif">full rolling replacement (§7.4).</text>
+
+  <text x="150" y="316" fill="#5b6b7d" font-weight="600" font-size="8.5px" font-family="Inter,sans-serif">Prefer A. Use B only for a known window. Reach for C when the data says the range itself is wrong.</text>
+</svg>
+<figcaption>
+<b>Figure 6 — Choosing a scaling path.</b> The distinction that matters operationally is whether
+Terraform still describes reality afterwards. Path B deliberately creates drift and must be
+reversed; path C does not.
+</figcaption>
+</figure>
+
+<h3>9.1 The automatic policy</h3>
+<p>
+<code>aws_autoscaling_policy.request_count_tracking</code> is a target-tracking policy on the
+predefined metric <code>ALBRequestCountPerTarget</code> with a target value of <code>1000</code>.
+AWS manages the underlying CloudWatch alarms; there are no step adjustments to configure.
+</p>
+<div class="note warn">
+<span class="label">Read this carefully — the unit is not per second</span>
+<p>
+<code>ALBRequestCountPerTarget</code> is a <em>count per target over the metric period</em>, and
+target tracking evaluates it on a <strong>one-minute</strong> period. A target value of 1000
+therefore means <strong>1000 requests per target per minute — roughly 16.7 requests per
+second</strong>, not 1000 requests per second. Misreading this by a factor of sixty in either
+direction produces either a fleet that never scales or one that scales constantly.
+</p>
+</div>
+<p>
+The value of 1000 is an estimate, explicitly labelled as such in the code comment. It has not
+been validated against real traffic. Retuning it is one of the primary deliverables of the load
+test in §16.
+</p>
+<h4>Why request count rather than CPU</h4>
+<p>
+For a request-driven Node.js API, CPU is a lagging indicator — by the time CPU is saturated, the
+event loop is already queuing and latency has already degraded. Request count per target rises
+before that, giving the roughly four to five minutes a new instance needs to boot, pull images
+and pass health checks. On <code>t3</code> burstable instances there is a second reason: CPU
+credit exhaustion causes throttling that looks like low CPU utilisation, so a CPU-based policy can
+fail to scale precisely when the fleet is most degraded.
+</p>
+<div class="note">
+<span class="label">Discrepancy on record</span>
+<p>
+The client-facing scale-readiness report dated 4 August 2026 states an autoscaling policy of
+<em>min 3, max 5, scale on CPU &gt; 70% sustained 3 min</em>. The deployed configuration is
+<em>min 2, max 4, on request count</em>. The deployed version reflects later analysis and is the
+better choice for the reasons above, but the two documents disagree and the report has not been
+revised. Recorded as <span class="chip gap">G-11</span>.
+</p>
+</div>
+
+<h3>9.2 Scaling boundaries and their consequences</h3>
+<table>
+  <thead><tr><th style="width:16%">Setting</th><th style="width:11%">Value</th><th>Consequence</th></tr></thead>
+  <tbody>
+    <tr><td><code>min_size</code></td><td>2</td><td>Never fewer than two instances, across two availability zones. This is the redundancy floor — one instance may fail entirely without an outage.</td></tr>
+    <tr><td><code>desired_capacity</code></td><td>2</td><td>Steady-state count. The scaling policy moves this within the min/max bounds.</td></tr>
+    <tr><td><code>max_size</code></td><td>4</td><td>Hard ceiling. Traffic beyond what four instances absorb degrades rather than scaling — this is the number to raise first under real surge.</td></tr>
+  </tbody>
+</table>
+<div class="note">
+<span class="label">Terraform and desired_capacity</span>
+<p>
+<code>desired_capacity</code> is managed by Terraform <em>and</em> mutated at runtime by the
+scaling policy. There is no <code>lifecycle { ignore_changes }</code> on it. In practice this
+means that if the policy has scaled the group to 3 and you then run
+<code>terraform apply</code>, Terraform will see drift and scale it back to 2. This is usually
+harmless — the policy will immediately scale back out if load warrants — but it can cause a brief
+capacity dip during an apply performed under load. Avoid routine applies during peak traffic.
+</p>
+</div>
+
+<h3>9.3 Where the ceiling actually is</h3>
+<p>
+Adding instances stops helping once a shared dependency saturates. In order of expected
+constraint, based on the architecture rather than measurement:
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:22%">Resource</th><th style="width:24%">Current capacity</th><th>Symptom when it binds</th></tr></thead>
+  <tbody>
+    <tr><td>Valkey pub/sub</td><td>One <code>cache.t4g.micro</code> node</td><td>Real-time location updates lag or drop; Socket.io fan-out latency climbs. Expected to bind before app CPU.</td></tr>
+    <tr><td>RDS connections</td><td><code>db.t4g.small</code>, roughly 225 <code>max_connections</code></td><td>Connection acquisition timeouts under load. Each instance holds its own pool, so the total scales with fleet size.</td></tr>
+    <tr><td>RDS CPU / IOPS</td><td>2 vCPU burstable, gp3</td><td>Query latency rises across the board; <code>log_min_duration_statement</code> starts logging heavily.</td></tr>
+    <tr><td>EC2 CPU credits</td><td><code>t3.medium</code> burstable</td><td>Sustained load exhausts credits and throttles to baseline — a silent performance cliff, not a clean failure. Monitor <code>CPUCreditBalance</code>.</td></tr>
+    <tr><td>ASG ceiling</td><td>4 instances</td><td>Latency rises with no scaling activity in the ASG history.</td></tr>
+  </tbody>
+</table>
+<p>
+Note the ordering: the app tier is not expected to be the first constraint. Raising
+<code>max_size</code> in response to a Valkey or RDS bottleneck adds cost without adding capacity,
+and will make the database constraint worse by adding connection pools. Confirm which resource is
+actually saturated before scaling the fleet.
+</p>
+<!-- ════════════════ 10 ════════════════ -->
+<h2 id="s10"><span class="num">Section 10</span>Changing instance type and size</h2>
+
+<p class="lead">
+Instance type is a single Terraform variable. The mechanics are trivial; the judgement about
+<em>which</em> type, and the awareness that applying it restarts the fleet, are the parts that
+matter.
+</p>
+
+<h3>10.1 Where it is defined</h3>
+<p>
+<code>var.instance_type</code> in <code>infra/terraform/variables.tf</code>, default
+<code>t3.medium</code>. It is consumed in exactly one place —
+<code>aws_launch_template.api</code> in <code>launch-template.tf</code>. Nothing else references
+it, so changing it has one direct effect: a new launch template version.
+</p>
+<p>
+Because the ASG pins <code>version = aws_launch_template.api.latest_version</code>, that new
+version is a real Terraform diff on the ASG, and the <code>instance_refresh</code> block turns
+the apply into a rolling replacement of the whole fleet (§7.4). This is the intended behaviour —
+it is how the change actually reaches running instances — but it must be expected rather than
+discovered.
+</p>
+
+<h3>10.2 Understanding the current choice</h3>
+<p>
+<code>t3.medium</code> is 2 vCPU / 4 GiB from AWS's burstable family. Burstable instances earn CPU
+credits while running below a baseline utilisation and spend them to burst above it. For
+<code>t3.medium</code> the baseline is 20% of each vCPU.
+</p>
+<p>
+This suits the workload's shape: thousands of mostly-idle WebSocket connections punctuated by
+short bursts of work when GPS pings arrive or a ride is booked. Paying for fixed 24/7 performance
+to cover load that only spikes would be waste.
+</p>
+<div class="note warn">
+<span class="label">The risk this creates</span>
+<p>
+Sustained high traffic — precisely a marketing surge — can exhaust the credit balance. The
+instance then throttles to baseline. The failure mode is a silent performance cliff, not a clean
+scale-out signal, and it can defeat CPU-based autoscaling (which is one reason this fleet scales
+on request count instead). Two mitigations exist: enable <strong>Unlimited</strong> burst mode, so
+the instance bursts past its credit balance for a small per-vCPU-hour surcharge instead of
+throttling; or move to a fixed-performance family. Unlimited mode is <strong>not currently
+enabled</strong> — recorded as <span class="chip gap">G-16</span>.
+</p>
+</div>
+
+<h3>10.3 Candidate types</h3>
+<table>
+  <thead><tr><th style="width:16%">Type</th><th style="width:13%">vCPU / RAM</th><th style="width:16%">Family</th><th>When it is the right answer</th></tr></thead>
+  <tbody>
+    <tr><td><code>t3.medium</code> <span class="chip live">current</span></td><td>2 / 4 GiB</td><td>Burstable x86</td><td>Present workload: low baseline, spiky. Cheapest option that meets the shape.</td></tr>
+    <tr><td><code>t3.large</code></td><td>2 / 8 GiB</td><td>Burstable x86</td><td>Memory pressure without CPU pressure — the container limit is already 2 GiB, so headroom is thin if a leak appears.</td></tr>
+    <tr><td><code>m5.large</code> / <code>m6i.large</code></td><td>2 / 8 GiB</td><td>Fixed x86</td><td>The load test shows credits draining. No credit mechanic, predictable performance, roughly double the cost.</td></tr>
+    <tr><td><code>c6i.large</code></td><td>2 / 4 GiB</td><td>Compute-optimised</td><td>CPU-bound rather than memory-bound. Unlikely for this workload.</td></tr>
+    <tr><td><code>t4g.medium</code> / <code>m6g.large</code></td><td>2 / 4–8 GiB</td><td>Graviton (ARM)</td><td>Roughly 20% cheaper for equivalent performance — <strong>but requires an ARM image and an ARM AMI</strong>. See the warning below.</td></tr>
+  </tbody>
+</table>
+<div class="note danger">
+<span class="label">Architecture change — not a drop-in</span>
+<p>
+Switching to any Graviton type (<code>t4g</code>, <code>m6g</code>, <code>c7g</code>) is
+<strong>not</strong> a one-variable change. Three things must move together, or instances will
+boot and fail to run the container:
+</p>
+<ul style="margin-top:8px">
+  <li>The AMI filter in <code>launch-template.tf</code> is hardcoded to
+  <code>ubuntu-noble-24.04-<strong>amd64</strong>-server-*</code> and must become
+  <code>arm64</code>.</li>
+  <li>The container image is built for a single architecture. <code>build-push</code> in
+  <code>deploy.yml</code> must produce a multi-architecture manifest
+  (<code>platforms: linux/amd64,linux/arm64</code> in <code>docker/build-push-action</code>), or the
+  pull succeeds and <code>exec</code> fails.</li>
+  <li>Every sidecar image — Alloy, node-exporter, cAdvisor, postgres-exporter — must have an
+  <code>arm64</code> variant at the pinned tag. Verify each before switching.</li>
+</ul>
+<p style="margin-top:8px">
+Do this as its own deliberate change, validated on staging first. It is worthwhile — the saving is
+real — but it is a project, not an edit.
+</p>
+</div>
+
+<h3>10.4 Sizing the container limits alongside the instance</h3>
+<p>
+Changing the instance type does not change the container's limits. <code>ocar_api</code> is
+capped at <code>mem_limit: 2g</code>, <code>cpus: 1.5</code> in
+<code>docker-compose.prod.yml</code> regardless of what it runs on. Moving to an 8 GiB instance
+without raising <code>mem_limit</code> leaves 6 GiB unusable by the application.
+</p>
+<p>
+Node 22 is container-aware and sizes its V8 heap from the cgroup limit, so no
+<code>--max-old-space-size</code> flag is needed — but it reads the <em>container</em> limit, not
+the instance's memory. The two must be changed together. Note also that
+<code>docker-compose.prod.yml</code> reaches instances via an SSM parameter sourced from the repo
+file, so a change to it requires a <code>terraform apply</code> to update the parameter and a
+fleet roll to take effect — it does not ride along with an application deploy.
+</p>
+<div class="note">
+<span class="label">Sizing from data, not guesswork</span>
+<p>
+The current limits are explicitly a safety ceiling, not a tuned value. Their purpose is to stop an
+unbounded leak from taking down the whole instance by letting the kernel OOM-killer pick an
+arbitrary victim container. The cAdvisor "Per-Container Resource Usage" row on the
+<code>ocar-overview</code> Grafana dashboard reports working set, percentage of limit, CPU cores
+and OOM events per container. Size the final values from observed p95/p99 there once real or
+load-test traffic exists.
+</p>
+</div>
+
+<!-- ════════════════ 11 ════════════════ -->
+<h2 id="s11"><span class="num">Section 11</span>Configuration and secret management</h2>
+
+<p class="lead">
+All runtime configuration lives in SSM Parameter Store. Instances read it once, at boot. Nothing
+is baked into the image, and no secret is stored in Terraform state or in the repository.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Configuration flow from SSM to running containers"><rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/><defs><marker id="ar-f7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6b7d"/></marker><marker id="ara-f7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e7490"/></marker><marker id="ard-f7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9b2226"/></marker></defs>
+  
+
+  <rect x="16" y="30" width="300" height="286" fill="none" stroke="#b9c6d3" stroke-width="1.1" stroke-dasharray="5 4" rx="9"/>
+  <text x="30" y="48" fill="#7c8b9c" letter-spacing=".08em" font-weight="650" font-size="8.5px" font-family="Inter,sans-serif">SSM PARAMETER STORE  ·  /ocar/&lt;env&gt;/</text>
+
+  <rect x="32" y="58" width="268" height="34" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="44" y="73" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">image-tag</text>
+  <text x="44" y="85" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">String · written by the deploy workflow</text>
+
+  <rect x="32" y="100" width="268" height="34" fill="#fdf6e7" stroke="#c99a26" stroke-width="1.2" rx="6"/>
+  <text x="44" y="115" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">ghcr-token</text>
+  <text x="44" y="127" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">SecureString · hand-maintained</text>
+
+  <rect x="32" y="142" width="268" height="42" fill="#fdf6e7" stroke="#c99a26" stroke-width="1.2" rx="6"/>
+  <text x="44" y="157" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">api-env</text>
+  <text x="44" y="169" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">SecureString · hand-maintained · the whole .env</text>
+  <text x="44" y="180" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">DB URL, JWT secrets, Razorpay, Grafana, S3…</text>
+
+  <rect x="32" y="192" width="268" height="34" fill="#fdf6e7" stroke="#c99a26" stroke-width="1.2" rx="6"/>
+  <text x="44" y="207" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">migration-database-url</text>
+  <text x="44" y="219" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">SecureString · hand-maintained</text>
+
+  <rect x="32" y="234" width="268" height="34" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="44" y="249" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">docker-compose-prod</text>
+  <text x="44" y="261" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">String · Terraform-managed from the repo file</text>
+
+  <rect x="32" y="276" width="268" height="34" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="44" y="291" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">alloy-config</text>
+  <text x="44" y="303" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">String · Terraform-managed from the repo file</text>
+
+  <path d="M316,170 L368,170" stroke="#5b6b7d" stroke-width="1.3" fill="none" marker-end="url(#ar-f7)"/>
+  <text x="322" y="162" fill="#5b6b7d" font-weight="500" font-size="8.4px" font-family="Inter,sans-serif">GetParameter</text>
+  <text x="322" y="184" fill="#5b6b7d" font-weight="500" font-size="8.4px" font-family="Inter,sans-serif">+ kms:Decrypt</text>
+
+  <rect x="372" y="76" width="212" height="186" fill="#eaf4f6" stroke="#0e7490" stroke-width="1.4" rx="6"/>
+  <text x="384" y="96" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">EC2 boot — user_data.sh.tpl</text>
+  <text x="384" y="114" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">1 · install Docker, Compose, AWS CLI</text>
+  <text x="384" y="130" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">2 · read image-tag from SSM</text>
+  <text x="384" y="146" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">3 · read ghcr-token (tracing off)</text>
+  <text x="384" y="162" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">4 · write api-env → /opt/ocar/.env.prod</text>
+  <text x="384" y="178" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">5 · append ALLOY_HOSTNAME=$INSTANCE_ID</text>
+  <text x="384" y="194" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">6 · write compose file + alloy config</text>
+  <text x="384" y="210" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">7 · docker login ghcr.io</text>
+  <text x="384" y="226" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">8 · compose pull, then compose up -d</text>
+  <text x="384" y="248" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">→ /var/log/user-data.log</text>
+
+  <path d="M584,170 L636,170" stroke="#5b6b7d" stroke-width="1.3" fill="none" marker-end="url(#ar-f7)"/>
+
+  <rect x="640" y="96" width="216" height="146" fill="#fff" stroke="#c9d3de" stroke-width="1.2" rx="6"/>
+  <text x="652" y="116" fill="#12181f" font-weight="600" font-size="10px" font-family="Inter,sans-serif">Running containers</text>
+  <text x="652" y="136" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">ocar_api</text>
+  <text x="652" y="148" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">env_file: .env.prod</text>
+  <text x="652" y="166" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">ocar_alloy</text>
+  <text x="652" y="178" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">holds the Grafana credentials</text>
+  <text x="652" y="196" fill="#0b5563" font-weight="500" font-size="8.3px" font-family="SFMono-Regular,monospace">ocar_postgres_exporter</text>
+  <text x="652" y="208" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">maps DATABASE_URL → DSN</text>
+  <text x="652" y="228" fill="#6b7788" font-weight="400" font-size="8.6px" font-family="Inter,sans-serif">ocar_node_exporter · ocar_cadvisor</text>
+
+  <text x="372" y="292" fill="#5b6b7d" font-weight="500" font-size="8.4px" font-family="Inter,sans-serif">Configuration is read ONCE, at boot. Changing a parameter has no effect on a running instance —</text>
+  <text x="372" y="308" fill="#5b6b7d" font-weight="500" font-size="8.4px" font-family="Inter,sans-serif">an instance refresh is always required to pick up a new value. This is the single most common</text>
+  <text x="372" y="324" fill="#5b6b7d" font-weight="500" font-size="8.4px" font-family="Inter,sans-serif">operational surprise in this system. See procedure OPS-06.</text>
+</svg>
+<figcaption>
+<b>Figure 7 — Configuration flow.</b> Amber marks <code>SecureString</code> parameters, encrypted
+with the <code>alias/aws/ssm</code> KMS key. Two parameters are Terraform-managed and sourced
+directly from repository files; four are hand-maintained.
+</figcaption>
+</figure>
+
+<h3>11.1 Parameter inventory</h3>
+<table>
+  <thead><tr><th style="width:26%">Parameter</th><th style="width:14%">Type</th><th style="width:17%">Managed by</th><th>Contents</th></tr></thead>
+  <tbody>
+    <tr><td><code>image-tag</code></td><td>String</td><td>Deploy workflow</td><td>Which image version instances boot. The rollback anchor.</td></tr>
+    <tr><td><code>ghcr-token</code></td><td>SecureString</td><td>Manual</td><td>GHCR pull credential.</td></tr>
+    <tr><td><code>api-env</code></td><td>SecureString</td><td>Manual</td><td>The application's entire environment file.</td></tr>
+    <tr><td><code>migration-database-url</code></td><td>SecureString</td><td>Manual</td><td>Direct database URL for the migration step.</td></tr>
+    <tr><td><code>docker-compose-prod</code></td><td>String, Advanced tier</td><td>Terraform</td><td>Sourced from the repo file at apply time.</td></tr>
+    <tr><td><code>alloy-config</code></td><td>String, Advanced tier</td><td>Terraform</td><td>Sourced from the repo file at apply time.</td></tr>
+  </tbody>
+</table>
+<p>
+Both Terraform-managed parameters use the Advanced tier because they exceed the Standard tier's
+4096-character limit — the Compose file crossed it when cAdvisor and the resource limits were
+added, and the Alloy config when the postgres-exporter scrape block was added. Advanced tier
+costs $0.05 per parameter per month.
+</p>
+
+<h3>11.2 How secrets stay out of logs</h3>
+<p>
+The boot script runs under <code>set -x</code>, which traces variable <em>assignments</em>, not
+just commands. A plain <code>GHCR_TOKEN=$(aws ssm get-parameter …)</code> would print the resolved
+secret into <code>/var/log/user-data.log</code>. The script therefore disables tracing around
+both the assignment and the subsequent <code>docker login</code>, and re-enables it immediately
+after. This is worth preserving if the script is ever edited.
+</p>
+
+<h3>11.3 The known ergonomic problem</h3>
+<div class="note warn">
+<span class="label">Whole-value overwrite</span>
+<p>
+SSM supports only whole-value replacement. Changing one line in <code>api-env</code> means
+pulling the entire decrypted blob to a local file, editing it by hand, and pushing the whole
+thing back. During the Redis-to-Valkey migration on 12 August 2026 this caused a real incident: a
+hand edit changed the <code>REDIS_URL</code> scheme but missed the hostname, because the whole
+value has to be reviewed at once instead of editing one key.
+</p>
+<p>
+A per-key secrets manager would remove this failure mode. It is on the backlog and deliberately
+not urgent — SSM <code>SecureString</code> is a legitimate credential store, the problem is
+ergonomics rather than security. Procedure <code>OPS-06</code> gives the safe sequence for
+editing it today.
+</p>
+</div>
+
+<!-- ════════════════ 12 ════════════════ -->
+<h2 id="s12"><span class="num">Section 12</span>Data layer</h2>
+
+<h3>12.1 RDS PostgreSQL</h3>
+<div class="kv">
+  <dt>Engine</dt><dd>PostgreSQL 18.4 with PostGIS</dd>
+  <dt>Class / storage</dt><dd><code>db.t4g.small</code> · gp3, 20 GB auto-scaling to 100 GB, encrypted at rest</dd>
+  <dt>Availability</dt><dd>Single-AZ. No read replica. <span class="chip part">accepted at current scale</span></dd>
+  <dt>Backups</dt><dd>7-day automated retention; final snapshot on destroy in prod only</dd>
+  <dt>Deletion protection</dt><dd>Enabled in prod; disabled in staging</dd>
+  <dt>Network</dt><dd><code>publicly_accessible = false</code>; reachable only from the EC2 security group</dd>
+  <dt>Master password</dt><dd>Generated and rotated by AWS in Secrets Manager — never in Terraform state</dd>
+  <dt>Observability</dt><dd>Performance Insights (7-day retention); <code>postgresql</code> and <code>upgrade</code> logs to CloudWatch</dd>
+</div>
+<p>
+<code>manage_master_user_password = true</code> means the password never appears in state or in a
+<code>.tfvars</code> file. Retrieve it once after apply to construct the connection string that
+goes into <code>api-env</code>:
+</p>
+<pre><code>aws secretsmanager get-secret-value \
+  --secret-id <span class="v">$(terraform output -raw rds_master_user_secret_arn)</span> \
+  --query SecretString --output text</code></pre>
+
+<h4>Parameter group — three settings that cannot be fixed later without downtime</h4>
+<table class="t-tight">
+  <thead><tr><th style="width:26%">Parameter</th><th style="width:13%">Value</th><th style="width:14%">Apply method</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td><code>rds.logical_replication</code></td><td><code>1</code></td><td>pending-reboot</td><td>Required for RDS to act as a logical replication subscriber during the Neon-to-RDS migration.</td></tr>
+    <tr><td><code>shared_preload_libraries</code></td><td><code>pg_stat_statements</code></td><td>pending-reboot</td><td>RDS does not preload this by default. Without it, <code>CREATE EXTENSION</code> fails outright and the postgres-exporter scrape breaks permanently.</td></tr>
+    <tr><td><code>rds.force_ssl</code></td><td><code>1</code></td><td>dynamic</td><td>RDS does not enforce TLS out of the box; unencrypted connections would otherwise be silently accepted.</td></tr>
+    <tr><td><code>log_min_duration_statement</code></td><td><code>500</code></td><td>dynamic</td><td>Logs queries slower than 500 ms to CloudWatch. Without it the log export has nothing duration-based to record.</td></tr>
+  </tbody>
+</table>
+<p>
+The two <code>pending-reboot</code> parameters are static and require an instance reboot to take
+effect. They must be applied and the instance rebooted <em>before</em> the operations that depend
+on them are attempted.
+</p>
+
+<h3>12.2 ElastiCache Valkey</h3>
+<div class="kv">
+  <dt>Engine</dt><dd>Valkey 8.0, single node (<code>num_cache_clusters = 1</code>, failover disabled)</dd>
+  <dt>Node type</dt><dd><code>cache.t4g.micro</code></dd>
+  <dt>Eviction policy</dt><dd><code>noeviction</code> — <strong>required</strong>, see below</dd>
+  <dt>Encryption</dt><dd>At rest and in transit; transit mode currently <code>preferred</code></dd>
+  <dt>Roles</dt><dd>Socket.io pub/sub adapter · BullMQ queues · rate-limit counters · OTP and session cache</dd>
+</div>
+<div class="note">
+<span class="label">Why <code>noeviction</code> is not optional</span>
+<p>
+BullMQ stores job payloads in Redis. The ElastiCache default parameter group uses
+<code>volatile-lru</code>, which evicts keys under memory pressure — meaning queued jobs
+(notifications, GPS flushes, settlements) can silently disappear. This exact misconfiguration was
+observed on the previous Redis Cloud instance. Do not change this parameter.
+</p>
+</div>
+<div class="note warn">
+<span class="label">Two open items</span>
+<p>
+<strong>Transit encryption is in <code>preferred</code> mode</strong>, which accepts both
+<code>rediss://</code> and plaintext <code>redis://</code>. This was the correct choice for
+migrating without a hard cutover, but it should be flipped to <code>required</code> once every
+instance is confirmed on <code>rediss://</code>. Recorded as <span class="chip part">G-12</span>.
+</p>
+<p>
+<strong>The cache is a single point of failure.</strong> There is no replica and automatic
+failover is disabled. If the node fails, Socket.io fan-out, BullMQ and rate limiting all stop.
+Cache contents are genuinely disposable, so the recovery is a node replacement rather than a data
+loss event — but it is an outage. Adding a replica is a one-line change when the availability
+requirement justifies the cost.
+</p>
+</div>
+<!-- ════════════════ 13 ════════════════ -->
+<h2 id="s13"><span class="num">Section 13</span>Observability</h2>
+
+<p class="lead">
+One agent per instance ships logs, metrics and traces to one platform. Grafana Alloy
+(<code>ocar_alloy</code>) reads from the Docker socket and from three exporters, and forwards to
+Grafana Cloud — Loki for logs, Mimir for metrics, Tempo for traces.
+</p>
+
+<h3>13.1 Signals</h3>
+<table>
+  <thead><tr><th style="width:15%">Signal</th><th style="width:23%">Source</th><th style="width:14%">Destination</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Logs</td><td>Pino JSON on container stdout</td><td>Loki</td><td>Exactly four indexed labels — <code>container</code>, <code>service</code>, <code>env</code>, <code>host</code>. Everything else, including <code>requestId</code>, stays in the JSON body and is queried rather than indexed.</td></tr>
+    <tr><td>App metrics</td><td><code>prom-client</code> at <code>/metrics</code></td><td>Mimir</td><td><code>http_request_duration_seconds</code>, <code>pg_pool_connections</code>, <code>bullmq_queue_job_counts</code>.</td></tr>
+    <tr><td>Host metrics</td><td>node-exporter</td><td>Mimir</td><td>CPU, memory, disk, network per instance.</td></tr>
+    <tr><td>Container metrics</td><td>cAdvisor</td><td>Mimir</td><td>Aggressively filtered — see below.</td></tr>
+    <tr><td>Database metrics</td><td>postgres-exporter</td><td>Mimir</td><td>Includes <code>pg_stat_statements</code>. Every instance reports identical numbers; dashboards use <code>max()</code> not <code>sum()</code>.</td></tr>
+    <tr><td>Traces</td><td>OpenTelemetry SDK → Alloy OTLP</td><td>Tempo</td><td>The app sends to <code>alloy:4318</code>, never directly to Grafana Cloud, so credentials live only in Alloy.</td></tr>
+  </tbody>
+</table>
+<p>
+Log and trace correlation works because the tracing SDK's <code>trace_id</code> feeds Pino's
+mixin — every log line carries the ID of the span it was emitted within, so a trace in Tempo can
+be pivoted to its logs in Loki.
+</p>
+
+<h3>13.2 Cardinality controls — read before editing <code>config.alloy</code></h3>
+<p>
+Two incidents shaped the current relabelling rules, and both are easy to reintroduce:
+</p>
+<ul>
+  <li>
+    <strong>18 August 2026.</strong> cAdvisor's roughly 100 metric families, multiplied across a
+    rolling replacement, tipped the Grafana Cloud tenant's active-series cap. The fix keeps only
+    five metric families, grepped from the dashboard that actually queries them.
+  </li>
+  <li>
+    <strong>19 August 2026.</strong> The deploy pipeline's migration container was launched with a
+    random name, so cAdvisor discovered a new container on every deploy and permanently inflated
+    the series count. The fix is two-part: the container is now explicitly named
+    <code>db_migrate</code>, and Alloy keeps only containers matching <code>ocar_*</code>.
+  </li>
+</ul>
+<p>
+A <code>labelkeep</code> rule then retains only <code>__name__</code>, <code>name</code> and
+<code>host</code>, which eliminates churn from container IDs and image tags in one rule rather
+than a drop-list that must be maintained.
+</p>
+<div class="note">
+<span class="label">Practical consequence</span>
+<p>
+Adding a container to <code>docker-compose.prod.yml</code> whose name does not start with
+<code>ocar_</code> means it will not appear in metrics at all. That is usually what you want, but
+it is silent — nothing warns you.
+</p>
+</div>
+
+<h3>13.3 Alerting</h3>
+<p>
+Managed as code in <code>infra/terraform/observability/</code>, with its own state at
+<code>observability/terraform.tfstate</code>. Applied locally rather than from CI, because it
+changes rarely enough that a pipeline credential is not justified.
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:30%">Rule group</th><th>Covers</th></tr></thead>
+  <tbody>
+    <tr><td><code>ocar-static-thresholds</code></td><td>Error rate on <code>/api/v1/rides.*</code> and <code>/api/v1/payments.*</code>, evaluated every 60 s.</td></tr>
+    <tr><td><code>ocar-billing-usage</code></td><td>Grafana Cloud free-tier consumption at 85% of cap — active series, log volume, trace volume.</td></tr>
+    <tr><td>SLOs</td><td>Ride request success rate, 98% objective over 30 days. Explicitly a starting value, not yet backed by real traffic history.</td></tr>
+    <tr><td>Synthetic check</td><td><code>GET /health</code> from Mumbai and Singapore probes every 60 s, with a 14-day TLS-expiry threshold.</td></tr>
+  </tbody>
+</table>
+<div class="note warn">
+<span class="label">Do not hand-edit in the Grafana UI</span>
+<p>
+<code>grafana_notification_policy</code> is a whole-tree resource — applying it replaces the
+entire policy. Any change made in the Grafana interface will be silently destroyed by the next
+<code>terraform apply</code>. All notification routing changes must go through the Terraform
+module.
+</p>
+</div>
+
+<!-- ════════════════ 14 ════════════════ -->
+<h2 id="s14" class="pagebreak"><span class="num">Section 14</span>Operational procedures</h2>
+
+<p class="lead">
+Twelve numbered procedures covering every routine and emergency operation. Each states its blast
+radius and how to reverse it. Shared prerequisites: AWS CLI authenticated against
+<code>ap-south-1</code>, Terraform 1.15.8, repository checked out, working directory
+<code>infra/terraform</code> for anything Terraform-related.
+</p>
+
+<h4>Resolving the placeholders</h4>
+<pre><code><span class="c"># ASG name and ALB DNS name — also stored as GitHub Actions repository variables</span>
+terraform output -raw autoscaling_group_name
+terraform output -raw alb_dns_name
+
+<span class="c"># or without Terraform:</span>
+aws autoscaling describe-auto-scaling-groups \
+  --query <span class="s">'AutoScalingGroups[?contains(AutoScalingGroupName,`ocar`)].AutoScalingGroupName'</span> --output text</code></pre>
+
+<!-- OPS-01 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-01</span>
+    <span class="ptitle">Deploy application code</span>
+    <span class="pmeta">Routine · automatic · ~10–15 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> production fleet rolled one instance at a time. No capacity dip.
+    <strong>Reversal:</strong> automatic on failure; manual via <code>OPS-02</code>.</p>
+    <ol>
+      <li>Merge to <code>main</code>. Nothing else is required — the pipeline is fully automatic.</li>
+      <li>Watch the <strong>CI</strong> workflow. All seven jobs must pass or Deploy never starts.</li>
+      <li>Watch the <strong>Deploy</strong> workflow. If the <em>Detect relevant changes</em> job reports
+      <code>relevant=false</code>, the change did not touch anything that reaches the image and no
+      deploy is needed — this is correct behaviour, not a fault.</li>
+      <li>Observe the rollout while it runs:
+        <pre><code>watch -n 15 <span class="s">'aws autoscaling describe-instance-refreshes \
+  --auto-scaling-group-name &lt;ASG_NAME&gt; --max-records 1 \
+  --query "InstanceRefreshes[0].{Status:Status,Pct:PercentageComplete}" --output table'</span></code></pre>
+      </li>
+      <li>Confirm afterwards:
+        <pre><code>curl -s https://ocar-api.clienttesting.in/health | jq
+curl -s https://ocar-api.clienttesting.in/api/v1/geo/cities | jq <span class="s">'.[0]'</span></code></pre>
+      </li>
+    </ol>
+    <p class="small"><strong>If a migration is involved:</strong> it runs before any instance is replaced
+    and gates the rollout. It must be backward-compatible with the currently-running code, because the
+    old version keeps serving traffic throughout — see §6.1.</p>
+  </div>
+</div>
+
+<!-- OPS-02 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-02</span>
+    <span class="ptitle">Roll back to a specific image version</span>
+    <span class="pmeta">Emergency · manual · ~10–15 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> full fleet roll. <strong>Reversal:</strong> repeat with the newer tag.</p>
+    <ol>
+      <li>Identify the target tag. Tags are <code>sha-&lt;short-sha&gt;</code> and are listed on the
+      GHCR package page, or in the <em>Docker metadata</em> step of a previous Deploy run.</li>
+      <li>Record what is currently deployed, so this step is itself reversible:
+        <pre><code>aws ssm get-parameter --name /ocar/prod/image-tag --query <span class="s">'Parameter.Value'</span> --output text</code></pre>
+      </li>
+      <li>Point the parameter at the target version:
+        <pre><code>aws ssm put-parameter --name /ocar/prod/image-tag \
+  --type String --value <span class="s">"sha-abc1234"</span> --overwrite</code></pre>
+      </li>
+      <li>Roll the fleet so instances actually pick it up:
+        <pre><code>aws autoscaling start-instance-refresh \
+  --auto-scaling-group-name &lt;ASG_NAME&gt; \
+  --preferences <span class="s">'{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'</span></code></pre>
+      </li>
+      <li>Verify as in <code>OPS-01</code> step 5.</li>
+    </ol>
+    <div class="note danger" style="margin-top:4px">
+      <span class="label">Migrations are not reverted</span>
+      <p>Schema changes are forward-only. Rolling the image back does not undo a migration. If the
+      migration is the fault, the old code will now be running against a newer schema — which may
+      be worse than the problem you are fixing. Fix forward with a new migration instead.</p>
+    </div>
+  </div>
+</div>
+
+<!-- OPS-03 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-03</span>
+    <span class="ptitle">Enable or disable maintenance mode</span>
+    <span class="pmeta">Emergency · manual · ~1–2 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> every request receives HTTP 503 immediately. <strong>Reversal:</strong> re-apply with the flag false.</p>
+    <ol>
+      <li>Enable:
+        <pre><code>terraform apply -var=<span class="s">"environment=prod"</span> -var maintenance_mode=true</code></pre>
+      </li>
+      <li>Confirm the fixed response is being served:
+        <pre><code>curl -i https://ocar-api.clienttesting.in/api/v1/geo/cities</code></pre>
+        <p class="small">Expect <code>503</code> with <code>"code":"MAINTENANCE_MODE"</code>.</p>
+      </li>
+      <li>Disable when finished:
+        <pre><code>terraform apply -var=<span class="s">"environment=prod"</span> -var maintenance_mode=false</code></pre>
+      </li>
+    </ol>
+    <p class="small">Health checks are unaffected — ELB probes registered targets directly rather than
+    through listener rules, so instances continue to be evaluated normally while the rule is active.
+    Use this when the fleet itself may be unavailable and the application-level maintenance flag
+    cannot run.</p>
+  </div>
+</div>
+
+<!-- OPS-04 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-04</span>
+    <span class="ptitle">Temporarily add capacity for a known event</span>
+    <span class="pmeta">Planned · manual · ~5 min · creates drift</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> adds instances and cost. <strong>Reversal:</strong> mandatory — see step 4.</p>
+    <ol>
+      <li>Check the current bounds:
+        <pre><code>aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names &lt;ASG_NAME&gt; \
+  --query <span class="s">'AutoScalingGroups[0].{Min:MinSize,Desired:DesiredCapacity,Max:MaxSize}'</span> --output table</code></pre>
+      </li>
+      <li>Raise desired capacity. It must stay within the existing min/max, so raise
+      <code>--max-size</code> in the same call if you need to exceed 4:
+        <pre><code>aws autoscaling update-auto-scaling-group \
+  --auto-scaling-group-name &lt;ASG_NAME&gt; \
+  --min-size 4 --desired-capacity 4 --max-size 6</code></pre>
+        <p class="small">Raising <code>--min-size</code> too is deliberate: it stops the target-tracking
+        policy from immediately scaling back in while traffic is still low, just before the event starts.</p>
+      </li>
+      <li>Confirm the new instances reach <code>InService</code> — typically four to five minutes:
+        <pre><code>aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names &lt;ASG_NAME&gt; \
+  --query <span class="s">'AutoScalingGroups[0].Instances[].{Id:InstanceId,State:LifecycleState,Health:HealthStatus}'</span> \
+  --output table</code></pre>
+      </li>
+      <li><strong>Restore afterwards.</strong> Either repeat step 2 with the original values, or run
+      <code>terraform apply</code>, which will reset them to whatever <code>asg.tf</code> declares.</li>
+    </ol>
+    <div class="note warn" style="margin-top:4px">
+      <span class="label">This creates Terraform drift on purpose</span>
+      <p>Terraform still believes the group is 2/2/4. Anyone running <code>terraform apply</code> for an
+      unrelated reason will silently revert your change — possibly mid-event. Announce it, and set a
+      reminder to restore it yourself.</p>
+    </div>
+  </div>
+</div>
+
+<!-- OPS-05 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-05</span>
+    <span class="ptitle">Change the scaling bounds permanently</span>
+    <span class="pmeta">Planned · Terraform · ~5 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> capacity change only — no instance replacement, provided the launch
+    template is untouched. <strong>Reversal:</strong> revert the commit and re-apply.</p>
+    <ol>
+      <li>Edit <code>min_size</code>, <code>desired_capacity</code> or <code>max_size</code> in
+      <code>infra/terraform/asg.tf</code>.</li>
+      <li>Open a pull request. <code>terraform-plan.yml</code> posts the plan as a PR comment
+      automatically for any change under <code>infra/**</code>.</li>
+      <li>Read the plan. It should show <strong>only</strong> the ASG changing. If it also shows
+      <code>aws_launch_template.api</code> changing, expect a full rolling replacement (§7.4).</li>
+      <li>Merge, then apply from a workstation — infrastructure does not auto-apply on merge:
+        <pre><code>pnpm infra:prod:init    <span class="c"># once per session, or after switching environments</span>
+pnpm infra:prod:plan
+pnpm infra:prod:apply</code></pre>
+      </li>
+      <li>Consider whether <code>target_value</code> on the scaling policy also needs adjusting —
+      raising <code>max_size</code> without retuning the threshold changes the ceiling but not the
+      trigger point.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- OPS-06 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-06</span>
+    <span class="ptitle">Change an environment variable or secret</span>
+    <span class="pmeta">Routine · manual · ~15 min · handles plaintext secrets</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> full fleet roll at step 5. <strong>Reversal:</strong> keep the
+    pre-edit copy until verified.</p>
+    <ol>
+      <li>Pull the current value to a file. Do this in a directory that is not the repository:
+        <pre><code>cd <span class="v">$(mktemp -d)</span>
+aws ssm get-parameter --name /ocar/prod/api-env --with-decryption \
+  --query <span class="s">'Parameter.Value'</span> --output text &gt; api-env.txt
+cp api-env.txt api-env.backup.txt   <span class="c"># rollback copy</span></code></pre>
+      </li>
+      <li>Edit <code>api-env.txt</code>. Change only the line you intend to change — the entire blob is
+      replaced, so an accidental edit elsewhere ships silently.</li>
+      <li>Diff before pushing. This step is not optional; it is what would have caught the 12 August
+      2026 <code>REDIS_URL</code> incident:
+        <pre><code>diff api-env.backup.txt api-env.txt</code></pre>
+      </li>
+      <li>Push the whole value back:
+        <pre><code>aws ssm put-parameter --name /ocar/prod/api-env --type SecureString \
+  --value <span class="s">"$(cat api-env.txt)"</span> --overwrite</code></pre>
+      </li>
+      <li>Roll the fleet — running instances read SSM only at boot and will not otherwise notice:
+        <pre><code>aws autoscaling start-instance-refresh \
+  --auto-scaling-group-name &lt;ASG_NAME&gt; \
+  --preferences <span class="s">'{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'</span></code></pre>
+      </li>
+      <li>Verify, then destroy the plaintext copies:
+        <pre><code>curl -s https://ocar-api.clienttesting.in/health | jq
+shred -u api-env.txt api-env.backup.txt 2&gt;/dev/null || rm -f api-env.txt api-env.backup.txt</code></pre>
+      </li>
+    </ol>
+  </div>
+</div>
+
+<!-- OPS-07 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-07</span>
+    <span class="ptitle">Change the EC2 instance type</span>
+    <span class="pmeta">Planned · Terraform · ~15 min · rolls the fleet</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> full rolling replacement. <strong>Reversal:</strong> revert the
+    variable and apply again — another full roll.</p>
+    <ol>
+      <li>Confirm the target type is the same CPU architecture. If moving to Graviton, stop and read
+      §10.3 — that is a multi-part change, not this procedure.</li>
+      <li>Change the default of <code>instance_type</code> in <code>infra/terraform/variables.tf</code>,
+      or pass it at apply time for a one-off test.</li>
+      <li>Plan and read the output. Expect <code>aws_launch_template.api</code> to show a new version and
+      the ASG to show a corresponding change:
+        <pre><code>pnpm infra:prod:init
+pnpm infra:prod:plan</code></pre>
+      </li>
+      <li>Consider raising <code>mem_limit</code> and <code>cpus</code> in
+      <code>docker-compose.prod.yml</code> in the same change if you are moving to a larger instance —
+      otherwise the extra memory is unusable (§10.4).</li>
+      <li>Apply. This triggers a rolling replacement automatically; there is no separate refresh step:
+        <pre><code>pnpm infra:prod:apply</code></pre>
+      </li>
+      <li>Watch the refresh as in <code>OPS-01</code> step 4, then confirm the new type is live:
+        <pre><code>aws ec2 describe-instances \
+  --filters <span class="s">"Name=tag:aws:autoscaling:groupName,Values=&lt;ASG_NAME&gt;"</span> \
+             <span class="s">"Name=instance-state-name,Values=running"</span> \
+  --query <span class="s">'Reservations[].Instances[].[InstanceId,InstanceType]'</span> --output table</code></pre>
+      </li>
+      <li>Watch CPU, memory and — if still on a <code>t3</code> — <code>CPUCreditBalance</code> for at
+      least one full traffic cycle before considering the change settled.</li>
+    </ol>
+  </div>
+</div>
+<!-- OPS-08 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-08</span>
+    <span class="ptitle">Apply any other infrastructure change</span>
+    <span class="pmeta">Routine · Terraform · varies</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> depends entirely on the plan. Read it. <strong>Reversal:</strong> revert and re-apply.</p>
+    <ol>
+      <li>Make the change in <code>infra/terraform/*.tf</code> on a branch.</li>
+      <li>Open a pull request. The plan is posted as a PR comment automatically.</li>
+      <li>Read the plan against this checklist before merging:
+        <ul>
+          <li>Does it show <code>aws_launch_template.api</code> changing? → the fleet will roll.</li>
+          <li>Does it show <code>aws_elasticache_replication_group</code> being <em>replaced</em>? → the
+          cache will be destroyed and recreated. Contents are disposable, but expect an interruption to
+          real-time delivery and queued jobs.</li>
+          <li>Does it show <code>aws_db_instance</code> being <em>replaced</em>? → <strong>stop</strong>.
+          That is data loss. Deletion protection should prevent it in prod, but do not rely on that.</li>
+          <li>Does it show anything being destroyed that you did not intend to destroy?</li>
+        </ul>
+      </li>
+      <li>Merge, then apply from a workstation:
+        <pre><code>pnpm infra:prod:init
+pnpm infra:prod:plan
+pnpm infra:prod:apply</code></pre>
+      </li>
+    </ol>
+    <p class="small">Infrastructure never auto-applies on merge. Only the plan runs in CI. This is
+    deliberate — AWS changes are not cheaply reversible the way an application deploy is.</p>
+  </div>
+</div>
+
+<!-- OPS-09 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-09</span>
+    <span class="ptitle">Stand up the staging environment</span>
+    <span class="pmeta">Occasional · ~20–25 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> creates a second full environment and its cost. <strong>Reversal:</strong> <code>OPS-10</code>.</p>
+    <ol>
+      <li>Create the DNS record for <code>staging.ocar-api.clienttesting.in</code> in Cloudflare. ACM
+      validation will block the apply until the validation CNAME resolves publicly — it must be
+      <strong>DNS-only, not proxied</strong>.</li>
+      <li>Seed the four hand-maintained SSM parameters under <code>/ocar/staging/</code>:
+      <code>image-tag</code>, <code>ghcr-token</code>, <code>api-env</code>,
+      <code>migration-database-url</code>. Use non-production credentials throughout — Razorpay test
+      keys, a distinct JWT secret.</li>
+      <li>Run the workflow: <strong>Actions → Staging Infra (apply/destroy) → Run workflow →
+      <code>action: apply</code></strong>. Or locally:
+        <pre><code>pnpm infra:staging:init
+pnpm infra:staging:plan
+pnpm infra:staging:apply</code></pre>
+      </li>
+      <li>Point the Cloudflare record at the staging ALB DNS name from the apply output.</li>
+      <li>Full step-by-step for the manual, non-Terraform portions:
+      <code>docs/superpowers/specs/2026-08-14-staging-runbook.md</code>.</li>
+    </ol>
+    <div class="note danger" style="margin-top:4px">
+      <span class="label">Known blocker</span>
+      <p>The <code>ocar-prod-gha-staging</code> IAM role grants no <code>rds:*</code> permissions, but
+      <code>rds.tf</code> is part of the shared configuration. A staging apply through the workflow will
+      therefore <strong>fail</strong> when it reaches the database resources. This must be fixed before
+      <code>OPS-09</code> can complete via CI — see <span class="chip gap">G-02</span>. A local apply
+      with broader credentials is the current workaround.</p>
+    </div>
+  </div>
+</div>
+
+<!-- OPS-10 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-10</span>
+    <span class="ptitle">Tear down staging</span>
+    <span class="pmeta">Occasional · destructive · ~10 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> destroys the entire staging environment. <strong>Reversal:</strong> <code>OPS-09</code> from scratch.</p>
+    <ol>
+      <li><strong>Verify which environment you are targeting.</strong> Terraform reuses whatever backend
+      the local <code>.terraform/</code> directory was last initialised against:
+        <pre><code>terraform init -reconfigure -backend-config=staging.backend.hcl
+terraform state list | head</code></pre>
+      </li>
+      <li>Destroy:
+        <pre><code>pnpm infra:staging:destroy</code></pre>
+        <p class="small">Or the workflow with <code>action: destroy</code>.</p>
+      </li>
+      <li>Remove the Cloudflare DNS records for the staging hostname.</li>
+      <li>Confirm nothing survived — orphaned ElastiCache nodes and RDS instances are the expensive ones:
+        <pre><code>aws rds describe-db-instances --query <span class="s">'DBInstances[].DBInstanceIdentifier'</span>
+aws elasticache describe-replication-groups --query <span class="s">'ReplicationGroups[].ReplicationGroupId'</span></code></pre>
+      </li>
+    </ol>
+    <div class="note danger" style="margin-top:4px">
+      <span class="label">No confirmation gate exists</span>
+      <p>The workflow's <code>environment: staging</code> declaration is inert — the GitHub Environment
+      was never created. A <code>destroy</code> dispatch runs <code>terraform destroy -auto-approve</code>
+      against real infrastructure with no approval step and no undo. See
+      <span class="chip gap">G-05</span>. Always destroy after a load test; staging is not meant to run
+      continuously and costs the same per-instance rate as production.</p>
+    </div>
+  </div>
+</div>
+
+<!-- OPS-11 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-11</span>
+    <span class="ptitle">Replace a single unhealthy instance</span>
+    <span class="pmeta">Incident · ~5 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> one instance. <strong>Reversal:</strong> none needed — the ASG relaunches automatically.</p>
+    <ol>
+      <li>Identify it:
+        <pre><code>aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names &lt;ASG_NAME&gt; \
+  --query <span class="s">'AutoScalingGroups[0].Instances[].{Id:InstanceId,State:LifecycleState,Health:HealthStatus,AZ:AvailabilityZone}'</span> \
+  --output table</code></pre>
+      </li>
+      <li>Look before you kill it — the cause is usually in the boot log or the container log:
+        <pre><code>aws ssm start-session --target &lt;INSTANCE_ID&gt;
+sudo tail -100 /var/log/user-data.log
+sudo docker ps -a
+sudo docker logs --tail 200 ocar_api</code></pre>
+      </li>
+      <li>Terminate it and let the ASG replace it. <code>--should-decrement-desired-capacity false</code>
+      is what makes the replacement happen:
+        <pre><code>aws autoscaling terminate-instance-in-auto-scaling-group \
+  --instance-id &lt;INSTANCE_ID&gt; \
+  --no-should-decrement-desired-capacity</code></pre>
+      </li>
+      <li>Confirm the replacement reaches <code>InService</code> and <code>Healthy</code>. Allow at least
+      the 240-second grace period plus three 15-second health checks.</li>
+    </ol>
+    <p class="small">If replacements repeatedly fail to become healthy, the problem is systemic — a bad
+    image, a broken SSM parameter, or an unreachable dependency. Go to <code>OPS-12</code> rather than
+    cycling instances.</p>
+  </div>
+</div>
+
+<!-- OPS-12 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-12</span>
+    <span class="ptitle">Diagnose a failed or stuck deploy</span>
+    <span class="pmeta">Incident · investigation</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> read-only until you choose an action.</p>
+    <ol>
+      <li><strong>Locate the failing step</strong> in the Deploy workflow run. The step name maps directly
+      onto Figure 4.</li>
+      <li><strong>Migration step failed</strong> → the rollout never started and production is untouched,
+      still running the previous version. Read the captured stdout/stderr in the workflow log. Fix the
+      migration and merge again. Do not attempt to force the rollout past it.</li>
+      <li><strong>Refresh timed out or failed</strong> → replacement instances are not becoming healthy:
+        <pre><code>aws autoscaling describe-instance-refreshes \
+  --auto-scaling-group-name &lt;ASG_NAME&gt; --max-records 1 \
+  --query <span class="s">'InstanceRefreshes[0].{Status:Status,Reason:StatusReason,Pct:PercentageComplete}'</span></code></pre>
+        Then shell into a failing instance and read <code>/var/log/user-data.log</code>. The usual causes
+        are a GHCR pull failure (expired <code>ghcr-token</code>), a malformed <code>api-env</code>, or the
+        application exiting at startup because it cannot reach RDS or Valkey.
+      </li>
+      <li><strong>Health check failed but the refresh succeeded</strong> → instances are healthy at the
+      target group but the ALB is not serving correctly. Check target health directly:
+        <pre><code>aws elbv2 describe-target-health --target-group-arn &lt;TG_ARN&gt;</code></pre>
+      </li>
+      <li><strong>Smoke test failed but health passed</strong> → this is the important case. It means the
+      process is alive but the database path is broken, which <code>/health</code> does not currently
+      detect (<span class="chip gap">G-01</span>). Check RDS availability, the security group, and
+      <code>DATABASE_URL</code> in <code>api-env</code>.</li>
+      <li><strong>To stop an in-progress refresh:</strong>
+        <pre><code>aws autoscaling cancel-instance-refresh --auto-scaling-group-name &lt;ASG_NAME&gt;</code></pre>
+        <p class="small">Cancelling leaves the group in a mixed state — some instances on the new version,
+        some on the old. Follow immediately with <code>OPS-02</code> to converge on a known-good tag.</p>
+      </li>
+    </ol>
+  </div>
+</div>
+
+<!-- ════════════════ 15 ════════════════ -->
+<h2 id="s15"><span class="num">Section 15</span>Failure modes and recovery</h2>
+
+<p class="lead">
+What breaks, what it looks like, and what to do. Ordered by how likely each is to occur.
+</p>
+
+<table>
+  <thead><tr><th style="width:19%">Failure</th><th style="width:23%">Observable signal</th><th style="width:18%">Automatic response</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>One instance dies</strong></td>
+      <td>Target group shows one unhealthy target; no user-visible impact</td>
+      <td>ASG terminates and replaces it; ALB stops routing to it after 3 failed checks</td>
+      <td>None required. Investigate the cause via <code>OPS-11</code> if it recurs.</td>
+    </tr>
+    <tr>
+      <td><strong>Bad deploy</strong></td>
+      <td>Deploy workflow red at the health or smoke step</td>
+      <td>Automatic rollback to the previous tag, plus a second refresh</td>
+      <td>Confirm the rollback completed. Diagnose with <code>OPS-12</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>Bad migration</strong></td>
+      <td>Deploy fails at the migration step</td>
+      <td>Rollout never starts; production untouched</td>
+      <td>Fix forward. Never attempt to revert a migration.</td>
+    </tr>
+    <tr>
+      <td><strong>CPU credits exhausted</strong></td>
+      <td><code>CPUCreditBalance</code> near zero; latency rising with no scaling activity</td>
+      <td><em>None</em> — request-count scaling may still fire, CPU-based would not</td>
+      <td>Enable Unlimited mode, or move to a fixed-performance type (<code>OPS-07</code>).</td>
+    </tr>
+    <tr>
+      <td><strong>Valkey node fails</strong></td>
+      <td>Real-time updates stop; BullMQ stalls; rate limiting fails open or closed</td>
+      <td><em>None</em> — single node, failover disabled</td>
+      <td>Replace the node. Cache contents are disposable; this is an outage, not data loss.</td>
+    </tr>
+    <tr>
+      <td><strong>RDS unavailable</strong></td>
+      <td>Smoke test fails; <code>/health</code> reports <code>db: "error"</code> in its body but still returns HTTP 200</td>
+      <td><em>None</em> — single-AZ, no replica. The ALB does <strong>not</strong> detect this</td>
+      <td>Check the RDS console. Restore from automated backup if required. See <span class="chip gap">G-01</span> and <span class="chip gap">G-10</span>.</td>
+    </tr>
+    <tr>
+      <td><strong>Entire AZ fails</strong></td>
+      <td>Half the fleet unhealthy</td>
+      <td>ALB routes to the surviving AZ; ASG launches replacements there</td>
+      <td>Monitor. If RDS was in the failed AZ, the database is down until AWS recovers it — single-AZ is an accepted risk.</td>
+    </tr>
+    <tr>
+      <td><strong>Grafana Cloud cap exceeded</strong></td>
+      <td>Billing-usage alert at 85%; metrics or logs start being dropped</td>
+      <td>Alert fires</td>
+      <td>Review cardinality (§13.2) before assuming an upgrade is needed. Both prior incidents were cardinality, not genuine volume.</td>
+    </tr>
+    <tr>
+      <td><strong>GHCR token expired</strong></td>
+      <td>Every new instance fails to become healthy; <code>docker login</code> error in <code>user-data.log</code></td>
+      <td><em>None</em> — the ASG will cycle instances indefinitely</td>
+      <td>Rotate <code>/ocar/prod/ghcr-token</code>, then refresh (<code>OPS-06</code> steps 4–5).</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note warn">
+<span class="label">The pattern worth internalising</span>
+<p>
+Every failure the platform recovers from automatically is one where <strong>an instance</strong>
+is the failing unit. Every failure requiring manual intervention is one where a
+<strong>shared singleton</strong> fails — the Valkey node, the RDS instance, an SSM parameter.
+That is the accurate summary of this architecture's resilience profile: the compute tier is
+genuinely redundant; the data tier is not.
+</p>
+</div>
+
+<!-- ════════════════ 16 ════════════════ -->
+<h2 id="s16"><span class="num">Section 16</span>Load testing</h2>
+
+<p class="lead">
+A k6 suite exists at <code>load-tests/</code>, built to exercise the specific numbers committed
+in the scale-readiness report: 5,000–6,000 concurrent connections, GPS pings every three to five
+seconds, and booking bursts on top.
+</p>
+
+<h3>16.1 Structure</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:34%">Path</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>seed/generate-test-tokens.js</code></td><td>Mints JWTs directly rather than driving real OTP flows — thousands of logins would cost real money in SMS and hit Fast2SMS rate limits. Creates synthetic riders; reuses real onboarded drivers and stamps their daily verification records.</td></tr>
+    <tr><td><code>seed/generate-bulk-ride-history.js</code></td><td>Populates history so read paths are exercised against realistic table sizes.</td></tr>
+    <tr><td><code>k6/lib/socketio.js</code></td><td>Hand-rolled Engine.IO v4 / Socket.io v4 client. k6 runs its own JS runtime, so the real <code>socket.io-client</code> package cannot be used.</td></tr>
+    <tr><td><code>k6/smoke.js</code></td><td>Single-VU sanity check across every code path. Run before every session.</td></tr>
+    <tr><td><code>k6/main.js</code></td><td>The full test — concurrent booking, driver GPS and idle-rider scenarios.</td></tr>
+    <tr><td><code>k6/spike.js</code>, <code>k6/accept-race.js</code></td><td>Sudden-surge behaviour, and concurrent ride-acceptance contention.</td></tr>
+    <tr><td><code>verify/reconcile.js</code>, <code>verify/query-regression.js</code></td><td>Post-run data-integrity and query-performance verification.</td></tr>
+  </tbody>
+</table>
+
+<h3>16.2 Method</h3>
+<ol>
+  <li>Stand up staging (<code>OPS-09</code>) — note the blocker recorded there.</li>
+  <li>Seed data and tokens.</li>
+  <li>Run <code>smoke.js</code> privately first. A live run should never be the script's first contact with the environment.</li>
+  <li>Step up in stages rather than starting at target load: roughly 200 → 1,000 → 3,000 → 6,000 connections.</li>
+  <li>Watch, in order of expected constraint: Valkey ops/sec and connections; RDS connection count and Performance Insights; <code>CPUCreditBalance</code>; the cAdvisor per-container row; ALB 5xx rate and p95 latency.</li>
+  <li>Tear staging down afterwards (<code>OPS-10</code>).</li>
+</ol>
+
+<h3>16.3 What the test is expected to answer</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:36%">Question</th><th>Decision it feeds</th></tr></thead>
+  <tbody>
+    <tr><td>Do <code>t3.medium</code> credits survive sustained load?</td><td>Enable Unlimited mode, or move to <code>m5.large</code>.</td></tr>
+    <tr><td>What is the real per-instance request ceiling?</td><td>Retune <code>target_value</code> from 1000 to a measured number.</td></tr>
+    <tr><td>Does <code>cache.t4g.micro</code> hold the pub/sub fan-out?</td><td>Whether to increase the Valkey node size.</td></tr>
+    <tr><td>Does <code>db.t4g.small</code> hold the connection count?</td><td>Instance class, and whether a pooler is needed.</td></tr>
+    <tr><td>Is <code>max_size = 4</code> sufficient?</td><td>The scaling bounds in <code>asg.tf</code>.</td></tr>
+  </tbody>
+</table>
+<p>
+Until this test runs, the capacity figures in the scale-readiness report are engineering estimates
+reasoned from the stack — not measurements. That distinction is stated in the report itself and
+is repeated here because it matters for sign-off.
+</p>
+<!-- ════════════════ 17 ════════════════ -->
+<h2 id="s17" class="pagebreak"><span class="num">Section 17</span>Known gaps and risk register</h2>
+
+<p class="lead">
+Eighteen items, each verified against the current codebase. Severity reflects operational
+consequence, not effort to fix. Several are deliberate trade-offs with sound reasoning; those are
+marked as accepted rather than outstanding.
+</p>
+
+<h3>17.1 Summary</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:9%">Ref</th><th style="width:12%">Severity</th><th style="width:40%">Issue</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td><code>G-01</code></td><td><span class="chip gap">High</span></td><td><code>/health</code> returns 200 when the database is down</td><td>Outstanding</td></tr>
+    <tr><td><code>G-02</code></td><td><span class="chip gap">High</span></td><td>Staging IAM role cannot create RDS — staging apply fails</td><td>Outstanding</td></tr>
+    <tr><td><code>G-05</code></td><td><span class="chip gap">High</span></td><td>Unguarded <code>terraform destroy</code> on staging</td><td>Blocked on repo admin</td></tr>
+    <tr><td><code>G-06</code></td><td><span class="chip gap">High</span></td><td>No branch protection; no deploy approval gate</td><td>Blocked on repo admin</td></tr>
+    <tr><td><code>G-13</code></td><td><span class="chip gap">High</span></td><td>Minimal automated test coverage; no coverage gate</td><td>Outstanding</td></tr>
+    <tr><td><code>G-14</code></td><td><span class="chip gap">High</span></td><td>Admin TOTP enforcement disabled by a hardcoded bypass</td><td>Outstanding</td></tr>
+    <tr><td><code>G-03</code></td><td><span class="chip part">Medium</span></td><td>Plan role lacks <code>rds:Describe*</code></td><td>Outstanding</td></tr>
+    <tr><td><code>G-09</code></td><td><span class="chip part">Medium</span></td><td>Scaling threshold is an unvalidated estimate</td><td>Awaiting load test</td></tr>
+    <tr><td><code>G-10</code></td><td><span class="chip part">Medium</span></td><td>Single-AZ database, single-node cache</td><td>Accepted at current scale</td></tr>
+    <tr><td><code>G-11</code></td><td><span class="chip part">Medium</span></td><td>Scale-readiness report contradicts deployed scaling config</td><td>Outstanding — documentation</td></tr>
+    <tr><td><code>G-12</code></td><td><span class="chip part">Medium</span></td><td>Cache transit encryption is <code>preferred</code>, not <code>required</code></td><td>Outstanding</td></tr>
+    <tr><td><code>G-15</code></td><td><span class="chip part">Medium</span></td><td>Dependency scanning gates on <code>CRITICAL</code> only</td><td>Accepted, revisitable</td></tr>
+    <tr><td><code>G-16</code></td><td><span class="chip part">Medium</span></td><td><code>t3</code> Unlimited burst mode not enabled</td><td>Awaiting load test</td></tr>
+    <tr><td><code>G-04</code></td><td><span class="chip na">Low</span></td><td>IAM policy comment is stale and misleading</td><td>Outstanding — documentation</td></tr>
+    <tr><td><code>G-07</code></td><td><span class="chip na">Low</span></td><td>ASG sizing hardcoded rather than variable</td><td>Outstanding</td></tr>
+    <tr><td><code>G-08</code></td><td><span class="chip na">Low</span></td><td>Network resource names not environment-scoped</td><td>Outstanding — cosmetic</td></tr>
+    <tr><td><code>G-17</code></td><td><span class="chip na">Low</span></td><td>Container limits shipped in code but not applied to running instances</td><td>Outstanding</td></tr>
+    <tr><td><code>G-18</code></td><td><span class="chip na">Info</span></td><td>Deregistration delay left at the AWS default</td><td>Accepted</td></tr>
+  </tbody>
+</table>
+
+<h3>17.2 Detail on the high-severity items</h3>
+
+<h4><code>G-01</code> — The health endpoint cannot fail</h4>
+<p>
+<code>api/src/app.ts</code> checks database and Redis connectivity, reports the result in the
+response body, and then unconditionally returns HTTP&nbsp;200:
+</p>
+<pre><code>const [dbOk, redisOk] = await Promise.all([testConnection(), testRedis()])
+res.<span class="k">status(200)</span>.json({ status: <span class="s">'ok'</span>, db: dbOk ? <span class="s">'ok'</span> : <span class="s">'error'</span>, … })</code></pre>
+<p>
+The ALB target group matches on <code>200</code>. An instance whose database connection has
+failed therefore remains <strong>healthy</strong> and continues receiving traffic indefinitely.
+The ASG will not replace it. The deploy pipeline's health check will pass.
+</p>
+<p>
+The smoke test against <code>/api/v1/geo/cities</code> is currently the only automated check that
+would catch this, and it runs once per deploy rather than continuously. Suggested fix: return 503
+when <code>dbOk</code> is false, keeping the diagnostic body intact. Consider whether Redis
+failure should also fail the check — it degrades real-time delivery but leaves core HTTP working,
+so it may warrant a separate readiness endpoint rather than the same one.
+</p>
+
+<h4><code>G-02</code> — Staging cannot be provisioned through CI</h4>
+<p>
+<code>rds.tf</code> was added to the shared configuration, but the
+<code>ocar-prod-gha-staging</code> role's policy in <code>github-oidc.tf</code> grants only
+<code>ec2</code>, <code>elasticloadbalancing</code>, <code>autoscaling</code>,
+<code>elasticache</code> and <code>acm</code>. There is no <code>rds:*</code> statement, and no
+<code>secretsmanager:*</code> — which <code>manage_master_user_password</code> also requires.
+</p>
+<p>
+A staging apply will proceed until it reaches the database resources and then fail on
+<code>AccessDenied</code>. Because this is the environment the load test depends on, this blocks
+<code>OPS-09</code>, which in turn blocks the load test, which in turn blocks the capacity
+validation the entire scale-readiness report defers to.
+</p>
+
+<h4><code>G-05</code> / <code>G-06</code> — Missing approval gates</h4>
+<p>
+Three protections referenced in the workflows do not actually exist:
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:28%">Declared</th><th style="width:20%">Reality</th><th>Consequence</th></tr></thead>
+  <tbody>
+    <tr><td><code>environment: production</code> in <code>deploy.yml</code></td><td>Environment never created</td><td>Deploys to production run with no human approval pause.</td></tr>
+    <tr><td><code>environment: staging</code> in <code>staging-infra.yml</code></td><td>Environment never created</td><td><code>terraform destroy -auto-approve</code> can be dispatched by anyone with workflow-run access.</td></tr>
+    <tr><td>Branch protection on <code>main</code></td><td>Not configured</td><td>A direct push bypasses review. CI still gates <em>deploy</em>, but nothing gates <em>merge</em>.</td></tr>
+  </tbody>
+</table>
+<p>
+All three require repository admin rights, which the account used to build this pipeline does not
+hold (<code>gh api repos/:owner/:repo --jq '.permissions'</code> returns
+<code>admin: false</code>). The exact <code>gh api</code> commands to close each are documented in
+<code>CLAUDE.md</code> under "Pending Ops Actions". <strong>This is the single highest-value item
+on this list for whoever holds admin rights</strong> — it is minutes of work and closes three
+distinct paths to unreviewed production change.
+</p>
+
+<h4><code>G-14</code> — Admin TOTP enforcement is bypassed</h4>
+<p>
+<code>api/src/middleware/auth.middleware.ts</code> line 125:
+</p>
+<pre><code><span class="c">// TODO(SHIP-BLOCKER): hardcoded bypass, see TOTP_DEV_NOTE.md — remove before shipping</span>
+const mustEnrollTotp = <span class="k">false</span> && MANDATORY_TOTP_ROLES.has(adminRole) && !totpEnabled</code></pre>
+<p>
+The leading <code>false &&</code> short-circuits the entire expression, so
+<code>super_admin</code> and <code>finance_admin</code> accounts are never required to enrol in
+two-factor authentication despite the surrounding logic being complete and correct. The
+enrolment endpoints work; the enforcement is simply switched off. The comment marks it as a ship
+blocker. It is flagged here because these are the roles with the broadest access in the system.
+</p>
+
+<h4><code>G-13</code> — Test coverage</h4>
+<p>
+Five test files exist in the API — four covering ride assignment and broadcast, one covering
+maintenance middleware. There are none for payments, wallet, settlements, authentication, OTP,
+safety or ride chat. <code>vitest</code> and
+<code>@vitest/coverage-v8</code> are installed and <code>pnpm test:coverage</code> is defined, but
+CI runs <code>pnpm test</code> with no threshold.
+</p>
+<p>
+This is worth stating plainly: the delivery pipeline is well-built and the gates are structurally
+sound, but a gate is only as strong as the checks behind it. Payments and authentication are the
+two areas where a regression is most expensive and where there is currently no automated
+protection at all.
+</p>
+
+<h3>17.3 Notes on selected medium and low items</h3>
+<table>
+  <thead><tr><th style="width:9%">Ref</th><th>Detail</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>G-04</code></td>
+      <td>The comment above <code>aws_iam_role_policy_attachment.ssm_session_manager_debug</code> in
+      <code>iam.tf</code> describes it as temporary debugging access to be removed once boot is
+      confirmed working. That is now wrong and dangerous — <code>deploy.yml</code> routes migrations
+      through <code>ssm:SendCommand</code>, which requires instances to be registered SSM managed
+      instances. Acting on the comment would break every deploy. The attachment should stay; the
+      comment must be corrected.</td>
+    </tr>
+    <tr>
+      <td><code>G-07</code></td>
+      <td><code>min_size</code>, <code>desired_capacity</code> and <code>max_size</code> are literals in
+      <code>asg.tf</code>, not variables. Staging therefore provisions the same 2/2/4 fleet as
+      production. For a load-test environment that is arguably correct — the numbers must be
+      comparable — but it removes the option of a cheaper single-instance staging for functional
+      testing.</td>
+    </tr>
+    <tr>
+      <td><code>G-08</code></td>
+      <td>The VPC, subnets, internet gateway, route table and the two core security groups are named
+      <code>${var.project_name}-*</code> without the environment segment, unlike every other resource.
+      Both environments would produce identically-named resources. They live in separate VPCs and
+      separate state, so nothing collides functionally — but console navigation with both environments
+      running is needlessly confusing.</td>
+    </tr>
+    <tr>
+      <td><code>G-17</code></td>
+      <td>cAdvisor and the <code>ocar_api</code> resource limits are committed to
+      <code>docker-compose.prod.yml</code>, which reaches instances through an SSM parameter sourced
+      from that file at <code>terraform apply</code> time. Until an apply runs and the fleet rolls,
+      running instances do not have them. Applying also requires re-importing
+      <code>infra/grafana/dashboards/ocar-overview.json</code> for the per-container row to render.</td>
+    </tr>
+    <tr>
+      <td><code>G-18</code></td>
+      <td>No <code>deregistration_delay</code> is set on the target group, so it uses the AWS default
+      of 300 seconds. For long-lived WebSocket connections this is generous rather than
+      insufficient — the concern with an unset value is usually the opposite. Worth setting
+      explicitly so the value is visible in code rather than implied.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>17.4 Suggested order of work</h3>
+<ol>
+  <li><strong><code>G-06</code>, <code>G-05</code></strong> — create the GitHub Environments and branch
+  protection. Minutes of work, closes three unreviewed-change paths. Requires admin.</li>
+  <li><strong><code>G-01</code></strong> — make <code>/health</code> return 503 on database failure. A
+  few lines, and it is what makes the ASG's self-healing actually cover a real failure mode.</li>
+  <li><strong><code>G-14</code></strong> — remove the TOTP bypass, or record an explicit decision to
+  defer it with a date.</li>
+  <li><strong><code>G-02</code>, <code>G-03</code></strong> — add the missing IAM permissions. Unblocks
+  staging, which unblocks the load test.</li>
+  <li><strong>Load test</strong> — resolves <code>G-09</code> and <code>G-16</code> with data rather
+  than estimates, and validates the capacity claims in the readiness report.</li>
+  <li><strong><code>G-13</code></strong> — payments and auth test coverage. The largest effort here, and
+  the one that most changes the pipeline's real value.</li>
+  <li><strong><code>G-11</code>, <code>G-04</code></strong> — reconcile the documentation with reality.</li>
+</ol>
+
+<!-- ════════════════ 18 ════════════════ -->
+<h2 id="s18"><span class="num">Section 18</span>Appendices</h2>
+
+<h3>A — Where everything lives</h3>
+<pre><code>.github/workflows/
+  ci.yml                     7 parallel checks; gates everything downstream
+  deploy.yml                 build → migrate → refresh → verify → rollback
+  terraform-plan.yml         posts a plan on any PR touching infra/**
+  staging-infra.yml          manual apply/destroy for staging
+
+infra/terraform/
+  providers.tf               versions; deliberately empty S3 backend block
+  variables.tf               every tunable input and its default
+  prod.backend.hcl           state key: prod/terraform.tfstate
+  staging.backend.hcl        state key: staging/terraform.tfstate
+  staging.tfvars             the only two values staging overrides
+  vpc.tf                     VPC, 2 public subnets, IGW, route table
+  security-groups.tf         alb-sg and ec2-sg
+  alb.tf                     ALB, target group, listeners, maintenance rule
+  asg.tf                     Auto Scaling Group + target-tracking policy
+  launch-template.tf         AMI lookup, instance type, user_data
+  templates/user_data.sh.tpl the entire instance boot sequence
+  iam.tf                     EC2 instance role and SSM parameter names
+  github-oidc.tf             the three GitHub Actions roles
+  rds.tf                     Postgres instance and parameter group
+  elasticache.tf             Valkey replication group and parameter group
+  ssm-observability.tf       repo files published as SSM parameters
+  bootstrap/                 state bucket, KMS key, OIDC provider (own state)
+  observability/             Grafana alerts, SLOs, synthetics (own state)
+
+api/
+  Dockerfile                 4-stage build; runs as non-root
+  entrypoint.sh              migrate, then start the server
+  src/app.ts                 middleware chain, /health, /metrics
+  src/server.ts              worker startup and graceful shutdown
+  src/websocket/socket.server.ts   Socket.io, Redis adapter, rooms
+  src/db/migrations/         forward-only, numerically ordered
+
+docker-compose.prod.yml      the five containers each instance runs
+infra/alloy/config.alloy     log, metric and trace pipelines
+infra/grafana/dashboards/    ocar-overview.json
+load-tests/                  k6 suite, seeding and verification
+docs/OPS_RUNBOOK.md          the short-form operational reference
+CLAUDE.md                    living project state and pending actions</code></pre>
+
+<h3>B — Command quick reference</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:44%">Purpose</th><th>Command</th></tr></thead>
+  <tbody>
+    <tr><td>Who am I / which account</td><td><code>aws sts get-caller-identity</code></td></tr>
+    <tr><td>Find the ASG</td><td><code>aws autoscaling describe-auto-scaling-groups --query 'AutoScalingGroups[].AutoScalingGroupName'</code></td></tr>
+    <tr><td>Fleet state</td><td><code>aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names &lt;ASG&gt;</code></td></tr>
+    <tr><td>Target health</td><td><code>aws elbv2 describe-target-health --target-group-arn &lt;TG_ARN&gt;</code></td></tr>
+    <tr><td>Currently deployed version</td><td><code>aws ssm get-parameter --name /ocar/prod/image-tag</code></td></tr>
+    <tr><td>Start a fleet roll</td><td><code>aws autoscaling start-instance-refresh --auto-scaling-group-name &lt;ASG&gt; --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'</code></td></tr>
+    <tr><td>Refresh progress</td><td><code>aws autoscaling describe-instance-refreshes --auto-scaling-group-name &lt;ASG&gt; --max-records 1</code></td></tr>
+    <tr><td>Cancel a refresh</td><td><code>aws autoscaling cancel-instance-refresh --auto-scaling-group-name &lt;ASG&gt;</code></td></tr>
+    <tr><td>Shell into an instance</td><td><code>aws ssm start-session --target &lt;INSTANCE_ID&gt;</code></td></tr>
+    <tr><td>Health / smoke</td><td><code>curl -s https://ocar-api.clienttesting.in/health | jq</code></td></tr>
+    <tr><td>Terraform, production</td><td><code>pnpm infra:prod:init | :plan | :apply</code></td></tr>
+    <tr><td>Terraform, staging</td><td><code>pnpm infra:staging:init | :plan | :apply | :destroy</code></td></tr>
+  </tbody>
+</table>
+
+<h3>C — Glossary</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:26%">Term</th><th>Meaning in this system</th></tr></thead>
+  <tbody>
+    <tr><td>Instance refresh</td><td>The EC2 Auto Scaling mechanism that replaces instances in a group according to a policy. Used here for both deploys and infrastructure changes.</td></tr>
+    <tr><td>Launch before terminating</td><td>Replacement method triggered by <code>MinHealthyPercentage = 100</code>: a new instance must be healthy before the old one is terminated.</td></tr>
+    <tr><td>Target tracking</td><td>Scaling policy type where AWS maintains a metric at a target value and manages the alarms itself.</td></tr>
+    <tr><td><code>ALBRequestCountPerTarget</code></td><td>Requests per healthy target per one-minute period. Target value 1000 ≈ 16.7 req/sec per instance.</td></tr>
+    <tr><td>Deregistration delay</td><td>How long the load balancer lets in-flight work finish on a target being removed. 300 s here.</td></tr>
+    <tr><td>Health check grace period</td><td>How long a newly launched instance is exempt from health evaluation. 240 s here.</td></tr>
+    <tr><td>OIDC federation</td><td>Short-lived AWS credentials issued against a signed GitHub identity token, replacing stored access keys.</td></tr>
+    <tr><td>Drift</td><td>Divergence between real infrastructure and Terraform state. Created deliberately by <code>OPS-04</code>; otherwise a problem.</td></tr>
+    <tr><td>Forward-only migration</td><td>Schema changes are never reverted. A bad migration is corrected by a new one.</td></tr>
+  </tbody>
+</table>
+
+<h3>D — Verification record</h3>
+<p>
+Every claim in this document was checked against the repository at <code>main</code> @
+<span class="mono">4a07a95</span> on 20 August 2026. The following were read in full rather than
+sampled: all four workflow files; all sixteen Terraform files in
+<code>infra/terraform/</code>; <code>user_data.sh.tpl</code>;
+<code>docker-compose.prod.yml</code>; <code>api/Dockerfile</code>;
+<code>api/entrypoint.sh</code>; <code>api/src/server.ts</code>;
+<code>api/src/websocket/socket.server.ts</code>; <code>api/src/middleware/auth.middleware.ts</code>;
+<code>infra/alloy/config.alloy</code>; <code>docs/OPS_RUNBOOK.md</code>; and the health-check
+portion of <code>api/src/app.ts</code>.
+</p>
+<p>
+Two behaviours that depend on AWS semantics rather than on this repository's code were verified
+against AWS's current published documentation rather than inferred: the effect of
+<code>MinHealthyPercentage</code> and <code>MaxHealthyPercentage</code> both set to 100, and the
+default target-group deregistration delay of 300 seconds.
+</p>
+<p class="small" style="margin-top:26px;padding-top:16px;border-top:1px solid var(--rule)">
+Where this document and the codebase disagree, the codebase is correct and this document is out of
+date — please raise it. Where this document and
+<code>docs/architecture/2026-08-04-production-scale-readiness-report.md</code> disagree, see gap
+<code>G-11</code>; that report predates several of the decisions described here.
+</p>
+
+</div>
+</body>
+</html>

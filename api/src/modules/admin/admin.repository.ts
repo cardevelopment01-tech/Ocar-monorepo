@@ -1830,7 +1830,11 @@ export async function deleteCityBoundary(
 
 export async function listAdminRateCards() {
   const res = await pool.query(
-    `SELECT rc.*,
+    `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type,
+            rc.city_id::int AS city_id, rc.rate_per_km, rc.rate_per_min, rc.min_fare,
+            rc.return_rate_per_km, rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day,
+            rc.cancellation_fee, rc.effective_from, rc.effective_to, rc.notes,
+            rc.created_by::int AS created_by, rc.created_at,
             vc.display_name AS category_name,
             vc.slug AS category_slug,
             c.name AS city_name
@@ -1845,10 +1849,13 @@ export async function listAdminRateCards() {
 
 export async function listAdminRateCardHistory() {
   const res = await pool.query(
-    `SELECT rch.*,
+    `SELECT rch.id::int AS id, rch.rate_card_id::int AS rate_card_id,
+            rch.rate_per_km, rch.rate_per_min, rch.min_fare, rch.return_rate_per_km, rch.hour_rate,
+            rch.changed_by::int AS changed_by, rch.change_reason, rch.created_at,
+            rch.city_id::int AS city_id,
             vc.display_name AS category_name,
             rc.ride_type,
-            rc.category_id,
+            rc.category_id::int AS category_id,
             c.name AS city_name
      FROM rate_card_history rch
      JOIN rate_cards rc ON rc.id = rch.rate_card_id

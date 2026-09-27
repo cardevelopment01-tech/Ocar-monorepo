@@ -17,6 +17,19 @@ import { sectionLabel } from '@/theme/homeTokens'
 
 type ActiveField = 'pickup' | 'drop'
 
+// Straight-line distance from pickup, formatted like web's own ${km.toFixed(1)} km
+// convention (receipt, ride tracking) -- undefined pickup means nothing to show yet.
+function distanceFromPickup(pickup: { lat: number; lng: number } | null, lat: number, lng: number): string | undefined {
+  if (!pickup) return undefined
+  const R = 6_371_000
+  const dLat = (lat - pickup.lat) * Math.PI / 180
+  const dLng = (lng - pickup.lng) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(pickup.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  const metres = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return `${(metres / 1000).toFixed(1)} km`
+}
+
 const SAVED_ICON: Record<SavedPlace['kind'], React.ComponentProps<typeof Feather>['name']> = {
   home: 'home',
   work: 'briefcase',
@@ -388,6 +401,7 @@ export default function BookingPickersScreen() {
                 address={r.description}
                 onPress={() => void handleSelectSuggestion(r.placeId, r.description)}
                 last={i === results.length - 1}
+                distance={editingField === 'drop' && r.distanceMetres !== undefined ? `${(r.distanceMetres / 1000).toFixed(1)} km` : undefined}
               />
             ))
           )
@@ -404,6 +418,7 @@ export default function BookingPickersScreen() {
                     address={r.address}
                     onPress={() => void commitPlace(r)}
                     last={i === recents.length - 1}
+                    distance={editingField === 'drop' ? distanceFromPickup(pickup, r.lat, r.lng) : undefined}
                   />
                 ))}
               </View>
@@ -419,6 +434,7 @@ export default function BookingPickersScreen() {
                     address={p.address}
                     onPress={() => void commitPlace({ address: p.address, lat: p.lat, lng: p.lng })}
                     last={i === savedPlaces.length - 1}
+                    distance={editingField === 'drop' ? distanceFromPickup(pickup, p.lat, p.lng) : undefined}
                   />
                 ))}
               </View>
@@ -433,6 +449,7 @@ export default function BookingPickersScreen() {
                   address={p.address}
                   onPress={() => void commitPlace({ address: p.address, lat: p.lat, lng: p.lng })}
                   last={i === POPULAR.length - 1}
+                  distance={editingField === 'drop' ? distanceFromPickup(pickup, p.lat, p.lng) : undefined}
                 />
               ))}
             </View>

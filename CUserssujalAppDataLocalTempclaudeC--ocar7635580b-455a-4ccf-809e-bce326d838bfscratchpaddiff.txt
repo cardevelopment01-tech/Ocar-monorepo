@@ -1,0 +1,672 @@
+diff --git a/apps/driver-mobile/src/app/active-ride/[id]/index.tsx b/apps/driver-mobile/src/app/active-ride/[id]/index.tsx
+index 09e5885..61be997 100644
+--- a/apps/driver-mobile/src/app/active-ride/[id]/index.tsx
++++ b/apps/driver-mobile/src/app/active-ride/[id]/index.tsx
+@@ -1,22 +1,40 @@
+ import { useEffect, useState } from 'react'
+-import { BackHandler, StyleSheet, Text, View } from 'react-native'
++import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native'
+ import { useLocalSearchParams, useRouter } from 'expo-router'
+-import { Button, ErrorState, SOSButton, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
++import { Feather } from '@expo/vector-icons'
++import { Button, CancelSheet, ErrorState, SOSButton, Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+ import { useDriverSessionStore } from '@/store/useDriverSessionStore'
+ import { useAuthStore } from '@/store/useAuthStore'
+ import { useActiveRide } from '@/features/active-ride/useActiveRide'
+ import { OtpEntryCard } from '@/features/active-ride/components/OtpEntryCard'
+ import { StopCard } from '@/features/active-ride/components/StopCard'
++import { StopTimeline } from '@/features/active-ride/components/StopTimeline'
+ import { CashCollectionCard } from '@/features/active-ride/components/CashCollectionCard'
+ import { TripCompletionCard } from '@/features/active-ride/components/TripCompletionCard'
+ import { RateRiderSheet } from '@/features/active-ride/components/RateRiderSheet'
+ import { RiderActionsRow } from '@/features/active-ride/components/RiderActionsRow'
+ import { RideSheet } from '@/features/active-ride/components/RideSheet'
++import { RideTypeBadge } from '@/features/active-ride/components/RideTypeBadge'
++import { SlideToConfirm } from '@/features/active-ride/components/SlideToConfirm'
+ import { ArrivedBanner } from '@/features/active-ride/components/ArrivedBanner'
+ import { PulsingDot } from '@/features/active-ride/components/PulsingDot'
+ import { ActiveRideMap } from '@/features/active-ride/components/ActiveRideMap'
++import { SpeedAlertToast } from '@/features/active-ride/components/SpeedAlertToast'
+ import { triggerSos } from '@/features/active-ride/safety-api'
+ import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosition'
++import { useSpeedAlert } from '@/features/active-ride/useSpeedAlert'
++
++// Same reason list as web driver's NavigateToPickup.tsx:691-698 (the confirmed
++// source for driver-side cancel reasons per the hardening design doc).
++const CANCEL_REASONS = [
++  { code: 'passenger_not_found', label: 'Passenger not at pickup' },
++  { code: 'passenger_no_show', label: 'Passenger did not show up' },
++  { code: 'rider_requested', label: 'Rider asked me to cancel' },
++  { code: 'vehicle_breakdown', label: 'Vehicle breakdown' },
++  { code: 'wrong_booking', label: 'Wrong booking details' },
++  { code: 'emergency', label: 'Emergency' },
++  { code: 'other', label: 'Other reason' },
++]
+ 
+ export default function ActiveRideScreen() {
+   const { id } = useLocalSearchParams<{ id: string }>()
+@@ -36,12 +54,15 @@ export default function ActiveRideScreen() {
+     submitStartOtpAction,
+     submitEndOtpAction,
+     collectCashAction,
++    cancelRideAction,
++    startReturnAction,
+   } = useActiveRide(rideId)
+ 
+   const driverRating = useAuthStore((s) => s.driver?.rating ?? null)
+   const [cashResult, setCashResult] = useState<{ collected: number } | null>(null)
+   const [cashLoading, setCashLoading] = useState(false)
+   const [rateSheetOpen, setRateSheetOpen] = useState(true)
++  const [showCancelSheet, setShowCancelSheet] = useState(false)
+ 
+   // No-op on the hardware back button while a ride is active -- a driver can't
+   // accidentally back out mid-trip (Eng/Design review finding).
+@@ -57,6 +78,12 @@ export default function ActiveRideScreen() {
+   // crash hit every app launch once a ride was persisted active, since restoring
+   // straight into this screen re-triggers the loading->loaded transition.
+   const live = useDriverLivePosition(true)
++  // Trip-in-progress and the return leg -- both are "driving with a rider
++  // context active" (start-otp has fired, end-otp hasn't yet), matching the
++  // hardening doc's "driver-facing only, during the ride" scope. Off for
++  // accepted/driver_arrived (driver may be moving fast on an empty highway
++  // approach with no ride constraint on it) and completed.
++  const { alertKey, limitKmph } = useSpeedAlert(status === 'in_progress' || status === 'returning')
+ 
+   if (loading) {
+     return (
+@@ -101,22 +128,42 @@ export default function ActiveRideScreen() {
+     router.push(`/active-ride/${rideId}/chat`)
+   }
+ 
++  // Matches web's handleCancelRide (NavigateToPickup.tsx) -- CancelSheet only
++  // shown pre-arrival, so success always means "back to online", never a
++  // mid-status screen to unwind.
++  async function handleConfirmCancel(reasonCode: string) {
++    await cancelRideAction(reasonCode)
++    setShowCancelSheet(false)
++    clearActiveRide(null)
++    router.replace('/(tabs)/home')
++  }
++
+   // The map is always the whole screen, not a boxed inset -- every ride
+   // state docks its content in one RideSheet floating over it (Uber
+   // convention), instead of a Card stranded at the top with the rest of
+   // the viewport left dead.
+   const destination = ride.destLat != null && ride.destLng != null ? ([ride.destLat, ride.destLng] as [number, number]) : null
+-  const showsDestination = status === 'in_progress' || status === 'completed'
+   const pickup: [number, number] = [ride.originLat, ride.originLng]
+-  const navigateTarget = showsDestination && destination ? destination : pickup
++  // 'returning' targets pickup, not dropLat/dropLng -- the backend's
++  // startReturn only stamps return_started_at, it never rewrites the ride's
++  // drop coordinates (rides.service.ts:845), so the original outbound
++  // destination stays on the record throughout the return leg. Mirrors
++  // rider-mobile's useRideTracking.ts routeMode ('returning' -> driver-pickup
++  // waypoints), the confirmed-correct reference -- not web driver's dropPos,
++  // which stays pinned to the outbound destination through the return leg.
++  const showsDestination = status === 'in_progress' || status === 'completed'
++  const isReturning = status === 'returning'
++  const navigateTarget = isReturning ? pickup : showsDestination && destination ? destination : pickup
+   const pendingStop = ride.stops.find((s) => s.status === 'pending') ?? null
++  const isRoundTrip = ride.rideType === 'round_trip'
++  const isRental = ride.rideType === 'rental'
+ 
+   return (
+     <View style={styles.container}>
+       <ActiveRideMap
+         pickup={pickup}
+-        destination={showsDestination ? destination : null}
+-        leg={showsDestination ? 'to-destination' : 'to-pickup'}
++        destination={showsDestination || isReturning ? destination : null}
++        leg={isReturning ? 'to-pickup' : showsDestination ? 'to-destination' : 'to-pickup'}
+         stops={ride.stops.filter((s) => s.status === 'pending').map((s): [number, number] => [s.lat, s.lng])}
+       />
+ 
+@@ -126,6 +173,8 @@ export default function ActiveRideScreen() {
+         anchor="top-right"
+       />
+ 
++      <SpeedAlertToast alertKey={alertKey} limitKmph={limitKmph} />
++
+       {status === 'completed' && cashResult ? (
+         <>
+           <RideSheet>
+@@ -159,25 +208,82 @@ export default function ActiveRideScreen() {
+         <RideSheet>
+           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+           <RiderActionsRow rideId={rideId} riderName={ride.riderName} navigateTo={navigateTarget} unreadChatCount={unreadChatCount} onOpenChat={handleOpenChat} />
+-          <Text style={styles.title}>Trip in progress</Text>
++          {/* Locked headline copy (Token Mapping table, hardening design doc):
++              "On your trip" for in_progress -- typography.headline, driver-only
++              Space Grotesk, replacing the plain typography.title used before
++              this stage had a design pass. */}
++          <View style={styles.headlineRow}>
++            <Text style={styles.headline}>On your trip</Text>
++            {isRental ? <RideTypeBadge kind="rental" /> : null}
++          </View>
+           <Text style={styles.detail} numberOfLines={2}>
+-            → {ride.destinationAddress ?? 'Destination'}
++            → {isRental ? 'Flexible route' : (ride.destinationAddress ?? 'Destination')}
+           </Text>
++          {/* Persistent chrome (Stage 4 stacking priority, hardening design
++              doc): the full stop plan, not just whichever one is currently
++              blocking end-otp -- previously driver-mobile had zero visibility
++              into stops beyond the single pending one StopCard resolves. */}
++          <StopTimeline stops={ride.stops} />
+           {/* key is required here (unlike RideSheet, which must never have one --
+-              see its own comment) -- start-otp and end-otp are different
+-              OtpEntryCard elements in different ternary branches, but React
+-              reconciles same-type siblings at the same tree position as the
+-              SAME instance by default. Without a key, the end-otp card
+-              inherited the start-otp card's leftover typed digits on the
+-              driver_arrived -> in_progress transition, and its onSubmit fired
+-              immediately with that stale value -- a real end-trip verification
+-              call using a code the rider never gave for that step. */}
++              see its own comment) -- each branch below is a different element
++              type/props at this same tree position, and React reconciles
++              same-type siblings across renders as the SAME instance by
++              default. Without a key, a later card can inherit an earlier
++              card's leftover local state (this bit driver-mobile once
++              already: the end-otp card inheriting the start-otp card's typed
++              digits across the driver_arrived -> in_progress transition and
++              firing a stale OTP). */}
+           {/* The backend hard-blocks end-otp (409 RIDE_HAS_PENDING_STOPS) while
+               any stop is still pending -- this app had no way to ever resolve
+               a rider-added stop, so a driver who got one added was
+               permanently stuck seeing a generic "Could not confirm" error on
+               the end-OTP card with no indication why. Show the actual
+               blocking action instead of the OTP card until it's resolved. */}
++          {pendingStop ? (
++            <StopCard
++              key={`stop-${pendingStop.sequence}`}
++              rideId={rideId}
++              sequence={pendingStop.sequence}
++              address={pendingStop.address}
++              onResolved={reload}
++            />
++          ) : isRoundTrip ? (
++            // Round-trip's single primary CTA is "start return", not "end
++            // trip" -- matches web's primaryAction (TripInProgress.tsx:477-486):
++            // a round_trip ride never shows the end-OTP card until the return
++            // leg has actually started. SlideToConfirm (not a tap button) so a
++            // ride can't end early by accident, same affordance CashCollectionCard
++            // already uses on this screen.
++            <SlideToConfirm
++              key="start-return"
++              label="Slide to start return"
++              color={colors.warning}
++              onConfirm={() => void startReturnAction()}
++            />
++          ) : (
++            <OtpEntryCard
++              key="end-otp"
++              title="End Ride OTP"
++              subtitle="Ask the rider for their end OTP"
++              submitLabel="End trip"
++              loading={false}
++              error={actionError}
++              onSubmit={(otp) => submitEndOtpAction(otp)}
++            />
++          )}
++        </RideSheet>
++      ) : status === 'returning' ? (
++        <RideSheet>
++          {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
++          <RiderActionsRow rideId={rideId} riderName={ride.riderName} navigateTo={navigateTarget} unreadChatCount={unreadChatCount} onOpenChat={handleOpenChat} />
++          <View style={styles.headlineRow}>
++            <Text style={styles.headline}>Heading back</Text>
++            <RideTypeBadge kind="return" />
++          </View>
++          <Text style={styles.detail} numberOfLines={2}>
++            → {ride.originAddress ?? 'Pickup point'}
++          </Text>
++          <StopTimeline stops={ride.stops} />
+           {pendingStop ? (
+             <StopCard
+               key={`stop-${pendingStop.sequence}`}
+@@ -232,8 +338,19 @@ export default function ActiveRideScreen() {
+             </View>
+           </View>
+           <Button label="I've arrived" icon="check-circle" onPress={() => void markArrivedAction()} />
++          <Pressable onPress={() => setShowCancelSheet(true)} style={styles.cancelLink} hitSlop={8}>
++            <Feather name="x" size={14} color={colors.error} />
++            <Text style={styles.cancelLinkText}>Cancel ride</Text>
++          </Pressable>
+         </RideSheet>
+       )}
++
++      <CancelSheet
++        visible={showCancelSheet}
++        reasons={CANCEL_REASONS}
++        onClose={() => setShowCancelSheet(false)}
++        onConfirm={handleConfirmCancel}
++      />
+     </View>
+   )
+ }
+@@ -241,7 +358,8 @@ export default function ActiveRideScreen() {
+ const styles = StyleSheet.create({
+   container: { flex: 1, backgroundColor: colors.bg },
+   centeredState: { flex: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.md },
+-  title: { ...typography.title, color: colors.ink900 },
++  headlineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
++  headline: { ...typography.headline, color: colors.ink900 },
+   detail: { ...typography.body, color: colors.ink600 },
+   error: { ...typography.label, color: colors.error, backgroundColor: colors.errorLight, borderRadius: radii.md, padding: spacing.sm, overflow: 'hidden' },
+   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+@@ -249,4 +367,6 @@ const styles = StyleSheet.create({
+   addressTextCol: { flex: 1, minWidth: 0, gap: 1 },
+   addressLabel: { ...typography.caption, color: colors.ink400 },
+   addressValue: { ...typography.title, color: colors.ink900 },
++  cancelLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: spacing.sm },
++  cancelLinkText: { ...typography.label, color: colors.error, fontWeight: '600' },
+ })
+diff --git a/apps/driver-mobile/src/features/active-ride/api.ts b/apps/driver-mobile/src/features/active-ride/api.ts
+index ec5f9c3..8bc7683 100644
+--- a/apps/driver-mobile/src/features/active-ride/api.ts
++++ b/apps/driver-mobile/src/features/active-ride/api.ts
+@@ -1,5 +1,14 @@
+ import { camelizeKeys, decodePolyline, type RideDetail } from '@ocar/mobile-shared'
+ import { api } from '@/services/api'
++import type { SpeedLimitCity } from './speedAlert'
++
++// Raw snake_case, unmapped -- same convention web's TripInProgress.tsx uses
++// for this endpoint (SpeedLimitCity's fields are consumed as-is by
++// classifyLimit, no camelCase call site needs them).
++export async function fetchSpeedLimitCities(): Promise<SpeedLimitCity[]> {
++  const res = await api.get<SpeedLimitCity[]>('/api/v1/geo/cities')
++  return res.data ?? []
++}
+ 
+ export type RouteLeg = { polyline: [number, number][]; etaMin: number; distanceKm: number }
+ 
+@@ -31,6 +40,13 @@ export async function markArrived(rideId: string): Promise<void> {
+   await api.post(`/api/v1/rides/${rideId}/arrived`)
+ }
+ 
++// Round-trip only -- backend rejects otherwise (rides.service.ts's startReturn,
++// 422 for a non-round_trip ride_type). Same endpoint web driver's
++// handleStartReturn hits (ride-api.ts's startReturn).
++export async function startReturn(rideId: string): Promise<void> {
++  await api.post(`/api/v1/rides/${rideId}/start-return`)
++}
++
+ // Same endpoint rider-mobile's triggerMaskedCall hits -- rides.routes.ts's
+ // call handler checks req.user OR req.driver as the ride owner, so this
+ // works unchanged for the driver side too.
+@@ -60,6 +76,12 @@ export async function markStopStatus(rideId: string, sequence: number, status: '
+   await api.patch(`/api/v1/rides/${rideId}/stops/${sequence}`, { status })
+ }
+ 
++// Web driver's counterpart: apps/driver/src/lib/ride-api.ts's cancelRideAsDriver,
++// same /cancel-driver endpoint (separate from rider's /cancel -- rides.routes.ts:214,223).
++export async function cancelRideAsDriver(rideId: string, reasonCode: string): Promise<void> {
++  await api.post(`/api/v1/rides/${rideId}/cancel-driver`, { reasonCode })
++}
++
+ export type CashCollectionResult = { collected: number; discrepancy: boolean }
+ 
+ export async function submitCashCollection(
+diff --git a/apps/driver-mobile/src/features/active-ride/useActiveRide.ts b/apps/driver-mobile/src/features/active-ride/useActiveRide.ts
+index 97a0c06..71c2862 100644
+--- a/apps/driver-mobile/src/features/active-ride/useActiveRide.ts
++++ b/apps/driver-mobile/src/features/active-ride/useActiveRide.ts
+@@ -3,7 +3,16 @@ import axios from 'axios'
+ import { useRoomJoin, type RideDetail } from '@ocar/mobile-shared'
+ import { socket } from '@/services/socket'
+ import { useDriverSessionStore } from '@/store/useDriverSessionStore'
+-import { fetchRide, fetchUnreadChatCount, markArrived as apiMarkArrived, submitCashCollection, submitEndOtp, submitStartOtp } from './api'
++import {
++  cancelRideAsDriver,
++  fetchRide,
++  fetchUnreadChatCount,
++  markArrived as apiMarkArrived,
++  startReturn,
++  submitCashCollection,
++  submitEndOtp,
++  submitStartOtp,
++} from './api'
+ import { activeRideReducer, displayStatus, type RideStatus } from './reducer'
+ 
+ function isInvalidOtp(err: unknown): boolean {
+@@ -114,6 +123,18 @@ export function useActiveRide(rideId: string) {
+     [rideId]
+   )
+ 
++  const startReturnAction = useCallback(async () => {
++    dispatch({ type: 'optimistic_advance', to: 'returning' })
++    setActionError(null)
++    try {
++      await startReturn(rideId)
++      dispatch({ type: 'confirmed', status: 'returning' })
++    } catch {
++      dispatch({ type: 'reverted' })
++      setActionError('Could not start the return leg. Try again.')
++    }
++  }, [rideId])
++
+   const collectCashAction = useCallback(
+     async (input: { collectedAmount?: number; notCollected?: boolean; note?: string }) => {
+       setActionError(null)
+@@ -134,6 +155,16 @@ export function useActiveRide(rideId: string) {
+     [rideId, load]
+   )
+ 
++  // Left un-wrapped (throws instead of swallowing into actionError) -- CancelSheet's
++  // own onConfirm contract expects a rejected promise to show its built-in
++  // submitError/timeout states (packages/mobile-shared/src/ui/CancelSheet.tsx).
++  const cancelRideAction = useCallback(
++    async (reasonCode: string) => {
++      await cancelRideAsDriver(rideId, reasonCode)
++    },
++    [rideId]
++  )
++
+   return {
+     ride,
+     loading,
+@@ -147,5 +178,7 @@ export function useActiveRide(rideId: string) {
+     submitStartOtpAction,
+     submitEndOtpAction,
+     collectCashAction,
++    cancelRideAction,
++    startReturnAction,
+   }
+ }
+diff --git a/apps/rider-mobile/src/app/booking/fare.tsx b/apps/rider-mobile/src/app/booking/fare.tsx
+index 51a692e..e15ae11 100644
+--- a/apps/rider-mobile/src/app/booking/fare.tsx
++++ b/apps/rider-mobile/src/app/booking/fare.tsx
+@@ -63,26 +63,33 @@ export default function BookingFareScreen() {
+   const [refreshSignal, setRefreshSignal] = useState(0)
+   const [paymentNote, setPaymentNote] = useState<string | null>(null)
+ 
++  // Hide any category whose estimate fetch failed (e.g. no rate card for this
++  // ride_type -- auto_rickshaw only has `rental`) once loading has settled;
++  // keep showing all cards during the initial load so skeletons still render.
++  // Matches web's identical fix (apps/user/app/(main)/select-ride/page.tsx) --
++  // without this, a rental-only category shows up here too and 422s on booking.
++  const visibleCategories = categories.filter((cat) => loading || estimates[cat.id] !== undefined)
++
+   // Per-category nearest-driver ETA, mirrors web's driverEta memo
+   // (apps/user/app/(main)/select-ride/page.tsx) -- same nearby-drivers poll
+   // the map already runs, just grouped by category instead of drawn as pins.
+   const driverEta = useMemo(() => {
+     const result: Record<number, CategoryEta> = {}
+     if (!pickup) return result
+-    for (const cat of categories) {
++    for (const cat of visibleCategories) {
+       const inCat = nearbyDrivers.filter((d) => d.categoryId === cat.id)
+       if (inCat.length === 0) { result[cat.id] = { count: 0, etaMin: -1 }; continue }
+       const nearest = Math.min(...inCat.map((d) => haversineKm(pickup.lat, pickup.lng, d.lat, d.lng)))
+       result[cat.id] = { count: inCat.length, etaMin: Math.max(1, Math.round(nearest / 0.5)) }
+     }
+     return result
+-  }, [nearbyDrivers, categories, pickup])
++  }, [nearbyDrivers, visibleCategories, pickup])
+ 
+-  const effectiveSelected = selectedCategoryId ?? categories[0]?.id ?? null
++  const effectiveSelected = selectedCategoryId ?? visibleCategories[0]?.id ?? null
+   const selectedFare = effectiveSelected != null
+     ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])?.breakdown.total
+     : undefined
+-  const allUnavailable = driversPolled && categories.length > 0 && categories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
++  const allUnavailable = driversPolled && visibleCategories.length > 0 && visibleCategories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
+   const selectedNoCars = driversPolled && effectiveSelected != null && (driverEta[effectiveSelected]?.count ?? 0) === 0
+   const canBook = effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars
+ 
+@@ -90,12 +97,12 @@ export default function BookingFareScreen() {
+   // than left interleaved -- categories list order otherwise comes straight
+   // from vehicle_categories (display order, not availability).
+   const sortedCategories = driversPolled
+-    ? [...categories].sort((a, b) => {
++    ? [...visibleCategories].sort((a, b) => {
+         const aNo = (driverEta[a.id]?.count ?? 0) === 0 ? 1 : 0
+         const bNo = (driverEta[b.id]?.count ?? 0) === 0 ? 1 : 0
+         return aNo - bNo
+       })
+-    : categories
++    : visibleCategories
+ 
+   async function handleBook() {
+     if (!pickup || !drop || effectiveSelected == null || bookInFlightRef.current) return
+@@ -236,7 +243,7 @@ export default function BookingFareScreen() {
+                 rideType === 'one_way' && !scheduledFor && returnCabCategories.size > 0 ? (
+                   <View style={styles.returnCabSection}>
+                     <Text style={styles.returnCabLabel}>Return Cab Available</Text>
+-                    {categories
++                    {visibleCategories
+                       .filter((cat) => returnCabCategories.has(cat.id))
+                       .map((cat) => {
+                         const rcFare = returnCabEstimates[cat.id]?.breakdown.total
+diff --git a/apps/rider-mobile/src/app/booking/rental.tsx b/apps/rider-mobile/src/app/booking/rental.tsx
+index f4d52f7..7b217fb 100644
+--- a/apps/rider-mobile/src/app/booking/rental.tsx
++++ b/apps/rider-mobile/src/app/booking/rental.tsx
+@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
+ import { useRouter } from 'expo-router'
+ import { useSafeAreaInsets } from 'react-native-safe-area-context'
+ import { Feather } from '@expo/vector-icons'
+-import { Skeleton, colors, radii, spacing, typography } from '@ocar/mobile-shared'
++import { Skeleton, VehicleIcon, colors, radii, spacing, typography } from '@ocar/mobile-shared'
+ import type { RentalPackage, VehicleCategory } from '@ocar/mobile-shared'
+ import { createBooking, fetchRentalPackages, fetchVehicleCategories, fetchFareEstimate, resolveBookingError } from '@/features/booking/api'
+ import { useBookingDraftStore } from '@/features/booking/store'
+@@ -208,7 +208,7 @@ export default function RentalScreen() {
+                 accessibilityRole="button"
+                 accessibilityState={{ selected: active }}
+               >
+-                <Feather name="truck" size={18} color={active ? colors.primary : colors.ink600} />
++                <VehicleIcon slug={cat.slug} size={28} />
+                 <Text style={[styles.catName, active ? styles.catNameActive : null]}>{cat.displayName}</Text>
+                 <View style={styles.catSeatsRow}>
+                   <Feather name="users" size={9} color={active ? colors.primary : colors.ink400} />
+diff --git a/apps/rider-mobile/src/app/ride/[id]/chat.tsx b/apps/rider-mobile/src/app/ride/[id]/chat.tsx
+index ae910e1..1beec77 100644
+--- a/apps/rider-mobile/src/app/ride/[id]/chat.tsx
++++ b/apps/rider-mobile/src/app/ride/[id]/chat.tsx
+@@ -1,8 +1,10 @@
+ import { useCallback, useEffect, useRef, useState } from 'react'
+-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
++import { ActivityIndicator, FlatList, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+ import { useLocalSearchParams, useRouter } from 'expo-router'
++import { useSafeAreaInsets } from 'react-native-safe-area-context'
++import Animated, { FadeInDown, FadeInUp, useAnimatedStyle } from 'react-native-reanimated'
+ import { Feather, Ionicons } from '@expo/vector-icons'
+-import { colors, radii, spacing, typography, useRoomJoin } from '@ocar/mobile-shared'
++import { colors, radii, shadows, spacing, typography, useKeyboardOffset, useRoomJoin } from '@ocar/mobile-shared'
+ import { socket } from '@/services/socket'
+ import { fetchChatMessages, fetchRide, markChatRead, sendChatMessage, type ChatMessage } from '@/features/ride-tracking/api'
+ 
+@@ -50,6 +52,10 @@ export default function RideChatScreen() {
+   const rideId = id ?? ''
+   const router = useRouter()
+ 
++  const insets = useSafeAreaInsets()
++  const keyboardOffset = useKeyboardOffset()
++  const keyboardStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -keyboardOffset.get() }] }))
++
+   const [messages, setMessages] = useState<LocalMessage[]>([])
+   const [loading, setLoading] = useState(true)
+   const [draft, setDraft] = useState('')
+@@ -183,12 +189,14 @@ export default function RideChatScreen() {
+   }
+ 
+   return (
+-    <KeyboardAvoidingView
+-      style={styles.container}
+-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+-    >
+-      <View style={styles.header}>
++    // Not KeyboardAvoidingView -- `behavior="padding"` only actually does
++    // anything on iOS (Android's branch passes `undefined`, a no-op), and
++    // under edgeToEdgeEnabled, adjustResize doesn't reliably shrink content
++    // to compensate either. useKeyboardOffset is the proven-reliable fix used
++    // across the rest of this ride flow (AddStopSheet/CancelSheet) and driver
++    // app's own chat screen.
++    <Animated.View style={[styles.container, keyboardStyle]}>
++      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+         <Pressable onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Back">
+           <Feather name="chevron-left" size={20} color={colors.ink900} />
+         </Pressable>
+@@ -215,12 +223,16 @@ export default function RideChatScreen() {
+           <ActivityIndicator color={colors.primary} />
+         </View>
+       ) : messages.length === 0 ? (
+-        <View style={styles.centered}>
++        <Animated.View entering={FadeInUp.duration(280)} style={styles.centered}>
++          <View style={styles.emptyIconWrap}>
++            <Feather name="message-circle" size={22} color={colors.ink400} />
++          </View>
+           <Text style={styles.emptyText}>No messages yet. Send a quick update below.</Text>
+-        </View>
++        </Animated.View>
+       ) : (
+         <FlatList
+           ref={listRef}
++          style={styles.messageList}
+           data={messages}
+           keyExtractor={(m) => m.clientMsgId}
+           contentContainerStyle={styles.list}
+@@ -230,24 +242,33 @@ export default function RideChatScreen() {
+       )}
+ 
+       {isClosed ? (
+-        <View style={styles.readOnlyBanner}>
++        <Animated.View entering={FadeInUp.duration(280)} style={styles.readOnlyBanner}>
+           <Text style={styles.readOnlyText}>This ride has ended · Chat is read-only</Text>
+-        </View>
++        </Animated.View>
+       ) : (
+         <>
+-          <FlatList
++          {/* Plain ScrollView, not FlatList -- CANNED_REPLIES is a small fixed
++              array (no virtualization benefit), and a horizontal FlatList with
++              no explicit `style` height here was stretching each chip's cross-axis
++              to fill the remaining screen height, rendering as a giant vertical
++              capsule instead of a compact pill (radii.full on a tall-narrow box). */}
++          <ScrollView
+             horizontal
+-            data={CANNED_REPLIES}
+-            keyExtractor={(r) => r}
+             showsHorizontalScrollIndicator={false}
+             contentContainerStyle={styles.cannedRow}
+-            renderItem={({ item }) => (
+-              <Pressable onPress={() => void send(item)} style={styles.cannedChip}>
+-                <Text style={styles.cannedChipText}>{item}</Text>
++            style={styles.cannedScroll}
++          >
++            {CANNED_REPLIES.map((reply) => (
++              <Pressable
++                key={reply}
++                onPress={() => void send(reply)}
++                style={({ pressed }) => [styles.cannedChip, pressed ? styles.pressedScale : null]}
++              >
++                <Text style={styles.cannedChipText}>{reply}</Text>
+               </Pressable>
+-            )}
+-          />
+-          <View style={styles.inputRow}>
++            ))}
++          </ScrollView>
++          <View style={[styles.inputRow, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+             <TextInput
+               value={draft}
+               onChangeText={setDraft}
+@@ -269,7 +290,7 @@ export default function RideChatScreen() {
+           </View>
+         </>
+       )}
+-    </KeyboardAvoidingView>
++    </Animated.View>
+   )
+ }
+ 
+@@ -278,8 +299,17 @@ function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
+   const failed = msg.localStatus === 'failed'
+ 
+   return (
+-    <View style={[styles.bubbleRow, mine ? styles.bubbleRowMine : null]}>
+-      <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, mine && msg.localStatus === 'sending' ? styles.bubbleSending : null]}>
++    <Animated.View
++      entering={FadeInDown.duration(220).springify().damping(18)}
++      style={[styles.bubbleRow, mine ? styles.bubbleRowMine : null]}
++    >
++      <View
++        style={[
++          styles.bubble,
++          mine ? styles.bubbleMine : styles.bubbleTheirs,
++          mine && msg.localStatus === 'sending' ? styles.bubbleSending : null,
++        ]}
++      >
+         <Text style={[styles.bubbleText, mine ? styles.bubbleTextMine : null]}>{msg.body}</Text>
+       </View>
+       <View style={[styles.metaRow, mine ? styles.metaRowMine : null]}>
+@@ -299,7 +329,7 @@ function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
+           </Pressable>
+         ) : null}
+       </View>
+-    </View>
++    </Animated.View>
+   )
+ }
+ 
+@@ -315,16 +345,37 @@ const styles = StyleSheet.create({
+   headerRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+   headerRatingStar: { fontSize: 11, color: colors.warning },
+   headerRatingValue: { ...typography.caption, fontWeight: '600', color: colors.ink600 },
+-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl },
++  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, gap: spacing.sm },
++  emptyIconWrap: { width: 56, height: 56, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+   emptyText: { ...typography.body, color: colors.ink400, textAlign: 'center', fontWeight: '600' },
++  messageList: { flex: 1 },
+   list: { padding: spacing.md, gap: spacing.xs },
+   bubbleRow: { alignItems: 'flex-start' },
+   bubbleRowMine: { alignItems: 'flex-end' },
+-  bubble: { maxWidth: '78%', borderRadius: radii.lg, paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.sm, marginBottom: 2 },
+-  bubbleTheirs: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignSelf: 'flex-start' },
+-  bubbleMine: { backgroundColor: colors.primary, alignSelf: 'flex-end' },
++  // Asymmetric corner (the "tail" corner squared off) matches web's Bubble --
++  // reads as a directional speech bubble instead of a uniform rounded box.
++  bubble: { maxWidth: '78%', paddingHorizontal: spacing.sm + 6, paddingVertical: spacing.sm + 2, marginBottom: 2 },
++  bubbleTheirs: {
++    backgroundColor: colors.surface,
++    borderWidth: 1,
++    borderColor: colors.border,
++    alignSelf: 'flex-start',
++    borderTopLeftRadius: radii.lg,
++    borderTopRightRadius: radii.lg,
++    borderBottomRightRadius: radii.lg,
++    borderBottomLeftRadius: 4,
++  },
++  bubbleMine: {
++    backgroundColor: colors.primary,
++    alignSelf: 'flex-end',
++    borderTopLeftRadius: radii.lg,
++    borderTopRightRadius: radii.lg,
++    borderBottomLeftRadius: radii.lg,
++    borderBottomRightRadius: 4,
++    ...shadows.card,
++  },
+   bubbleSending: { opacity: 0.7 },
+-  bubbleText: { ...typography.body, color: colors.ink900 },
++  bubbleText: { ...typography.body, color: colors.ink900, lineHeight: 21 },
+   bubbleTextMine: { color: colors.inkInverse },
+   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 2, marginBottom: spacing.xs },
+   metaRowMine: { alignSelf: 'flex-end' },
+@@ -333,8 +384,13 @@ const styles = StyleSheet.create({
+   metaFailed: { fontSize: 10.5, fontWeight: '700', color: colors.error },
+   readOnlyBanner: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm + 4, paddingBottom: spacing.md },
+   readOnlyText: { ...typography.caption, fontWeight: '600', color: colors.primaryDark, backgroundColor: colors.primarySubtle, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, borderRadius: radii.full, overflow: 'hidden' },
+-  cannedRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.xs, gap: spacing.xs },
+-  cannedChip: { paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.xs + 4, borderRadius: radii.full, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
++  // Fixed height, flexGrow: 0 -- without an explicit bound here, this row
++  // previously stretched to fill the screen's remaining flex space, and each
++  // chip's radii.full on a tall-narrow box rendered as a giant vertical
++  // capsule instead of a compact pill.
++  cannedScroll: { flexGrow: 0, height: 44 },
++  cannedRow: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.xs, gap: spacing.xs },
++  cannedChip: { height: 34, justifyContent: 'center', paddingHorizontal: spacing.sm + 4, borderRadius: radii.full, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+   cannedChipText: { ...typography.caption, fontWeight: '600', color: colors.ink600 },
+   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
+   inputWrap: { flex: 1, ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, maxHeight: 100 },

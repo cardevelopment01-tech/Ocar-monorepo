@@ -370,6 +370,15 @@ function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
   )
 }
 
+function diffFareVsGlobal(pkg: RentalPackageAdmin, globalPkgs: RentalPackageAdmin[]): { text: string; up: boolean } | null {
+  const global = globalPkgs.find(g => g.category_id === pkg.category_id && g.duration_minutes === pkg.duration_minutes && g.km_limit === pkg.km_limit)
+  if (!global) return null
+  const delta = parseFloat(pkg.package_fare) - parseFloat(global.package_fare)
+  if (Math.abs(delta) < 0.005) return null
+  const sign = delta > 0 ? '+' : '−'
+  return { text: `${sign}₹${Math.abs(delta).toFixed(2)} vs global`, up: delta > 0 }
+}
+
 export default function RentalPackagesTab({
   cities, categoryOptions,
 }: {
@@ -377,6 +386,7 @@ export default function RentalPackagesTab({
   categoryOptions: { id: number; slug: string; display_name: string }[]
 }) {
   const [rentalPkgs,    setRentalPkgs]    = useState<RentalPackageAdmin[]>([])
+  const [globalPkgs,    setGlobalPkgs]    = useState<RentalPackageAdmin[]>([])
   const [rentalLoading, setRentalLoading] = useState(true)
   const [rentalError,   setRentalError]   = useState('')
   const [rentalRetry,   setRentalRetry]   = useState(0)
@@ -396,6 +406,12 @@ export default function RentalPackagesTab({
   }, [rentalCityId])
 
   useEffect(() => { void fetchRental() }, [fetchRental, rentalRetry])
+
+  useEffect(() => {
+    if (rentalCityId !== null && !globalPkgs.length) {
+      rentalPackageApi.list(null).then(setGlobalPkgs).catch(() => { /* diff badge is supplementary; silent on failure */ })
+    }
+  }, [rentalCityId, globalPkgs.length])
 
   useEffect(() => {
     if (rentalCityId !== null && !cities.some(c => c.id === rentalCityId)) setRentalCityId(null)
@@ -496,7 +512,7 @@ export default function RentalPackagesTab({
             <Package size={18} className="text-primary" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-text-primary">{rentalLoading ? '—' : rentalPkgs.length}</p>
+            <p className="text-2xl font-bold text-text-primary font-mono">{rentalLoading ? '—' : rentalPkgs.length}</p>
             <p className="text-xs text-text-muted mt-0.5">Total packages</p>
           </div>
         </div>
@@ -505,7 +521,7 @@ export default function RentalPackagesTab({
             <Package size={18} className="text-success" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-text-primary">{rentalLoading ? '—' : activeRentalCount}</p>
+            <p className="text-2xl font-bold text-text-primary font-mono">{rentalLoading ? '—' : activeRentalCount}</p>
             <p className="text-xs text-text-muted mt-0.5">Active</p>
           </div>
         </div>
@@ -514,7 +530,7 @@ export default function RentalPackagesTab({
             <Package size={18} className="text-text-muted" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-text-primary">{rentalLoading ? '—' : inactiveRentalCount}</p>
+            <p className="text-2xl font-bold text-text-primary font-mono">{rentalLoading ? '—' : inactiveRentalCount}</p>
             <p className="text-xs text-text-muted mt-0.5">Inactive</p>
           </div>
         </div>
@@ -574,6 +590,7 @@ export default function RentalPackagesTab({
                   {rows.map((pkg, i) => {
                     const isInherited = rentalCityId !== null && pkg.city_id === null
                     const isOverride  = rentalCityId !== null && pkg.city_id !== null
+                    const diff = isOverride ? diffFareVsGlobal(pkg, globalPkgs) : null
                     return (
                       <motion.tr
                         key={pkg.id}
@@ -592,8 +609,13 @@ export default function RentalPackagesTab({
                               : <span className="pill-muted">Inherited</span>}
                           </td>
                         )}
-                        <td className="text-text-secondary">{pkg.km_limit} km</td>
-                        <td className="!text-right font-mono font-bold text-text-primary">{numFmt(pkg.package_fare)}</td>
+                        <td className="text-text-secondary font-mono">{pkg.km_limit} km</td>
+                        <td className="!text-right font-mono font-bold text-text-primary">
+                          {numFmt(pkg.package_fare)}
+                          {diff && (
+                            <span className={`block text-[11px] font-semibold mt-0.5 ${diff.up ? 'text-warning' : 'text-success'}`}>{diff.text}</span>
+                          )}
+                        </td>
                         <td className="!text-right font-mono text-text-secondary">{numFmt(pkg.extra_per_km)}</td>
                         <td className="!text-right font-mono text-text-muted">{numFmt(pkg.extra_per_min)}</td>
                         <td className="text-center">

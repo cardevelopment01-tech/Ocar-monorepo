@@ -1,0 +1,362 @@
+<!-- ════════════════ 2 ════════════════ -->
+<h2 id="s2"><span class="num">Section 02</span>System architecture</h2>
+
+<p class="lead">
+A single-region, load-balanced Node.js fleet on EC2, fronted by an Application Load Balancer,
+backed by managed Postgres and Valkey inside the same VPC. There is no container orchestrator
+and no service mesh; this is deliberate and is explained in §2.4.
+</p>
+
+<figure>
+<svg viewBox="0 0 900 610" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ocar production architecture diagram">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6b7d"/>
+    </marker>
+    <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0e7490"/>
+    </marker>
+    <style>
+      .bx{fill:#fff;stroke:#c9d3de;stroke-width:1.2;rx:7}
+      .lbl{font:600 11.5px Inter,Segoe UI,sans-serif;fill:#12181f}
+      .sub{font:400 9.5px Inter,Segoe UI,sans-serif;fill:#6b7788}
+      .mono{font:500 9px SFMono-Regular,ui-monospace,monospace;fill:#0b5563}
+      .zone{fill:none;stroke:#b9c6d3;stroke-width:1.1;stroke-dasharray:5 4;rx:11}
+      .zlbl{font:650 9px Inter,sans-serif;fill:#7c8b9c;letter-spacing:.09em;text-transform:uppercase}
+      .flow{stroke:#5b6b7d;stroke-width:1.4;fill:none;marker-end:url(#ar)}
+      .flow-a{stroke:#0e7490;stroke-width:1.7;fill:none;marker-end:url(#ar-a)}
+      .flbl{font:500 8.8px Inter,sans-serif;fill:#5b6b7d}
+      .flbl-a{font:600 8.8px Inter,sans-serif;fill:#0e7490}
+    </style>
+  </defs>
+
+  <!-- clients -->
+  <rect class="bx" x="34" y="24" width="118" height="46"/>
+  <text class="lbl" x="93" y="44" text-anchor="middle">Rider app</text>
+  <text class="sub" x="93" y="58" text-anchor="middle">Next.js 16</text>
+
+  <rect class="bx" x="168" y="24" width="118" height="46"/>
+  <text class="lbl" x="227" y="44" text-anchor="middle">Driver app</text>
+  <text class="sub" x="227" y="58" text-anchor="middle">Vite + React 19</text>
+
+  <rect class="bx" x="302" y="24" width="118" height="46"/>
+  <text class="lbl" x="361" y="44" text-anchor="middle">Admin portal</text>
+  <text class="sub" x="361" y="58" text-anchor="middle">Next.js 16</text>
+
+  <!-- cloudflare -->
+  <rect class="bx" x="120" y="104" width="214" height="42"/>
+  <text class="lbl" x="227" y="122" text-anchor="middle">Cloudflare — DNS</text>
+  <text class="mono" x="227" y="136" text-anchor="middle">ocar-api.clienttesting.in</text>
+
+  <path class="flow" d="M93,70 L93,88 L215,88 L215,104"/>
+  <path class="flow" d="M227,70 L227,104"/>
+  <path class="flow" d="M361,70 L361,88 L240,88 L240,104"/>
+
+  <!-- AWS zone -->
+  <rect class="zone" x="18" y="172" width="864" height="416"/>
+  <text class="zlbl" x="34" y="190">AWS · ap-south-1 (Mumbai)</text>
+
+  <!-- VPC -->
+  <rect class="zone" x="34" y="202" width="600" height="370" style="stroke:#a8b8c8"/>
+  <text class="zlbl" x="48" y="220">VPC 10.0.0.0/16 — 2 public subnets, no NAT</text>
+
+  <!-- ALB -->
+  <rect class="bx" x="60" y="234" width="230" height="58" style="stroke:#0e7490;stroke-width:1.6"/>
+  <text class="lbl" x="175" y="254" text-anchor="middle">Application Load Balancer</text>
+  <text class="sub" x="175" y="268" text-anchor="middle">TLS 1.3 terminates here · ACM cert</text>
+  <text class="mono" x="175" y="282" text-anchor="middle">:443 → tg :4000   ·   :80 → 301</text>
+
+  <path class="flow-a" d="M227,146 L227,234"/>
+  <text class="flbl-a" x="236" y="196">HTTPS / WSS</text>
+
+  <!-- ASG box -->
+  <rect class="zone" x="60" y="312" width="230" height="176" style="stroke:#c9d3de;stroke-dasharray:3 3"/>
+  <text class="zlbl" x="72" y="329">Auto Scaling Group · min 2 / max 4</text>
+
+  <!-- instance 1 -->
+  <rect class="bx" x="74" y="338" width="202" height="66"/>
+  <text class="lbl" x="86" y="356">EC2 · t3.medium · AZ-1a</text>
+  <text class="sub" x="86" y="370">ocar_api · ocar_alloy · ocar_cadvisor</text>
+  <text class="sub" x="86" y="382">ocar_node_exporter · ocar_postgres_exporter</text>
+  <text class="mono" x="86" y="396">Express + Socket.io + BullMQ workers</text>
+
+  <!-- instance 2 -->
+  <rect class="bx" x="74" y="412" width="202" height="66"/>
+  <text class="lbl" x="86" y="430">EC2 · t3.medium · AZ-1b</text>
+  <text class="sub" x="86" y="444">identical image, identical containers</text>
+  <text class="sub" x="86" y="456">tag written by CD to SSM image-tag</text>
+  <text class="mono" x="86" y="470">every instance runs every worker</text>
+
+  <path class="flow-a" d="M175,292 L175,338"/>
+  <text class="flbl-a" x="184" y="318">round-robin</text>
+
+  <!-- RDS -->
+  <rect class="bx" x="344" y="338" width="270" height="60"/>
+  <text class="lbl" x="360" y="357">RDS PostgreSQL 18.4 + PostGIS</text>
+  <text class="sub" x="360" y="371">db.t4g.small · gp3 20→100 GB · encrypted</text>
+  <text class="mono" x="360" y="386">private · SG-restricted to EC2 SG only</text>
+
+  <!-- Valkey -->
+  <rect class="bx" x="344" y="412" width="270" height="60"/>
+  <text class="lbl" x="360" y="431">ElastiCache Valkey 8.0</text>
+  <text class="sub" x="360" y="445">cache.t4g.micro · 1 node · TLS in transit</text>
+  <text class="mono" x="360" y="460">Socket.io adapter · BullMQ · cache · OTP</text>
+
+  <path class="flow" d="M276,368 L344,368"/>
+  <text class="flbl" x="284" y="362">:5432</text>
+  <path class="flow" d="M276,442 L344,442"/>
+  <text class="flbl" x="284" y="436">:6379</text>
+
+  <!-- pubsub loop -->
+  <path class="flow" d="M175,478 L175,506 L640,506 L640,442 L614,442" stroke-dasharray="4 3"/>
+  <text class="flbl" x="330" y="500">Socket.io pub/sub fan-out across instances</text>
+
+  <!-- external services -->
+  <rect class="zone" x="654" y="202" width="212" height="370" style="stroke:#a8b8c8"/>
+  <text class="zlbl" x="668" y="220">Managed / external</text>
+
+  <rect class="bx" x="668" y="234" width="184" height="52"/>
+  <text class="lbl" x="682" y="252">Grafana Cloud</text>
+  <text class="sub" x="682" y="266">Loki · Mimir · Tempo</text>
+  <text class="sub" x="682" y="278">alerts · SLOs · synthetics</text>
+
+  <rect class="bx" x="668" y="298" width="184" height="46"/>
+  <text class="lbl" x="682" y="316">GitHub Registry (GHCR)</text>
+  <text class="mono" x="682" y="330">ghcr.io/…/ocar-api</text>
+
+  <rect class="bx" x="668" y="356" width="184" height="46"/>
+  <text class="lbl" x="682" y="374">SSM Parameter Store</text>
+  <text class="sub" x="682" y="388">image-tag · api-env · ghcr-token</text>
+
+  <rect class="bx" x="668" y="414" width="184" height="46"/>
+  <text class="lbl" x="682" y="432">S3 · Secrets Manager</text>
+  <text class="sub" x="682" y="446">documents · RDS master password</text>
+
+  <rect class="bx" x="668" y="472" width="184" height="46"/>
+  <text class="lbl" x="682" y="490">Razorpay · SMS · FCM</text>
+  <text class="sub" x="682" y="504">payments · OTP SMS · push</text>
+
+  <path class="flow" d="M290,352 L290,306 L640,306 L660,306" stroke-dasharray="4 3"/>
+  <text class="flbl" x="392" y="300">metrics · logs · traces (Alloy) → Grafana Cloud</text>
+</svg>
+<figcaption>
+<b>Figure 1 — Production topology.</b> Solid teal marks the live request path. Every EC2 instance
+is identical and stateless at the process level: it terminates WebSockets, serves HTTP, and runs
+the full set of BullMQ background workers. Cross-instance coordination happens exclusively
+through Valkey — the Socket.io Redis adapter for real-time fan-out, and BullMQ for queued work.
+</figcaption>
+</figure>
+
+<h3>2.1 Component inventory</h3>
+<table>
+  <thead><tr><th style="width:23%">Component</th><th style="width:26%">Configuration</th><th>Defined in</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Load balancer</strong></td><td>ALB, internet-facing, 2 AZs, <code>drop_invalid_header_fields</code> on</td><td><code>infra/terraform/alb.tf</code></td></tr>
+    <tr><td><strong>TLS</strong></td><td>ACM cert, DNS-validated; policy <code>ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09</code></td><td><code>acm.tf</code>, <code>alb.tf</code></td></tr>
+    <tr><td><strong>Compute</strong></td><td>ASG, <code>min 2 / desired 2 / max 4</code>, <code>t3.medium</code>, Ubuntu 24.04</td><td><code>asg.tf</code>, <code>launch-template.tf</code></td></tr>
+    <tr><td><strong>Database</strong></td><td>RDS Postgres 18.4, <code>db.t4g.small</code>, single-AZ, 7-day backups</td><td><code>rds.tf</code></td></tr>
+    <tr><td><strong>Cache / queue / pub-sub</strong></td><td>ElastiCache Valkey 8.0, one node, <code>maxmemory-policy=noeviction</code></td><td><code>elasticache.tf</code></td></tr>
+    <tr><td><strong>Network</strong></td><td>One VPC, two public subnets, IGW, no NAT, no private subnets</td><td><code>vpc.tf</code></td></tr>
+    <tr><td><strong>Isolation</strong></td><td>Security-group chaining — see §2.3</td><td><code>security-groups.tf</code>, <code>rds.tf</code>, <code>elasticache.tf</code></td></tr>
+    <tr><td><strong>Image registry</strong></td><td>GHCR, private, pulled with a PAT held in SSM</td><td><code>deploy.yml</code>, <code>user_data.sh.tpl</code></td></tr>
+    <tr><td><strong>Observability</strong></td><td>One Grafana Alloy agent per instance → Grafana Cloud</td><td><code>infra/alloy/config.alloy</code></td></tr>
+  </tbody>
+</table>
+
+<h3>2.2 What runs on an instance</h3>
+<p>
+Each instance runs five containers, started by Docker Compose from the boot script. There is no
+process manager, no systemd unit for the app, and no SSH-based deployment — an instance is
+disposable and rebuilds itself entirely from SSM at boot.
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:24%">Container</th><th style="width:23%">Image</th><th>Role and limits</th></tr></thead>
+  <tbody>
+    <tr><td><code>ocar_api</code></td><td><code>ghcr.io/…/ocar-api</code></td><td>Express + Socket.io + all BullMQ workers. <code>mem_limit 2g</code>, <code>mem_reservation 512m</code>, <code>cpus 1.5</code>.</td></tr>
+    <tr><td><code>ocar_alloy</code></td><td><code>grafana/alloy:v1.18.1</code></td><td>Ships logs, metrics and traces to Grafana Cloud. Holds the only copy of the Grafana credentials.</td></tr>
+    <tr><td><code>ocar_node_exporter</code></td><td><code>prom/node-exporter:v1.9.1</code></td><td>Host-level CPU, memory, disk, network.</td></tr>
+    <tr><td><code>ocar_cadvisor</code></td><td><code>ghcr.io/google/cadvisor:v0.60.5</code></td><td>Per-container CPU and memory. <code>mem_limit 200m</code>, <code>--docker_only</code>, 30 s housekeeping.</td></tr>
+    <tr><td><code>ocar_postgres_exporter</code></td><td><code>postgres-exporter:v0.20.1</code></td><td>Postgres internals including <code>pg_stat_statements</code>.</td></tr>
+  </tbody>
+</table>
+<div class="note">
+<span class="label">Note</span>
+<p><code>docker-compose.prod.yml</code> also defines an <code>nginx</code> service. It is <strong>not started</strong>
+on ASG instances — the boot script names services explicitly
+(<code>up -d api alloy node_exporter postgres_exporter cadvisor</code>) and omits it, because the
+ALB terminates TLS. The service definition is retained only for the legacy single-box deployment.</p>
+</div>
+
+<h3>2.3 Isolation model</h3>
+<p>
+There are no private subnets, so isolation is enforced by security groups rather than by network
+placement. This is a deliberate trade — a NAT gateway costs roughly $32–45/month plus data
+processing charges, which is not justified at current scale. The security boundary is equivalent
+provided the groups are correct, and they are chained by group ID rather than by CIDR:
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:26%">Group</th><th style="width:37%">Inbound</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>ocar-alb-sg</code></td><td>:80, :443 from <code>0.0.0.0/0</code></td><td>The only internet-reachable surface.</td></tr>
+    <tr><td><code>ocar-ec2-sg</code></td><td>:4000 from <code>ocar-alb-sg</code> only</td><td>Instances are unreachable from the internet despite holding public IPs.</td></tr>
+    <tr><td><code>ocar-&lt;env&gt;-rds-sg</code></td><td>:5432 from <code>ocar-ec2-sg</code> only</td><td>Database unreachable from anywhere but the fleet. <code>publicly_accessible = false</code>.</td></tr>
+    <tr><td><code>ocar-&lt;env&gt;-valkey-sg</code></td><td>:6379 from <code>ocar-ec2-sg</code> only</td><td>Cache unreachable from anywhere but the fleet.</td></tr>
+  </tbody>
+</table>
+<p>
+SSH is closed by default. <code>var.ssh_debug_cidr</code> defaults to <code>null</code>, which
+removes the rule entirely rather than leaving it open to a placeholder range. Administrative
+shell access, when required, is via SSM Session Manager — see §4.4.
+</p>
+
+<h3>2.4 Architectural decisions worth stating explicitly</h3>
+<table>
+  <thead><tr><th style="width:27%">Decision</th><th>Reasoning</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Modular monolith, not microservices</strong></td>
+      <td>One deployable unit with clean internal module boundaries (<code>api/src/modules/*</code>).
+      At 1–2k rides/day with a team of this size, service decomposition adds network failure modes,
+      distributed transactions and deployment coordination without removing any current constraint.
+      The boundaries are already drawn in code, so extraction later is refactoring, not a rewrite.</td>
+    </tr>
+    <tr>
+      <td><strong>EC2 + Compose, not ECS or Kubernetes</strong></td>
+      <td>The fleet is two to four identical instances running one application. An orchestrator's
+      value is bin-packing heterogeneous workloads and managing large-scale scheduling, neither of
+      which applies. ASG instance refresh already provides rolling, health-gated replacement.</td>
+    </tr>
+    <tr>
+      <td><strong>Raw SQL, no ORM</strong></td>
+      <td>The platform is geospatially heavy (PostGIS <code>ST_MakePoint</code>/<code>ST_MakeLine</code>
+      casts throughout) and uses append-only versioning patterns for rate cards that most ORMs
+      default against. Documented at length in <code>docs/architecture/2026-08-04-production-deployment-discussion-notes.md</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>Single region</strong></td>
+      <td>The user base is Odisha. Multi-region adds replication lag, split-brain risk and roughly
+      double the infrastructure cost for no latency benefit to the actual audience.</td>
+    </tr>
+    <tr>
+      <td><strong>Workers co-located with the API</strong></td>
+      <td>Every instance runs every BullMQ worker. BullMQ's Redis-backed locking makes this safe.
+      Splitting workers onto their own ASG is the correct move once queue load and request load
+      need to scale independently; today they do not.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ════════════════ 3 ════════════════ -->
+<h2 id="s3"><span class="num">Section 03</span>Environment and state isolation</h2>
+
+<p class="lead">
+Two environments share one Terraform configuration and are separated by explicit backend
+selection. There is no <code>terraform workspace</code> anywhere in this repository — that was a
+deliberate choice, because workspaces switch state invisibly.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Terraform state isolation">
+  <defs>
+    <style>
+      .b2{fill:#fff;stroke:#c9d3de;stroke-width:1.2;rx:7}
+      .l2{font:600 11px Inter,sans-serif;fill:#12181f}
+      .s2{font:400 9.3px Inter,sans-serif;fill:#6b7788}
+      .m2{font:500 9px SFMono-Regular,monospace;fill:#0b5563}
+      .z2{fill:none;stroke:#b9c6d3;stroke-width:1.1;stroke-dasharray:5 4;rx:10}
+      .zl2{font:650 8.7px Inter,sans-serif;fill:#7c8b9c;letter-spacing:.09em}
+      .f2{stroke:#5b6b7d;stroke-width:1.35;fill:none;marker-end:url(#ar)}
+      .fl2{font:500 8.6px Inter,sans-serif;fill:#5b6b7d}
+    </style>
+  </defs>
+
+  <rect class="b2" x="316" y="20" width="248" height="56" style="stroke:#0e7490;stroke-width:1.6"/>
+  <text class="l2" x="440" y="41" text-anchor="middle">One Terraform configuration</text>
+  <text class="m2" x="440" y="57" text-anchor="middle">infra/terraform/*.tf</text>
+  <text class="s2" x="440" y="70" text-anchor="middle">identical resource shape for both environments</text>
+
+  <path class="f2" d="M380,76 L380,104 L214,104 L214,132"/>
+  <path class="f2" d="M500,76 L500,104 L666,104 L666,132"/>
+
+  <!-- prod -->
+  <rect class="z2" x="40" y="132" width="348" height="146"/>
+  <text class="zl2" x="54" y="150">PRODUCTION</text>
+
+  <rect class="b2" x="56" y="160" width="316" height="44"/>
+  <text class="l2" x="70" y="178">Backend selector</text>
+  <text class="m2" x="70" y="194">terraform init -backend-config=prod.backend.hcl</text>
+
+  <rect class="b2" x="56" y="214" width="152" height="48"/>
+  <text class="s2" x="70" y="232">state object</text>
+  <text class="m2" x="70" y="248">prod/terraform.tfstate</text>
+
+  <rect class="b2" x="220" y="214" width="152" height="48"/>
+  <text class="s2" x="234" y="232">variables</text>
+  <text class="m2" x="234" y="248">-var environment=prod</text>
+
+  <!-- staging -->
+  <rect class="z2" x="492" y="132" width="348" height="146"/>
+  <text class="zl2" x="506" y="150">STAGING — ON DEMAND ONLY</text>
+
+  <rect class="b2" x="508" y="160" width="316" height="44"/>
+  <text class="l2" x="522" y="178">Backend selector</text>
+  <text class="m2" x="522" y="194">terraform init -backend-config=staging.backend.hcl</text>
+
+  <rect class="b2" x="508" y="214" width="152" height="48"/>
+  <text class="s2" x="522" y="232">state object</text>
+  <text class="m2" x="522" y="248">staging/terraform.tfstate</text>
+
+  <rect class="b2" x="672" y="214" width="152" height="48"/>
+  <text class="s2" x="686" y="232">variables</text>
+  <text class="m2" x="686" y="248">-var-file=staging.tfvars</text>
+</svg>
+<figcaption>
+<b>Figure 2 — State isolation.</b> The <code>backend "s3" {}</code> block in
+<code>providers.tf</code> is intentionally empty. A bare <code>terraform init</code> with no
+flags therefore fails rather than silently defaulting to production — which is exactly what it
+used to do before staging existed.
+</figcaption>
+</figure>
+
+<h3>3.1 Environment matrix</h3>
+<table>
+  <thead><tr><th style="width:22%">Property</th><th style="width:39%">Production</th><th>Staging</th></tr></thead>
+  <tbody>
+    <tr><td>Lifecycle</td><td>Permanent</td><td>Created on demand for load tests, destroyed after</td></tr>
+    <tr><td>State key</td><td><code>prod/terraform.tfstate</code></td><td><code>staging/terraform.tfstate</code></td></tr>
+    <tr><td>Backend file</td><td><code>prod.backend.hcl</code></td><td><code>staging.backend.hcl</code></td></tr>
+    <tr><td>Variables</td><td><code>-var="environment=prod"</code></td><td><code>-var-file=staging.tfvars</code></td></tr>
+    <tr><td>Domain</td><td><code>ocar-api.clienttesting.in</code></td><td><code>staging.ocar-api.clienttesting.in</code></td></tr>
+    <tr><td>Instance type</td><td><code>t3.medium</code></td><td><code>t3.medium</code> — identical, by design</td></tr>
+    <tr><td>ASG sizing</td><td>2 / 2 / 4</td><td>2 / 2 / 4 — see gap <span class="chip gap">G-07</span></td></tr>
+    <tr><td>Deletion protection</td><td>Enabled on RDS</td><td>Disabled; <code>skip_final_snapshot = true</code></td></tr>
+    <tr><td>Applied by</td><td>Manual <code>terraform apply</code> from a workstation</td><td><code>staging-infra.yml</code> workflow dispatch, or locally</td></tr>
+  </tbody>
+</table>
+<p>
+Staging intentionally matches production's infrastructure shape. The entire purpose of the
+environment is to produce load-test numbers that can be trusted, which is impossible if it runs
+on smaller instances or a different cache tier. <code>staging.tfvars</code> therefore overrides
+only two values — <code>environment</code> and <code>domain_name</code> — and leaves everything
+else at the shared default.
+</p>
+
+<h3>3.2 Shared, account-wide resources</h3>
+<p>
+Three things are deliberately <em>not</em> owned by either environment's state, because they are
+account-level singletons that both environments read:
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:30%">Resource</th><th style="width:26%">Owned by</th><th>Consumed as</th></tr></thead>
+  <tbody>
+    <tr><td>Terraform state bucket + KMS key</td><td><code>infra/terraform/bootstrap/</code></td><td><code>data.aws_s3_bucket</code>, <code>data.aws_kms_key</code></td></tr>
+    <tr><td>GitHub Actions OIDC provider</td><td><code>infra/terraform/bootstrap/</code></td><td><code>data.aws_iam_openid_connect_provider</code></td></tr>
+    <tr><td>Grafana Cloud alerts, SLOs, synthetics</td><td><code>infra/terraform/observability/</code></td><td>Own state at <code>observability/terraform.tfstate</code></td></tr>
+  </tbody>
+</table>
+<p>
+The bootstrap module is applied once and then effectively never touched. Both prod and staging
+reference its outputs through <code>data</code> sources only, so neither can create, modify or
+destroy them. State locking uses S3's native <code>use_lockfile</code> rather than the older
+DynamoDB table pattern, so there is no separate lock table to maintain.
+</p>
