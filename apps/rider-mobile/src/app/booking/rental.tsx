@@ -3,7 +3,9 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { Skeleton, VehicleIcon, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { LinearGradient } from 'expo-linear-gradient'
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated'
+import { Skeleton, VehicleIcon, colors, radii, spacing, typography, fonts, h } from '@ocar/mobile-shared'
 import type { RentalPackage, VehicleCategory } from '@ocar/mobile-shared'
 import { createBooking, fetchRentalPackages, fetchRoute, fetchVehicleCategories, fetchFareEstimate, resolveBookingError } from '@/features/booking/api'
 import { recommendPackage } from '@/features/booking/recommendPackage'
@@ -18,14 +20,22 @@ const MAX_STOPS = 3
 
 function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes} min`
-  const h = Math.floor(minutes / 60)
+  const h_ = Math.floor(minutes / 60)
   const m = minutes % 60
-  return m === 0 ? `${h} hr${h > 1 ? 's' : ''}` : `${h}h ${m}m`
+  return m === 0 ? `${h_} hr${h_ > 1 ? 's' : ''}` : `${h_}h ${m}m`
+}
+
+// Luxury carries the app's own gold "premium tier" signal — same gradient
+// family as the Ocar Elite banner on Home — so it reads as genuinely premium.
+function isPremiumSlug(slug: string) {
+  return slug === 'luxury'
 }
 
 // Matches web's /rental ("City Rides", apps/user/app/(main)/rental/page.tsx) --
-// a self-contained booking screen (category + package + fare + book), unlike
-// round-trip which hands off to /select-ride for the category step.
+// a self-contained booking screen (category + package + fare + book). Every
+// vehicle is a row in one vertical list (never a horizontal carousel — options
+// must never scroll out of view); tapping a row expands its package tiers
+// inline as chips, so only one row is ever open at a time.
 export default function RentalScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
@@ -47,10 +57,13 @@ export default function RentalScreen() {
   const [scheduleSheetOpen, setScheduleSheetOpen] = useState(false)
 
   const [categories, setCategories] = useState<VehicleCategory[]>([])
-  const [selectedCatId, setSelectedCatId] = useState<number | null>(null)
-  const [packages, setPackages] = useState<RentalPackage[]>([])
+  // Every category's packages, fetched up front so every row can show a real
+  // "from ₹X" before the rider taps anything.
+  const [packagesByCat, setPackagesByCat] = useState<Record<number, RentalPackage[]>>({})
   const [pkgsLoading, setPkgsLoading] = useState(true)
+  const [openCatId, setOpenCatId] = useState<number | null>(null)
   const [selectedPkgId, setSelectedPkgId] = useState<number | null>(null)
+  const [userPickedPkg, setUserPickedPkg] = useState(false)
   const [estimate, setEstimate] = useState<Awaited<ReturnType<typeof fetchFareEstimate>> | null>(null)
   const [estLoading, setEstLoading] = useState(false)
   const [booking, setBooking] = useState(false)
@@ -59,18 +72,13 @@ export default function RentalScreen() {
 
   useEffect(() => {
     fetchVehicleCategories()
-      .then((cats) => {
-        setCategories(cats)
-        if (cats[0]) setSelectedCatId(cats[0].id)
-      })
+      .then(setCategories)
       .catch(() => {})
   }, [])
 
   // Route pickup → stops → drop. Not traffic-aware: package tiers are coarse, so live
   // traffic wouldn't change the pick but would double routing cost per lookup.
   const [trip, setTrip] = useState<{ km: number; min: number } | null>(null)
-  // False while the route is in flight, so we don't preselect a package and then
-  // immediately flip to the recommended one (fare flicker + wasted estimate call).
   const [tripReady, setTripReady] = useState(false)
   useEffect(() => {
     if (!pickup || !drop) { setTrip(null); setTripReady(true); return }
@@ -90,35 +98,51 @@ export default function RentalScreen() {
     return () => { cancelled = true }
   }, [pickup, drop, stops])
 
-  // Selection follows the recommendation until the rider picks a package themselves.
-  const [userPickedPkg, setUserPickedPkg] = useState(false)
-  const loadPackages = useCallback(async (catId: number) => {
+  // Fetch every category's packages in parallel whenever the category list or city changes.
+  const loadAllPackages = useCallback(async (cats: VehicleCategory[], cityId: number | null) => {
     setPkgsLoading(true)
-    setPackages([])
-    setSelectedPkgId(null)
-    setUserPickedPkg(false)
-    setEstimate(null)
-    try {
-      const pkgs = await fetchRentalPackages(catId, originCityId)
-      setPackages(pkgs)
-    } catch {
-      setPackages([])
-    } finally {
-      setPkgsLoading(false)
-    }
-  }, [originCityId])
+    const entries = await Promise.allSettled(
+      cats.map(async (cat) => [cat.id, await fetchRentalPackages(cat.id, cityId)] as const)
+    )
+    const next: Record<number, RentalPackage[]> = {}
+    for (const r of entries) if (r.status === 'fulfilled') next[r.value[0]] = r.value[1]
+    setPackagesByCat(next)
+    setPkgsLoading(false)
+  }, [])
+
+  useEffect(() => { if (categories.length > 0) void loadAllPackages(categories, originCityId) }, [categories, originCityId, loadAllPackages])
+
+  // Default-open the sedan-equivalent row (or the first category) once the list settles.
+  useEffect(() => {
+    setOpenCatId((prev) => {
+      if (prev !== null && categories.some((c) => c.id === prev)) return prev
+      if (categories.length === 0) return null
+      return (categories.find((c) => c.slug === 'sedan') ?? categories[0])!.id
+    })
+  }, [categories])
+
+  const openPackages = useMemo(
+    () => (openCatId !== null ? (packagesByCat[openCatId] ?? []) : []),
+    [openCatId, packagesByCat],
+  )
+  const recommendation = useMemo(
+    () => (trip ? recommendPackage(openPackages, trip.km, trip.min) : null),
+    [openPackages, trip],
+  )
 
   useEffect(() => {
-    if (selectedCatId !== null) void loadPackages(selectedCatId)
-  }, [selectedCatId, loadPackages])
+    if (userPickedPkg || !tripReady) return
+    if (openPackages.length === 0) { setSelectedPkgId(null); return }
+    setSelectedPkgId(recommendation?.packageId ?? openPackages[0]!.id)
+  }, [openCatId, openPackages, recommendation, userPickedPkg, tripReady])
 
   useEffect(() => {
-    if (selectedPkgId === null || selectedCatId === null) return
+    if (selectedPkgId === null || openCatId === null) { setEstimate(null); return }
     let cancelled = false
     setEstLoading(true)
     setEstimate(null)
     const input: Parameters<typeof fetchFareEstimate>[0] = {
-      categoryId: selectedCatId,
+      categoryId: openCatId,
       rideType: 'rental',
       distanceKm: 0,
       durationMin: 0,
@@ -130,29 +154,30 @@ export default function RentalScreen() {
       .catch(() => { if (!cancelled) setEstimate(null) })
       .finally(() => { if (!cancelled) setEstLoading(false) })
     return () => { cancelled = true }
-  }, [selectedPkgId, selectedCatId, originCityId])
+  }, [selectedPkgId, openCatId, originCityId])
 
-  const recommendation = useMemo(
-    () => (trip ? recommendPackage(packages, trip.km, trip.min) : null),
-    [packages, trip],
-  )
-  useEffect(() => {
-    if (userPickedPkg || !tripReady || packages.length === 0) return
-    setSelectedPkgId(recommendation?.packageId ?? packages[0]!.id)
-  }, [packages, recommendation, userPickedPkg, tripReady])
+  function toggleCategory(catId: number) {
+    if (openCatId === catId) {
+      setOpenCatId(null)
+      setSelectedPkgId(null)
+      return
+    }
+    setOpenCatId(catId)
+    setUserPickedPkg(false)
+    setSelectedPkgId(null)
+  }
 
-  const selectedCat = categories.find((c) => c.id === selectedCatId)
-  const selectedPkg = packages.find((p) => p.id === selectedPkgId) ?? null
-  const canBook = selectedCatId !== null && selectedPkgId !== null && estimate !== null && !estLoading && !!drop && !booking
+  const selectedPkg = openPackages.find((p) => p.id === selectedPkgId) ?? null
+  const canBook = openCatId !== null && selectedPkgId !== null && estimate !== null && !estLoading && !!drop && !booking
 
   async function handleBook() {
-    if (!pickup || !drop || selectedCatId === null || selectedPkgId === null || bookInFlightRef.current) return
+    if (!pickup || !drop || openCatId === null || selectedPkgId === null || bookInFlightRef.current) return
     bookInFlightRef.current = true
     setBooking(true)
     setBookError(null)
     try {
       const input: Parameters<typeof createBooking>[0] = {
-        categoryId: selectedCatId,
+        categoryId: openCatId,
         rideType: 'rental',
         originLat: pickup.lat,
         originLng: pickup.lng,
@@ -210,20 +235,27 @@ export default function RentalScreen() {
       </View>
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
-        <View style={styles.routeCard}>
-          <Feather name="navigation" size={13} color={colors.primary} />
-          <Text style={styles.routeText} numberOfLines={1}>{drop?.address ?? 'Destination'}</Text>
-        </View>
 
-        <Pressable onPress={() => setScheduleSheetOpen(true)} style={styles.scheduleChip} accessibilityRole="button">
-          <Feather name="clock" size={12} color={colors.primaryDark} />
-          <Text style={styles.scheduleChipText}>{scheduledFor ? formatPickupTime(new Date(scheduledFor)) : 'Now'}</Text>
-          {scheduledFor ? (
-            <Pressable onPress={() => setScheduledFor(null)} hitSlop={8} accessibilityLabel="Reset to ride now">
-              <Feather name="x" size={12} color={colors.primaryDark} />
+        {/* Trip summary card */}
+        <View style={styles.tripCard}>
+          <View style={styles.tripRow}>
+            <Pressable onPress={() => setScheduleSheetOpen(true)} style={styles.scheduleChip} accessibilityRole="button">
+              <Feather name="clock" size={12} color={colors.primaryDark} />
+              <Text style={styles.scheduleChipText}>{scheduledFor ? formatPickupTime(new Date(scheduledFor)) : 'Now'}</Text>
+              {scheduledFor ? (
+                <Pressable onPress={() => setScheduledFor(null)} hitSlop={8} accessibilityLabel="Reset to ride now">
+                  <Feather name="x" size={12} color={colors.primaryDark} />
+                </Pressable>
+              ) : null}
             </Pressable>
-          ) : null}
-        </Pressable>
+            {trip ? <Text style={styles.tripMeta}>{`${trip.km} km · ~${formatDuration(trip.min)}`}</Text> : null}
+          </View>
+          <View style={styles.tripDivider} />
+          <Pressable onPress={() => router.push('/booking/add-stop')} style={styles.routeRow}>
+            <Feather name="navigation" size={13} color={colors.primary} />
+            <Text style={styles.routeText} numberOfLines={1}>{drop?.address ?? 'Destination'}</Text>
+          </Pressable>
+        </View>
 
         <StopsList
           stops={stops}
@@ -233,109 +265,169 @@ export default function RentalScreen() {
           onSwap={swapStop}
         />
 
-        <Text style={styles.sectionLabel}>VEHICLE</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
-          {categories.map((cat) => {
-            const active = cat.id === selectedCatId
-            return (
-              <Pressable
-                key={cat.id}
-                onPress={() => setSelectedCatId(cat.id)}
-                style={[styles.catChip, active ? styles.catChipActive : null]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-              >
-                <VehicleIcon slug={cat.slug} size={28} />
-                <Text style={[styles.catName, active ? styles.catNameActive : null]}>{cat.displayName}</Text>
-                <View style={styles.catSeatsRow}>
-                  <Feather name="users" size={9} color={active ? colors.primary : colors.ink400} />
-                  <Text style={[styles.catSeats, active ? styles.catNameActive : null]}>{cat.maxPassengers}</Text>
-                </View>
-              </Pressable>
-            )
-          })}
-        </ScrollView>
-
-        <View style={styles.pkgHeader}>
-          <Text style={styles.sectionLabel}>PACKAGE</Text>
-          {trip ? <Text style={styles.routeSummary}>{`Your route · ${trip.km} km · ~${formatDuration(trip.min)}`}</Text> : null}
+        {/* Vehicle list — every option visible on one vertical scroll */}
+        <View style={styles.vehHeader}>
+          <Text style={styles.sectionLabel}>CHOOSE YOUR RIDE</Text>
+          <Text style={styles.vehCount}>{categories.length} options</Text>
         </View>
-        {pkgsLoading ? (
-          <View style={styles.pkgList}>
-            <Skeleton width="100%" height={72} borderRadius={16} />
-            <Skeleton width="100%" height={72} borderRadius={16} />
-          </View>
-        ) : packages.length === 0 ? (
-          <View style={styles.emptyPkg}>
-            <Text style={styles.emptyPkgText}>No packages for this vehicle type</Text>
-          </View>
-        ) : (
-          <View style={styles.pkgList}>
-            {packages.map((pkg) => {
-              const active = pkg.id === selectedPkgId
-              const isRec = recommendation?.packageId === pkg.id
-              return (
-                <Pressable
-                  key={pkg.id}
-                  onPress={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
-                  style={[styles.pkgRow, isRec ? styles.pkgRowRec : null, active ? styles.pkgRowActive : null]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityHint={isRec ? 'Recommended for your trip' : undefined}
-                >
-                  {isRec ? (
-                    <View style={styles.recTag}>
-                      <Feather name="star" size={9} color={colors.inkInverse} />
-                      <Text style={styles.recTagText}>Recommended for your trip</Text>
-                    </View>
-                  ) : null}
-                  <View style={[styles.pkgIconWrap, active ? styles.pkgIconWrapActive : null]}>
-                    <Feather name="clock" size={16} color={active ? colors.primary : colors.ink400} />
-                  </View>
-                  <View style={styles.pkgInfo}>
-                    <Text style={[styles.pkgTitle, active ? styles.pkgTitleActive : null]}>
-                      {`${formatDuration(pkg.durationMinutes)} · ${pkg.kmLimit} km`}
-                    </Text>
-                    <Text style={styles.pkgMeta}>{`Extra ₹${pkg.extraPerKm}/km · ₹${pkg.extraPerMin}/min beyond limit`}</Text>
-                  </View>
-                  <Text style={[styles.pkgFare, active ? styles.pkgTitleActive : null]}>{`₹${Math.round(pkg.packageFare)}`}</Text>
-                </Pressable>
-              )
-            })}
-            {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) ? (
-              <View style={styles.warnCard}>
-                <Feather name="info" size={14} color={colors.warning} />
-                <Text style={styles.warnText}>
-                  {`Your route (~${trip.km} km, ${formatDuration(trip.min)}) is longer than our biggest package.${
-                    recommendation.overKm > 0 ? ` About ${recommendation.overKm} km over` : ''
-                  }${recommendation.overKm > 0 && recommendation.overMin > 0 ? ' and' : ''}${
-                    recommendation.overMin > 0 ? ` ${formatDuration(recommendation.overMin)} over` : ''
-                  } will be charged as extra.`}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        )}
 
-        {selectedPkg ? (
-          <View style={styles.fareCard}>
-            <Text style={styles.fareCardTitle}>
-              {`${selectedCat?.displayName ?? ''} · ${formatDuration(selectedPkg.durationMinutes)} / ${selectedPkg.kmLimit} km`}
-            </Text>
-            <Text style={styles.fareCardSub}>Overage charged at end of trip</Text>
-            <View style={styles.fareDivider} />
-            <View style={styles.fareTotalRow}>
-              <Text style={styles.fareTotalLabel}>Total</Text>
-              {estLoading ? (
-                <Skeleton width={64} height={20} />
-              ) : estimate != null ? (
-                <Text style={styles.fareTotalValue}>{`₹${Math.round(estimate.breakdown.total)}`}</Text>
-              ) : (
-                <Text style={styles.fareTotalUnavailable}>-</Text>
-              )}
-            </View>
-          </View>
-        ) : null}
+        {categories.map((cat) => {
+          const isOpen = openCatId === cat.id
+          const pkgs = packagesByCat[cat.id] ?? []
+          const fromFare = pkgs.length > 0 ? Math.min(...pkgs.map((p) => p.packageFare)) : null
+          const premium = isPremiumSlug(cat.slug)
+          const noPkgs = !pkgsLoading && pkgs.length === 0
+
+          return (
+            <Animated.View key={cat.id} layout={LinearTransition.duration(220)} style={[styles.vehCard, isOpen ? styles.vehCardOpen : null]}>
+              <Pressable
+                onPress={() => !noPkgs && toggleCategory(cat.id)}
+                disabled={noPkgs}
+                style={[styles.vehRow, noPkgs ? styles.vehRowDisabled : null]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isOpen, disabled: noPkgs }}
+              >
+                {premium ? (
+                  <LinearGradient
+                    colors={['#F3D9A6', '#E0B662', '#C9974A']}
+                    locations={[0, 0.55, 1]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.iconWrap}
+                  >
+                    <VehicleIcon slug={cat.slug} size={26} />
+                  </LinearGradient>
+                ) : (
+                  <View style={[styles.iconWrap, isOpen ? styles.iconWrapOpen : null]}>
+                    <VehicleIcon slug={cat.slug} size={26} />
+                  </View>
+                )}
+
+                <View style={styles.vehInfo}>
+                  <View style={styles.vehNameRow}>
+                    <Text style={styles.vehName}>{cat.displayName}</Text>
+                    {premium ? (
+                      <View style={styles.premiumBadge}>
+                        <Feather name="star" size={8} color={h.gold} />
+                        <Text style={styles.premiumBadgeText}>PREMIUM FLEET</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <View style={styles.vehSeatsRow}>
+                    <Feather name="users" size={9} color={h.ivoryFaint} />
+                    <Text style={styles.vehSeats}>{cat.maxPassengers} seats</Text>
+                  </View>
+                </View>
+
+                <View style={styles.vehFareBlock}>
+                  {noPkgs ? (
+                    <Text style={styles.vehNoPkgs}>No packages</Text>
+                  ) : pkgsLoading ? (
+                    <Skeleton width={56} height={16} />
+                  ) : isOpen && selectedPkg ? (
+                    <Text style={styles.vehFareSelected}>{`₹${Math.round(selectedPkg.packageFare)}`}</Text>
+                  ) : fromFare != null ? (
+                    <Text style={styles.vehFareFrom}>{`from ₹${Math.round(fromFare)}`}</Text>
+                  ) : null}
+                </View>
+                <Feather
+                  name="chevron-down"
+                  size={14}
+                  color={isOpen ? h.teal : h.line13}
+                  style={isOpen ? styles.chevronOpen : null}
+                />
+              </Pressable>
+
+              {isOpen ? (
+                <Animated.View
+                  entering={FadeIn.duration(180)}
+                  exiting={FadeOut.duration(140)}
+                  layout={LinearTransition.duration(220)}
+                  style={styles.tray}
+                >
+                  {pkgsLoading ? (
+                    <View style={styles.trayLoadingRow}>
+                      <Skeleton width={72} height={48} borderRadius={12} />
+                      <Skeleton width={72} height={48} borderRadius={12} />
+                      <Skeleton width={72} height={48} borderRadius={12} />
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={styles.trayLabel}>{`PACKAGE · ${pkgs.length} TIERS`}</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tierRow} contentContainerStyle={styles.tierRowContent}>
+                        {pkgs.map((pkg) => {
+                          const active = pkg.id === selectedPkgId
+                          const isRec = recommendation?.packageId === pkg.id
+                          return (
+                            <Pressable
+                              key={pkg.id}
+                              onPress={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
+                              style={[styles.tierChip, active ? styles.tierChipActive : null]}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected: active }}
+                            >
+                              {isRec ? (
+                                <View style={styles.bestFitTag}>
+                                  <Text style={styles.bestFitText}>BEST FIT</Text>
+                                </View>
+                              ) : null}
+                              <Text style={[styles.tierDuration, active ? styles.tierTextActive : null]}>{formatDuration(pkg.durationMinutes)}</Text>
+                              <Text style={[styles.tierKm, active ? styles.tierKmActive : null]}>{`${pkg.kmLimit} km`}</Text>
+                            </Pressable>
+                          )
+                        })}
+                      </ScrollView>
+
+                      {selectedPkg ? (
+                        <>
+                          <View style={styles.trayDivider} />
+                          <View style={styles.trayTotalRow}>
+                            <View style={styles.trayTotalInfo}>
+                              <Text style={styles.trayTotalMeta} numberOfLines={1}>
+                                {`${formatDuration(selectedPkg.durationMinutes)} · ${selectedPkg.kmLimit} km · `}
+                                <Text style={styles.trayExtra}>{`extra ₹${selectedPkg.extraPerKm}/km`}</Text>
+                              </Text>
+                              {estimate != null && estimate.surgeMultiplier > 1 ? (
+                                <View style={styles.surgeRow}>
+                                  <Feather name="zap" size={9} color={colors.warning} />
+                                  <Text style={styles.surgeText}>{`${estimate.surgeMultiplier}× surge`}</Text>
+                                </View>
+                              ) : null}
+                            </View>
+                            {estLoading ? (
+                              <Skeleton width={64} height={22} />
+                            ) : estimate != null ? (
+                              <Text style={styles.trayTotalValue}>{`₹${Math.round(estimate.breakdown.total)}`}</Text>
+                            ) : (
+                              <Text style={styles.trayTotalUnavailable}>-</Text>
+                            )}
+                          </View>
+                        </>
+                      ) : null}
+
+                      {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) ? (
+                        <View style={styles.warnCard}>
+                          <Feather name="info" size={13} color={colors.warning} />
+                          <Text style={styles.warnText}>
+                            {`Your route (~${trip.km} km, ${formatDuration(trip.min)}) is longer than the biggest package.${
+                              recommendation.overKm > 0 ? ` About ${recommendation.overKm} km over` : ''
+                            }${recommendation.overKm > 0 && recommendation.overMin > 0 ? ' and' : ''}${
+                              recommendation.overMin > 0 ? ` ${formatDuration(recommendation.overMin)} over` : ''
+                            } will be charged as extra.`}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </>
+                  )}
+                </Animated.View>
+              ) : null}
+            </Animated.View>
+          )
+        })}
+
+        <Text style={styles.footnote}>
+          Waiting time is <Text style={styles.footnoteStrong}>covered within your rental package</Text>. Running over is billed as an hourly overage.
+        </Text>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
@@ -380,61 +472,78 @@ export default function RentalScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
-  backButton: { width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: 'rgba(20,23,26,0.08)',
-    boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
+  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: h.line10, boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
   pressedScale: { transform: [{ scale: 0.97 }] },
   headerText: { flex: 1 },
-  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  subtitle: { ...typography.caption, color: colors.ink400, marginTop: 1 },
-  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface2, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, maxWidth: 110 },
-  riderPillText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.bold },
-  scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: colors.primarySubtle, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, marginBottom: spacing.xs },
-  scheduleChipText: { ...typography.caption, color: colors.primaryDark, fontFamily: fonts.bold },
+  title: { ...typography.title, color: h.ivory, fontFamily: fonts.bold },
+  subtitle: { ...typography.caption, color: h.ivoryDim, marginTop: 1 },
+  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: h.chip, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, maxWidth: 110 },
+  riderPillText: { ...typography.caption, color: h.ivory, fontFamily: fonts.bold },
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.sm },
-  routeCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.primarySubtle, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.xs },
-  routeText: { ...typography.body, color: colors.primaryDark, fontFamily: fonts.semibold, flex: 1 },
-  sectionLabel: { ...sectionLabel, marginTop: spacing.xs },
-  catRow: { flexGrow: 0, marginBottom: spacing.xs },
-  catChip: { alignItems: 'center', gap: 4, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 16, backgroundColor: colors.surface2, marginRight: spacing.xs, minWidth: 76 },
-  catChipActive: { backgroundColor: colors.primarySubtle, borderWidth: 1, borderColor: colors.primary },
-  catName: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
-  catNameActive: { color: colors.primaryDark },
-  catSeatsRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  catSeats: { fontSize: 9, color: colors.ink400 },
-  pkgHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  routeSummary: { ...typography.caption, color: colors.ink600, fontFamily: fonts.medium },
-  pkgList: { gap: spacing.xs },
-  pkgRowRec: { marginTop: spacing.sm, borderColor: colors.primary },
-  recTag: { position: 'absolute', top: -10, left: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: 3 },
-  recTagText: { fontSize: 10, fontFamily: fonts.bold, letterSpacing: 0.3, color: colors.inkInverse },
-  warnCard: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, backgroundColor: colors.warningLight, borderRadius: 16, padding: spacing.md },
-  warnText: { ...typography.caption, flex: 1, color: colors.ink900, lineHeight: 17 },
-  pkgRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface2, borderRadius: 16, borderWidth: 1, borderColor: 'transparent', padding: spacing.sm + 4 },
-  pkgRowActive: { backgroundColor: colors.primarySubtle, borderColor: colors.primary },
-  pkgIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
-  pkgIconWrapActive: { backgroundColor: colors.surface },
-  pkgInfo: { flex: 1, gap: 2 },
-  pkgTitle: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
-  pkgTitleActive: { color: colors.primaryDark },
-  pkgMeta: { ...typography.caption, color: colors.ink400 },
-  pkgFare: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  emptyPkg: { height: 64, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  emptyPkgText: { ...typography.body, color: colors.ink400 },
-  fareCard: { backgroundColor: colors.surface2, borderRadius: 16, padding: spacing.md, gap: 4, marginTop: spacing.xs },
-  fareCardTitle: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
-  fareCardSub: { ...typography.caption, color: colors.ink400 },
-  fareDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
-  fareTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  fareTotalLabel: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
-  fareTotalValue: { ...typography.headline, color: colors.primaryDark, fontFamily: fonts.bold },
-  fareTotalUnavailable: { ...typography.body, color: colors.ink400 },
-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight, backgroundColor: colors.bg },
+
+  tripCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: radii['2xl'], padding: spacing.sm + 4, boxShadow: '0 3px 12px rgba(20,23,26,0.07)', gap: spacing.sm },
+  tripRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tripMeta: { ...typography.caption, color: h.ivoryDim, fontFamily: fonts.semibold },
+  tripDivider: { height: 1, backgroundColor: h.line08 },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  routeText: { ...typography.body, color: h.ivory, fontFamily: fonts.bold, flex: 1, fontSize: 13 },
+  scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: h.chip, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2 },
+  scheduleChipText: { ...typography.caption, color: h.ivory, fontFamily: fonts.bold },
+
+  vehHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: spacing.xs },
+  sectionLabel: { ...sectionLabel },
+  vehCount: { ...typography.caption, color: h.ivoryFaint, fontFamily: fonts.semibold },
+
+  vehCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: radii['2xl'], overflow: 'hidden', boxShadow: '0 2px 8px rgba(20,23,26,0.04)' },
+  vehCardOpen: { borderColor: h.teal, boxShadow: '0 8px 24px rgba(14,143,163,0.16)' },
+  vehRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, padding: spacing.sm + 4 },
+  vehRowDisabled: { opacity: 0.4 },
+  iconWrap: { width: 52, height: 44, borderRadius: 12, backgroundColor: h.chip, alignItems: 'center', justifyContent: 'center' },
+  iconWrapOpen: { backgroundColor: h.chip },
+  vehInfo: { flex: 1, gap: 2, minWidth: 0 },
+  vehNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  vehName: { fontSize: 14, fontFamily: fonts.bold, color: h.ivory },
+  premiumBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FBF3E6', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2 },
+  premiumBadgeText: { fontSize: 9.5, fontFamily: fonts.bold, letterSpacing: 0.3, color: '#8A6323' },
+  vehSeatsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  vehSeats: { ...typography.caption, color: h.ivoryDim, fontSize: 11 },
+  vehFareBlock: { alignItems: 'flex-end', minWidth: 56 },
+  vehFareFrom: { fontSize: 14, fontFamily: fonts.bold, color: h.ivory },
+  vehFareSelected: { fontSize: 15, fontFamily: fonts.bold, color: h.ivory },
+  vehNoPkgs: { fontSize: 11, fontFamily: fonts.semibold, color: h.ivoryFaint },
+  chevronOpen: { transform: [{ rotate: '180deg' }] },
+
+  tray: { backgroundColor: h.chip, marginHorizontal: 6, marginBottom: 6, borderRadius: radii.lg, padding: spacing.sm + 4 },
+  trayLoadingRow: { flexDirection: 'row', gap: spacing.xs + 4 },
+  trayLabel: { fontSize: 10, fontFamily: fonts.bold, letterSpacing: 0.4, color: h.ivoryDim, marginBottom: spacing.sm },
+  tierRow: { flexGrow: 0, marginBottom: spacing.sm + 4 },
+  tierRowContent: { gap: spacing.xs + 2, paddingTop: 12 },
+  tierChip: { paddingVertical: 8, paddingHorizontal: 13, borderRadius: radii.md, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, alignItems: 'center' },
+  tierChipActive: { backgroundColor: h.teal, borderColor: h.teal, boxShadow: '0 4px 14px rgba(14,143,163,0.32)' },
+  tierDuration: { fontSize: 11.5, fontFamily: fonts.bold, color: h.ivory },
+  tierKm: { fontSize: 9.5, color: h.ivoryFaint },
+  tierTextActive: { color: '#FFFFFF' },
+  tierKmActive: { color: 'rgba(255,255,255,0.75)' },
+  bestFitTag: { position: 'absolute', top: -9, alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2, boxShadow: '0 2px 6px rgba(20,23,26,0.12)' },
+  bestFitText: { fontSize: 9, fontFamily: fonts.bold, color: h.teal },
+  trayDivider: { height: 1, backgroundColor: h.line08, marginBottom: spacing.sm },
+  trayTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  trayTotalInfo: { flex: 1, minWidth: 0 },
+  trayTotalMeta: { fontSize: 11.5, color: h.ivoryDim, fontFamily: fonts.medium },
+  trayExtra: { fontFamily: fonts.bold, color: h.teal },
+  surgeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
+  surgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.warning },
+  trayTotalValue: { fontSize: 19, fontFamily: fonts.bold, color: h.teal, letterSpacing: -0.3 },
+  trayTotalUnavailable: { fontSize: 14, color: h.ivoryFaint },
+
+  warnCard: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, backgroundColor: colors.warningLight, borderRadius: radii.lg, padding: spacing.md, marginTop: spacing.sm + 4 },
+  warnText: { ...typography.caption, flex: 1, color: h.ivory, lineHeight: 17 },
+
+  footnote: { ...typography.caption, color: h.ivoryFaint, lineHeight: 17, marginTop: spacing.xs },
+  footnoteStrong: { color: h.ivoryDim, fontFamily: fonts.semibold },
+
+  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: h.line08, backgroundColor: colors.bg },
   error: { ...typography.body, color: colors.error, marginBottom: spacing.xs, textAlign: 'center' },
   bookBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 54, boxShadow: '0 10px 24px rgba(14,143,163,0.28)' },
   disabled: { opacity: 0.5 },

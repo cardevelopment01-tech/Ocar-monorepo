@@ -1,0 +1,434 @@
+<!-- ════════════════ 6 ════════════════ -->
+<h2 id="s6"><span class="num">Section 06</span>Continuous delivery</h2>
+
+<p class="lead">
+<code>.github/workflows/deploy.yml</code>. Three jobs — <code>changes</code>,
+<code>build-push</code>, <code>deploy</code> — chained by <code>needs:</code>. Triggered by
+<code>workflow_run</code> when the CI workflow completes on <code>main</code>, and gated on that
+run having concluded successfully.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Deploy pipeline sequence">
+  <defs>
+    <style>
+      .lane{fill:#f6f8fa;stroke:#e2e8ef;stroke-width:1;rx:6}
+      .lanel{font:650 8.6px Inter,sans-serif;fill:#7c8b9c;letter-spacing:.07em}
+      .stp{fill:#fff;stroke:#c9d3de;stroke-width:1.2;rx:6}
+      .stpa{fill:#eaf4f6;stroke:#0e7490;stroke-width:1.4;rx:6}
+      .stpd{fill:#fdf0f0;stroke:#9b2226;stroke-width:1.3;rx:6}
+      .sl{font:600 10px Inter,sans-serif;fill:#12181f}
+      .ss{font:400 8.6px Inter,sans-serif;fill:#6b7788}
+      .sm{font:500 8.3px SFMono-Regular,monospace;fill:#0b5563}
+      .fa{stroke:#5b6b7d;stroke-width:1.35;fill:none;marker-end:url(#ar)}
+      .fd{stroke:#9b2226;stroke-width:1.3;fill:none;marker-end:url(#ar-d);stroke-dasharray:4 3}
+      .fnum{font:700 8.5px Inter,sans-serif;fill:#0e7490}
+    </style>
+    <marker id="ar-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9b2226"/>
+    </marker>
+  </defs>
+
+  <!-- lanes -->
+  <rect class="lane" x="14" y="34" width="150" height="646"/>
+  <text class="lanel" x="26" y="52">GITHUB ACTIONS</text>
+  <rect class="lane" x="172" y="34" width="330" height="646"/>
+  <text class="lanel" x="184" y="52">AWS CONTROL PLANE</text>
+  <rect class="lane" x="510" y="34" width="356" height="646"/>
+  <text class="lanel" x="522" y="52">RUNNING FLEET</text>
+
+  <!-- 1 changes -->
+  <rect class="stp" x="26" y="66" width="126" height="52"/>
+  <text class="fnum" x="36" y="82">01</text>
+  <text class="sl" x="36" y="96">Detect changes</text>
+  <text class="ss" x="36" y="109">diff vs last deployed SHA</text>
+
+  <rect class="stp" x="26" y="130" width="126" height="46"/>
+  <text class="fnum" x="36" y="146">02</text>
+  <text class="sl" x="36" y="160">Build &amp; push image</text>
+  <text class="sm" x="36" y="171">tag: sha-&lt;short&gt;</text>
+
+  <rect class="stp" x="26" y="188" width="126" height="46"/>
+  <text class="fnum" x="36" y="204">03</text>
+  <text class="sl" x="36" y="218">Assume AWS role</text>
+  <text class="ss" x="36" y="229">OIDC, no static keys</text>
+
+  <path class="fa" d="M89,118 L89,130"/>
+  <path class="fa" d="M89,176 L89,188"/>
+
+  <!-- 4 find instance -->
+  <path class="fa" d="M152,211 L200,211 L200,246"/>
+  <rect class="stp" x="188" y="246" width="300" height="46"/>
+  <text class="fnum" x="200" y="262">04</text>
+  <text class="sl" x="200" y="276">Locate a running ASG instance</text>
+  <text class="sm" x="200" y="287">ec2:DescribeInstances — filter by ASG tag</text>
+
+  <!-- 5 migrations -->
+  <path class="fa" d="M488,269 L560,269"/>
+  <rect class="stpa" x="560" y="240" width="292" height="60"/>
+  <text class="fnum" x="572" y="256">05</text>
+  <text class="sl" x="572" y="270">Run migrations on that instance</text>
+  <text class="ss" x="572" y="283">ssm:SendCommand → docker run --name db_migrate</text>
+  <text class="ss" x="572" y="294">old code still serving traffic throughout</text>
+
+  <!-- gate -->
+  <path class="fa" d="M706,300 L706,318"/>
+  <rect class="stp" x="596" y="318" width="220" height="34"/>
+  <text class="sl" x="706" y="339" text-anchor="middle">Migration succeeded?  ── gate</text>
+
+  <!-- 6 record + set tag -->
+  <path class="fa" d="M596,335 L520,335 L520,372 L488,372"/>
+  <rect class="stp" x="188" y="350" width="300" height="46"/>
+  <text class="fnum" x="200" y="366">06</text>
+  <text class="sl" x="200" y="380">Record current tag, then write new tag</text>
+  <text class="sm" x="200" y="391">/ocar/prod/image-tag  ← rollback anchor</text>
+
+  <!-- 7 refresh -->
+  <path class="fa" d="M338,396 L338,414"/>
+  <rect class="stpa" x="188" y="414" width="300" height="52"/>
+  <text class="fnum" x="200" y="430">07</text>
+  <text class="sl" x="200" y="444">Start instance refresh</text>
+  <text class="sm" x="200" y="456">MinHealthy 100 / MaxHealthy 100 → one at a time</text>
+
+  <!-- fleet rolling -->
+  <path class="fa" d="M488,440 L560,440"/>
+  <rect class="stpa" x="560" y="414" width="292" height="52"/>
+  <text class="fnum" x="572" y="430">08</text>
+  <text class="sl" x="572" y="444">Rolling replacement — see Figure 5</text>
+  <text class="ss" x="572" y="456">launch → healthy → drain → terminate → repeat</text>
+
+  <!-- 9 wait -->
+  <path class="fa" d="M338,466 L338,484"/>
+  <rect class="stp" x="188" y="484" width="300" height="46"/>
+  <text class="fnum" x="200" y="500">09</text>
+  <text class="sl" x="200" y="514">Poll refresh status</text>
+  <text class="sm" x="200" y="525">60 attempts × 30 s — 30 min ceiling</text>
+
+  <!-- 10 health -->
+  <path class="fa" d="M488,507 L560,507"/>
+  <rect class="stp" x="560" y="484" width="292" height="46"/>
+  <text class="fnum" x="572" y="500">10</text>
+  <text class="sl" x="572" y="514">ALB health check</text>
+  <text class="sm" x="572" y="525">GET /health — 8 attempts × 5 s</text>
+
+  <!-- 11 smoke -->
+  <path class="fa" d="M706,530 L706,548"/>
+  <rect class="stp" x="560" y="548" width="292" height="46"/>
+  <text class="fnum" x="572" y="564">11</text>
+  <text class="sl" x="572" y="578">Smoke test a real DB-backed route</text>
+  <text class="sm" x="572" y="589">GET /api/v1/geo/cities — body must contain "slug"</text>
+
+  <!-- success -->
+  <path class="fa" d="M706,594 L706,614"/>
+  <rect class="stpa" x="596" y="614" width="220" height="34"/>
+  <text class="sl" x="706" y="635" text-anchor="middle">Deploy complete</text>
+
+  <!-- rollback -->
+  <path class="fd" d="M560,571 L520,571 L520,660 L340,660"/>
+  <rect class="stpd" x="188" y="638" width="150" height="44"/>
+  <text class="sl" x="200" y="656" style="fill:#9b2226">Roll back</text>
+  <text class="ss" x="200" y="669">restore prior tag + refresh</text>
+  <path class="fd" d="M560,507 L536,507 L536,668 L340,668"/>
+  <path class="fd" d="M188,507 L172,507 L172,668 L188,668" />
+</svg>
+<figcaption>
+<b>Figure 4 — Deploy sequence.</b> Steps 5 and 7–8 are the two moments production state actually
+changes. Everything after step 9 is verification, and any failure in steps 9, 10 or 11 triggers
+the same rollback path (dashed red). Migrations run <em>before</em> the rollout and gate it — if
+they fail, no instance is ever replaced.
+</figcaption>
+</figure>
+
+<h3>6.1 Step-by-step, with the reasoning</h3>
+
+<h4>Step 1 — Change detection</h4>
+<p>
+<code>workflow_run</code> triggers do not support <code>on.paths:</code> filtering, so this job
+implements it manually. It queries the Deploy workflow's own run history for the last
+<em>successful</em> deploy's commit SHA and diffs against that, falling back to <code>HEAD^</code>
+only if no prior successful run exists.
+</p>
+<p>Deployment proceeds only if the diff touches one of:</p>
+<pre><code>api/            pnpm-lock.yaml      pnpm-workspace.yaml
+package.json    .github/workflows/deploy.yml</code></pre>
+<p>
+Two real incidents shaped this. First, an earlier version of the filter included
+<code>infra/**</code> and <code>docker-compose.prod.yml</code>; an infrastructure-only pull
+request that added an IAM role rebuilt the image and cycled the entire ASG for nothing. Neither
+path is ever copied into the image — <code>api/Dockerfile</code> only <code>COPY</code>s the lock
+files, the root <code>package.json</code>, and <code>api/</code>. Second, diffing against
+<code>HEAD^</code> instead of the last deployed SHA silently skipped five commits when someone
+pushed six commits directly to <code>main</code> and only the last was documentation.
+</p>
+
+<h4>Step 2 — Build and push</h4>
+<p>
+Multi-stage build from <code>api/Dockerfile</code>. Four stages: install all dependencies,
+compile TypeScript, produce a symlink-free production <code>node_modules</code> via
+<code>pnpm deploy --prod</code>, then assemble a minimal <code>node:22.16-alpine</code> runtime
+image. The final image runs as the non-root <code>node</code> user and carries its own
+<code>HEALTHCHECK</code>.
+</p>
+<p>
+Images are tagged <code>sha-&lt;short-sha&gt;</code>, plus <code>latest</code> on the default
+branch. The immutable SHA tag is what the deployment actually references — <code>latest</code>
+exists for convenience only and is never what an instance boots from.
+</p>
+
+<h4>Steps 4–5 — Migrations, and why they run through SSM</h4>
+<p>
+RDS is not publicly reachable; only the EC2 security group can open port 5432. A GitHub-hosted
+runner therefore cannot connect to the database directly. Rather than punch a hole in the
+security group or introduce a bastion, the workflow finds a live ASG instance and asks SSM to run
+the migration container <em>there</em>:
+</p>
+<pre><code>docker run --rm --name db_migrate \
+  -e MIGRATION_DATABASE_URL=<span class="s">"$DB_URL"</span> \
+  --entrypoint node ghcr.io/&lt;owner&gt;/ocar-api:&lt;tag&gt; dist/db/migrate.js</code></pre>
+<p>Three properties of this arrangement are worth understanding:</p>
+<ul>
+  <li>
+    <strong>No secret crosses the runner.</strong> The instance reads the database URL from SSM
+    itself using its own IAM role. The command text sent by the workflow contains a parameter
+    <em>name</em>, never a value.
+  </li>
+  <li>
+    <strong>Migrations run against the new image but before the rollout.</strong> The old
+    application version is still serving every request while this happens, which means migrations
+    must be backward-compatible with the currently-running code. Additive changes are safe;
+    dropping or renaming a column that live code still reads is not.
+  </li>
+  <li>
+    <strong><code>--name db_migrate</code> is load-bearing.</strong> Without an explicit name,
+    Docker assigns a random one, cAdvisor discovers it as a new container, and every deploy
+    permanently added active series to the Grafana Cloud metrics tenant. That caused a real
+    cardinality incident on 19 August 2026. Alloy's relabel rules now keep only containers matching
+    <code>ocar_*</code>, so this container is filtered out by name.
+  </li>
+</ul>
+<div class="note">
+<span class="label">Idempotency</span>
+<p>
+<code>dist/db/migrate.js</code> also runs on every container start via
+<code>api/entrypoint.sh</code>. So on a normal deploy the migration runner executes several
+times — once from this step, then once per replacement instance. This is safe because the runner
+skips already-applied files and serialises concurrent invocations with a
+<code>pg_advisory_lock</code>. The explicit step exists purely to <em>gate</em> the rollout on
+migration success rather than discovering a failure one instance at a time.
+</p>
+</div>
+
+<h4>Steps 6–7 — Tag swap and refresh</h4>
+<p>
+The current value of <code>/ocar/prod/image-tag</code> is captured first — this is the rollback
+anchor, and capturing it before overwriting is the entire reason automatic rollback is possible.
+The new tag is then written, and an instance refresh is started. Note that instances read the tag
+<strong>only at boot</strong>; writing the parameter changes nothing until instances are replaced.
+</p>
+
+<h4>Steps 9–11 — Verification</h4>
+<table class="t-tight">
+  <thead><tr><th style="width:22%">Check</th><th style="width:24%">Budget</th><th>Proves</th></tr></thead>
+  <tbody>
+    <tr><td>Refresh status poll</td><td>60 × 30 s ≈ 30 min</td><td>AWS considers every replacement instance healthy in the target group.</td></tr>
+    <tr><td><code>GET /health</code></td><td>8 × 5 s</td><td>The ALB is routing and an instance answers.</td></tr>
+    <tr><td><code>GET /api/v1/geo/cities</code></td><td>3 × 3 s</td><td>A real database-backed route returns real rows — the response body must contain <code>"slug"</code>.</td></tr>
+  </tbody>
+</table>
+<p>
+Both HTTP checks are issued against the ALB's DNS name with <code>curl -k</code> and an explicit
+<code>Host: ocar-api.clienttesting.in</code> header. The certificate is issued for the domain,
+not for the ALB hostname, so verification is skipped deliberately at this step; the header is
+what makes the request route correctly.
+</p>
+<p>
+The smoke test matters more than the health check. As documented in gap
+<span class="chip gap">G-01</span>, <code>/health</code> currently returns HTTP 200 even when the
+database is unreachable — so the smoke test is the only step in the pipeline that genuinely
+proves the database path works end to end.
+</p>
+
+<h4>Step 12 — Rollback</h4>
+<p>
+Any failure at steps 9, 10 or 11 restores the previously recorded tag and starts a second
+instance refresh, then exits non-zero. Two limits apply:
+</p>
+<ul>
+  <li><strong>Migrations are not reverted.</strong> Schema changes are forward-only. If the migration
+  itself is the fault, it must be fixed with a new migration, not undone.</li>
+  <li><strong>Rollback depth is one.</strong> Only the immediately preceding tag is recorded. Going
+  back further is a manual operation — procedure <code>OPS-02</code>.</li>
+</ul>
+
+<!-- ════════════════ 7 ════════════════ -->
+<h2 id="s7"><span class="num">Section 07</span>Deployment strategy and its alternatives</h2>
+
+<p class="lead">
+The strategy is a <strong>rolling replacement with launch-before-terminate</strong>, implemented
+through EC2 Auto Scaling instance refresh. It is not blue/green and not canary. This section
+explains precisely what it does, and why the alternatives were not chosen.
+</p>
+
+<h3>7.1 What <code>100 / 100</code> actually means</h3>
+<p>
+Both <code>asg.tf</code> and the deploy workflow set
+<code>MinHealthyPercentage = 100</code> and <code>MaxHealthyPercentage = 100</code>. Per AWS's
+documentation, setting the minimum healthy percentage to 100 changes the replacement method to
+<em>launch before terminating</em>: a replacement instance is launched and must pass health
+checks before the instance it replaces is terminated. Setting both values to 100 additionally
+constrains the group to replacing <strong>one instance at a time</strong>.
+</p>
+<p>
+The practical consequence is that serving capacity never drops below the desired count during a
+deploy. Any other combination permits a dip — with <code>min = 50</code> on a two-instance group,
+capacity can legitimately fall to one instance mid-deploy.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Rolling instance refresh timeline">
+  <defs>
+    <style>
+      .ax{stroke:#c9d3de;stroke-width:1}
+      .tl{font:500 8.6px Inter,sans-serif;fill:#6b7788}
+      .th{font:650 9.4px Inter,sans-serif;fill:#12181f}
+      .old{fill:#e6ebf0;stroke:#adbac7;stroke-width:1;rx:4}
+      .new{fill:#d9edf1;stroke:#0e7490;stroke-width:1.2;rx:4}
+      .drain{fill:#fdf6e7;stroke:#c99a26;stroke-width:1;rx:4}
+      .cap{font:600 8.4px Inter,sans-serif;fill:#0b5563}
+      .note3{font:400 8.5px Inter,sans-serif;fill:#6b7788}
+      .phase{font:650 8.2px Inter,sans-serif;fill:#7c8b9c;letter-spacing:.06em}
+    </style>
+  </defs>
+
+  <text class="th" x="20" y="24">Two-instance group, one deploy — capacity over time</text>
+
+  <!-- phase headers -->
+  <text class="phase" x="96"  y="46" text-anchor="middle">T0 · STEADY</text>
+  <text class="phase" x="252" y="46" text-anchor="middle">T1 · LAUNCH</text>
+  <text class="phase" x="408" y="46" text-anchor="middle">T2 · HEALTHY</text>
+  <text class="phase" x="564" y="46" text-anchor="middle">T3 · DRAIN</text>
+  <text class="phase" x="720" y="46" text-anchor="middle">T4 · REPEAT</text>
+  <text class="phase" x="840" y="46" text-anchor="middle">T5 · DONE</text>
+
+  <!-- lanes -->
+  <line class="ax" x1="20" y1="196" x2="866" y2="196"/>
+
+  <!-- T0 -->
+  <rect class="old" x="46" y="122" width="46" height="30"/><text class="tl" x="69" y="141" text-anchor="middle">A old</text>
+  <rect class="old" x="100" y="122" width="46" height="30"/><text class="tl" x="123" y="141" text-anchor="middle">B old</text>
+  <text class="cap" x="96" y="172" text-anchor="middle">serving: 2</text>
+
+  <!-- T1 -->
+  <rect class="old" x="188" y="122" width="42" height="30"/><text class="tl" x="209" y="141" text-anchor="middle">A old</text>
+  <rect class="old" x="236" y="122" width="42" height="30"/><text class="tl" x="257" y="141" text-anchor="middle">B old</text>
+  <rect class="new" x="284" y="122" width="42" height="30" stroke-dasharray="3 2"/><text class="tl" x="305" y="141" text-anchor="middle">C boot</text>
+  <text class="cap" x="252" y="172" text-anchor="middle">serving: 2  ·  booting: 1</text>
+
+  <!-- T2 -->
+  <rect class="old" x="344" y="122" width="42" height="30"/><text class="tl" x="365" y="141" text-anchor="middle">A old</text>
+  <rect class="old" x="392" y="122" width="42" height="30"/><text class="tl" x="413" y="141" text-anchor="middle">B old</text>
+  <rect class="new" x="440" y="122" width="42" height="30"/><text class="tl" x="461" y="141" text-anchor="middle">C new</text>
+  <text class="cap" x="408" y="172" text-anchor="middle">serving: 3  ·  peak</text>
+
+  <!-- T3 -->
+  <rect class="drain" x="500" y="122" width="42" height="30"/><text class="tl" x="521" y="141" text-anchor="middle">A drain</text>
+  <rect class="old" x="548" y="122" width="42" height="30"/><text class="tl" x="569" y="141" text-anchor="middle">B old</text>
+  <rect class="new" x="596" y="122" width="42" height="30"/><text class="tl" x="617" y="141" text-anchor="middle">C new</text>
+  <text class="cap" x="564" y="172" text-anchor="middle">serving: 2  ·  A draining</text>
+
+  <!-- T4 -->
+  <rect class="drain" x="660" y="122" width="42" height="30"/><text class="tl" x="681" y="141" text-anchor="middle">B drain</text>
+  <rect class="new" x="708" y="122" width="42" height="30"/><text class="tl" x="729" y="141" text-anchor="middle">C new</text>
+  <rect class="new" x="756" y="122" width="42" height="30" stroke-dasharray="3 2"/><text class="tl" x="777" y="141" text-anchor="middle">D boot</text>
+  <text class="cap" x="720" y="172" text-anchor="middle">serving: ≥2 throughout</text>
+
+  <!-- T5 -->
+  <rect class="new" x="812" y="122" width="24" height="30"/>
+  <rect class="new" x="840" y="122" width="24" height="30"/>
+  <text class="cap" x="838" y="172" text-anchor="middle">2 new</text>
+
+  <text class="note3" x="20" y="222">Capacity never falls below the desired count. The transient peak of 3 is what "launch before terminating" costs — a few minutes of one extra instance.</text>
+  <text class="note3" x="20" y="240">Health gating at T2 uses the target group's /health check, with a 240 s grace period before the ASG will judge a new instance at all.</text>
+  <text class="note3" x="20" y="258">Draining at T3 respects the target group's deregistration delay — currently the AWS default of 300 s, giving in-flight requests and WebSocket sessions time to finish.</text>
+  <text class="note3" x="20" y="276">Total wall-clock for a two-instance deploy is typically 8–14 minutes; the pipeline allows up to 30 before declaring a timeout.</text>
+</svg>
+<figcaption>
+<b>Figure 5 — Rolling replacement timeline.</b> The sequence repeats once per instance in the
+group. A four-instance group takes roughly twice as long as a two-instance one; this is the
+deliberate cost of never dipping below full capacity.
+</figcaption>
+</figure>
+
+<h3>7.2 Health gating during replacement</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:29%">Control</th><th style="width:15%">Value</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>health_check_type</code></td><td><code>ELB</code></td><td>Health is the target group's verdict, not merely "is the EC2 instance running". An instance whose container has crashed fails this; it would pass an <code>EC2</code>-type check.</td></tr>
+    <tr><td><code>health_check_grace_period</code></td><td><code>240</code> s</td><td>How long a new instance is exempt from health judgement. Raised from 60 s after the observability sidecars pushed real time-to-healthy past the old limit and healthy instances were being cycled.</td></tr>
+    <tr><td>Target group <code>interval</code></td><td><code>15</code> s</td><td>Probe frequency.</td></tr>
+    <tr><td><code>healthy_threshold</code></td><td><code>3</code></td><td>Three consecutive passes before traffic is sent — a minimum of 45 s after the grace period.</td></tr>
+    <tr><td><code>unhealthy_threshold</code></td><td><code>3</code></td><td>Three consecutive failures before removal, tolerating transient blips.</td></tr>
+    <tr><td>Deregistration delay</td><td><code>300</code> s <span class="small">(AWS default — not set explicitly)</span></td><td>Drain window for in-flight work before a target is fully removed.</td></tr>
+  </tbody>
+</table>
+
+<h3>7.3 Why not blue/green</h3>
+<p>
+Blue/green stands up a complete parallel environment, shifts traffic at the load balancer, and
+keeps the old environment ready for an instant switch back. It is the right answer in several
+situations. None of them currently apply here, and one of them actively argues against it:
+</p>
+<table>
+  <thead><tr><th style="width:24%">Dimension</th><th style="width:36%">Rolling refresh (current)</th><th>Blue/green</th></tr></thead>
+  <tbody>
+    <tr><td>Extra compute during deploy</td><td>One additional instance, for a few minutes</td><td>A full duplicate fleet, for the whole cutover window</td></tr>
+    <tr><td>Rollback speed</td><td>Minutes — requires a second rolling refresh</td><td>Seconds — flip the listener back</td></tr>
+    <tr><td>Database compatibility</td><td>Both versions run simultaneously; migrations must be backward-compatible</td><td><strong>Same constraint.</strong> Both fleets share one database — blue/green does not solve this</td></tr>
+    <tr><td>Long-lived WebSockets</td><td>Drains per instance, gradually, over the deregistration delay</td><td>Cutover disconnects every socket on the blue fleet at once</td></tr>
+    <tr><td>Moving parts</td><td>One AWS-native primitive already in use for scaling</td><td>Duplicate target groups, listener-swap automation, environment-tracking state</td></tr>
+  </tbody>
+</table>
+<p>
+The database row is the decisive one. The most commonly cited benefit of blue/green — instant,
+safe rollback — is materially weaker here because both fleets would share a single RDS instance.
+A schema change that breaks the old version breaks it whether that version is running on the
+green fleet or the blue one. The forward-only migration constraint documented in §6.1 is a
+property of sharing one database, not a property of rolling deploys, and switching strategies
+would not remove it.
+</p>
+<p>
+The WebSocket row is the second. Ocar's traffic is dominated by long-lived Socket.io connections
+carrying live driver locations. A rolling replacement disconnects a fraction of clients per
+instance, spread over the deploy, and each reconnects to a healthy target within seconds. An
+atomic blue/green cutover disconnects every connected rider and driver simultaneously.
+</p>
+<div class="note">
+<span class="label">When to revisit</span>
+<p>
+Blue/green becomes worth the additional machinery when deploys are frequent enough that
+multi-minute rollback is a genuine business cost, or when the fleet is large enough that a
+rolling replacement takes more than about half an hour. Neither is true at two to four instances.
+Canary — routing a weighted percentage to a new version via ALB weighted target groups — is the
+more natural next step, and would layer onto the existing setup without replacing it.
+</p>
+</div>
+
+<h3>7.4 Deploys triggered by infrastructure changes</h3>
+<p>
+There is a second, easily-missed path to a rolling replacement. The ASG's
+<code>launch_template</code> block references <code>aws_launch_template.api.latest_version</code>
+— a real numeric version, not the literal string <code>$Latest</code>. Any Terraform change that
+produces a new launch template version (a new AMI, a different instance type, an edited boot
+script) therefore appears as a genuine diff on the ASG, and the <code>instance_refresh</code>
+block causes <code>terraform apply</code> to roll the whole fleet automatically.
+</p>
+<div class="note warn">
+<span class="label">Important</span>
+<p>
+This means <strong><code>terraform apply</code> can restart your entire production fleet</strong>.
+It is intended behaviour — without it, a launch template change would silently apply only to
+instances that happened to be replaced later for unrelated reasons. But it makes reading the plan
+output before applying non-optional. If the plan shows a change to
+<code>aws_launch_template.api</code>, expect a full rolling replacement.
+</p>
+</div>

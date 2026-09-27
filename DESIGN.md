@@ -63,6 +63,11 @@ typography:
     fontSize: "12px"
     fontWeight: 400
     lineHeight: 1.5
+  mono:
+    fontFamily: "JetBrains Mono, ui-monospace, monospace"
+    fontSize: "14px"
+    fontWeight: 500
+    fontFeature: "tnum"
 rounded:
   sm: "8px"
   md: "12px"
@@ -122,6 +127,25 @@ components:
     backgroundColor: "{colors.surface-2}"
     textColor: "{colors.ink-600}"
     rounded: "{rounded.full}"
+  city-rail-item:
+    backgroundColor: "transparent"
+    textColor: "{colors.ink-600}"
+    rounded: "{rounded.md}"
+  city-rail-item-active:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.ink-inverse}"
+    rounded: "{rounded.md}"
+  chip-override:
+    backgroundColor: "{colors.primary-subtle}"
+    textColor: "{colors.primary-dark}"
+    rounded: "{rounded.full}"
+  chip-inherited:
+    backgroundColor: "{colors.surface-3}"
+    textColor: "{colors.ink-600}"
+    rounded: "{rounded.full}"
+  history-drawer:
+    backgroundColor: "{colors.surface}"
+    rounded: "0"
   status-pill-success:
     backgroundColor: "{colors.success-light}"
     textColor: "{colors.success}"
@@ -334,9 +358,34 @@ Ocar's component vocabulary is conservative. The same button shape appears consi
 ### Data Tables (Admin)
 
 - **Row height:** 48px minimum. Rows are never short enough to fail touch targets (44px minimum).
-- **Header:** Label size (13px, 600), Ink 600 color, `background: #F6FBFB`, `border-bottom: 1px solid #DCEBEE`.
+- **Header:** Label size (13px, 600, slight `letter-spacing: 0.02-0.03em`), Ink 600 color, `background: #F6FBFB`, `border-bottom: 1px solid #DCEBEE`.
 - **Row:** Body size (14px, 400), Ink 900. Hover: `background: #F6FBFB` (no elevation change).
 - **Pagination:** Label size, Ink 600. Active page: Primary color, no background (text-primary is enough).
+- **Numeric/financial figures:** every fare, rate, or currency figure in an admin table uses the Mono role (JetBrains Mono, `font-variant-numeric: tabular-nums`) so digits align in a column. Never mix Plus Jakarta Sans and mono within the same numeric column.
+- **Card container:** admin data tables live inside a card with `rounded.xl` (20px), the two-layer Card Admin shadow, and a `1px solid` border at ~60% of `border` token opacity for extra edge definition at this larger radius. A slim category divider row (`cat-dot` + Title-weight label) groups related rows inside one table instead of splitting into separate stacked tables per group — this replaces the older pattern of one full table per category, which forces horizontal scroll and loses at-a-glance comparability.
+
+### City-Scoped Navigation (Admin)
+
+For any admin resource that is global-by-default with optional per-city overrides (rate cards, rental packages, and similar config), city is the **primary navigation axis**, not a filter dropdown buried above a flat list. A sticky left rail (`city-rail`, 216-220px, card-styled, `position: sticky`) lists "Global Defaults" first, then active cities, each with an override-count badge (`0 overrides` shown at reduced opacity so an empty state doesn't compete visually with real overrides). Selecting a city re-renders the main content scoped to that city's *effective* rates: its own overrides plus inherited global rows, never a raw filter of a flat table.
+
+- **Inherited row:** the whole row renders at `opacity: 0.6` (never lower — still legible, never hidden), tagged `chip-inherited` ("Inherited" or "Global"), and its action column shows a single "+ Override" affordance (`success-light` background, `success` text) instead of edit/delete — inherited data is not this city's to edit directly.
+- **Override row:** full opacity, tagged `chip-override` (`primary-subtle` bg, `primary-dark` text, pill shape), and carries an inline computed diff against the global value in Mono type (e.g. `+₹2.00/km vs global`, color `warning-text` for an increase, `success-text` for a decrease) directly under the tag. This is the single most important legibility rule in this pattern: a viewer must be able to tell a row is overridden, and by how much, without opening anything.
+- **Global-view actions:** when "Global Defaults" is selected, the primary create action reads "Add City Rate" (ghost/secondary button); when a specific city is selected, it reads "Override a rate" (primary button) — the button itself signals which write path the page is on.
+
+### Versioned Change History (Admin)
+
+Rate cards and similar append-only/versioned records never surface their history as a page-bottom accordion — that buries the one thing that answers "why is this the price." Instead:
+
+- **Inline summary:** each editable row carries a small text link under its primary value, in Label-weight Primary-Dark text (never a bare icon button — icon-only affordances for history are not discoverable enough), reading e.g. `3 changes`. Clicking it opens the row's history.
+- **Drawer, not accordion:** history opens in a right-side slide-in drawer (`380-400px`, Sheet-family shadow but directional leftward: `-16px 0 48px rgba(14,143,163,0.24)`), motion `translateX` `.3s cubic-bezier(.16,1,.3,1)`, scrim behind it. A reverse-chronological timeline: each entry shows actor + relative time, the free-text change reason as the primary line, then a per-field diff row (`diff-old`: Error color, strikethrough; arrow; `diff-new`: Success-text color, bold) — never a plain "before/after" table.
+- **Page-level access:** an "All changes" link/button sits in the page header (not the tab bar) for the full cross-city, cross-category audit trail, for anyone who needs the whole picture rather than one row's.
+
+### Toggles (Admin)
+
+- **Shape:** `34x19px` pill track, `15px` circular thumb with a small drop shadow (`0 1px 3px rgba(15,23,42,0.25)`), `2px` inset padding.
+- **Off:** `background: surface-3`. **On:** `background: primary`, thumb translates to the right edge.
+- **Transition:** `.18s ease` on both background and thumb transform. Never instant/no-transition — the state change itself is the feedback.
+- **Disabled:** `opacity: 0.45`, no pointer affordance.
 
 ### Brand Logomark (OcarLogoMark)
 
@@ -417,6 +466,19 @@ A comet-taper arc: a 120-degree rotating arc with a gradient from opaque head to
 - Do not mix pill and rounded-rectangular buttons on the same screen.
 - Do not use gradient text on button labels; the gradient is on the button background, the label is white.
 - Do not use the Go-Online orange CTA in any user-facing screen.
+
+**Admin data (rate cards, rental packages, and similar city-scoped config)**
+- Do not filter a global/override resource with a flat dropdown over one table. City is the primary navigation axis (sticky left rail); see City-Scoped Navigation.
+- Do not split one logical dataset into several stacked tables (one per category) purely to avoid horizontal scroll. Group with an in-table category divider row instead.
+- Do not render an override row without its inline diff-vs-global. An "Override" tag alone is not enough — the viewer needs the delta without opening a dialog.
+- Do not bury versioned change history in a page-bottom accordion. Use the inline "N changes" link + slide-in drawer pattern; see Versioned Change History.
+- Do not use a plain Tailwind `font-mono` default for financial figures — use the Mono role (JetBrains Mono, tabular-nums) as a declared system token, not an incidental utility class.
+
+## Decisions Log
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-09-27 | Added City-Scoped Navigation, Versioned Change History, and Toggle patterns to the admin component vocabulary; added JetBrains Mono as the Mono typography role for tabular financial figures | `/design-consultation` redesign of the admin Rate Cards page — the old layout split one dataset into 9-column stacked category tables with a bottom accordion for history, illegible for the global-vs-city-override relationship that is the core of the data model. New patterns stay inside the existing teal/Space Grotesk/Plus Jakarta Sans identity; see the approved mockup at the design-consultation session that produced this entry. |
 
 **Layout**
 - Do not nest cards inside cards.

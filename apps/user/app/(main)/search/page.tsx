@@ -15,6 +15,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
 import { savedPlacesApi, type SavedPlace } from '@/lib/saved-places-api'
 import { useLocation } from '@/lib/location-context'
+import { haversineMetres } from '@/lib/geo'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -42,6 +43,11 @@ const POPULAR = [
   { Icon: Train,          label: 'Puri Railway Station',    address: 'Puri, Odisha',                     lat: 19.8014, lng: 85.8142 },
   { Icon: Building2,      label: 'Infocity, Bhubaneswar',  address: 'Infocity, Patia, Bhubaneswar',     lat: 20.3474, lng: 85.8197 },
 ]
+
+// Matches the `${km.toFixed(1)} km` convention used elsewhere (receipt, ride tracking).
+function formatDistance(metres: number): string {
+  return `${(metres / 1000).toFixed(1)} km`
+}
 
 type EditMode = 'destination' | 'origin'
 
@@ -666,6 +672,11 @@ function SearchContent() {
                           <span className="block text-[11px] text-text-muted truncate mt-0.5">{s.secondaryText}</span>
                         )}
                       </span>
+                      {mode === 'destination' && s.distanceMetres !== undefined && (
+                        <span className="text-[11px] font-medium text-text-muted flex-shrink-0">
+                          {formatDistance(s.distanceMetres)}
+                        </span>
+                      )}
                     </motion.button>
                     {i < suggestions.length - 1 && (
                       <div className="ml-12 border-t border-dashed border-border" />
@@ -682,6 +693,7 @@ function SearchContent() {
           <div className="mb-1">
             {savedPlaces.map((p, i) => {
               const SavedIcon = p.kind === 'home' ? Home : p.kind === 'work' ? Briefcase : MapPin
+              const showDist = mode === 'destination' && (originLat !== 0 || originLng !== 0)
               return (
                 <div key={p.id}>
                   <motion.button
@@ -704,6 +716,11 @@ function SearchContent() {
                       <span className="block text-[13px] font-medium text-text-primary">{p.label}</span>
                       <span className="block text-[11px] text-text-muted truncate mt-0.5">{p.address}</span>
                     </span>
+                    {showDist && (
+                      <span className="text-[11px] font-medium text-text-muted flex-shrink-0">
+                        {formatDistance(haversineMetres([originLat, originLng], [p.latitude, p.longitude]))}
+                      </span>
+                    )}
                   </motion.button>
                   {i < savedPlaces.length - 1 && (
                     <div className="ml-12 border-t border-dashed border-border" />
@@ -717,29 +734,37 @@ function SearchContent() {
         {/* Popular list, single mounted instance, NEVER re-animates on mode switch */}
         {!showSuggestions && (
           <div>
-            {POPULAR.map((d, i) => (
-              <div key={d.label}>
-                <motion.button
-                  onClick={() => mode === 'origin'
-                    ? (setOriginLat(d.lat), setOriginLng(d.lng), setOriginAddress(d.address), switchMode('destination', true))
-                    : confirmDest(d.lat, d.lng, d.address)
-                  }
-                  className="w-full flex items-center gap-3 px-1 py-3 text-left"
-                  whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
-                >
-                  <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-                    <d.Icon size={15} strokeWidth={1.6} className="text-primary" />
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-[13px] font-medium text-text-primary">{d.label}</span>
-                    <span className="block text-[11px] text-text-muted truncate mt-0.5">{d.address}</span>
-                  </span>
-                </motion.button>
-                {i < POPULAR.length - 1 && (
-                  <div className="ml-12 border-t border-dashed border-border" />
-                )}
-              </div>
-            ))}
+            {POPULAR.map((d, i) => {
+              const showDist = mode === 'destination' && (originLat !== 0 || originLng !== 0)
+              return (
+                <div key={d.label}>
+                  <motion.button
+                    onClick={() => mode === 'origin'
+                      ? (setOriginLat(d.lat), setOriginLng(d.lng), setOriginAddress(d.address), switchMode('destination', true))
+                      : confirmDest(d.lat, d.lng, d.address)
+                    }
+                    className="w-full flex items-center gap-3 px-1 py-3 text-left"
+                    whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
+                  >
+                    <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+                      <d.Icon size={15} strokeWidth={1.6} className="text-primary" />
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[13px] font-medium text-text-primary">{d.label}</span>
+                      <span className="block text-[11px] text-text-muted truncate mt-0.5">{d.address}</span>
+                    </span>
+                    {showDist && (
+                      <span className="text-[11px] font-medium text-text-muted flex-shrink-0">
+                        {formatDistance(haversineMetres([originLat, originLng], [d.lat, d.lng]))}
+                      </span>
+                    )}
+                  </motion.button>
+                  {i < POPULAR.length - 1 && (
+                    <div className="ml-12 border-t border-dashed border-border" />
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

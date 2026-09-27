@@ -1,0 +1,342 @@
+<!-- ════════════════ 13 ════════════════ -->
+<h2 id="s13"><span class="num">Section 13</span>Observability</h2>
+
+<p class="lead">
+One agent per instance ships logs, metrics and traces to one platform. Grafana Alloy
+(<code>ocar_alloy</code>) reads from the Docker socket and from three exporters, and forwards to
+Grafana Cloud — Loki for logs, Mimir for metrics, Tempo for traces.
+</p>
+
+<h3>13.1 Signals</h3>
+<table>
+  <thead><tr><th style="width:15%">Signal</th><th style="width:23%">Source</th><th style="width:14%">Destination</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Logs</td><td>Pino JSON on container stdout</td><td>Loki</td><td>Exactly four indexed labels — <code>container</code>, <code>service</code>, <code>env</code>, <code>host</code>. Everything else, including <code>requestId</code>, stays in the JSON body and is queried rather than indexed.</td></tr>
+    <tr><td>App metrics</td><td><code>prom-client</code> at <code>/metrics</code></td><td>Mimir</td><td><code>http_request_duration_seconds</code>, <code>pg_pool_connections</code>, <code>bullmq_queue_job_counts</code>.</td></tr>
+    <tr><td>Host metrics</td><td>node-exporter</td><td>Mimir</td><td>CPU, memory, disk, network per instance.</td></tr>
+    <tr><td>Container metrics</td><td>cAdvisor</td><td>Mimir</td><td>Aggressively filtered — see below.</td></tr>
+    <tr><td>Database metrics</td><td>postgres-exporter</td><td>Mimir</td><td>Includes <code>pg_stat_statements</code>. Every instance reports identical numbers; dashboards use <code>max()</code> not <code>sum()</code>.</td></tr>
+    <tr><td>Traces</td><td>OpenTelemetry SDK → Alloy OTLP</td><td>Tempo</td><td>The app sends to <code>alloy:4318</code>, never directly to Grafana Cloud, so credentials live only in Alloy.</td></tr>
+  </tbody>
+</table>
+<p>
+Log and trace correlation works because the tracing SDK's <code>trace_id</code> feeds Pino's
+mixin — every log line carries the ID of the span it was emitted within, so a trace in Tempo can
+be pivoted to its logs in Loki.
+</p>
+
+<h3>13.2 Cardinality controls — read before editing <code>config.alloy</code></h3>
+<p>
+Two incidents shaped the current relabelling rules, and both are easy to reintroduce:
+</p>
+<ul>
+  <li>
+    <strong>18 August 2026.</strong> cAdvisor's roughly 100 metric families, multiplied across a
+    rolling replacement, tipped the Grafana Cloud tenant's active-series cap. The fix keeps only
+    five metric families, grepped from the dashboard that actually queries them.
+  </li>
+  <li>
+    <strong>19 August 2026.</strong> The deploy pipeline's migration container was launched with a
+    random name, so cAdvisor discovered a new container on every deploy and permanently inflated
+    the series count. The fix is two-part: the container is now explicitly named
+    <code>db_migrate</code>, and Alloy keeps only containers matching <code>ocar_*</code>.
+  </li>
+</ul>
+<p>
+A <code>labelkeep</code> rule then retains only <code>__name__</code>, <code>name</code> and
+<code>host</code>, which eliminates churn from container IDs and image tags in one rule rather
+than a drop-list that must be maintained.
+</p>
+<div class="note">
+<span class="label">Practical consequence</span>
+<p>
+Adding a container to <code>docker-compose.prod.yml</code> whose name does not start with
+<code>ocar_</code> means it will not appear in metrics at all. That is usually what you want, but
+it is silent — nothing warns you.
+</p>
+</div>
+
+<h3>13.3 Alerting</h3>
+<p>
+Managed as code in <code>infra/terraform/observability/</code>, with its own state at
+<code>observability/terraform.tfstate</code>. Applied locally rather than from CI, because it
+changes rarely enough that a pipeline credential is not justified.
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:30%">Rule group</th><th>Covers</th></tr></thead>
+  <tbody>
+    <tr><td><code>ocar-static-thresholds</code></td><td>Error rate on <code>/api/v1/rides.*</code> and <code>/api/v1/payments.*</code>, evaluated every 60 s.</td></tr>
+    <tr><td><code>ocar-billing-usage</code></td><td>Grafana Cloud free-tier consumption at 85% of cap — active series, log volume, trace volume.</td></tr>
+    <tr><td>SLOs</td><td>Ride request success rate, 98% objective over 30 days. Explicitly a starting value, not yet backed by real traffic history.</td></tr>
+    <tr><td>Synthetic check</td><td><code>GET /health</code> from Mumbai and Singapore probes every 60 s, with a 14-day TLS-expiry threshold.</td></tr>
+  </tbody>
+</table>
+<div class="note warn">
+<span class="label">Do not hand-edit in the Grafana UI</span>
+<p>
+<code>grafana_notification_policy</code> is a whole-tree resource — applying it replaces the
+entire policy. Any change made in the Grafana interface will be silently destroyed by the next
+<code>terraform apply</code>. All notification routing changes must go through the Terraform
+module.
+</p>
+</div>
+
+<!-- ════════════════ 14 ════════════════ -->
+<h2 id="s14" class="pagebreak"><span class="num">Section 14</span>Operational procedures</h2>
+
+<p class="lead">
+Twelve numbered procedures covering every routine and emergency operation. Each states its blast
+radius and how to reverse it. Shared prerequisites: AWS CLI authenticated against
+<code>ap-south-1</code>, Terraform 1.15.8, repository checked out, working directory
+<code>infra/terraform</code> for anything Terraform-related.
+</p>
+
+<h4>Resolving the placeholders</h4>
+<pre><code><span class="c"># ASG name and ALB DNS name — also stored as GitHub Actions repository variables</span>
+terraform output -raw autoscaling_group_name
+terraform output -raw alb_dns_name
+
+<span class="c"># or without Terraform:</span>
+aws autoscaling describe-auto-scaling-groups \
+  --query <span class="s">'AutoScalingGroups[?contains(AutoScalingGroupName,`ocar`)].AutoScalingGroupName'</span> --output text</code></pre>
+
+<!-- OPS-01 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-01</span>
+    <span class="ptitle">Deploy application code</span>
+    <span class="pmeta">Routine · automatic · ~10–15 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> production fleet rolled one instance at a time. No capacity dip.
+    <strong>Reversal:</strong> automatic on failure; manual via <code>OPS-02</code>.</p>
+    <ol>
+      <li>Merge to <code>main</code>. Nothing else is required — the pipeline is fully automatic.</li>
+      <li>Watch the <strong>CI</strong> workflow. All seven jobs must pass or Deploy never starts.</li>
+      <li>Watch the <strong>Deploy</strong> workflow. If the <em>Detect relevant changes</em> job reports
+      <code>relevant=false</code>, the change did not touch anything that reaches the image and no
+      deploy is needed — this is correct behaviour, not a fault.</li>
+      <li>Observe the rollout while it runs:
+        <pre><code>watch -n 15 <span class="s">'aws autoscaling describe-instance-refreshes \
+  --auto-scaling-group-name &lt;ASG_NAME&gt; --max-records 1 \
+  --query "InstanceRefreshes[0].{Status:Status,Pct:PercentageComplete}" --output table'</span></code></pre>
+      </li>
+      <li>Confirm afterwards:
+        <pre><code>curl -s https://ocar-api.clienttesting.in/health | jq
+curl -s https://ocar-api.clienttesting.in/api/v1/geo/cities | jq <span class="s">'.[0]'</span></code></pre>
+      </li>
+    </ol>
+    <p class="small"><strong>If a migration is involved:</strong> it runs before any instance is replaced
+    and gates the rollout. It must be backward-compatible with the currently-running code, because the
+    old version keeps serving traffic throughout — see §6.1.</p>
+  </div>
+</div>
+
+<!-- OPS-02 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-02</span>
+    <span class="ptitle">Roll back to a specific image version</span>
+    <span class="pmeta">Emergency · manual · ~10–15 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> full fleet roll. <strong>Reversal:</strong> repeat with the newer tag.</p>
+    <ol>
+      <li>Identify the target tag. Tags are <code>sha-&lt;short-sha&gt;</code> and are listed on the
+      GHCR package page, or in the <em>Docker metadata</em> step of a previous Deploy run.</li>
+      <li>Record what is currently deployed, so this step is itself reversible:
+        <pre><code>aws ssm get-parameter --name /ocar/prod/image-tag --query <span class="s">'Parameter.Value'</span> --output text</code></pre>
+      </li>
+      <li>Point the parameter at the target version:
+        <pre><code>aws ssm put-parameter --name /ocar/prod/image-tag \
+  --type String --value <span class="s">"sha-abc1234"</span> --overwrite</code></pre>
+      </li>
+      <li>Roll the fleet so instances actually pick it up:
+        <pre><code>aws autoscaling start-instance-refresh \
+  --auto-scaling-group-name &lt;ASG_NAME&gt; \
+  --preferences <span class="s">'{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'</span></code></pre>
+      </li>
+      <li>Verify as in <code>OPS-01</code> step 5.</li>
+    </ol>
+    <div class="note danger" style="margin-top:4px">
+      <span class="label">Migrations are not reverted</span>
+      <p>Schema changes are forward-only. Rolling the image back does not undo a migration. If the
+      migration is the fault, the old code will now be running against a newer schema — which may
+      be worse than the problem you are fixing. Fix forward with a new migration instead.</p>
+    </div>
+  </div>
+</div>
+
+<!-- OPS-03 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-03</span>
+    <span class="ptitle">Enable or disable maintenance mode</span>
+    <span class="pmeta">Emergency · manual · ~1–2 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> every request receives HTTP 503 immediately. <strong>Reversal:</strong> re-apply with the flag false.</p>
+    <ol>
+      <li>Enable:
+        <pre><code>terraform apply -var=<span class="s">"environment=prod"</span> -var maintenance_mode=true</code></pre>
+      </li>
+      <li>Confirm the fixed response is being served:
+        <pre><code>curl -i https://ocar-api.clienttesting.in/api/v1/geo/cities</code></pre>
+        <p class="small">Expect <code>503</code> with <code>"code":"MAINTENANCE_MODE"</code>.</p>
+      </li>
+      <li>Disable when finished:
+        <pre><code>terraform apply -var=<span class="s">"environment=prod"</span> -var maintenance_mode=false</code></pre>
+      </li>
+    </ol>
+    <p class="small">Health checks are unaffected — ELB probes registered targets directly rather than
+    through listener rules, so instances continue to be evaluated normally while the rule is active.
+    Use this when the fleet itself may be unavailable and the application-level maintenance flag
+    cannot run.</p>
+  </div>
+</div>
+
+<!-- OPS-04 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-04</span>
+    <span class="ptitle">Temporarily add capacity for a known event</span>
+    <span class="pmeta">Planned · manual · ~5 min · creates drift</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> adds instances and cost. <strong>Reversal:</strong> mandatory — see step 4.</p>
+    <ol>
+      <li>Check the current bounds:
+        <pre><code>aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names &lt;ASG_NAME&gt; \
+  --query <span class="s">'AutoScalingGroups[0].{Min:MinSize,Desired:DesiredCapacity,Max:MaxSize}'</span> --output table</code></pre>
+      </li>
+      <li>Raise desired capacity. It must stay within the existing min/max, so raise
+      <code>--max-size</code> in the same call if you need to exceed 4:
+        <pre><code>aws autoscaling update-auto-scaling-group \
+  --auto-scaling-group-name &lt;ASG_NAME&gt; \
+  --min-size 4 --desired-capacity 4 --max-size 6</code></pre>
+        <p class="small">Raising <code>--min-size</code> too is deliberate: it stops the target-tracking
+        policy from immediately scaling back in while traffic is still low, just before the event starts.</p>
+      </li>
+      <li>Confirm the new instances reach <code>InService</code> — typically four to five minutes:
+        <pre><code>aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names &lt;ASG_NAME&gt; \
+  --query <span class="s">'AutoScalingGroups[0].Instances[].{Id:InstanceId,State:LifecycleState,Health:HealthStatus}'</span> \
+  --output table</code></pre>
+      </li>
+      <li><strong>Restore afterwards.</strong> Either repeat step 2 with the original values, or run
+      <code>terraform apply</code>, which will reset them to whatever <code>asg.tf</code> declares.</li>
+    </ol>
+    <div class="note warn" style="margin-top:4px">
+      <span class="label">This creates Terraform drift on purpose</span>
+      <p>Terraform still believes the group is 2/2/4. Anyone running <code>terraform apply</code> for an
+      unrelated reason will silently revert your change — possibly mid-event. Announce it, and set a
+      reminder to restore it yourself.</p>
+    </div>
+  </div>
+</div>
+
+<!-- OPS-05 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-05</span>
+    <span class="ptitle">Change the scaling bounds permanently</span>
+    <span class="pmeta">Planned · Terraform · ~5 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> capacity change only — no instance replacement, provided the launch
+    template is untouched. <strong>Reversal:</strong> revert the commit and re-apply.</p>
+    <ol>
+      <li>Edit <code>min_size</code>, <code>desired_capacity</code> or <code>max_size</code> in
+      <code>infra/terraform/asg.tf</code>.</li>
+      <li>Open a pull request. <code>terraform-plan.yml</code> posts the plan as a PR comment
+      automatically for any change under <code>infra/**</code>.</li>
+      <li>Read the plan. It should show <strong>only</strong> the ASG changing. If it also shows
+      <code>aws_launch_template.api</code> changing, expect a full rolling replacement (§7.4).</li>
+      <li>Merge, then apply from a workstation — infrastructure does not auto-apply on merge:
+        <pre><code>pnpm infra:prod:init    <span class="c"># once per session, or after switching environments</span>
+pnpm infra:prod:plan
+pnpm infra:prod:apply</code></pre>
+      </li>
+      <li>Consider whether <code>target_value</code> on the scaling policy also needs adjusting —
+      raising <code>max_size</code> without retuning the threshold changes the ceiling but not the
+      trigger point.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- OPS-06 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-06</span>
+    <span class="ptitle">Change an environment variable or secret</span>
+    <span class="pmeta">Routine · manual · ~15 min · handles plaintext secrets</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> full fleet roll at step 5. <strong>Reversal:</strong> keep the
+    pre-edit copy until verified.</p>
+    <ol>
+      <li>Pull the current value to a file. Do this in a directory that is not the repository:
+        <pre><code>cd <span class="v">$(mktemp -d)</span>
+aws ssm get-parameter --name /ocar/prod/api-env --with-decryption \
+  --query <span class="s">'Parameter.Value'</span> --output text &gt; api-env.txt
+cp api-env.txt api-env.backup.txt   <span class="c"># rollback copy</span></code></pre>
+      </li>
+      <li>Edit <code>api-env.txt</code>. Change only the line you intend to change — the entire blob is
+      replaced, so an accidental edit elsewhere ships silently.</li>
+      <li>Diff before pushing. This step is not optional; it is what would have caught the 12 August
+      2026 <code>REDIS_URL</code> incident:
+        <pre><code>diff api-env.backup.txt api-env.txt</code></pre>
+      </li>
+      <li>Push the whole value back:
+        <pre><code>aws ssm put-parameter --name /ocar/prod/api-env --type SecureString \
+  --value <span class="s">"$(cat api-env.txt)"</span> --overwrite</code></pre>
+      </li>
+      <li>Roll the fleet — running instances read SSM only at boot and will not otherwise notice:
+        <pre><code>aws autoscaling start-instance-refresh \
+  --auto-scaling-group-name &lt;ASG_NAME&gt; \
+  --preferences <span class="s">'{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'</span></code></pre>
+      </li>
+      <li>Verify, then destroy the plaintext copies:
+        <pre><code>curl -s https://ocar-api.clienttesting.in/health | jq
+shred -u api-env.txt api-env.backup.txt 2&gt;/dev/null || rm -f api-env.txt api-env.backup.txt</code></pre>
+      </li>
+    </ol>
+  </div>
+</div>
+
+<!-- OPS-07 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-07</span>
+    <span class="ptitle">Change the EC2 instance type</span>
+    <span class="pmeta">Planned · Terraform · ~15 min · rolls the fleet</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> full rolling replacement. <strong>Reversal:</strong> revert the
+    variable and apply again — another full roll.</p>
+    <ol>
+      <li>Confirm the target type is the same CPU architecture. If moving to Graviton, stop and read
+      §10.3 — that is a multi-part change, not this procedure.</li>
+      <li>Change the default of <code>instance_type</code> in <code>infra/terraform/variables.tf</code>,
+      or pass it at apply time for a one-off test.</li>
+      <li>Plan and read the output. Expect <code>aws_launch_template.api</code> to show a new version and
+      the ASG to show a corresponding change:
+        <pre><code>pnpm infra:prod:init
+pnpm infra:prod:plan</code></pre>
+      </li>
+      <li>Consider raising <code>mem_limit</code> and <code>cpus</code> in
+      <code>docker-compose.prod.yml</code> in the same change if you are moving to a larger instance —
+      otherwise the extra memory is unusable (§10.4).</li>
+      <li>Apply. This triggers a rolling replacement automatically; there is no separate refresh step:
+        <pre><code>pnpm infra:prod:apply</code></pre>
+      </li>
+      <li>Watch the refresh as in <code>OPS-01</code> step 4, then confirm the new type is live:
+        <pre><code>aws ec2 describe-instances \
+  --filters <span class="s">"Name=tag:aws:autoscaling:groupName,Values=&lt;ASG_NAME&gt;"</span> \
+             <span class="s">"Name=instance-state-name,Values=running"</span> \
+  --query <span class="s">'Reservations[].Instances[].[InstanceId,InstanceType]'</span> --output table</code></pre>
+      </li>
+      <li>Watch CPU, memory and — if still on a <code>t3</code> — <code>CPUCreditBalance</code> for at
+      least one full traffic cycle before considering the change settled.</li>
+    </ol>
+  </div>
+</div>

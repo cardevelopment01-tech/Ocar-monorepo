@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { Plus_Jakarta_Sans, Space_Grotesk } from 'next/font/google'
+import { Plus_Jakarta_Sans, Space_Grotesk, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { AdminAuthProvider } from '@/lib/auth-context'
 import { NotificationsProvider } from '@/lib/notifications-context'
@@ -22,6 +22,13 @@ const spaceGrotesk = Space_Grotesk({
   variable: '--font-display',
 })
 
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['500', '600'],
+  display: 'swap',
+  variable: '--font-mono',
+})
+
 export const metadata: Metadata = {
   title: 'Ocar Admin',
   description: 'Ocar platform administration',
@@ -29,7 +36,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${plusJakarta.variable} ${spaceGrotesk.variable}`}>
+    <html lang="en" className={`${plusJakarta.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}>
       <body className="font-sans">
         <MaintenanceBanner />
         <GoogleMapsProvider>
