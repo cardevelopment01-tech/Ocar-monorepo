@@ -7,11 +7,11 @@
 // `type` alone so this stays correct regardless of what the web apps' paths are.
 //
 // Full inventory of driver-owned push types, verified against every
-// notifyOwner/notifyAllAdmins/pushToTokens call site in api/src (2026-09-22):
+// notifyOwner/notifyAllAdmins/pushToTokens call site in api/src (2026-09-28):
 // ride_request, ride_manual_request, ride_force_assigned, stop_added,
-// ride_chat_message, document_rejected, document_expiring, document_expired,
-// profile_corrected, vehicle_corrected, account_suspended, driver_warning,
-// session_ended_stale, wallet_low_balance.
+// pickup_updated, ride_chat_message, document_rejected, document_expiring,
+// document_expired, profile_corrected, vehicle_corrected, account_suspended,
+// driver_warning, session_ended_stale, wallet_low_balance.
 export function resolvePushRoute(data: Record<string, string> | undefined): string | null {
   const type = data?.['type']
   if (!type) return null
@@ -32,6 +32,7 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
     // Already-accepted rides -- no offer UI to show, go straight to the ride.
     case 'ride_force_assigned':
     case 'stop_added':
+    case 'pickup_updated':
       return rideId ? `/active-ride/${rideId}` : null
 
     case 'ride_chat_message':

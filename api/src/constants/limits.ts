@@ -84,6 +84,11 @@ export const ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES = 15
 export const MIN_ADVANCE_BOOKING_MINUTES = 60
 export const MAX_ADVANCE_BOOKING_DAYS = 7
 export const MAX_CONCURRENT_SCHEDULED_BOOKINGS = 3
+// Post-booking pickup-pin edit ("Uber grey circle" pattern) — bounded so the
+// distance delta never crosses a fare rate bucket, meaning no fare recompute
+// is needed. Enforced server-side via distanceMetres, same helper as the
+// stop-duplicate check above — never trust a client-only radius.
+export const PICKUP_EDIT_RADIUS_METRES = 150
 export const RETURN_CAB_MATCH_RADIUS_METRES = 2000
 // Khorda/Bhubaneswar/Cuttack share one boundary box (see 055_merge_khorda_bbsr_ctc_boundary.sql)
 // so a genuine Bhubaneswar<->Cuttack intercity trip can still land inside it. Only block

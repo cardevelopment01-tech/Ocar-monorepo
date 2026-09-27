@@ -61,7 +61,7 @@ export default function App() {
   const navigate = useNavigate()
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
   const { isOnline, setOnline, setOffline } = useSessionStore()
-  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, setRestoreChecked, clearRide, activeRide, updateStop, addStop, setUnreadChatCount, incrementUnreadChatCount } = useRideStore()
+  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, setRestoreChecked, clearRide, activeRide, updateStop, addStop, updatePickup, setUnreadChatCount, incrementUnreadChatCount } = useRideStore()
   const { fetchUnreadCount, addLive } = useNotificationsStore()
   const [accepting, setAccepting] = useState(false)
   const [acceptedBeat, setAcceptedBeat] = useState(false)
@@ -391,6 +391,9 @@ export default function App() {
     const onStopAdded = (data: { stop: RideStop }) => {
       addStop({ ...data.stop, id: String(data.stop.id) })
     }
+    const onPickupUpdated = (data: { lat: number; lng: number; address: string | null }) => {
+      updatePickup(data.lat, data.lng, data.address)
+    }
     const onChatMessage = (data: { senderType: 'user' | 'driver' }) => {
       if (data.senderType === 'user') incrementUnreadChatCount()
     }
@@ -398,6 +401,7 @@ export default function App() {
     socket.on('connect', onConnect)
     socket.on('stop:updated', onStopUpdated)
     socket.on('stop:added', onStopAdded)
+    socket.on('ride:pickup_updated', onPickupUpdated)
     socket.on('chat:message', onChatMessage)
     void driverRideApi.getUnreadChatCount(activeRide.id).then(setUnreadChatCount).catch(() => {})
     // Session-restore path: socket may already be connected before this effect
@@ -411,6 +415,7 @@ export default function App() {
       socket.off('connect', onConnect)
       socket.off('stop:updated', onStopUpdated)
       socket.off('stop:added', onStopAdded)
+      socket.off('ride:pickup_updated', onPickupUpdated)
       socket.off('chat:message', onChatMessage)
     }
   }, [activeRide?.id]) // eslint-disable-line react-hooks/exhaustive-deps
