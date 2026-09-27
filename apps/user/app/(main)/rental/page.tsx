@@ -1,9 +1,9 @@
 'use client'
 
-import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
+import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   ArrowLeft, MapPin, Clock,
-  CreditCard, Zap, Users, Navigation, ChevronDown, Info, Sparkles,
+  CreditCard, Zap, Users, Navigation, ChevronDown, ChevronRight, Info, Sparkles,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -12,7 +12,7 @@ import { isAxiosError } from 'axios'
 import { rideApi, type RentalPackage, type FareEstimate, type StopInput } from '@/lib/ride-api'
 import { vehicleApi, type VehicleCategory } from '@/lib/vehicle-api'
 import { geoApi } from '@/lib/geo-api'
-import { recommendPackage } from '@/lib/recommend-package'
+import { recommendPackage, type PackageRecommendation } from '@/lib/recommend-package'
 import { getPaymentChannel } from '@/lib/payment-channel'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
@@ -75,6 +75,90 @@ function formatDuration(minutes: number): string {
 // premium rather than just another row in the list.
 function isPremiumSlug(slug: string) {
   return slug === 'luxury'
+}
+
+// Package tiers scroll horizontally and some vehicles have more tiers than fit
+// on screen. A fade + arrow at the trailing edge signals there's more to see —
+// the arrow scrolls forward on click, and both fade out once fully scrolled.
+function PackageTierScroller({
+  pkgs, selectedPkgId, recommendation, onSelect,
+}: {
+  pkgs: RentalPackage[]
+  selectedPkgId: number | null
+  recommendation: PackageRecommendation | null
+  onSelect: (id: number) => void
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    setCanScrollRight(el.scrollWidth - el.scrollLeft - el.clientWidth > 4)
+  }, [])
+
+  useEffect(() => {
+    updateScrollState()
+    const el = scrollRef.current
+    if (!el) return
+    el.addEventListener('scroll', updateScrollState, { passive: true })
+    const ro = new ResizeObserver(updateScrollState)
+    ro.observe(el)
+    return () => { el.removeEventListener('scroll', updateScrollState); ro.disconnect() }
+  }, [updateScrollState, pkgs.length])
+
+  return (
+    <div className="relative">
+      <div
+        ref={scrollRef}
+        className="flex gap-2 overflow-x-auto pt-3 pb-1 mb-3 [&::-webkit-scrollbar]:hidden"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {pkgs.map(pkg => {
+          const active = pkg.id === selectedPkgId
+          const isRec = recommendation?.packageId === pkg.id
+          return (
+            <button
+              key={pkg.id}
+              onClick={() => onSelect(pkg.id)}
+              className={cn(
+                'relative flex-shrink-0 px-3.5 py-2 rounded-xl text-center transition-all',
+                active ? 'bg-primary shadow-button' : 'bg-white border border-border-light'
+              )}
+            >
+              {isRec && (
+                <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-white text-primary-dark whitespace-nowrap shadow-sm">
+                  BEST FIT
+                </span>
+              )}
+              <p className={cn('text-[11.5px] font-bold', active ? 'text-white' : 'text-slate-900')}>
+                {formatDuration(pkg.duration_minutes)}
+              </p>
+              <p className={cn('text-[9.5px]', active ? 'text-primary-light' : 'text-slate-400')}>
+                {pkg.km_limit} km
+              </p>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Fade + arrow: only visible while there's more to scroll, fades smoothly as you reach the end */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-3 bottom-1 right-0 w-12 transition-opacity duration-200"
+        style={{ opacity: canScrollRight ? 1 : 0, background: 'linear-gradient(to left, #F8FAFF 30%, rgba(248,250,255,0))' }}
+      />
+      <button
+        onClick={() => scrollRef.current?.scrollBy({ left: 140, behavior: 'smooth' })}
+        aria-label="Show more packages"
+        tabIndex={canScrollRight ? 0 : -1}
+        className="absolute top-3 right-1 w-7 h-7 rounded-full bg-white flex items-center justify-center transition-opacity duration-200"
+        style={{ opacity: canScrollRight ? 1 : 0, pointerEvents: canScrollRight ? 'auto' : 'none', boxShadow: '0 2px 8px rgba(10,159,176,0.22)' }}
+      >
+        <ChevronRight size={13} strokeWidth={2.5} className="text-primary" />
+      </button>
+    </div>
+  )
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
@@ -516,34 +600,12 @@ function RentalContent() {
                           ) : (
                             <>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Package · {pkgs.length} tiers</p>
-                              <div className="flex gap-2 overflow-x-auto pt-3 pb-1 mb-3 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
-                                {pkgs.map(pkg => {
-                                  const active = pkg.id === selectedPkgId
-                                  const isRec = recommendation?.packageId === pkg.id
-                                  return (
-                                    <button
-                                      key={pkg.id}
-                                      onClick={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
-                                      className={cn(
-                                        'relative flex-shrink-0 px-3.5 py-2 rounded-xl text-center transition-all',
-                                        active ? 'bg-primary shadow-button' : 'bg-white border border-border-light'
-                                      )}
-                                    >
-                                      {isRec && (
-                                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-white text-primary-dark whitespace-nowrap shadow-sm">
-                                          BEST FIT
-                                        </span>
-                                      )}
-                                      <p className={cn('text-[11.5px] font-bold', active ? 'text-white' : 'text-slate-900')}>
-                                        {formatDuration(pkg.duration_minutes)}
-                                      </p>
-                                      <p className={cn('text-[9.5px]', active ? 'text-primary-light' : 'text-slate-400')}>
-                                        {pkg.km_limit} km
-                                      </p>
-                                    </button>
-                                  )
-                                })}
-                              </div>
+                              <PackageTierScroller
+                                pkgs={pkgs}
+                                selectedPkgId={selectedPkgId}
+                                recommendation={recommendation}
+                                onSelect={(id) => { setUserPickedPkg(true); setSelectedPkgId(id) }}
+                              />
                               {selectedPkg && (
                                 <>
                                   <div className="h-px bg-border-light mb-2.5" />
