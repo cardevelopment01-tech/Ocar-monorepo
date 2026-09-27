@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ocar — Infrastructure &amp; Delivery Pipeline Handover</title>
+<style>
+:root{
+  --ink:#12181f;
+  --ink-2:#3c4757;
+  --ink-3:#6b7788;
+  --rule:#dde3ea;
+  --rule-2:#eef2f6;
+  --paper:#ffffff;
+  --tint:#f6f8fa;
+  --accent:#0b5563;
+  --accent-2:#0e7490;
+  --accent-tint:#eaf4f6;
+  --warn:#8a5a00;
+  --warn-tint:#fdf6e7;
+  --warn-rule:#e8d5a8;
+  --danger:#9b2226;
+  --danger-tint:#fdf0f0;
+  --danger-rule:#f0cdcd;
+  --ok:#1f6f43;
+  --ok-tint:#eef7f1;
+  --ok-rule:#c6e2d1;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --sans:"Inter","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  font-family:var(--sans);
+  font-size:10.6pt;
+  line-height:1.62;
+  color:var(--ink);
+  background:#e9edf1;
+  font-feature-settings:"kern" 1,"liga" 1,"calt" 1;
+  text-rendering:optimizeLegibility;
+}
+
+.sheet{
+  max-width:920px;
+  margin:0 auto;
+  background:var(--paper);
+  padding:64px 76px 96px;
+  box-shadow:0 1px 3px rgba(16,24,40,.06),0 12px 40px rgba(16,24,40,.08);
+}
+
+/* ── Cover ─────────────────────────────────────────────── */
+.cover{
+  min-height:88vh;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  padding-bottom:36px;
+  border-bottom:1px solid var(--rule);
+  margin-bottom:52px;
+}
+.cover-top{padding-top:24px}
+.brandmark{display:flex;align-items:center;gap:13px;margin-bottom:76px}
+.brandmark .glyph{
+  width:38px;height:38px;border-radius:9px;
+  background:linear-gradient(145deg,var(--accent) 0%,var(--accent-2) 100%);
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:700;font-size:16px;letter-spacing:-.5px;
+}
+.brandmark .wordmark{font-weight:640;font-size:15.5px;letter-spacing:-.15px;color:var(--ink)}
+.brandmark .wordmark span{display:block;font-weight:450;font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
+
+.cover h1{
+  font-size:39px;line-height:1.14;font-weight:660;letter-spacing:-.9px;
+  margin:0 0 20px;max-width:16.5ch;color:var(--ink);
+}
+.cover .standfirst{
+  font-size:14.5px;line-height:1.58;color:var(--ink-2);
+  max-width:60ch;font-weight:400;margin:0;
+}
+.cover .rule{width:56px;height:3px;background:var(--accent);margin:0 0 26px;border-radius:2px}
+
+.docctl{
+  display:grid;grid-template-columns:repeat(2,1fr);
+  gap:0;border-top:1px solid var(--rule);padding-top:22px;
+}
+.docctl div{padding:9px 20px 9px 0}
+.docctl dt{
+  font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--ink-3);font-weight:600;margin:0 0 3px;
+}
+.docctl dd{margin:0;font-size:12.5px;color:var(--ink);font-weight:500}
+
+/* ── Typography ────────────────────────────────────────── */
+h2{
+  font-size:20.5px;font-weight:640;letter-spacing:-.42px;
+  margin:56px 0 6px;padding-top:22px;
+  border-top:1px solid var(--rule);color:var(--ink);
+  page-break-after:avoid;
+}
+h2 .num{
+  display:block;font-size:10px;font-weight:650;color:var(--accent-2);
+  letter-spacing:.13em;text-transform:uppercase;margin-bottom:9px;
+}
+h2:first-of-type{margin-top:0}
+h3{
+  font-size:14.6px;font-weight:620;letter-spacing:-.2px;
+  margin:34px 0 9px;color:var(--ink);page-break-after:avoid;
+}
+h4{
+  font-size:12.4px;font-weight:640;margin:24px 0 7px;color:var(--ink-2);
+  letter-spacing:.005em;page-break-after:avoid;
+}
+p{margin:0 0 13px;max-width:74ch}
+ul,ol{margin:0 0 14px;padding-left:21px;max-width:74ch}
+li{margin-bottom:6px}
+li>ul,li>ol{margin-top:6px;margin-bottom:2px}
+strong{font-weight:620;color:var(--ink)}
+a{color:var(--accent-2);text-decoration:none;border-bottom:1px solid rgba(14,116,144,.3)}
+
+code{
+  font-family:var(--mono);font-size:.885em;
+  background:var(--rule-2);padding:1.5px 5px;border-radius:4px;
+  color:#0d3d47;overflow-wrap:break-word;
+}
+pre{
+  font-family:var(--mono);font-size:9.6pt;line-height:1.58;
+  background:#0f1720;color:#dbe4ec;
+  padding:15px 18px;border-radius:8px;
+  overflow-x:auto;margin:0 0 15px;
+  border:1px solid #1d2733;
+}
+/* Wrap rather than clip: long AWS CLI invocations must stay fully readable
+   on a printed page, where there is no horizontal scrollbar to reach for. */
+pre code{
+  background:none;padding:0;color:inherit;font-size:1em;
+  white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;
+}
+pre .c{color:#7c8b9c;font-style:italic}
+pre .k{color:#7fd1c1}
+pre .s{color:#e5c07b}
+pre .v{color:#9cc4e8}
+
+/* ── Tables ────────────────────────────────────────────── */
+table{
+  width:100%;border-collapse:collapse;margin:6px 0 18px;
+  font-size:9.9pt;page-break-inside:avoid;
+}
+th{
+  text-align:left;font-weight:620;font-size:9pt;
+  text-transform:uppercase;letter-spacing:.055em;color:var(--ink-3);
+  padding:0 12px 8px 0;border-bottom:1.5px solid var(--ink-2);
+  vertical-align:bottom;
+}
+td{
+  padding:9px 12px 9px 0;border-bottom:1px solid var(--rule);
+  vertical-align:top;line-height:1.5;
+}
+td:last-child,th:last-child{padding-right:0}
+tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+table code{font-size:.86em;white-space:normal}
+.t-tight td,.t-tight th{padding-top:6.5px;padding-bottom:6.5px}
+.t-fixed{table-layout:fixed}
+
+/* ── Callouts ──────────────────────────────────────────── */
+.note{
+  border-left:3px solid var(--accent);background:var(--accent-tint);
+  padding:13px 17px;margin:16px 0;border-radius:0 6px 6px 0;
+  font-size:10.1pt;page-break-inside:avoid;
+}
+.note.warn{border-left-color:#c99a26;background:var(--warn-tint)}
+.note.danger{border-left-color:var(--danger);background:var(--danger-tint)}
+.note.ok{border-left-color:var(--ok);background:var(--ok-tint)}
+.note p:last-child{margin-bottom:0}
+.note .label{
+  display:block;font-size:8.8px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;margin-bottom:5px;color:var(--accent);
+}
+.note.warn .label{color:var(--warn)}
+.note.danger .label{color:var(--danger)}
+.note.ok .label{color:var(--ok)}
+
+/* ── Figures ───────────────────────────────────────────── */
+figure{margin:22px 0 24px;page-break-inside:avoid}
+figure svg{display:block;width:100%;height:auto}
+figcaption{
+  font-size:9.4pt;color:var(--ink-3);margin-top:10px;
+  padding-top:9px;border-top:1px solid var(--rule-2);line-height:1.5;
+}
+figcaption b{color:var(--ink-2);font-weight:620}
+
+/* ── TOC ───────────────────────────────────────────────── */
+.toc{
+  background:var(--tint);border:1px solid var(--rule);
+  border-radius:9px;padding:26px 30px;margin:0 0 12px;
+}
+.toc h2{
+  border:none;margin:0 0 16px;padding:0;font-size:12px;
+  text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);font-weight:670;
+}
+.toc ol{list-style:none;padding:0;margin:0;columns:2;column-gap:38px;max-width:none}
+.toc li{
+  margin-bottom:7px;font-size:10.2pt;break-inside:avoid;
+  display:flex;gap:9px;line-height:1.42;
+}
+.toc li .n{color:var(--accent-2);font-weight:640;font-variant-numeric:tabular-nums;min-width:17px}
+.toc a{color:var(--ink-2);border:none}
+.toc a:hover{color:var(--accent-2)}
+
+/* ── Chips / status ────────────────────────────────────── */
+.chip{
+  display:inline-block;font-size:8.4pt;font-weight:640;
+  padding:2px 8px;border-radius:20px;letter-spacing:.03em;
+  border:1px solid;white-space:nowrap;line-height:1.5;
+}
+.chip.live{color:var(--ok);background:var(--ok-tint);border-color:var(--ok-rule)}
+.chip.gap{color:var(--danger);background:var(--danger-tint);border-color:var(--danger-rule)}
+.chip.part{color:var(--warn);background:var(--warn-tint);border-color:var(--warn-rule)}
+.chip.na{color:var(--ink-3);background:var(--rule-2);border-color:var(--rule)}
+
+/* ── Procedure blocks ──────────────────────────────────── */
+.proc{
+  border:1px solid var(--rule);border-radius:9px;
+  margin:18px 0 24px;overflow:hidden;page-break-inside:avoid;
+}
+.proc>header{
+  background:var(--tint);border-bottom:1px solid var(--rule);
+  padding:12px 20px;display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;
+}
+.proc>header .pid{
+  font-family:var(--mono);font-size:9.2pt;font-weight:600;
+  color:#fff;background:var(--accent);padding:2px 8px;border-radius:4px;
+}
+.proc>header .ptitle{font-weight:640;font-size:12.6px;color:var(--ink)}
+.proc>header .pmeta{
+  font-size:9.2pt;color:var(--ink-3);margin-left:auto;
+}
+.proc .body{padding:18px 20px 6px}
+.proc .body>*:last-child{margin-bottom:12px}
+.proc ol{counter-reset:step;list-style:none;padding-left:0}
+.proc ol>li{
+  counter-increment:step;position:relative;padding-left:30px;margin-bottom:11px;
+}
+.proc ol>li::before{
+  content:counter(step);position:absolute;left:0;top:1px;
+  width:20px;height:20px;border-radius:50%;
+  background:var(--accent-tint);color:var(--accent);
+  font-size:9.4pt;font-weight:660;
+  display:flex;align-items:center;justify-content:center;
+  font-variant-numeric:tabular-nums;
+}
+.proc ol ul{padding-left:18px;list-style:disc}
+.proc ol ul li{padding-left:0}
+.proc ol ul li::before{display:none}
+
+/* ── Misc ──────────────────────────────────────────────── */
+.kv{display:grid;grid-template-columns:190px 1fr;gap:0;margin:12px 0 20px;font-size:10.1pt}
+.kv dt{
+  padding:8px 16px 8px 0;border-bottom:1px solid var(--rule-2);
+  color:var(--ink-3);font-weight:560;
+}
+.kv dd{margin:0;padding:8px 0;border-bottom:1px solid var(--rule-2)}
+.lead{font-size:11.6pt;line-height:1.6;color:var(--ink-2);max-width:70ch;margin-bottom:20px}
+.pagebreak{page-break-before:always}
+.nobreak{page-break-inside:avoid}
+hr.soft{border:none;border-top:1px solid var(--rule-2);margin:26px 0}
+.small{font-size:9.4pt;color:var(--ink-3)}
+.center{text-align:center}
+.mono{font-family:var(--mono);font-size:.9em}
+.stack-2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media print{
+  body{background:#fff;font-size:9.9pt}
+  .sheet{box-shadow:none;max-width:none;padding:0;margin:0}
+  h2{page-break-before:auto}
+  .cover{min-height:0;page-break-after:always}
+  pre{border:1px solid #ccc}
+  a{color:inherit;border:none}
+}
+@media(max-width:860px){
+  .sheet{padding:32px 24px 60px}
+  .toc ol{columns:1}
+  .kv{grid-template-columns:1fr}
+  .stack-2{grid-template-columns:1fr}
+  .docctl{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<!-- ════════════════ COVER ════════════════ -->
+<section class="cover">
+  <div class="cover-top">
+    <div class="brandmark">
+      <div class="glyph">O</div>
+      <div class="wordmark">Ocar<span>Intercity Cab Platform · Odisha</span></div>
+    </div>
+    <div class="rule"></div>
+    <h1>Infrastructure &amp; Delivery Pipeline Handover</h1>
+    <p class="standfirst">
+      A complete operational reference for the Ocar production platform: how code reaches
+      production, how traffic is distributed, how capacity is added and removed, and the exact
+      procedures for every routine and emergency operation. Written for an engineer taking
+      independent operational control of the AWS account and GitHub repository.
+    </p>
+  </div>
+
+  <dl class="docctl">
+    <div><dt>Document</dt><dd>Infrastructure &amp; Delivery Handover</dd></div>
+    <div><dt>Revision</dt><dd>1.0 — 20 August 2026</dd></div>
+    <div><dt>Repository</dt><dd class="mono">cardevelopment01-tech/Ocar-monorepo</dd></div>
+    <div><dt>AWS Account / Region</dt><dd class="mono">822127610728 · ap-south-1</dd></div>
+    <div><dt>Source of truth</dt><dd>Verified against <code>main</code> @ <span class="mono">4a07a95</span></dd></div>
+    <div><dt>Classification</dt><dd>Confidential — client engineering</dd></div>
+  </dl>
+</section>
+
+<!-- ════════════════ TOC ════════════════ -->
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><span class="n">1</span><a href="#s1">Scope, method and how to read this</a></li>
+    <li><span class="n">2</span><a href="#s2">System architecture</a></li>
+    <li><span class="n">3</span><a href="#s3">Environment and state isolation</a></li>
+    <li><span class="n">4</span><a href="#s4">Access model and credentials</a></li>
+    <li><span class="n">5</span><a href="#s5">Continuous integration</a></li>
+    <li><span class="n">6</span><a href="#s6">Continuous delivery</a></li>
+    <li><span class="n">7</span><a href="#s7">Deployment strategy and its alternatives</a></li>
+    <li><span class="n">8</span><a href="#s8">Request distribution and routing rules</a></li>
+    <li><span class="n">9</span><a href="#s9">Capacity: scaling out and in</a></li>
+    <li><span class="n">10</span><a href="#s10">Changing instance type and size</a></li>
+    <li><span class="n">11</span><a href="#s11">Configuration and secret management</a></li>
+    <li><span class="n">12</span><a href="#s12">Data layer: Postgres and Valkey</a></li>
+    <li><span class="n">13</span><a href="#s13">Observability</a></li>
+    <li><span class="n">14</span><a href="#s14">Operational procedures</a></li>
+    <li><span class="n">15</span><a href="#s15">Failure modes and recovery</a></li>
+    <li><span class="n">16</span><a href="#s16">Load testing</a></li>
+    <li><span class="n">17</span><a href="#s17">Known gaps and risk register</a></li>
+    <li><span class="n">18</span><a href="#s18">Appendices</a></li>
+  </ol>
+</nav>
+
+<!-- ════════════════ 1 ════════════════ -->
+<h2 id="s1"><span class="num">Section 01</span>Scope, method and how to read this</h2>
+
+<p class="lead">
+This document describes the system as it is actually configured today, not as it was designed
+or intended. Every value, filename, job name and command was read directly out of the repository
+at the commit named on the cover page.
+</p>
+
+<h3>1.1 What this covers</h3>
+<p>
+The delivery pipeline (CI and CD), the AWS runtime environment, and the operational procedures
+for running it. It deliberately does not cover application-level product behaviour — ride
+matching, fare calculation, payment reconciliation — which is documented separately in
+<code>CLAUDE.md</code> and the module design specs under <code>docs/superpowers/specs/</code>.
+</p>
+
+<h3>1.2 Method and verifiability</h3>
+<p>
+Nothing here is asserted from memory or convention. Each factual claim is traceable to a file in
+the repository, and the relevant file path is named alongside it so any statement can be checked
+in under a minute. Where behaviour depends on an AWS semantic rather than on our code — for
+example what <code>MinHealthyPercentage&nbsp;=&nbsp;100</code> actually causes the Auto Scaling
+service to do — the claim was verified against AWS's own current documentation rather than
+inferred.
+</p>
+<p>
+Section&nbsp;17 lists what is <em>not</em> right. It is deliberately placed in the same document
+rather than omitted, because a handover that only describes the working parts is not a handover.
+Several items in it are consequential.
+</p>
+
+<h3>1.3 Reading paths</h3>
+<table>
+  <thead><tr><th style="width:31%">If you want to…</th><th>Read</th></tr></thead>
+  <tbody>
+    <tr><td>Understand the shape of the system</td><td>Sections 2, 3, 8</td></tr>
+    <tr><td>Ship a change and watch it land</td><td>Sections 5, 6, 7</td></tr>
+    <tr><td>Add or remove capacity</td><td>Sections 9, 10</td></tr>
+    <tr><td>Perform a specific operation</td><td>Section 14 (procedures <code>OPS-01</code>…<code>OPS-12</code>)</td></tr>
+    <tr><td>Respond to an incident</td><td>Section 15, then Section 14</td></tr>
+    <tr><td>Assess risk before signing off</td><td>Section 17</td></tr>
+  </tbody>
+</table>
+
+<h3>1.4 Conventions</h3>
+<table class="t-tight">
+  <tbody>
+    <tr><td style="width:120px"><span class="chip live">Live</span></td><td>Implemented, deployed, and verified working in production.</td></tr>
+    <tr><td><span class="chip part">Partial</span></td><td>Implemented in code but not fully rolled out, or working with a known limitation.</td></tr>
+    <tr><td><span class="chip gap">Gap</span></td><td>Not implemented, or implemented incorrectly. Tracked in Section 17.</td></tr>
+    <tr><td><span class="chip na">N/A</span></td><td>Deliberately out of scope at current scale, with reasoning given.</td></tr>
+  </tbody>
+</table>
+<p>
+Commands shown as <code>$</code>-free single lines are safe to copy directly. Any command that
+mutates production state is marked in its procedure block with an explicit blast-radius note.
+Placeholders appear in angle brackets: <code>&lt;ASG_NAME&gt;</code>.
+</p>

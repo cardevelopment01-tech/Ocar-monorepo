@@ -1,0 +1,278 @@
+<!-- ════════════════ 4 ════════════════ -->
+<h2 id="s4"><span class="num">Section 04</span>Access model and credentials</h2>
+
+<p class="lead">
+Nothing in the pipeline authenticates to AWS with a long-lived access key. All three GitHub
+Actions roles are assumed through OIDC federation, scoped by the workflow's own signed identity
+claim, and expire with the job.
+</p>
+
+<h3>4.1 The three CI roles</h3>
+<p>
+Defined in <code>infra/terraform/github-oidc.tf</code>. Each is trusted only for a specific
+GitHub OIDC subject claim, so a workflow cannot assume a role it was not designed for even if
+someone edits the workflow file.
+</p>
+<table>
+  <thead><tr><th style="width:20%">Role</th><th style="width:28%">Trusted subject</th><th>Permitted actions</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>ocar-prod-gha-deploy</code></td>
+      <td><code>repo:…:environment:production</code></td>
+      <td><code>ssm:GetParameter</code>/<code>PutParameter</code> on the image-tag parameter only;
+      <code>autoscaling:StartInstanceRefresh</code>/<code>CancelInstanceRefresh</code> on this ASG only;
+      <code>DescribeInstanceRefreshes</code>; <code>ec2:DescribeInstances</code>;
+      <code>ssm:SendCommand</code> + <code>GetCommandInvocation</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ocar-prod-gha-plan</code></td>
+      <td><code>repo:…:pull_request</code></td>
+      <td>Read-only across the services this config manages, plus read/write on the
+      <code>prod/*</code> state prefix and the state KMS key. Never runs on <code>main</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ocar-prod-gha-staging</code></td>
+      <td><code>repo:…:environment:staging</code></td>
+      <td>Full apply/destroy, but only on the <code>staging/*</code> state prefix,
+      <code>/ocar/staging/*</code> parameters, and <code>ocar-staging-*</code> IAM roles.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note">
+<span class="label">Detail worth knowing</span>
+<p>
+The deploy role's trust policy matches on <code>environment:production</code>, not on
+<code>ref:refs/heads/main</code>. This is not arbitrary — when a job declares
+<code>environment:</code>, GitHub changes the OIDC subject claim format. The ref-based condition
+was tried first, failed, and the actual rejected claim was read out of CloudTrail to determine
+the correct form. If you add a new deploy job, it must declare the same environment or the
+assume-role will fail.
+</p>
+</div>
+
+<h3>4.2 The EC2 instance role</h3>
+<p>
+Instances assume <code>ocar-&lt;env&gt;-ec2-role</code> (<code>infra/terraform/iam.tf</code>).
+It grants <code>ssm:GetParameter</code> on exactly six named parameters and
+<code>kms:Decrypt</code> on the <code>alias/aws/ssm</code> key — nothing broader:
+</p>
+<ul>
+  <li><code>/ocar/&lt;env&gt;/image-tag</code> — which image version to run</li>
+  <li><code>/ocar/&lt;env&gt;/ghcr-token</code> — GHCR pull credential <span class="small">(SecureString)</span></li>
+  <li><code>/ocar/&lt;env&gt;/api-env</code> — the application's entire environment file <span class="small">(SecureString)</span></li>
+  <li><code>/ocar/&lt;env&gt;/migration-database-url</code> — direct DB URL for migrations <span class="small">(SecureString)</span></li>
+  <li><code>/ocar/&lt;env&gt;/docker-compose-prod</code> — Compose file, Terraform-managed</li>
+  <li><code>/ocar/&lt;env&gt;/alloy-config</code> — Alloy config, Terraform-managed</li>
+</ul>
+<p>
+The AWS-managed <code>AmazonSSMManagedInstanceCore</code> policy is also attached. Its inline
+comment still describes it as temporary debugging access, which is now <strong>out of
+date</strong> — the deploy pipeline routes database migrations to a live instance through
+<code>ssm:SendCommand</code>, and that requires the instance to be a registered SSM managed
+instance. Removing this attachment would break every deploy. See gap
+<span class="chip gap">G-04</span>.
+</p>
+
+<h3>4.3 What you are receiving</h3>
+<table>
+  <thead><tr><th style="width:26%">Credential</th><th style="width:20%">Scope</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>GitHub repository access</td><td>Per contract</td><td>Grants ability to read all workflow definitions, run workflows, and read Actions logs.</td></tr>
+    <tr><td>AWS console / CLI access</td><td>Per contract</td><td>Region <code>ap-south-1</code>. Verify your effective permissions with <code>aws sts get-caller-identity</code> and <code>aws iam simulate-principal-policy</code> before assuming a capability.</td></tr>
+  </tbody>
+</table>
+<div class="note warn">
+<span class="label">Operational safety</span>
+<p>
+Three destructive capabilities exist and have no confirmation gate today. Please read gaps
+<span class="chip gap">G-05</span> and <span class="chip gap">G-06</span> before using them:
+running <code>staging-infra.yml</code> with <code>action: destroy</code> executes
+<code>terraform destroy -auto-approve</code> against real infrastructure with no approval step;
+a push directly to <code>main</code> bypasses review entirely; and a merge to <code>main</code>
+that touches <code>api/**</code> deploys to production automatically with no human pause.
+</p>
+</div>
+
+<h3>4.4 Getting a shell on an instance</h3>
+<p>
+SSH is not open. Use SSM Session Manager, which is authenticated by IAM and audited in
+CloudTrail:
+</p>
+<pre><code><span class="c"># list instances belonging to the ASG</span>
+aws ec2 describe-instances \
+  --filters <span class="s">"Name=tag:aws:autoscaling:groupName,Values=&lt;ASG_NAME&gt;"</span> \
+             <span class="s">"Name=instance-state-name,Values=running"</span> \
+  --query <span class="s">'Reservations[].Instances[].[InstanceId,PrivateIpAddress,Placement.AvailabilityZone]'</span> \
+  --output table
+
+<span class="c"># open a shell</span>
+aws ssm start-session --target &lt;INSTANCE_ID&gt;
+
+<span class="c"># once inside — the app lives here</span>
+cd /opt/ocar
+sudo docker compose -f docker-compose.prod.yml ps
+sudo docker logs --tail 200 -f ocar_api
+sudo cat /var/log/user-data.log   <span class="c"># full boot transcript</span></code></pre>
+<div class="note">
+<span class="label">Note</span>
+<p>
+<code>/var/log/user-data.log</code> is the single most useful file when an instance fails to
+become healthy. The boot script runs under <code>set -x</code>, so it contains a complete trace
+of every step — with credential assignments explicitly untraced so tokens never land in the log.
+</p>
+</div>
+
+<!-- ════════════════ 5 ════════════════ -->
+<h2 id="s5"><span class="num">Section 05</span>Continuous integration</h2>
+
+<p class="lead">
+<code>.github/workflows/ci.yml</code>. Seven independent jobs, no dependency edges between them,
+all starting simultaneously. Triggered on every push to every branch and on every pull request
+targeting <code>main</code>.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CI job graph">
+  <defs>
+    <style>
+      .b3{fill:#fff;stroke:#c9d3de;stroke-width:1.2;rx:6}
+      .l3{font:600 10.4px Inter,sans-serif;fill:#12181f}
+      .s3{font:400 8.8px Inter,sans-serif;fill:#6b7788}
+      .m3{font:500 8.4px SFMono-Regular,monospace;fill:#0b5563}
+      .f3{stroke:#5b6b7d;stroke-width:1.3;fill:none;marker-end:url(#ar)}
+      .fl3{font:500 8.5px Inter,sans-serif;fill:#5b6b7d}
+      .gate{fill:#eaf4f6;stroke:#0e7490;stroke-width:1.5;rx:7}
+    </style>
+  </defs>
+
+  <rect class="b3" x="24" y="20" width="180" height="52" style="stroke:#0e7490;stroke-width:1.5"/>
+  <text class="l3" x="38" y="40">Trigger</text>
+  <text class="m3" x="38" y="55">push: ["**"]</text>
+  <text class="m3" x="38" y="66">pull_request: [main]</text>
+
+  <path class="f3" d="M204,46 L246,46"/>
+
+  <!-- jobs -->
+  <rect class="b3" x="250" y="14" width="196" height="42"/>
+  <text class="l3" x="262" y="32">Security Scan (Trivy)</text>
+  <text class="s3" x="262" y="46">two passes — vuln / secret+misconfig</text>
+
+  <rect class="b3" x="250" y="62" width="196" height="34"/>
+  <text class="l3" x="262" y="80">Lint</text>
+  <text class="s3" x="262" y="92">turbo run lint — all workspaces</text>
+
+  <rect class="b3" x="250" y="102" width="196" height="34"/>
+  <text class="l3" x="262" y="120">Typecheck API</text>
+  <text class="s3" x="262" y="132">tsc --noEmit</text>
+
+  <rect class="b3" x="250" y="142" width="196" height="48"/>
+  <text class="l3" x="262" y="160">Test API</text>
+  <text class="s3" x="262" y="174">postgis:17-3.5 + redis:7 services</text>
+  <text class="s3" x="262" y="186">migrate, then vitest</text>
+
+  <rect class="b3" x="250" y="196" width="196" height="34"/>
+  <text class="l3" x="262" y="214">Typecheck User App</text>
+
+  <rect class="b3" x="250" y="236" width="196" height="34"/>
+  <text class="l3" x="262" y="254">Typecheck Driver App</text>
+
+  <rect class="b3" x="250" y="276" width="196" height="34"/>
+  <text class="l3" x="262" y="294">Typecheck Admin App</text>
+
+  <path class="f3" d="M446,35 L520,35 L520,158"/>
+  <path class="f3" d="M446,79 L508,79 L508,158"/>
+  <path class="f3" d="M446,119 L496,119 L496,158"/>
+  <path class="f3" d="M446,166 L484,166"/>
+  <path class="f3" d="M446,213 L496,213 L496,176"/>
+  <path class="f3" d="M446,253 L508,253 L508,176"/>
+  <path class="f3" d="M446,293 L520,293 L520,176"/>
+
+  <rect class="gate" x="556" y="140" width="164" height="54"/>
+  <text class="l3" x="638" y="162" text-anchor="middle">All seven green?</text>
+  <text class="s3" x="638" y="178" text-anchor="middle">workflow conclusion = success</text>
+
+  <path class="f3" d="M720,167 L772,167" stroke="#0e7490" marker-end="url(#ar-a)"/>
+  <rect class="b3" x="776" y="142" width="88" height="50" style="stroke:#0e7490;stroke-width:1.5"/>
+  <text class="l3" x="820" y="163" text-anchor="middle">Deploy</text>
+  <text class="s3" x="820" y="178" text-anchor="middle">§6</text>
+
+  <text class="fl3" x="556" y="216">A red result on any single job means the</text>
+  <text class="fl3" x="556" y="230">Deploy workflow never starts — it keys off</text>
+  <text class="fl3" x="556" y="244">the whole CI run's conclusion, not per-job.</text>
+</svg>
+<figcaption>
+<b>Figure 3 — CI job graph.</b> The seven jobs are fully parallel. Deploy is chained off the
+overall run conclusion via <code>workflow_run</code>, which is what makes a single failing check
+structurally block deployment rather than merely discouraging it.
+</figcaption>
+</figure>
+
+<h3>5.1 Job reference</h3>
+<table>
+  <thead><tr><th style="width:23%">Job (display name)</th><th style="width:34%">What it does</th><th>Fails when</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Security Scan (Trivy)</strong></td>
+      <td>Two separate filesystem scans of the whole repo.</td>
+      <td>Pass 1 — dependency CVEs at <code>CRITICAL</code> only. Pass 2 — secrets and IaC misconfiguration at <code>CRITICAL</code> and <code>HIGH</code>.</td>
+    </tr>
+    <tr><td><strong>Lint</strong></td><td><code>pnpm turbo run lint</code> across every workspace.</td><td>Any lint error in any package.</td></tr>
+    <tr><td><strong>Typecheck API</strong></td><td><code>tsc --noEmit</code> on <code>@ocar/api</code>.</td><td>Any type error. Note <code>exactOptionalPropertyTypes</code> is on, so this is stricter than default.</td></tr>
+    <tr>
+      <td><strong>Test API</strong></td>
+      <td>Boots real <code>postgis/postgis:17-3.5</code> and <code>redis:7-alpine</code> service containers, writes a test <code>.env</code>, runs the full migration chain, then <code>vitest</code>.</td>
+      <td>A migration fails to apply, or any test fails.</td>
+    </tr>
+    <tr><td><strong>Typecheck User / Driver / Admin App</strong></td><td>Three separate <code>tsc --noEmit</code> jobs, one per frontend.</td><td>Any type error in that app.</td></tr>
+  </tbody>
+</table>
+
+<h3>5.2 Design points</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:29%">Choice</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Trivy pinned to a commit SHA</td>
+      <td><code>aquasecurity/trivy-action@ed142fd0…</code> rather than <code>@v0.36.0</code>. Version
+      tags on that action were force-pushed during a March 2026 supply-chain incident; a mutable
+      tag is not a trustworthy reference for a security-scanning step.</td>
+    </tr>
+    <tr>
+      <td>Dependency scan is <code>CRITICAL</code>-only</td>
+      <td>The monorepo carries roughly 27 pre-existing <code>HIGH</code> transitive findings, mostly
+      DoS-class and largely in frontend packages. Gating on them would block every pull request
+      indefinitely and train the team to ignore the scanner. Secrets and misconfiguration — where
+      a finding is nearly always real and actionable — stay at <code>HIGH</code>.
+      This is a conscious, revisitable trade-off, recorded as <span class="chip part">G-15</span>.</td>
+    </tr>
+    <tr>
+      <td>Migrations run in CI against a real Postgres</td>
+      <td>A migration that fails to apply cleanly fails the build before it can reach production.
+      This is the only place the full migration chain is exercised from empty on every change.</td>
+    </tr>
+    <tr>
+      <td>Per-job <code>concurrency</code> with cancel-in-progress</td>
+      <td>Pushing twice in quick succession cancels the superseded run per job, saving runner
+      minutes without cancelling unrelated branches.</td>
+    </tr>
+    <tr>
+      <td>Node 22, pnpm 9, frozen lockfile</td>
+      <td><code>--frozen-lockfile</code> means CI fails rather than silently resolving a different
+      dependency tree than the one committed.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note warn">
+<span class="label">Known weakness</span>
+<p>
+Test coverage is thin. Five test files exist in the API — four covering ride assignment and
+broadcast, one covering maintenance middleware — and there are none for payments, authentication,
+OTP, wallet or settlement.
+<code>vitest</code> and <code>@vitest/coverage-v8</code> are installed and a
+<code>test:coverage</code> script exists, but no coverage threshold is enforced in CI. Recorded
+as <span class="chip gap">G-13</span>. The <em>pipeline</em> is production-grade; the
+<em>test suite it runs</em> is not yet.
+</p>
+</div>

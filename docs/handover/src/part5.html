@@ -1,0 +1,271 @@
+<!-- ════════════════ 8 ════════════════ -->
+<h2 id="s8"><span class="num">Section 08</span>Request distribution and routing rules</h2>
+
+<p class="lead">
+One ALB, one listener, one target group, one rule. The routing configuration is deliberately
+minimal — path-based routing and per-service target groups would only be justified if the fleet
+served more than one application, which it does not.
+</p>
+
+<h3>8.1 Listeners</h3>
+<table>
+  <thead><tr><th style="width:12%">Port</th><th style="width:15%">Protocol</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td><code>80</code></td><td>HTTP</td><td>Unconditional <code>HTTP_301</code> redirect to port 443. No plaintext traffic ever reaches a target.</td></tr>
+    <tr><td><code>443</code></td><td>HTTPS</td><td>TLS terminates here using the ACM certificate. Default action forwards to the API target group. Policy: <code>ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09</code> — TLS 1.3 with post-quantum key exchange, restricted cipher set.</td></tr>
+  </tbody>
+</table>
+<p>
+<code>drop_invalid_header_fields</code> is enabled on the load balancer. This mitigates HTTP
+request-smuggling and desync attacks by discarding malformed headers before they reach a target.
+It is off by default in AWS and is worth confirming stays on.
+</p>
+
+<h3>8.2 Target group and algorithm</h3>
+<div class="kv">
+  <dt>Target type</dt><dd><code>instance</code> — registered by the ASG automatically, never by hand</dd>
+  <dt>Port / protocol</dt><dd><code>4000</code> / HTTP (TLS already terminated at the ALB)</dd>
+  <dt>Routing algorithm</dt><dd>Round-robin — the ALB default; not overridden</dd>
+  <dt>Stickiness</dt><dd><strong>Not enabled</strong> — deliberate, see below</dd>
+  <dt>Health check</dt><dd><code>GET /health</code>, expects HTTP 200, every 15 s, 5 s timeout, 3 up / 3 down</dd>
+  <dt>Deregistration delay</dt><dd>300 s (AWS default, not set explicitly in Terraform)</dd>
+</div>
+
+<h4>Why there is no session stickiness</h4>
+<p>
+This is the single most counter-intuitive routing decision in the system, and it is correct.
+Socket.io is configured with <code>transports: ['websocket']</code> only — HTTP long-polling is
+disabled entirely (<code>api/src/websocket/socket.server.ts</code>).
+</p>
+<p>
+Long-polling is what normally forces sticky sessions: each poll is a separate HTTP request, and
+every one must land on the instance holding that client's Engine.IO session. A pure WebSocket
+upgrade has no such requirement — the connection is pinned to one instance for its entire
+lifetime by the TCP connection itself. Enabling stickiness would add a cookie and reduce
+distribution quality for zero benefit.
+</p>
+<p>
+Cross-instance delivery is handled at the application layer instead. The
+<code>@socket.io/redis-adapter</code> publishes every room emit through Valkey, so
+<code>io.to('ride:123').emit(...)</code> reaches that ride's participants regardless of which
+instance each is connected to.
+</p>
+
+<h4>ALB idle timeout and Socket.io heartbeats</h4>
+<p>
+The ALB's idle timeout is at its default of 60 seconds — a connection with no bytes in either
+direction for 60 seconds is closed. Socket.io's server-side <code>pingInterval</code> is 25
+seconds, so an idle WebSocket still exchanges Engine.IO heartbeat frames roughly every 25
+seconds, comfortably inside the window. <strong>These two values are coupled.</strong> Raising
+<code>pingInterval</code> above 60 seconds, or lowering the ALB idle timeout below roughly 30,
+would start dropping idle connections. Change either only with the other in mind.
+</p>
+
+<h3>8.3 Maintenance mode</h3>
+<p>
+<code>alb.tf</code> defines a <code>maintenance_mode</code> boolean. Setting it creates a
+priority-1 listener rule matching <code>/*</code> that returns a fixed JSON 503 response,
+bypassing the target group entirely:
+</p>
+<pre><code>terraform apply -var=<span class="s">"environment=prod"</span> -var maintenance_mode=true</code></pre>
+<p>
+This is the mechanism to use when the API fleet itself may be unavailable — during a botched
+instance refresh, for example — and the application-level Redis-backed maintenance flag cannot
+run because nothing is running. Because ELB health checks probe registered targets directly
+rather than routing through listener rules, this rule does not interfere with health checking,
+and instances continue to be evaluated normally while it is active.
+</p>
+
+<h3>8.4 Full request path</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:6%">#</th><th style="width:24%">Hop</th><th>What happens</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Client</td><td>Resolves <code>ocar-api.clienttesting.in</code>.</td></tr>
+    <tr><td>2</td><td>Cloudflare</td><td>DNS. Proxy/WAF features are available but the ACM validation record must remain DNS-only, not proxied.</td></tr>
+    <tr><td>3</td><td>ALB :443</td><td>TLS termination; malformed headers dropped; forwarded to the target group.</td></tr>
+    <tr><td>4</td><td>Target selection</td><td>Round-robin across healthy targets in both AZs.</td></tr>
+    <tr><td>5</td><td>EC2 :4000</td><td>Security group permits this only from the ALB's security group.</td></tr>
+    <tr><td>6</td><td><code>ocar_api</code></td><td>Express middleware chain: Helmet, CORS, rate limiting (Redis-backed, so limits are fleet-wide), body parsing, routing.</td></tr>
+    <tr><td>7</td><td>Data layer</td><td>RDS over TLS (<code>rds.force_ssl = 1</code>); Valkey over <code>rediss://</code>.</td></tr>
+  </tbody>
+</table>
+<p>
+Rate limiting deserves a note: it uses <code>rate-limit-redis</code> rather than in-memory
+counters. With in-memory state, a limit of 100 requests per minute across four instances is
+effectively 400. Backing it with Valkey makes the limit hold across the fleet, and is a
+prerequisite for horizontal scaling that is easy to overlook.
+</p>
+
+<!-- ════════════════ 9 ════════════════ -->
+<h2 id="s9"><span class="num">Section 09</span>Capacity: scaling out and in</h2>
+
+<p class="lead">
+Capacity moves three ways: automatically, within the configured bounds; manually, for a planned
+event; and structurally, by changing the bounds themselves. Each has a different mechanism, a
+different blast radius, and a different reversal path.
+</p>
+
+<figure>
+<svg viewBox="0 0 880 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Scaling decision paths">
+  <defs>
+    <style>
+      .b5{fill:#fff;stroke:#c9d3de;stroke-width:1.2;rx:7}
+      .b5a{fill:#eaf4f6;stroke:#0e7490;stroke-width:1.4;rx:7}
+      .l5{font:640 10.6px Inter,sans-serif;fill:#12181f}
+      .s5{font:400 8.8px Inter,sans-serif;fill:#6b7788}
+      .m5{font:500 8.4px SFMono-Regular,monospace;fill:#0b5563}
+      .f5{stroke:#5b6b7d;stroke-width:1.35;fill:none;marker-end:url(#ar)}
+      .fl5{font:600 8.5px Inter,sans-serif;fill:#5b6b7d}
+      .tag{font:700 8px Inter,sans-serif;fill:#fff}
+    </style>
+  </defs>
+
+  <rect class="b5a" x="330" y="16" width="220" height="46"/>
+  <text class="l5" x="440" y="36" text-anchor="middle">Need to change capacity</text>
+  <text class="s5" x="440" y="51" text-anchor="middle">what kind of change?</text>
+
+  <path class="f5" d="M380,62 L380,86 L146,86 L146,112"/>
+  <path class="f5" d="M440,62 L440,112"/>
+  <path class="f5" d="M500,62 L500,86 L734,86 L734,112"/>
+
+  <!-- A -->
+  <rect class="b5" x="26" y="112" width="240" height="94"/>
+  <rect x="26" y="112" width="240" height="20" fill="#1f6f43" rx="7"/>
+  <rect x="26" y="124" width="240" height="8" fill="#1f6f43"/>
+  <text class="tag" x="38" y="126">A · AUTOMATIC — NO ACTION</text>
+  <text class="l5" x="38" y="152">Load rises within 2–4</text>
+  <text class="s5" x="38" y="168">Target-tracking policy adds or</text>
+  <text class="s5" x="38" y="180">removes instances on its own.</text>
+  <text class="m5" x="38" y="196">ALBRequestCountPerTarget = 1000</text>
+
+  <!-- B -->
+  <rect class="b5" x="320" y="112" width="240" height="94"/>
+  <rect x="320" y="112" width="240" height="20" fill="#0e7490" rx="7"/>
+  <rect x="320" y="124" width="240" height="8" fill="#0e7490"/>
+  <text class="tag" x="332" y="126">B · MANUAL — TEMPORARY</text>
+  <text class="l5" x="332" y="152">Planned event, known window</text>
+  <text class="s5" x="332" y="168">Raise desired capacity by CLI.</text>
+  <text class="s5" x="332" y="180">Terraform state now drifts —</text>
+  <text class="s5" x="332" y="192">must be reverted. See OPS-04.</text>
+
+  <!-- C -->
+  <rect class="b5" x="614" y="112" width="240" height="94"/>
+  <rect x="614" y="112" width="240" height="20" fill="#8a5a00" rx="7"/>
+  <rect x="614" y="124" width="240" height="8" fill="#8a5a00"/>
+  <text class="tag" x="626" y="126">C · STRUCTURAL — PERMANENT</text>
+  <text class="l5" x="626" y="152">The 2–4 range is wrong</text>
+  <text class="s5" x="626" y="168">Edit asg.tf, plan, apply.</text>
+  <text class="s5" x="626" y="180">Terraform remains the source</text>
+  <text class="s5" x="626" y="192">of truth. See OPS-05.</text>
+
+  <path class="f5" d="M146,206 L146,236"/>
+  <path class="f5" d="M440,206 L440,236"/>
+  <path class="f5" d="M734,206 L734,236"/>
+
+  <rect class="b5" x="26" y="236" width="240" height="52"/>
+  <text class="s5" x="38" y="256">Watch the ASG activity history</text>
+  <text class="s5" x="38" y="270">to confirm it acted. Nothing to</text>
+  <text class="s5" x="38" y="282">undo — it scales back in too.</text>
+
+  <rect class="b5" x="320" y="236" width="240" height="52"/>
+  <text class="s5" x="332" y="256">Set a calendar reminder to</text>
+  <text class="s5" x="332" y="270">restore. Next terraform apply</text>
+  <text class="s5" x="332" y="282">will silently revert it anyway.</text>
+
+  <rect class="b5" x="614" y="236" width="240" height="52"/>
+  <text class="s5" x="626" y="256">Read the plan carefully — a</text>
+  <text class="s5" x="626" y="270">launch template diff triggers a</text>
+  <text class="s5" x="626" y="282">full rolling replacement (§7.4).</text>
+
+  <text class="fl5" x="150" y="316">Prefer A. Use B only for a known window. Reach for C when the data says the range itself is wrong.</text>
+</svg>
+<figcaption>
+<b>Figure 6 — Choosing a scaling path.</b> The distinction that matters operationally is whether
+Terraform still describes reality afterwards. Path B deliberately creates drift and must be
+reversed; path C does not.
+</figcaption>
+</figure>
+
+<h3>9.1 The automatic policy</h3>
+<p>
+<code>aws_autoscaling_policy.request_count_tracking</code> is a target-tracking policy on the
+predefined metric <code>ALBRequestCountPerTarget</code> with a target value of <code>1000</code>.
+AWS manages the underlying CloudWatch alarms; there are no step adjustments to configure.
+</p>
+<div class="note warn">
+<span class="label">Read this carefully — the unit is not per second</span>
+<p>
+<code>ALBRequestCountPerTarget</code> is a <em>count per target over the metric period</em>, and
+target tracking evaluates it on a <strong>one-minute</strong> period. A target value of 1000
+therefore means <strong>1000 requests per target per minute — roughly 16.7 requests per
+second</strong>, not 1000 requests per second. Misreading this by a factor of sixty in either
+direction produces either a fleet that never scales or one that scales constantly.
+</p>
+</div>
+<p>
+The value of 1000 is an estimate, explicitly labelled as such in the code comment. It has not
+been validated against real traffic. Retuning it is one of the primary deliverables of the load
+test in §16.
+</p>
+<h4>Why request count rather than CPU</h4>
+<p>
+For a request-driven Node.js API, CPU is a lagging indicator — by the time CPU is saturated, the
+event loop is already queuing and latency has already degraded. Request count per target rises
+before that, giving the roughly four to five minutes a new instance needs to boot, pull images
+and pass health checks. On <code>t3</code> burstable instances there is a second reason: CPU
+credit exhaustion causes throttling that looks like low CPU utilisation, so a CPU-based policy can
+fail to scale precisely when the fleet is most degraded.
+</p>
+<div class="note">
+<span class="label">Discrepancy on record</span>
+<p>
+The client-facing scale-readiness report dated 4 August 2026 states an autoscaling policy of
+<em>min 3, max 5, scale on CPU &gt; 70% sustained 3 min</em>. The deployed configuration is
+<em>min 2, max 4, on request count</em>. The deployed version reflects later analysis and is the
+better choice for the reasons above, but the two documents disagree and the report has not been
+revised. Recorded as <span class="chip gap">G-11</span>.
+</p>
+</div>
+
+<h3>9.2 Scaling boundaries and their consequences</h3>
+<table>
+  <thead><tr><th style="width:16%">Setting</th><th style="width:11%">Value</th><th>Consequence</th></tr></thead>
+  <tbody>
+    <tr><td><code>min_size</code></td><td>2</td><td>Never fewer than two instances, across two availability zones. This is the redundancy floor — one instance may fail entirely without an outage.</td></tr>
+    <tr><td><code>desired_capacity</code></td><td>2</td><td>Steady-state count. The scaling policy moves this within the min/max bounds.</td></tr>
+    <tr><td><code>max_size</code></td><td>4</td><td>Hard ceiling. Traffic beyond what four instances absorb degrades rather than scaling — this is the number to raise first under real surge.</td></tr>
+  </tbody>
+</table>
+<div class="note">
+<span class="label">Terraform and desired_capacity</span>
+<p>
+<code>desired_capacity</code> is managed by Terraform <em>and</em> mutated at runtime by the
+scaling policy. There is no <code>lifecycle { ignore_changes }</code> on it. In practice this
+means that if the policy has scaled the group to 3 and you then run
+<code>terraform apply</code>, Terraform will see drift and scale it back to 2. This is usually
+harmless — the policy will immediately scale back out if load warrants — but it can cause a brief
+capacity dip during an apply performed under load. Avoid routine applies during peak traffic.
+</p>
+</div>
+
+<h3>9.3 Where the ceiling actually is</h3>
+<p>
+Adding instances stops helping once a shared dependency saturates. In order of expected
+constraint, based on the architecture rather than measurement:
+</p>
+<table class="t-tight">
+  <thead><tr><th style="width:22%">Resource</th><th style="width:24%">Current capacity</th><th>Symptom when it binds</th></tr></thead>
+  <tbody>
+    <tr><td>Valkey pub/sub</td><td>One <code>cache.t4g.micro</code> node</td><td>Real-time location updates lag or drop; Socket.io fan-out latency climbs. Expected to bind before app CPU.</td></tr>
+    <tr><td>RDS connections</td><td><code>db.t4g.small</code>, roughly 225 <code>max_connections</code></td><td>Connection acquisition timeouts under load. Each instance holds its own pool, so the total scales with fleet size.</td></tr>
+    <tr><td>RDS CPU / IOPS</td><td>2 vCPU burstable, gp3</td><td>Query latency rises across the board; <code>log_min_duration_statement</code> starts logging heavily.</td></tr>
+    <tr><td>EC2 CPU credits</td><td><code>t3.medium</code> burstable</td><td>Sustained load exhausts credits and throttles to baseline — a silent performance cliff, not a clean failure. Monitor <code>CPUCreditBalance</code>.</td></tr>
+    <tr><td>ASG ceiling</td><td>4 instances</td><td>Latency rises with no scaling activity in the ASG history.</td></tr>
+  </tbody>
+</table>
+<p>
+Note the ordering: the app tier is not expected to be the first constraint. Raising
+<code>max_size</code> in response to a Valkey or RDS bottleneck adds cost without adding capacity,
+and will make the database constraint worse by adding connection pools. Confirm which resource is
+actually saturated before scaling the fleet.
+</p>
