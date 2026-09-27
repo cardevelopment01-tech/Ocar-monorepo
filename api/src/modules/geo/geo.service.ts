@@ -75,10 +75,26 @@ export async function getRoute(
   const cached = await getJSON<google.RouteResult>(cacheKey)
   if (cached) return cached
 
-  const result = await google.getRoute(originLat, originLng, destLat, destLng, opts)
-  await setWithTTL(cacheKey, JSON.stringify(result), ROUTE_CACHE_TTL_SECONDS)
-  return result
+  // Single-flight: concurrent identical misses (rider + driver opening the same trip,
+  // client retries) share one upstream call instead of each paying Google latency.
+  let pending = inflightRoutes.get(cacheKey)
+  if (!pending) {
+    pending = google.getRoute(originLat, originLng, destLat, destLng, opts)
+      .then(async result => {
+        // Only cache full-quality results: a cached OSRM/straight-line fallback would pin
+        // the degraded answer (and defeat the driver app's retry-on-empty) for the TTL.
+        if (result.source === 'google') {
+          await setWithTTL(cacheKey, JSON.stringify(result), ROUTE_CACHE_TTL_SECONDS)
+        }
+        return result
+      })
+      .finally(() => inflightRoutes.delete(cacheKey))
+    inflightRoutes.set(cacheKey, pending)
+  }
+  return pending
 }
+
+const inflightRoutes = new Map<string, Promise<google.RouteResult>>()
 
 export async function snapTrailToRoads(points: Array<{ lat: number; lng: number }>) {
   return google.snapToRoads(points)

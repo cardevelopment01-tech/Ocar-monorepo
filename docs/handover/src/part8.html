@@ -1,0 +1,311 @@
+<!-- OPS-08 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-08</span>
+    <span class="ptitle">Apply any other infrastructure change</span>
+    <span class="pmeta">Routine · Terraform · varies</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> depends entirely on the plan. Read it. <strong>Reversal:</strong> revert and re-apply.</p>
+    <ol>
+      <li>Make the change in <code>infra/terraform/*.tf</code> on a branch.</li>
+      <li>Open a pull request. The plan is posted as a PR comment automatically.</li>
+      <li>Read the plan against this checklist before merging:
+        <ul>
+          <li>Does it show <code>aws_launch_template.api</code> changing? → the fleet will roll.</li>
+          <li>Does it show <code>aws_elasticache_replication_group</code> being <em>replaced</em>? → the
+          cache will be destroyed and recreated. Contents are disposable, but expect an interruption to
+          real-time delivery and queued jobs.</li>
+          <li>Does it show <code>aws_db_instance</code> being <em>replaced</em>? → <strong>stop</strong>.
+          That is data loss. Deletion protection should prevent it in prod, but do not rely on that.</li>
+          <li>Does it show anything being destroyed that you did not intend to destroy?</li>
+        </ul>
+      </li>
+      <li>Merge, then apply from a workstation:
+        <pre><code>pnpm infra:prod:init
+pnpm infra:prod:plan
+pnpm infra:prod:apply</code></pre>
+      </li>
+    </ol>
+    <p class="small">Infrastructure never auto-applies on merge. Only the plan runs in CI. This is
+    deliberate — AWS changes are not cheaply reversible the way an application deploy is.</p>
+  </div>
+</div>
+
+<!-- OPS-09 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-09</span>
+    <span class="ptitle">Stand up the staging environment</span>
+    <span class="pmeta">Occasional · ~20–25 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> creates a second full environment and its cost. <strong>Reversal:</strong> <code>OPS-10</code>.</p>
+    <ol>
+      <li>Create the DNS record for <code>staging.ocar-api.clienttesting.in</code> in Cloudflare. ACM
+      validation will block the apply until the validation CNAME resolves publicly — it must be
+      <strong>DNS-only, not proxied</strong>.</li>
+      <li>Seed the four hand-maintained SSM parameters under <code>/ocar/staging/</code>:
+      <code>image-tag</code>, <code>ghcr-token</code>, <code>api-env</code>,
+      <code>migration-database-url</code>. Use non-production credentials throughout — Razorpay test
+      keys, a distinct JWT secret.</li>
+      <li>Run the workflow: <strong>Actions → Staging Infra (apply/destroy) → Run workflow →
+      <code>action: apply</code></strong>. Or locally:
+        <pre><code>pnpm infra:staging:init
+pnpm infra:staging:plan
+pnpm infra:staging:apply</code></pre>
+      </li>
+      <li>Point the Cloudflare record at the staging ALB DNS name from the apply output.</li>
+      <li>Full step-by-step for the manual, non-Terraform portions:
+      <code>docs/superpowers/specs/2026-08-14-staging-runbook.md</code>.</li>
+    </ol>
+    <div class="note danger" style="margin-top:4px">
+      <span class="label">Known blocker</span>
+      <p>The <code>ocar-prod-gha-staging</code> IAM role grants no <code>rds:*</code> permissions, but
+      <code>rds.tf</code> is part of the shared configuration. A staging apply through the workflow will
+      therefore <strong>fail</strong> when it reaches the database resources. This must be fixed before
+      <code>OPS-09</code> can complete via CI — see <span class="chip gap">G-02</span>. A local apply
+      with broader credentials is the current workaround.</p>
+    </div>
+  </div>
+</div>
+
+<!-- OPS-10 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-10</span>
+    <span class="ptitle">Tear down staging</span>
+    <span class="pmeta">Occasional · destructive · ~10 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> destroys the entire staging environment. <strong>Reversal:</strong> <code>OPS-09</code> from scratch.</p>
+    <ol>
+      <li><strong>Verify which environment you are targeting.</strong> Terraform reuses whatever backend
+      the local <code>.terraform/</code> directory was last initialised against:
+        <pre><code>terraform init -reconfigure -backend-config=staging.backend.hcl
+terraform state list | head</code></pre>
+      </li>
+      <li>Destroy:
+        <pre><code>pnpm infra:staging:destroy</code></pre>
+        <p class="small">Or the workflow with <code>action: destroy</code>.</p>
+      </li>
+      <li>Remove the Cloudflare DNS records for the staging hostname.</li>
+      <li>Confirm nothing survived — orphaned ElastiCache nodes and RDS instances are the expensive ones:
+        <pre><code>aws rds describe-db-instances --query <span class="s">'DBInstances[].DBInstanceIdentifier'</span>
+aws elasticache describe-replication-groups --query <span class="s">'ReplicationGroups[].ReplicationGroupId'</span></code></pre>
+      </li>
+    </ol>
+    <div class="note danger" style="margin-top:4px">
+      <span class="label">No confirmation gate exists</span>
+      <p>The workflow's <code>environment: staging</code> declaration is inert — the GitHub Environment
+      was never created. A <code>destroy</code> dispatch runs <code>terraform destroy -auto-approve</code>
+      against real infrastructure with no approval step and no undo. See
+      <span class="chip gap">G-05</span>. Always destroy after a load test; staging is not meant to run
+      continuously and costs the same per-instance rate as production.</p>
+    </div>
+  </div>
+</div>
+
+<!-- OPS-11 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-11</span>
+    <span class="ptitle">Replace a single unhealthy instance</span>
+    <span class="pmeta">Incident · ~5 min</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> one instance. <strong>Reversal:</strong> none needed — the ASG relaunches automatically.</p>
+    <ol>
+      <li>Identify it:
+        <pre><code>aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names &lt;ASG_NAME&gt; \
+  --query <span class="s">'AutoScalingGroups[0].Instances[].{Id:InstanceId,State:LifecycleState,Health:HealthStatus,AZ:AvailabilityZone}'</span> \
+  --output table</code></pre>
+      </li>
+      <li>Look before you kill it — the cause is usually in the boot log or the container log:
+        <pre><code>aws ssm start-session --target &lt;INSTANCE_ID&gt;
+sudo tail -100 /var/log/user-data.log
+sudo docker ps -a
+sudo docker logs --tail 200 ocar_api</code></pre>
+      </li>
+      <li>Terminate it and let the ASG replace it. <code>--should-decrement-desired-capacity false</code>
+      is what makes the replacement happen:
+        <pre><code>aws autoscaling terminate-instance-in-auto-scaling-group \
+  --instance-id &lt;INSTANCE_ID&gt; \
+  --no-should-decrement-desired-capacity</code></pre>
+      </li>
+      <li>Confirm the replacement reaches <code>InService</code> and <code>Healthy</code>. Allow at least
+      the 240-second grace period plus three 15-second health checks.</li>
+    </ol>
+    <p class="small">If replacements repeatedly fail to become healthy, the problem is systemic — a bad
+    image, a broken SSM parameter, or an unreachable dependency. Go to <code>OPS-12</code> rather than
+    cycling instances.</p>
+  </div>
+</div>
+
+<!-- OPS-12 -->
+<div class="proc">
+  <header>
+    <span class="pid">OPS-12</span>
+    <span class="ptitle">Diagnose a failed or stuck deploy</span>
+    <span class="pmeta">Incident · investigation</span>
+  </header>
+  <div class="body">
+    <p><strong>Blast radius:</strong> read-only until you choose an action.</p>
+    <ol>
+      <li><strong>Locate the failing step</strong> in the Deploy workflow run. The step name maps directly
+      onto Figure 4.</li>
+      <li><strong>Migration step failed</strong> → the rollout never started and production is untouched,
+      still running the previous version. Read the captured stdout/stderr in the workflow log. Fix the
+      migration and merge again. Do not attempt to force the rollout past it.</li>
+      <li><strong>Refresh timed out or failed</strong> → replacement instances are not becoming healthy:
+        <pre><code>aws autoscaling describe-instance-refreshes \
+  --auto-scaling-group-name &lt;ASG_NAME&gt; --max-records 1 \
+  --query <span class="s">'InstanceRefreshes[0].{Status:Status,Reason:StatusReason,Pct:PercentageComplete}'</span></code></pre>
+        Then shell into a failing instance and read <code>/var/log/user-data.log</code>. The usual causes
+        are a GHCR pull failure (expired <code>ghcr-token</code>), a malformed <code>api-env</code>, or the
+        application exiting at startup because it cannot reach RDS or Valkey.
+      </li>
+      <li><strong>Health check failed but the refresh succeeded</strong> → instances are healthy at the
+      target group but the ALB is not serving correctly. Check target health directly:
+        <pre><code>aws elbv2 describe-target-health --target-group-arn &lt;TG_ARN&gt;</code></pre>
+      </li>
+      <li><strong>Smoke test failed but health passed</strong> → this is the important case. It means the
+      process is alive but the database path is broken, which <code>/health</code> does not currently
+      detect (<span class="chip gap">G-01</span>). Check RDS availability, the security group, and
+      <code>DATABASE_URL</code> in <code>api-env</code>.</li>
+      <li><strong>To stop an in-progress refresh:</strong>
+        <pre><code>aws autoscaling cancel-instance-refresh --auto-scaling-group-name &lt;ASG_NAME&gt;</code></pre>
+        <p class="small">Cancelling leaves the group in a mixed state — some instances on the new version,
+        some on the old. Follow immediately with <code>OPS-02</code> to converge on a known-good tag.</p>
+      </li>
+    </ol>
+  </div>
+</div>
+
+<!-- ════════════════ 15 ════════════════ -->
+<h2 id="s15"><span class="num">Section 15</span>Failure modes and recovery</h2>
+
+<p class="lead">
+What breaks, what it looks like, and what to do. Ordered by how likely each is to occur.
+</p>
+
+<table>
+  <thead><tr><th style="width:19%">Failure</th><th style="width:23%">Observable signal</th><th style="width:18%">Automatic response</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>One instance dies</strong></td>
+      <td>Target group shows one unhealthy target; no user-visible impact</td>
+      <td>ASG terminates and replaces it; ALB stops routing to it after 3 failed checks</td>
+      <td>None required. Investigate the cause via <code>OPS-11</code> if it recurs.</td>
+    </tr>
+    <tr>
+      <td><strong>Bad deploy</strong></td>
+      <td>Deploy workflow red at the health or smoke step</td>
+      <td>Automatic rollback to the previous tag, plus a second refresh</td>
+      <td>Confirm the rollback completed. Diagnose with <code>OPS-12</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>Bad migration</strong></td>
+      <td>Deploy fails at the migration step</td>
+      <td>Rollout never starts; production untouched</td>
+      <td>Fix forward. Never attempt to revert a migration.</td>
+    </tr>
+    <tr>
+      <td><strong>CPU credits exhausted</strong></td>
+      <td><code>CPUCreditBalance</code> near zero; latency rising with no scaling activity</td>
+      <td><em>None</em> — request-count scaling may still fire, CPU-based would not</td>
+      <td>Enable Unlimited mode, or move to a fixed-performance type (<code>OPS-07</code>).</td>
+    </tr>
+    <tr>
+      <td><strong>Valkey node fails</strong></td>
+      <td>Real-time updates stop; BullMQ stalls; rate limiting fails open or closed</td>
+      <td><em>None</em> — single node, failover disabled</td>
+      <td>Replace the node. Cache contents are disposable; this is an outage, not data loss.</td>
+    </tr>
+    <tr>
+      <td><strong>RDS unavailable</strong></td>
+      <td>Smoke test fails; <code>/health</code> reports <code>db: "error"</code> in its body but still returns HTTP 200</td>
+      <td><em>None</em> — single-AZ, no replica. The ALB does <strong>not</strong> detect this</td>
+      <td>Check the RDS console. Restore from automated backup if required. See <span class="chip gap">G-01</span> and <span class="chip gap">G-10</span>.</td>
+    </tr>
+    <tr>
+      <td><strong>Entire AZ fails</strong></td>
+      <td>Half the fleet unhealthy</td>
+      <td>ALB routes to the surviving AZ; ASG launches replacements there</td>
+      <td>Monitor. If RDS was in the failed AZ, the database is down until AWS recovers it — single-AZ is an accepted risk.</td>
+    </tr>
+    <tr>
+      <td><strong>Grafana Cloud cap exceeded</strong></td>
+      <td>Billing-usage alert at 85%; metrics or logs start being dropped</td>
+      <td>Alert fires</td>
+      <td>Review cardinality (§13.2) before assuming an upgrade is needed. Both prior incidents were cardinality, not genuine volume.</td>
+    </tr>
+    <tr>
+      <td><strong>GHCR token expired</strong></td>
+      <td>Every new instance fails to become healthy; <code>docker login</code> error in <code>user-data.log</code></td>
+      <td><em>None</em> — the ASG will cycle instances indefinitely</td>
+      <td>Rotate <code>/ocar/prod/ghcr-token</code>, then refresh (<code>OPS-06</code> steps 4–5).</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note warn">
+<span class="label">The pattern worth internalising</span>
+<p>
+Every failure the platform recovers from automatically is one where <strong>an instance</strong>
+is the failing unit. Every failure requiring manual intervention is one where a
+<strong>shared singleton</strong> fails — the Valkey node, the RDS instance, an SSM parameter.
+That is the accurate summary of this architecture's resilience profile: the compute tier is
+genuinely redundant; the data tier is not.
+</p>
+</div>
+
+<!-- ════════════════ 16 ════════════════ -->
+<h2 id="s16"><span class="num">Section 16</span>Load testing</h2>
+
+<p class="lead">
+A k6 suite exists at <code>load-tests/</code>, built to exercise the specific numbers committed
+in the scale-readiness report: 5,000–6,000 concurrent connections, GPS pings every three to five
+seconds, and booking bursts on top.
+</p>
+
+<h3>16.1 Structure</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:34%">Path</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>seed/generate-test-tokens.js</code></td><td>Mints JWTs directly rather than driving real OTP flows — thousands of logins would cost real money in SMS and hit Fast2SMS rate limits. Creates synthetic riders; reuses real onboarded drivers and stamps their daily verification records.</td></tr>
+    <tr><td><code>seed/generate-bulk-ride-history.js</code></td><td>Populates history so read paths are exercised against realistic table sizes.</td></tr>
+    <tr><td><code>k6/lib/socketio.js</code></td><td>Hand-rolled Engine.IO v4 / Socket.io v4 client. k6 runs its own JS runtime, so the real <code>socket.io-client</code> package cannot be used.</td></tr>
+    <tr><td><code>k6/smoke.js</code></td><td>Single-VU sanity check across every code path. Run before every session.</td></tr>
+    <tr><td><code>k6/main.js</code></td><td>The full test — concurrent booking, driver GPS and idle-rider scenarios.</td></tr>
+    <tr><td><code>k6/spike.js</code>, <code>k6/accept-race.js</code></td><td>Sudden-surge behaviour, and concurrent ride-acceptance contention.</td></tr>
+    <tr><td><code>verify/reconcile.js</code>, <code>verify/query-regression.js</code></td><td>Post-run data-integrity and query-performance verification.</td></tr>
+  </tbody>
+</table>
+
+<h3>16.2 Method</h3>
+<ol>
+  <li>Stand up staging (<code>OPS-09</code>) — note the blocker recorded there.</li>
+  <li>Seed data and tokens.</li>
+  <li>Run <code>smoke.js</code> privately first. A live run should never be the script's first contact with the environment.</li>
+  <li>Step up in stages rather than starting at target load: roughly 200 → 1,000 → 3,000 → 6,000 connections.</li>
+  <li>Watch, in order of expected constraint: Valkey ops/sec and connections; RDS connection count and Performance Insights; <code>CPUCreditBalance</code>; the cAdvisor per-container row; ALB 5xx rate and p95 latency.</li>
+  <li>Tear staging down afterwards (<code>OPS-10</code>).</li>
+</ol>
+
+<h3>16.3 What the test is expected to answer</h3>
+<table class="t-tight">
+  <thead><tr><th style="width:36%">Question</th><th>Decision it feeds</th></tr></thead>
+  <tbody>
+    <tr><td>Do <code>t3.medium</code> credits survive sustained load?</td><td>Enable Unlimited mode, or move to <code>m5.large</code>.</td></tr>
+    <tr><td>What is the real per-instance request ceiling?</td><td>Retune <code>target_value</code> from 1000 to a measured number.</td></tr>
+    <tr><td>Does <code>cache.t4g.micro</code> hold the pub/sub fan-out?</td><td>Whether to increase the Valkey node size.</td></tr>
+    <tr><td>Does <code>db.t4g.small</code> hold the connection count?</td><td>Instance class, and whether a pooler is needed.</td></tr>
+    <tr><td>Is <code>max_size = 4</code> sufficient?</td><td>The scaling bounds in <code>asg.tf</code>.</td></tr>
+  </tbody>
+</table>
+<p>
+Until this test runs, the capacity figures in the scale-readiness report are engineering estimates
+reasoned from the stack — not measurements. That distinction is stated in the report itself and
+is repeated here because it matters for sign-off.
+</p>

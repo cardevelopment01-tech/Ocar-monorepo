@@ -1,0 +1,3310 @@
+warning: in the working copy of 'api/src/modules/admin/admin.repository.ts', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'apps/rider-mobile/src/app/booking/index.tsx', CRLF will be replaced by LF the next time Git touches it
+diff --git a/DESIGN.md b/DESIGN.md
+index 1c390cc..613e311 100644
+--- a/DESIGN.md
++++ b/DESIGN.md
+@@ -63,6 +63,11 @@ typography:
+     fontSize: "12px"
+     fontWeight: 400
+     lineHeight: 1.5
++  mono:
++    fontFamily: "JetBrains Mono, ui-monospace, monospace"
++    fontSize: "14px"
++    fontWeight: 500
++    fontFeature: "tnum"
+ rounded:
+   sm: "8px"
+   md: "12px"
+@@ -122,6 +127,25 @@ components:
+     backgroundColor: "{colors.surface-2}"
+     textColor: "{colors.ink-600}"
+     rounded: "{rounded.full}"
++  city-rail-item:
++    backgroundColor: "transparent"
++    textColor: "{colors.ink-600}"
++    rounded: "{rounded.md}"
++  city-rail-item-active:
++    backgroundColor: "{colors.primary}"
++    textColor: "{colors.ink-inverse}"
++    rounded: "{rounded.md}"
++  chip-override:
++    backgroundColor: "{colors.primary-subtle}"
++    textColor: "{colors.primary-dark}"
++    rounded: "{rounded.full}"
++  chip-inherited:
++    backgroundColor: "{colors.surface-3}"
++    textColor: "{colors.ink-600}"
++    rounded: "{rounded.full}"
++  history-drawer:
++    backgroundColor: "{colors.surface}"
++    rounded: "0"
+   status-pill-success:
+     backgroundColor: "{colors.success-light}"
+     textColor: "{colors.success}"
+@@ -334,9 +358,34 @@ Ocar's component vocabulary is conservative. The same button shape appears consi
+ ### Data Tables (Admin)
+ 
+ - **Row height:** 48px minimum. Rows are never short enough to fail touch targets (44px minimum).
+-- **Header:** Label size (13px, 600), Ink 600 color, `background: #F6FBFB`, `border-bottom: 1px solid #DCEBEE`.
++- **Header:** Label size (13px, 600, slight `letter-spacing: 0.02-0.03em`), Ink 600 color, `background: #F6FBFB`, `border-bottom: 1px solid #DCEBEE`.
+ - **Row:** Body size (14px, 400), Ink 900. Hover: `background: #F6FBFB` (no elevation change).
+ - **Pagination:** Label size, Ink 600. Active page: Primary color, no background (text-primary is enough).
++- **Numeric/financial figures:** every fare, rate, or currency figure in an admin table uses the Mono role (JetBrains Mono, `font-variant-numeric: tabular-nums`) so digits align in a column. Never mix Plus Jakarta Sans and mono within the same numeric column.
++- **Card container:** admin data tables live inside a card with `rounded.xl` (20px), the two-layer Card Admin shadow, and a `1px solid` border at ~60% of `border` token opacity for extra edge definition at this larger radius. A slim category divider row (`cat-dot` + Title-weight label) groups related rows inside one table instead of splitting into separate stacked tables per group — this replaces the older pattern of one full table per category, which forces horizontal scroll and loses at-a-glance comparability.
++
++### City-Scoped Navigation (Admin)
++
++For any admin resource that is global-by-default with optional per-city overrides (rate cards, rental packages, and similar config), city is the **primary navigation axis**, not a filter dropdown buried above a flat list. A sticky left rail (`city-rail`, 216-220px, card-styled, `position: sticky`) lists "Global Defaults" first, then active cities, each with an override-count badge (`0 overrides` shown at reduced opacity so an empty state doesn't compete visually with real overrides). Selecting a city re-renders the main content scoped to that city's *effective* rates: its own overrides plus inherited global rows, never a raw filter of a flat table.
++
++- **Inherited row:** the whole row renders at `opacity: 0.6` (never lower — still legible, never hidden), tagged `chip-inherited` ("Inherited" or "Global"), and its action column shows a single "+ Override" affordance (`success-light` background, `success` text) instead of edit/delete — inherited data is not this city's to edit directly.
++- **Override row:** full opacity, tagged `chip-override` (`primary-subtle` bg, `primary-dark` text, pill shape), and carries an inline computed diff against the global value in Mono type (e.g. `+₹2.00/km vs global`, color `warning-text` for an increase, `success-text` for a decrease) directly under the tag. This is the single most important legibility rule in this pattern: a viewer must be able to tell a row is overridden, and by how much, without opening anything.
++- **Global-view actions:** when "Global Defaults" is selected, the primary create action reads "Add City Rate" (ghost/secondary button); when a specific city is selected, it reads "Override a rate" (primary button) — the button itself signals which write path the page is on.
++
++### Versioned Change History (Admin)
++
++Rate cards and similar append-only/versioned records never surface their history as a page-bottom accordion — that buries the one thing that answers "why is this the price." Instead:
++
++- **Inline summary:** each editable row carries a small text link under its primary value, in Label-weight Primary-Dark text (never a bare icon button — icon-only affordances for history are not discoverable enough), reading e.g. `3 changes`. Clicking it opens the row's history.
++- **Drawer, not accordion:** history opens in a right-side slide-in drawer (`380-400px`, Sheet-family shadow but directional leftward: `-16px 0 48px rgba(14,143,163,0.24)`), motion `translateX` `.3s cubic-bezier(.16,1,.3,1)`, scrim behind it. A reverse-chronological timeline: each entry shows actor + relative time, the free-text change reason as the primary line, then a per-field diff row (`diff-old`: Error color, strikethrough; arrow; `diff-new`: Success-text color, bold) — never a plain "before/after" table.
++- **Page-level access:** an "All changes" link/button sits in the page header (not the tab bar) for the full cross-city, cross-category audit trail, for anyone who needs the whole picture rather than one row's.
++
++### Toggles (Admin)
++
++- **Shape:** `34x19px` pill track, `15px` circular thumb with a small drop shadow (`0 1px 3px rgba(15,23,42,0.25)`), `2px` inset padding.
++- **Off:** `background: surface-3`. **On:** `background: primary`, thumb translates to the right edge.
++- **Transition:** `.18s ease` on both background and thumb transform. Never instant/no-transition — the state change itself is the feedback.
++- **Disabled:** `opacity: 0.45`, no pointer affordance.
+ 
+ ### Brand Logomark (OcarLogoMark)
+ 
+@@ -418,6 +467,19 @@ A comet-taper arc: a 120-degree rotating arc with a gradient from opaque head to
+ - Do not use gradient text on button labels; the gradient is on the button background, the label is white.
+ - Do not use the Go-Online orange CTA in any user-facing screen.
+ 
++**Admin data (rate cards, rental packages, and similar city-scoped config)**
++- Do not filter a global/override resource with a flat dropdown over one table. City is the primary navigation axis (sticky left rail); see City-Scoped Navigation.
++- Do not split one logical dataset into several stacked tables (one per category) purely to avoid horizontal scroll. Group with an in-table category divider row instead.
++- Do not render an override row without its inline diff-vs-global. An "Override" tag alone is not enough — the viewer needs the delta without opening a dialog.
++- Do not bury versioned change history in a page-bottom accordion. Use the inline "N changes" link + slide-in drawer pattern; see Versioned Change History.
++- Do not use a plain Tailwind `font-mono` default for financial figures — use the Mono role (JetBrains Mono, tabular-nums) as a declared system token, not an incidental utility class.
++
++## Decisions Log
++
++| Date | Decision | Rationale |
++|------|----------|-----------|
++| 2026-09-27 | Added City-Scoped Navigation, Versioned Change History, and Toggle patterns to the admin component vocabulary; added JetBrains Mono as the Mono typography role for tabular financial figures | `/design-consultation` redesign of the admin Rate Cards page — the old layout split one dataset into 9-column stacked category tables with a bottom accordion for history, illegible for the global-vs-city-override relationship that is the core of the data model. New patterns stay inside the existing teal/Space Grotesk/Plus Jakarta Sans identity; see the approved mockup at the design-consultation session that produced this entry. |
++
+ **Layout**
+ - Do not nest cards inside cards.
+ - Do not use `border-left` greater than 1px as a design element (see Absolute bans).
+diff --git a/api/src/modules/admin/admin.repository.ts b/api/src/modules/admin/admin.repository.ts
+index f4df6e7..acbb7fd 100644
+--- a/api/src/modules/admin/admin.repository.ts
++++ b/api/src/modules/admin/admin.repository.ts
+@@ -1830,7 +1830,11 @@ export async function deleteCityBoundary(
+ 
+ export async function listAdminRateCards() {
+   const res = await pool.query(
+-    `SELECT rc.*,
++    `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type,
++            rc.city_id::int AS city_id, rc.rate_per_km, rc.rate_per_min, rc.min_fare,
++            rc.return_rate_per_km, rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day,
++            rc.cancellation_fee, rc.effective_from, rc.effective_to, rc.notes,
++            rc.created_by::int AS created_by, rc.created_at,
+             vc.display_name AS category_name,
+             vc.slug AS category_slug,
+             c.name AS city_name
+@@ -1845,10 +1849,13 @@ export async function listAdminRateCards() {
+ 
+ export async function listAdminRateCardHistory() {
+   const res = await pool.query(
+-    `SELECT rch.*,
++    `SELECT rch.id::int AS id, rch.rate_card_id::int AS rate_card_id,
++            rch.rate_per_km, rch.rate_per_min, rch.min_fare, rch.return_rate_per_km, rch.hour_rate,
++            rch.changed_by::int AS changed_by, rch.change_reason, rch.created_at,
++            rch.city_id::int AS city_id,
+             vc.display_name AS category_name,
+             rc.ride_type,
+-            rc.category_id,
++            rc.category_id::int AS category_id,
+             c.name AS city_name
+      FROM rate_card_history rch
+      JOIN rate_cards rc ON rc.id = rch.rate_card_id
+diff --git a/api/src/modules/geo/geo.service.ts b/api/src/modules/geo/geo.service.ts
+index 1070d63..91663e7 100644
+--- a/api/src/modules/geo/geo.service.ts
++++ b/api/src/modules/geo/geo.service.ts
+@@ -75,11 +75,27 @@ export async function getRoute(
+   const cached = await getJSON<google.RouteResult>(cacheKey)
+   if (cached) return cached
+ 
+-  const result = await google.getRoute(originLat, originLng, destLat, destLng, opts)
+-  await setWithTTL(cacheKey, JSON.stringify(result), ROUTE_CACHE_TTL_SECONDS)
+-  return result
++  // Single-flight: concurrent identical misses (rider + driver opening the same trip,
++  // client retries) share one upstream call instead of each paying Google latency.
++  let pending = inflightRoutes.get(cacheKey)
++  if (!pending) {
++    pending = google.getRoute(originLat, originLng, destLat, destLng, opts)
++      .then(async result => {
++        // Only cache full-quality results: a cached OSRM/straight-line fallback would pin
++        // the degraded answer (and defeat the driver app's retry-on-empty) for the TTL.
++        if (result.source === 'google') {
++          await setWithTTL(cacheKey, JSON.stringify(result), ROUTE_CACHE_TTL_SECONDS)
++        }
++        return result
++      })
++      .finally(() => inflightRoutes.delete(cacheKey))
++    inflightRoutes.set(cacheKey, pending)
++  }
++  return pending
+ }
+ 
++const inflightRoutes = new Map<string, Promise<google.RouteResult>>()
++
+ export async function snapTrailToRoads(points: Array<{ lat: number; lng: number }>) {
+   return google.snapToRoads(points)
+ }
+diff --git a/api/src/modules/geo/providers/google.provider.ts b/api/src/modules/geo/providers/google.provider.ts
+index 9270725..2d24567 100644
+--- a/api/src/modules/geo/providers/google.provider.ts
++++ b/api/src/modules/geo/providers/google.provider.ts
+@@ -1,4 +1,5 @@
+ import { config } from '@/config'
++import { logger } from '@/lib/logger'
+ 
+ const BASE = 'https://maps.googleapis.com/maps/api'
+ const ROUTES_API_BASE = 'https://routes.googleapis.com/directions/v2:computeRoutes'
+@@ -9,6 +10,9 @@ export type PlaceSuggestion = {
+   description: string
+   mainText: string
+   secondaryText: string
++  /** Straight-line distance from the biasing origin, in metres. Present only when
++   *  autocomplete() was called with lat/lng (Google's `origin` param triggers it). */
++  distanceMetres?: number
+ }
+ 
+ export type PlaceDetail = {
+@@ -68,11 +72,11 @@ export type RouteOptions = {
+   language?: string
+   withSteps?: boolean
+   trafficAware?: boolean
+-  /** Also fetch congestion segments for a traffic-tinted route line (a second,
+-   *  separate Routes API call — see getTrafficIntervals). Keep this off for
+-   *  server-side-only ETA reads (e.g. rides.service.ts's logEtaSnapshot) that
+-   *  only need trafficDurationMin/durationMin, so they don't pay for a second
+-   *  API call whose result they never use. */
++  /** Also return congestion segments for a traffic-tinted route line (adds the
++   *  speedReadingIntervals field + TRAFFIC_ON_POLYLINE computation to the Routes API
++   *  request). Keep this off for server-side-only ETA reads (e.g. rides.service.ts's
++   *  logEtaSnapshot) that only need trafficDurationMin/durationMin — it costs latency
++   *  and a higher billing tier for data they never use. */
+   withTrafficIntervals?: boolean
+ }
+ 
+@@ -84,7 +88,8 @@ async function gmapsGet(path: string, params: Record<string, string>): Promise<u
+   const url = new URL(`${BASE}${path}`)
+   url.searchParams.set('key', config.GOOGLE_MAPS_API_KEY)
+   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
+-  const res = await fetch(url.toString())
++  // Bound every upstream call — without this a slow Google response hangs the request.
++  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) })
+   if (!res.ok) throw Object.assign(new Error('Google Maps request failed'), { httpStatus: 502 })
+   return res.json()
+ }
+@@ -104,6 +109,8 @@ export async function autocomplete(
+   if (lat !== undefined && lng !== undefined) {
+     params['location'] = `${lat},${lng}`
+     params['radius'] = '200000'
++    // Triggers Google to compute straight-line distance_meters per prediction.
++    params['origin'] = `${lat},${lng}`
+   } else {
+     params['location'] = '20.9517,85.0985'
+     params['radius'] = '300000'
+@@ -115,6 +122,7 @@ export async function autocomplete(
+       place_id: string
+       description: string
+       structured_formatting?: { main_text: string; secondary_text: string }
++      distance_meters?: number
+     }>
+   }>
+ 
+@@ -128,6 +136,7 @@ export async function autocomplete(
+     description: p.description,
+     mainText: p.structured_formatting?.main_text ?? p.description,
+     secondaryText: p.structured_formatting?.secondary_text ?? '',
++    ...(p.distance_meters !== undefined && { distanceMetres: p.distance_meters }),
+   }))
+ }
+ 
+@@ -173,71 +182,135 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string>
+   return body.results?.[0]?.formatted_address ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+ }
+ 
+-// Separate call to the newer Routes API purely for per-segment congestion data —
+-// the legacy Directions API used above for turn-by-turn steps has no equivalent
+-// field. Best-effort only: on any failure, callers just get no traffic tinting,
+-// never an error, since this is a cosmetic overlay on top of the real route.
+-async function getTrafficIntervals(
++type RoutesApiRoute = {
++  distanceMeters?: number
++  duration?: string
++  staticDuration?: string
++  polyline?: { encodedPolyline?: string }
++  travelAdvisory?: {
++    speedReadingIntervals?: Array<{
++      startPolylinePointIndex?: number
++      endPolylinePointIndex?: number
++      speed?: string
++    }>
++  }
++  legs?: Array<{
++    steps?: Array<{
++      distanceMeters?: number
++      polyline?: { encodedPolyline?: string }
++      startLocation?: { latLng?: { latitude?: number; longitude?: number } }
++      endLocation?: { latLng?: { latitude?: number; longitude?: number } }
++      navigationInstruction?: { maneuver?: string; instructions?: string }
++    }>
++  }>
++}
++
++// Routes API maneuver enum (TURN_LEFT, ROUNDABOUT_RIGHT, ...) -> the kebab-case
++// vocabulary the driver app's ManeuverBanner/voice already keys on (turn-left,
++// roundabout-right, ...). undefined = no maneuver, caller picks straight/arrive.
++function mapManeuver(m?: string): string | undefined {
++  if (!m || m === 'MANEUVER_UNSPECIFIED') return undefined
++  if (m === 'STRAIGHT' || m === 'DEPART' || m === 'NAME_CHANGE' || m.startsWith('FERRY')) return 'straight'
++  return m.toLowerCase().replace(/_/g, '-')
++}
++
++// Routes API durations are protobuf strings like "1234s"; proto3 omits zero values.
++const durationMin = (d?: string): number => Math.round((d ? parseFloat(d) : 0) / 60)
++
++// One Routes API call returns distance, ETA (with and without traffic), turn-by-turn
++// steps and per-segment congestion together — replaces the old Directions call plus a
++// second Routes call for congestion. The field mask is built per request so we only
++// pay latency/billing for what the caller asked for. Returns null on any non-OK
++// result; the caller falls back to legacy Directions.
++async function computeRoute(
+   originLat: number,
+   originLng: number,
+   destLat: number,
+   destLng: number,
+-  language: string,
+-): Promise<{ polyline: string; intervals: TrafficInterval[] } | null> {
+-  if (!config.GOOGLE_MAPS_API_KEY) return null
+-  try {
+-    const res = await fetch(ROUTES_API_BASE, {
+-      method: 'POST',
+-      headers: {
+-        'Content-Type': 'application/json',
+-        'X-Goog-Api-Key': config.GOOGLE_MAPS_API_KEY,
+-        'X-Goog-FieldMask': 'routes.polyline.encodedPolyline,routes.travelAdvisory.speedReadingIntervals',
+-      },
+-      body: JSON.stringify({
+-        origin:            { location: { latLng: { latitude: originLat, longitude: originLng } } },
+-        destination:        { location: { latLng: { latitude: destLat, longitude: destLng } } },
+-        travelMode:         'DRIVE',
+-        routingPreference:  'TRAFFIC_AWARE',
+-        extraComputations:  ['TRAFFIC_ON_POLYLINE'],
+-        languageCode:       language,
+-        units:              'METRIC',
+-      }),
+-      signal: AbortSignal.timeout(8000),
+-    })
+-    if (!res.ok) return null
++  opts?: RouteOptions,
++): Promise<RouteResult | null> {
++  // TRAFFIC_ON_POLYLINE is only valid with a traffic-aware preference. TRAFFIC_AWARE
++  // (not _OPTIMAL) is Google's lower-latency traffic mode; TRAFFIC_UNAWARE is the
++  // fastest and is all a plain distance/ETA read (booking check) needs.
++  const trafficAware = !!(opts?.trafficAware || opts?.withTrafficIntervals)
++  const fields = [
++    'routes.distanceMeters', 'routes.duration', 'routes.staticDuration',
++    'routes.polyline.encodedPolyline',
++  ]
++  if (opts?.withSteps) {
++    fields.push(
++      'routes.legs.steps.distanceMeters', 'routes.legs.steps.polyline.encodedPolyline',
++      'routes.legs.steps.startLocation', 'routes.legs.steps.endLocation',
++      'routes.legs.steps.navigationInstruction',
++    )
++  }
++  if (opts?.withTrafficIntervals) fields.push('routes.travelAdvisory.speedReadingIntervals')
++
++  const res = await fetch(ROUTES_API_BASE, {
++    method: 'POST',
++    headers: {
++      'Content-Type': 'application/json',
++      'X-Goog-Api-Key': config.GOOGLE_MAPS_API_KEY,
++      'X-Goog-FieldMask': fields.join(','),
++    },
++    body: JSON.stringify({
++      origin:            { location: { latLng: { latitude: originLat, longitude: originLng } } },
++      destination:       { location: { latLng: { latitude: destLat, longitude: destLng } } },
++      travelMode:        'DRIVE',
++      routingPreference: trafficAware ? 'TRAFFIC_AWARE' : 'TRAFFIC_UNAWARE',
++      ...(opts?.withTrafficIntervals && { extraComputations: ['TRAFFIC_ON_POLYLINE'] }),
++      languageCode:      opts?.language ?? 'en',
++      units:             'METRIC',
++    }),
++    signal: AbortSignal.timeout(5000),
++  })
++  if (!res.ok) {
++    logger.warn({ status: res.status }, 'geo.route: Routes API HTTP error')
++    return null
++  }
+ 
+-    const body = await res.json() as {
+-      routes?: Array<{
+-        polyline?: { encodedPolyline?: string }
+-        travelAdvisory?: {
+-          speedReadingIntervals?: Array<{
+-            startPolylinePointIndex?: number
+-            endPolylinePointIndex?: number
+-            speed?: string
+-          }>
+-        }
+-      }>
+-    }
++  const route = ((await res.json()) as { routes?: RoutesApiRoute[] }).routes?.[0]
++  const polyline = route?.polyline?.encodedPolyline
++  if (!route || !polyline) return null
+ 
+-    const route = body.routes?.[0]
+-    const encoded = route?.polyline?.encodedPolyline
+-    const rawIntervals = route?.travelAdvisory?.speedReadingIntervals
+-    if (!encoded || !rawIntervals?.length) return null
+-
+-    const intervals: TrafficInterval[] = rawIntervals
+-      .filter((i): i is typeof i & { speed: TrafficSpeed } =>
+-        i.speed === 'NORMAL' || i.speed === 'SLOW' || i.speed === 'TRAFFIC_JAM')
+-      .map(i => ({
+-        startIndex: i.startPolylinePointIndex ?? 0,
+-        endIndex:   i.endPolylinePointIndex ?? 0,
+-        speed:      i.speed,
+-      }))
+-    if (!intervals.length) return null
+-
+-    return { polyline: encoded, intervals }
+-  } catch {
+-    return null
++  const result: RouteResult = {
++    distanceKm: Math.round(((route.distanceMeters ?? 0) / 1000) * 10) / 10,
++    // Legacy semantics: durationMin is the no-traffic ETA, trafficDurationMin the live one.
++    durationMin: durationMin(trafficAware ? route.staticDuration : route.duration),
++    polyline,
++    source: 'google',
++  }
++  if (opts?.trafficAware) result.trafficDurationMin = durationMin(route.duration)
++
++  if (opts?.withSteps) {
++    const steps = route.legs?.[0]?.steps ?? []
++    const lastIdx = steps.length - 1
++    result.steps = steps.map((s, i) => ({
++      instruction: s.navigationInstruction?.instructions ?? '',
++      distanceMetres: s.distanceMeters ?? 0,
++      maneuverType: mapManeuver(s.navigationInstruction?.maneuver) ?? (i === lastIdx ? 'arrive' : 'straight'),
++      startLat: s.startLocation?.latLng?.latitude ?? 0,
++      startLng: s.startLocation?.latLng?.longitude ?? 0,
++      endLat: s.endLocation?.latLng?.latitude ?? 0,
++      endLng: s.endLocation?.latLng?.longitude ?? 0,
++      polyline: s.polyline?.encodedPolyline ?? '',
++    }))
+   }
++
++  const intervals = (opts?.withTrafficIntervals ? route.travelAdvisory?.speedReadingIntervals ?? [] : [])
++    .filter((i): i is typeof i & { speed: TrafficSpeed } =>
++      i.speed === 'NORMAL' || i.speed === 'SLOW' || i.speed === 'TRAFFIC_JAM')
++    .map(i => ({
++      startIndex: i.startPolylinePointIndex ?? 0,
++      endIndex:   i.endPolylinePointIndex ?? 0,
++      speed:      i.speed,
++    }))
++  if (intervals.length) {
++    // Indices refer to this same route polyline, so trafficPolyline === polyline now.
++    result.trafficPolyline = polyline
++    result.trafficIntervals = intervals
++  }
++  return result
+ }
+ 
+ export async function getRoute(
+@@ -247,8 +320,17 @@ export async function getRoute(
+   destLng: number,
+   opts?: RouteOptions,
+ ): Promise<RouteResult> {
+-  // 1. Try Google Directions (best quality, needs key + Directions API enabled)
+   if (config.GOOGLE_MAPS_API_KEY) {
++    // 1. Routes API — single call for route + steps + traffic (needs Routes API enabled)
++    try {
++      const route = await computeRoute(originLat, originLng, destLat, destLng, opts)
++      if (route) return route
++    } catch (err) {
++      logger.warn({ err }, 'geo.route: Routes API failed, trying legacy Directions')
++    }
++
++    // 2. Legacy Directions — safety net if the Routes API is disabled/blocked for the
++    // key. No congestion overlay on this tier.
+     try {
+       const params: Record<string, string> = {
+         origin:      `${originLat},${originLng}`,
+@@ -302,16 +384,12 @@ export async function getRoute(
+             polyline: s.polyline.points,
+           }))
+         }
+-        if (opts?.withTrafficIntervals) {
+-          const traffic = await getTrafficIntervals(originLat, originLng, destLat, destLng, opts?.language ?? 'en')
+-          if (traffic) {
+-            result.trafficPolyline = traffic.polyline
+-            result.trafficIntervals = traffic.intervals
+-          }
+-        }
+         return result
+       }
+-    } catch { /* fall through to OSRM */ }
++      logger.warn({ status: body.status }, 'geo.route: Google Directions not OK, falling back to OSRM')
++    } catch (err) {
++      logger.warn({ err }, 'geo.route: Google Directions failed, falling back to OSRM')
++    }
+   }
+ 
+   // 2. OSRM fallback — free, no key, real road geometry via OpenStreetMap
+diff --git a/api/src/modules/pricing/pricing.repository.ts b/api/src/modules/pricing/pricing.repository.ts
+index e110bc0..fa78904 100644
+--- a/api/src/modules/pricing/pricing.repository.ts
++++ b/api/src/modules/pricing/pricing.repository.ts
+@@ -49,7 +49,11 @@ async function fetchCurrentRateCardFromDb(categoryId: number, rideType: string,
+ 
+ export async function getAllCurrentRateCards() {
+   const res = await pool.query(
+-    `SELECT rc.*,
++    `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type,
++            rc.city_id::int AS city_id, rc.rate_per_km, rc.rate_per_min, rc.min_fare,
++            rc.return_rate_per_km, rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day,
++            rc.cancellation_fee, rc.effective_from, rc.effective_to, rc.notes,
++            rc.created_by::int AS created_by, rc.created_at,
+             vc.display_name AS category_name,
+             vc.slug AS category_slug,
+             c.name AS city_name
+@@ -64,12 +68,17 @@ export async function getAllCurrentRateCards() {
+ 
+ export async function getRateCardHistory() {
+   const res = await pool.query(
+-    `SELECT rch.*,
++    `SELECT rch.id::int AS id, rch.rate_card_id::int AS rate_card_id,
++            rch.rate_per_km, rch.rate_per_min, rch.min_fare, rch.return_rate_per_km, rch.hour_rate,
++            rch.changed_by::int AS changed_by, rch.change_reason, rch.created_at,
++            rch.city_id::int AS city_id,
+             vc.display_name AS category_name,
+-            rc.ride_type
++            rc.ride_type,
++            c.name AS city_name
+      FROM rate_card_history rch
+      JOIN rate_cards rc ON rc.id = rch.rate_card_id
+      JOIN vehicle_categories vc ON vc.id = rc.category_id
++     LEFT JOIN cities c ON c.id = rch.city_id
+      ORDER BY rch.created_at DESC
+      LIMIT 100`
+   )
+diff --git a/api/src/modules/vehicles/vehicles.repository.ts b/api/src/modules/vehicles/vehicles.repository.ts
+index 7e45d10..0e44fa8 100644
+--- a/api/src/modules/vehicles/vehicles.repository.ts
++++ b/api/src/modules/vehicles/vehicles.repository.ts
+@@ -13,10 +13,21 @@ export async function getCategories(): Promise<VehicleCategory[]> {
+   ) as Promise<VehicleCategory[]>
+ }
+ 
++// Client-requested display order (not alphabetical): auto, hatchback, sedan, suv, luxury, van.
++const CATEGORY_DISPLAY_ORDER = ['auto_rickshaw', 'hatchback', 'sedan', 'suv', 'luxury', 'van']
++
+ async function fetchAllVehicleCategoriesFromDb(): Promise<VehicleCategory[]> {
+-  return query<VehicleCategory>(
+-    'SELECT id::int, slug, display_name, max_passengers, is_active FROM vehicle_categories WHERE is_active = true ORDER BY display_name'
++  const categories = await query<VehicleCategory>(
++    'SELECT id::int, slug, display_name, max_passengers, is_active FROM vehicle_categories WHERE is_active = true'
+   )
++  return categories.sort((a, b) => {
++    const ai = CATEGORY_DISPLAY_ORDER.indexOf(a.slug)
++    const bi = CATEGORY_DISPLAY_ORDER.indexOf(b.slug)
++    if (ai === -1 && bi === -1) return a.display_name.localeCompare(b.display_name)
++    if (ai === -1) return 1
++    if (bi === -1) return -1
++    return ai - bi
++  })
+ }
+ 
+ export async function getBrands(): Promise<VehicleBrand[]> {
+diff --git a/apps/admin/app/(dashboard)/config/rate-cards/RentalPackagesTab.tsx b/apps/admin/app/(dashboard)/config/rate-cards/RentalPackagesTab.tsx
+index 3ebb0e7..382271e 100644
+--- a/apps/admin/app/(dashboard)/config/rate-cards/RentalPackagesTab.tsx
++++ b/apps/admin/app/(dashboard)/config/rate-cards/RentalPackagesTab.tsx
+@@ -370,6 +370,15 @@ function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
+   )
+ }
+ 
++function diffFareVsGlobal(pkg: RentalPackageAdmin, globalPkgs: RentalPackageAdmin[]): { text: string; up: boolean } | null {
++  const global = globalPkgs.find(g => g.category_id === pkg.category_id && g.duration_minutes === pkg.duration_minutes && g.km_limit === pkg.km_limit)
++  if (!global) return null
++  const delta = parseFloat(pkg.package_fare) - parseFloat(global.package_fare)
++  if (Math.abs(delta) < 0.005) return null
++  const sign = delta > 0 ? '+' : '−'
++  return { text: `${sign}₹${Math.abs(delta).toFixed(2)} vs global`, up: delta > 0 }
++}
++
+ export default function RentalPackagesTab({
+   cities, categoryOptions,
+ }: {
+@@ -377,6 +386,7 @@ export default function RentalPackagesTab({
+   categoryOptions: { id: number; slug: string; display_name: string }[]
+ }) {
+   const [rentalPkgs,    setRentalPkgs]    = useState<RentalPackageAdmin[]>([])
++  const [globalPkgs,    setGlobalPkgs]    = useState<RentalPackageAdmin[]>([])
+   const [rentalLoading, setRentalLoading] = useState(true)
+   const [rentalError,   setRentalError]   = useState('')
+   const [rentalRetry,   setRentalRetry]   = useState(0)
+@@ -397,6 +407,12 @@ export default function RentalPackagesTab({
+ 
+   useEffect(() => { void fetchRental() }, [fetchRental, rentalRetry])
+ 
++  useEffect(() => {
++    if (rentalCityId !== null && !globalPkgs.length) {
++      rentalPackageApi.list(null).then(setGlobalPkgs).catch(() => { /* diff badge is supplementary; silent on failure */ })
++    }
++  }, [rentalCityId, globalPkgs.length])
++
+   useEffect(() => {
+     if (rentalCityId !== null && !cities.some(c => c.id === rentalCityId)) setRentalCityId(null)
+   }, [cities, rentalCityId])
+@@ -496,7 +512,7 @@ export default function RentalPackagesTab({
+             <Package size={18} className="text-primary" />
+           </div>
+           <div>
+-            <p className="text-2xl font-bold text-text-primary">{rentalLoading ? '—' : rentalPkgs.length}</p>
++            <p className="text-2xl font-bold text-text-primary font-mono">{rentalLoading ? '—' : rentalPkgs.length}</p>
+             <p className="text-xs text-text-muted mt-0.5">Total packages</p>
+           </div>
+         </div>
+@@ -505,7 +521,7 @@ export default function RentalPackagesTab({
+             <Package size={18} className="text-success" />
+           </div>
+           <div>
+-            <p className="text-2xl font-bold text-text-primary">{rentalLoading ? '—' : activeRentalCount}</p>
++            <p className="text-2xl font-bold text-text-primary font-mono">{rentalLoading ? '—' : activeRentalCount}</p>
+             <p className="text-xs text-text-muted mt-0.5">Active</p>
+           </div>
+         </div>
+@@ -514,7 +530,7 @@ export default function RentalPackagesTab({
+             <Package size={18} className="text-text-muted" />
+           </div>
+           <div>
+-            <p className="text-2xl font-bold text-text-primary">{rentalLoading ? '—' : inactiveRentalCount}</p>
++            <p className="text-2xl font-bold text-text-primary font-mono">{rentalLoading ? '—' : inactiveRentalCount}</p>
+             <p className="text-xs text-text-muted mt-0.5">Inactive</p>
+           </div>
+         </div>
+@@ -574,6 +590,7 @@ export default function RentalPackagesTab({
+                   {rows.map((pkg, i) => {
+                     const isInherited = rentalCityId !== null && pkg.city_id === null
+                     const isOverride  = rentalCityId !== null && pkg.city_id !== null
++                    const diff = isOverride ? diffFareVsGlobal(pkg, globalPkgs) : null
+                     return (
+                       <motion.tr
+                         key={pkg.id}
+@@ -592,8 +609,13 @@ export default function RentalPackagesTab({
+                               : <span className="pill-muted">Inherited</span>}
+                           </td>
+                         )}
+-                        <td className="text-text-secondary">{pkg.km_limit} km</td>
+-                        <td className="!text-right font-mono font-bold text-text-primary">{numFmt(pkg.package_fare)}</td>
++                        <td className="text-text-secondary font-mono">{pkg.km_limit} km</td>
++                        <td className="!text-right font-mono font-bold text-text-primary">
++                          {numFmt(pkg.package_fare)}
++                          {diff && (
++                            <span className={`block text-[11px] font-semibold mt-0.5 ${diff.up ? 'text-warning' : 'text-success'}`}>{diff.text}</span>
++                          )}
++                        </td>
+                         <td className="!text-right font-mono text-text-secondary">{numFmt(pkg.extra_per_km)}</td>
+                         <td className="!text-right font-mono text-text-muted">{numFmt(pkg.extra_per_min)}</td>
+                         <td className="text-center">
+diff --git a/apps/admin/app/(dashboard)/config/rate-cards/page.tsx b/apps/admin/app/(dashboard)/config/rate-cards/page.tsx
+index 64000df..80e510c 100644
+--- a/apps/admin/app/(dashboard)/config/rate-cards/page.tsx
++++ b/apps/admin/app/(dashboard)/config/rate-cards/page.tsx
+@@ -1,13 +1,14 @@
+ 'use client'
+-import { useState, useEffect, useCallback } from 'react'
+-import { Tag, Pencil, Zap, AlertTriangle, ChevronDown, ChevronUp, History, Package, Plus } from 'lucide-react'
++import { useState, useEffect, useCallback, useMemo } from 'react'
++import { Tag, Pencil, Zap, AlertTriangle, History, Package, Plus, Globe, Clock } from 'lucide-react'
+ import * as Dialog from '@radix-ui/react-dialog'
+ import { motion, AnimatePresence } from 'framer-motion'
+-import { pricingApi, type RateCard, type SurgeEvent } from '@/lib/pricing-api'
++import { pricingApi, type RateCard, type SurgeEvent, type RateCardHistoryRow } from '@/lib/pricing-api'
+ import { cityApi, type AdminCity } from '@/lib/city-api'
+ import { SkeletonRows, inputCls, labelCls } from './shared'
+ import RentalPackagesTab from './RentalPackagesTab'
+ import SuccessToast from '@/components/ui/SuccessToast'
++import SlideOver from '@/components/ui/SlideOver'
+ 
+ // ── Shared helpers ─────────────────────────────────────────────────────────────
+ 
+@@ -20,18 +21,73 @@ const SURGE_STATUS_CLS: Record<string, string> = {
+   expired:   'pill-muted', cancelled: 'pill-danger',
+ }
+ 
++const CATEGORY_ORDER_ITEMS = ['hatchback', 'sedan', 'suv', 'luxury', 'van', 'auto_rickshaw']
++const RIDE_TYPE_ORDER = ['one_way', 'round_trip', 'rental']
++
+ function fmt(v: string | null): string {
+   return v ? `₹${parseFloat(v).toFixed(2)}` : '—'
+ }
+ 
+-// ── Rate card dialog ───────────────────────────────────────────────────────────
++function diffRateVsGlobal(city: RateCard, global: RateCard): { text: string; up: boolean } | null {
++  const delta = parseFloat(city.rate_per_km) - parseFloat(global.rate_per_km)
++  if (Math.abs(delta) < 0.005) return null
++  const sign = delta > 0 ? '+' : '−'
++  return { text: `${sign}₹${Math.abs(delta).toFixed(2)}/km vs global`, up: delta > 0 }
++}
++
++// ── Effective-row model: resolves each city view to global + override rows ─────
+ 
+-function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities: AdminCity[]; onUpdated: () => void }) {
++interface EffectiveRow {
++  card: RateCard
++  globalCard: RateCard
++  isOverride: boolean
++  isInherited: boolean
++}
++
++function buildEffectiveRows(cards: RateCard[], selectedCityId: number | null): Record<string, EffectiveRow[]> {
++  const bySlug: Record<string, RateCard[]> = {}
++  for (const c of cards) (bySlug[c.category_slug] ??= []).push(c)
++
++  const result: Record<string, EffectiveRow[]> = {}
++  for (const slug of CATEGORY_ORDER_ITEMS) {
++    const rows = bySlug[slug] ?? []
++    const globalRows = rows
++      .filter(c => c.city_id === null)
++      .sort((a, b) => RIDE_TYPE_ORDER.indexOf(a.ride_type) - RIDE_TYPE_ORDER.indexOf(b.ride_type))
++    if (!globalRows.length) continue
++
++    if (selectedCityId === null) {
++      result[slug] = globalRows.map(card => ({ card, globalCard: card, isOverride: false, isInherited: false }))
++    } else {
++      const cityRows = rows.filter(c => c.city_id === selectedCityId)
++      result[slug] = globalRows.map(globalCard => {
++        const override = cityRows.find(c => c.ride_type === globalCard.ride_type)
++        return override
++          ? { card: override, globalCard, isOverride: true, isInherited: false }
++          : { card: globalCard, globalCard, isOverride: false, isInherited: true }
++      })
++    }
++  }
++  return result
++}
++
++// ── Rate card dialog (also used as "+ Override" when defaultCityId is passed) ──
++
++function UpdateRateDialog({
++  card, cities, onUpdated, defaultCityId, trigger,
++}: {
++  card: RateCard
++  cities: AdminCity[]
++  onUpdated: () => void
++  defaultCityId?: number | null
++  trigger?: React.ReactNode
++}) {
+   const [open, setOpen] = useState(false)
+   const [loading, setLoading] = useState(false)
+   const [error, setError] = useState('')
++  const initialCityId = defaultCityId !== undefined ? defaultCityId : card.city_id
+   const [form, setForm] = useState({
+-    city_id: card.city_id !== null ? String(card.city_id) : '',
++    city_id: initialCityId !== null ? String(initialCityId) : '',
+     rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
+     return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '',
+     km_per_day: card.km_per_day ?? '', driver_allowance_per_day: card.driver_allowance_per_day ?? '', notes: '',
+@@ -40,13 +96,14 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
+   useEffect(() => {
+     if (open) {
+       setForm({
+-        city_id: card.city_id !== null ? String(card.city_id) : '',
++        city_id: initialCityId !== null ? String(initialCityId) : '',
+         rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
+         return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '',
+         km_per_day: card.km_per_day ?? '', driver_allowance_per_day: card.driver_allowance_per_day ?? '', notes: '',
+       })
+       setError('')
+     }
++    // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [open, card])
+ 
+   async function submit(e: React.FormEvent) {
+@@ -78,9 +135,11 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
+   return (
+     <Dialog.Root open={open} onOpenChange={setOpen}>
+       <Dialog.Trigger asChild>
+-        <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-light rounded-lg transition-colors" title="Update rate" aria-label="Update rate">
+-          <Pencil size={13} />
+-        </button>
++        {trigger ?? (
++          <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-light rounded-lg transition-colors" title="Update rate" aria-label="Update rate">
++            <Pencil size={13} />
++          </button>
++        )}
+       </Dialog.Trigger>
+       <AnimatePresence>
+         {open && (
+@@ -103,7 +162,8 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
+                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+               >
+           <Dialog.Title className="text-lg font-bold text-text-primary mb-1">
+-            Update {card.category_name} · {RIDE_TYPE_LABEL[card.ride_type]}
++            {defaultCityId !== undefined && defaultCityId !== null ? 'Override ' : 'Update '}
++            {card.category_name} · {RIDE_TYPE_LABEL[card.ride_type]}
+           </Dialog.Title>
+           <p className="text-xs text-warning bg-warning-light border border-warning/20 rounded-xl px-3 py-2 mb-5">
+             {cityChanged
+@@ -127,19 +187,19 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
+               <div>
+                 <label className={labelCls}>Per KM (₹)</label>
+                 <input type="number" step="0.01" value={form.rate_per_km}
+-                  onChange={e => setForm(f => ({ ...f, rate_per_km: e.target.value }))} className={inputCls} />
++                  onChange={e => setForm(f => ({ ...f, rate_per_km: e.target.value }))} className={`${inputCls} font-mono`} />
+                 <p className="text-xs text-text-muted mt-1">was {fmt(card.rate_per_km)}</p>
+               </div>
+               <div>
+                 <label className={labelCls}>Per Min (₹)</label>
+                 <input type="number" step="0.01" value={form.rate_per_min}
+-                  onChange={e => setForm(f => ({ ...f, rate_per_min: e.target.value }))} className={inputCls} />
++                  onChange={e => setForm(f => ({ ...f, rate_per_min: e.target.value }))} className={`${inputCls} font-mono`} />
+                 <p className="text-xs text-text-muted mt-1">was {fmt(card.rate_per_min)}</p>
+               </div>
+               <div>
+                 <label className={labelCls}>Min Fare (₹)</label>
+                 <input type="number" step="0.01" value={form.min_fare}
+-                  onChange={e => setForm(f => ({ ...f, min_fare: e.target.value }))} className={inputCls} />
++                  onChange={e => setForm(f => ({ ...f, min_fare: e.target.value }))} className={`${inputCls} font-mono`} />
+                 <p className="text-xs text-text-muted mt-1">was {fmt(card.min_fare)}</p>
+               </div>
+             </div>
+@@ -148,7 +208,7 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
+                 <label className={labelCls}>Return Cab Rate /km (₹)</label>
+                 <input type="number" step="0.01" value={form.return_rate_per_km}
+                   onChange={e => setForm(f => ({ ...f, return_rate_per_km: e.target.value }))}
+-                  className="w-40 border border-border rounded-xl px-3 py-2 text-sm text-text-primary bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted"
++                  className="w-40 border border-border rounded-xl px-3 py-2 text-sm font-mono text-text-primary bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted"
+                   placeholder="optional" />
+                 <p className="text-xs text-text-muted mt-1">was {fmt(card.return_rate_per_km)}</p>
+               </div>
+@@ -159,14 +219,14 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
+                   <label className={labelCls}>Package KM/day</label>
+                   <input type="number" step="1" value={form.km_per_day}
+                     onChange={e => setForm(f => ({ ...f, km_per_day: e.target.value }))}
+-                    className={inputCls} placeholder="e.g. 250" />
++                    className={`${inputCls} font-mono`} placeholder="e.g. 250" />
+                   <p className="text-xs text-text-muted mt-1">was {card.km_per_day ?? '—'}</p>
+                 </div>
+                 <div>
+                   <label className={labelCls}>Driver Allowance/day (₹)</label>
+                   <input type="number" step="0.01" value={form.driver_allowance_per_day}
+                     onChange={e => setForm(f => ({ ...f, driver_allowance_per_day: e.target.value }))}
+-                    className={inputCls} placeholder="e.g. 300" />
++                    className={`${inputCls} font-mono`} placeholder="e.g. 300" />
+                   <p className="text-xs text-text-muted mt-1">was {fmt(card.driver_allowance_per_day)}</p>
+                 </div>
+               </div>
+@@ -197,180 +257,6 @@ function UpdateRateDialog({ card, cities, onUpdated }: { card: RateCard; cities:
+   )
+ }
+ 
+-// ── Create city rate-card dialog ──────────────────────────────────────────────
+-
+-function CreateRateCardDialog({
+-  cities, categories, onCreated,
+-}: {
+-  cities: AdminCity[]
+-  categories: { id: number; slug: string; display_name: string }[]
+-  onCreated: () => void
+-}) {
+-  const [open, setOpen] = useState(false)
+-  const [loading, setLoading] = useState(false)
+-  const [error, setError] = useState('')
+-  const [form, setForm] = useState({
+-    city_id: '', category_id: '', ride_type: 'one_way',
+-    rate_per_km: '', rate_per_min: '', min_fare: '',
+-    return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', notes: '',
+-  })
+-
+-  useEffect(() => {
+-    if (open) {
+-      setForm({
+-        city_id: '', category_id: '', ride_type: 'one_way',
+-        rate_per_km: '', rate_per_min: '', min_fare: '',
+-        return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', notes: '',
+-      })
+-      setError('')
+-    }
+-  }, [open])
+-
+-  function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
+-
+-  async function submit(e: React.FormEvent) {
+-    e.preventDefault()
+-    if (!form.city_id || !form.category_id) { setError('City and category are required'); return }
+-    if (!form.notes.trim()) { setError('Change reason is required'); return }
+-    setLoading(true); setError('')
+-    try {
+-      await pricingApi.createRateCard({
+-        category_id: parseInt(form.category_id, 10), ride_type: form.ride_type,
+-        city_id: parseInt(form.city_id, 10),
+-        rate_per_km: parseFloat(form.rate_per_km), rate_per_min: parseFloat(form.rate_per_min),
+-        min_fare: parseFloat(form.min_fare),
+-        return_rate_per_km: form.return_rate_per_km ? parseFloat(form.return_rate_per_km) : null,
+-        hour_rate: form.hour_rate ? parseFloat(form.hour_rate) : null,
+-        km_per_day: form.km_per_day ? parseFloat(form.km_per_day) : null,
+-        driver_allowance_per_day: form.driver_allowance_per_day ? parseFloat(form.driver_allowance_per_day) : null,
+-        notes: form.notes,
+-      })
+-      setOpen(false); onCreated()
+-    } catch { setError('Failed to create rate card.') }
+-    finally { setLoading(false) }
+-  }
+-
+-  return (
+-    <Dialog.Root open={open} onOpenChange={setOpen}>
+-      <Dialog.Trigger asChild>
+-        <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-light border border-primary/20 text-primary text-sm font-semibold hover:bg-primary/10 transition-all duration-150">
+-          <Plus size={14} />Add City Rate
+-        </button>
+-      </Dialog.Trigger>
+-      <AnimatePresence>
+-        {open && (
+-          <Dialog.Portal forceMount>
+-            <Dialog.Overlay asChild forceMount>
+-              <motion.div
+-                className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm"
+-                initial={{ opacity: 0 }}
+-                animate={{ opacity: 1 }}
+-                exit={{ opacity: 0 }}
+-                transition={{ duration: 0.2 }}
+-              />
+-            </Dialog.Overlay>
+-            <Dialog.Content asChild forceMount>
+-              <motion.div
+-                className="fixed left-1/2 top-1/2 w-full max-w-[480px] max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-hover p-6 z-[60]"
+-                initial={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
+-                animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }}
+-                exit={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
+-                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+-              >
+-          <Dialog.Title className="text-lg font-bold text-text-primary mb-1">Add City Rate Override</Dialog.Title>
+-          <p className="text-xs text-text-muted mb-5">
+-            Creates a city-specific rate that takes priority over the global default for that city only.
+-          </p>
+-          <form onSubmit={submit} className="space-y-3">
+-            <div className="grid grid-cols-2 gap-3">
+-              <div>
+-                <label className={labelCls}>City *</label>
+-                <select value={form.city_id} onChange={e => set('city_id', e.target.value)} required className={inputCls}>
+-                  <option value="">Select city…</option>
+-                  {cities.filter(c => c.status === 'active').map(c => (
+-                    <option key={c.id} value={c.id}>{c.name}</option>
+-                  ))}
+-                </select>
+-              </div>
+-              <div>
+-                <label className={labelCls}>Category *</label>
+-                <select value={form.category_id} onChange={e => set('category_id', e.target.value)} required className={inputCls}>
+-                  <option value="">Select…</option>
+-                  {categories.map(c => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+-                </select>
+-              </div>
+-            </div>
+-            <div>
+-              <label className={labelCls}>Ride Type *</label>
+-              <select value={form.ride_type} onChange={e => set('ride_type', e.target.value)} className={inputCls}>
+-                <option value="one_way">One Way</option>
+-                <option value="round_trip">Round Trip</option>
+-                <option value="rental">Rental</option>
+-              </select>
+-            </div>
+-            <div className="grid grid-cols-3 gap-3">
+-              <div>
+-                <label className={labelCls}>Per KM (₹) *</label>
+-                <input type="number" step="0.01" min="0.01" required value={form.rate_per_km}
+-                  onChange={e => set('rate_per_km', e.target.value)} className={inputCls} />
+-              </div>
+-              <div>
+-                <label className={labelCls}>Per Min (₹) *</label>
+-                <input type="number" step="0.01" min="0" required value={form.rate_per_min}
+-                  onChange={e => set('rate_per_min', e.target.value)} className={inputCls} />
+-              </div>
+-              <div>
+-                <label className={labelCls}>Min Fare (₹) *</label>
+-                <input type="number" step="0.01" min="0.01" required value={form.min_fare}
+-                  onChange={e => set('min_fare', e.target.value)} className={inputCls} />
+-              </div>
+-            </div>
+-            {form.ride_type === 'one_way' && (
+-              <div>
+-                <label className={labelCls}>Return Cab Rate /km (₹)</label>
+-                <input type="number" step="0.01" value={form.return_rate_per_km}
+-                  onChange={e => set('return_rate_per_km', e.target.value)} className={inputCls} placeholder="optional" />
+-              </div>
+-            )}
+-            {form.ride_type === 'round_trip' && (
+-              <div className="grid grid-cols-2 gap-3">
+-                <div>
+-                  <label className={labelCls}>Package KM/day</label>
+-                  <input type="number" step="1" value={form.km_per_day}
+-                    onChange={e => set('km_per_day', e.target.value)} className={inputCls} placeholder="e.g. 250" />
+-                </div>
+-                <div>
+-                  <label className={labelCls}>Driver Allowance/day (₹)</label>
+-                  <input type="number" step="0.01" value={form.driver_allowance_per_day}
+-                    onChange={e => set('driver_allowance_per_day', e.target.value)} className={inputCls} placeholder="e.g. 300" />
+-                </div>
+-              </div>
+-            )}
+-            <div>
+-              <label className={labelCls}>Change Reason *</label>
+-              <textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)}
+-                className={`${inputCls} resize-none`} placeholder="e.g. Puri festival-season pricing" />
+-            </div>
+-            {error && <p className="text-xs text-danger font-semibold">{error}</p>}
+-            <div className="flex gap-3 pt-2">
+-              <Dialog.Close asChild>
+-                <button type="button" className="btn-secondary flex-1 justify-center">Cancel</button>
+-              </Dialog.Close>
+-              <button type="submit" disabled={loading}
+-                className="btn-primary flex-1 justify-center disabled:opacity-50 disabled:pointer-events-none">
+-                {loading ? 'Creating…' : 'Create Override'}
+-              </button>
+-            </div>
+-          </form>
+-              </motion.div>
+-            </Dialog.Content>
+-          </Dialog.Portal>
+-        )}
+-      </AnimatePresence>
+-    </Dialog.Root>
+-  )
+-}
+-
+ // ── Surge dialog ───────────────────────────────────────────────────────────────
+ 
+ function CreateSurgeDialog({
+@@ -455,14 +341,14 @@ function CreateSurgeDialog({
+             <div>
+               <label className={labelCls}>
+                 Multiplier:{' '}
+-                <span className="text-warning font-semibold">{mult.toFixed(2)}× · fares {pct}% higher</span>
++                <span className="text-warning font-semibold font-mono">{mult.toFixed(2)}× · fares {pct}% higher</span>
+               </label>
+               <div className="flex items-center gap-3">
+                 <input type="range" min="1.0" max="5.0" step="0.1" value={form.multiplier}
+                   onChange={e => set('multiplier', e.target.value)} className="flex-1 accent-warning" />
+                 <input type="number" min="1.0" max="5.0" step="0.1" value={form.multiplier}
+                   onChange={e => set('multiplier', e.target.value)}
+-                  className="w-20 border border-border rounded-xl px-3 py-2 text-sm text-text-primary bg-surface-2 text-center focus:outline-none focus:ring-2 focus:ring-primary/30" />
++                  className="w-20 border border-border rounded-xl px-3 py-2 text-sm font-mono text-text-primary bg-surface-2 text-center focus:outline-none focus:ring-2 focus:ring-primary/30" />
+               </div>
+             </div>
+             <div>
+@@ -507,6 +393,86 @@ function StatusPillRideType({ type }: { type: string }) {
+   return <span className={cls}>{RIDE_TYPE_LABEL[type] ?? type}</span>
+ }
+ 
++// ── City navigation rail ─────────────────────────────────────────────────────
++
++function CityRail({
++  cities, cards, selectedCityId, onSelect,
++}: {
++  cities: AdminCity[]
++  cards: RateCard[]
++  selectedCityId: number | null
++  onSelect: (id: number | null) => void
++}) {
++  const globalCount = cards.filter(c => c.city_id === null).length
++  return (
++    <div className="admin-card !p-2 sticky top-5">
++      <p className="text-[11px] font-semibold text-text-muted px-2.5 pt-1.5 pb-1.5">View rates for</p>
++      <button
++        onClick={() => onSelect(null)}
++        className={`w-full flex items-center justify-between gap-2 px-2.5 py-2.5 rounded-xl text-sm font-semibold mb-0.5 transition-colors ${
++          selectedCityId === null ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-2'
++        }`}
++      >
++        Global Defaults
++        <span className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded-full ${selectedCityId === null ? 'bg-white/20 text-white' : 'bg-surface-3 text-text-secondary'}`}>
++          {globalCount} rows
++        </span>
++      </button>
++      <div className="h-px bg-border-light my-1.5 mx-1" />
++      {cities.filter(c => c.status === 'active').map(city => {
++        const count = cards.filter(c => c.city_id === city.id).length
++        const active = selectedCityId === city.id
++        return (
++          <button
++            key={city.id}
++            onClick={() => onSelect(city.id)}
++            className={`w-full flex items-center justify-between gap-2 px-2.5 py-2.5 rounded-xl text-sm font-semibold mb-0.5 transition-colors ${
++              active ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-2'
++            }`}
++          >
++            {city.name}
++            <span className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded-full ${active ? 'bg-white/20 text-white' : count > 0 ? 'bg-primary-light text-primary' : 'bg-surface-3 text-text-muted opacity-60'}`}>
++              {count} override{count === 1 ? '' : 's'}
++            </span>
++          </button>
++        )
++      })}
++      <div className="h-px bg-border-light my-1.5 mx-1" />
++      <p className="px-2.5 pb-1 pt-1 text-[11px] leading-relaxed text-text-muted">
++        Global rows apply to any city without its own override.
++      </p>
++    </div>
++  )
++}
++
++// ── History drawer content ────────────────────────────────────────────────────
++
++function HistoryDrawerBody({ rows }: { rows: RateCardHistoryRow[] }) {
++  if (!rows.length) return <p className="px-6 py-10 text-center text-text-muted text-sm">No changes recorded yet.</p>
++  return (
++    <div className="px-6 py-5 space-y-0">
++      {rows.map((h, i) => (
++        <div key={h.id} className={`relative pl-5 ${i === rows.length - 1 ? 'pb-0' : 'pb-5'} border-l-2 border-border-light`}>
++          <span className={`absolute -left-[5px] top-0.5 w-2.5 h-2.5 rounded-full border-2 border-surface ${i === 0 ? 'bg-primary shadow-[0_0_0_3px_theme(colors.primary-light)]' : 'bg-text-muted'}`} />
++          <p className="text-[11px] text-text-muted font-medium mb-1">
++            {new Date(h.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
++          </p>
++          <p className="text-[12.5px] font-bold text-text-primary mb-1.5">
++            {h.change_reason ? `"${h.change_reason}"` : 'Rate card created'}
++          </p>
++          <div className="flex items-center gap-2 text-xs text-text-muted">
++            <span className="w-14">Per KM</span>
++            <span className="font-mono font-bold text-primary">{fmt(h.rate_per_km)}</span>
++          </div>
++          <div className="flex items-center gap-2 text-[11px] text-text-muted mt-0.5">
++            <span>{h.category_name} · {RIDE_TYPE_LABEL[h.ride_type] ?? h.ride_type} · {h.city_name ?? 'Global'}</span>
++          </div>
++        </div>
++      ))}
++    </div>
++  )
++}
++
+ // ── Tab types ─────────────────────────────────────────────────────────────────
+ 
+ type Tab = 'rate_cards' | 'surge' | 'rental'
+@@ -522,84 +488,91 @@ const TABS: { key: Tab; label: string; icon: React.ComponentType<{ size?: number
+ export default function RateCardsPage() {
+   const [activeTab, setActiveTab] = useState<Tab>('rate_cards')
+ 
+-  // Rate cards + surge data
+   const [cards,   setCards]   = useState<RateCard[]>([])
+   const [surges,  setSurges]  = useState<SurgeEvent[]>([])
+   const [cities,  setCities]  = useState<AdminCity[]>([])
++  const [history, setHistory] = useState<RateCardHistoryRow[]>([])
+   const [loading, setLoading] = useState(true)
+   const [error,   setError]   = useState('')
+   const [retry,   setRetry]   = useState(0)
+-  const [cityFilter,     setCityFilter]     = useState('') // '' = all, 'global' = global default only, else city id
+-  const [historyOpen,    setHistoryOpen]    = useState(false)
+-  const [history,        setHistory]        = useState<{ id: number; category_name: string; ride_type: string; rate_per_km: string; change_reason: string | null; created_at: string }[]>([])
+-  const [historyLoading, setHistoryLoading] = useState(false)
+-  const [successMsg,     setSuccessMsg]     = useState<string | null>(null)
++  const [selectedCityId, setSelectedCityId] = useState<number | null>(null)
++  const [drawer,      setDrawer]      = useState<{ open: boolean; title: string; subtitle: string; rows: RateCardHistoryRow[] }>({ open: false, title: '', subtitle: '', rows: [] })
++  const [successMsg,  setSuccessMsg]  = useState<string | null>(null)
+ 
+   const fetchAll = useCallback(async () => {
+     setLoading(true); setError('')
+     try {
+-      const [c, s, ci] = await Promise.all([pricingApi.getRateCards(), pricingApi.getSurgeEvents(), cityApi.list()])
+-      setCards(c); setSurges(s); setCities(ci)
++      const [c, s, ci, h] = await Promise.all([
++        pricingApi.getRateCards(), pricingApi.getSurgeEvents(), cityApi.list(), pricingApi.getRateCardHistory(),
++      ])
++      setCards(c); setSurges(s); setCities(ci); setHistory(h)
+     } catch { setError('Failed to load pricing data.') }
+     finally { setLoading(false) }
+   }, [])
+ 
+   useEffect(() => { void fetchAll() }, [fetchAll, retry])
+ 
+-  async function loadHistory() {
+-    if (historyLoading) return
+-    setHistoryLoading(true)
+-    try { setHistory(await pricingApi.getRateCardHistory()) }
+-    finally { setHistoryLoading(false) }
+-  }
++  useEffect(() => {
++    if (selectedCityId !== null && !cities.some(c => c.id === selectedCityId)) setSelectedCityId(null)
++  }, [cities, selectedCityId])
+ 
+   async function cancelSurge(id: number) {
+     try { await pricingApi.cancelSurgeEvent(id); void fetchAll() }
+     catch { /* silent */ }
+   }
+ 
+-  // Derived data
+-  const CATEGORY_ORDER_ITEMS = ['hatchback', 'sedan', 'suv', 'luxury', 'van', 'auto_rickshaw']
+-  const RIDE_TYPE_ORDER = ['one_way', 'round_trip', 'rental']
+-
+-  const filteredCards = cityFilter === '' ? cards
+-    : cityFilter === 'global' ? cards.filter(c => c.city_id === null)
+-    : cards.filter(c => c.city_id === parseInt(cityFilter, 10))
+-
+-  const grouped = CATEGORY_ORDER_ITEMS.reduce<Record<string, RateCard[]>>((acc, slug) => {
+-    acc[slug] = filteredCards.filter(c => c.category_slug === slug)
+-      // global default rows first (city_name NULLS FIRST, mirroring the backend ordering), then by city name, then ride type
+-      .sort((a, b) =>
+-        (a.city_name ?? '').localeCompare(b.city_name ?? '')
+-          || RIDE_TYPE_ORDER.indexOf(a.ride_type) - RIDE_TYPE_ORDER.indexOf(b.ride_type))
+-    return acc
+-  }, {})
++  function openRowHistory(card: RateCard) {
++    const rows = history.filter(h => h.category_name === card.category_name && h.ride_type === card.ride_type && h.city_id === card.city_id)
++    setDrawer({
++      open: true,
++      title: `${card.category_name} · ${RIDE_TYPE_LABEL[card.ride_type]}`,
++      subtitle: `${card.city_name ?? 'Global default'} · rate history, newest first`,
++      rows,
++    })
++  }
++  function openAllHistory() {
++    setDrawer({ open: true, title: 'All rate changes', subtitle: 'Every city, every category — newest first', rows: history })
++  }
+ 
+-  const categoryOptions = [...new Map(cards.map(c => [c.category_id, { id: c.category_id, slug: c.category_slug, display_name: c.category_name }])).values()]
++  const categoryOptions = useMemo(
++    () => [...new Map(cards.map(c => [c.category_id, { id: c.category_id, slug: c.category_slug, display_name: c.category_name }])).values()],
++    [cards],
++  )
+   const activeSurges = surges.filter(s => s.status === 'active')
+   const configuredCategories = new Set(cards.map(c => c.category_id)).size
++  const citiesWithOverrides = cities.filter(city => cards.some(c => c.city_id === city.id)).length
++
++  const grouped = useMemo(() => buildEffectiveRows(cards, selectedCityId), [cards, selectedCityId])
++  const selectedCity = selectedCityId !== null ? cities.find(c => c.id === selectedCityId) ?? null : null
+ 
+   return (
+     <div className="space-y-5">
+       <SuccessToast message={successMsg} onDismiss={() => setSuccessMsg(null)} />
+ 
+       {/* Page header */}
+-      <div className="flex items-center justify-between">
++      <div className="flex items-center justify-between flex-wrap gap-3">
+         <div className="flex items-center gap-3">
+-          <div className="w-10 h-10 rounded-xl bg-primary-light flex items-center justify-center">
+-            <Tag size={20} className="text-primary" />
++          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-light to-primary/20 flex items-center justify-center">
++            <Tag size={20} className="text-primary-dark" />
+           </div>
+           <div>
+             <h1 className="page-title">Pricing</h1>
+-            <p className="page-subtitle">Rate cards, surge events, and rental packages</p>
++            <p className="page-subtitle">Rate cards, surge events, and rental packages — organized city-first</p>
+           </div>
+         </div>
+-        {activeTab === 'rate_cards' && (
+-          <CreateRateCardDialog cities={cities} categories={categoryOptions} onCreated={() => { fetchAll(); setSuccessMsg('Rate card created') }} />
+-        )}
+-        {activeTab === 'surge' && (
+-          <CreateSurgeDialog cities={cities} categories={categoryOptions} onCreated={() => { fetchAll(); setSuccessMsg('Surge event scheduled') }} />
+-        )}
++        <div className="flex items-center gap-2.5">
++          {activeTab === 'rate_cards' && (
++            <button
++              onClick={openAllHistory}
++              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface border border-border text-text-secondary text-sm font-semibold hover:bg-surface-2 hover:text-text-primary transition-all duration-150"
++            >
++              <History size={14} />All changes
++            </button>
++          )}
++          {activeTab === 'rate_cards' && selectedCityId === null && (
++            <CreateRateCardDialog cities={cities} categories={categoryOptions} onCreated={() => { fetchAll(); setSuccessMsg('Rate card created') }} />
++          )}
++        </div>
+       </div>
+ 
+       {/* Tab bar */}
+@@ -634,17 +607,17 @@ export default function RateCardsPage() {
+                 <Tag size={18} className="text-primary" />
+               </div>
+               <div>
+-                <p className="text-2xl font-bold text-text-primary">{loading ? '—' : cards.length}</p>
++                <p className="text-2xl font-bold text-text-primary font-mono">{loading ? '—' : cards.length}</p>
+                 <p className="text-xs text-text-muted mt-0.5">Active rate cards</p>
+               </div>
+             </div>
+             <div className="admin-card flex items-center gap-4">
+               <div className="w-10 h-10 rounded-xl bg-success-light flex items-center justify-center flex-shrink-0">
+-                <Tag size={18} className="text-success" />
++                <Globe size={18} className="text-success" />
+               </div>
+               <div>
+-                <p className="text-2xl font-bold text-text-primary">{loading ? '—' : configuredCategories}</p>
+-                <p className="text-xs text-text-muted mt-0.5">Categories configured</p>
++                <p className="text-2xl font-bold text-text-primary font-mono">{loading ? '—' : citiesWithOverrides}</p>
++                <p className="text-xs text-text-muted mt-0.5">Cities with overrides · {configuredCategories} categories</p>
+               </div>
+             </div>
+             <div className={`admin-card flex items-center gap-4 ${activeSurges.length > 0 ? 'ring-1 ring-warning/30' : ''}`}>
+@@ -652,141 +625,132 @@ export default function RateCardsPage() {
+                 <Zap size={18} className={activeSurges.length > 0 ? 'text-warning' : 'text-text-muted'} />
+               </div>
+               <div>
+-                <p className="text-2xl font-bold text-text-primary">{loading ? '—' : activeSurges.length}</p>
++                <p className="text-2xl font-bold text-text-primary font-mono">{loading ? '—' : activeSurges.length}</p>
+                 <p className="text-xs text-text-muted mt-0.5">Active surge events</p>
+               </div>
+             </div>
+           </div>
+ 
+-          {/* City filter */}
+-          <div className="flex items-center gap-2.5">
+-            <label className="text-xs font-semibold text-text-muted">City</label>
+-            <select value={cityFilter} onChange={e => setCityFilter(e.target.value)}
+-              className="border border-border rounded-xl px-3 py-1.5 text-sm text-text-primary bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30">
+-              <option value="">All Cities</option>
+-              <option value="global">Global Default Only</option>
+-              {cities.filter(c => c.status === 'active').map(c => (
+-                <option key={c.id} value={c.id}>{c.name}</option>
+-              ))}
+-            </select>
+-          </div>
+-
+           {error ? (
+             <div className="admin-card text-center py-8">
+               <p className="text-text-muted mb-3">{error}</p>
+               <button onClick={() => setRetry(r => r + 1)} className="btn-secondary">Retry</button>
+             </div>
+           ) : loading ? (
+-            <div className="admin-card !p-0 overflow-hidden">
+-              <div className="overflow-x-auto">
+-                <table className="data-table min-w-[900px]"><tbody><SkeletonRows cols={9} n={6} /></tbody></table>
++            <div className="grid grid-cols-[208px_1fr] gap-5">
++              <div className="admin-card !p-3 h-64" />
++              <div className="admin-card !p-0 overflow-hidden">
++                <table className="data-table"><tbody><SkeletonRows cols={6} n={6} /></tbody></table>
+               </div>
+             </div>
+-          ) : filteredCards.length === 0 ? (
+-            <div className="admin-card text-center py-8 text-text-muted text-sm">
+-              No rate cards for this city filter.
+-            </div>
++          ) : cards.length === 0 ? (
++            <div className="admin-card text-center py-8 text-text-muted text-sm">No rate cards configured yet.</div>
+           ) : (
+-            CATEGORY_ORDER_ITEMS.map(slug => {
+-              const rows = grouped[slug]
+-              if (!rows?.length) return null
+-              const catName = rows[0]?.category_name ?? slug
+-              return (
+-                <div key={slug} className="admin-card !p-0 overflow-hidden">
+-                  <div className="px-5 py-3.5 border-b border-border bg-surface-2 flex items-center gap-2.5">
+-                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+-                    <h3 className="text-sm font-semibold text-text-primary">{catName}</h3>
+-                  </div>
+-                  <div className="overflow-x-auto">
+-                    <table className="data-table min-w-[900px]">
+-                      <thead>
+-                        <tr>
+-                          <th>City</th>
+-                          <th>Ride Type</th>
+-                          <th className="!text-right">Per KM</th>
+-                          <th className="!text-right">Per Min</th>
+-                          <th className="!text-right">Min Fare</th>
+-                          <th className="!text-right">Return Rate</th>
+-                          <th className="!text-right">KM/day</th>
+-                          <th className="!text-right">Driver Allowance/day</th>
+-                          <th className="!text-right">Actions</th>
+-                        </tr>
+-                      </thead>
+-                      <tbody>
+-                        {rows.map(card => (
+-                          <tr key={card.id} className="cursor-default">
+-                            <td>
+-                              {card.city_name
+-                                ? <span className="pill-info">{card.city_name}</span>
+-                                : <span className="pill-muted">Global</span>}
+-                            </td>
+-                            <td><StatusPillRideType type={card.ride_type} /></td>
+-                            <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.rate_per_km)}</td>
+-                            <td className="!text-right font-mono">{fmt(card.rate_per_min)}</td>
+-                            <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.min_fare)}</td>
+-                            <td className="!text-right font-mono text-text-muted">{fmt(card.return_rate_per_km)}</td>
+-                            <td className="!text-right font-mono text-text-muted">{card.km_per_day ?? '—'}</td>
+-                            <td className="!text-right font-mono text-text-muted">{fmt(card.driver_allowance_per_day)}</td>
+-                            <td className="!text-right">
+-                              <UpdateRateDialog card={card} cities={cities} onUpdated={() => { fetchAll(); setSuccessMsg('Rate updated') }} />
+-                            </td>
+-                          </tr>
+-                        ))}
+-                      </tbody>
+-                    </table>
+-                  </div>
+-                </div>
+-              )
+-            })
+-          )}
++            <div className="grid grid-cols-1 md:grid-cols-[208px_1fr] gap-5 items-start">
++              <CityRail cities={cities} cards={cards} selectedCityId={selectedCityId} onSelect={setSelectedCityId} />
+ 
+-          {/* Rate change history */}
+-          <div className="admin-card !p-0 overflow-hidden">
+-            <button
+-              className="w-full px-5 py-4 flex items-center justify-between hover:bg-surface-2 transition-colors text-left"
+-              onClick={() => { setHistoryOpen(h => !h); if (!historyOpen) void loadHistory() }}
+-            >
+-              <div className="flex items-center gap-2.5">
+-                <History size={15} className="text-text-muted" />
+-                <span className="text-sm font-semibold text-text-primary">Rate Change History</span>
++              <div className="space-y-4">
++                {Object.keys(grouped).length === 0 ? (
++                  <div className="admin-card text-center py-8 text-text-muted text-sm">
++                    No rate cards for {selectedCity ? selectedCity.name : 'this view'}.
++                  </div>
++                ) : (
++                  CATEGORY_ORDER_ITEMS.map(slug => {
++                    const rows = grouped[slug]
++                    if (!rows?.length) return null
++                    const catName = rows[0]?.card.category_name ?? slug
++                    return (
++                      <div key={slug} className="admin-card !p-0 overflow-hidden">
++                        <div className="px-5 py-3.5 border-b border-border bg-surface-2 flex items-center gap-2.5">
++                          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
++                          <h3 className="text-sm font-semibold text-text-primary">{catName}</h3>
++                          <span className="ml-auto text-xs text-text-muted">{rows.length} ride type{rows.length > 1 ? 's' : ''}</span>
++                        </div>
++                        <div className="overflow-x-auto">
++                          <table className="data-table">
++                            <thead>
++                              <tr>
++                                <th>Ride Type</th>
++                                <th className="!text-right">Per KM</th>
++                                <th className="!text-right">Per Min</th>
++                                <th className="!text-right">Min Fare</th>
++                                <th></th>
++                                <th className="!text-right">Actions</th>
++                              </tr>
++                            </thead>
++                            <tbody>
++                              {rows.map(({ card, globalCard, isOverride, isInherited }) => {
++                                const diff = isOverride ? diffRateVsGlobal(card, globalCard) : null
++                                const rowHistoryCount = history.filter(h => h.category_name === card.category_name && h.ride_type === card.ride_type && h.city_id === card.city_id).length
++                                return (
++                                  <tr key={`${card.category_id}-${card.ride_type}-${card.city_id ?? 'g'}`} className={`cursor-default ${isInherited ? 'opacity-60' : ''}`}>
++                                    <td>
++                                      <StatusPillRideType type={card.ride_type} />
++                                      <span className={`ml-2 ${isOverride ? 'pill-info' : 'pill-muted'}`}>
++                                        {isOverride ? 'City override' : isInherited ? 'Inherited' : 'Global'}
++                                      </span>
++                                      {!isInherited && (
++                                        <button
++                                          onClick={() => openRowHistory(card)}
++                                          className="flex items-center gap-1 mt-1.5 text-[11px] font-bold text-primary-dark hover:text-primary hover:underline"
++                                        >
++                                          <Clock size={11} />{rowHistoryCount} change{rowHistoryCount === 1 ? '' : 's'}
++                                        </button>
++                                      )}
++                                    </td>
++                                    <td className="!text-right font-mono font-semibold text-text-primary">
++                                      {fmt(card.rate_per_km)}
++                                      {card.ride_type === 'one_way' && (
++                                        <span className="block text-[11px] font-sans font-medium text-text-muted mt-0.5">Return {fmt(card.return_rate_per_km)}/km</span>
++                                      )}
++                                      {card.ride_type === 'round_trip' && (
++                                        <span className="block text-[11px] font-sans font-medium text-text-muted mt-0.5">{card.km_per_day ?? '—'} km/day · {fmt(card.driver_allowance_per_day)} allowance</span>
++                                      )}
++                                    </td>
++                                    <td className="!text-right font-mono">{fmt(card.rate_per_min)}</td>
++                                    <td className="!text-right font-mono font-semibold text-text-primary">{fmt(card.min_fare)}</td>
++                                    <td className="!text-right">
++                                      {diff && (
++                                        <span className={`text-[11px] font-mono font-semibold ${diff.up ? 'text-warning' : 'text-success'}`}>{diff.text}</span>
++                                      )}
++                                    </td>
++                                    <td className="!text-right">
++                                      {isInherited ? (
++                                        <UpdateRateDialog
++                                          card={globalCard} cities={cities} defaultCityId={selectedCityId}
++                                          onUpdated={() => { fetchAll(); setSuccessMsg('Override created') }}
++                                          trigger={
++                                            <button className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-success-light text-success text-xs font-semibold hover:bg-success/10 transition-colors">
++                                              <Plus size={12} />Override
++                                            </button>
++                                          }
++                                        />
++                                      ) : (
++                                        <UpdateRateDialog card={card} cities={cities} onUpdated={() => { fetchAll(); setSuccessMsg('Rate updated') }} />
++                                      )}
++                                    </td>
++                                  </tr>
++                                )
++                              })}
++                            </tbody>
++                          </table>
++                        </div>
++                      </div>
++                    )
++                  })
++                )}
+               </div>
+-              {historyOpen ? <ChevronUp size={16} className="text-text-muted" /> : <ChevronDown size={16} className="text-text-muted" />}
+-            </button>
+-            {historyOpen && (
+-              historyLoading ? (
+-                <div className="border-t border-border overflow-x-auto">
+-                  <table className="data-table min-w-[600px]"><tbody><SkeletonRows cols={5} n={4} /></tbody></table>
+-                </div>
+-              ) : history.length === 0 ? (
+-                <p className="border-t border-border px-5 py-8 text-center text-text-muted text-sm">No rate changes recorded yet.</p>
+-              ) : (
+-                <div className="border-t border-border overflow-x-auto">
+-                  <table className="data-table min-w-[600px]">
+-                    <thead>
+-                      <tr><th>Category</th><th>Ride Type</th><th>Per KM</th><th>Reason</th><th>Changed</th></tr>
+-                    </thead>
+-                    <tbody>
+-                      {history.map(h => (
+-                        <tr key={h.id} className="cursor-default">
+-                          <td className="font-medium text-text-primary">{h.category_name}</td>
+-                          <td>{RIDE_TYPE_LABEL[h.ride_type] ?? h.ride_type}</td>
+-                          <td className="font-mono font-semibold text-text-primary">{fmt(h.rate_per_km)}</td>
+-                          <td className="max-w-[240px] truncate">{h.change_reason ?? '—'}</td>
+-                          <td className="text-xs">{new Date(h.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+-                        </tr>
+-                      ))}
+-                    </tbody>
+-                  </table>
+-                </div>
+-              )
+-            )}
+-          </div>
++            </div>
++          )}
+         </div>
+       )}
+ 
+       {/* ── Surge Events tab ──────────────────────────────────────────────── */}
+       {activeTab === 'surge' && (
+         <div className="space-y-5">
++          <div className="flex justify-end">
++            <CreateSurgeDialog cities={cities} categories={categoryOptions} onCreated={() => { fetchAll(); setSuccessMsg('Surge event scheduled') }} />
++          </div>
+           {activeSurges.length > 0 && (
+             <div className="bg-warning-light border border-warning/20 rounded-2xl px-5 py-4 flex items-center gap-3">
+               <AlertTriangle size={18} className="text-warning flex-shrink-0" />
+@@ -818,8 +782,8 @@ export default function RateCardsPage() {
+                         <td><span className="font-mono font-bold text-warning">{parseFloat(s.multiplier).toFixed(2)}×</span></td>
+                         <td className="max-w-[160px] truncate">{s.reason ?? '—'}</td>
+                         <td><span className={SURGE_STATUS_CLS[s.status] ?? 'pill-muted'}>{s.status.charAt(0).toUpperCase() + s.status.slice(1)}</span></td>
+-                        <td className="text-xs">{new Date(s.starts_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+-                        <td className="text-xs">{new Date(s.ends_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
++                        <td className="text-xs font-mono">{new Date(s.starts_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
++                        <td className="text-xs font-mono">{new Date(s.ends_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                         <td>
+                           {(s.status === 'scheduled' || s.status === 'active') && (
+                             <button onClick={() => cancelSurge(s.id)}
+@@ -841,6 +805,185 @@ export default function RateCardsPage() {
+       {activeTab === 'rental' && (
+         <RentalPackagesTab cities={cities} categoryOptions={categoryOptions} />
+       )}
++
++      <SlideOver isOpen={drawer.open} onClose={() => setDrawer(d => ({ ...d, open: false }))} title={drawer.title} width="md">
++        <p className="px-6 pt-4 pb-1 text-xs text-text-muted">{drawer.subtitle}</p>
++        <HistoryDrawerBody rows={drawer.rows} />
++      </SlideOver>
+     </div>
+   )
+ }
++
++// ── Create city rate-card dialog ──────────────────────────────────────────────
++
++function CreateRateCardDialog({
++  cities, categories, onCreated,
++}: {
++  cities: AdminCity[]
++  categories: { id: number; slug: string; display_name: string }[]
++  onCreated: () => void
++}) {
++  const [open, setOpen] = useState(false)
++  const [loading, setLoading] = useState(false)
++  const [error, setError] = useState('')
++  const [form, setForm] = useState({
++    city_id: '', category_id: '', ride_type: 'one_way',
++    rate_per_km: '', rate_per_min: '', min_fare: '',
++    return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', notes: '',
++  })
++
++  useEffect(() => {
++    if (open) {
++      setForm({
++        city_id: '', category_id: '', ride_type: 'one_way',
++        rate_per_km: '', rate_per_min: '', min_fare: '',
++        return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', notes: '',
++      })
++      setError('')
++    }
++  }, [open])
++
++  function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
++
++  async function submit(e: React.FormEvent) {
++    e.preventDefault()
++    if (!form.city_id || !form.category_id) { setError('City and category are required'); return }
++    if (!form.notes.trim()) { setError('Change reason is required'); return }
++    setLoading(true); setError('')
++    try {
++      await pricingApi.createRateCard({
++        category_id: parseInt(form.category_id, 10), ride_type: form.ride_type,
++        city_id: parseInt(form.city_id, 10),
++        rate_per_km: parseFloat(form.rate_per_km), rate_per_min: parseFloat(form.rate_per_min),
++        min_fare: parseFloat(form.min_fare),
++        return_rate_per_km: form.return_rate_per_km ? parseFloat(form.return_rate_per_km) : null,
++        hour_rate: form.hour_rate ? parseFloat(form.hour_rate) : null,
++        km_per_day: form.km_per_day ? parseFloat(form.km_per_day) : null,
++        driver_allowance_per_day: form.driver_allowance_per_day ? parseFloat(form.driver_allowance_per_day) : null,
++        notes: form.notes,
++      })
++      setOpen(false); onCreated()
++    } catch { setError('Failed to create rate card.') }
++    finally { setLoading(false) }
++  }
++
++  return (
++    <Dialog.Root open={open} onOpenChange={setOpen}>
++      <Dialog.Trigger asChild>
++        <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-light border border-primary/20 text-primary text-sm font-semibold hover:bg-primary/10 transition-all duration-150">
++          <Plus size={14} />Add City Rate
++        </button>
++      </Dialog.Trigger>
++      <AnimatePresence>
++        {open && (
++          <Dialog.Portal forceMount>
++            <Dialog.Overlay asChild forceMount>
++              <motion.div
++                className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm"
++                initial={{ opacity: 0 }}
++                animate={{ opacity: 1 }}
++                exit={{ opacity: 0 }}
++                transition={{ duration: 0.2 }}
++              />
++            </Dialog.Overlay>
++            <Dialog.Content asChild forceMount>
++              <motion.div
++                className="fixed left-1/2 top-1/2 w-full max-w-[480px] max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-hover p-6 z-[60]"
++                initial={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
++                animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }}
++                exit={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
++                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
++              >
++          <Dialog.Title className="text-lg font-bold text-text-primary mb-1">Add City Rate Override</Dialog.Title>
++          <p className="text-xs text-text-muted mb-5">
++            Creates a city-specific rate that takes priority over the global default for that city only.
++          </p>
++          <form onSubmit={submit} className="space-y-3">
++            <div className="grid grid-cols-2 gap-3">
++              <div>
++                <label className={labelCls}>City *</label>
++                <select value={form.city_id} onChange={e => set('city_id', e.target.value)} required className={inputCls}>
++                  <option value="">Select city…</option>
++                  {cities.filter(c => c.status === 'active').map(c => (
++                    <option key={c.id} value={c.id}>{c.name}</option>
++                  ))}
++                </select>
++              </div>
++              <div>
++                <label className={labelCls}>Category *</label>
++                <select value={form.category_id} onChange={e => set('category_id', e.target.value)} required className={inputCls}>
++                  <option value="">Select…</option>
++                  {categories.map(c => <option key={c.id} value={c.id}>{c.display_name}</option>)}
++                </select>
++              </div>
++            </div>
++            <div>
++              <label className={labelCls}>Ride Type *</label>
++              <select value={form.ride_type} onChange={e => set('ride_type', e.target.value)} className={inputCls}>
++                <option value="one_way">One Way</option>
++                <option value="round_trip">Round Trip</option>
++                <option value="rental">Rental</option>
++              </select>
++            </div>
++            <div className="grid grid-cols-3 gap-3">
++              <div>
++                <label className={labelCls}>Per KM (₹) *</label>
++                <input type="number" step="0.01" min="0.01" required value={form.rate_per_km}
++                  onChange={e => set('rate_per_km', e.target.value)} className={`${inputCls} font-mono`} />
++              </div>
++              <div>
++                <label className={labelCls}>Per Min (₹) *</label>
++                <input type="number" step="0.01" min="0" required value={form.rate_per_min}
++                  onChange={e => set('rate_per_min', e.target.value)} className={`${inputCls} font-mono`} />
++              </div>
++              <div>
++                <label className={labelCls}>Min Fare (₹) *</label>
++                <input type="number" step="0.01" min="0.01" required value={form.min_fare}
++                  onChange={e => set('min_fare', e.target.value)} className={`${inputCls} font-mono`} />
++              </div>
++            </div>
++            {form.ride_type === 'one_way' && (
++              <div>
++                <label className={labelCls}>Return Cab Rate /km (₹)</label>
++                <input type="number" step="0.01" value={form.return_rate_per_km}
++                  onChange={e => set('return_rate_per_km', e.target.value)} className={`${inputCls} font-mono`} placeholder="optional" />
++              </div>
++            )}
++            {form.ride_type === 'round_trip' && (
++              <div className="grid grid-cols-2 gap-3">
++                <div>
++                  <label className={labelCls}>Package KM/day</label>
++                  <input type="number" step="1" value={form.km_per_day}
++                    onChange={e => set('km_per_day', e.target.value)} className={`${inputCls} font-mono`} placeholder="e.g. 250" />
++                </div>
++                <div>
++                  <label className={labelCls}>Driver Allowance/day (₹)</label>
++                  <input type="number" step="0.01" value={form.driver_allowance_per_day}
++                    onChange={e => set('driver_allowance_per_day', e.target.value)} className={`${inputCls} font-mono`} placeholder="e.g. 300" />
++                </div>
++              </div>
++            )}
++            <div>
++              <label className={labelCls}>Change Reason *</label>
++              <textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)}
++                className={`${inputCls} resize-none`} placeholder="e.g. Puri festival-season pricing" />
++            </div>
++            {error && <p className="text-xs text-danger font-semibold">{error}</p>}
++            <div className="flex gap-3 pt-2">
++              <Dialog.Close asChild>
++                <button type="button" className="btn-secondary flex-1 justify-center">Cancel</button>
++              </Dialog.Close>
++              <button type="submit" disabled={loading}
++                className="btn-primary flex-1 justify-center disabled:opacity-50 disabled:pointer-events-none">
++                {loading ? 'Creating…' : 'Create Override'}
++              </button>
++            </div>
++          </form>
++              </motion.div>
++            </Dialog.Content>
++          </Dialog.Portal>
++        )}
++      </AnimatePresence>
++    </Dialog.Root>
++  )
++}
+diff --git a/apps/admin/app/layout.tsx b/apps/admin/app/layout.tsx
+index c08211d..6599bb2 100644
+--- a/apps/admin/app/layout.tsx
++++ b/apps/admin/app/layout.tsx
+@@ -1,6 +1,6 @@
+ import type { Metadata } from 'next'
+ 
+-import { Plus_Jakarta_Sans, Space_Grotesk } from 'next/font/google'
++import { Plus_Jakarta_Sans, Space_Grotesk, JetBrains_Mono } from 'next/font/google'
+ import './globals.css'
+ import { AdminAuthProvider } from '@/lib/auth-context'
+ import { NotificationsProvider } from '@/lib/notifications-context'
+@@ -22,6 +22,13 @@ const spaceGrotesk = Space_Grotesk({
+   variable: '--font-display',
+ })
+ 
++const jetbrainsMono = JetBrains_Mono({
++  subsets: ['latin'],
++  weight: ['500', '600'],
++  display: 'swap',
++  variable: '--font-mono',
++})
++
+ export const metadata: Metadata = {
+   title: 'Ocar Admin',
+   description: 'Ocar platform administration',
+@@ -29,7 +36,7 @@ export const metadata: Metadata = {
+ 
+ export default function RootLayout({ children }: { children: React.ReactNode }) {
+   return (
+-    <html lang="en" className={`${plusJakarta.variable} ${spaceGrotesk.variable}`}>
++    <html lang="en" className={`${plusJakarta.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}>
+       <body className="font-sans">
+         <MaintenanceBanner />
+         <GoogleMapsProvider>
+diff --git a/apps/admin/tailwind.config.ts b/apps/admin/tailwind.config.ts
+index 4ef4868..6fef6ee 100644
+--- a/apps/admin/tailwind.config.ts
++++ b/apps/admin/tailwind.config.ts
+@@ -50,6 +50,7 @@ const config: Config = {
+       fontFamily: {
+         sans: ['Plus Jakarta Sans', 'sans-serif'],
+         display: ['Space Grotesk', 'sans-serif'],
++        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+       },
+       fontSize: {
+         xs:    ['11px', { lineHeight: '16px' }],
+diff --git a/apps/rider-mobile/src/app/booking/index.tsx b/apps/rider-mobile/src/app/booking/index.tsx
+index a71a734..55c8b3b 100644
+--- a/apps/rider-mobile/src/app/booking/index.tsx
++++ b/apps/rider-mobile/src/app/booking/index.tsx
+@@ -17,6 +17,19 @@ import { sectionLabel } from '@/theme/homeTokens'
+ 
+ type ActiveField = 'pickup' | 'drop'
+ 
++// Straight-line distance from pickup, formatted like web's own ${km.toFixed(1)} km
++// convention (receipt, ride tracking) -- undefined pickup means nothing to show yet.
++function distanceFromPickup(pickup: { lat: number; lng: number } | null, lat: number, lng: number): string | undefined {
++  if (!pickup) return undefined
++  const R = 6_371_000
++  const dLat = (lat - pickup.lat) * Math.PI / 180
++  const dLng = (lng - pickup.lng) * Math.PI / 180
++  const a = Math.sin(dLat / 2) ** 2
++    + Math.cos(pickup.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2
++  const metres = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
++  return `${(metres / 1000).toFixed(1)} km`
++}
++
+ const SAVED_ICON: Record<SavedPlace['kind'], React.ComponentProps<typeof Feather>['name']> = {
+   home: 'home',
+   work: 'briefcase',
+@@ -388,6 +401,7 @@ export default function BookingPickersScreen() {
+                 address={r.description}
+                 onPress={() => void handleSelectSuggestion(r.placeId, r.description)}
+                 last={i === results.length - 1}
++                distance={editingField === 'drop' && r.distanceMetres !== undefined ? `${(r.distanceMetres / 1000).toFixed(1)} km` : undefined}
+               />
+             ))
+           )
+@@ -404,6 +418,7 @@ export default function BookingPickersScreen() {
+                     address={r.address}
+                     onPress={() => void commitPlace(r)}
+                     last={i === recents.length - 1}
++                    distance={editingField === 'drop' ? distanceFromPickup(pickup, r.lat, r.lng) : undefined}
+                   />
+                 ))}
+               </View>
+@@ -419,6 +434,7 @@ export default function BookingPickersScreen() {
+                     address={p.address}
+                     onPress={() => void commitPlace({ address: p.address, lat: p.lat, lng: p.lng })}
+                     last={i === savedPlaces.length - 1}
++                    distance={editingField === 'drop' ? distanceFromPickup(pickup, p.lat, p.lng) : undefined}
+                   />
+                 ))}
+               </View>
+@@ -433,6 +449,7 @@ export default function BookingPickersScreen() {
+                   address={p.address}
+                   onPress={() => void commitPlace({ address: p.address, lat: p.lat, lng: p.lng })}
+                   last={i === POPULAR.length - 1}
++                  distance={editingField === 'drop' ? distanceFromPickup(pickup, p.lat, p.lng) : undefined}
+                 />
+               ))}
+             </View>
+diff --git a/apps/rider-mobile/src/app/booking/rental.tsx b/apps/rider-mobile/src/app/booking/rental.tsx
+index ae06651..538470a 100644
+--- a/apps/rider-mobile/src/app/booking/rental.tsx
++++ b/apps/rider-mobile/src/app/booking/rental.tsx
+@@ -3,7 +3,9 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
+ import { useRouter } from 'expo-router'
+ import { useSafeAreaInsets } from 'react-native-safe-area-context'
+ import { Feather } from '@expo/vector-icons'
+-import { Skeleton, VehicleIcon, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
++import { LinearGradient } from 'expo-linear-gradient'
++import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated'
++import { Skeleton, VehicleIcon, colors, radii, spacing, typography, fonts, h } from '@ocar/mobile-shared'
+ import type { RentalPackage, VehicleCategory } from '@ocar/mobile-shared'
+ import { createBooking, fetchRentalPackages, fetchRoute, fetchVehicleCategories, fetchFareEstimate, resolveBookingError } from '@/features/booking/api'
+ import { recommendPackage } from '@/features/booking/recommendPackage'
+@@ -18,14 +20,22 @@ const MAX_STOPS = 3
+ 
+ function formatDuration(minutes: number): string {
+   if (minutes < 60) return `${minutes} min`
+-  const h = Math.floor(minutes / 60)
++  const h_ = Math.floor(minutes / 60)
+   const m = minutes % 60
+-  return m === 0 ? `${h} hr${h > 1 ? 's' : ''}` : `${h}h ${m}m`
++  return m === 0 ? `${h_} hr${h_ > 1 ? 's' : ''}` : `${h_}h ${m}m`
++}
++
++// Luxury carries the app's own gold "premium tier" signal — same gradient
++// family as the Ocar Elite banner on Home — so it reads as genuinely premium.
++function isPremiumSlug(slug: string) {
++  return slug === 'luxury'
+ }
+ 
+ // Matches web's /rental ("City Rides", apps/user/app/(main)/rental/page.tsx) --
+-// a self-contained booking screen (category + package + fare + book), unlike
+-// round-trip which hands off to /select-ride for the category step.
++// a self-contained booking screen (category + package + fare + book). Every
++// vehicle is a row in one vertical list (never a horizontal carousel — options
++// must never scroll out of view); tapping a row expands its package tiers
++// inline as chips, so only one row is ever open at a time.
+ export default function RentalScreen() {
+   const router = useRouter()
+   const insets = useSafeAreaInsets()
+@@ -47,10 +57,13 @@ export default function RentalScreen() {
+   const [scheduleSheetOpen, setScheduleSheetOpen] = useState(false)
+ 
+   const [categories, setCategories] = useState<VehicleCategory[]>([])
+-  const [selectedCatId, setSelectedCatId] = useState<number | null>(null)
+-  const [packages, setPackages] = useState<RentalPackage[]>([])
++  // Every category's packages, fetched up front so every row can show a real
++  // "from ₹X" before the rider taps anything.
++  const [packagesByCat, setPackagesByCat] = useState<Record<number, RentalPackage[]>>({})
+   const [pkgsLoading, setPkgsLoading] = useState(true)
++  const [openCatId, setOpenCatId] = useState<number | null>(null)
+   const [selectedPkgId, setSelectedPkgId] = useState<number | null>(null)
++  const [userPickedPkg, setUserPickedPkg] = useState(false)
+   const [estimate, setEstimate] = useState<Awaited<ReturnType<typeof fetchFareEstimate>> | null>(null)
+   const [estLoading, setEstLoading] = useState(false)
+   const [booking, setBooking] = useState(false)
+@@ -59,18 +72,13 @@ export default function RentalScreen() {
+ 
+   useEffect(() => {
+     fetchVehicleCategories()
+-      .then((cats) => {
+-        setCategories(cats)
+-        if (cats[0]) setSelectedCatId(cats[0].id)
+-      })
++      .then(setCategories)
+       .catch(() => {})
+   }, [])
+ 
+   // Route pickup → stops → drop. Not traffic-aware: package tiers are coarse, so live
+   // traffic wouldn't change the pick but would double routing cost per lookup.
+   const [trip, setTrip] = useState<{ km: number; min: number } | null>(null)
+-  // False while the route is in flight, so we don't preselect a package and then
+-  // immediately flip to the recommended one (fare flicker + wasted estimate call).
+   const [tripReady, setTripReady] = useState(false)
+   useEffect(() => {
+     if (!pickup || !drop) { setTrip(null); setTripReady(true); return }
+@@ -90,35 +98,51 @@ export default function RentalScreen() {
+     return () => { cancelled = true }
+   }, [pickup, drop, stops])
+ 
+-  // Selection follows the recommendation until the rider picks a package themselves.
+-  const [userPickedPkg, setUserPickedPkg] = useState(false)
+-  const loadPackages = useCallback(async (catId: number) => {
++  // Fetch every category's packages in parallel whenever the category list or city changes.
++  const loadAllPackages = useCallback(async (cats: VehicleCategory[], cityId: number | null) => {
+     setPkgsLoading(true)
+-    setPackages([])
+-    setSelectedPkgId(null)
+-    setUserPickedPkg(false)
+-    setEstimate(null)
+-    try {
+-      const pkgs = await fetchRentalPackages(catId, originCityId)
+-      setPackages(pkgs)
+-    } catch {
+-      setPackages([])
+-    } finally {
+-      setPkgsLoading(false)
+-    }
+-  }, [originCityId])
++    const entries = await Promise.allSettled(
++      cats.map(async (cat) => [cat.id, await fetchRentalPackages(cat.id, cityId)] as const)
++    )
++    const next: Record<number, RentalPackage[]> = {}
++    for (const r of entries) if (r.status === 'fulfilled') next[r.value[0]] = r.value[1]
++    setPackagesByCat(next)
++    setPkgsLoading(false)
++  }, [])
+ 
++  useEffect(() => { if (categories.length > 0) void loadAllPackages(categories, originCityId) }, [categories, originCityId, loadAllPackages])
++
++  // Default-open the sedan-equivalent row (or the first category) once the list settles.
+   useEffect(() => {
+-    if (selectedCatId !== null) void loadPackages(selectedCatId)
+-  }, [selectedCatId, loadPackages])
++    setOpenCatId((prev) => {
++      if (prev !== null && categories.some((c) => c.id === prev)) return prev
++      if (categories.length === 0) return null
++      return (categories.find((c) => c.slug === 'sedan') ?? categories[0])!.id
++    })
++  }, [categories])
++
++  const openPackages = useMemo(
++    () => (openCatId !== null ? (packagesByCat[openCatId] ?? []) : []),
++    [openCatId, packagesByCat],
++  )
++  const recommendation = useMemo(
++    () => (trip ? recommendPackage(openPackages, trip.km, trip.min) : null),
++    [openPackages, trip],
++  )
++
++  useEffect(() => {
++    if (userPickedPkg || !tripReady) return
++    if (openPackages.length === 0) { setSelectedPkgId(null); return }
++    setSelectedPkgId(recommendation?.packageId ?? openPackages[0]!.id)
++  }, [openCatId, openPackages, recommendation, userPickedPkg, tripReady])
+ 
+   useEffect(() => {
+-    if (selectedPkgId === null || selectedCatId === null) return
++    if (selectedPkgId === null || openCatId === null) { setEstimate(null); return }
+     let cancelled = false
+     setEstLoading(true)
+     setEstimate(null)
+     const input: Parameters<typeof fetchFareEstimate>[0] = {
+-      categoryId: selectedCatId,
++      categoryId: openCatId,
+       rideType: 'rental',
+       distanceKm: 0,
+       durationMin: 0,
+@@ -130,29 +154,31 @@ export default function RentalScreen() {
+       .catch(() => { if (!cancelled) setEstimate(null) })
+       .finally(() => { if (!cancelled) setEstLoading(false) })
+     return () => { cancelled = true }
+-  }, [selectedPkgId, selectedCatId, originCityId])
++  }, [selectedPkgId, openCatId, originCityId])
+ 
+-  const recommendation = useMemo(
+-    () => (trip ? recommendPackage(packages, trip.km, trip.min) : null),
+-    [packages, trip],
+-  )
+-  useEffect(() => {
+-    if (userPickedPkg || !tripReady || packages.length === 0) return
+-    setSelectedPkgId(recommendation?.packageId ?? packages[0]!.id)
+-  }, [packages, recommendation, userPickedPkg, tripReady])
++  function toggleCategory(catId: number) {
++    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
++    if (openCatId === catId) {
++      setOpenCatId(null)
++      setSelectedPkgId(null)
++      return
++    }
++    setOpenCatId(catId)
++    setUserPickedPkg(false)
++    setSelectedPkgId(null)
++  }
+ 
+-  const selectedCat = categories.find((c) => c.id === selectedCatId)
+-  const selectedPkg = packages.find((p) => p.id === selectedPkgId) ?? null
+-  const canBook = selectedCatId !== null && selectedPkgId !== null && estimate !== null && !estLoading && !!drop && !booking
++  const selectedPkg = openPackages.find((p) => p.id === selectedPkgId) ?? null
++  const canBook = openCatId !== null && selectedPkgId !== null && estimate !== null && !estLoading && !!drop && !booking
+ 
+   async function handleBook() {
+-    if (!pickup || !drop || selectedCatId === null || selectedPkgId === null || bookInFlightRef.current) return
++    if (!pickup || !drop || openCatId === null || selectedPkgId === null || bookInFlightRef.current) return
+     bookInFlightRef.current = true
+     setBooking(true)
+     setBookError(null)
+     try {
+       const input: Parameters<typeof createBooking>[0] = {
+-        categoryId: selectedCatId,
++        categoryId: openCatId,
+         rideType: 'rental',
+         originLat: pickup.lat,
+         originLng: pickup.lng,
+@@ -210,20 +236,27 @@ export default function RentalScreen() {
+       </View>
+ 
+       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+-        <View style={styles.routeCard}>
+-          <Feather name="navigation" size={13} color={colors.primary} />
+-          <Text style={styles.routeText} numberOfLines={1}>{drop?.address ?? 'Destination'}</Text>
+-        </View>
+ 
+-        <Pressable onPress={() => setScheduleSheetOpen(true)} style={styles.scheduleChip} accessibilityRole="button">
+-          <Feather name="clock" size={12} color={colors.primaryDark} />
+-          <Text style={styles.scheduleChipText}>{scheduledFor ? formatPickupTime(new Date(scheduledFor)) : 'Now'}</Text>
+-          {scheduledFor ? (
+-            <Pressable onPress={() => setScheduledFor(null)} hitSlop={8} accessibilityLabel="Reset to ride now">
+-              <Feather name="x" size={12} color={colors.primaryDark} />
++        {/* Trip summary card */}
++        <View style={styles.tripCard}>
++          <View style={styles.tripRow}>
++            <Pressable onPress={() => setScheduleSheetOpen(true)} style={styles.scheduleChip} accessibilityRole="button">
++              <Feather name="clock" size={12} color={colors.primaryDark} />
++              <Text style={styles.scheduleChipText}>{scheduledFor ? formatPickupTime(new Date(scheduledFor)) : 'Now'}</Text>
++              {scheduledFor ? (
++                <Pressable onPress={() => setScheduledFor(null)} hitSlop={8} accessibilityLabel="Reset to ride now">
++                  <Feather name="x" size={12} color={colors.primaryDark} />
++                </Pressable>
++              ) : null}
+             </Pressable>
+-          ) : null}
+-        </Pressable>
++            {trip ? <Text style={styles.tripMeta}>{`${trip.km} km · ~${formatDuration(trip.min)}`}</Text> : null}
++          </View>
++          <View style={styles.tripDivider} />
++          <Pressable onPress={() => router.push('/booking/add-stop')} style={styles.routeRow}>
++            <Feather name="navigation" size={13} color={colors.primary} />
++            <Text style={styles.routeText} numberOfLines={1}>{drop?.address ?? 'Destination'}</Text>
++          </Pressable>
++        </View>
+ 
+         <StopsList
+           stops={stops}
+@@ -233,109 +266,164 @@ export default function RentalScreen() {
+           onSwap={swapStop}
+         />
+ 
+-        <Text style={styles.sectionLabel}>VEHICLE</Text>
+-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
+-          {categories.map((cat) => {
+-            const active = cat.id === selectedCatId
+-            return (
++        {/* Vehicle list — every option visible on one vertical scroll */}
++        <View style={styles.vehHeader}>
++          <Text style={styles.sectionLabel}>CHOOSE YOUR RIDE</Text>
++          <Text style={styles.vehCount}>{categories.length} options</Text>
++        </View>
++
++        {categories.map((cat) => {
++          const isOpen = openCatId === cat.id
++          const pkgs = packagesByCat[cat.id] ?? []
++          const fromFare = pkgs.length > 0 ? Math.min(...pkgs.map((p) => p.packageFare)) : null
++          const premium = isPremiumSlug(cat.slug)
++          const noPkgs = !pkgsLoading && pkgs.length === 0
++
++          return (
++            <View key={cat.id} style={[styles.vehCard, isOpen ? styles.vehCardOpen : null]}>
+               <Pressable
+-                key={cat.id}
+-                onPress={() => setSelectedCatId(cat.id)}
+-                style={[styles.catChip, active ? styles.catChipActive : null]}
++                onPress={() => !noPkgs && toggleCategory(cat.id)}
++                disabled={noPkgs}
++                style={[styles.vehRow, noPkgs ? styles.vehRowDisabled : null]}
+                 accessibilityRole="button"
+-                accessibilityState={{ selected: active }}
++                accessibilityState={{ selected: isOpen, disabled: noPkgs }}
+               >
+-                <VehicleIcon slug={cat.slug} size={28} />
+-                <Text style={[styles.catName, active ? styles.catNameActive : null]}>{cat.displayName}</Text>
+-                <View style={styles.catSeatsRow}>
+-                  <Feather name="users" size={9} color={active ? colors.primary : colors.ink400} />
+-                  <Text style={[styles.catSeats, active ? styles.catNameActive : null]}>{cat.maxPassengers}</Text>
++                {premium ? (
++                  <LinearGradient
++                    colors={['#F3D9A6', '#E0B662', '#C9974A']}
++                    locations={[0, 0.55, 1]}
++                    start={{ x: 0, y: 0 }}
++                    end={{ x: 1, y: 1 }}
++                    style={styles.iconWrap}
++                  >
++                    <VehicleIcon slug={cat.slug} size={26} />
++                  </LinearGradient>
++                ) : (
++                  <View style={[styles.iconWrap, isOpen ? styles.iconWrapOpen : null]}>
++                    <VehicleIcon slug={cat.slug} size={26} />
++                  </View>
++                )}
++
++                <View style={styles.vehInfo}>
++                  <View style={styles.vehNameRow}>
++                    <Text style={styles.vehName}>{cat.displayName}</Text>
++                    {premium ? (
++                      <View style={styles.premiumBadge}>
++                        <Feather name="star" size={8} color={h.gold} />
++                        <Text style={styles.premiumBadgeText}>PREMIUM FLEET</Text>
++                      </View>
++                    ) : null}
++                  </View>
++                  <View style={styles.vehSeatsRow}>
++                    <Feather name="users" size={9} color={h.ivoryFaint} />
++                    <Text style={styles.vehSeats}>{cat.maxPassengers} seats</Text>
++                  </View>
++                </View>
++
++                <View style={styles.vehFareBlock}>
++                  {noPkgs ? (
++                    <Text style={styles.vehNoPkgs}>No packages</Text>
++                  ) : pkgsLoading ? (
++                    <Skeleton width={56} height={16} />
++                  ) : isOpen && selectedPkg ? (
++                    <Text style={styles.vehFareSelected}>{`₹${Math.round(selectedPkg.packageFare)}`}</Text>
++                  ) : fromFare != null ? (
++                    <Text style={styles.vehFareFrom}>{`from ₹${Math.round(fromFare)}`}</Text>
++                  ) : null}
+                 </View>
++                <Feather
++                  name="chevron-down"
++                  size={14}
++                  color={isOpen ? h.teal : h.line13}
++                  style={isOpen ? styles.chevronOpen : null}
++                />
+               </Pressable>
+-            )
+-          })}
+-        </ScrollView>
+ 
+-        <View style={styles.pkgHeader}>
+-          <Text style={styles.sectionLabel}>PACKAGE</Text>
+-          {trip ? <Text style={styles.routeSummary}>{`Your route · ${trip.km} km · ~${formatDuration(trip.min)}`}</Text> : null}
+-        </View>
+-        {pkgsLoading ? (
+-          <View style={styles.pkgList}>
+-            <Skeleton width="100%" height={72} borderRadius={16} />
+-            <Skeleton width="100%" height={72} borderRadius={16} />
+-          </View>
+-        ) : packages.length === 0 ? (
+-          <View style={styles.emptyPkg}>
+-            <Text style={styles.emptyPkgText}>No packages for this vehicle type</Text>
+-          </View>
+-        ) : (
+-          <View style={styles.pkgList}>
+-            {packages.map((pkg) => {
+-              const active = pkg.id === selectedPkgId
+-              const isRec = recommendation?.packageId === pkg.id
+-              return (
+-                <Pressable
+-                  key={pkg.id}
+-                  onPress={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
+-                  style={[styles.pkgRow, isRec ? styles.pkgRowRec : null, active ? styles.pkgRowActive : null]}
+-                  accessibilityRole="button"
+-                  accessibilityState={{ selected: active }}
+-                  accessibilityHint={isRec ? 'Recommended for your trip' : undefined}
+-                >
+-                  {isRec ? (
+-                    <View style={styles.recTag}>
+-                      <Feather name="star" size={9} color={colors.inkInverse} />
+-                      <Text style={styles.recTagText}>Recommended for your trip</Text>
++              {isOpen ? (
++                <View style={styles.tray}>
++                  {pkgsLoading ? (
++                    <View style={styles.trayLoadingRow}>
++                      <Skeleton width={72} height={48} borderRadius={12} />
++                      <Skeleton width={72} height={48} borderRadius={12} />
++                      <Skeleton width={72} height={48} borderRadius={12} />
+                     </View>
+-                  ) : null}
+-                  <View style={[styles.pkgIconWrap, active ? styles.pkgIconWrapActive : null]}>
+-                    <Feather name="clock" size={16} color={active ? colors.primary : colors.ink400} />
+-                  </View>
+-                  <View style={styles.pkgInfo}>
+-                    <Text style={[styles.pkgTitle, active ? styles.pkgTitleActive : null]}>
+-                      {`${formatDuration(pkg.durationMinutes)} · ${pkg.kmLimit} km`}
+-                    </Text>
+-                    <Text style={styles.pkgMeta}>{`Extra ₹${pkg.extraPerKm}/km · ₹${pkg.extraPerMin}/min beyond limit`}</Text>
+-                  </View>
+-                  <Text style={[styles.pkgFare, active ? styles.pkgTitleActive : null]}>{`₹${Math.round(pkg.packageFare)}`}</Text>
+-                </Pressable>
+-              )
+-            })}
+-            {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) ? (
+-              <View style={styles.warnCard}>
+-                <Feather name="info" size={14} color={colors.warning} />
+-                <Text style={styles.warnText}>
+-                  {`Your route (~${trip.km} km, ${formatDuration(trip.min)}) is longer than our biggest package.${
+-                    recommendation.overKm > 0 ? ` About ${recommendation.overKm} km over` : ''
+-                  }${recommendation.overKm > 0 && recommendation.overMin > 0 ? ' and' : ''}${
+-                    recommendation.overMin > 0 ? ` ${formatDuration(recommendation.overMin)} over` : ''
+-                  } will be charged as extra.`}
+-                </Text>
+-              </View>
+-            ) : null}
+-          </View>
+-        )}
++                  ) : (
++                    <>
++                      <Text style={styles.trayLabel}>{`PACKAGE · ${pkgs.length} TIERS`}</Text>
++                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tierRow} contentContainerStyle={styles.tierRowContent}>
++                        {pkgs.map((pkg) => {
++                          const active = pkg.id === selectedPkgId
++                          const isRec = recommendation?.packageId === pkg.id
++                          return (
++                            <Pressable
++                              key={pkg.id}
++                              onPress={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
++                              style={[styles.tierChip, active ? styles.tierChipActive : null]}
++                              accessibilityRole="button"
++                              accessibilityState={{ selected: active }}
++                            >
++                              {isRec ? (
++                                <View style={styles.bestFitTag}>
++                                  <Text style={styles.bestFitText}>BEST FIT</Text>
++                                </View>
++                              ) : null}
++                              <Text style={[styles.tierDuration, active ? styles.tierTextActive : null]}>{formatDuration(pkg.durationMinutes)}</Text>
++                              <Text style={[styles.tierKm, active ? styles.tierKmActive : null]}>{`${pkg.kmLimit} km`}</Text>
++                            </Pressable>
++                          )
++                        })}
++                      </ScrollView>
+ 
+-        {selectedPkg ? (
+-          <View style={styles.fareCard}>
+-            <Text style={styles.fareCardTitle}>
+-              {`${selectedCat?.displayName ?? ''} · ${formatDuration(selectedPkg.durationMinutes)} / ${selectedPkg.kmLimit} km`}
+-            </Text>
+-            <Text style={styles.fareCardSub}>Overage charged at end of trip</Text>
+-            <View style={styles.fareDivider} />
+-            <View style={styles.fareTotalRow}>
+-              <Text style={styles.fareTotalLabel}>Total</Text>
+-              {estLoading ? (
+-                <Skeleton width={64} height={20} />
+-              ) : estimate != null ? (
+-                <Text style={styles.fareTotalValue}>{`₹${Math.round(estimate.breakdown.total)}`}</Text>
+-              ) : (
+-                <Text style={styles.fareTotalUnavailable}>-</Text>
+-              )}
++                      {selectedPkg ? (
++                        <>
++                          <View style={styles.trayDivider} />
++                          <View style={styles.trayTotalRow}>
++                            <View style={styles.trayTotalInfo}>
++                              <Text style={styles.trayTotalMeta} numberOfLines={1}>
++                                {`${formatDuration(selectedPkg.durationMinutes)} · ${selectedPkg.kmLimit} km · `}
++                                <Text style={styles.trayExtra}>{`extra ₹${selectedPkg.extraPerKm}/km`}</Text>
++                              </Text>
++                              {estimate != null && estimate.surgeMultiplier > 1 ? (
++                                <View style={styles.surgeRow}>
++                                  <Feather name="zap" size={9} color={colors.warning} />
++                                  <Text style={styles.surgeText}>{`${estimate.surgeMultiplier}× surge`}</Text>
++                                </View>
++                              ) : null}
++                            </View>
++                            {estLoading ? (
++                              <Skeleton width={64} height={22} />
++                            ) : estimate != null ? (
++                              <Text style={styles.trayTotalValue}>{`₹${Math.round(estimate.breakdown.total)}`}</Text>
++                            ) : (
++                              <Text style={styles.trayTotalUnavailable}>-</Text>
++                            )}
++                          </View>
++                        </>
++                      ) : null}
++
++                      {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) ? (
++                        <View style={styles.warnCard}>
++                          <Feather name="info" size={13} color={colors.warning} />
++                          <Text style={styles.warnText}>
++                            {`Your route (~${trip.km} km, ${formatDuration(trip.min)}) is longer than the biggest package.${
++                              recommendation.overKm > 0 ? ` About ${recommendation.overKm} km over` : ''
++                            }${recommendation.overKm > 0 && recommendation.overMin > 0 ? ' and' : ''}${
++                              recommendation.overMin > 0 ? ` ${formatDuration(recommendation.overMin)} over` : ''
++                            } will be charged as extra.`}
++                          </Text>
++                        </View>
++                      ) : null}
++                    </>
++                  )}
++                </View>
++              ) : null}
+             </View>
+-          </View>
+-        ) : null}
++          )
++        })}
++
++        <Text style={styles.footnote}>
++          Waiting time is <Text style={styles.footnoteStrong}>covered within your rental package</Text>. Running over is billed as an hourly overage.
++        </Text>
+       </ScrollView>
+ 
+       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+@@ -380,61 +468,78 @@ export default function RentalScreen() {
+ const styles = StyleSheet.create({
+   screen: { flex: 1, backgroundColor: colors.bg },
+   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
+-  backButton: { width: 40,
+-    height: 40,
+-    borderRadius: 20,
+-    backgroundColor: colors.surface,
+-    borderWidth: 1,
+-    borderColor: 'rgba(20,23,26,0.08)',
+-    boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
++  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: h.line10, boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
+   pressedScale: { transform: [{ scale: 0.97 }] },
+   headerText: { flex: 1 },
+-  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
+-  subtitle: { ...typography.caption, color: colors.ink400, marginTop: 1 },
+-  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface2, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, maxWidth: 110 },
+-  riderPillText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.bold },
+-  scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: colors.primarySubtle, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, marginBottom: spacing.xs },
+-  scheduleChipText: { ...typography.caption, color: colors.primaryDark, fontFamily: fonts.bold },
++  title: { ...typography.title, color: h.ivory, fontFamily: fonts.bold },
++  subtitle: { ...typography.caption, color: h.ivoryDim, marginTop: 1 },
++  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: h.chip, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, maxWidth: 110 },
++  riderPillText: { ...typography.caption, color: h.ivory, fontFamily: fonts.bold },
+   body: { flex: 1 },
+   bodyContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.sm },
+-  routeCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.primarySubtle, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.xs },
+-  routeText: { ...typography.body, color: colors.primaryDark, fontFamily: fonts.semibold, flex: 1 },
+-  sectionLabel: { ...sectionLabel, marginTop: spacing.xs },
+-  catRow: { flexGrow: 0, marginBottom: spacing.xs },
+-  catChip: { alignItems: 'center', gap: 4, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 16, backgroundColor: colors.surface2, marginRight: spacing.xs, minWidth: 76 },
+-  catChipActive: { backgroundColor: colors.primarySubtle, borderWidth: 1, borderColor: colors.primary },
+-  catName: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
+-  catNameActive: { color: colors.primaryDark },
+-  catSeatsRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+-  catSeats: { fontSize: 9, color: colors.ink400 },
+-  pkgHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+-  routeSummary: { ...typography.caption, color: colors.ink600, fontFamily: fonts.medium },
+-  pkgList: { gap: spacing.xs },
+-  pkgRowRec: { marginTop: spacing.sm, borderColor: colors.primary },
+-  recTag: { position: 'absolute', top: -10, left: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: 3 },
+-  recTagText: { fontSize: 10, fontFamily: fonts.bold, letterSpacing: 0.3, color: colors.inkInverse },
+-  warnCard: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, backgroundColor: colors.warningLight, borderRadius: 16, padding: spacing.md },
+-  warnText: { ...typography.caption, flex: 1, color: colors.ink900, lineHeight: 17 },
+-  pkgRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface2, borderRadius: 16, borderWidth: 1, borderColor: 'transparent', padding: spacing.sm + 4 },
+-  pkgRowActive: { backgroundColor: colors.primarySubtle, borderColor: colors.primary },
+-  pkgIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+-  pkgIconWrapActive: { backgroundColor: colors.surface },
+-  pkgInfo: { flex: 1, gap: 2 },
+-  pkgTitle: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
+-  pkgTitleActive: { color: colors.primaryDark },
+-  pkgMeta: { ...typography.caption, color: colors.ink400 },
+-  pkgFare: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
+-  emptyPkg: { height: 64, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+-  emptyPkgText: { ...typography.body, color: colors.ink400 },
+-  fareCard: { backgroundColor: colors.surface2, borderRadius: 16, padding: spacing.md, gap: 4, marginTop: spacing.xs },
+-  fareCardTitle: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
+-  fareCardSub: { ...typography.caption, color: colors.ink400 },
+-  fareDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
+-  fareTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+-  fareTotalLabel: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
+-  fareTotalValue: { ...typography.headline, color: colors.primaryDark, fontFamily: fonts.bold },
+-  fareTotalUnavailable: { ...typography.body, color: colors.ink400 },
+-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight, backgroundColor: colors.bg },
++
++  tripCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: radii['2xl'], padding: spacing.sm + 4, boxShadow: '0 3px 12px rgba(20,23,26,0.07)', gap: spacing.sm },
++  tripRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
++  tripMeta: { ...typography.caption, color: h.ivoryDim, fontFamily: fonts.semibold },
++  tripDivider: { height: 1, backgroundColor: h.line08 },
++  routeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
++  routeText: { ...typography.body, color: h.ivory, fontFamily: fonts.bold, flex: 1, fontSize: 13 },
++  scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: h.chip, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2 },
++  scheduleChipText: { ...typography.caption, color: h.ivory, fontFamily: fonts.bold },
++
++  vehHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: spacing.xs },
++  sectionLabel: { ...sectionLabel },
++  vehCount: { ...typography.caption, color: h.ivoryFaint, fontFamily: fonts.semibold },
++
++  vehCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: radii['2xl'], overflow: 'hidden', boxShadow: '0 2px 8px rgba(20,23,26,0.04)' },
++  vehCardOpen: { borderColor: h.teal, boxShadow: '0 8px 24px rgba(14,143,163,0.16)' },
++  vehRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, padding: spacing.sm + 4 },
++  vehRowDisabled: { opacity: 0.4 },
++  iconWrap: { width: 52, height: 44, borderRadius: 12, backgroundColor: h.chip, alignItems: 'center', justifyContent: 'center' },
++  iconWrapOpen: { backgroundColor: h.chip },
++  vehInfo: { flex: 1, gap: 2, minWidth: 0 },
++  vehNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
++  vehName: { fontSize: 14, fontFamily: fonts.bold, color: h.ivory },
++  premiumBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FBF3E6', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2 },
++  premiumBadgeText: { fontSize: 9.5, fontFamily: fonts.bold, letterSpacing: 0.3, color: '#8A6323' },
++  vehSeatsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
++  vehSeats: { ...typography.caption, color: h.ivoryDim, fontSize: 11 },
++  vehFareBlock: { alignItems: 'flex-end', minWidth: 56 },
++  vehFareFrom: { fontSize: 14, fontFamily: fonts.bold, color: h.ivory },
++  vehFareSelected: { fontSize: 15, fontFamily: fonts.bold, color: h.ivory },
++  vehNoPkgs: { fontSize: 11, fontFamily: fonts.semibold, color: h.ivoryFaint },
++  chevronOpen: { transform: [{ rotate: '180deg' }] },
++
++  tray: { backgroundColor: h.chip, marginHorizontal: 6, marginBottom: 6, borderRadius: radii.lg, padding: spacing.sm + 4 },
++  trayLoadingRow: { flexDirection: 'row', gap: spacing.xs + 4 },
++  trayLabel: { fontSize: 10, fontFamily: fonts.bold, letterSpacing: 0.4, color: h.ivoryDim, marginBottom: spacing.sm },
++  tierRow: { flexGrow: 0, marginBottom: spacing.sm + 4 },
++  tierRowContent: { gap: spacing.xs + 2, paddingTop: 12 },
++  tierChip: { paddingVertical: 8, paddingHorizontal: 13, borderRadius: radii.md, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, alignItems: 'center' },
++  tierChipActive: { backgroundColor: h.teal, borderColor: h.teal, boxShadow: '0 4px 14px rgba(14,143,163,0.32)' },
++  tierDuration: { fontSize: 11.5, fontFamily: fonts.bold, color: h.ivory },
++  tierKm: { fontSize: 9.5, color: h.ivoryFaint },
++  tierTextActive: { color: '#FFFFFF' },
++  tierKmActive: { color: 'rgba(255,255,255,0.75)' },
++  bestFitTag: { position: 'absolute', top: -9, alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2, boxShadow: '0 2px 6px rgba(20,23,26,0.12)' },
++  bestFitText: { fontSize: 9, fontFamily: fonts.bold, color: h.teal },
++  trayDivider: { height: 1, backgroundColor: h.line08, marginBottom: spacing.sm },
++  trayTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
++  trayTotalInfo: { flex: 1, minWidth: 0 },
++  trayTotalMeta: { fontSize: 11.5, color: h.ivoryDim, fontFamily: fonts.medium },
++  trayExtra: { fontFamily: fonts.bold, color: h.teal },
++  surgeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
++  surgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.warning },
++  trayTotalValue: { fontSize: 19, fontFamily: fonts.bold, color: h.teal, letterSpacing: -0.3 },
++  trayTotalUnavailable: { fontSize: 14, color: h.ivoryFaint },
++
++  warnCard: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, backgroundColor: colors.warningLight, borderRadius: radii.lg, padding: spacing.md, marginTop: spacing.sm + 4 },
++  warnText: { ...typography.caption, flex: 1, color: h.ivory, lineHeight: 17 },
++
++  footnote: { ...typography.caption, color: h.ivoryFaint, lineHeight: 17, marginTop: spacing.xs },
++  footnoteStrong: { color: h.ivoryDim, fontFamily: fonts.semibold },
++
++  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: h.line08, backgroundColor: colors.bg },
+   error: { ...typography.body, color: colors.error, marginBottom: spacing.xs, textAlign: 'center' },
+   bookBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 54, boxShadow: '0 10px 24px rgba(14,143,163,0.28)' },
+   disabled: { opacity: 0.5 },
+diff --git a/apps/rider-mobile/src/features/booking/components/PlaceRow.tsx b/apps/rider-mobile/src/features/booking/components/PlaceRow.tsx
+index 4ec033a..a39d682 100644
+--- a/apps/rider-mobile/src/features/booking/components/PlaceRow.tsx
++++ b/apps/rider-mobile/src/features/booking/components/PlaceRow.tsx
+@@ -8,13 +8,15 @@ export type PlaceRowProps = {
+   address: string
+   onPress: () => void
+   last?: boolean
++  /** Pre-formatted distance from pickup (e.g. "3.2 km"), shown right-aligned. */
++  distance?: string | undefined
+ }
+ 
+ // One shared row shape for live autocomplete results, recent searches, and
+ // favourite (saved) places -- all three lists in the redesigned search screen
+ // render through this, so switching between them never changes row height,
+ // icon size, or spacing (the exact instability this replaced).
+-export function PlaceRow({ icon, label, address, onPress, last }: PlaceRowProps) {
++export function PlaceRow({ icon, label, address, onPress, last, distance }: PlaceRowProps) {
+   return (
+     <View>
+       <Pressable
+@@ -30,6 +32,7 @@ export function PlaceRow({ icon, label, address, onPress, last }: PlaceRowProps)
+           <Text style={styles.label} numberOfLines={1}>{label}</Text>
+           <Text style={styles.address} numberOfLines={1}>{address}</Text>
+         </View>
++        {distance ? <Text style={styles.distance}>{distance}</Text> : null}
+       </Pressable>
+       {!last ? <View style={styles.divider} /> : null}
+     </View>
+@@ -43,5 +46,6 @@ const styles = StyleSheet.create({
+   textCol: { flex: 1, gap: 1 },
+   label: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
+   address: { ...typography.caption, color: colors.ink400 },
++  distance: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold, flexShrink: 0 },
+   divider: { marginLeft: 40 + spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderLight, borderStyle: 'dashed' },
+ })
+diff --git a/apps/user/app/(main)/rental/page.tsx b/apps/user/app/(main)/rental/page.tsx
+index abafc6b..6031e14 100644
+--- a/apps/user/app/(main)/rental/page.tsx
++++ b/apps/user/app/(main)/rental/page.tsx
+@@ -1,12 +1,12 @@
+ 'use client'
+ 
+-import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react'
++import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
+ import {
+   ArrowLeft, MapPin, Clock,
+-  CreditCard, Zap, Users, Navigation, Sparkles, Info,
++  CreditCard, Zap, Users, Navigation, ChevronDown, Info, Sparkles,
+ } from 'lucide-react'
+ import { useRouter, useSearchParams } from 'next/navigation'
+-import { motion } from 'framer-motion'
++import { motion, AnimatePresence } from 'framer-motion'
+ import { cn, swapAt } from '@/lib/utils'
+ import { isAxiosError } from 'axios'
+ import { rideApi, type RentalPackage, type FareEstimate, type StopInput } from '@/lib/ride-api'
+@@ -70,6 +70,13 @@ function formatDuration(minutes: number): string {
+   return m === 0 ? `${h} hr${h > 1 ? 's' : ''}` : `${h}h ${m}m`
+ }
+ 
++// Luxury carries the app's own gold "premium tier" signal (same family as the
++// Ocar Elite home-screen banner) so the top-of-fleet vehicle reads as genuinely
++// premium rather than just another row in the list.
++function isPremiumSlug(slug: string) {
++  return slug === 'luxury'
++}
++
+ // ─── component ────────────────────────────────────────────────────────────────
+ 
+ function RentalContent() {
+@@ -156,10 +163,15 @@ function RentalContent() {
+   if (stops.length < MAX_STOPS) rentalStopNodes.push({ kind: 'add', onTap: () => setAddStopOpen(true) })
+ 
+   const [categories,      setCategories]      = useState<Category[]>(FALLBACK_CATEGORIES)
+-  const [selectedCatId,   setSelectedCatId]  = useState<number>(FALLBACK_CATEGORIES[1]!.id)
+-  const [packages,        setPackages]        = useState<RentalPackage[]>([])
++  // Every category's packages are fetched up front (not just the selected one) so
++  // every row can show a real "from ₹X" before the rider taps anything — the whole
++  // point of a vertical list is comparing options without committing first.
++  const [packagesByCat,   setPackagesByCat]   = useState<Record<number, RentalPackage[]>>({})
+   const [pkgsLoading,     setPkgsLoading]     = useState(true)
++  // Which vehicle's accordion row is open. null = every row collapsed.
++  const [openCatId,       setOpenCatId]       = useState<number | null>(null)
+   const [selectedPkgId,   setSelectedPkgId]  = useState<number | null>(null)
++  const [userPickedPkg,   setUserPickedPkg]  = useState(false)
+   const [estimate,        setEstimate]        = useState<FareEstimate | null>(null)
+   const [estLoading,      setEstLoading]      = useState(false)
+   const [isBooking,       setIsBooking]       = useState(false)
+@@ -170,8 +182,6 @@ function RentalContent() {
+   // are coarse (hours/tens of km), so live traffic wouldn't change the pick but would
+   // double the routing cost per lookup.
+   const [trip, setTrip] = useState<{ km: number; min: number } | null>(null)
+-  // False while the route is in flight, so we don't preselect a package and then
+-  // immediately flip to the recommended one (fare flicker + wasted estimate call).
+   const [tripReady, setTripReady] = useState(false)
+   const stopsKey = stops.map(s => `${s.lat},${s.lng}`).join('|')
+   useEffect(() => {
+@@ -197,26 +207,19 @@ function RentalContent() {
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [hasOrigin, originLat, originLng, destLat, destLng, stopsKey])
+ 
+-  // Fetch packages whenever category changes; selection follows the recommendation
+-  // until the rider picks one themselves.
+-  const [userPickedPkg, setUserPickedPkg] = useState(false)
+-  const loadPackages = useCallback(async (catId: number, cityId: number | undefined) => {
++  // Fetch every category's packages in parallel whenever the category list or city changes.
++  const loadAllPackages = useCallback(async (cats: Category[], cityId: number | undefined) => {
+     setPkgsLoading(true)
+-    setPackages([])
+-    setSelectedPkgId(null)
+-    setUserPickedPkg(false)
+-    setEstimate(null)
+-    try {
+-      const pkgs = await rideApi.getRentalPackages(catId, cityId)
+-      setPackages(pkgs)
+-    } catch {
+-      setPackages([])
+-    } finally {
+-      setPkgsLoading(false)
+-    }
++    const entries = await Promise.allSettled(
++      cats.map(async cat => [cat.id, await rideApi.getRentalPackages(cat.id, cityId)] as const)
++    )
++    const next: Record<number, RentalPackage[]> = {}
++    for (const r of entries) if (r.status === 'fulfilled') next[r.value[0]] = r.value[1]
++    setPackagesByCat(next)
++    setPkgsLoading(false)
+   }, [])
+ 
+-  useEffect(() => { void loadPackages(selectedCatId, originCityId) }, [selectedCatId, originCityId, loadPackages])
++  useEffect(() => { void loadAllPackages(categories, originCityId) }, [categories, originCityId, loadAllPackages])
+ 
+   useEffect(() => {
+     if (!hasOrigin) router.replace('/home')
+@@ -228,63 +231,73 @@ function RentalContent() {
+     vehicleApi.getCategories().then(setCategories).catch(() => {})
+   }, [])
+ 
+-  // selectedCatId defaults to FALLBACK_CATEGORIES' sedan id, which may not
+-  // exist once the real list loads (categories can be added/removed/reordered
+-  // from admin) — re-point to the first available category instead of
+-  // leaving selectedCat unresolved.
++  // Default-open the sedan-equivalent row (or the first category) once the
++  // category list settles, so the sheet never opens fully collapsed.
+   useEffect(() => {
+-    if (categories.length > 0 && !categories.some(c => c.id === selectedCatId)) {
+-      setSelectedCatId(categories[0]!.id)
+-    }
+-  }, [categories, selectedCatId])
++    setOpenCatId(prev => {
++      if (prev !== null && categories.some(c => c.id === prev)) return prev
++      if (categories.length === 0) return null
++      return (categories.find(c => c.slug === 'sedan') ?? categories[0])!.id
++    })
++  }, [categories])
+ 
+-  // Fetch estimate whenever the selected package changes
+-  const estReq = useRef(0)
+-  const loadEstimate = useCallback(async (pkgId: number, catId: number) => {
+-    const reqId = ++estReq.current // drop responses from superseded selections
+-    setEstLoading(true)
+-    setEstimate(null)
+-    try {
+-      const est = await rideApi.getEstimate({
+-        categoryId:      catId,
+-        rideType:        'rental',
+-        rentalPackageId: pkgId,
+-        distanceKm:      0,
+-        durationMin:     0,
+-        originCityId,
+-      })
+-      if (reqId === estReq.current) setEstimate(est)
+-    } catch {
+-      if (reqId === estReq.current) setEstimate(null)
+-    } finally {
+-      if (reqId === estReq.current) setEstLoading(false)
+-    }
+-  }, [originCityId])
++  const openPackages = useMemo(
++    () => (openCatId !== null ? (packagesByCat[openCatId] ?? []) : []),
++    [openCatId, packagesByCat],
++  )
++  const recommendation = useMemo(
++    () => (trip ? recommendPackage(openPackages, trip.km, trip.min) : null),
++    [openPackages, trip],
++  )
+ 
++  // Selection follows the recommendation until the rider picks a package themselves,
++  // and resets whenever a different vehicle's row is opened.
+   useEffect(() => {
+-    if (selectedPkgId !== null) void loadEstimate(selectedPkgId, selectedCatId)
+-  }, [selectedPkgId, selectedCatId, loadEstimate])
++    if (userPickedPkg || !tripReady || openPackages.length === 0) { if (openPackages.length === 0) setSelectedPkgId(null); return }
++    setSelectedPkgId(recommendation?.packageId ?? openPackages[0]!.id)
++  }, [openCatId, openPackages, recommendation, userPickedPkg, tripReady])
+ 
+-  const recommendation = useMemo(
+-    () => (trip ? recommendPackage(packages, trip.km, trip.min) : null),
+-    [packages, trip],
+-  )
+   useEffect(() => {
+-    if (userPickedPkg || !tripReady || packages.length === 0) return
+-    setSelectedPkgId(recommendation?.packageId ?? packages[0]!.id)
+-  }, [packages, recommendation, userPickedPkg, tripReady])
++    if (selectedPkgId === null || openCatId === null) { setEstimate(null); return }
++    let cancelled = false
++    setEstLoading(true)
++    setEstimate(null)
++    rideApi.getEstimate({
++      categoryId:      openCatId,
++      rideType:        'rental',
++      rentalPackageId: selectedPkgId,
++      distanceKm:      0,
++      durationMin:     0,
++      originCityId,
++    })
++      .then(est => { if (!cancelled) setEstimate(est) })
++      .catch(() => { if (!cancelled) setEstimate(null) })
++      .finally(() => { if (!cancelled) setEstLoading(false) })
++    return () => { cancelled = true }
++  }, [selectedPkgId, openCatId, originCityId])
+ 
+-  const selectedCat = categories.find(c => c.id === selectedCatId)
+-  const selectedPkg = packages.find(p => p.id === selectedPkgId) ?? null
+-  const canBook     = selectedPkgId !== null && estimate !== null && !estLoading && !isBooking && hasDestination
++  function toggleCategory(catId: number) {
++    if (openCatId === catId) {
++      setOpenCatId(null)
++      setSelectedPkgId(null)
++      return
++    }
++    setOpenCatId(catId)
++    setUserPickedPkg(false)
++    setSelectedPkgId(null)
++  }
++
++  const selectedCat = categories.find(c => c.id === openCatId)
++  const selectedPkg = openPackages.find(p => p.id === selectedPkgId) ?? null
++  const canBook = openCatId !== null && selectedPkgId !== null && estimate !== null && !estLoading && !isBooking && hasDestination
+ 
+   async function handleBook() {
+-    if (selectedPkgId === null || !selectedPkg) return
++    if (openCatId === null || selectedPkgId === null || !selectedPkg) return
+     setIsBooking(true)
+     setBookError(null)
+     try {
+       const params: Parameters<typeof rideApi.createBooking>[0] = {
+-        categoryId:      selectedCatId,
++        categoryId:      openCatId,
+         rideType:        'rental',
+         originLat,
+         originLng,
+@@ -340,7 +353,7 @@ function RentalContent() {
+         <div className="flex-1 min-w-0">
+           <p className="text-[15px] font-bold text-slate-900 leading-tight">City Rides</p>
+           <div className="flex items-center gap-1 mt-0.5">
+-            <MapPin size={10} strokeWidth={2.5} className="text-violet-500 flex-shrink-0" />
++            <MapPin size={10} strokeWidth={2.5} className="text-primary flex-shrink-0" />
+             <p className="text-[11px] text-slate-400 truncate">{originAddress}</p>
+           </div>
+         </div>
+@@ -349,7 +362,7 @@ function RentalContent() {
+           className="flex items-center gap-1.5 h-11 pl-2.5 pr-2 rounded-full bg-slate-100 flex-shrink-0 max-w-[130px]"
+         >
+           <span className="w-5 h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
+-            <Users size={11} strokeWidth={2} className="text-violet-600" />
++            <Users size={11} strokeWidth={2} className="text-primary" />
+           </span>
+           <span className="text-xs font-semibold text-slate-800 truncate">
+             {bookingForOther ? riderName : 'For me'}
+@@ -371,262 +384,215 @@ function RentalContent() {
+         className="flex-1 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:hidden"
+         style={{ scrollbarWidth: 'none' }}
+       >
+-        <div className="px-4 pt-5 pb-6 space-y-6">
+-
+-          {/* Pickup time, own section, above vehicle/package selection */}
+-          <motion.section {...fadeUp(0)}>
+-            <PickupTimeChip
+-              value={scheduledFor}
+-              pickerOpen={schedulePickerOpen}
+-              onOpenPicker={() => setSchedulePickerOpen(true)}
+-              onClosePicker={() => setSchedulePickerOpen(false)}
+-              onChange={setScheduledFor}
+-            />
+-          </motion.section>
+-
+-          {/* Drop-off (required) */}
+-          <motion.section {...fadeUp(0)}>
++        <div className="px-4 pt-5 pb-6 space-y-5">
++
++          {/* Trip summary card: time + drop-off + stops unified into one glanceable card */}
++          <motion.section {...fadeUp(0)} className="rounded-2xl bg-white border border-border-light shadow-card p-3.5 space-y-2.5">
++            <div className="flex items-center justify-between">
++              <PickupTimeChip
++                value={scheduledFor}
++                pickerOpen={schedulePickerOpen}
++                onOpenPicker={() => setSchedulePickerOpen(true)}
++                onClosePicker={() => setSchedulePickerOpen(false)}
++                onChange={setScheduledFor}
++              />
++              {trip && (
++                <span className="text-[11px] font-semibold text-slate-400 tabular-nums">{trip.km} km · ~{formatDuration(trip.min)}</span>
++              )}
++            </div>
++            <div className="h-px bg-border-light" />
+             {hasDestination ? (
+-              <motion.button
+-                key="dest-chip"
+-                initial={{ opacity: 0, scale: 0.94 }}
+-                animate={{ opacity: 1, scale: 1 }}
+-                onClick={addDestination}
+-                className="w-full flex items-center gap-2.5 rounded-2xl px-4 py-3 text-left"
+-                style={{ background: '#F1F0FE', border: '1px solid #DDD9FB' }}
+-              >
+-                <Navigation size={13} strokeWidth={2.2} className="text-violet-600 flex-shrink-0" />
+-                <span className="flex-1 min-w-0 text-[12px] font-semibold text-violet-700 truncate">{destAddress}</span>
+-                <span className="text-[10px] font-bold text-violet-500 flex-shrink-0">Change</span>
+-              </motion.button>
++              <button onClick={addDestination} className="w-full flex items-center gap-2.5 text-left">
++                <Navigation size={13} strokeWidth={2.2} className="text-primary flex-shrink-0" />
++                <span className="flex-1 min-w-0 text-[13px] font-bold text-slate-900 truncate">{destAddress}</span>
++                <span className="text-[10px] font-bold text-primary flex-shrink-0">Change</span>
++              </button>
+             ) : (
+               <button
+                 onClick={addDestination}
+-                className="w-full flex items-center gap-2.5 rounded-2xl px-4 py-3 text-left transition-colors active:bg-slate-50"
++                className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors active:bg-slate-50"
+                 style={{ border: '1.5px dashed #CBD5E1' }}
+               >
+                 <Navigation size={13} strokeWidth={2.2} className="text-slate-400 flex-shrink-0" />
+                 <span className="flex-1 text-[12px] font-medium text-slate-400">Add a drop-off</span>
+               </button>
+             )}
++            <button
++              onClick={() => setAddStopOpen(true)}
++              className="w-full flex items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors active:bg-slate-50"
++              style={{ border: '1.5px dashed #CBD5E1' }}
++            >
++              <span className="text-slate-400 text-[13px] leading-none">+</span>
++              <span className="text-[12px] font-medium text-slate-400">Add a stop · optional</span>
++            </button>
+           </motion.section>
+ 
+-          {/* Plan your stops — free itinerary, never touches fare (§2.2 of the plan) */}
+-          <motion.section {...fadeUp(0)} className="space-y-2">
+-            <div className="px-1">
+-              <p className="text-[12px] font-bold" style={{ color: '#0F172A' }}>Plan your stops · optional</p>
+-              <p className="text-[11px] mt-0.5" style={{ color: '#64748B' }}>
+-                Tell your driver where you plan to go — you can always change your mind during the ride
+-              </p>
++          {rentalStopNodes.length > 1 && (
++            <motion.section {...fadeUp(0)}>
++              <RouteTimeline nodes={rentalStopNodes} />
++            </motion.section>
++          )}
++
++          {/* Vehicle list — every option visible on one vertical scroll. Tap a row to
++              open it; its package tiers render as chips inline, nothing hidden off-screen. */}
++          <motion.section {...fadeUp(0.04)} className="space-y-2">
++            <div className="flex items-baseline justify-between">
++              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Choose your ride</p>
++              <p className="text-[10px] font-semibold text-slate-400">{categories.length} options</p>
+             </div>
+-            <RouteTimeline nodes={rentalStopNodes} />
+-          </motion.section>
+ 
+-          {/* Vehicle category */}
+-          <motion.section {...fadeUp(0)}>
+-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
+-              Vehicle
+-            </p>
+-            <div className="grid grid-cols-5 gap-1.5">
+-              {categories.map(cat => {
+-                const active = cat.id === selectedCatId
+-                return (
++            {categories.map(cat => {
++              const isOpen = openCatId === cat.id
++              const pkgs = packagesByCat[cat.id] ?? []
++              const fromFare = pkgs.length > 0 ? Math.min(...pkgs.map(p => num(p.package_fare))) : null
++              const premium = isPremiumSlug(cat.slug)
++              const noPkgs = !pkgsLoading && pkgs.length === 0
++
++              return (
++                <div
++                  key={cat.id}
++                  className={cn(
++                    'rounded-2xl border overflow-hidden transition-all duration-150',
++                    isOpen ? 'border-primary shadow-float bg-white' : 'border-border-light bg-white'
++                  )}
++                >
+                   <button
+-                    key={cat.id}
+-                    onClick={() => setSelectedCatId(cat.id)}
+-                    className={cn(
+-                      'flex flex-col items-center gap-1 py-2.5 rounded-2xl border transition-all duration-150',
+-                      active
+-                        ? 'bg-violet-50 border-violet-300 shadow-sm'
+-                        : 'bg-slate-50 border-slate-100 active:bg-slate-100'
+-                    )}
++                    onClick={() => !noPkgs && toggleCategory(cat.id)}
++                    disabled={noPkgs}
++                    className={cn('w-full flex items-center gap-3 p-3 text-left', noPkgs && 'opacity-40 cursor-not-allowed')}
+                   >
+-                    <VehicleIcon slug={cat.slug} size={26} color={active ? '#0A9FB0' : '#64748B'} />
+-                    <span className={cn(
+-                      'text-[10px] font-semibold leading-none',
+-                      active ? 'text-violet-700' : 'text-slate-500'
+-                    )}>
+-                      {cat.display_name}
+-                    </span>
+-                    <span className={cn(
+-                      'flex items-center gap-0.5 text-[9px]',
+-                      active ? 'text-violet-400' : 'text-slate-400'
+-                    )}>
+-                      <Users size={8} strokeWidth={2.5} />
+-                      {cat.max_passengers}
+-                    </span>
+-                  </button>
+-                )
+-              })}
+-            </div>
+-          </motion.section>
+-
+-          {/* Package selector */}
+-          <motion.section {...fadeUp(0.06)}>
+-            <div className="flex items-baseline justify-between mb-3">
+-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
+-                Package
+-              </p>
+-              {trip && (
+-                <p className="text-[11px] font-medium text-slate-500 tabular-nums">
+-                  Your route · {trip.km} km · ~{formatDuration(trip.min)}
+-                </p>
+-              )}
+-            </div>
+-
+-            {pkgsLoading ? (
+-              <div className="space-y-2">
+-                {[1, 2].map(i => (
+-                  <div key={i} className="h-[72px] rounded-2xl bg-slate-100 animate-pulse" />
+-                ))}
+-              </div>
+-            ) : packages.length === 0 ? (
+-              <div className="h-16 rounded-2xl bg-slate-50 border border-dashed border-slate-200 flex items-center justify-center">
+-                <p className="text-sm text-slate-400">No packages for this vehicle type</p>
+-              </div>
+-            ) : (
+-              <div className="space-y-2">
+-                {packages.map(pkg => {
+-                  const active = pkg.id === selectedPkgId
+-                  const fare   = num(pkg.package_fare)
+-                  const xKm    = num(pkg.extra_per_km)
+-                  const xMin   = num(pkg.extra_per_min)
+-                  const isRec  = recommendation?.packageId === pkg.id
+-                  return (
+-                    <button
+-                      key={pkg.id}
+-                      onClick={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
++                    <div
+                       className={cn(
+-                        'relative w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all duration-150 text-left',
+-                        active
+-                          ? 'bg-violet-50 border-violet-300 shadow-sm'
+-                          : 'bg-slate-50 border-slate-100 active:bg-slate-100',
+-                        isRec && !active && 'border-violet-200',
+-                        isRec && 'mt-2.5'
++                        'w-[52px] h-11 rounded-xl flex items-center justify-center flex-shrink-0',
++                        premium ? '' : isOpen ? 'bg-primary-subtle' : 'bg-surface-2'
+                       )}
++                      style={premium ? { background: 'linear-gradient(135deg, #F3D9A6 0%, #E0B662 55%, #C9974A 100%)', boxShadow: '0 4px 12px rgba(201,151,74,0.30)' } : undefined}
+                     >
+-                      {isRec && (
+-                        <span
+-                          className="absolute -top-2.5 left-4 flex items-center gap-1 rounded-full px-2.5 py-[3px] text-[10px] font-bold tracking-wide text-white shadow-sm"
+-                          style={{ background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)' }}
+-                        >
+-                          <Sparkles size={9} strokeWidth={2.5} />
+-                          Recommended for your trip
+-                        </span>
+-                      )}
+-                      {/* Icon */}
+-                      <div className={cn(
+-                        'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0',
+-                        active ? 'bg-violet-100' : 'bg-white border border-slate-200'
+-                      )}>
+-                        <Clock size={16} strokeWidth={2} className={active ? 'text-violet-600' : 'text-slate-400'} />
+-                      </div>
++                      <VehicleIcon slug={cat.slug} size={26} color={premium ? '#FFFFFF' : isOpen ? '#0A9FB0' : '#64748B'} />
++                    </div>
+ 
+-                      {/* Details */}
+-                      <div className="flex-1 min-w-0">
+-                        <p className={cn(
+-                          'text-[14px] font-bold leading-tight',
+-                          active ? 'text-violet-900' : 'text-slate-900'
+-                        )}>
+-                          {formatDuration(pkg.duration_minutes)} · {pkg.km_limit} km
+-                        </p>
+-                        <p className="text-[11px] text-slate-400 mt-0.5">
+-                          Extra ₹{xKm}/km · ₹{xMin}/min beyond limit
+-                        </p>
++                    <div className="flex-1 min-w-0">
++                      <div className="flex items-center gap-1.5">
++                        <span className="text-[14px] font-bold text-slate-900">{cat.display_name}</span>
++                        {premium && (
++                          <span className="inline-flex items-center gap-1 text-[9.5px] font-bold tracking-wide px-1.5 py-0.5 rounded-full" style={{ color: '#8A6323', background: '#FBF3E6' }}>
++                            <Sparkles size={8} />PREMIUM FLEET
++                          </span>
++                        )}
+                       </div>
+-
+-                      {/* Price + radio */}
+-                      <div className="flex-shrink-0 flex items-center gap-2.5">
+-                        <p className={cn(
+-                          'text-[17px] font-black tabular-nums',
+-                          active ? 'text-violet-900' : 'text-slate-900'
+-                        )}>
+-                          ₹{Math.round(fare)}
+-                        </p>
+-                        <div className={cn(
+-                          'w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-150',
+-                          active ? 'border-violet-500' : 'border-slate-200'
+-                        )}>
+-                          {active && <div className="w-2.5 h-2.5 rounded-full bg-violet-500" />}
+-                        </div>
++                      <div className="flex items-center gap-1 mt-0.5 text-[11px] text-slate-400">
++                        <Users size={9} strokeWidth={2.5} />{cat.max_passengers} seats
+                       </div>
+-                    </button>
+-                  )
+-                })}
+-                {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) && (
+-                  <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3">
+-                    <Info size={14} strokeWidth={2.2} className="text-amber-600 mt-0.5 flex-shrink-0" />
+-                    <p className="text-[11.5px] leading-relaxed text-amber-800">
+-                      Your route (~{trip.km} km, {formatDuration(trip.min)}) is longer than our biggest package.
+-                      {recommendation.overKm > 0 && <> About {recommendation.overKm} km over</>}
+-                      {recommendation.overKm > 0 && recommendation.overMin > 0 && ' and'}
+-                      {recommendation.overMin > 0 && <> {formatDuration(recommendation.overMin)} over</>}
+-                      {' '}will be charged as extra.
+-                    </p>
+-                  </div>
+-                )}
+-              </div>
+-            )}
+-          </motion.section>
+-
+-          {/* Fare summary, only once a package is selected */}
+-          {selectedPkg && (
+-            <motion.section {...fadeUp(0.18)}>
+-              <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 space-y-3">
+-
+-                {/* Package header */}
+-                <div className="flex items-start justify-between gap-2">
+-                  <div>
+-                    <p className="text-[12px] font-semibold text-slate-700">
+-                      {selectedCat?.display_name} · {formatDuration(selectedPkg.duration_minutes)} / {selectedPkg.km_limit} km
+-                    </p>
+-                    <p className="text-[11px] text-slate-400 mt-0.5">
+-                      Overage charged at end of trip
+-                    </p>
+-                  </div>
+-                  {estimate != null && estimate.surge_multiplier > 1 && (
+-                    <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500 flex-shrink-0">
+-                      <Zap size={9} />{estimate.surge_multiplier}×
+-                    </span>
+-                  )}
+-                </div>
++                    </div>
+ 
+-                {/* Breakdown rows */}
+-                <div className="space-y-1.5">
+-                  <div className="flex justify-between text-[12px]">
+-                    <span className="text-slate-500">Package fare</span>
+-                    <span className="font-semibold text-slate-700">
+-                      ₹{Math.round(num(selectedPkg.package_fare))}
+-                    </span>
+-                  </div>
+-
+-                  {estimate != null && estimate.breakdown.surge_fare > 0 && (
+-                    <div className="flex justify-between text-[12px]">
+-                      <span className="text-amber-600">Surge ({estimate.surge_multiplier}×)</span>
+-                      <span className="font-semibold text-amber-600">
+-                        +₹{Math.round(estimate.breakdown.surge_fare)}
+-                      </span>
++                    <div className="text-right flex-shrink-0">
++                      {noPkgs ? (
++                        <span className="text-[11px] font-semibold text-slate-400">No packages</span>
++                      ) : pkgsLoading ? (
++                        <div className="w-16 h-4 rounded bg-slate-100 animate-pulse ml-auto" />
++                      ) : isOpen && selectedPkg ? (
++                        <span className="text-[15px] font-black text-slate-900 tabular-nums">₹{Math.round(num(selectedPkg.package_fare))}</span>
++                      ) : fromFare != null ? (
++                        <span className="text-[14px] font-black text-slate-900 tabular-nums">from ₹{Math.round(fromFare)}</span>
++                      ) : null}
+                     </div>
+-                  )}
++                    <ChevronDown size={14} strokeWidth={2.5} className={cn('text-slate-300 flex-shrink-0 transition-transform', isOpen && 'rotate-180 text-primary')} />
++                  </button>
+ 
+-                  <div className="h-px bg-slate-200 my-1" />
+-
+-                  <div className="flex justify-between items-baseline">
+-                    <span className="text-[13px] font-bold text-slate-900">Total</span>
+-                    {estLoading ? (
+-                      <div className="w-16 h-5 bg-slate-200 rounded animate-pulse" />
+-                    ) : estimate != null ? (
+-                      <span className="text-[19px] font-black text-violet-700 tabular-nums">
+-                        ₹<AnimatedNumber value={Math.round(estimate.breakdown.total)} />
+-                      </span>
+-                    ) : (
+-                      <span className="text-slate-400 text-sm">—</span>
++                  <AnimatePresence initial={false}>
++                    {isOpen && (
++                      <motion.div
++                        initial={{ height: 0, opacity: 0 }}
++                        animate={{ height: 'auto', opacity: 1 }}
++                        exit={{ height: 0, opacity: 0 }}
++                        transition={{ duration: 0.2, ease: EASE }}
++                        className="overflow-hidden"
++                      >
++                        <div className="mx-1.5 mb-1.5 rounded-xl bg-surface-2 p-3">
++                          {pkgsLoading ? (
++                            <div className="flex gap-2">
++                              {[1, 2, 3].map(i => <div key={i} className="h-12 w-20 rounded-xl bg-slate-100 animate-pulse" />)}
++                            </div>
++                          ) : (
++                            <>
++                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Package · {pkgs.length} tiers</p>
++                              <div className="flex gap-2 overflow-x-auto pt-3 pb-1 mb-3 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
++                                {pkgs.map(pkg => {
++                                  const active = pkg.id === selectedPkgId
++                                  const isRec = recommendation?.packageId === pkg.id
++                                  return (
++                                    <button
++                                      key={pkg.id}
++                                      onClick={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
++                                      className={cn(
++                                        'relative flex-shrink-0 px-3.5 py-2 rounded-xl text-center transition-all',
++                                        active ? 'bg-primary shadow-button' : 'bg-white border border-border-light'
++                                      )}
++                                    >
++                                      {isRec && (
++                                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-white text-primary-dark whitespace-nowrap shadow-sm">
++                                          BEST FIT
++                                        </span>
++                                      )}
++                                      <p className={cn('text-[11.5px] font-bold', active ? 'text-white' : 'text-slate-900')}>
++                                        {formatDuration(pkg.duration_minutes)}
++                                      </p>
++                                      <p className={cn('text-[9.5px]', active ? 'text-primary-light' : 'text-slate-400')}>
++                                        {pkg.km_limit} km
++                                      </p>
++                                    </button>
++                                  )
++                                })}
++                              </div>
++                              {selectedPkg && (
++                                <>
++                                  <div className="h-px bg-border-light mb-2.5" />
++                                  <div className="flex items-center justify-between">
++                                    <div className="min-w-0">
++                                      <p className="text-[11.5px] text-slate-500 font-medium truncate">
++                                        {formatDuration(selectedPkg.duration_minutes)} · {selectedPkg.km_limit} km ·{' '}
++                                        <span className="font-bold text-primary-dark">extra ₹{num(selectedPkg.extra_per_km)}/km</span>
++                                      </p>
++                                      {estimate != null && estimate.surge_multiplier > 1 && (
++                                        <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500 mt-0.5">
++                                          <Zap size={9} />{estimate.surge_multiplier}× surge
++                                        </span>
++                                      )}
++                                    </div>
++                                    {estLoading ? (
++                                      <div className="w-14 h-5 bg-slate-200 rounded animate-pulse flex-shrink-0" />
++                                    ) : estimate != null ? (
++                                      <span className="text-[19px] font-black text-primary tabular-nums flex-shrink-0">
++                                        ₹<AnimatedNumber value={Math.round(estimate.breakdown.total)} />
++                                      </span>
++                                    ) : (
++                                      <span className="text-slate-400 text-sm flex-shrink-0">—</span>
++                                    )}
++                                  </div>
++                                </>
++                              )}
++                              {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) && (
++                                <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5 mt-2.5">
++                                  <Info size={13} strokeWidth={2.2} className="text-amber-600 mt-0.5 flex-shrink-0" />
++                                  <p className="text-[11px] leading-relaxed text-amber-800">
++                                    Your route (~{trip.km} km, {formatDuration(trip.min)}) is longer than the biggest package.
++                                    {recommendation.overKm > 0 && <> About {recommendation.overKm} km over</>}
++                                    {recommendation.overKm > 0 && recommendation.overMin > 0 && ' and'}
++                                    {recommendation.overMin > 0 && <> {formatDuration(recommendation.overMin)} over</>}
++                                    {' '}will be charged as extra.
++                                  </p>
++                                </div>
++                              )}
++                            </>
++                          )}
++                        </div>
++                      </motion.div>
+                     )}
+-                  </div>
++                  </AnimatePresence>
+                 </div>
+-              </div>
+-            </motion.section>
+-          )}
++              )
++            })}
++          </motion.section>
+         </div>
+ 
+         <p className="mx-4 mb-2 text-[11px] font-medium leading-relaxed text-slate-400">
+@@ -648,7 +614,7 @@ function RentalContent() {
+             <span className="text-sm font-semibold text-slate-700">Cash</span>
+           </div>
+           <button
+-            className="text-xs font-bold text-violet-600"
++            className="text-xs font-bold text-primary"
+             onClick={() => { setPaymentNote('Cash only for now'); setTimeout(() => setPaymentNote(null), 2000) }}
+           >
+             Change
+@@ -663,11 +629,8 @@ function RentalContent() {
+         <button
+           onClick={handleBook}
+           disabled={!canBook}
+-          className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40"
+-          style={{
+-            background: 'linear-gradient(135deg, #0A9FB0 0%, #DC3E93 100%)',
+-            minHeight: 52,
+-          }}
++          className="w-full py-4 rounded-2xl text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-40 bg-gradient-primary shadow-button"
++          style={{ minHeight: 52 }}
+         >
+           {isBooking
+             ? 'Booking…'
+diff --git a/apps/user/app/(main)/search/page.tsx b/apps/user/app/(main)/search/page.tsx
+index 6927ad0..c1d2ea7 100644
+--- a/apps/user/app/(main)/search/page.tsx
++++ b/apps/user/app/(main)/search/page.tsx
+@@ -15,6 +15,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
+ import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
+ import { savedPlacesApi, type SavedPlace } from '@/lib/saved-places-api'
+ import { useLocation } from '@/lib/location-context'
++import { haversineMetres } from '@/lib/geo'
+ 
+ const EASE   = [0.22, 1, 0.36, 1] as const
+ const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
+@@ -43,6 +44,11 @@ const POPULAR = [
+   { Icon: Building2,      label: 'Infocity, Bhubaneswar',  address: 'Infocity, Patia, Bhubaneswar',     lat: 20.3474, lng: 85.8197 },
+ ]
+ 
++// Matches the `${km.toFixed(1)} km` convention used elsewhere (receipt, ride tracking).
++function formatDistance(metres: number): string {
++  return `${(metres / 1000).toFixed(1)} km`
++}
++
+ type EditMode = 'destination' | 'origin'
+ 
+ type ConfirmedDest = { lat: number; lng: number; address: string }
+@@ -666,6 +672,11 @@ function SearchContent() {
+                           <span className="block text-[11px] text-text-muted truncate mt-0.5">{s.secondaryText}</span>
+                         )}
+                       </span>
++                      {mode === 'destination' && s.distanceMetres !== undefined && (
++                        <span className="text-[11px] font-medium text-text-muted flex-shrink-0">
++                          {formatDistance(s.distanceMetres)}
++                        </span>
++                      )}
+                     </motion.button>
+                     {i < suggestions.length - 1 && (
+                       <div className="ml-12 border-t border-dashed border-border" />
+@@ -682,6 +693,7 @@ function SearchContent() {
+           <div className="mb-1">
+             {savedPlaces.map((p, i) => {
+               const SavedIcon = p.kind === 'home' ? Home : p.kind === 'work' ? Briefcase : MapPin
++              const showDist = mode === 'destination' && (originLat !== 0 || originLng !== 0)
+               return (
+                 <div key={p.id}>
+                   <motion.button
+@@ -704,6 +716,11 @@ function SearchContent() {
+                       <span className="block text-[13px] font-medium text-text-primary">{p.label}</span>
+                       <span className="block text-[11px] text-text-muted truncate mt-0.5">{p.address}</span>
+                     </span>
++                    {showDist && (
++                      <span className="text-[11px] font-medium text-text-muted flex-shrink-0">
++                        {formatDistance(haversineMetres([originLat, originLng], [p.latitude, p.longitude]))}
++                      </span>
++                    )}
+                   </motion.button>
+                   {i < savedPlaces.length - 1 && (
+                     <div className="ml-12 border-t border-dashed border-border" />
+@@ -717,29 +734,37 @@ function SearchContent() {
+         {/* Popular list, single mounted instance, NEVER re-animates on mode switch */}
+         {!showSuggestions && (
+           <div>
+-            {POPULAR.map((d, i) => (
+-              <div key={d.label}>
+-                <motion.button
+-                  onClick={() => mode === 'origin'
+-                    ? (setOriginLat(d.lat), setOriginLng(d.lng), setOriginAddress(d.address), switchMode('destination', true))
+-                    : confirmDest(d.lat, d.lng, d.address)
+-                  }
+-                  className="w-full flex items-center gap-3 px-1 py-3 text-left"
+-                  whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
+-                >
+-                  <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
+-                    <d.Icon size={15} strokeWidth={1.6} className="text-primary" />
+-                  </span>
+-                  <span className="flex-1 min-w-0">
+-                    <span className="block text-[13px] font-medium text-text-primary">{d.label}</span>
+-                    <span className="block text-[11px] text-text-muted truncate mt-0.5">{d.address}</span>
+-                  </span>
+-                </motion.button>
+-                {i < POPULAR.length - 1 && (
+-                  <div className="ml-12 border-t border-dashed border-border" />
+-                )}
+-              </div>
+-            ))}
++            {POPULAR.map((d, i) => {
++              const showDist = mode === 'destination' && (originLat !== 0 || originLng !== 0)
++              return (
++                <div key={d.label}>
++                  <motion.button
++                    onClick={() => mode === 'origin'
++                      ? (setOriginLat(d.lat), setOriginLng(d.lng), setOriginAddress(d.address), switchMode('destination', true))
++                      : confirmDest(d.lat, d.lng, d.address)
++                    }
++                    className="w-full flex items-center gap-3 px-1 py-3 text-left"
++                    whileTap={{ backgroundColor: '#F8FAFF' }} transition={SPRING}
++                  >
++                    <span className="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
++                      <d.Icon size={15} strokeWidth={1.6} className="text-primary" />
++                    </span>
++                    <span className="flex-1 min-w-0">
++                      <span className="block text-[13px] font-medium text-text-primary">{d.label}</span>
++                      <span className="block text-[11px] text-text-muted truncate mt-0.5">{d.address}</span>
++                    </span>
++                    {showDist && (
++                      <span className="text-[11px] font-medium text-text-muted flex-shrink-0">
++                        {formatDistance(haversineMetres([originLat, originLng], [d.lat, d.lng]))}
++                      </span>
++                    )}
++                  </motion.button>
++                  {i < POPULAR.length - 1 && (
++                    <div className="ml-12 border-t border-dashed border-border" />
++                  )}
++                </div>
++              )
++            })}
+           </div>
+         )}
+       </div>
+diff --git a/apps/user/lib/geo-api.ts b/apps/user/lib/geo-api.ts
+index f1e3026..4201b2f 100644
+--- a/apps/user/lib/geo-api.ts
++++ b/apps/user/lib/geo-api.ts
+@@ -5,6 +5,7 @@ export type PlaceSuggestion = {
+   description: string
+   mainText: string
+   secondaryText: string
++  distanceMetres?: number
+ }
+ 
+ export type PlaceDetail = {
+diff --git a/packages/mobile-shared/src/api/types.ts b/packages/mobile-shared/src/api/types.ts
+index 82803f1..3014ec5 100644
+--- a/packages/mobile-shared/src/api/types.ts
++++ b/packages/mobile-shared/src/api/types.ts
+@@ -127,6 +127,7 @@ export type RideHistoryItem = {
+ export type GeoAutocompleteResult = {
+   placeId: string
+   description: string
++  distanceMetres?: number
+ }
+ 
+ export type GeoPlaceDetail = {

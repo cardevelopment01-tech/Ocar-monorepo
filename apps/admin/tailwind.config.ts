@@ -50,6 +50,7 @@ const config: Config = {
       fontFamily: {
         sans: ['Plus Jakarta Sans', 'sans-serif'],
         display: ['Space Grotesk', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
       },
       fontSize: {
         xs:    ['11px', { lineHeight: '16px' }],

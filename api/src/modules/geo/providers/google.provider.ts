@@ -1,4 +1,5 @@
 import { config } from '@/config'
+import { logger } from '@/lib/logger'
 
 const BASE = 'https://maps.googleapis.com/maps/api'
 const ROUTES_API_BASE = 'https://routes.googleapis.com/directions/v2:computeRoutes'
@@ -9,6 +10,9 @@ export type PlaceSuggestion = {
   description: string
   mainText: string
   secondaryText: string
+  /** Straight-line distance from the biasing origin, in metres. Present only when
+   *  autocomplete() was called with lat/lng (Google's `origin` param triggers it). */
+  distanceMetres?: number
 }
 
 export type PlaceDetail = {
@@ -68,11 +72,11 @@ export type RouteOptions = {
   language?: string
   withSteps?: boolean
   trafficAware?: boolean
-  /** Also fetch congestion segments for a traffic-tinted route line (a second,
-   *  separate Routes API call — see getTrafficIntervals). Keep this off for
-   *  server-side-only ETA reads (e.g. rides.service.ts's logEtaSnapshot) that
-   *  only need trafficDurationMin/durationMin, so they don't pay for a second
-   *  API call whose result they never use. */
+  /** Also return congestion segments for a traffic-tinted route line (adds the
+   *  speedReadingIntervals field + TRAFFIC_ON_POLYLINE computation to the Routes API
+   *  request). Keep this off for server-side-only ETA reads (e.g. rides.service.ts's
+   *  logEtaSnapshot) that only need trafficDurationMin/durationMin — it costs latency
+   *  and a higher billing tier for data they never use. */
   withTrafficIntervals?: boolean
 }
 
@@ -84,7 +88,8 @@ async function gmapsGet(path: string, params: Record<string, string>): Promise<u
   const url = new URL(`${BASE}${path}`)
   url.searchParams.set('key', config.GOOGLE_MAPS_API_KEY)
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
-  const res = await fetch(url.toString())
+  // Bound every upstream call — without this a slow Google response hangs the request.
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) })
   if (!res.ok) throw Object.assign(new Error('Google Maps request failed'), { httpStatus: 502 })
   return res.json()
 }
@@ -104,6 +109,8 @@ export async function autocomplete(
   if (lat !== undefined && lng !== undefined) {
     params['location'] = `${lat},${lng}`
     params['radius'] = '200000'
+    // Triggers Google to compute straight-line distance_meters per prediction.
+    params['origin'] = `${lat},${lng}`
   } else {
     params['location'] = '20.9517,85.0985'
     params['radius'] = '300000'
@@ -115,6 +122,7 @@ export async function autocomplete(
       place_id: string
       description: string
       structured_formatting?: { main_text: string; secondary_text: string }
+      distance_meters?: number
     }>
   }>
 
@@ -128,6 +136,7 @@ export async function autocomplete(
     description: p.description,
     mainText: p.structured_formatting?.main_text ?? p.description,
     secondaryText: p.structured_formatting?.secondary_text ?? '',
+    ...(p.distance_meters !== undefined && { distanceMetres: p.distance_meters }),
   }))
 }
 
@@ -173,71 +182,135 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
   return body.results?.[0]?.formatted_address ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
 }
 
-// Separate call to the newer Routes API purely for per-segment congestion data —
-// the legacy Directions API used above for turn-by-turn steps has no equivalent
-// field. Best-effort only: on any failure, callers just get no traffic tinting,
-// never an error, since this is a cosmetic overlay on top of the real route.
-async function getTrafficIntervals(
+type RoutesApiRoute = {
+  distanceMeters?: number
+  duration?: string
+  staticDuration?: string
+  polyline?: { encodedPolyline?: string }
+  travelAdvisory?: {
+    speedReadingIntervals?: Array<{
+      startPolylinePointIndex?: number
+      endPolylinePointIndex?: number
+      speed?: string
+    }>
+  }
+  legs?: Array<{
+    steps?: Array<{
+      distanceMeters?: number
+      polyline?: { encodedPolyline?: string }
+      startLocation?: { latLng?: { latitude?: number; longitude?: number } }
+      endLocation?: { latLng?: { latitude?: number; longitude?: number } }
+      navigationInstruction?: { maneuver?: string; instructions?: string }
+    }>
+  }>
+}
+
+// Routes API maneuver enum (TURN_LEFT, ROUNDABOUT_RIGHT, ...) -> the kebab-case
+// vocabulary the driver app's ManeuverBanner/voice already keys on (turn-left,
+// roundabout-right, ...). undefined = no maneuver, caller picks straight/arrive.
+function mapManeuver(m?: string): string | undefined {
+  if (!m || m === 'MANEUVER_UNSPECIFIED') return undefined
+  if (m === 'STRAIGHT' || m === 'DEPART' || m === 'NAME_CHANGE' || m.startsWith('FERRY')) return 'straight'
+  return m.toLowerCase().replace(/_/g, '-')
+}
+
+// Routes API durations are protobuf strings like "1234s"; proto3 omits zero values.
+const durationMin = (d?: string): number => Math.round((d ? parseFloat(d) : 0) / 60)
+
+// One Routes API call returns distance, ETA (with and without traffic), turn-by-turn
+// steps and per-segment congestion together — replaces the old Directions call plus a
+// second Routes call for congestion. The field mask is built per request so we only
+// pay latency/billing for what the caller asked for. Returns null on any non-OK
+// result; the caller falls back to legacy Directions.
+async function computeRoute(
   originLat: number,
   originLng: number,
   destLat: number,
   destLng: number,
-  language: string,
-): Promise<{ polyline: string; intervals: TrafficInterval[] } | null> {
-  if (!config.GOOGLE_MAPS_API_KEY) return null
-  try {
-    const res = await fetch(ROUTES_API_BASE, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': config.GOOGLE_MAPS_API_KEY,
-        'X-Goog-FieldMask': 'routes.polyline.encodedPolyline,routes.travelAdvisory.speedReadingIntervals',
-      },
-      body: JSON.stringify({
-        origin:            { location: { latLng: { latitude: originLat, longitude: originLng } } },
-        destination:        { location: { latLng: { latitude: destLat, longitude: destLng } } },
-        travelMode:         'DRIVE',
-        routingPreference:  'TRAFFIC_AWARE',
-        extraComputations:  ['TRAFFIC_ON_POLYLINE'],
-        languageCode:       language,
-        units:              'METRIC',
-      }),
-      signal: AbortSignal.timeout(8000),
-    })
-    if (!res.ok) return null
+  opts?: RouteOptions,
+): Promise<RouteResult | null> {
+  // TRAFFIC_ON_POLYLINE is only valid with a traffic-aware preference. TRAFFIC_AWARE
+  // (not _OPTIMAL) is Google's lower-latency traffic mode; TRAFFIC_UNAWARE is the
+  // fastest and is all a plain distance/ETA read (booking check) needs.
+  const trafficAware = !!(opts?.trafficAware || opts?.withTrafficIntervals)
+  const fields = [
+    'routes.distanceMeters', 'routes.duration', 'routes.staticDuration',
+    'routes.polyline.encodedPolyline',
+  ]
+  if (opts?.withSteps) {
+    fields.push(
+      'routes.legs.steps.distanceMeters', 'routes.legs.steps.polyline.encodedPolyline',
+      'routes.legs.steps.startLocation', 'routes.legs.steps.endLocation',
+      'routes.legs.steps.navigationInstruction',
+    )
+  }
+  if (opts?.withTrafficIntervals) fields.push('routes.travelAdvisory.speedReadingIntervals')
 
-    const body = await res.json() as {
-      routes?: Array<{
-        polyline?: { encodedPolyline?: string }
-        travelAdvisory?: {
-          speedReadingIntervals?: Array<{
-            startPolylinePointIndex?: number
-            endPolylinePointIndex?: number
-            speed?: string
-          }>
-        }
-      }>
-    }
-
-    const route = body.routes?.[0]
-    const encoded = route?.polyline?.encodedPolyline
-    const rawIntervals = route?.travelAdvisory?.speedReadingIntervals
-    if (!encoded || !rawIntervals?.length) return null
-
-    const intervals: TrafficInterval[] = rawIntervals
-      .filter((i): i is typeof i & { speed: TrafficSpeed } =>
-        i.speed === 'NORMAL' || i.speed === 'SLOW' || i.speed === 'TRAFFIC_JAM')
-      .map(i => ({
-        startIndex: i.startPolylinePointIndex ?? 0,
-        endIndex:   i.endPolylinePointIndex ?? 0,
-        speed:      i.speed,
-      }))
-    if (!intervals.length) return null
-
-    return { polyline: encoded, intervals }
-  } catch {
+  const res = await fetch(ROUTES_API_BASE, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': config.GOOGLE_MAPS_API_KEY,
+      'X-Goog-FieldMask': fields.join(','),
+    },
+    body: JSON.stringify({
+      origin:            { location: { latLng: { latitude: originLat, longitude: originLng } } },
+      destination:       { location: { latLng: { latitude: destLat, longitude: destLng } } },
+      travelMode:        'DRIVE',
+      routingPreference: trafficAware ? 'TRAFFIC_AWARE' : 'TRAFFIC_UNAWARE',
+      ...(opts?.withTrafficIntervals && { extraComputations: ['TRAFFIC_ON_POLYLINE'] }),
+      languageCode:      opts?.language ?? 'en',
+      units:             'METRIC',
+    }),
+    signal: AbortSignal.timeout(5000),
+  })
+  if (!res.ok) {
+    logger.warn({ status: res.status }, 'geo.route: Routes API HTTP error')
     return null
   }
+
+  const route = ((await res.json()) as { routes?: RoutesApiRoute[] }).routes?.[0]
+  const polyline = route?.polyline?.encodedPolyline
+  if (!route || !polyline) return null
+
+  const result: RouteResult = {
+    distanceKm: Math.round(((route.distanceMeters ?? 0) / 1000) * 10) / 10,
+    // Legacy semantics: durationMin is the no-traffic ETA, trafficDurationMin the live one.
+    durationMin: durationMin(trafficAware ? route.staticDuration : route.duration),
+    polyline,
+    source: 'google',
+  }
+  if (opts?.trafficAware) result.trafficDurationMin = durationMin(route.duration)
+
+  if (opts?.withSteps) {
+    const steps = route.legs?.[0]?.steps ?? []
+    const lastIdx = steps.length - 1
+    result.steps = steps.map((s, i) => ({
+      instruction: s.navigationInstruction?.instructions ?? '',
+      distanceMetres: s.distanceMeters ?? 0,
+      maneuverType: mapManeuver(s.navigationInstruction?.maneuver) ?? (i === lastIdx ? 'arrive' : 'straight'),
+      startLat: s.startLocation?.latLng?.latitude ?? 0,
+      startLng: s.startLocation?.latLng?.longitude ?? 0,
+      endLat: s.endLocation?.latLng?.latitude ?? 0,
+      endLng: s.endLocation?.latLng?.longitude ?? 0,
+      polyline: s.polyline?.encodedPolyline ?? '',
+    }))
+  }
+
+  const intervals = (opts?.withTrafficIntervals ? route.travelAdvisory?.speedReadingIntervals ?? [] : [])
+    .filter((i): i is typeof i & { speed: TrafficSpeed } =>
+      i.speed === 'NORMAL' || i.speed === 'SLOW' || i.speed === 'TRAFFIC_JAM')
+    .map(i => ({
+      startIndex: i.startPolylinePointIndex ?? 0,
+      endIndex:   i.endPolylinePointIndex ?? 0,
+      speed:      i.speed,
+    }))
+  if (intervals.length) {
+    // Indices refer to this same route polyline, so trafficPolyline === polyline now.
+    result.trafficPolyline = polyline
+    result.trafficIntervals = intervals
+  }
+  return result
 }
 
 export async function getRoute(
@@ -247,8 +320,17 @@ export async function getRoute(
   destLng: number,
   opts?: RouteOptions,
 ): Promise<RouteResult> {
-  // 1. Try Google Directions (best quality, needs key + Directions API enabled)
   if (config.GOOGLE_MAPS_API_KEY) {
+    // 1. Routes API — single call for route + steps + traffic (needs Routes API enabled)
+    try {
+      const route = await computeRoute(originLat, originLng, destLat, destLng, opts)
+      if (route) return route
+    } catch (err) {
+      logger.warn({ err }, 'geo.route: Routes API failed, trying legacy Directions')
+    }
+
+    // 2. Legacy Directions — safety net if the Routes API is disabled/blocked for the
+    // key. No congestion overlay on this tier.
     try {
       const params: Record<string, string> = {
         origin:      `${originLat},${originLng}`,
@@ -302,16 +384,12 @@ export async function getRoute(
             polyline: s.polyline.points,
           }))
         }
-        if (opts?.withTrafficIntervals) {
-          const traffic = await getTrafficIntervals(originLat, originLng, destLat, destLng, opts?.language ?? 'en')
-          if (traffic) {
-            result.trafficPolyline = traffic.polyline
-            result.trafficIntervals = traffic.intervals
-          }
-        }
         return result
       }
-    } catch { /* fall through to OSRM */ }
+      logger.warn({ status: body.status }, 'geo.route: Google Directions not OK, falling back to OSRM')
+    } catch (err) {
+      logger.warn({ err }, 'geo.route: Google Directions failed, falling back to OSRM')
+    }
   }
 
   // 2. OSRM fallback — free, no key, real road geometry via OpenStreetMap

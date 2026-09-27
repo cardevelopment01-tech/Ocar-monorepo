@@ -8,13 +8,15 @@ export type PlaceRowProps = {
   address: string
   onPress: () => void
   last?: boolean
+  /** Pre-formatted distance from pickup (e.g. "3.2 km"), shown right-aligned. */
+  distance?: string | undefined
 }
 
 // One shared row shape for live autocomplete results, recent searches, and
 // favourite (saved) places -- all three lists in the redesigned search screen
 // render through this, so switching between them never changes row height,
 // icon size, or spacing (the exact instability this replaced).
-export function PlaceRow({ icon, label, address, onPress, last }: PlaceRowProps) {
+export function PlaceRow({ icon, label, address, onPress, last, distance }: PlaceRowProps) {
   return (
     <View>
       <Pressable
@@ -30,6 +32,7 @@ export function PlaceRow({ icon, label, address, onPress, last }: PlaceRowProps)
           <Text style={styles.label} numberOfLines={1}>{label}</Text>
           <Text style={styles.address} numberOfLines={1}>{address}</Text>
         </View>
+        {distance ? <Text style={styles.distance}>{distance}</Text> : null}
       </Pressable>
       {!last ? <View style={styles.divider} /> : null}
     </View>
@@ -43,5 +46,6 @@ const styles = StyleSheet.create({
   textCol: { flex: 1, gap: 1 },
   label: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   address: { ...typography.caption, color: colors.ink400 },
+  distance: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold, flexShrink: 0 },
   divider: { marginLeft: 40 + spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderLight, borderStyle: 'dashed' },
 })
