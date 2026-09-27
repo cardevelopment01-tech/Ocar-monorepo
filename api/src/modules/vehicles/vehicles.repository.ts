@@ -13,10 +13,21 @@ export async function getCategories(): Promise<VehicleCategory[]> {
   ) as Promise<VehicleCategory[]>
 }
 
+// Client-requested display order (not alphabetical): auto, hatchback, sedan, suv, luxury, van.
+const CATEGORY_DISPLAY_ORDER = ['auto_rickshaw', 'hatchback', 'sedan', 'suv', 'luxury', 'van']
+
 async function fetchAllVehicleCategoriesFromDb(): Promise<VehicleCategory[]> {
-  return query<VehicleCategory>(
-    'SELECT id::int, slug, display_name, max_passengers, is_active FROM vehicle_categories WHERE is_active = true ORDER BY display_name'
+  const categories = await query<VehicleCategory>(
+    'SELECT id::int, slug, display_name, max_passengers, is_active FROM vehicle_categories WHERE is_active = true'
   )
+  return categories.sort((a, b) => {
+    const ai = CATEGORY_DISPLAY_ORDER.indexOf(a.slug)
+    const bi = CATEGORY_DISPLAY_ORDER.indexOf(b.slug)
+    if (ai === -1 && bi === -1) return a.display_name.localeCompare(b.display_name)
+    if (ai === -1) return 1
+    if (bi === -1) return -1
+    return ai - bi
+  })
 }
 
 export async function getBrands(): Promise<VehicleBrand[]> {
