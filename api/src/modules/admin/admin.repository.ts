@@ -2121,11 +2121,11 @@ export async function getRideLinkedSafety(rideId: bigint) {
 export async function listAdminRentalPackages(cityId: number | null) {
   if (cityId === null) {
     const res = await pool.query(
-      `SELECT rp.id, rp.category_id, vc.display_name AS category_name, vc.slug AS category_slug,
+      `SELECT rp.id::int AS id, rp.category_id::int AS category_id, vc.display_name AS category_name, vc.slug AS category_slug,
               rp.duration_minutes, rp.km_limit, rp.display_order,
               rp.package_fare::text, rp.extra_per_km::text, rp.extra_per_min::text,
-              rp.is_active, rp.city_id, c.name AS city_name,
-              rp.updated_by, rp.created_at, rp.updated_at
+              rp.is_active, rp.city_id::int AS city_id, c.name AS city_name,
+              rp.updated_by::int AS updated_by, rp.created_at, rp.updated_at
        FROM rental_packages rp
        JOIN vehicle_categories vc ON vc.id = rp.category_id
        LEFT JOIN cities c ON c.id = rp.city_id
@@ -2138,11 +2138,11 @@ export async function listAdminRentalPackages(cityId: number | null) {
   const res = await pool.query(
     `SELECT * FROM (
        SELECT DISTINCT ON (rp.category_id, rp.duration_minutes, rp.km_limit)
-              rp.id, rp.category_id, vc.display_name AS category_name, vc.slug AS category_slug,
+              rp.id::int AS id, rp.category_id::int AS category_id, vc.display_name AS category_name, vc.slug AS category_slug,
               rp.duration_minutes, rp.km_limit, rp.display_order,
               rp.package_fare::text, rp.extra_per_km::text, rp.extra_per_min::text,
-              rp.is_active, rp.city_id, c.name AS city_name,
-              rp.updated_by, rp.created_at, rp.updated_at
+              rp.is_active, rp.city_id::int AS city_id, c.name AS city_name,
+              rp.updated_by::int AS updated_by, rp.created_at, rp.updated_at
        FROM rental_packages rp
        JOIN vehicle_categories vc ON vc.id = rp.category_id
        LEFT JOIN cities c ON c.id = rp.city_id
@@ -2212,9 +2212,9 @@ export async function updateAdminRentalPackage(
 
   const res = await pool.query(
     `UPDATE rental_packages SET ${sets.join(", ")} WHERE id = $${p} RETURNING
-       id, category_id, duration_minutes, km_limit, display_order,
+       id::int AS id, category_id::int AS category_id, duration_minutes, km_limit, display_order,
        package_fare::text, extra_per_km::text, extra_per_min::text,
-       is_active, city_id, updated_by, created_at, updated_at`,
+       is_active, city_id::int AS city_id, updated_by::int AS updated_by, created_at, updated_at`,
     params,
   );
   const row = res.rows[0] as AdminRentalPackage | undefined;
@@ -2250,9 +2250,9 @@ export async function createAdminRentalPackage(
        (category_id, duration_minutes, km_limit, package_fare, extra_per_km, extra_per_min, display_order, city_id, updated_by)
      VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 100), $8, $9)
      RETURNING
-       id, category_id, duration_minutes, km_limit, display_order,
+       id::int AS id, category_id::int AS category_id, duration_minutes, km_limit, display_order,
        package_fare::text, extra_per_km::text, extra_per_min::text,
-       is_active, city_id, updated_by, created_at, updated_at`,
+       is_active, city_id::int AS city_id, updated_by::int AS updated_by, created_at, updated_at`,
     [
       fields.category_id,
       fields.duration_minutes,

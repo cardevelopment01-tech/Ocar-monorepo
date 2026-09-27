@@ -165,11 +165,11 @@ function UpdateRateDialog({
             {defaultCityId !== undefined && defaultCityId !== null ? 'Override ' : 'Update '}
             {card.category_name} · {RIDE_TYPE_LABEL[card.ride_type]}
           </Dialog.Title>
-          <p className="text-xs text-warning bg-warning-light border border-warning/20 rounded-xl px-3 py-2 mb-5">
+          <Dialog.Description className="text-xs text-warning bg-warning-light border border-warning/20 rounded-xl px-3 py-2 mb-5">
             {cityChanged
               ? `You're creating/updating ${selectedCityName}'s rate. ${originalCityName}'s current rate for this row is unaffected.`
               : 'Creates a new rate card and expires the current one. All future rides use the new rate.'}
-          </p>
+          </Dialog.Description>
           <form onSubmit={submit} className="space-y-3">
             <div>
               <label className={labelCls}>City</label>
@@ -320,7 +320,10 @@ function CreateSurgeDialog({
                 exit={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               >
-          <Dialog.Title className="text-lg font-bold text-text-primary mb-5">Schedule Surge Event</Dialog.Title>
+          <Dialog.Title className="text-lg font-bold text-text-primary mb-1">Schedule Surge Event</Dialog.Title>
+          <Dialog.Description className="text-xs text-text-muted mb-5">
+            Multiplies fares for the selected city and window. Existing rides in progress are unaffected.
+          </Dialog.Description>
           <form onSubmit={submit} className="space-y-4">
             <div>
               <label className={labelCls}>City *</label>
@@ -637,7 +640,7 @@ export default function RateCardsPage() {
               <button onClick={() => setRetry(r => r + 1)} className="btn-secondary">Retry</button>
             </div>
           ) : loading ? (
-            <div className="grid grid-cols-[208px_1fr] gap-5">
+            <div className="grid grid-cols-1 lg:grid-cols-[208px_1fr] gap-5">
               <div className="admin-card !p-3 h-64" />
               <div className="admin-card !p-0 overflow-hidden">
                 <table className="data-table"><tbody><SkeletonRows cols={6} n={6} /></tbody></table>
@@ -646,7 +649,7 @@ export default function RateCardsPage() {
           ) : cards.length === 0 ? (
             <div className="admin-card text-center py-8 text-text-muted text-sm">No rate cards configured yet.</div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-[208px_1fr] gap-5 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-[208px_1fr] gap-5 items-start">
               <CityRail cities={cities} cards={cards} selectedCityId={selectedCityId} onSelect={setSelectedCityId} />
 
               <div className="space-y-4">
@@ -895,9 +898,9 @@ function CreateRateCardDialog({
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               >
           <Dialog.Title className="text-lg font-bold text-text-primary mb-1">Add City Rate Override</Dialog.Title>
-          <p className="text-xs text-text-muted mb-5">
+          <Dialog.Description className="text-xs text-text-muted mb-5">
             Creates a city-specific rate that takes priority over the global default for that city only.
-          </p>
+          </Dialog.Description>
           <form onSubmit={submit} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
