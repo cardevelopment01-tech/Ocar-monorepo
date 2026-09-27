@@ -10,6 +10,7 @@ describe('resolvePushRoute (driver-mobile)', () => {
   it('routes already-active-ride types straight to the active-ride screen', () => {
     expect(resolvePushRoute({ type: 'ride_force_assigned', rideId: '42' })).toBe('/active-ride/42')
     expect(resolvePushRoute({ type: 'stop_added', rideId: '42' })).toBe('/active-ride/42')
+    expect(resolvePushRoute({ type: 'pickup_updated', rideId: '42' })).toBe('/active-ride/42')
   })
 
   it('routes chat notifications into the chat sub-screen', () => {

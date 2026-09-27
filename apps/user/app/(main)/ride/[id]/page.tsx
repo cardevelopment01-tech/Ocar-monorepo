@@ -21,6 +21,12 @@ import AddStopSheet, { type PickedStop } from '@/components/route/AddStopSheet'
 import { SHEET_SPRING } from '@/lib/motion'
 
 const RideMapScene = dynamic(() => import('@/components/map/RideMapScene'), { ssr: false })
+const EditPickupSheet = dynamic(() => import('./EditPickupSheet'), { ssr: false })
+
+// Statuses where the pickup point can still be corrected — must mirror the
+// api's PICKUP_EDITABLE_STATUSES (api/src/modules/rides/rides.service.ts).
+// Once the driver has arrived, "where do I pick you up" no longer applies.
+const PICKUP_EDITABLE_STATUSES = new Set(['requested', 'accepted'])
 
 const PICKUP = { lat: 20.2961, lng: 85.8245 }
 const DROP   = { lat: 20.2726, lng: 85.8385 }
@@ -333,6 +339,10 @@ export default function RidePage() {
   const [reportSent,     setReportSent]     = useState(false)
   const [addStopError,   setAddStopError]   = useState<string | null>(null)
   const [showUpgradeToast, setShowUpgradeToast] = useState(false)
+  const [editPickupOpen, setEditPickupOpen] = useState(false)
+  const [pickupUpdating, setPickupUpdating] = useState(false)
+  const [pickupError,    setPickupError]    = useState<string | null>(null)
+  const [pickupToast,    setPickupToast]    = useState(false)
   const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastFetch      = useRef<{ mode: RouteMode; origin: [number, number]; dest: [number, number]; at: number; stopsKey: string } | null>(null)
   const fetchSeq       = useRef(0)
@@ -456,6 +466,33 @@ export default function RidePage() {
           : "Couldn't add that stop. Please try again.",
       )
       setTimeout(() => setAddStopError(null), 5000)
+    }
+  }
+
+  async function handleUpdatePickup(pickup: { lat: number; lng: number; address: string | null }) {
+    setPickupUpdating(true)
+    setPickupError(null)
+    try {
+      const updated = await rideApi.updatePickup(rideId, pickup)
+      setRide(prev => prev ? {
+        ...prev,
+        origin_lat: updated.origin_lat,
+        origin_lng: updated.origin_lng,
+        origin_address: updated.origin_address,
+      } : prev)
+      setEditPickupOpen(false)
+      setPickupToast(true)
+      setTimeout(() => setPickupToast(false), 2600)
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined
+      const serverMessage = axios.isAxiosError(err) ? (err.response?.data as { error?: string } | undefined)?.error : undefined
+      setPickupError(
+        (status === 409 || status === 422) && serverMessage
+          ? serverMessage
+          : "Couldn't update pickup. Please try again."
+      )
+    } finally {
+      setPickupUpdating(false)
     }
   }
 
@@ -836,6 +873,14 @@ export default function RidePage() {
 
         {(rideStatus === 'accepted' || rideStatus === 'driver_arrived' || rideStatus === 'in_progress') && (
           <div className="absolute top-20 right-4 z-20 flex flex-col items-end gap-1.5" style={{ marginTop: 'env(safe-area-inset-top)' }}>
+            {PICKUP_EDITABLE_STATUSES.has(rideStatus) && (
+              <button
+                onClick={() => setEditPickupOpen(true)}
+                className="px-3 py-2 rounded-full bg-white shadow-md text-xs font-semibold text-slate-700 active:scale-95 transition-transform"
+              >
+                Edit pickup
+              </button>
+            )}
             <button
               onClick={() => setAddStopOpen(true)}
               className="px-3 py-2 rounded-full bg-white shadow-md text-xs font-semibold text-slate-700 active:scale-95 transition-transform"
@@ -847,6 +892,22 @@ export default function RidePage() {
                 {addStopError}
               </span>
             )}
+          </div>
+        )}
+        {rideStatus === 'requested' && (
+          <div className="absolute top-20 right-4 z-20" style={{ marginTop: 'env(safe-area-inset-top)' }}>
+            <button
+              onClick={() => setEditPickupOpen(true)}
+              className="px-3 py-2 rounded-full bg-white shadow-md text-xs font-semibold text-slate-700 active:scale-95 transition-transform"
+            >
+              Edit pickup
+            </button>
+          </div>
+        )}
+
+        {pickupToast && (
+          <div className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-4 py-2.5 rounded-full bg-slate-900 text-white text-xs font-semibold shadow-lg" style={{ bottom: 280 }}>
+            Pickup updated{ride?.driver_id ? ' — driver notified' : ''}
           </div>
         )}
       </div>
@@ -1180,6 +1241,19 @@ export default function RidePage() {
         onClose={() => setAddStopOpen(false)}
         onSelect={handleAddStop}
         title="Add a stop"
+      />
+
+      <EditPickupSheet
+        open={editPickupOpen}
+        onClose={() => setEditPickupOpen(false)}
+        originLat={pickupPos[0]}
+        originLng={pickupPos[1]}
+        originAddress={ride?.origin_address ?? null}
+        userPos={userPos}
+        driverAssigned={!!ride?.driver_id}
+        confirming={pickupUpdating}
+        error={pickupError}
+        onConfirm={handleUpdatePickup}
       />
 
       {showCancelSheet && (

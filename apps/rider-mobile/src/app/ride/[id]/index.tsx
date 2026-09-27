@@ -15,6 +15,7 @@ import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
 import { StatusBanner } from '@/features/ride-tracking/components/StatusBanner'
 import { CancelSheet } from '@/features/ride-tracking/components/CancelSheet'
 import { AddStopSheet } from '@/features/ride-tracking/components/AddStopSheet'
+import { EditPickupSheet } from '@/features/ride-tracking/components/EditPickupSheet'
 import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { TripDetailsCard } from '@/features/ride-tracking/components/TripDetailsCard'
 import { FareDriftToast, UpgradeToast } from '@/features/ride-tracking/components/Toasts'
@@ -22,9 +23,15 @@ import { CashCollectionBanner } from '@/features/ride-tracking/components/CashCo
 import { ReconnectBanner } from '@/features/ride-tracking/components/ReconnectBanner'
 import { DriverCancelledBanner } from '@/features/ride-tracking/components/DriverCancelledBanner'
 import { useRideTracking } from '@/features/ride-tracking/useRideTracking'
-import { cancelRide, addStop, type StopInput } from '@/features/ride-tracking/api'
+import { cancelRide, addStop, updatePickup, type StopInput } from '@/features/ride-tracking/api'
 import { ASSIGNED_STATUSES, IN_PROGRESS_STATUSES, SEARCHING_STATUSES } from '@/features/ride-tracking/types'
 import type { StatusKey } from '@/features/ride-tracking/statusConfig'
+import { resolveBookingError } from '@/features/booking/api'
+import { PickupUpdatedToast } from '@/features/ride-tracking/components/Toasts'
+
+// Mirrors api/src/modules/rides/rides.service.ts's PICKUP_EDITABLE_STATUSES --
+// once the driver has arrived, "where do I pick you up" no longer applies.
+const PICKUP_EDITABLE_STATUSES = new Set(['requested', 'accepted'])
 
 const STALE_LOCATION_MS = 3 * 60 * 1000
 // Caps the docked sheet so the map always stays the dominant element, even
@@ -59,6 +66,10 @@ export default function RideTrackingScreen() {
   const [showCancelSheet, setShowCancelSheet] = useState(false)
   const [addStopOpen, setAddStopOpen] = useState(false)
   const [addStopError, setAddStopError] = useState<string | null>(null)
+  const [editPickupOpen, setEditPickupOpen] = useState(false)
+  const [pickupUpdating, setPickupUpdating] = useState(false)
+  const [pickupError, setPickupError] = useState<string | null>(null)
+  const [pickupToast, setPickupToast] = useState(false)
   const [detailsExpanded, setDetailsExpanded] = useState(false)
 
   // Sheet entrance: a plain fade + 40px rise (not a spring) -- same treatment
@@ -110,6 +121,22 @@ export default function RideTrackingScreen() {
     }
   }
 
+  async function handleUpdatePickup(pickup: { lat: number; lng: number; address: string | null }) {
+    setPickupUpdating(true)
+    setPickupError(null)
+    try {
+      await updatePickup(rideId, pickup)
+      setEditPickupOpen(false)
+      setPickupToast(true)
+      setTimeout(() => setPickupToast(false), 2600)
+      retry()
+    } catch (err) {
+      setPickupError(resolveBookingError(err))
+    } finally {
+      setPickupUpdating(false)
+    }
+  }
+
   if (driverCancelled) {
     return <DriverCancelledBanner />
   }
@@ -144,6 +171,7 @@ export default function RideTrackingScreen() {
   const canCall = ride.status === 'accepted' || ride.status === 'driver_arrived' || ride.status === 'in_progress'
   const canAddStop = ride.status === 'accepted' || ride.status === 'driver_arrived' || ride.status === 'in_progress'
   const canCancel = ride.status === 'accepted' || ride.status === 'driver_arrived'
+  const canEditPickup = PICKUP_EDITABLE_STATUSES.has(ride.status)
   const fare = ride.totalFinal != null
     ? `₹${Math.round(parseFloat(ride.totalFinal))}`
     : ride.totalEstimated != null ? `₹${Math.round(parseFloat(ride.totalEstimated))}` : null
@@ -184,6 +212,7 @@ export default function RideTrackingScreen() {
           showsVerticalScrollIndicator={false}
         >
           {upgradeCategory ? <UpgradeToast categoryName={upgradeCategory} /> : null}
+          {pickupToast ? <PickupUpdatedToast driverNotified={!!ride.driverId} /> : null}
           {fareDrift ? (
             <FareDriftToast previousFare={fareDrift.previousFare} currentFare={fareDrift.currentFare} onDismiss={dismissFareDrift} />
           ) : null}
@@ -202,6 +231,14 @@ export default function RideTrackingScreen() {
                 style={styles.cancelButton}
               >
                 <Text style={styles.cancelButtonText}>{cancelling ? 'Cancelling…' : 'Cancel request'}</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setEditPickupOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Edit pickup location"
+                style={styles.editPickupLink}
+              >
+                <Text style={styles.editPickupLinkText}>Edit pickup</Text>
               </Pressable>
             </View>
           ) : null}
@@ -227,6 +264,7 @@ export default function RideTrackingScreen() {
             <RideActions
               actions={[
                 { key: 'details', label: detailsExpanded ? 'Hide details' : 'Trip details', icon: detailsExpanded ? 'chevron-up' : 'file-text', onPress: () => setDetailsExpanded((v) => !v) },
+                ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
                 ...(canAddStop ? [{ key: 'stop', label: 'Add stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),
                 ...(canCancel ? [{ key: 'cancel', label: 'Cancel ride', icon: 'x-circle' as const, destructive: true, onPress: () => setShowCancelSheet(true) }] : []),
               ]}
@@ -284,6 +322,18 @@ export default function RideTrackingScreen() {
         onClose={() => setAddStopOpen(false)}
         onSelect={handleAddStop}
       />
+      <EditPickupSheet
+        visible={editPickupOpen}
+        originLat={ride.originLat}
+        originLng={ride.originLng}
+        originAddress={ride.originAddress}
+        userPos={riderLat != null && riderLng != null ? [riderLat, riderLng] : null}
+        driverAssigned={ride.driverId != null}
+        confirming={pickupUpdating}
+        error={pickupError}
+        onClose={() => setEditPickupOpen(false)}
+        onConfirm={handleUpdatePickup}
+      />
     </View>
   )
 }
@@ -316,6 +366,8 @@ const styles = StyleSheet.create({
   cancelButtonText: { ...typography.body, color: colors.error, fontFamily: fonts.semibold },
   cancelLink: { alignItems: 'center', paddingVertical: spacing.xs },
   cancelLinkText: { ...typography.label, color: colors.error, fontFamily: fonts.bold },
+  editPickupLink: { alignItems: 'center', paddingVertical: spacing.xs },
+  editPickupLinkText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
   detailsExpanded: { gap: spacing.sm },
   // Floats on the map, top-right below the "Add stop" pill.
   addStopBtn: {

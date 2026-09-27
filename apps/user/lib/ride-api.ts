@@ -291,6 +291,14 @@ export const rideApi = {
     return res.data
   },
 
+  updatePickup: async (
+    rideId: string,
+    pickup: { lat: number; lng: number; address: string | null }
+  ): Promise<{ origin_lat: number; origin_lng: number; origin_address: string | null }> => {
+    const res = await api.patch(`/api/v1/rides/${rideId}/pickup`, pickup)
+    return res.data
+  },
+
   cancelRide: async (rideId: string, reasonCode?: string, reason?: string): Promise<void> => {
     const body: Record<string, string> = {}
     if (reasonCode !== undefined) body['reasonCode'] = reasonCode
