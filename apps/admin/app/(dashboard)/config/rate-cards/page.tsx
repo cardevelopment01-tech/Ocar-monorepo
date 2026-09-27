@@ -396,9 +396,12 @@ function StatusPillRideType({ type }: { type: string }) {
   return <span className={cls}>{RIDE_TYPE_LABEL[type] ?? type}</span>
 }
 
-// ── City navigation rail ─────────────────────────────────────────────────────
+// ── City pill bar ─────────────────────────────────────────────────────────────
+// A horizontal, single-row switcher instead of a tall vertical rail: every city
+// (+ its override count) stays visible at a glance without needing `sticky`
+// positioning to survive scrolling past a tall category table.
 
-function CityRail({
+function CityPillBar({
   cities, cards, selectedCityId, onSelect,
 }: {
   cities: AdminCity[]
@@ -408,42 +411,39 @@ function CityRail({
 }) {
   const globalCount = cards.filter(c => c.city_id === null).length
   return (
-    <div className="admin-card !p-2 sticky top-5">
-      <p className="text-[11px] font-semibold text-text-muted px-2.5 pt-1.5 pb-1.5">View rates for</p>
-      <button
-        onClick={() => onSelect(null)}
-        className={`w-full flex items-center justify-between gap-2 px-2.5 py-2.5 rounded-xl text-sm font-semibold mb-0.5 transition-colors ${
-          selectedCityId === null ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-2'
-        }`}
-      >
-        Global Defaults
-        <span className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded-full ${selectedCityId === null ? 'bg-white/20 text-white' : 'bg-surface-3 text-text-secondary'}`}>
-          {globalCount} rows
-        </span>
-      </button>
-      <div className="h-px bg-border-light my-1.5 mx-1" />
-      {cities.filter(c => c.status === 'active').map(city => {
-        const count = cards.filter(c => c.city_id === city.id).length
-        const active = selectedCityId === city.id
-        return (
-          <button
-            key={city.id}
-            onClick={() => onSelect(city.id)}
-            className={`w-full flex items-center justify-between gap-2 px-2.5 py-2.5 rounded-xl text-sm font-semibold mb-0.5 transition-colors ${
-              active ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-2'
-            }`}
-          >
-            {city.name}
-            <span className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded-full ${active ? 'bg-white/20 text-white' : count > 0 ? 'bg-primary-light text-primary' : 'bg-surface-3 text-text-muted opacity-60'}`}>
-              {count} override{count === 1 ? '' : 's'}
-            </span>
-          </button>
-        )
-      })}
-      <div className="h-px bg-border-light my-1.5 mx-1" />
-      <p className="px-2.5 pb-1 pt-1 text-[11px] leading-relaxed text-text-muted">
-        Global rows apply to any city without its own override.
-      </p>
+    <div className="sticky top-0 z-10 -mx-1 px-1 py-2 bg-bg/95 backdrop-blur-sm">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <button
+          onClick={() => onSelect(null)}
+          className={`flex-shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
+            selectedCityId === null ? 'bg-primary text-white shadow-sm' : 'bg-surface border border-border text-text-secondary hover:bg-surface-2'
+          }`}
+        >
+          Global Defaults
+          <span className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded-full ${selectedCityId === null ? 'bg-white/20 text-white' : 'bg-surface-3 text-text-secondary'}`}>
+            {globalCount}
+          </span>
+        </button>
+        <div className="w-px h-5 bg-border-light flex-shrink-0" />
+        {cities.filter(c => c.status === 'active').map(city => {
+          const count = cards.filter(c => c.city_id === city.id).length
+          const active = selectedCityId === city.id
+          return (
+            <button
+              key={city.id}
+              onClick={() => onSelect(city.id)}
+              className={`flex-shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
+                active ? 'bg-primary text-white shadow-sm' : 'bg-surface border border-border text-text-secondary hover:bg-surface-2'
+              }`}
+            >
+              {city.name}
+              <span className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded-full ${active ? 'bg-white/20 text-white' : count > 0 ? 'bg-primary-light text-primary' : 'bg-surface-3 text-text-muted opacity-60'}`}>
+                {count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -640,8 +640,8 @@ export default function RateCardsPage() {
               <button onClick={() => setRetry(r => r + 1)} className="btn-secondary">Retry</button>
             </div>
           ) : loading ? (
-            <div className="grid grid-cols-1 lg:grid-cols-[208px_1fr] gap-5">
-              <div className="admin-card !p-3 h-64" />
+            <div className="space-y-4">
+              <div className="admin-card !p-3 h-12" />
               <div className="admin-card !p-0 overflow-hidden">
                 <table className="data-table"><tbody><SkeletonRows cols={6} n={6} /></tbody></table>
               </div>
@@ -649,8 +649,8 @@ export default function RateCardsPage() {
           ) : cards.length === 0 ? (
             <div className="admin-card text-center py-8 text-text-muted text-sm">No rate cards configured yet.</div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-[208px_1fr] gap-5 items-start">
-              <CityRail cities={cities} cards={cards} selectedCityId={selectedCityId} onSelect={setSelectedCityId} />
+            <div className="space-y-4">
+              <CityPillBar cities={cities} cards={cards} selectedCityId={selectedCityId} onSelect={setSelectedCityId} />
 
               <div className="space-y-4">
                 {Object.keys(grouped).length === 0 ? (
