@@ -368,11 +368,11 @@ export default function RentalScreen() {
                             >
                               {isRec ? (
                                 <View style={styles.bestFitTag}>
-                                  <Text style={styles.bestFitText}>BEST FIT</Text>
+                                  <Text style={styles.bestFitText} numberOfLines={1}>BEST FIT</Text>
                                 </View>
                               ) : null}
-                              <Text style={[styles.tierDuration, active ? styles.tierTextActive : null]}>{formatDuration(pkg.durationMinutes)}</Text>
-                              <Text style={[styles.tierKm, active ? styles.tierKmActive : null]}>{`${pkg.kmLimit} km`}</Text>
+                              <Text style={[styles.tierDuration, active ? styles.tierTextActive : null]} numberOfLines={1}>{formatDuration(pkg.durationMinutes)}</Text>
+                              <Text style={[styles.tierKm, active ? styles.tierKmActive : null]} numberOfLines={1}>{`${pkg.kmLimit} km`}</Text>
                             </Pressable>
                           )
                         })}
@@ -518,15 +518,15 @@ const styles = StyleSheet.create({
   trayLoadingRow: { flexDirection: 'row', gap: spacing.xs + 4 },
   trayLabel: { fontSize: 10, fontFamily: fonts.bold, letterSpacing: 0.4, color: h.ivoryDim, marginBottom: spacing.sm },
   tierRow: { flexGrow: 0, marginBottom: spacing.sm + 4 },
-  tierRowContent: { gap: spacing.xs + 2, paddingTop: 12 },
-  tierChip: { paddingVertical: 8, paddingHorizontal: 13, borderRadius: radii.md, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, alignItems: 'center' },
+  tierRowContent: { gap: spacing.xs + 2, paddingTop: 4 },
+  tierChip: { minWidth: 64, paddingVertical: 8, paddingHorizontal: 13, borderRadius: radii.md, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, alignItems: 'center' },
   tierChipActive: { backgroundColor: h.teal, borderColor: h.teal, boxShadow: '0 4px 14px rgba(14,143,163,0.32)' },
   tierDuration: { fontSize: 11.5, fontFamily: fonts.bold, color: h.ivory },
   tierKm: { fontSize: 9.5, color: h.ivoryFaint },
   tierTextActive: { color: '#FFFFFF' },
   tierKmActive: { color: 'rgba(255,255,255,0.75)' },
-  bestFitTag: { position: 'absolute', top: -9, alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2, boxShadow: '0 2px 6px rgba(20,23,26,0.12)' },
-  bestFitText: { fontSize: 9, fontFamily: fonts.bold, color: h.teal },
+  bestFitTag: { alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2, marginBottom: 4, boxShadow: '0 2px 6px rgba(20,23,26,0.12)' },
+  bestFitText: { fontSize: 9, fontFamily: fonts.bold, color: h.teal, flexShrink: 0 },
   trayDivider: { height: 1, backgroundColor: h.line08, marginBottom: spacing.sm },
   trayTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   trayTotalInfo: { flex: 1, minWidth: 0 },
