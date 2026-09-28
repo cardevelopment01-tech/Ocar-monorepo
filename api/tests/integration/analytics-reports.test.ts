@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import request from 'supertest'
 import { createApp } from '@/app'
 import { pool, analyticsPool } from '@/db/client'
@@ -201,13 +201,13 @@ describe('notifier role filter (CEO D6 / T16)', () => {
 })
 
 describe('analytics pool isolation (eng D7)', () => {
-  it('analytics queries use analyticsPool and never grow the request pool', async () => {
-    const before = pool.totalCount
-    let analyticsSeen = 0
-    const tick = setInterval(() => { analyticsSeen = Math.max(analyticsSeen, analyticsPool.totalCount) }, 2)
+  it('analytics queries connect through analyticsPool and never touch the request pool', async () => {
+    const analyticsSpy = vi.spyOn(analyticsPool, 'connect')
+    const mainSpy = vi.spyOn(pool, 'connect')
     await getKpiTotals(rangeFromIstDates('2026-09-01', '2026-09-30'))
-    clearInterval(tick)
-    expect(analyticsSeen).toBeGreaterThan(0)
-    expect(pool.totalCount).toBeLessThanOrEqual(before)
+    expect(analyticsSpy).toHaveBeenCalled()
+    expect(mainSpy).not.toHaveBeenCalled()
+    analyticsSpy.mockRestore()
+    mainSpy.mockRestore()
   })
 })
