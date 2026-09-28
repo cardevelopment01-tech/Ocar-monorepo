@@ -842,32 +842,19 @@ export default function TripInProgress() {
                             {fmtClock(waitElapsedSec)}
                           </span>
                         ) : isCurrent ? (
-                          // Current stop's confirm is the primary swipe at the top of the sheet; only Skip lives in the row.
-                          <button
-                            onClick={() => handleStopAction(stop.sequence, 'skipped')}
-                            disabled={isPending}
-                            className="text-[11px] font-semibold text-text-muted px-2 py-1.5 flex-shrink-0 active:opacity-60 disabled:opacity-40"
-                          >
-                            Skip
-                          </button>
+                          // Current stop's confirm is the primary swipe at the top of the sheet.
+                          // Skip removed — drivers were using it to reject rider-added stops
+                          // outright, leaving them permanently pending server-side.
+                          null
                         ) : (
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <button
-                              onClick={() => handleStopAction(stop.sequence, 'skipped')}
-                              disabled={isPending}
-                              className="text-[11px] font-semibold text-text-muted px-2 py-1.5 active:opacity-60 disabled:opacity-40"
-                            >
-                              Skip
-                            </button>
-                            <button
-                              onClick={() => handleStopAction(stop.sequence, 'reached')}
-                              disabled={isPending}
-                              className="text-[11px] font-bold text-white rounded-full px-3 py-1.5 active:scale-[0.97] transition-transform disabled:opacity-60"
-                              style={{ background: '#0A9FB0' }}
-                            >
-                              {isPending ? '…' : 'Reached'}
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => handleStopAction(stop.sequence, 'reached')}
+                            disabled={isPending}
+                            className="text-[11px] font-bold text-white rounded-full px-3 py-1.5 active:scale-[0.97] transition-transform disabled:opacity-60 flex-shrink-0"
+                            style={{ background: '#0A9FB0' }}
+                          >
+                            {isPending ? '…' : 'Reached'}
+                          </button>
                         )
                       )}
                     </div>

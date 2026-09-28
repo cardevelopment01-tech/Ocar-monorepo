@@ -68,6 +68,7 @@ interface RideState {
   arriveStop:        (sequence: number, arrivedAt: string | null, waitCharge?: string | null) => void
   updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null, waitCharge?: string | null) => void
   addStop:           (stop: RideStop) => void
+  setStops:          (stops: RideStop[]) => void
   clearRide:         () => void
   setIncomingRequest: (req: RideState['incomingRequest']) => void
   clearIncomingRequest: () => void
@@ -128,6 +129,15 @@ export const useRideStore = create<RideState>()(
             ...s.activeRide,
             stops: [...(s.activeRide.stops ?? []), stop],
           } : null,
+        })),
+
+      // Overwrites the whole stops list with server truth. Used on socket
+      // reconnect — a missed 'stop:added'/'stop:updated' event while
+      // disconnected otherwise leaves a stop permanently wrong on this
+      // device (Socket.io doesn't replay missed events).
+      setStops: (stops) =>
+        set((s) => ({
+          activeRide: s.activeRide ? { ...s.activeRide, stops } : null,
         })),
 
       clearRide: () =>

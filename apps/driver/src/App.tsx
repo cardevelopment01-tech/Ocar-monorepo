@@ -61,7 +61,7 @@ export default function App() {
   const navigate = useNavigate()
   const { isAuthenticated, updateDriver, clearAuth } = useAuthStore()
   const { isOnline, setOnline, setOffline } = useSessionStore()
-  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, setRestoreChecked, clearRide, activeRide, updateStop, addStop, setUnreadChatCount, incrementUnreadChatCount } = useRideStore()
+  const { incomingRequest, setIncomingRequest, clearIncomingRequest, setActiveRide, setRestoreChecked, clearRide, activeRide, updateStop, addStop, setStops, setUnreadChatCount, incrementUnreadChatCount } = useRideStore()
   const { fetchUnreadCount, addLive } = useNotificationsStore()
   const [accepting, setAccepting] = useState(false)
   const [acceptedBeat, setAcceptedBeat] = useState(false)
@@ -378,6 +378,16 @@ export default function App() {
     const resyncRideStatus = async () => {
       try {
         const ride = await driverRideApi.getRide(activeRide.id)
+        // Socket.io doesn't replay missed events, so a disconnect that spans
+        // a rider adding/resolving a stop otherwise leaves this device's
+        // stops list permanently wrong (stuck 'pending' forever, blocking
+        // end-OTP with RIDE_HAS_PENDING_STOPS). Refresh from server truth on
+        // every reconnect, not just ride status.
+        setStops(ride.stops.map(s => ({
+          id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
+          address: s.address, status: s.status, arrived_at: s.arrived_at, reached_at: s.reached_at,
+          stop_charge_applied: s.stop_charge_applied, wait_charge: s.wait_charge,
+        })))
         resolveRideExternally(ride.status)
       } catch { /* transient — next reconnect or live event will catch it */ }
     }
