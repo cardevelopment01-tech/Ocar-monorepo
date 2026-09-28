@@ -92,6 +92,14 @@ async function start(): Promise<void> {
     { repeat: { every: 5 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
   )
 
+  // Daily admin digest (CEO E2): one schedule shared by every instance (upsert is idempotent),
+  // 09:00 IST; delivery dedupe lives in Redis (admin-digest.ts).
+  await schedulerQueue.upsertJobScheduler(
+    'admin-daily-digest',
+    { pattern: '0 9 * * *', tz: 'Asia/Kolkata' },
+    { name: 'admin_daily_digest', opts: { removeOnComplete: true, removeOnFail: true, attempts: 3, backoff: { type: 'exponential', delay: 60_000 } } }
+  )
+
   void partitionMaintenanceWorker
   logger.info('partition maintenance worker started')
   // Runs on the 25th of each month (same convention ADR-003 specified),

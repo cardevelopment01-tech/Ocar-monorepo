@@ -16,6 +16,7 @@ import { invalidateSurgeCache } from "@/modules/pricing/pricing.repository";
 import { deleteFile } from "@/lib/storage";
 import type { PoolClient, QueryResult, QueryResultRow } from "pg";
 import { recordAuditLog } from "@/lib/audit-log";
+import { kpiTotalsSql, parseKpiTotals, type KpiTotals } from "@/modules/analytics/kpi-definitions";
 import type {
   AdminDriverListRow,
   AdminDriverListSummary,
@@ -2517,9 +2518,11 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
 
   const client = await pool.connect();
   let statsRes: QueryResult, chartRes: QueryResult;
+  let kpi: KpiTotals;
   try {
     await client.query("BEGIN");
-    [statsRes, chartRes] = await Promise.all([
+    let kpiRes: QueryResult;
+    [statsRes, chartRes, kpiRes] = await Promise.all([
       dashboardQuery(
         client,
         `
@@ -2530,17 +2533,9 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
         (SELECT COUNT(*) FROM driver_sessions
          WHERE status IN ('online', 'on_trip')
         )::int                                                              AS active_drivers_online,
-        (SELECT COALESCE(SUM(amount), 0) FROM payments
-         WHERE created_at >= $1 AND created_at < $2
-           AND status = 'completed'
-        )::numeric                                                          AS revenue_today,
         (SELECT COUNT(*) FROM disputes
          WHERE status IN ('open', 'under_review', 'pending_info', 'escalated')
         )::int                                                              AS open_disputes,
-        (SELECT COUNT(*) FROM rides
-         WHERE status = 'completed'
-           AND requested_at >= $1 AND requested_at < $2
-        )::int                                                              AS completed_rides,
         (SELECT COUNT(*) FROM rides
          WHERE status = 'cancelled'
            AND requested_at >= $1 AND requested_at < $2
@@ -2566,8 +2561,12 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
       ORDER BY bucket
       `,
       ),
+      // E1: revenue and completed rides come from the shared definitions (completed_at clock),
+      // identical to Reports. Bounds stay the sargable IST [dayStart, dayEnd) pair above.
+      dashboardQuery(client, kpiTotalsSql("$1", "$2"), [dayStart, dayEnd]),
     ]);
     await client.query("COMMIT");
+    kpi = parseKpiTotals(kpiRes.rows[0]);
   } catch (e) {
     await client.query("ROLLBACK");
     throw e;
@@ -2585,9 +2584,9 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
   return {
     total_rides_today: s.total_rides_today as number,
     active_drivers_online: s.active_drivers_online as number,
-    revenue_today: parseFloat(String(s.revenue_today)),
+    revenue_today: kpi.gross_bookings,
     open_disputes: s.open_disputes as number,
-    completed_rides: s.completed_rides as number,
+    completed_rides: kpi.completed_rides,
     cancelled_rides: s.cancelled_rides as number,
     new_driver_signups: s.new_driver_signups as number,
     active_trips: s.active_trips as number,

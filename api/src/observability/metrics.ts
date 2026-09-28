@@ -1,5 +1,5 @@
 import { Registry, collectDefaultMetrics, Histogram, Gauge, Counter } from 'prom-client'
-import { pool } from '@/db/client'
+import { pool, analyticsPool } from '@/db/client'
 import { queues } from '@/jobs/queues'
 import { logger } from '@/lib/logger'
 
@@ -52,6 +52,42 @@ new Gauge({
     this.set({ state: 'idle' }, pool.idleCount)
     this.set({ state: 'waiting' }, pool.waitingCount)
   },
+})
+
+// Separate gauge (not a `pool` label on pg_pool_connections) so the existing Grafana
+// alerts/dashboards on pg_pool_connections keep their exact series.
+new Gauge({
+  name: 'pg_analytics_pool_connections',
+  help: 'Reports/analytics pg.Pool connection counts by state',
+  labelNames: ['state'],
+  registers: [register],
+  collect() {
+    this.set({ state: 'total' }, analyticsPool.totalCount)
+    this.set({ state: 'idle' }, analyticsPool.idleCount)
+    this.set({ state: 'waiting' }, analyticsPool.waitingCount)
+  },
+})
+
+// Reports feature signals (CEO D11): a stopped digest or a saturated cache must be visible.
+export const analyticsCacheRequestsTotal = new Counter({
+  name: 'analytics_cache_requests_total',
+  help: 'Reports response cache lookups by result',
+  labelNames: ['result'], // hit | miss | bypass
+  registers: [register],
+})
+
+export const adminDigestRunsTotal = new Counter({
+  name: 'admin_digest_runs_total',
+  help: 'Daily admin digest runs by result',
+  labelNames: ['result'], // sent | skipped_duplicate | failed
+  registers: [register],
+})
+
+export const analyticsExportTotal = new Counter({
+  name: 'analytics_export_total',
+  help: 'Reports CSV exports by tab and result',
+  labelNames: ['tab', 'result'], // result: ok | failed
+  registers: [register],
 })
 
 new Gauge({

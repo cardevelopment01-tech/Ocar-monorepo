@@ -46,6 +46,23 @@ html.overflow-hidden {
   .data-table tr:hover td { background-color: #EEF7F8; }
   .data-table tr:last-child td { @apply border-b-0; }
 
+  /* ── Reports table (DESIGN.md Data Tables: sentence-case Label headers, 48px rows, Mono numerals) ── */
+  .report-table { @apply w-full border-collapse text-md; }
+  .report-table th {
+    @apply px-3 text-left text-base font-semibold text-text-secondary bg-surface-2 border-b border-border;
+    height: 44px;
+  }
+  .report-table td {
+    @apply px-3 text-text-primary border-b border-border-light align-middle;
+    height: 48px;
+    transition: background-color 150ms;
+  }
+  .report-table .num { text-align: right; font-family: var(--font-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .report-table th.num { font-family: inherit; }
+  .report-table tbody tr:hover td { background-color: #F6FBFB; }
+  .report-table tbody tr:last-child td { border-bottom: 0; }
+  @media (prefers-reduced-motion: reduce) { .report-table td { transition: none; } }
+
   /* ── Sidebar nav item ── */
   .nav-item {
     @apply relative flex items-center gap-3 px-3 py-2.5 rounded-xl
