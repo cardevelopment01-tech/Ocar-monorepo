@@ -208,14 +208,30 @@ export async function getTokensForOwner(ownerType: DeviceOwnerType, ownerId: big
   return res.rows.map(r => r.token)
 }
 
-export async function getAdminTokens(): Promise<string[]> {
+// `roles` (optional, CEO D6/T16): restrict to ACTIVE admins holding one of these roles.
+// Omitted = every admin, exactly as before, so existing callers are unchanged.
+export async function getAdminTokens(roles?: string[]): Promise<string[]> {
+  if (roles) {
+    const res = await pool.query<{ token: string }>(
+      `SELECT dt.token FROM device_tokens dt
+         JOIN admins a ON a.id = dt.owner_id
+        WHERE dt.owner_type = 'admin' AND a.is_active = true AND a.role::text = ANY($1::text[])`,
+      [roles]
+    )
+    return res.rows.map(r => r.token)
+  }
   const res = await pool.query<{ token: string }>(
     `SELECT token FROM device_tokens WHERE owner_type = 'admin'`
   )
   return res.rows.map(r => r.token)
 }
 
-export async function getAllAdminIds(): Promise<bigint[]> {
-  const res = await pool.query<{ id: string }>(`SELECT id::text FROM admins`)
+export async function getAllAdminIds(roles?: string[]): Promise<bigint[]> {
+  const res = roles
+    ? await pool.query<{ id: string }>(
+        `SELECT id::text FROM admins WHERE is_active = true AND role::text = ANY($1::text[])`,
+        [roles]
+      )
+    : await pool.query<{ id: string }>(`SELECT id::text FROM admins`)
   return res.rows.map(r => BigInt(r.id))
 }

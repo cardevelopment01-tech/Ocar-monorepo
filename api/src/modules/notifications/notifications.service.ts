@@ -114,12 +114,17 @@ export async function notifyAllAdmins(params: {
   body: string
   payload?: Record<string, unknown>
   rideId?: bigint
+  // Restrict to active admins with these roles (daily digest). When set, the shared
+  // `admin:ops` socket room is skipped: it reaches every admin, so it would leak content
+  // meant for a role subset. Omitted = every admin, socket included (unchanged).
+  roles?: string[]
 }): Promise<void> {
-  const adminIds = await repo.getAllAdminIds()
-  await Promise.all(adminIds.map(id => repo.createInAppNotification({ ownerType: 'admin', ownerId: id, ...params })))
+  const { roles, ...rest } = params
+  const adminIds = await repo.getAllAdminIds(roles)
+  await Promise.all(adminIds.map(id => repo.createInAppNotification({ ownerType: 'admin', ownerId: id, ...rest })))
 
   try {
-    const tokens = await repo.getAdminTokens()
+    const tokens = await repo.getAdminTokens(roles)
     await pushToTokens(tokens, {
       title: params.title,
       body: params.body,
@@ -128,6 +133,8 @@ export async function notifyAllAdmins(params: {
   } catch (err) {
     log.error({ err }, 'notify admin push leg failed')
   }
+
+  if (roles) return
 
   try {
     socketEvents.sendNotification('admin', '', {

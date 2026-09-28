@@ -129,6 +129,21 @@ export const workerPool = new Pool({
   idle_in_transaction_session_timeout: 15000,
 })
 
+// Reports/analytics pool (eng D7): a hard ceiling on concurrent analytics connections,
+// isolated from `pool` (requests) and `workerPool`. The digest job runs in a BullMQ
+// worker but still queries through this pool, never `pool`/`workerPool`.
+export const analyticsPool = new Pool({
+  ...buildPoolConfig(),
+  min: 0,
+  max: config.ANALYTICS_POOL_MAX,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+  // Per-query SET LOCAL statement_timeout (analytics.repository.ts) raises this per
+  // transaction; this is the ceiling for anything that forgets to.
+  statement_timeout: 60000,
+  idle_in_transaction_session_timeout: 90000,
+})
+
 export async function query<T extends object>(
   text: string,
   params?: unknown[]

@@ -77,6 +77,9 @@ describe('M12 — Analytics', () => {
       (sum: number, row: { revenue: number }) => sum + Number(row.revenue), 0
     )
 
+    // Reports responses are cached 60 s per filters+role (eng D10); clear so the AFTER read is fresh.
+    for (const k of await redis.keys('analytics:v1:*')) await redis.del(k)
+
     // TC-M12-001/002/005: complete a ride+payment, then confirm it's reflected
     // in the funnel/revenue/city-breakdown fields of the summary endpoint.
     const { accessToken: userToken } = await loginUser(app, redis, PHONES.analyticsUser)
@@ -103,6 +106,7 @@ describe('M12 — Analytics', () => {
       .send({ collectedAmount: fare })
     expect(collectRes.status, JSON.stringify(collectRes.body)).toBe(200)
 
+    for (const k of await redis.keys('analytics:v1:*')) await redis.del(k)
     const summaryRes = await request(app)
       .get('/api/v1/admin/analytics/summary?period=7d')
       .set('Authorization', `Bearer ${admin.accessToken}`)
