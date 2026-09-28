@@ -1,6 +1,6 @@
 'use client'
-import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
 import AdminSidebar from '@/components/layout/AdminSidebar'
 import AdminTopBar from '@/components/layout/AdminTopBar'
 import NotificationToast from '@/components/layout/NotificationToast'
@@ -37,10 +37,26 @@ function getInitials(name?: string | null) {
   return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
 }
 
+// Reports shows the active tab in the top bar subtitle (design D3: one title, no in-page heading).
+const REPORT_TAB_SUBTITLE: Record<string, string> = {
+  overview: 'Overview',
+  demand: 'Rides & demand',
+  drivers: 'Drivers',
+  finance: 'Finance',
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={null}><DashboardShell>{children}</DashboardShell></Suspense>
+}
+
+function DashboardShell({ children }: { children: React.ReactNode }) {
   const path = usePathname()
+  const searchParams = useSearchParams()
   const { admin, logout } = useAdminAuth()
-  const meta = PAGE_META[path] ?? { title: 'Admin', subtitle: '' }
+  const baseMeta = PAGE_META[path] ?? { title: 'Admin', subtitle: '' }
+  const meta = path === '/analytics'
+    ? { ...baseMeta, subtitle: REPORT_TAB_SUBTITLE[searchParams.get('tab') ?? 'overview'] ?? baseMeta.subtitle }
+    : baseMeta
   const [sosCount, setSosCount] = useState(0)
 
   useEffect(() => {

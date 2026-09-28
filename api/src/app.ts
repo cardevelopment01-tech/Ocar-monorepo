@@ -131,6 +131,8 @@ export function createApp(): Application {
   app.use(
     cors({
       origin: config.ALLOWED_ORIGINS.split(',').map(o => o.trim()),
+      // Reports CSV export reads the filename from Content-Disposition in the browser.
+      exposedHeaders: ['Content-Disposition'],
     })
   )
 

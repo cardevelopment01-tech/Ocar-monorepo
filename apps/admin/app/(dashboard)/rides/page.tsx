@@ -76,7 +76,7 @@ function RidesPageContent() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [rideTypeFilter, setRideTypeFilter] = useState('')
-  const [cashFlagFilter, setCashFlagFilter] = useState('')
+  const [cashFlagFilter, setCashFlagFilter] = useState(searchParams.get('cash') === 'flagged' ? 'flagged' : '')
   const [cityFilter, setCityFilter] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
