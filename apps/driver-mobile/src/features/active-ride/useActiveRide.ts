@@ -74,6 +74,18 @@ export function useActiveRide(rideId: string) {
     return () => { socket.off('chat:message', onChatMessage) }
   }, [])
 
+  // Rider nudged their pickup pin after booking (bounded-radius correction --
+  // see api/src/modules/rides/rides.service.ts's updateRidePickup). The push
+  // notification (pickup_updated, routed by pushRouting.ts) already told the
+  // driver this happened; this is what actually moves the nav target on the map.
+  useEffect(() => {
+    function onPickupUpdated(payload: { lat: number; lng: number; address: string | null }) {
+      setRide((prev) => (prev ? { ...prev, originLat: payload.lat, originLng: payload.lng, originAddress: payload.address } : prev))
+    }
+    socket.on('ride:pickup_updated', onPickupUpdated)
+    return () => { socket.off('ride:pickup_updated', onPickupUpdated) }
+  }, [])
+
   const status = displayStatus(state)
 
   useEffect(() => {

@@ -280,6 +280,10 @@ export const socketEvents = {
     getIO().to(`ride:${rideId}`).emit('stop:added', data)
   },
 
+  sendPickupUpdated: (rideId: string, data: object) => {
+    getIO().to(`ride:${rideId}`).emit('ride:pickup_updated', data)
+  },
+
   sendAdminDriverUpdate: (data: object) => {
     getIO().to('admin:ops').emit('driver:location_update', data)
   },

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated'
+import Animated, { FadeIn, FadeOut, LinearTransition, useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated'
 import { Skeleton, VehicleIcon, colors, radii, spacing, typography, fonts, h } from '@ocar/mobile-shared'
 import type { RentalPackage, VehicleCategory } from '@ocar/mobile-shared'
 import { createBooking, fetchRentalPackages, fetchRoute, fetchVehicleCategories, fetchFareEstimate, resolveBookingError } from '@/features/booking/api'
-import { recommendPackage } from '@/features/booking/recommendPackage'
+import { recommendPackage, type PackageRecommendation } from '@/features/booking/recommendPackage'
 import { useBookingDraftStore } from '@/features/booking/store'
 import { socket } from '@/services/socket'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
@@ -29,6 +29,99 @@ function formatDuration(minutes: number): string {
 // family as the Ocar Elite banner on Home — so it reads as genuinely premium.
 function isPremiumSlug(slug: string) {
   return slug === 'luxury'
+}
+
+const AnimatedGradient = Animated.createAnimatedComponent(LinearGradient)
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
+
+// Package tiers scroll horizontally and some vehicles have more tiers than fit
+// on screen. A fade + arrow at the trailing edge signals there's more to see —
+// the arrow scrolls forward on tap, and both fade out smoothly once fully
+// scrolled. Mirrors web's PackageTierScroller (apps/user/.../rental/page.tsx).
+function PackageTierScroller({
+  pkgs, selectedPkgId, recommendation, onSelect,
+}: {
+  pkgs: RentalPackage[]
+  selectedPkgId: number | null
+  recommendation: PackageRecommendation | null
+  onSelect: (id: number) => void
+}) {
+  const scrollRef = useRef<ScrollView>(null)
+  const offsetRef = useRef(0)
+  const contentWidthRef = useRef(0)
+  const layoutWidthRef = useRef(0)
+  const arrowOpacity = useSharedValue(0)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+
+  const evaluate = useCallback(() => {
+    const canScroll = contentWidthRef.current - offsetRef.current - layoutWidthRef.current > 4
+    arrowOpacity.value = withTiming(canScroll ? 1 : 0, { duration: 180 })
+    setCanScrollRight(canScroll)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    offsetRef.current = e.nativeEvent.contentOffset.x
+    evaluate()
+  }, [evaluate])
+
+  const fadeStyle = useAnimatedStyle(() => ({ opacity: arrowOpacity.value }))
+  const arrowStyle = useAnimatedStyle(() => ({ opacity: arrowOpacity.value }))
+
+  return (
+    <View>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tierRow}
+        contentContainerStyle={styles.tierRowContent}
+        scrollEventThrottle={16}
+        onScroll={onScroll}
+        onContentSizeChange={(w) => { contentWidthRef.current = w; evaluate() }}
+        onLayout={(e) => { layoutWidthRef.current = e.nativeEvent.layout.width; evaluate() }}
+      >
+        {pkgs.map((pkg) => {
+          const active = pkg.id === selectedPkgId
+          const isRec = recommendation?.packageId === pkg.id
+          return (
+            <Pressable
+              key={pkg.id}
+              onPress={() => onSelect(pkg.id)}
+              style={[styles.tierChip, active ? styles.tierChipActive : null]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+            >
+              {isRec ? (
+                <View style={styles.bestFitTag}>
+                  <Text style={styles.bestFitText} numberOfLines={1}>BEST FIT</Text>
+                </View>
+              ) : null}
+              <Text style={[styles.tierDuration, active ? styles.tierTextActive : null]} numberOfLines={1}>{formatDuration(pkg.durationMinutes)}</Text>
+              <Text style={[styles.tierKm, active ? styles.tierKmActive : null]} numberOfLines={1}>{`${pkg.kmLimit} km`}</Text>
+            </Pressable>
+          )
+        })}
+      </ScrollView>
+
+      <AnimatedGradient
+        pointerEvents="none"
+        colors={['rgba(247,246,241,0)', h.chip]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={[styles.tierFade, fadeStyle]}
+      />
+      <AnimatedPressable
+        onPress={() => scrollRef.current?.scrollTo({ x: offsetRef.current + 140, animated: true })}
+        accessibilityRole="button"
+        accessibilityLabel="Show more packages"
+        pointerEvents={canScrollRight ? 'auto' : 'none'}
+        style={[styles.tierArrowBtn, arrowStyle]}
+      >
+        <Feather name="chevron-right" size={13} color={h.teal} />
+      </AnimatedPressable>
+    </View>
+  )
 }
 
 // Matches web's /rental ("City Rides", apps/user/app/(main)/rental/page.tsx) --
@@ -354,29 +447,12 @@ export default function RentalScreen() {
                   ) : (
                     <>
                       <Text style={styles.trayLabel}>{`PACKAGE · ${pkgs.length} TIERS`}</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tierRow} contentContainerStyle={styles.tierRowContent}>
-                        {pkgs.map((pkg) => {
-                          const active = pkg.id === selectedPkgId
-                          const isRec = recommendation?.packageId === pkg.id
-                          return (
-                            <Pressable
-                              key={pkg.id}
-                              onPress={() => { setUserPickedPkg(true); setSelectedPkgId(pkg.id) }}
-                              style={[styles.tierChip, active ? styles.tierChipActive : null]}
-                              accessibilityRole="button"
-                              accessibilityState={{ selected: active }}
-                            >
-                              {isRec ? (
-                                <View style={styles.bestFitTag}>
-                                  <Text style={styles.bestFitText}>BEST FIT</Text>
-                                </View>
-                              ) : null}
-                              <Text style={[styles.tierDuration, active ? styles.tierTextActive : null]}>{formatDuration(pkg.durationMinutes)}</Text>
-                              <Text style={[styles.tierKm, active ? styles.tierKmActive : null]}>{`${pkg.kmLimit} km`}</Text>
-                            </Pressable>
-                          )
-                        })}
-                      </ScrollView>
+                      <PackageTierScroller
+                        pkgs={pkgs}
+                        selectedPkgId={selectedPkgId}
+                        recommendation={recommendation}
+                        onSelect={(id) => { setUserPickedPkg(true); setSelectedPkgId(id) }}
+                      />
 
                       {selectedPkg ? (
                         <>
@@ -518,15 +594,17 @@ const styles = StyleSheet.create({
   trayLoadingRow: { flexDirection: 'row', gap: spacing.xs + 4 },
   trayLabel: { fontSize: 10, fontFamily: fonts.bold, letterSpacing: 0.4, color: h.ivoryDim, marginBottom: spacing.sm },
   tierRow: { flexGrow: 0, marginBottom: spacing.sm + 4 },
-  tierRowContent: { gap: spacing.xs + 2, paddingTop: 12 },
-  tierChip: { paddingVertical: 8, paddingHorizontal: 13, borderRadius: radii.md, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, alignItems: 'center' },
+  tierRowContent: { gap: spacing.xs + 2, paddingTop: 4 },
+  tierChip: { minWidth: 64, paddingVertical: 8, paddingHorizontal: 13, borderRadius: radii.md, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, alignItems: 'center' },
+  tierFade: { position: 'absolute', top: 4, bottom: spacing.sm + 4, right: 0, width: 44 },
+  tierArrowBtn: { position: 'absolute', top: 4, right: 4, width: 26, height: 26, borderRadius: radii.full, backgroundColor: h.surface, alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(14,143,163,0.22)' },
   tierChipActive: { backgroundColor: h.teal, borderColor: h.teal, boxShadow: '0 4px 14px rgba(14,143,163,0.32)' },
   tierDuration: { fontSize: 11.5, fontFamily: fonts.bold, color: h.ivory },
   tierKm: { fontSize: 9.5, color: h.ivoryFaint },
   tierTextActive: { color: '#FFFFFF' },
   tierKmActive: { color: 'rgba(255,255,255,0.75)' },
-  bestFitTag: { position: 'absolute', top: -9, alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2, boxShadow: '0 2px 6px rgba(20,23,26,0.12)' },
-  bestFitText: { fontSize: 9, fontFamily: fonts.bold, color: h.teal },
+  bestFitTag: { alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2, marginBottom: 4, boxShadow: '0 2px 6px rgba(20,23,26,0.12)' },
+  bestFitText: { fontSize: 9, fontFamily: fonts.bold, color: h.teal, flexShrink: 0 },
   trayDivider: { height: 1, backgroundColor: h.line08, marginBottom: spacing.sm },
   trayTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   trayTotalInfo: { flex: 1, minWidth: 0 },

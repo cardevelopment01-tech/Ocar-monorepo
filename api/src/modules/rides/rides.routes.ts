@@ -362,6 +362,23 @@ router.post('/:id/stops', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// ── Pickup pin edit (rider, bounded-radius correction) ────────
+
+router.patch('/:id/pickup', authenticate(), async (req, res, next) => {
+  try {
+    const userId = req.user!.id
+    const { lat, lng, address } = req.body as { lat?: unknown; lng?: unknown; address?: unknown }
+    if (typeof lat !== 'number' || !Number.isFinite(lat) || typeof lng !== 'number' || !Number.isFinite(lng)) {
+      res.status(400).json({ error: 'lat and lng (finite numbers) are required' }); return
+    }
+    if (address !== undefined && typeof address !== 'string') {
+      res.status(400).json({ error: 'address must be a string' }); return
+    }
+    const result = await service.updateRidePickup(userId, BigInt(req.params['id']!), lat, lng, address ?? null)
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
 router.patch('/:id/stops/:sequence', authenticate(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id

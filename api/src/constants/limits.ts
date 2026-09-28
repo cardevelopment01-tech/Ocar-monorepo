@@ -20,6 +20,13 @@ export const BCRYPT_ROUNDS = 12
 export const BROADCAST_WINDOW_SECONDS = 20
 export const BROADCAST_MAX_DRIVERS = 5
 export const BROADCAST_ROUND_MAX = 3
+// Hard cap on driver-to-pickup distance for ride requests. Client spec; TBC Monday.
+// City = rental. Outstation = one_way + round_trip.
+export function maxPickupRadiusMetres(rideType: string, categorySlug: string | null, tripHours?: number): number {
+  if (rideType !== 'rental') return 10_000
+  if (tripHours !== undefined && tripHours > 2) return 4_000
+  return categorySlug === 'auto_rickshaw' ? 2_000 : 2_500
+}
 // A driver whose tab backgrounded (pauseAvailability, is_available=false,
 // ds.status stays 'online') within this many seconds is still matched into
 // broadcasts and push-notified immediately, rather than being invisible
@@ -77,6 +84,11 @@ export const ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES = 15
 export const MIN_ADVANCE_BOOKING_MINUTES = 60
 export const MAX_ADVANCE_BOOKING_DAYS = 7
 export const MAX_CONCURRENT_SCHEDULED_BOOKINGS = 3
+// Post-booking pickup-pin edit ("Uber grey circle" pattern) — bounded so the
+// distance delta never crosses a fare rate bucket, meaning no fare recompute
+// is needed. Enforced server-side via distanceMetres, same helper as the
+// stop-duplicate check above — never trust a client-only radius.
+export const PICKUP_EDIT_RADIUS_METRES = 150
 export const RETURN_CAB_MATCH_RADIUS_METRES = 2000
 // Khorda/Bhubaneswar/Cuttack share one boundary box (see 055_merge_khorda_bbsr_ctc_boundary.sql)
 // so a genuine Bhubaneswar<->Cuttack intercity trip can still land inside it. Only block

@@ -65,6 +65,7 @@ interface RideState {
   updateRideStatus:  (status: string) => void
   setFare:           (fare: number) => void
   setRideStartedAt:  (ts: string) => void
+  updatePickup:      (lat: number, lng: number, address: string | null) => void
   arriveStop:        (sequence: number, arrivedAt: string | null, waitCharge?: string | null) => void
   updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null, waitCharge?: string | null) => void
   addStop:           (stop: RideStop) => void
@@ -98,6 +99,20 @@ export const useRideStore = create<RideState>()(
 
       setRideStartedAt: (ts) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, rideStartedAt: ts } : null })),
+
+      // Rider nudged their pickup pin after booking (bounded-radius correction —
+      // see api/src/modules/rides/rides.service.ts updateRidePickup). The
+      // generic notifyOwner toast/feed item already told the driver this
+      // happened; this is what actually moves the nav target on the map.
+      updatePickup: (lat, lng, address) =>
+        set((s) => ({
+          activeRide: s.activeRide ? {
+            ...s.activeRide,
+            pickupLat: lat,
+            pickupLng: lng,
+            pickup: address ?? s.activeRide.pickup,
+          } : null,
+        })),
 
       arriveStop: (sequence, arrivedAt, waitCharge) =>
         set((s) => ({
