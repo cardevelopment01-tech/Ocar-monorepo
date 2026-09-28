@@ -14,7 +14,7 @@ export const COLORS = {
   dangerLight: '#FEE2E2',
   infoLight: '#E0F2FE',
   purpleLight: '#EDE9FE',
-  border: '#E2E8F0',
+  border: '#DCEBEE',
   textMuted: '#5B6B85',
   textSecondary: '#475569',
 } as const

@@ -147,6 +147,52 @@ resource "grafana_rule_group" "static_thresholds" {
     exec_err_state = "Alerting"
   }
 
+  # Reports daily admin digest (docs/superpowers/specs/2026-09-29-reports-page-redesign-plan.md, CEO D11).
+  # `or vector(0)` matters: before the first successful send the counter series does not exist, and
+  # no_data_state = "OK" would otherwise hide a digest that has never worked.
+  rule {
+    name      = "Admin daily digest not sent"
+    condition = "C"
+    for       = "30m"
+
+    data {
+      ref_id         = "A"
+      datasource_uid = local.prometheus_datasource_uid
+      relative_time_range {
+        from = 93600
+        to   = 0
+      }
+      model = jsonencode({
+        refId   = "A"
+        instant = true
+        expr    = "sum(increase(admin_digest_runs_total{result=\"sent\"}[26h])) or vector(0)"
+      })
+    }
+
+    data {
+      ref_id         = "C"
+      datasource_uid = "__expr__"
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+      model = jsonencode({
+        refId      = "C"
+        type       = "threshold"
+        expression = "A"
+        conditions = [{ evaluator = { type = "lt", params = [1] } }]
+      })
+    }
+
+    annotations = {
+      summary     = "No admin daily digest was sent in the last 26h -- see OPS_RUNBOOK.md 'Admin daily digest did not arrive'"
+      runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
+    }
+    labels         = { severity = "warning" }
+    no_data_state  = "OK"
+    exec_err_state = "Alerting"
+  }
+
   rule {
     name      = "GPS-flush write latency p95"
     condition = "C"

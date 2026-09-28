@@ -7,7 +7,7 @@ import { DEMO_MODE } from '@/lib/demo'
 import {
   LayoutDashboard, Map, Car, Truck, Users, User, AlertTriangle, Shield,
   CreditCard, Wallet, RotateCcw, Tag, Settings, ToggleLeft, Package,
-  BarChart2, Camera, LogOut, MapPin, MessageSquare, UserCog, ScrollText, ShieldCheck,
+  BarChart2, LogOut, MapPin, MessageSquare, UserCog, ScrollText, ShieldCheck,
   Wrench,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -74,8 +74,7 @@ const NAV: NavGroup[] = [
   {
     label: 'Analytics',
     items: [
-      { href: '/analytics', label: 'Reports',   icon: BarChart2, roles: ['super_admin','finance_admin'] },
-      { href: '/snapshots', label: 'Snapshots', icon: Camera,    roles: ['super_admin','finance_admin'], demo: true },
+      { href: '/analytics', label: 'Reports',   icon: BarChart2, roles: ['super_admin','ops_admin','finance_admin'] },
     ],
   },
   {

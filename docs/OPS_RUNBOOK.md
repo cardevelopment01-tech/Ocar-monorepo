@@ -201,6 +201,27 @@ aren't cheaply reversible the way an app deploy is).
 - The `Color` tag (`blue`/`green`) on every ASG/instance/target-group lets
   Grafana dashboards split metrics by color during a deploy.
 
+## Reports: digest did not arrive / Reports slow
+
+Alert: **Admin daily digest not sent** (Grafana, `admin_digest_runs_total{result="sent"}`). The digest runs
+at 09:00 IST from the API's scheduler queue and sends yesterday's numbers (5 KPIs to super/finance admins, 3 to ops).
+
+1. `admin_digest_runs_total` by `result`: `failed` rising = a send or dedupe-key Redis error (check API logs for
+   `admin digest send failed` / `admin digest dedupe check failed`); `skipped_duplicate` only = it already sent today.
+2. Scheduler registered? `bullmq_queue_job_counts{queue="scheduler"}` and the log line `scheduler worker started`.
+   The schedule is one `upsertJobScheduler('admin-daily-digest')` (09:00 `Asia/Kolkata`), safe to re-run on any instance.
+3. Resend a day manually: delete the Redis keys `admin-digest:<YYYY-MM-DD>:finance` and `:ops` (set only after a
+   successful send, TTL 48h); the next scheduler tick resends. Never delete them to "test" on a normal day: admins get a duplicate.
+
+Reports slow or erroring: `pg_analytics_pool_connections{state="waiting"}` (dedicated pool, max `ANALYTICS_POOL_MAX`=4,
+isolated from ride/payment traffic); `analytics_cache_requests_total{result="bypass"}` means Redis is unreachable
+(Reports still works, just uncached). Ranges are capped at 366 days and answered from `idx_rides_requested_at` /
+`idx_rides_completed_at_completed`. CSV exports are audited (`admin_audit_log.action = 'analytics_export'`).
+
+Deploy-day note: Overview "revenue today" and completed count moved from `payments.created_at` / `requested_at` to the
+ride `completed_at` clock (shared definitions in `api/src/modules/analytics/kpi-definitions.ts`), so rides that cross
+midnight IST land on their completion day; expect a one-time shift versus yesterday's numbers.
+
 ## Rotate a secret (DB URL, JWT secret, Razorpay keys, etc.)
 
 All of it lives in one SSM `SecureString` parameter, `/ocar/prod/api-env` —

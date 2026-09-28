@@ -29,6 +29,10 @@ const envSchema = z.object({
   // Dedicated pool for direct-query BullMQ workers (gps-flush, notifications) so their
   // insert/select bursts don't starve HTTP request handlers of the request pool.
   WORKER_POOL_MAX: z.coerce.number().default(10),
+  // Dedicated pool for Reports/analytics queries (heavy GROUP BY scans, 60s timeout) so a
+  // busy Reports page or the daily digest can never starve ride/payment traffic. Kept small:
+  // request 15 + worker 10 + analytics 4 = 29 conns/instance.
+  ANALYTICS_POOL_MAX: z.coerce.number().default(4),
 
   // Redis
   REDIS_URL: z.string().min(1),

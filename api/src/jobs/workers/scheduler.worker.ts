@@ -9,6 +9,7 @@ import { createWorkerLogger } from '@/lib/worker-logger'
 import { findDocsNeedingExpiryNotice } from '@/modules/drivers/drivers.repository'
 import { notifyDocumentExpiring, notifyDocumentExpired } from '@/modules/notifications/notifications.service'
 import { docLabel } from '@/modules/admin/admin.service'
+import { runAdminDigest } from '@/modules/analytics/admin-digest'
 import { sweepStaleSosAlerts, sweepBreachedDisputeSlas } from '@/modules/safety/safety.sweeps'
 
 const log = createWorkerLogger('scheduler')
@@ -60,6 +61,11 @@ export const schedulerWorker = new Worker(
 
     if (job.name === 'sweep_dispute_sla') {
       await sweepBreachedDisputeSlas()
+      return
+    }
+
+    if (job.name === 'admin_daily_digest') {
+      await runAdminDigest()
       return
     }
   },
