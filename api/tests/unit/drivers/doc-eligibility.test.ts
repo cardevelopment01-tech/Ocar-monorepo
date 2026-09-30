@@ -20,6 +20,16 @@ describe('docIssueExistsSql', () => {
     expect(sql).not.toContain('claimed_valid_until')
   })
 
+  it('treats a pending REQUIRED doc as an issue but not optional ones', () => {
+    const sql = docIssueExistsSql('$1')
+    expect(sql).toContain("dd.status = 'pending'")
+    expect(sql).toContain("'aadhaar_front'")
+    expect(sql).toContain("dvd.status = 'pending'")
+    expect(sql).toContain("'vehicle_rc'")
+    expect(sql).not.toContain('pollution_cert')
+    expect(sql).not.toContain('fitness_cert')
+  })
+
   it('accepts a bound-parameter expression for the single-driver rollup', () => {
     expect(docIssueExistsSql('$1')).toContain('dd.driver_id = $1')
   })

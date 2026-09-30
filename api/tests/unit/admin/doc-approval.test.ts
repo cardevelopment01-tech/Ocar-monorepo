@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/modules/admin/admin.repository', () => ({
   approveDriverDoc: vi.fn(),
   approveVehicleDoc: vi.fn(),
+  getDocType: vi.fn(),
   syncDriverStatusAfterDocChange: vi.fn(),
 }))
 vi.mock('@/lib/audit-log', () => ({ recordAuditLog: vi.fn() }))
@@ -16,7 +17,10 @@ const SEEN = '2026-08-24T10:00:00.000Z'
 const VERIFIED = '2030-01-01'
 
 describe('approveDriverDoc — verified expiry requirement', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(repo.getDocType).mockResolvedValue('driving_license_front')
+  })
 
   it('rejects approval with no verified expiry date', async () => {
     await expect(approveDriverDoc(DOC_ID, ADMIN_ID, '', SEEN, null))
@@ -54,7 +58,10 @@ describe('approveDriverDoc — verified expiry requirement', () => {
 })
 
 describe('approveVehicleDoc — verified expiry requirement', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(repo.getDocType).mockResolvedValue('insurance')
+  })
 
   it('rejects approval with no verified expiry date', async () => {
     await expect(approveVehicleDoc(DOC_ID, ADMIN_ID, '', SEEN, null))
@@ -87,5 +94,28 @@ describe('approveVehicleDoc — verified expiry requirement', () => {
     const { recordAuditLog } = await import('@/lib/audit-log')
     await expect(approveVehicleDoc(DOC_ID, ADMIN_ID, VERIFIED, SEEN, null)).rejects.toBeTruthy()
     expect(recordAuditLog).not.toHaveBeenCalled()
+  })
+})
+
+describe('no-expiry doc types', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it.each(['profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license_back'])(
+    'approves driver doc %s without a date and stores NULL even if one is sent',
+    async (type) => {
+      vi.mocked(repo.getDocType).mockResolvedValue(type)
+      vi.mocked(repo.approveDriverDoc).mockResolvedValue({ driver_id: '42' })
+      await approveDriverDoc(DOC_ID, ADMIN_ID, '', SEEN, null)
+      await approveDriverDoc(DOC_ID, ADMIN_ID, VERIFIED, SEEN, null)
+      expect(repo.approveDriverDoc).toHaveBeenNthCalledWith(1, DOC_ID, ADMIN_ID, null, SEEN)
+      expect(repo.approveDriverDoc).toHaveBeenNthCalledWith(2, DOC_ID, ADMIN_ID, null, SEEN)
+    },
+  )
+
+  it('approves vehicle_rc without a date', async () => {
+    vi.mocked(repo.getDocType).mockResolvedValue('vehicle_rc')
+    vi.mocked(repo.approveVehicleDoc).mockResolvedValue({ driver_id: '42' })
+    await approveVehicleDoc(DOC_ID, ADMIN_ID, '', SEEN, null)
+    expect(repo.approveVehicleDoc).toHaveBeenCalledWith(DOC_ID, ADMIN_ID, null, SEEN)
   })
 })

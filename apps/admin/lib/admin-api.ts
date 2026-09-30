@@ -164,8 +164,8 @@ export const adminDriverApi = {
     })
   },
 
-  rejectDriverDoc: async (docId: string, rejectionNote: string): Promise<void> => {
-    await api.patch(`/api/v1/admin/drivers/documents/${docId}/reject`, { rejection_note: rejectionNote })
+  rejectDriverDoc: async (docId: string, rejectionNote: string, seenUpdatedAt: string): Promise<void> => {
+    await api.patch(`/api/v1/admin/drivers/documents/${docId}/reject`, { rejection_note: rejectionNote, seen_updated_at: seenUpdatedAt })
   },
 
   updateProfile: async (
@@ -222,8 +222,8 @@ export const adminDriverApi = {
     })
   },
 
-  rejectVehicleDoc: async (docId: string, rejectionNote: string): Promise<void> => {
-    await api.patch(`/api/v1/admin/vehicles/documents/${docId}/reject`, { rejection_note: rejectionNote })
+  rejectVehicleDoc: async (docId: string, rejectionNote: string, seenUpdatedAt: string): Promise<void> => {
+    await api.patch(`/api/v1/admin/vehicles/documents/${docId}/reject`, { rejection_note: rejectionNote, seen_updated_at: seenUpdatedAt })
   },
 }
 

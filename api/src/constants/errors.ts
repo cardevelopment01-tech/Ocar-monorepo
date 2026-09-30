@@ -77,7 +77,7 @@ export const AppErrors = {
   },
   DRIVER_DOCS_REJECTED: {
     code: 'DRIVER_DOCS_REJECTED',
-    message: 'One or more of your documents was rejected or has expired — please resubmit it to continue',
+    message: 'One or more of your documents was rejected, has expired or is awaiting review — please fix or wait for approval to continue',
     httpStatus: 403,
   },
   LOW_WALLET_BALANCE: {

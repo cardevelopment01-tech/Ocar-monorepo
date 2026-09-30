@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import * as service from "./admin.service";
+import { createHttpError } from "@/lib/errors";
+import { AppErrors } from "@/constants/errors";
 import * as sosService from "@/modules/safety/sos.service";
 import * as disputeService from "@/modules/safety/disputes.service";
 import * as adminAuditService from "@/modules/admin-audit/admin-audit.service";
@@ -525,6 +527,13 @@ export async function getPendingVehicleDocs(
   }
 }
 
+// Non-numeric ids would make BigInt() throw a SyntaxError (-> 500); reject as 400.
+function docIdParam(req: Request): bigint {
+  const raw = req.params["docId"];
+  if (!raw || !/^\d+$/.test(raw)) throw createHttpError(AppErrors.VALIDATION_ERROR);
+  return BigInt(raw);
+}
+
 export async function approveDriverDoc(
   req: Request,
   res: Response,
@@ -532,7 +541,7 @@ export async function approveDriverDoc(
 ): Promise<void> {
   try {
     await service.approveDriverDoc(
-      BigInt(req.params["docId"]!),
+      docIdParam(req),
       req.admin!.id,
       String(req.body.verified_valid_until ?? ""),
       String(req.body.seen_updated_at ?? ""),
@@ -551,9 +560,10 @@ export async function rejectDriverDoc(
 ): Promise<void> {
   try {
     await service.rejectDriverDoc(
-      BigInt(req.params["docId"]!),
+      docIdParam(req),
       req.admin!.id,
       String(req.body.rejection_note ?? ""),
+      String(req.body.seen_updated_at ?? ""),
       req.ip ?? null,
     );
     res.json({ success: true });
@@ -569,7 +579,7 @@ export async function approveVehicleDoc(
 ): Promise<void> {
   try {
     await service.approveVehicleDoc(
-      BigInt(req.params["docId"]!),
+      docIdParam(req),
       req.admin!.id,
       String(req.body.verified_valid_until ?? ""),
       String(req.body.seen_updated_at ?? ""),
@@ -588,9 +598,10 @@ export async function rejectVehicleDoc(
 ): Promise<void> {
   try {
     await service.rejectVehicleDoc(
-      BigInt(req.params["docId"]!),
+      docIdParam(req),
       req.admin!.id,
       String(req.body.rejection_note ?? ""),
+      String(req.body.seen_updated_at ?? ""),
       req.ip ?? null,
     );
     res.json({ success: true });
