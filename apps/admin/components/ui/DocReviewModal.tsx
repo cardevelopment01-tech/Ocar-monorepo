@@ -30,9 +30,9 @@ export interface DocReviewModalProps {
   onClose: () => void
   onDriverAction: (type: 'approve' | 'rejectDocs' | 'ban' | 'suspend' | 'reinstate', reason?: string) => Promise<void>
   onDriverDocApprove: (docId: string, verifiedValidUntil: string, seenUpdatedAt: string) => Promise<void>
-  onDriverDocReject: (docId: string, reason: string) => Promise<void>
+  onDriverDocReject: (docId: string, reason: string, seenUpdatedAt: string) => Promise<void>
   onVehicleDocApprove: (docId: string, verifiedValidUntil: string, seenUpdatedAt: string) => Promise<void>
-  onVehicleDocReject: (docId: string, reason: string) => Promise<void>
+  onVehicleDocReject: (docId: string, reason: string, seenUpdatedAt: string) => Promise<void>
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -150,9 +150,9 @@ function SidebarDoc({ doc, selected, idx, total, onClick }: {
 
 // ─── Inline reason form ───────────────────────────────────────────────────────
 
-function ReasonForm({ title, placeholder, confirmLabel, danger, loading, onSubmit, onCancel }: {
+function ReasonForm({ title, placeholder, confirmLabel, danger, loading, error, onSubmit, onCancel }: {
   title: string; placeholder: string; confirmLabel: string; danger?: boolean
-  loading: boolean; onSubmit: (r: string) => void; onCancel: () => void
+  loading: boolean; error?: string | null; onSubmit: (r: string) => void; onCancel: () => void
 }) {
   const [value, setValue] = useState('')
   const valid = value.trim().length >= 10
@@ -173,6 +173,7 @@ function ReasonForm({ title, placeholder, confirmLabel, danger, loading, onSubmi
         autoFocus
         className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-surface-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-text-muted text-text-primary leading-relaxed"
       />
+      {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex items-center gap-2.5">
         <button
           onClick={() => onSubmit(value.trim())}
@@ -198,6 +199,12 @@ function ReasonForm({ title, placeholder, confirmLabel, danger, loading, onSubmi
 
 // ─── Inline approve form ──────────────────────────────────────────────────────
 
+// The API's error body is { error, code } — older handlers here read .message, which never exists.
+function apiErrorText(err: unknown): string | undefined {
+  const data = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data
+  return data?.error ?? data?.message
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -209,15 +216,12 @@ function todayIso() {
 function minExpiryIso() {
   const d = new Date()
   d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
+  return d.toLocaleDateString('en-CA') // local YYYY-MM-DD; toISOString() is UTC and lags IST by a day until 05:30
 }
 
-// A selfie has no validity period — asking for one just invites an admin to
-// pick "today" (the easiest date in the picker), which expires it immediately.
-// The backend forces verified_valid_until to NULL for this doc type regardless
-// of what's sent; PLACEHOLDER only needs to pass the ">today" validation gate.
-const NO_EXPIRY_DOC_TYPES = new Set(['profile_photo'])
-const NO_EXPIRY_PLACEHOLDER = '9999-12-31'
+// These have no validity period — asking for one just invites an admin to pick
+// "today" (the easiest date in the picker). The backend ignores any date for them.
+const NO_EXPIRY_DOC_TYPES = new Set(['profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license_back', 'vehicle_rc'])
 
 function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onCancel }: {
   docType: string; claimedValidUntil: string | null; loading: boolean; error: string | null
@@ -266,7 +270,7 @@ function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onC
       )}
       <div className="flex items-center gap-2.5">
         <button
-          onClick={() => onSubmit(noExpiry ? NO_EXPIRY_PLACEHOLDER : value)}
+          onClick={() => onSubmit(noExpiry ? '' : value)}
           disabled={!valid || loading}
           className="px-4 py-2 text-sm font-semibold rounded-xl transition-colors disabled:opacity-45 bg-success text-white hover:bg-emerald-600"
         >
@@ -471,19 +475,21 @@ export default function DocReviewModal({
       const next = nextActionableIdx(allDocs, idx)
       if (next !== null) setIdx(next)
     } catch (err) {
-      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      setApproveError(message ?? 'Could not approve. Please try again.')
+      setApproveError(apiErrorText(err) ?? 'Could not approve. Please try again.')
     } finally { setDocLoading(false) }
   }
   async function doDocReject(reason: string) {
     if (!doc?.id) return
     setDocLoading(true)
+    setApproveError(null)
     try {
-      if (doc.kind === 'driver') await onDriverDocReject(doc.id, reason)
-      else                       await onVehicleDocReject(doc.id, reason)
+      if (doc.kind === 'driver') await onDriverDocReject(doc.id, reason, doc.updatedAt ?? '')
+      else                       await onVehicleDocReject(doc.id, reason, doc.updatedAt ?? '')
       setRejectDoc(false)
       const next = nextActionableIdx(allDocs, idx)
       if (next !== null) setIdx(next)
+    } catch (err) {
+      setApproveError(apiErrorText(err) ?? 'Could not reject. Please try again.')
     } finally { setDocLoading(false) }
   }
   async function doDriverAction(type: 'approve' | 'rejectDocs' | 'ban' | 'suspend' | 'reinstate', reason?: string) {
@@ -891,6 +897,7 @@ export default function DocReviewModal({
                       confirmLabel="Reject Document"
                       danger
                       loading={docLoading}
+                      error={approveError}
                       onSubmit={reason => void doDocReject(reason)}
                       onCancel={() => setRejectDoc(false)}
                     />

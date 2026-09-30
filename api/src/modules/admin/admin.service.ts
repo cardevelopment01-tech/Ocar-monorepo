@@ -360,6 +360,24 @@ export async function unblacklistVehicle(vehicleId: bigint) {
 
 export async function listPendingVehicleDocs() { return repo.listPendingVehicleDocs() }
 
+// Doc types with no validity period — no expiry is asked for or stored (NULL reads
+// as "never expires" in the goOnline gate). Any date sent for these is ignored.
+const NO_EXPIRY_DOC_TYPES = new Set(['profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license_back', 'vehicle_rc'])
+
+function validateVerifiedExpiry(docType: string, verifiedValidUntil: string): string | null {
+  if (NO_EXPIRY_DOC_TYPES.has(docType)) return null
+  if (!verifiedValidUntil) {
+    throw httpError(422, 'Verified expiry date is required to approve a document.', 'VALIDATION_ERROR')
+  }
+  // Strictly after today (IST), not >= — a doc "valid until today" is already
+  // stale by tomorrow's goOnline check. UTC date would lag IST by a day until 05:30.
+  const todayIst = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10)
+  if (verifiedValidUntil <= todayIst) {
+    throw httpError(422, 'Verified expiry date must be in the future.', 'VALIDATION_ERROR')
+  }
+  return verifiedValidUntil
+}
+
 export async function approveDriverDoc(
   docId: bigint,
   adminId: bigint,
@@ -367,40 +385,39 @@ export async function approveDriverDoc(
   seenUpdatedAt: string,
   ipAddress: string | null
 ) {
-  if (!verifiedValidUntil) {
-    throw httpError(422, 'Verified expiry date is required to approve a document.', 'VALIDATION_ERROR')
-  }
-  // Strictly after today, not >= — a doc "valid until today" is already stale by
-  // tomorrow's goOnline check. (driver_documents.approveDriverDoc still forces
-  // NULL for profile_photo regardless of this value — it never expires.)
-  if (verifiedValidUntil <= new Date().toISOString().slice(0, 10)) {
-    throw httpError(422, 'Verified expiry date must be in the future.', 'VALIDATION_ERROR')
-  }
+  const docType = await repo.getDocType('driver', docId)
+  if (!docType) throw createHttpError(AppErrors.NOT_FOUND)
+  const expiry = validateVerifiedExpiry(docType, verifiedValidUntil)
   if (!seenUpdatedAt) {
     throw httpError(400, 'Missing document version. Refresh and try again.', 'VALIDATION_ERROR')
   }
-  const approved = await repo.approveDriverDoc(docId, adminId, verifiedValidUntil, seenUpdatedAt)
+  const approved = await repo.approveDriverDoc(docId, adminId, expiry, seenUpdatedAt)
   if (!approved) {
     throw httpError(409, 'This document was modified since you last viewed it. Refresh and try again.', 'DOC_CHANGED')
   }
   await recordAuditLog({
     adminId, action: 'driver_documents.approve', targetTable: 'driver_documents', targetId: docId,
-    afterState: { status: 'approved', verified_valid_until: verifiedValidUntil }, ipAddress,
+    afterState: { status: 'approved', verified_valid_until: expiry }, ipAddress,
   })
   await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
 }
 
-export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: string, ipAddress: string | null) {
+export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: string, seenUpdatedAt: string, ipAddress: string | null) {
   if (!note || note.length < 10) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  const rejected = await repo.rejectDriverDoc(docId, adminId, note)
-  if (rejected) {
-    await recordAuditLog({
-      adminId, action: 'driver_documents.reject', targetTable: 'driver_documents', targetId: docId,
-      afterState: { status: 'rejected', doc_type: rejected.doc_type, note }, ipAddress,
-    })
-    await notifyDocumentRejected(BigInt(rejected.driver_id), rejected.doc_type, note, rejected.rejection_count)
-    await repo.syncDriverStatusAfterDocChange(BigInt(rejected.driver_id), adminId)
+  if (!seenUpdatedAt) {
+    throw httpError(400, 'Missing document version. Refresh and try again.', 'VALIDATION_ERROR')
   }
+  if (!(await repo.getDocType('driver', docId))) throw createHttpError(AppErrors.NOT_FOUND)
+  const rejected = await repo.rejectDriverDoc(docId, adminId, note, seenUpdatedAt)
+  if (!rejected) {
+    throw httpError(409, 'This document was modified since you last viewed it. Refresh and try again.', 'DOC_CHANGED')
+  }
+  await recordAuditLog({
+    adminId, action: 'driver_documents.reject', targetTable: 'driver_documents', targetId: docId,
+    afterState: { status: 'rejected', doc_type: rejected.doc_type, note }, ipAddress,
+  })
+  await notifyDocumentRejected(BigInt(rejected.driver_id), rejected.doc_type, note, rejected.rejection_count)
+  await repo.syncDriverStatusAfterDocChange(BigInt(rejected.driver_id), adminId)
   return rejected
 }
 
@@ -411,37 +428,39 @@ export async function approveVehicleDoc(
   seenUpdatedAt: string,
   ipAddress: string | null
 ) {
-  if (!verifiedValidUntil) {
-    throw httpError(422, 'Verified expiry date is required to approve a document.', 'VALIDATION_ERROR')
-  }
-  if (verifiedValidUntil <= new Date().toISOString().slice(0, 10)) {
-    throw httpError(422, 'Verified expiry date must be in the future.', 'VALIDATION_ERROR')
-  }
+  const docType = await repo.getDocType('vehicle', docId)
+  if (!docType) throw createHttpError(AppErrors.NOT_FOUND)
+  const expiry = validateVerifiedExpiry(docType, verifiedValidUntil)
   if (!seenUpdatedAt) {
     throw httpError(400, 'Missing document version. Refresh and try again.', 'VALIDATION_ERROR')
   }
-  const approved = await repo.approveVehicleDoc(docId, adminId, verifiedValidUntil, seenUpdatedAt)
+  const approved = await repo.approveVehicleDoc(docId, adminId, expiry, seenUpdatedAt)
   if (!approved) {
     throw httpError(409, 'This document was modified since you last viewed it. Refresh and try again.', 'DOC_CHANGED')
   }
   await recordAuditLog({
     adminId, action: 'vehicle_documents.approve', targetTable: 'driver_vehicle_documents', targetId: docId,
-    afterState: { status: 'approved', verified_valid_until: verifiedValidUntil }, ipAddress,
+    afterState: { status: 'approved', verified_valid_until: expiry }, ipAddress,
   })
   await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
 }
 
-export async function rejectVehicleDoc(docId: bigint, adminId: bigint, note: string, ipAddress: string | null) {
+export async function rejectVehicleDoc(docId: bigint, adminId: bigint, note: string, seenUpdatedAt: string, ipAddress: string | null) {
   if (!note || note.length < 10) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  const rejected = await repo.rejectVehicleDoc(docId, adminId, note)
-  if (rejected) {
-    await recordAuditLog({
-      adminId, action: 'vehicle_documents.reject', targetTable: 'driver_vehicle_documents', targetId: docId,
-      afterState: { status: 'rejected', doc_type: rejected.doc_type, note }, ipAddress,
-    })
-    await notifyDocumentRejected(BigInt(rejected.driver_id), rejected.doc_type, note, rejected.rejection_count)
-    await repo.syncDriverStatusAfterDocChange(BigInt(rejected.driver_id), adminId)
+  if (!seenUpdatedAt) {
+    throw httpError(400, 'Missing document version. Refresh and try again.', 'VALIDATION_ERROR')
   }
+  if (!(await repo.getDocType('vehicle', docId))) throw createHttpError(AppErrors.NOT_FOUND)
+  const rejected = await repo.rejectVehicleDoc(docId, adminId, note, seenUpdatedAt)
+  if (!rejected) {
+    throw httpError(409, 'This document was modified since you last viewed it. Refresh and try again.', 'DOC_CHANGED')
+  }
+  await recordAuditLog({
+    adminId, action: 'vehicle_documents.reject', targetTable: 'driver_vehicle_documents', targetId: docId,
+    afterState: { status: 'rejected', doc_type: rejected.doc_type, note }, ipAddress,
+  })
+  await notifyDocumentRejected(BigInt(rejected.driver_id), rejected.doc_type, note, rejected.rejection_count)
+  await repo.syncDriverStatusAfterDocChange(BigInt(rejected.driver_id), adminId)
   return rejected
 }
 
