@@ -1425,10 +1425,18 @@ export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
   }));
 }
 
+export async function getDocType(kind: 'driver' | 'vehicle', docId: bigint): Promise<string | null> {
+  const sql = kind === 'driver'
+    ? 'SELECT doc_type FROM driver_documents WHERE id = $1'
+    : 'SELECT doc_type FROM driver_vehicle_documents WHERE id = $1'
+  const res = await pool.query(sql, [docId])
+  return (res.rows[0]?.doc_type as string | undefined) ?? null
+}
+
 export async function approveDriverDoc(
   docId: bigint,
   adminId: bigint,
-  verifiedValidUntil: string,
+  verifiedValidUntil: string | null,
   seenUpdatedAt: string,
 ): Promise<{ driver_id: string } | null> {
   // Compared at millisecond precision on both sides: Postgres stores updated_at
@@ -1438,12 +1446,9 @@ export async function approveDriverDoc(
   // this query ever runs — an exact-equality compare would reject almost every
   // real request with a false optimistic-lock conflict.
   const res = await pool.query(
-    // profile_photo never expires (it's a selfie, not a document with a validity
-    // period) — force NULL regardless of what's passed in, so a stale client or a
-    // direct API call can't re-introduce the same-day-expiry bug this replaced.
     `UPDATE driver_documents
      SET status = 'approved',
-         verified_valid_until = CASE WHEN doc_type = 'profile_photo' THEN NULL ELSE $1 END,
+         verified_valid_until = $1::date,
          reviewed_by = $2, reviewed_at = now(), updated_at = now(),
          rejection_count = 0, rejection_note = NULL
      WHERE id = $3 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $4::timestamptz)
@@ -1458,14 +1463,17 @@ export async function rejectDriverDoc(
   docId: bigint,
   adminId: bigint,
   rejectionNote: string,
+  seenUpdatedAt: string,
 ): Promise<{ driver_id: string; doc_type: string; rejection_count: number } | null> {
+  // Same millisecond-precision version guard as approveDriverDoc — a driver
+  // re-upload between load and click must not get the old file's rejection.
   const res = await pool.query(
     `UPDATE driver_documents
      SET status = 'rejected', rejection_note = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now(),
          rejection_count = rejection_count + 1
-     WHERE id = $3
+     WHERE id = $3 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $4::timestamptz)
      RETURNING driver_id, doc_type, rejection_count`,
-    [rejectionNote, adminId, docId],
+    [rejectionNote, adminId, docId, seenUpdatedAt],
   );
   const row = res.rows[0];
   return row
@@ -1476,14 +1484,14 @@ export async function rejectDriverDoc(
 export async function approveVehicleDoc(
   docId: bigint,
   adminId: bigint,
-  verifiedValidUntil: string,
+  verifiedValidUntil: string | null,
   seenUpdatedAt: string,
 ): Promise<{ driver_id: string } | null> {
   // See the matching comment on approveDriverDoc above — same millisecond-
   // vs-microsecond precision mismatch between JS Date and Postgres timestamptz.
   const res = await pool.query(
     `UPDATE driver_vehicle_documents dvd
-     SET status = 'approved', verified_valid_until = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now(),
+     SET status = 'approved', verified_valid_until = $1::date, reviewed_by = $2, reviewed_at = now(), updated_at = now(),
          rejection_count = 0, rejection_note = NULL
      FROM driver_vehicles dv
      WHERE dvd.id = $3 AND date_trunc('milliseconds', dvd.updated_at) = date_trunc('milliseconds', $4::timestamptz) AND dv.id = dvd.vehicle_id
@@ -1498,6 +1506,7 @@ export async function rejectVehicleDoc(
   docId: bigint,
   adminId: bigint,
   rejectionNote: string,
+  seenUpdatedAt: string,
 ): Promise<{ driver_id: string; doc_type: string; rejection_count: number } | null> {
   const res = await pool.query(
     `UPDATE driver_vehicle_documents dvd
@@ -1505,8 +1514,9 @@ export async function rejectVehicleDoc(
          rejection_count = rejection_count + 1
      FROM driver_vehicles dv
      WHERE dvd.id = $3 AND dv.id = dvd.vehicle_id
+       AND date_trunc('milliseconds', dvd.updated_at) = date_trunc('milliseconds', $4::timestamptz)
      RETURNING dvd.doc_type, dvd.rejection_count, dv.driver_id`,
-    [rejectionNote, adminId, docId],
+    [rejectionNote, adminId, docId, seenUpdatedAt],
   );
   const row = res.rows[0];
   return row
@@ -1526,8 +1536,8 @@ export async function listExpiringDocs(
      JOIN drivers d ON d.id = dv.driver_id
      WHERE dvd.status = 'approved'
        AND dvd.verified_valid_until IS NOT NULL
-       AND dvd.verified_valid_until <= now() + ($1 || ' days')::interval
-       AND dvd.verified_valid_until >= now()
+       AND dvd.verified_valid_until <= CURRENT_DATE + $1::int
+       AND dvd.verified_valid_until >= CURRENT_DATE
      ORDER BY dvd.verified_valid_until ASC`,
     [daysAhead],
   );

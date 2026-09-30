@@ -337,8 +337,15 @@ export async function findVehicleDocuments(vehicleId: string): Promise<DriverVeh
   )
 }
 
+const REQUIRED_IDENTITY_DOCS = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
+const REQUIRED_VEHICLE_DOCS  = ['vehicle_rc', 'insurance', 'permit']
+// Hardcoded constants only (never user input) — safe to inline into SQL.
+const sqlList = (types: string[]) => types.map((t) => `'${t}'`).join(', ')
+
 // Shared SQL fragment: does this driver have any required-doc issue — a rejected
-// row, or an approved row whose expiry has passed — across identity docs and the
+// row, an approved row whose expiry has passed, or a REQUIRED doc awaiting
+// (re-)review — a replaced file isn't trusted until an admin approves it; optional
+// docs (pollution/fitness certs) are never reviewed so never block — across identity docs and the
 // primary vehicle's docs? `driverIdExpr` is ALWAYS a hardcoded SQL token ('$1' for
 // the single-driver rollup, or a column like 'ds.driver_id' for the broadcast
 // candidate queries) — never user input, so interpolating it is safe under the
@@ -349,12 +356,14 @@ export function docIssueExistsSql(driverIdExpr: string): string {
   return `EXISTS (
        SELECT 1 FROM driver_documents dd
        WHERE dd.driver_id = ${driverIdExpr}
-         AND (dd.status = 'rejected' OR (dd.status = 'approved' AND dd.verified_valid_until < CURRENT_DATE))
+         AND (dd.status = 'rejected' OR (dd.status = 'approved' AND dd.verified_valid_until < CURRENT_DATE)
+              OR (dd.status = 'pending' AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)})))
        UNION ALL
        SELECT 1 FROM driver_vehicle_documents dvd
        JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
        WHERE dv.driver_id = ${driverIdExpr} AND dv.is_primary = true
-         AND (dvd.status = 'rejected' OR (dvd.status = 'approved' AND dvd.verified_valid_until < CURRENT_DATE))
+         AND (dvd.status = 'rejected' OR (dvd.status = 'approved' AND dvd.verified_valid_until < CURRENT_DATE)
+              OR (dvd.status = 'pending' AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)})))
      )`
 }
 
@@ -372,9 +381,6 @@ export async function hasApprovedRequiredDocs(driverId: bigint, client?: PoolCli
     : await query<{ has_issue: boolean }>(sql, params)
   return !rows[0]!.has_issue
 }
-
-const REQUIRED_IDENTITY_DOCS = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
-const REQUIRED_VEHICLE_DOCS  = ['vehicle_rc', 'insurance', 'permit']
 
 // Stricter than hasApprovedRequiredDocs above: that function only reports a
 // known ISSUE on already-uploaded rows (rejected, or approved-but-expired) —
