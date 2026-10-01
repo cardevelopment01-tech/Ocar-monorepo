@@ -185,6 +185,8 @@ export function FleetPreview({ items, onViewAll, onPick }: { items: FleetItem[];
       </View>
       <View style={s.fleetRow}>
         {items.slice(0, 4).map((it) => (
+          // Four equal columns whose badges fill them: the first badge starts on the same gutter as the heading and
+          // cards above and the last ends on the right gutter (fixed 66px badges centred in columns left the row inset).
           <Press key={it.key} hit={{ flex: 1, minWidth: 0 }} onPress={() => onPick(it)} label={it.name} style={s.fleetTile}>
             {(p) => <FleetTile item={it} p={p} />}
           </Press>
@@ -199,7 +201,7 @@ function FleetTile({ item, p }: { item: FleetItem; p: SharedValue<number> }) {
   return (
     <>
       <Animated.View style={[s.badge, badge]}>
-        <FleetImage item={item} box={50} />
+        <FleetImage item={item} box={62} />
       </Animated.View>
       <Text style={s.fleetName}>{item.name}</Text>
     </>
@@ -376,20 +378,22 @@ const s = StyleSheet.create({
   rowSub: { fontFamily: font.r, fontSize: 12, color: h.ivoryDim },
 
   ttWrap: { marginTop: 22 },
-  ttLabel: { fontFamily: font.b, fontSize: 12, letterSpacing: 1.4, textTransform: 'uppercase', color: h.teal, marginBottom: 10 },
-  ttLabelBare: { fontFamily: font.b, fontSize: 12, letterSpacing: 1.4, textTransform: 'uppercase', color: h.teal },
+  // Section headings: Headline weight, sentence case, ink (DESIGN.md has no tracked-caps eyebrow text).
+  ttLabel: { fontFamily: font.b, fontSize: 18, lineHeight: 24, letterSpacing: -0.2, color: h.ivory, marginBottom: 12 },
+  ttLabelBare: { fontFamily: font.b, fontSize: 18, lineHeight: 24, letterSpacing: -0.2, color: h.ivory },
   ttCard: { flexDirection: 'row', backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: 20, overflow: 'hidden' },
   ttTile: { alignItems: 'center', gap: 6, paddingVertical: 19, paddingHorizontal: 8 },
   ttTileDivider: { borderRightWidth: 1, borderRightColor: h.line08 },
   ttTitle: { fontFamily: font.sb, fontSize: 13.5, color: h.ivory },
-  ttSub: { fontFamily: font.r, fontSize: 10.5, color: 'rgba(20,23,26,0.36)' },
+  // 12px minimum and ink600-level contrast (the old 10.5px at 36% opacity was about 2.4:1 on white).
+  ttSub: { fontFamily: font.r, fontSize: 12, color: h.ivoryDim },
 
   fleetWrap: { marginTop: 22 },
   fleetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   viewAll: { width: 28, height: 28, borderRadius: 14, backgroundColor: h.chip, alignItems: 'center', justifyContent: 'center' },
   fleetRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-  fleetTile: { alignItems: 'center', gap: 8 },
-  badge: { width: 66, height: 66, borderRadius: 18, backgroundColor: h.chip, borderWidth: 1, borderColor: h.line07, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  fleetTile: { alignItems: 'stretch', gap: 8 },
+  badge: { width: '100%', aspectRatio: 1, borderRadius: 18, backgroundColor: h.chip, borderWidth: 1, borderColor: h.line07, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   fleetName: { fontFamily: font.m, fontSize: 12, lineHeight: 15, color: h.ivory, textAlign: 'center' },
 
   waysWrap: { marginTop: 22 },
@@ -399,7 +403,7 @@ const s = StyleSheet.create({
   motif: { position: 'absolute', top: 12, right: 12, width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
   wayTitleBox: { minHeight: 36, justifyContent: 'flex-end', maxWidth: 98 },
   wayTitle: { fontFamily: font.b, fontSize: 14, lineHeight: 17.64, color: '#FFFFFF' },
-  waySub: { fontFamily: font.r, fontSize: 10.5, color: 'rgba(255,255,255,0.68)', maxWidth: 98 },
+  waySub: { fontFamily: font.r, fontSize: 12, color: 'rgba(255,255,255,0.82)', maxWidth: 98 },
   wayArrow: { position: 'absolute', bottom: 14, right: 13, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)', alignItems: 'center', justifyContent: 'center' },
   liveWrap: { position: 'absolute', top: 8, right: 8, width: 9, height: 9, zIndex: 2 },
   liveDot: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: h.live, borderWidth: 2, borderColor: '#0A252B' },
@@ -409,9 +413,9 @@ const s = StyleSheet.create({
   promo: { borderRadius: 22, overflow: 'hidden' },
   promoArrow: { position: 'absolute', top: 16, right: 16, width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
   promoBody: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 16, paddingHorizontal: 18, paddingBottom: 17 },
-  promoEyebrow: { fontFamily: font.b, fontSize: 10, letterSpacing: 1.7, textTransform: 'uppercase', color: h.goldLight, marginBottom: 6 },
+  promoEyebrow: { fontFamily: font.sb, fontSize: 12, color: h.goldLight, marginBottom: 6 },
   promoTitle: { fontFamily: font.b, fontSize: 17, lineHeight: 21.25, letterSpacing: -0.1, color: '#FFFFFF', marginBottom: 4 },
-  promoSub: { fontFamily: font.r, fontSize: 11.5, lineHeight: 16.1, color: 'rgba(255,255,255,0.75)' },
+  promoSub: { fontFamily: font.r, fontSize: 12, lineHeight: 17, color: 'rgba(255,255,255,0.84)' },
 
   eliteWrap: { marginTop: 14 },
   elite: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14, overflow: 'hidden', boxShadow: '0 10px 24px rgba(201,151,74,0.28)' },

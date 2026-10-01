@@ -58,7 +58,7 @@ export function CategoryCard({
       <View style={styles.info}>
         {isReturnCab ? (
           <View style={styles.returnCabBadgeRow}>
-            <Text style={styles.returnCabBadge}>RETURN CAB</Text>
+            <Text style={styles.returnCabBadge}>Return cab</Text>
             <Text style={[styles.name, active ? { color: colors.success } : null]}>{category.displayName}</Text>
           </View>
         ) : (
@@ -130,9 +130,9 @@ const styles = StyleSheet.create({
   seatsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   returnCabBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   returnCabBadge: {
-    ...typography.caption, fontSize: 9, fontFamily: fonts.bold, color: colors.success,
-    backgroundColor: colors.successLight, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2,
-    overflow: 'hidden', letterSpacing: 0.4,
+    ...typography.caption, fontFamily: fonts.semibold, color: colors.success,
+    backgroundColor: colors.successLight, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2,
+    overflow: 'hidden',
   },
   savingsText: { ...typography.caption, fontFamily: fonts.semibold, color: colors.success },
   seatsText: { ...typography.caption, color: colors.ink400 },

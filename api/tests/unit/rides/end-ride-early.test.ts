@@ -116,4 +116,27 @@ describe('endRideEarlyAsDriver', () => {
     await expect(endRideEarlyAsDriver(BigInt(9), BigInt(202), 'vehicle_breakdown', 3, 10))
       .rejects.toMatchObject({ httpStatus: 409 })
   })
+
+  it('hourly window (pricing_version 2): keeps the booked-hours charge, still capped at the quote', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide({ ride_type: 'round_trip' }) as never)
+    const snap = (total_estimated: string) => vi.mocked(pool.query).mockImplementation((sql: unknown) => {
+      if (/FROM fare_snapshots fs\s+JOIN rate_cards/.test(sql as string)) {
+        return {
+          rows: [{
+            surge_multiplier: '1', stop_fare: '0', is_return_cab: false,
+            rate_per_km: '12', rate_per_min: '1.5', min_fare: '60', return_rate_per_km: null,
+            total_estimated, pricing_version: 2, trip_hours: '6', waiting_fare: '108', hour_rate: '18',
+          }],
+          rowCount: 1,
+        } as never
+      }
+      return { rows: [], rowCount: 1 } as never
+    })
+    snap('1228')
+    // one_way part floors at min_fare 60, plus the 6 x 18 = 108 booked hours
+    expect((await endRideEarlyAsDriver(BigInt(9), BigInt(202), 'vehicle_breakdown', 3, 10)).finalFare).toBe(168)
+
+    snap('150') // the quote is still the ceiling
+    expect((await endRideEarlyAsDriver(BigInt(9), BigInt(202), 'vehicle_breakdown', 3, 10)).finalFare).toBe(150)
+  })
 })

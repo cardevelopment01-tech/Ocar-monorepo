@@ -23,6 +23,11 @@ const C = {
   textFaint:    '#64748B',
   divider:      '#475569',
   primary:      '#0A9FB0',
+  // Brand pink, matching the OTP icon gradient (TripInProgress.tsx, #0A9FB0 ->
+  // #DC3E93) and the real Ocar logo's teal+pink duo -- this card previously had
+  // no brand-accent color at all (ETA icon was plain muted gray), the same gap
+  // fixed on driver-mobile's RideRequestOverlay (code review finding, 2026-09-28).
+  accent:       '#DC3E93',
   danger:       '#EF4444',
   warning:      '#F59E0B',
   warningText:  '#FDE68A',
@@ -247,7 +252,7 @@ export default function TripRequestCard({
 
           {/* [2] ETA-to-pickup hero — the #1 accept factor, now above the fare */}
           <motion.div variants={childVar} className="px-5 pb-2 flex items-center gap-1.5">
-            <Navigation2 size={13} style={{ color: C.textMuted }} />
+            <Navigation2 size={13} style={{ color: C.accent }} />
             <span className="text-[15px] font-bold tabular-nums" style={{ color: C.text }}>
               {etaToPickupMin} min
             </span>
@@ -328,7 +333,7 @@ export default function TripRequestCard({
                   <RotateCcw size={14} style={{ color: C.warning, flexShrink: 0, marginTop: 2 }} />
                   <div className="min-w-0">
                     <p className="text-[13px] font-semibold leading-tight" style={{ color: C.warningText }}>
-                      Outstation return trip
+                      {tripHours ? `Round trip · ${tripHours}h booked` : 'Outstation return trip'}
                     </p>
                     <p className="text-[12px] font-medium mt-0.5 leading-snug" style={{ color: C.warningSub }}>
                       {returnAtFormatted

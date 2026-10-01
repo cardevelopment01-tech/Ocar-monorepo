@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native'
 import { Pressable } from 'react-native'
+import { geo } from '@/theme/homeTokens'
 import { colors, formatCurrency, radii, spacing, typography, type RideDetail, fonts } from '@ocar/mobile-shared'
 import { RouteRow } from './RouteRow'
 
@@ -39,7 +40,7 @@ export function ActiveRideCard({ ride, onOpen }: ActiveRideCardProps) {
 }
 
 const styles = StyleSheet.create({
-  wrapper: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  wrapper: { paddingHorizontal: geo.gutter, paddingBottom: spacing.sm },
   card: { backgroundColor: colors.primarySubtle, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.primaryLight, padding: spacing.md, gap: spacing.sm },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   livePill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },

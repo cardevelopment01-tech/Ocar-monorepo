@@ -3,6 +3,7 @@ import { authenticate } from '@/middleware/auth.middleware'
 import { client as redis } from '@/db/redis'
 import { startOtpKey, endOtpKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
+import { withTripWindow } from '@/lib/trip-window'
 import * as service from './rides.service'
 import * as repo from './rides.repository'
 import * as paymentsService from '@/modules/payments/payments.service'
@@ -83,7 +84,7 @@ router.get('/me/active', authenticate(), async (req, res, next) => {
     const ride = await repo.getActiveRideForDriver(driverId)
     if (!ride) { res.status(404).json({ error: 'No active ride' }); return }
     const stops = await repo.getRideStops(BigInt(ride.id))
-    res.json({ ...service.maskRideContacts(ride, 'driver'), stops })
+    res.json({ ...withTripWindow(service.maskRideContacts(ride, 'driver')), stops })
   } catch (err) { next(err) }
 })
 
@@ -204,7 +205,7 @@ router.get('/:id', authenticate(), async (req, res, next) => {
     }
 
     const viewer = req.admin ? 'admin' : isRider ? 'user' : 'driver'
-    const maskedRide = service.maskRideContacts(ride, viewer)
+    const maskedRide = withTripWindow(service.maskRideContacts(ride, viewer))
     res.json({ ...maskedRide, stops, driver_photo: driverPhoto, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
   } catch (err) { next(err) }
 })
@@ -254,6 +255,14 @@ router.post('/:id/accept', authenticate(), async (req, res, next) => {
     const driverId = req.driver!.id
     const result = await service.acceptRide(driverId, BigInt(req.params['id']!))
     res.json(result)
+  } catch (err) { next(err) }
+})
+
+router.post('/:id/decline', authenticate(), async (req, res, next) => {
+  try {
+    const driverId = req.driver!.id
+    await service.declineRide(driverId, BigInt(req.params['id']!))
+    res.json({ success: true })
   } catch (err) { next(err) }
 })
 

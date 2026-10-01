@@ -1,0 +1,15 @@
+# Booking pickup is filled from a fresh fix only, and never left on "Finding..." once a fix exists.
+appId: com.ocar.rider
+---
+- setLocation:
+    latitude: 20.2961
+    longitude: 85.8245
+- launchApp:
+    stopApp: true
+    permissions:
+      location: allow
+- tapOn: 'Where to?'
+- extendedWaitUntil:
+    notVisible: 'Finding your location…'
+    timeout: 15000
+- assertNotVisible: 'Set pickup location'

@@ -2,15 +2,16 @@ import { useState } from 'react'
 import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, formatCurrency, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, colors, formatCurrency, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { SlideToConfirm } from './SlideToConfirm'
+import { SCRIM } from './scrim'
 
 export type CashCollectionCardProps = {
   expectedFare: number
   riderName?: string | null
   loading: boolean
   error: string | null
-  onConfirmFull: () => void
+  onConfirmFull: () => void | boolean | Promise<boolean | void>
   onPartialOrNotCollected: (input: { collectedAmount?: number; notCollected?: boolean; note: string }) => void
 }
 
@@ -50,12 +51,12 @@ export function CashCollectionCard({
   return (
     <View style={styles.wrap}>
       <View style={styles.hero}>
+        {/* A rupee glyph, not Feather's dollar-sign: this is an INR fare. */}
         <View style={styles.iconCircle}>
-          <Feather name="dollar-sign" size={32} color={colors.inkInverse} />
+          <Text style={styles.rupee}>₹</Text>
         </View>
-        <Text style={styles.heroLabel}>Collect cash from rider</Text>
-        <Text style={styles.heroFare}>{formatCurrency(expectedFare)}</Text>
-        <Text style={styles.heroSub}>Cash{riderName ? ` · ${riderName}` : ''}</Text>
+        <Text style={styles.heroLabel}>Collect cash from {riderName ?? 'the rider'}</Text>
+        <Text style={styles.heroFare} accessibilityLabel={`${formatCurrency(expectedFare)} to collect`}>{formatCurrency(expectedFare)}</Text>
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -67,8 +68,9 @@ export function CashCollectionCard({
         color={colors.success}
       />
 
-      <Pressable onPress={() => { setSheetOpen(true); setPendingConfirm(false) }} disabled={loading} style={styles.altBtn}>
-        <Text style={styles.altBtnText}>Different amount / not collected</Text>
+      <Pressable onPress={() => { setSheetOpen(true); setPendingConfirm(false) }} disabled={loading} style={styles.altBtn} accessibilityRole="button">
+        <Text style={styles.altBtnText}>Different amount or not collected</Text>
+        <Feather name="chevron-right" size={16} color={colors.ink600} />
       </Pressable>
 
       <Modal visible={sheetOpen} transparent animationType="slide" onRequestClose={() => setSheetOpen(false)}>
@@ -77,8 +79,8 @@ export function CashCollectionCard({
           <View style={styles.handle} />
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Adjust cash collected</Text>
-            <Pressable onPress={() => setSheetOpen(false)} disabled={loading} hitSlop={8} accessibilityLabel="Close">
-              <Feather name="x" size={20} color={colors.ink400} />
+            <Pressable onPress={() => setSheetOpen(false)} disabled={loading} hitSlop={8} style={styles.close} accessibilityRole="button" accessibilityLabel="Close">
+              <Feather name="x" size={20} color={colors.ink900} />
             </Pressable>
           </View>
 
@@ -88,7 +90,7 @@ export function CashCollectionCard({
             onChangeText={(t) => { setCustomAmount(t.replace(/[^0-9.]/g, '')); setPendingConfirm(false) }}
             keyboardType="decimal-pad"
             placeholder={String(Math.round(expectedFare))}
-            placeholderTextColor={colors.ink400}
+            placeholderTextColor={colors.ink600}
             style={styles.input}
           />
 
@@ -98,15 +100,23 @@ export function CashCollectionCard({
             </Text>
           ) : null}
 
-          <Pressable
-            onPress={confirmCustomAmount}
-            disabled={loading || customAmount === ''}
-            style={[styles.confirmBtn, pendingConfirm ? styles.confirmBtnDanger : null, (loading || customAmount === '') ? styles.disabled : null]}
-          >
-            <Text style={styles.confirmBtnText}>
-              {loading ? 'Saving…' : pendingConfirm ? `Yes, confirm ₹${customAmount || '0'}` : `Confirm ₹${customAmount || '0'} collected`}
-            </Text>
-          </Pressable>
+          {pendingConfirm ? (
+            <Pressable
+              onPress={confirmCustomAmount}
+              disabled={loading}
+              style={[styles.confirmBtn, styles.confirmBtnDanger, loading ? styles.disabled : null]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.confirmBtnText}>{loading ? 'Saving…' : `Yes, confirm ₹${customAmount || '0'}`}</Text>
+            </Pressable>
+          ) : (
+            <Button
+              label={loading ? 'Saving…' : `Confirm ₹${customAmount || '0'} collected`}
+              loading={loading}
+              disabled={loading || customAmount === ''}
+              onPress={confirmCustomAmount}
+            />
+          )}
 
           <Pressable
             onPress={() => { setSheetOpen(false); onPartialOrNotCollected({ notCollected: true, note: '' }) }}
@@ -124,31 +134,33 @@ export function CashCollectionCard({
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: spacing.sm },
-  hero: { alignItems: 'center', gap: 2, paddingVertical: spacing.sm },
+  wrap: { gap: spacing.md },
+  hero: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs },
   iconCircle: {
     width: 72, height: 72, borderRadius: 36, backgroundColor: colors.success,
-    alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm,
+    alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs,
     shadowColor: colors.success, shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: 0, height: 0 }, elevation: 6,
   },
-  heroLabel: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
-  heroFare: { fontSize: 48, fontFamily: fonts.bold, color: colors.ink900, lineHeight: 54 },
-  heroSub: { ...typography.caption, color: colors.ink400 },
+  rupee: { fontSize: 34, lineHeight: 40, fontFamily: fonts.bold, color: colors.inkInverse },
+  heroLabel: { ...typography.body, lineHeight: 22, color: colors.ink600, fontFamily: fonts.semibold },
+  heroFare: { fontSize: 48, fontFamily: fonts.bold, color: colors.ink900, lineHeight: 56 },
   error: { ...typography.label, color: colors.error, textAlign: 'center' },
-  altBtn: { paddingVertical: spacing.sm, alignItems: 'center' },
-  altBtnText: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
-  backdrop: { backgroundColor: 'rgba(20,23,26,0.45)' },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, gap: spacing.xs },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.sm },
-  sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: spacing.sm },
-  sheetTitle: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  inputLabel: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold, marginBottom: spacing.xs },
-  input: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4, fontSize: 18, fontFamily: fonts.bold, color: colors.ink900, marginBottom: spacing.sm },
-  deviationWarning: { ...typography.caption, color: colors.error, textAlign: 'center', marginBottom: spacing.sm },
-  confirmBtn: { paddingVertical: spacing.sm + 6, borderRadius: radii.lg, backgroundColor: colors.primary, alignItems: 'center', marginBottom: spacing.sm },
+  // A real 48px target, not a caption floating under the slider.
+  altBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, minHeight: 48, borderRadius: radii.lg },
+  altBtnText: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
+  backdrop: { backgroundColor: SCRIM },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, gap: spacing.sm },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.xs },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sheetTitle: { ...typography.headline, color: colors.ink900 },
+  close: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  inputLabel: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
+  input: { borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4, fontSize: 20, fontFamily: fonts.bold, color: colors.ink900 },
+  deviationWarning: { ...typography.label, color: colors.error, textAlign: 'center' },
+  confirmBtn: { paddingVertical: 15, borderRadius: radii.lg, backgroundColor: colors.primary, alignItems: 'center' },
   confirmBtnDanger: { backgroundColor: colors.error },
-  confirmBtnText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
-  notCollectedBtn: { paddingVertical: spacing.sm + 6, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.error, alignItems: 'center' },
-  notCollectedText: { ...typography.body, color: colors.error, fontFamily: fonts.bold },
+  confirmBtnText: { fontSize: 14.5, color: colors.inkInverse, fontFamily: fonts.bold },
+  notCollectedBtn: { minHeight: 48, justifyContent: 'center', borderRadius: radii.lg, borderWidth: 1.5, borderColor: colors.error, alignItems: 'center' },
+  notCollectedText: { fontSize: 14.5, color: colors.error, fontFamily: fonts.bold },
   disabled: { opacity: 0.6 },
 })

@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createHybridStorage, createSecurePersistStorage } from '@ocar/mobile-shared'
 import { clearLoggedFixes, stopBackgroundTracking } from '@/services/location/backgroundTask'
+import { useRideRequestStore } from '@/store/useRideRequestStore'
 
 export interface DriverProfile {
   id: string
@@ -47,6 +48,11 @@ export const useAuthStore = create<AuthState>()(
         // leaves the spike's location log for the next driver on a shared device.
         stopBackgroundTracking().catch(() => {})
         clearLoggedFixes().catch(() => {})
+        // RideRequestOverlay is root-mounted and keyed off this store alone, so a
+        // still-active ride-request alarm (e.g. the driver logged out before its
+        // countdown resolved) would otherwise keep ringing/vibrating right through
+        // logout and into the next session.
+        useRideRequestStore.getState().clearPending()
         set({ token: null, refreshToken: null, driver: null, isAuthenticated: false })
       },
 

@@ -131,8 +131,10 @@ export function createApp(): Application {
   app.use(
     cors({
       origin: config.ALLOWED_ORIGINS.split(',').map(o => o.trim()),
-      // Reports CSV export reads the filename from Content-Disposition in the browser.
-      exposedHeaders: ['Content-Disposition'],
+      // Reports CSV export reads the filename from Content-Disposition in the browser. `Date` is not a
+      // CORS-safelisted response header; the web driver and rider apps read it to correct a skewed
+      // phone clock for the booked-time clock (native apps already can).
+      exposedHeaders: ['Content-Disposition', 'Date'],
     })
   )
 

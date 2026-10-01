@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { buttonRadius, colors, gradientPrimary, radii, shadows, spacing, typography, fonts } from '../theme/tokens'
 
@@ -86,6 +87,9 @@ export function CancelSheet({ visible, reasons, onClose, onConfirm }: CancelShee
                   style={[styles.reasonRow, active ? styles.reasonRowActive : null]}
                 >
                   <Text style={[styles.reasonLabel, active ? styles.reasonLabelActive : null]}>{r.label}</Text>
+                  <View style={[styles.radio, active ? styles.radioActive : null]}>
+                    {active ? <Feather name="check" size={12} color={colors.inkInverse} /> : null}
+                  </View>
                 </Pressable>
               )
             })}
@@ -120,12 +124,23 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   handle: { width: spacing.xl, height: spacing.xs, borderRadius: radii.full, backgroundColor: colors.border, alignSelf: 'center', marginVertical: spacing.sm },
-  title: { ...typography.title, color: colors.ink900, marginBottom: spacing.md },
-  reasonList: { gap: spacing.md, marginBottom: spacing.md },
-  reasonRow: { minHeight: spacing['2xl'], borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderLight, justifyContent: 'center', paddingHorizontal: spacing.md },
+  title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold, marginBottom: spacing.lg },
+  reasonList: { gap: spacing.sm, marginBottom: spacing.lg },
+  reasonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 52,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    paddingHorizontal: spacing.md,
+  },
   reasonRowActive: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },
-  reasonLabel: { ...typography.body, color: colors.ink900 },
+  reasonLabel: { ...typography.body, color: colors.ink900, flex: 1 },
   reasonLabelActive: { color: colors.primary, fontFamily: fonts.semibold },
+  radio: { width: 22, height: 22, borderRadius: radii.full, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  radioActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   timeoutText: { ...typography.caption, color: colors.error, marginBottom: spacing.sm },
   confirmWrap: { borderRadius: buttonRadius, overflow: 'hidden' },
   confirmBtn: { height: spacing['2xl'], borderRadius: buttonRadius, alignItems: 'center', justifyContent: 'center' },

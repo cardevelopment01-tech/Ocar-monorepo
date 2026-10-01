@@ -144,6 +144,9 @@ export default function App() {
         if (ride.return_at   != null) activeRideInput.returnAt      = ride.return_at
         if (ride.trip_hours  != null) activeRideInput.tripHours     = ride.trip_hours
         if (ride.started_at  != null) activeRideInput.rideStartedAt = ride.started_at
+        if (ride.bookedUntil != null) activeRideInput.bookedUntil = ride.bookedUntil
+        if (ride.overtimeRate != null) activeRideInput.overtimeRate = ride.overtimeRate
+        if (ride.overtimeGraceMin != null) activeRideInput.overtimeGraceMin = ride.overtimeGraceMin
         if (ride.stops.length > 0) activeRideInput.stops = ride.stops.map(s => ({
           id: s.id, sequence: s.sequence, lat: s.lat, lng: s.lng,
           address: s.address, status: s.status, arrived_at: s.arrived_at, reached_at: s.reached_at,
@@ -154,7 +157,8 @@ export default function App() {
         getDriverSocket().emit('join:ride', ride.id)
         if (ride.status === 'accepted')        navigate('/ride/navigate', { replace: true })
         else if (ride.status === 'driver_arrived') navigate('/ride/otp', { replace: true })
-        else if (ride.status === 'in_progress')    navigate('/ride/in-progress', { replace: true })
+        // 'returning' (round-trip return leg) is the same screen: without it a refresh mid-return dropped the driver on Home with no way to the end-code step.
+        else if (ride.status === 'in_progress' || ride.status === 'returning') navigate('/ride/in-progress', { replace: true })
       } else if (session && session.status === 'online') {
         setOnline(Number(session.id), Number(session.vehicle_id), Number(session.category_id))
         connectDriverSocket()
@@ -398,8 +402,11 @@ export default function App() {
     const onStopUpdated = (data: { sequence: number; status: 'reached' | 'skipped'; reachedAt: string | null }) => {
       updateStop(data.sequence, data.status, data.reachedAt)
     }
-    const onStopAdded = (data: { stop: RideStop }) => {
-      addStop({ ...data.stop, id: String(data.stop.id) })
+    const onStopAdded = (data: { stop: RideStop; stops?: RideStop[] }) => {
+      // `stops` is the server's full, re-ordered list (nearest-next); prefer it
+      // over appending so the visiting order matches the server's sequences.
+      if (data.stops) setStops(data.stops.map(s => ({ ...s, id: String(s.id) })))
+      else addStop({ ...data.stop, id: String(data.stop.id) })
     }
     const onPickupUpdated = (data: { lat: number; lng: number; address: string | null }) => {
       updatePickup(data.lat, data.lng, data.address)
@@ -441,6 +448,11 @@ export default function App() {
     const t = setTimeout(() => setForceEndedMessage(null), 3000)
     return () => clearTimeout(t)
   }, [forceEndedMessage])
+
+  const handleDeclineRide = (rideId: string) => {
+    void driverRideApi.declineRide(rideId)
+    clearIncomingRequest()
+  }
 
   const handleAcceptRide = async (rideId: string, rideType: string) => {
     if (accepting) return
@@ -621,7 +633,7 @@ export default function App() {
               accepted={acceptedBeat}
               failed={acceptFailed}
               onAccept={() => void handleAcceptRide(incomingRequest.rideId, incomingRequest.rideType)}
-              onDecline={clearIncomingRequest}
+              onDecline={() => handleDeclineRide(incomingRequest.rideId)}
             />
           </APIProvider>
         )}

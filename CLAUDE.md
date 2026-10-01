@@ -83,6 +83,14 @@ Rate cards are city-scoped as of migration 078: `city_id IS NULL` = global defau
 Uniqueness for "current row" is per `(COALESCE(city_id, 0), category_id, ride_type)`,
 not just `(category_id, ride_type)` — a city override and the global row can coexist.
 
+### Round-trip pricing versions
+`fare_snapshots.pricing_version` records which formula a ride was quoted under, so settlement bills it the same way
+whenever it completes: **1** = per-day package (km_per_day + driver allowance), **2** = hourly window for bookings up to
+24h (`max(min_fare, km x per_km) + trip_hours x rate_card.hour_rate`, then surge) with per-minute overtime after a
+grace (`ROUND_TRIP_OVERTIME_GRACE_MIN`). `isHourlyRoundTrip()` in `lib/fare.ts` is the one predicate for both quote and
+settlement. **Never change what an existing version computes** — add a version 3 instead. The clock facts clients show
+(`bookedUntil`, `overtimeGraceMin`, `overtimeRate`) come from `lib/trip-window.ts`; clients never hardcode the grace.
+
 ### City boundaries are admin-owned
 `cities.boundary` (Polygon, 4326) is edited by admins in the app (`/cities` → "Edit boundary",
 `/api/v1/admin/geo/cities/:id/boundary[/preview]`), not by migrations. **Never write

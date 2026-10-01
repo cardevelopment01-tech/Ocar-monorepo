@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, FlatList, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { FadeInDown, FadeInUp, useAnimatedStyle } from 'react-native-reanimated'
 import { Feather, Ionicons } from '@expo/vector-icons'
 import { colors, radii, shadows, spacing, typography, useKeyboardOffset, useRoomJoin, fonts } from '@ocar/mobile-shared'
 import { socket } from '@/services/socket'
+import { DriverRow, driverViewFromRide } from '@/features/ride-tracking/components/DriverIdentity'
+import type { RideDetailExtra } from '@/features/ride-tracking/types'
 import { fetchChatMessages, fetchRide, markChatRead, sendChatMessage, type ChatMessage } from '@/features/ride-tracking/api'
 
 const CANNED_REPLIES = [
@@ -45,8 +47,6 @@ function generateClientMsgId(): string {
   })
 }
 
-type DriverInfo = { name: string | null; photo: string | null; rating: string | null }
-
 export default function RideChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const rideId = id ?? ''
@@ -66,7 +66,7 @@ export default function RideChatScreen() {
   const [messages, setMessages] = useState<LocalMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [draft, setDraft] = useState('')
-  const [driver, setDriver] = useState<DriverInfo>({ name: null, photo: null, rating: null })
+  const [driverRide, setDriverRide] = useState<RideDetailExtra | null>(null)
   const [rideStatus, setRideStatus] = useState<string | null>(null)
   const listRef = useRef<FlatList<LocalMessage>>(null)
   const lastSeenIdRef = useRef<string | undefined>(undefined)
@@ -109,7 +109,7 @@ export default function RideChatScreen() {
     fetchRide(rideId)
       .then((ride) => {
         if (!mounted) return
-        setDriver({ name: ride.driverName, photo: ride.driverPhoto, rating: ride.driverRating })
+        setDriverRide(ride)
         setRideStatus(ride.status)
       })
       .catch(() => {})
@@ -207,22 +207,7 @@ export default function RideChatScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Back">
           <Feather name="chevron-left" size={20} color={colors.ink900} />
         </Pressable>
-        {driver.photo ? (
-          <Image source={{ uri: driver.photo }} style={styles.headerPhoto} accessibilityIgnoresInvertColors />
-        ) : (
-          <View style={[styles.headerPhoto, styles.headerPhotoFallback]}>
-            <Text style={styles.headerPhotoInitial}>{(driver.name ?? '?').charAt(0).toUpperCase()}</Text>
-          </View>
-        )}
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerName} numberOfLines={1}>{driver.name ?? 'Your driver'}</Text>
-          {driver.rating ? (
-            <View style={styles.headerRatingRow}>
-              <Text style={styles.headerRatingStar}>★</Text>
-              <Text style={styles.headerRatingValue}>{Number(driver.rating).toFixed(1)}</Text>
-            </View>
-          ) : null}
-        </View>
+        <DriverRow view={driverViewFromRide(driverRide)} photo={driverRide?.driverPhoto ?? null} />
       </View>
 
       {loading ? (
@@ -346,14 +331,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.bg },
   backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(20,23,26,0.08)' },
-  headerPhoto: { width: 36, height: 36, borderRadius: radii.md },
-  headerPhotoFallback: { backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  headerPhotoInitial: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
-  headerInfo: { flex: 1, minWidth: 0, gap: 1 },
-  headerName: { ...typography.label, fontSize: 15, fontFamily: fonts.bold, color: colors.ink900 },
-  headerRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  headerRatingStar: { fontSize: 11, color: colors.warning },
-  headerRatingValue: { ...typography.caption, fontFamily: fonts.semibold, color: colors.ink600 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, gap: spacing.sm },
   emptyIconWrap: { width: 56, height: 56, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   emptyText: { ...typography.body, color: colors.ink400, textAlign: 'center', fontFamily: fonts.semibold },

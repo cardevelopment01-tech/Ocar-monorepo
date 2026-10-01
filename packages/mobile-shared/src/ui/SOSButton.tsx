@@ -82,7 +82,8 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
           accessibilityRole="button"
           style={({ pressed }) => [styles.circle, pressed ? styles.pressed : null]}
         >
-          <Text style={styles.icon}>SOS</Text>
+          {/* Fixed 56px circle: uncapped, the system font scale pushes "SOS" out of it. */}
+          <Text style={styles.icon} maxFontSizeMultiplier={1.15}>SOS</Text>
         </Pressable>
       </View>
 

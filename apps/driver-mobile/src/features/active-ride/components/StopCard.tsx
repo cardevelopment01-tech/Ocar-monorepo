@@ -1,63 +1,100 @@
-import { useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { Alert, StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { Button, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
-import { markStopStatus } from '../api'
+import { Button, colors, fonts, radii, spacing, typography, Text } from '@ocar/mobile-shared'
+import { serverNow } from '@/services/api'
+import { markStopArrived, markStopStatus } from '../api'
+import { SlideToConfirm } from './SlideToConfirm'
 
 export type StopCardProps = {
   rideId: string
   sequence: number
-  address: string | null
+  /** One-way only: wait at a stop is metered, so arrival is its own step. */
+  meterWait: boolean
+  arrivedAt: string | null
   onResolved: () => void
 }
 
-// The trip cannot end while any stop is still pending (backend hard-blocks
-// end-otp with RIDE_HAS_PENDING_STOPS) -- this app had no UI anywhere for a
-// driver to ever mark a rider-added stop reached or skipped, so hitting this
-// state left a driver stuck seeing a generic "Could not confirm" error on the
-// end-OTP card with no indication why, or any way out.
-export function StopCard({ rideId, sequence, address, onResolved }: StopCardProps) {
-  const [submitting, setSubmitting] = useState<'reached' | 'skipped' | null>(null)
-  const [error, setError] = useState<string | null>(null)
+function elapsed(since: string): string {
+  const s = Math.max(0, Math.floor((serverNow() - new Date(since).getTime()) / 1000))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
 
-  async function resolve(status: 'reached' | 'skipped') {
-    if (submitting) return
-    setSubmitting(status)
+// The action half of a pending stop. Which stop it is ("Stop 1 of 2" + address) lives in the
+// stage header above, so the sheet has exactly one headline. The trip cannot end while any
+// stop is pending (backend hard-blocks end-otp with RIDE_HAS_PENDING_STOPS), so this is the
+// driver's single next action while one is open: arrive -> (wait) -> continue, or skip.
+export function StopCard({ rideId, sequence, meterWait, arrivedAt, onResolved }: StopCardProps) {
+  const [submitting, setSubmitting] = useState<'arrived' | 'reached' | 'skipped' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [, tick] = useState(0)
+
+  useEffect(() => {
+    if (!arrivedAt) return
+    const t = setInterval(() => tick((n) => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [arrivedAt])
+
+  // Resolves true on success. The slide-to-confirm control resets itself on false.
+  async function run(step: 'arrived' | 'reached' | 'skipped'): Promise<boolean> {
+    if (submitting) return false
+    setSubmitting(step)
     setError(null)
     try {
-      await markStopStatus(rideId, sequence, status)
+      if (step === 'arrived') await markStopArrived(rideId, sequence)
+      else await markStopStatus(rideId, sequence, step)
       onResolved()
+      return true
     } catch {
       setError("Couldn't update the stop. Try again.")
+      return false
     } finally {
       setSubmitting(null)
     }
   }
 
+  function confirmSkip() {
+    Alert.alert('Skip this stop?', 'The rider will not be taken here.', [
+      { text: 'Go back', style: 'cancel' },
+      { text: 'Skip stop', style: 'destructive', onPress: () => { void run('skipped') } },
+    ])
+  }
+
+  const waiting = meterWait && arrivedAt != null
+  const needsArrival = meterWait && arrivedAt == null
+
   return (
     <View style={styles.card}>
-      <View style={styles.headerRow}>
-        <View style={styles.iconWrap}>
-          <Feather name="map-pin" size={18} color={colors.warning} />
+      {waiting ? (
+        <View style={styles.waitPill} accessibilityLabel={`Waiting ${elapsed(arrivedAt)}`}>
+          <Feather name="clock" size={14} color={colors.ink900} />
+          <Text style={styles.waitText}>Waiting {elapsed(arrivedAt)}</Text>
         </View>
-        <View style={styles.textCol}>
-          <Text style={styles.label}>Stop {sequence}</Text>
-          <Text style={styles.address} numberOfLines={2}>{address ?? 'Stop location'}</Text>
-        </View>
-      </View>
+      ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button
-        label={submitting === 'reached' ? 'Marking…' : 'Mark stop reached'}
-        loading={submitting === 'reached'}
-        disabled={submitting !== null}
-        onPress={() => void resolve('reached')}
-      />
+      {/* Slides, not taps: arriving starts the metered wait clock and "continue" ends it, so a
+          stray touch from a mounted phone must not be able to do either. */}
+      {needsArrival ? (
+        <SlideToConfirm
+          label="Slide when you arrive"
+          doneLabel="Arrived"
+          disabled={submitting === 'skipped'}
+          onConfirm={() => run('arrived')}
+        />
+      ) : (
+        <SlideToConfirm
+          label={waiting ? 'Slide to continue trip' : 'Slide when stop reached'}
+          doneLabel={waiting ? 'Continuing' : 'Reached'}
+          disabled={submitting === 'skipped'}
+          onConfirm={() => run('reached')}
+        />
+      )}
       <Button
         label={submitting === 'skipped' ? 'Skipping…' : 'Skip this stop'}
         variant="ghost"
         loading={submitting === 'skipped'}
         disabled={submitting !== null}
-        onPress={() => void resolve('skipped')}
+        onPress={confirmSkip}
       />
     </View>
   )
@@ -65,10 +102,18 @@ export function StopCard({ rideId, sequence, address, onResolved }: StopCardProp
 
 const styles = StyleSheet.create({
   card: { gap: spacing.sm },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  iconWrap: { width: 44, height: 44, borderRadius: radii.lg, backgroundColor: colors.warningLight, alignItems: 'center', justifyContent: 'center' },
-  textCol: { flex: 1, minWidth: 0, gap: 1 },
-  label: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold, textTransform: 'uppercase' },
-  address: { ...typography.title, color: colors.ink900 },
+  // A running meter, not a status chip: tabular digits would be ideal; Plus Jakarta's
+  // numerals are tabular enough at this size that the pill doesn't jitter each second.
+  waitPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs + 2,
+    backgroundColor: colors.warningLight,
+    borderRadius: radii.full,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.md - 4,
+  },
+  waitText: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
   error: { ...typography.label, color: colors.error },
 })

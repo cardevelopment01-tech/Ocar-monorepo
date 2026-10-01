@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
   stopAnchor: { position: 'absolute', top: 1, width: 0, height: 0, alignItems: 'center' },
   stop: { position: 'absolute', top: -5, width: 10, height: 10, borderRadius: 5, boxShadow: '0 0 0 3px #FFFFFF' },
   stopLabel: { position: 'absolute', top: 15, width: 90, textAlign: 'center', fontFamily: font.r, fontSize: 9.5, color: h.ivoryDim },
-  eyebrow: { fontFamily: font.sb, fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: T, marginBottom: 8 },
+  eyebrow: { fontFamily: font.sb, fontSize: 12, color: T, marginBottom: 8 },
   headline: { fontFamily: font.b, fontSize: 22, lineHeight: 27.5, color: h.ivory, marginBottom: 10 },
   desc: { fontFamily: font.r, fontSize: 13, lineHeight: 20.8, color: h.ivoryDim, marginBottom: 20 },
   bullets: { marginBottom: 24 },

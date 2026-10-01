@@ -1,0 +1,138 @@
+{
+ "bookedUntil": "2026-10-01T12:00:00.000Z",
+ "graceMin": 5,
+ "overtimeRate": 60,
+ "inputs": [
+  {
+   "name": "no bookedUntil (before start or no window)",
+   "bookedUntil": null,
+   "nowOffsetMs": 0,
+   "expect": {
+    "kind": "none"
+   }
+  },
+  {
+   "name": "no graceMin (stale server)",
+   "graceMin": null,
+   "nowOffsetMs": 0,
+   "expect": {
+    "kind": "none"
+   }
+  },
+  {
+   "name": "unparseable bookedUntil",
+   "bookedUntil": "not-a-date",
+   "nowOffsetMs": 0,
+   "expect": {
+    "kind": "none"
+   }
+  },
+  {
+   "name": "3h20m left is running",
+   "nowOffsetMs": -12000000,
+   "expect": {
+    "kind": "running",
+    "msLeft": 12000000
+   }
+  },
+  {
+   "name": "15 min and 1 ms left is still running",
+   "nowOffsetMs": -900001,
+   "expect": {
+    "kind": "running",
+    "msLeft": 900001
+   }
+  },
+  {
+   "name": "exactly 15 min left is final",
+   "nowOffsetMs": -900000,
+   "expect": {
+    "kind": "final",
+    "msLeft": 900000
+   }
+  },
+  {
+   "name": "1 ms left is final",
+   "nowOffsetMs": -1,
+   "expect": {
+    "kind": "final",
+    "msLeft": 1
+   }
+  },
+  {
+   "name": "exactly at the end starts the grace",
+   "nowOffsetMs": 0,
+   "expect": {
+    "kind": "grace",
+    "msToOvertime": 300000
+   }
+  },
+  {
+   "name": "4:12 into the grace has 48 s to go",
+   "nowOffsetMs": 252000,
+   "expect": {
+    "kind": "grace",
+    "msToOvertime": 48000
+   }
+  },
+  {
+   "name": "exactly at the end of the grace the server still bills zero",
+   "nowOffsetMs": 300000,
+   "expect": {
+    "kind": "grace",
+    "msToOvertime": 0
+   }
+  },
+  {
+   "name": "1 ms past the grace bills a started minute",
+   "nowOffsetMs": 300001,
+   "expect": {
+    "kind": "overtime",
+    "overtimeMs": 1,
+    "billedMin": 1,
+    "amount": 1
+   }
+  },
+  {
+   "name": "exactly 60 s of overtime is still 1 billed minute",
+   "nowOffsetMs": 360000,
+   "expect": {
+    "kind": "overtime",
+    "overtimeMs": 60000,
+    "billedMin": 1,
+    "amount": 1
+   }
+  },
+  {
+   "name": "60 s and 1 ms of overtime is 2 billed minutes",
+   "nowOffsetMs": 360001,
+   "expect": {
+    "kind": "overtime",
+    "overtimeMs": 60001,
+    "billedMin": 2,
+    "amount": 2
+   }
+  },
+  {
+   "name": "15 min of overtime at 60 an hour is 15",
+   "nowOffsetMs": 1200000,
+   "expect": {
+    "kind": "overtime",
+    "overtimeMs": 900000,
+    "billedMin": 15,
+    "amount": 15
+   }
+  },
+  {
+   "name": "unknown rate leaves the amount null",
+   "overtimeRate": null,
+   "nowOffsetMs": 1200000,
+   "expect": {
+    "kind": "overtime",
+    "overtimeMs": 900000,
+    "billedMin": 15,
+    "amount": null
+   }
+  }
+ ]
+}

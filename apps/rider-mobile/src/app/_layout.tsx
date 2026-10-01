@@ -14,16 +14,27 @@ import logoMarkImage from '../../assets/brand/logo-mark.png'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
 
+const LOCATION_HYDRATION_CAP_MS = 1000
+
 export default function RootLayout() {
   const hasHydrated = useAuthStore((s) => s.hasHydrated)
   const fontsLoaded = useAppFonts()
   const [showSplashOverlay, setShowSplashOverlay] = useState(true)
+  // The map seeds its first frame from the saved location, so wait for it to load -- but never longer than
+  // LOCATION_HYDRATION_CAP_MS: a slow or failing storage read must not hold the app on the splash.
+  const locationHydrated = useLocationStore((s) => s.hydrated)
+  const [locationCapHit, setLocationCapHit] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setLocationCapHit(true), LOCATION_HYDRATION_CAP_MS)
+    return () => clearTimeout(t)
+  }, [])
+  const locationReady = locationHydrated || locationCapHit
 
   usePushNotificationRouting()
 
   useEffect(() => {
-    if (hasHydrated && fontsLoaded) SplashScreen.hideAsync().catch(() => {})
-  }, [hasHydrated, fontsLoaded])
+    if (hasHydrated && fontsLoaded && locationReady) SplashScreen.hideAsync().catch(() => {})
+  }, [hasHydrated, fontsLoaded, locationReady])
 
   // Fire the GPS fix + reverse-geocode once, as early as the app can (well
   // before the search screen -- often the booking flow's whole reason for
@@ -36,7 +47,7 @@ export default function RootLayout() {
   // failure -- see useAuthStore's onRehydrateStorage) and the brand fonts are
   // loaded, so no screen flashes in the OS default font before Space Grotesk /
   // Plus Jakarta Sans are ready.
-  if (!hasHydrated || !fontsLoaded) return null
+  if (!hasHydrated || !fontsLoaded || !locationReady) return null
 
   return (
     <SafeAreaProvider>

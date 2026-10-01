@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, 
 import { LinearGradient } from 'expo-linear-gradient'
 import { h } from '@/theme/homeTokens'
 import { useNavClearance } from '@/features/home/FloatingTabBar'
-import { card, sectionLabel } from '@/theme/homeTokens'
+import { card, geo, sectionLabel } from '@/theme/homeTokens'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated'
@@ -93,7 +93,7 @@ export default function ProfileScreen() {
               <Text style={styles.avatarText}>{initial}</Text>
             </LinearGradient>
             <View style={styles.headerInfo}>
-              <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+              <Text style={styles.name} numberOfLines={2}>{displayName}</Text>
               <Text style={styles.phone}>+91 {displayPhone}</Text>
               {displayEmail ? <Text style={styles.email} numberOfLines={1}>{displayEmail}</Text> : null}
             </View>
@@ -106,12 +106,12 @@ export default function ProfileScreen() {
             {[
               { value: String(stats?.total_rides ?? 0), label: 'Rides' },
               { value: stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '-', label: 'Rating', star: true },
-              { value: `₹${stats?.wallet_balance ?? 0}`, label: 'Wallet' },
+              { value: formatWallet(stats?.wallet_balance ?? 0), label: 'Wallet' },
             ].map((s) => (
               <View key={s.label} style={styles.statTile}>
                 <View style={styles.statValueRow}>
                   {s.star ? <Feather name="star" size={11} color={colors.warning} /> : null}
-                  <Text style={styles.statValue}>{s.value}</Text>
+                  <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{s.value}</Text>
                 </View>
                 <Text style={styles.statLabel}>{s.label}</Text>
               </View>
@@ -120,7 +120,7 @@ export default function ProfileScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(120).duration(360)}>
-          <Text style={styles.sectionLabel}>ACCOUNT</Text>
+          <Text style={styles.sectionLabel}>Account</Text>
           <View style={styles.menuCard}>
             {MENU.map((item) => (
               <Pressable key={item.label} style={[styles.menuRow, styles.menuRowBorder]}>
@@ -234,10 +234,14 @@ export default function ProfileScreen() {
   )
 }
 
+// whole rupees when there are no paise, otherwise two decimals; en-IN digit grouping
+const formatWallet = (n: number) =>
+  `₹${new Intl.NumberFormat('en-IN', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }).format(n)}`
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: h.canvas },
   // paddingBottom clears the floating tab bar (see _layout.tsx)
-  content: { padding: spacing.lg, gap: spacing.md },
+  content: { padding: geo.gutter, gap: spacing.md },
   headerCard: { ...card, padding: spacing.lg },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   avatar: { width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
@@ -249,7 +253,7 @@ const styles = StyleSheet.create({
   editBtn: { paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.xs + 2, borderRadius: radii.lg, backgroundColor: colors.primarySubtle },
   editBtnText: { ...typography.caption, color: colors.primary, fontFamily: fonts.bold },
   statsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.borderLight },
-  statTile: { flex: 1, alignItems: 'center', backgroundColor: colors.surface2, borderRadius: radii.lg, paddingVertical: spacing.sm + 4 },
+  statTile: { flex: 1, alignItems: 'center', paddingHorizontal: 6, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingVertical: spacing.sm + 4 },
   statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statValue: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
   statLabel: { ...typography.caption, color: colors.ink400, marginTop: 2 },

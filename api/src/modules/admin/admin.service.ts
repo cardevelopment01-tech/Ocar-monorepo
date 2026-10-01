@@ -12,6 +12,7 @@ import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { notificationsQueue } from '@/jobs/queues'
 import { recordAuditLog } from '@/lib/audit-log'
+import { withTripWindow } from '@/lib/trip-window'
 import { hasAllRequiredDocsApproved, findDriverById } from '@/modules/drivers/drivers.repository'
 
 export function docLabel(docType: string): string {
@@ -563,7 +564,9 @@ export async function getAdminRideById(rideId: bigint) {
       m.status === 'fulfilled' ? m.value : [],
     ] as const),
   ])
-  return { ...ride, stops, status_history: statusHistory, ...linkedSafety, messages }
+  // bookedUntil / overtimeGraceMin / overtimeRate / overtimeMin / overtimeFare: the same facts the driver and
+  // rider clocks use, null for rides with no hourly window.
+  return { ...withTripWindow(ride), stops, status_history: statusHistory, ...linkedSafety, messages }
 }
 
 export async function forceResolveAdminRide(

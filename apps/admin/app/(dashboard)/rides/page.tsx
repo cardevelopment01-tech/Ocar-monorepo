@@ -12,6 +12,7 @@ import StatCard from '@/components/ui/StatCard'
 import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem, type AdminRideStop, type AdminRideDetail, type AdminRideStats } from '@/lib/admin-api'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 import AssignDriverDrawer from './AssignDriverDrawer'
+import BookedTimeBlock from '@/components/rides/BookedTimeBlock'
 
 function fmt(iso: string | null) {
   if (!iso) return '—'
@@ -468,7 +469,7 @@ function RidesPageContent() {
                 {copiedId ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
                 {copiedId ? 'Copied' : 'Copy ID'}
               </button>
-              {selected.status === 'in_progress' && (
+              {(selected.status === 'in_progress' || selected.status === 'returning') && (
                 <>
                   <button
                     disabled={resolving}
@@ -488,7 +489,7 @@ function RidesPageContent() {
               )}
             </div>
 
-            {selected.status === 'in_progress' && (
+            {(selected.status === 'in_progress' || selected.status === 'returning') && (
               <div className={selected.review_flagged_at
                 ? 'bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1'
                 : 'bg-surface-2 border border-border-light rounded-xl p-3 space-y-1'}>
@@ -504,6 +505,8 @@ function RidesPageContent() {
                 </p>
               </div>
             )}
+
+            {detail && <BookedTimeBlock ride={detail} />}
 
             <div className={`bg-surface-2 rounded-xl border border-border-light grid ${detail?.vehicle_number_plate ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-border-light`}>
               <div className="p-3 min-w-0 flex items-center gap-2">
@@ -549,14 +552,17 @@ function RidesPageContent() {
               )}
             </div>
 
-            {detail && [detail.base_fare, detail.distance_fare, detail.time_fare, detail.stop_fare, detail.hour_surcharge, detail.overage_fare, detail.surge_fare, detail.refund_amount].some(v => v && parseFloat(v) > 0) && (
+            {detail && [detail.base_fare, detail.distance_fare, detail.time_fare, detail.stop_fare, detail.hour_surcharge, detail.waiting_fare, detail.overage_fare, detail.surge_fare, detail.overtimeFare != null ? String(detail.overtimeFare) : null, detail.refund_amount].some(v => v && parseFloat(v) > 0) && (
               <Section title="Fare breakdown">
                 {(
                   [
                     ['Base', detail.base_fare], ['Distance', detail.distance_fare], ['Time', detail.time_fare],
                     ['Stops', detail.stop_fare], ['Hour surcharge', detail.hour_surcharge],
+                    ['Booked time', detail.waiting_fare ?? null],
                     ['Overage', detail.overage_fare],
                     ['Surge', detail.surge_fare, detail.surge_multiplier && parseFloat(detail.surge_multiplier) > 1 ? `×${detail.surge_multiplier}` : ''],
+                    // After surge: overtime is not surged.
+                    ['Extra time', detail.overtimeFare != null ? String(detail.overtimeFare) : null],
                   ] as [string, string | null, string?][]
                 ).filter(([, v]) => v && parseFloat(v) > 0).map(([label, v, suffix]) => (
                   <div key={label} className="flex justify-between items-center">

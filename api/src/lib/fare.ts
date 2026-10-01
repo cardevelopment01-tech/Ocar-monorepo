@@ -1,3 +1,9 @@
+import {
+  ROUND_TRIP_HOURLY_MAX_HOURS,
+  ROUND_TRIP_OVERTIME_GRACE_MIN,
+  ROUND_TRIP_OVERTIME_REVIEW_MIN,
+} from '@/constants/limits'
+
 export interface RateCardInput {
   rate_per_km: number
   rate_per_min: number
@@ -9,6 +15,23 @@ export interface RateCardInput {
   km_per_day?: number | null
   /** round_trip only: flat per-day driver bata (food/stay). */
   driver_allowance_per_day?: number | null
+}
+
+/**
+ * Round trips quoted under pricing_version 2 are priced per booked hour — but only when the
+ * booking fits one day and the rate card actually has an hour_rate. Anything else (version 1
+ * rides, bookings over 24h, a card without hour_rate) keeps the per-day package formula, so
+ * one predicate decides both the quote and the settlement and the two can never diverge.
+ */
+export function isHourlyRoundTrip(p: {
+  pricing_version?: number | null | undefined
+  trip_hours: number
+  hour_rate?: number | null | undefined
+}): boolean {
+  return p.pricing_version === 2
+    && p.trip_hours > 0
+    && p.trip_hours <= ROUND_TRIP_HOURLY_MAX_HOURS
+    && (p.hour_rate ?? 0) > 0
 }
 
 export interface FareInput {
@@ -31,6 +54,8 @@ export interface FareInput {
    * actual elapsed hours (actual_duration_min / 60) at completion.
    */
   trip_hours: number
+  /** round_trip: 2 = hourly window for bookings up to 24h (see isHourlyRoundTrip). Default 1. */
+  pricing_version?: 1 | 2
   surge_multiplier: number
   overage_km?: number
   overage_min?: number
@@ -52,6 +77,8 @@ export interface FareBreakdown {
   total: number
   /** round_trip only: km driven beyond the guaranteed package allowance (display). */
   overage_km?: number
+  /** hourly round trip only: booked hours x hour_rate, before surge (already inside subtotal). */
+  waiting_fare?: number
 }
 
 export function calculateFare(input: FareInput): FareBreakdown {
@@ -64,6 +91,7 @@ export function calculateFare(input: FareInput): FareBreakdown {
     stop_count,
     charge_per_stop,
     trip_hours,
+    pricing_version = 1,
     surge_multiplier,
     overage_km: rentalOverageKm = 0,
     overage_min: rentalOverageMin = 0,
@@ -101,6 +129,29 @@ export function calculateFare(input: FareInput): FareBreakdown {
   // plus real overage beyond that, plus a flat per-day allowance for the
   // driver's food/stay. No separate per-minute meter — that's covered by the
   // per-day package, matching how outstation cabs are actually priced.
+  if (ride_type === 'round_trip' && isHourlyRoundTrip({ pricing_version, trip_hours, hour_rate: rate_card.hour_rate })) {
+    // Same-day window: the driver and cab are reserved for the booked hours, so the hours
+    // are billed up front (waiting time is inside them) on top of the km actually driven.
+    const waiting_fare = round2(trip_hours * (rate_card.hour_rate ?? 0))
+    const distance_fare = round2(estimated_km * per_km)
+    const stop_fare     = round2(stop_count * charge_per_stop)
+    const floored  = round2(Math.max(distance_fare, rate_card.min_fare))
+    const subtotal = round2(floored + waiting_fare + stop_fare)
+    const surge_fare = round2(subtotal * (surge_multiplier - 1))
+    return {
+      base_fare: round2(Math.max(rate_card.min_fare - distance_fare, 0)),
+      distance_fare,
+      time_fare: 0,
+      stop_fare,
+      hour_surcharge: 0,
+      overage_fare: 0,
+      surge_fare,
+      subtotal,
+      total: round2(subtotal + surge_fare),
+      waiting_fare,
+    }
+  }
+
   if (ride_type === 'round_trip') {
     const days      = Math.max(1, Math.ceil(trip_hours / 24))
     const packageKm = round2(days * (rate_card.km_per_day ?? 0))
@@ -224,6 +275,40 @@ export function settleRentalFare(p: {
   return { measured_km, overage_km, overage_min, overage_fare: fare.overage_fare, total: fare.total, review_reason }
 }
 
+export interface RoundTripOvertime {
+  /** Whole billed minutes past booked window + grace (a started minute counts). */
+  overtime_min: number
+  /** overtime_min x hour_rate / 60, unsurged. */
+  overtime_fare: number
+  /** Ops-review reason, or null. Overtime is always billed in full; long overruns are flagged. */
+  review_reason: string | null
+}
+
+/**
+ * Overtime for a pricing_version 2 round trip: elapsed server time (started_at to completed_at)
+ * beyond booked hours + grace, billed per minute at hour_rate / 60 — mirrors settleRentalFare's
+ * grace-then-per-minute shape. Finishing early never refunds (see settlement), so this only adds.
+ */
+export function settleRoundTripOvertime(p: {
+  started_at: Date | string
+  completed_at: Date | string
+  booked_hours: number
+  hour_rate: number
+  grace_min?: number
+  review_min?: number
+}): RoundTripOvertime {
+  const grace = p.grace_min ?? ROUND_TRIP_OVERTIME_GRACE_MIN
+  const reviewMin = p.review_min ?? ROUND_TRIP_OVERTIME_REVIEW_MIN
+  const elapsedMin = (new Date(p.completed_at).getTime() - new Date(p.started_at).getTime()) / 60000
+  const overtime_min = Math.max(0, Math.ceil(elapsedMin - p.booked_hours * 60 - grace))
+  const overtime_fare = round2(overtime_min * p.hour_rate / 60)
+  return {
+    overtime_min,
+    overtime_fare,
+    review_reason: overtime_min > reviewMin ? `Round-trip overtime over ${reviewMin} minutes` : null,
+  }
+}
+
 export function estimateFare(params: {
   rate_card: RateCardInput
   ride_type: 'one_way' | 'round_trip' | 'rental'
@@ -233,6 +318,7 @@ export function estimateFare(params: {
   stop_count?: number
   charge_per_stop?: number
   trip_hours?: number
+  pricing_version?: 1 | 2
   surge_multiplier?: number
   package_fare?: number | null
   extra_per_km?: number
@@ -252,5 +338,6 @@ export function estimateFare(params: {
     extra_per_min:    params.extra_per_min   ?? 0,
   }
   if (params.package_fare !== undefined) input.package_fare = params.package_fare
+  if (params.pricing_version !== undefined) input.pricing_version = params.pricing_version
   return calculateFare(input)
 }

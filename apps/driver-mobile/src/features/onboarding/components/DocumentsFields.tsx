@@ -41,7 +41,7 @@ export function DocumentsFields({ form }: { form: DocumentsForm }) {
         <FieldError message={form.identityError} />
       </View>
 
-      <Text style={styles.sectionLabel}>DRIVER DOCUMENTS</Text>
+      <Text style={styles.sectionLabel}>Driver documents</Text>
       {DRIVER_DOC_GROUPS.map((group) => (
         <View key={group.groupKey} style={styles.groupCard}>
           <Text style={styles.groupLabel}>{group.label}</Text>
@@ -63,7 +63,7 @@ export function DocumentsFields({ form }: { form: DocumentsForm }) {
         </View>
       ))}
 
-      <Text style={styles.sectionLabel}>VEHICLE DOCUMENTS</Text>
+      <Text style={styles.sectionLabel}>Vehicle documents</Text>
       {VEHICLE_DOC_GROUPS.map((group) => (
         <View key={group.groupKey} style={styles.groupCard}>
           <View style={styles.groupHeaderRow}>
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
   identityCard: { backgroundColor: colors.surface2, borderRadius: radii.xl, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   cardTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
-  sectionLabel: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold, letterSpacing: 1, marginTop: spacing.sm },
+  sectionLabel: { ...typography.caption, color: colors.ink900, fontFamily: fonts.semibold, fontSize: 14, marginTop: spacing.sm },
   groupCard: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
   groupHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   groupLabel: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },

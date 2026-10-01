@@ -1,9 +1,10 @@
 import { Pressable, StyleSheet, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, shadows, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 
 export default function ModeSelectionScreen() {
   const router = useRouter()
@@ -21,9 +22,9 @@ export default function ModeSelectionScreen() {
       <View style={styles.content}>
         <Animated.View entering={FadeInDown.duration(360).delay(0)}>
           <Pressable onPress={() => router.push('/go-online/standard')} style={styles.card}>
-            <View style={[styles.iconTile, { backgroundColor: '#14171A' }]}>
+            <LinearGradient colors={gradientPrimary} start={{ x: 0.15, y: 0.1 }} end={{ x: 0.9, y: 1 }} style={[styles.iconTile, styles.iconTileShadowPrimary]}>
               <Feather name="truck" size={24} color={colors.inkInverse} />
-            </View>
+            </LinearGradient>
             <View style={styles.cardBodyWrap}>
               <Text style={styles.cardTitle}>Standard Mode</Text>
               <View style={styles.statusRow}>
@@ -42,7 +43,7 @@ export default function ModeSelectionScreen() {
 
         <Animated.View entering={FadeInDown.duration(360).delay(80)}>
           <Pressable onPress={() => router.push('/go-online/return-cab')} style={styles.card}>
-            <View style={[styles.iconTile, { backgroundColor: colors.success }]}>
+            <View style={[styles.iconTile, styles.iconTileAccent, styles.iconTileShadowAccent]}>
               <Feather name="corner-up-left" size={24} color={colors.inkInverse} />
             </View>
             <View style={styles.cardBodyWrap}>
@@ -53,11 +54,11 @@ export default function ModeSelectionScreen() {
               </View>
               <Text style={styles.cardBody}>Set a destination and only accept rides heading that way.</Text>
               <View style={styles.tagRow}>
-                <View style={[styles.tag, styles.tagGreen]}><Text style={[styles.tagText, styles.tagTextGreen]}>One-way</Text></View>
-                <View style={[styles.tag, styles.tagGreen]}><Text style={[styles.tagText, styles.tagTextGreen]}>Earn on the way</Text></View>
+                <View style={[styles.tag, styles.tagAccent]}><Text style={[styles.tagText, styles.tagTextAccent]}>One-way</Text></View>
+                <View style={[styles.tag, styles.tagAccent]}><Text style={[styles.tagText, styles.tagTextAccent]}>Earn on the way</Text></View>
               </View>
             </View>
-            <Feather name="chevron-right" size={18} color={colors.success} style={styles.chevron} />
+            <Feather name="chevron-right" size={18} color={colors.accent} style={styles.chevron} />
           </Pressable>
         </Animated.View>
 
@@ -73,8 +74,22 @@ const styles = StyleSheet.create({
   backBtn: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
   content: { paddingHorizontal: spacing.lg, gap: spacing.sm },
-  card: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radii['2xl'], padding: spacing.lg, borderWidth: 1, borderColor: colors.border, position: 'relative' },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii['2xl'],
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    position: 'relative',
+    ...shadows.card,
+  },
   iconTile: { width: 56, height: 56, borderRadius: radii.xl, alignItems: 'center', justifyContent: 'center' },
+  iconTileAccent: { backgroundColor: colors.accent },
+  iconTileShadowPrimary: { shadowColor: colors.primary, shadowOpacity: 0.32, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  iconTileShadowAccent: { shadowColor: colors.accent, shadowOpacity: 0.32, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   // Room for the chevron, which is absolutely centered to the whole card
   // (below) rather than laid out as a row sibling -- a flex sibling can only
   // ever land at ITS OWN cross-axis position, which is what put the arrow at
@@ -88,13 +103,13 @@ const styles = StyleSheet.create({
   cardTitle: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, marginBottom: 4 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: spacing.xs },
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
-  statusText: { fontSize: 9, fontFamily: fonts.bold, color: colors.ink400, textTransform: 'uppercase', letterSpacing: 0.5 },
+  statusText: { fontSize: 12, fontFamily: fonts.semibold, color: colors.ink600 },
   cardBody: { ...typography.body, color: colors.ink600, marginBottom: spacing.sm },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   tag: { paddingHorizontal: spacing.sm + 2, paddingVertical: 4, borderRadius: radii.full, backgroundColor: colors.surface3 },
   tagText: { fontSize: 11, fontFamily: fonts.bold, color: colors.ink600 },
-  tagGreen: { backgroundColor: colors.successLight },
-  tagTextGreen: { color: colors.success },
+  tagAccent: { backgroundColor: colors.accentLight },
+  tagTextAccent: { color: colors.accent },
   chevron: { position: 'absolute', right: spacing.lg, top: '50%', marginTop: -9 },
   footerNote: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginTop: spacing.md },
 })

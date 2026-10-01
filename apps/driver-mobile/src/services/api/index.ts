@@ -10,3 +10,15 @@ export const api = createApiClient({
   refresher: tokenRefresher,
   onAuthFailure: () => useAuthStore.getState().clearAuth(),
 })
+
+// Wait at a stop is billed from the server's `arrived_at`, so on-screen timers must
+// run on the server's clock: a phone clock that's off by minutes would otherwise
+// show a stuck 0:00 or an instantly inflated wait. Offset comes from the `Date`
+// header of every successful response (1s resolution, good enough for a timer).
+let serverSkewMs = 0
+api.interceptors.response.use((res) => {
+  const serverTime = Date.parse(String(res.headers?.['date'] ?? ''))
+  if (!Number.isNaN(serverTime)) serverSkewMs = serverTime - Date.now()
+  return res
+})
+export const serverNow = (): number => Date.now() + serverSkewMs

@@ -74,9 +74,13 @@ export interface FareEstimateRequest {
   trip_hours?: number
   rental_package_id?: number
   city_id?: number
+  /** Pin the round-trip formula (scheduled-ride re-quote keeps the version it was booked under). Default: current. */
+  pricing_version?: 1 | 2
 }
 
 export interface FareEstimateResponse {
+  /** 2 for round trips quoted under the hourly window model, else 1. Stored on the snapshot. */
+  pricing_version: 1 | 2
   rate_card_id: number
   surge_event_id: number | null
   surge_multiplier: number
@@ -88,6 +92,7 @@ export interface FareEstimateResponse {
     hour_surcharge: number
     overage_fare: number
     overage_km?: number
+    waiting_fare?: number
     surge_fare: number
     total: number
   }

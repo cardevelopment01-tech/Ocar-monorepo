@@ -27,6 +27,8 @@ export default function TripEnd() {
   const fare = activeRide?.fare ?? 0
   const [realCommission, setRealCommission] = useState<number | null>(null)
   const [realEarning,    setRealEarning]    = useState<number | null>(null)
+  // Settled overtime, only present when it was billed (hourly round trips).
+  const [overtime,        setOvertime]       = useState<{ min: number; fare: number } | null>(null)
 
   // settleRideCompletionPayment (which writes commission_amount) runs async,
   // fired after verifyEndOTP already responded — poll briefly rather than
@@ -40,6 +42,9 @@ export default function TripEnd() {
       try {
         const ride = await driverRideApi.getRide(activeRide.id)
         if (cancelled) return
+        if ((ride.overtimeMin ?? 0) > 0 && ride.overtimeFare != null) {
+          setOvertime({ min: ride.overtimeMin as number, fare: ride.overtimeFare })
+        }
         if (ride.commission_amount != null) {
           setRealCommission(parseFloat(ride.commission_amount))
           setRealEarning(ride.driver_earning != null ? parseFloat(ride.driver_earning) : null)
@@ -195,6 +200,12 @@ export default function TripEnd() {
             <span className="text-text-secondary">Ride fare</span>
             <span className="text-text-primary font-semibold">₹{fmt(fare)}</span>
           </div>
+          {overtime && (
+            // Already inside the fare above: a caption, not another amount to add up.
+            <p className="text-text-secondary text-xs">
+              Booked {activeRide?.tripHours}h · Overtime {overtime.min} min ₹{fmt(overtime.fare)}
+            </p>
+          )}
           <div className="flex justify-between text-sm">
             <span className="text-text-secondary">
               {isCash

@@ -99,7 +99,7 @@ export default function AddStopScreen() {
           )
         ) : (
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>POPULAR</Text>
+            <Text style={styles.sectionLabel}>Popular</Text>
             {POPULAR.map((p, i) => (
               <PlaceRow
                 key={p.label}
