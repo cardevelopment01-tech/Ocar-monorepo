@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildInvoiceRows, buildTimeline, formatMoney, paymentState, tripMetrics } from './tripSummaryModel'
+import { buildInvoiceRows, buildTimeline, formatMoney, formatTripWhen, paymentState, tripMetrics, tripTitle } from './tripSummaryModel'
 
 const base = {
   baseFare: '120.00', distanceFare: '1020.00', timeFare: '290.00', stopFare: '0.00', hourSurcharge: '0.00',
@@ -60,11 +60,33 @@ describe('paymentState', () => {
 })
 
 describe('tripMetrics', () => {
-  it('joins duration, distance and stops', () => {
-    expect(tripMetrics({ actualKm: '28.40', actualMin: '58.00' }, 1)).toBe('58 min · 28.4 km · 1 stop')
+  const none = { actualKm: null, actualMin: null, startedAt: null, completedAt: null }
+  it('joins duration and distance from actuals', () => {
+    expect(tripMetrics({ ...none, actualKm: '28.40', actualMin: '58.00' })).toBe('58 min · 28.4 km')
+  })
+  it('falls back to start/finish times for one-way rides', () => {
+    expect(tripMetrics({ ...none, startedAt: '2026-10-01T10:00:00Z', completedAt: '2026-10-01T10:58:00Z' })).toBe('58 min')
   })
   it('returns null when nothing is known', () => {
-    expect(tripMetrics({ actualKm: null, actualMin: null }, 0)).toBeNull()
+    expect(tripMetrics(none)).toBeNull()
+  })
+})
+
+describe('tripTitle', () => {
+  it('prefers the assigned category and appends the ride type', () => {
+    expect(tripTitle({ rideType: 'round_trip', assignedCategoryName: 'Sedan', bookedCategoryName: 'Hatchback' })).toBe('Sedan · Round trip')
+  })
+  it('falls back to the booked category, then to Ride', () => {
+    expect(tripTitle({ rideType: 'one_way', assignedCategoryName: null, bookedCategoryName: 'Hatchback' })).toBe('Hatchback')
+    expect(tripTitle({ rideType: 'one_way', assignedCategoryName: null, bookedCategoryName: null })).toBe('Ride')
+  })
+})
+
+describe('formatTripWhen', () => {
+  it('formats a valid timestamp and rejects bad input', () => {
+    expect(formatTripWhen('2026-10-01T12:00:00Z')).toMatch(/Oct 2026 · /)
+    expect(formatTripWhen(null)).toBeNull()
+    expect(formatTripWhen('not a date')).toBeNull()
   })
 })
 
@@ -97,7 +119,7 @@ describe('buildInvoiceRows: hourly round trip', () => {
 
 
 describe('buildTimeline', () => {
-  const base = { tripHours: 6, bookedUntil: '2026-10-01T18:30:00.000Z', overtimeMin: 21, overtimeGraceMin: 5, overtimeRate: 100, completedAt: '2026-10-01T19:01:00.000Z' }
+  const base = { tripHours: 6, startedAt: null, bookedUntil: '2026-10-01T18:30:00.000Z', overtimeMin: 21, overtimeGraceMin: 5, overtimeRate: 100, completedAt: '2026-10-01T19:01:00.000Z' }
   it('returns four steps when the trip ran over', () => {
     const t = buildTimeline(base)!
     expect(t.map((s) => s.key)).toEqual(['start', 'booked', 'extra', 'done'])

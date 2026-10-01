@@ -63,7 +63,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
   const showFare = fareValue > 0
   const fareText = formatMoney(fareValue)
   const when = formatTripWhen(ride.completedAt ?? ride.requestedAt)
-  const metrics = tripMetrics(ride, ride.stops.length)
+  const metrics = tripMetrics(ride)
   const timeline = buildTimeline(ride)
   const dropLabel = ride.rideType === 'round_trip' ? 'Drop and return' : ride.rideType === 'rental' ? 'Route' : 'Drop'
   const dropValue = ride.rideType === 'rental'
@@ -123,7 +123,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
           <View style={styles.statusRow}>
             <View style={[styles.pill, completed ? styles.pillOk : styles.pillBad]}>
               <Feather name={completed ? 'check' : 'x'} size={13} color={completed ? colors.success : colors.error} />
-              <Text style={[styles.pillText, { color: completed ? colors.success : colors.error }]}>{completed ? 'Completed' : 'Cancelled'}</Text>
+              <Text style={[styles.pillText, { color: completed ? colors.success : colors.error }]}>{completed ? 'Completed' : ride.status === 'no_drivers' ? 'No drivers found' : 'Cancelled'}</Text>
             </View>
             {fareCaption ? <Text style={styles.sub}>{fareCaption}</Text> : null}
             {pay && pay.kind === 'paid' ? <Text style={styles.sub}>{pay.text}</Text> : null}

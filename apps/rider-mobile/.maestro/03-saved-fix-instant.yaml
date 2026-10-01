@@ -1,0 +1,12 @@
+# Relaunch right after a good fix: the map opens on the saved fix, so the pill has a value within 3 s (no cold "Finding...").
+appId: com.ocar.rider
+---
+- runFlow: 02-live-fix-cold-start.yaml
+- stopApp
+- launchApp:
+    permissions:
+      location: allow
+- extendedWaitUntil:
+    visible: 'Pickup: .*'
+    timeout: 3000
+- assertNotVisible: 'Finding your location…'

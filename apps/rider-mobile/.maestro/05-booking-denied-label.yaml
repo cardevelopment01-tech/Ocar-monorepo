@@ -1,0 +1,9 @@
+# With location off the booking screen uses the same wording as the home pill.
+appId: com.ocar.rider
+---
+- launchApp:
+    stopApp: true
+    permissions:
+      location: deny
+- tapOn: 'Where to?'
+- assertVisible: 'Location off · Set pickup location'

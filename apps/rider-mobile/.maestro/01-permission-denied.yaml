@@ -1,0 +1,14 @@
+# Location permission denied: the home pill offers a way out instead of "Finding..." forever.
+# Prerequisite: the device is already signed in (see README).
+appId: com.ocar.rider
+---
+- launchApp:
+    stopApp: true
+    permissions:
+      location: deny
+- extendedWaitUntil:
+    visible: 'Location off · Set pickup location'
+    timeout: 15000
+# the pill is a button and opens the pickup picker
+- tapOn: 'Location off · Set pickup location'
+- assertVisible: 'PICKUP LOCATION'

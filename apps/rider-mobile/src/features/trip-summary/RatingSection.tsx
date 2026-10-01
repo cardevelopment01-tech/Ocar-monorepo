@@ -6,6 +6,8 @@ import { Button, colors, fonts, radii, spacing, typography } from '@ocar/mobile-
 import type { RatingTag } from '@ocar/mobile-shared'
 import { fetchRatingTags, submitRating } from '@/features/safety/api'
 
+// Unselected star: darker than colors.border so it reads on white.
+const EMPTY_STAR = '#C3CCCE'
 const WORDS = ['', 'Poor', 'Below average', 'Okay', 'Good', 'Excellent']
 
 // Rating lives on the summary itself: tap a star, tags appear below, submit. No navigation away.
@@ -97,7 +99,7 @@ function Stars({ value, onSelect }: { value: number; onSelect?: (n: number) => v
     <View style={styles.stars} accessibilityRole={onSelect ? 'radiogroup' : 'image'} accessibilityLabel={onSelect ? undefined : `Rated ${value} of 5`}>
       {[1, 2, 3, 4, 5].map((s) => {
         const on = value >= s
-        const icon = <Ionicons name={on ? 'star' : 'star-outline'} size={38} color={on ? colors.accent : '#C3CCCE'} />
+        const icon = <Ionicons name={on ? 'star' : 'star-outline'} size={38} color={on ? colors.accent : EMPTY_STAR} />
         return onSelect ? (
           <Pressable key={s} onPress={() => onSelect(s)} hitSlop={4} accessibilityRole="radio" accessibilityState={{ selected: value === s }} accessibilityLabel={`Rate ${s} of 5, ${WORDS[s]}`} style={styles.star}>
             {icon}
