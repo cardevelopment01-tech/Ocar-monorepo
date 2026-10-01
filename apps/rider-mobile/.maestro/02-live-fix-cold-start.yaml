@@ -1,0 +1,15 @@
+# Granted permission + a GPS fix: the pill settles on a street (or "Current location"), never a search/exit message.
+appId: com.ocar.rider
+---
+- setLocation:
+    latitude: 20.2961
+    longitude: 85.8245
+- launchApp:
+    stopApp: true
+    permissions:
+      location: allow
+- extendedWaitUntil:
+    notVisible: 'Finding your location…'
+    timeout: 15000
+- assertNotVisible: 'Location off · Set pickup location'
+- assertNotVisible: 'Set pickup location'

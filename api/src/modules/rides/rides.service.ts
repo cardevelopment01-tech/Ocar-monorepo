@@ -39,7 +39,8 @@ import {
 import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner } from '@/modules/notifications/notifications.service'
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
-import { calculateFare, settleRentalFare } from '@/lib/fare'
+import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
+import { calculateFare, isHourlyRoundTrip, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
 import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { getStopCharge } from '@/modules/pricing/pricing.repository'
 import {
@@ -579,8 +580,9 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
        base_fare, distance_fare, time_fare,
        stop_fare, hour_surcharge, surge_fare,
        total_estimated, status,
+       pricing_version, waiting_fare,
        rental_km_limit, rental_duration_minutes, rental_extra_per_km, rental_extra_per_min
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'estimate',
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'estimate',$19,$20,
        -- pin the package terms quoted now; admins edit packages in place (migration 099)
        (SELECT km_limit         FROM rental_packages WHERE id = $3),
        (SELECT duration_minutes FROM rental_packages WHERE id = $3),
@@ -605,6 +607,8 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
       fareEstimate.breakdown.hour_surcharge,
       fareEstimate.breakdown.surge_fare,
       fareEstimate.breakdown.total,
+      fareEstimate.pricing_version,
+      fareEstimate.breakdown.waiting_fare ?? 0,
     ]
   )
 
@@ -693,6 +697,15 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
 
 // ── Driver ride actions ───────────────────────────────────────
 
+// Records that the driver dismissed this offer so it's excluded from
+// getPendingAssignmentsForDriver — otherwise a reconnect within the offer's
+// window replays it and the ringtone starts back up for an offer the driver
+// already declined. Fire-and-forget from the client's perspective (best-effort,
+// no error surfaced) since the local UI has already dismissed the card.
+export async function declineRide(driverId: bigint, rideId: bigint): Promise<void> {
+  await repo.declineAssignment(rideId, driverId)
+}
+
 export async function acceptRide(driverId: bigint, rideId: bigint) {
   // Same driver-city resolution as goOnline above — no GPS fallback. A driver
   // reaching this point already passed the goOnline city gate, so this should
@@ -750,6 +763,8 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
     driverId:           driverId.toString(),
     driverName:         ride?.driver_name ?? null,
     driverRating:       ride?.driver_rating ?? null,
+    driverTotalTrips:   ride?.driver_total_trips ?? null,
+    driverVerified:     ride?.driver_verified ?? null,
     driverPhoto:        driverPhoto,
     vehicleModel:       ride?.vehicle_model ?? null,
     vehicleBrand:       ride?.vehicle_brand ?? null,
@@ -788,7 +803,7 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
   // just-accepted ride -- it already has everything it needs from calling
   // accept alone.
   const stops = ride ? await repo.getRideStops(rideId) : []
-  const maskedRide = ride ? maskRideContacts(ride, 'driver') : null
+  const maskedRide = ride ? withTripWindow(maskRideContacts(ride, 'driver')) : null
 
   return {
     success: true,
@@ -929,6 +944,8 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     startedAt: new Date().toISOString(),
   })
 
+  await scheduleTripWindowNudges(rideId)
+
   // Rider-only channel: the OTP must never reach the driver's socket.
   socketEvents.sendUserUpdate(ride.user_id.toString(), {
     status: 'in_progress',
@@ -936,6 +953,28 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
   })
 
   return { success: true }
+}
+
+// Round trips with a booked window get a push at T-15 min and at the end of it, for the
+// backgrounded-app case (the on-screen clock needs no server event). Fixed jobIds make a replayed
+// start-code a no-op instead of a double nudge. A queue hiccup must never fail starting the trip.
+async function scheduleTripWindowNudges(rideId: bigint): Promise<void> {
+  try {
+    const row = await repo.getTripWindowInputs(rideId)
+    const { bookedUntil } = row ? tripWindowFields(row) : { bookedUntil: null }
+    if (!bookedUntil) return
+    const endMs = new Date(bookedUntil).getTime()
+    const now = Date.now()
+    for (const [kind, atMs] of [['t15', endMs - 15 * 60_000], ['end', endMs]] as const) {
+      await queues[QUEUE_NAMES.SCHEDULER].add(
+        'trip_window_nudge',
+        { rideId: rideId.toString(), kind },
+        { delay: Math.max(0, atMs - now), jobId: `trip-window-${rideId}-${kind}`, removeOnComplete: true, removeOnFail: 100 },
+      )
+    }
+  } catch (err) {
+    log.error({ err, rideId }, 'trip window nudge scheduling failed')
+  }
 }
 
 // ── Ride stops ───────────────────────────────────────────────
@@ -946,7 +985,9 @@ async function assertRideStopAccess(driverId: bigint, rideId: bigint) {
   if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
   }
-  if (ride.status !== 'in_progress') {
+  // 'returning' too: a stop still pending when a round trip starts its return leg
+  // must stay resolvable, or end-OTP (blocked by pending stops) can never succeed.
+  if (ride.status !== 'in_progress' && ride.status !== 'returning') {
     throw Object.assign(new Error('Ride not in progress'), { httpStatus: 409 })
   }
   return ride
@@ -1009,6 +1050,41 @@ export async function markStopStatus(
 
 const STOP_ADDABLE_STATUSES = new Set(['accepted', 'driver_arrived', 'in_progress'])
 
+// Visiting order for pending stops: nearest-next, so a stop added late doesn't
+// zig-zag the driver. Once the trip is under way the first pending stop is the
+// one the driver is acting on (PATCH /stops/:sequence addresses it by sequence),
+// so it never moves; before pickup nothing is locked and the walk starts at the
+// pickup. Reached/skipped stops keep their sequences. Returns only the moves.
+// ponytail: greedy nearest-neighbour (<= MAX_STOPS_PER_RIDE stops, so optimal
+// enough); swap for a real TSP/route-matrix call only if the stop cap is raised.
+export function planStopOrder(
+  stops: Array<{ id: string | bigint; sequence: number; lat: number; lng: number; status: string }>,
+  origin: { lat: number; lng: number },
+  lockFirstPending: boolean
+): Array<{ id: string; sequence: number }> {
+  const pending = stops.filter(s => s.status === 'pending').sort((a, b) => a.sequence - b.sequence)
+  const locked = lockFirstPending ? pending.slice(0, 1) : []
+  const rest = pending.slice(locked.length)
+  if (rest.length < 2) return []
+
+  const order = [...locked]
+  let cur: { lat: number; lng: number } = locked[0] ?? origin
+  while (rest.length) {
+    let best = 0
+    for (let i = 1; i < rest.length; i++) {
+      if (distanceMetres(cur.lat, cur.lng, rest[i]!.lat, rest[i]!.lng)
+        < distanceMetres(cur.lat, cur.lng, rest[best]!.lat, rest[best]!.lng)) best = i
+    }
+    cur = rest[best]!
+    order.push(rest.splice(best, 1)[0]!)
+  }
+  const seqs = pending.map(s => s.sequence)
+  return order
+    .map((s, i) => ({ id: String(s.id), sequence: seqs[i]!, was: s.sequence }))
+    .filter(m => m.sequence !== m.was)
+    .map(({ id, sequence }) => ({ id, sequence }))
+}
+
 // Lets the rider add a stop to a ride that's already been accepted/is on the
 // way. Mirrors createBooking's stop pricing rule: only round_trip levies the
 // flat per-stop charge (one_way prices the detour through distance instead;
@@ -1062,9 +1138,29 @@ export async function addRideStop(
     }
   }
 
+  // Re-order so the new stop sits where the driver will actually reach it, then
+  // send the full ordered list: clients that only append `stop` would show the
+  // old order until their next refetch.
+  let allStops = await repo.getRideStops(rideId)
+  const moves = planStopOrder(
+    allStops,
+    { lat: ride.origin_lat, lng: ride.origin_lng },
+    ride.status === 'in_progress'
+  )
+  if (moves.length > 0) {
+    try {
+      await repo.resequenceStops(rideId, moves)
+      allStops = await repo.getRideStops(rideId)
+      newStop = allStops.find(s => String(s.id) === String(newStop!.id)) ?? newStop
+    } catch (err) {
+      log.error({ err, rideId }, 'stop re-order failed; keeping insertion order')
+    }
+  }
+
   socketEvents.sendStopAdded(rideId.toString(), {
     rideId: rideId.toString(),
     stop: newStop,
+    stops: allStops,
   })
 
   if (ride.driver_id != null) {
@@ -1278,7 +1374,7 @@ export async function cancelRide(
   }
 
   const stage = cancelStageFor(ride.status)
-  const feeApplicable = stage !== 'before_acceptance' && stage !== 'before_dispatch'
+  const feeApplicable = stage === 'after_arrival'
 
   const client = await pool.connect()
   try {
@@ -1491,10 +1587,14 @@ export async function endRideEarlyAsDriver(
     min_fare: string
     return_rate_per_km: string | null
     total_estimated: string
+    pricing_version?: number
+    trip_hours?: string
+    waiting_fare?: string
+    hour_rate?: string | null
   }>(
     `SELECT fs.surge_multiplier, fs.stop_fare, fs.is_return_cab,
             rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km,
-            fs.total_estimated
+            fs.total_estimated, fs.pricing_version, fs.trip_hours, fs.waiting_fare, rc.hour_rate
      FROM fare_snapshots fs
      JOIN rate_cards rc ON rc.id = fs.rate_card_id
      WHERE fs.ride_id = $1`,
@@ -1522,6 +1622,16 @@ export async function endRideEarlyAsDriver(
     })
     const stopFare = parseFloat(snap.stop_fare ?? '0')
     finalFare = Math.round((recalc.total + stopFare) * 100) / 100
+
+    // Hourly window (pricing_version 2): the booked hours were reserved, so they are kept even
+    // though the trip ended early. The cap below still holds (the quote already includes them).
+    if (isHourlyRoundTrip({
+      pricing_version: snap.pricing_version,
+      trip_hours:      parseFloat(snap.trip_hours ?? '0'),
+      hour_rate:       snap.hour_rate != null ? parseFloat(snap.hour_rate) : null,
+    })) {
+      finalFare = Math.round((finalFare + parseFloat(snap.waiting_fare ?? '0') * parseFloat(snap.surge_multiplier)) * 100) / 100
+    }
 
     // Never charge more for an early-ended trip than the full originally-quoted
     // trip would have cost — closes the client-supplied-distance overcharge exploit
@@ -1612,6 +1722,16 @@ export async function forceResolveRide(
       [rideId, ride.status, outcome, actor, actorId ?? null, note ?? null]
     )
 
+    // Forced completion skips whatever stops the driver never resolved, so the
+    // ride record doesn't claim stops are still pending on a completed trip.
+    if (outcome === 'completed') {
+      await client.query(
+        `UPDATE ride_stops SET status = 'skipped', updated_at = now()
+         WHERE ride_id = $1 AND status = 'pending'`,
+        [rideId]
+      )
+    }
+
     if (ride.driver_id) {
       const tripsIncrement = outcome === 'completed' ? ', trips_completed = trips_completed + 1' : ''
       await client.query(
@@ -1638,6 +1758,29 @@ export async function forceResolveRide(
   })
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: outcome, resolvedBy: actor })
+
+  // Completed rides need a final fare + payment/commission settlement, same as
+  // a normal end-OTP completion. No GPS/actuals exist on this path, so the
+  // booked estimate (+ metered one-way stop wait) is the final fare.
+  // ponytail: no distance/overage reconciliation — ops can adjust via review if needed.
+  if (outcome === 'completed' && ride.driver_id) {
+    const driverId = BigInt(ride.driver_id)
+    try {
+      const wait = ride.ride_type === 'one_way' ? await repo.getStopWaitTotal(rideId) : 0
+      await pool.query(
+        `UPDATE fare_snapshots
+         SET total_final = round(total_estimated + $2::numeric, 2),
+             status = 'final', finalised_at = now()
+         WHERE ride_id = $1`,
+        [rideId, wait]
+      )
+    } catch (err) {
+      log.error({ err, rideId }, 'force-complete fare finalisation failed')
+    }
+    void settleRideCompletionPayment(rideId, driverId).catch((err: unknown) => {
+      log.error({ err, rideId }, 'payment post-processing failed for force-completed ride')
+    })
+  }
   return { success: true }
 }
 
@@ -1918,6 +2061,39 @@ export async function expireStaleAcceptedOrArrivedRide(
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'cancelled', cancelledBy: 'system' })
 }
 
+// Row used to settle a round trip at end-of-trip. Numeric columns arrive as strings from pg.
+interface RoundTripSnapshot {
+  surge_multiplier:         string
+  stop_fare:                string
+  stop_count:               number | null
+  is_return_cab:            boolean
+  estimated_km:             string
+  trip_hours:               string
+  pricing_version:          number
+  waiting_fare:             string
+  rate_per_km:              string
+  rate_per_min:             string
+  min_fare:                 string
+  return_rate_per_km:       string | null
+  hour_rate:                string | null
+  km_per_day:               string | null
+  driver_allowance_per_day: string | null
+}
+
+async function loadRoundTripSnapshot(rideId: bigint): Promise<RoundTripSnapshot | undefined> {
+  const res = await pool.query<RoundTripSnapshot>(
+    `SELECT fs.surge_multiplier, fs.stop_fare, fs.stop_count, fs.is_return_cab,
+            fs.estimated_km, fs.trip_hours, fs.pricing_version, fs.waiting_fare,
+            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km,
+            rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day
+     FROM fare_snapshots fs
+     JOIN rate_cards rc ON rc.id = fs.rate_card_id
+     WHERE fs.ride_id = $1`,
+    [rideId]
+  )
+  return res.rows[0]
+}
+
 export async function verifyEndOTP(
   driverId: bigint,
   rideId: bigint,
@@ -1991,6 +2167,14 @@ export async function verifyEndOTP(
 
   let finalFare: number | null = null
 
+  // Round trips: one snapshot read drives both the legacy per-day reconcile and the hourly
+  // window settlement. `hourly` = quoted under pricing_version 2 (see isHourlyRoundTrip).
+  const rtSnap = ride.ride_type === 'round_trip' ? await loadRoundTripSnapshot(rideId) : undefined
+  const hourlyRate = rtSnap?.hour_rate != null ? parseFloat(rtSnap.hour_rate) : null
+  const bookedHours = rtSnap ? parseFloat(rtSnap.trip_hours) : 0
+  const hourly = rtSnap != null && ride.started_at != null &&
+    isHourlyRoundTrip({ pricing_version: rtSnap.pricing_version, trip_hours: bookedHours, hour_rate: hourlyRate })
+
   // Rental: package fare + overage beyond the package's km/hours (plus grace), measured
   // from GPS breadcrumbs and server timestamps — not the client-reported actuals, which
   // are optional and unreliable. Time is always billable; km only when GPS is trustworthy.
@@ -2033,12 +2217,16 @@ export async function verifyEndOTP(
     }
   }
 
-  if (!rentalSettled && actualDistanceKm != null && actualDurationMin != null) {
+  // Hourly rides settle even when the driver app reported no actuals (driver-mobile sends only
+  // the code): the booked hours and overtime come from server timestamps, not client numbers.
+  if (!rentalSettled && ((actualDistanceKm != null && actualDurationMin != null) || hourly)) {
+    const reportedKm  = actualDistanceKm  ?? gpsDistanceKm  ?? 0
+    const reportedMin = actualDurationMin ?? gpsDurationMin ?? 0
     let totalFinal: number | null = null
     let earlyTermKm:  number | null = null
     let earlyTermMin: number | null = null
-    let billedKm  = actualDistanceKm
-    let billedMin = actualDurationMin
+    let billedKm  = reportedKm
+    let billedMin = reportedMin
 
     // Round trip: reconcile against ACTUAL km/duration, not just the estimate.
     // Two cases:
@@ -2067,26 +2255,7 @@ export async function verifyEndOTP(
 
       const isEarlyTermination = hasEndCoords && metres > 500
 
-      const snapRes = await pool.query<{
-        surge_multiplier: string
-        stop_fare:        string
-        is_return_cab:    boolean
-        rate_per_km:      string
-        rate_per_min:      string
-        min_fare:          string
-        return_rate_per_km: string | null
-        km_per_day:               string | null
-        driver_allowance_per_day: string | null
-      }>(
-        `SELECT fs.surge_multiplier, fs.stop_fare, fs.is_return_cab,
-                rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km,
-                rc.km_per_day, rc.driver_allowance_per_day
-         FROM fare_snapshots fs
-         JOIN rate_cards rc ON rc.id = fs.rate_card_id
-         WHERE fs.ride_id = $1`,
-        [rideId]
-      )
-      const snap = snapRes.rows[0]
+      const snap = rtSnap
 
       if (snap && isEarlyTermination) {
         const returnKm  = metres / 1000
@@ -2096,7 +2265,7 @@ export async function verifyEndOTP(
         // booked destination, not the actual early-stop location, so it would overcharge.
         const drivenKm = metres / 1000
         billedKm  = drivenKm + returnKm
-        billedMin = actualDurationMin + returnMin
+        billedMin = reportedMin + returnMin
 
         const recalc = calculateFare({
           rate_card: {
@@ -2118,8 +2287,38 @@ export async function verifyEndOTP(
         // Stops were already driven — add the pre-computed stop_fare unchanged
         const stopFare = parseFloat(snap.stop_fare ?? '0')
         totalFinal     = Math.round((recalc.total + stopFare) * 100) / 100
+        // Hourly window: the booked hours were reserved whether or not the rider used them (no refund).
+        if (hourly) {
+          totalFinal = Math.round((totalFinal + parseFloat(snap.waiting_fare) * parseFloat(snap.surge_multiplier)) * 100) / 100
+        }
         earlyTermKm    = Math.round(returnKm  * 100) / 100
         earlyTermMin   = Math.round(returnMin * 100) / 100
+      } else if (snap && hourly) {
+        // Hourly window: the quote stands (booked hours are not refunded), and only km driven
+        // beyond the quoted route add to it, so with no extra km the final equals the quote.
+        const stopCount = snap.stop_count ?? 0
+        const stopFare  = parseFloat(snap.stop_fare ?? '0')
+        billedKm  = Math.max(parseFloat(snap.estimated_km) * 2, gpsDistanceKm ?? reportedKm)
+        billedMin = gpsDurationMin ?? reportedMin
+        const recalc = calculateFare({
+          rate_card: {
+            rate_per_km:        parseFloat(snap.rate_per_km),
+            rate_per_min:       parseFloat(snap.rate_per_min),
+            min_fare:           parseFloat(snap.min_fare),
+            return_rate_per_km: snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
+            hour_rate:          hourlyRate,
+          },
+          ride_type:        'round_trip',
+          pricing_version:  2,
+          is_return_cab:    snap.is_return_cab,
+          estimated_km:     billedKm,
+          estimated_min:    billedMin,
+          stop_count:       stopCount,
+          charge_per_stop:  stopCount > 0 ? stopFare / stopCount : 0,
+          trip_hours:       bookedHours,
+          surge_multiplier: parseFloat(snap.surge_multiplier),
+        })
+        totalFinal = recalc.total
       } else if (snap) {
         // Normal completion: recalculate the real round_trip package fare
         // against what was actually driven, instead of defaulting to the
@@ -2140,11 +2339,11 @@ export async function verifyEndOTP(
           // one-way straight-line estimate to the destination, not the
           // actual round-trip distance driven, so trusting it directly
           // would keep the same under-billing bug this branch exists to fix.
-          estimated_km:     gpsDistanceKm ?? actualDistanceKm,
-          estimated_min:    gpsDurationMin ?? actualDurationMin,
+          estimated_km:     gpsDistanceKm ?? reportedKm,
+          estimated_min:    gpsDurationMin ?? reportedMin,
           stop_count:       0, // stop fares already baked into snap.stop_fare
           charge_per_stop:  0,
-          trip_hours:       (gpsDurationMin ?? actualDurationMin) / 60,
+          trip_hours:       (gpsDurationMin ?? reportedMin) / 60,
           surge_multiplier: parseFloat(snap.surge_multiplier),
         })
 
@@ -2152,8 +2351,8 @@ export async function verifyEndOTP(
         totalFinal = Math.round((recalc.total + stopFare) * 100) / 100
         // Keep the stored actual_km/actual_min consistent with whatever was
         // actually used to compute the fare above.
-        billedKm  = gpsDistanceKm  ?? actualDistanceKm
-        billedMin = gpsDurationMin ?? actualDurationMin
+        billedKm  = gpsDistanceKm  ?? reportedKm
+        billedMin = gpsDurationMin ?? reportedMin
 
         // Flag for ops review: GPS breadcrumb data was insufficient, so this
         // fare had to fall back to the unreliable client-reported distance.
@@ -2166,6 +2365,19 @@ export async function verifyEndOTP(
       }
     }
 
+    // Hourly window: bill time past booked hours + grace on top of the settled fare.
+    let overtimeMin: number | null = null
+    let overtimeFare = 0
+    if (hourly && totalFinal != null && hourlyRate != null && ride.started_at != null) {
+      const ot = settleRoundTripOvertime({
+        started_at: ride.started_at, completed_at: completedAt, booked_hours: bookedHours, hour_rate: hourlyRate,
+      })
+      overtimeMin  = ot.overtime_min
+      overtimeFare = ot.overtime_fare
+      totalFinal   = Math.round((totalFinal + overtimeFare) * 100) / 100
+      if (ot.review_reason) await repo.flagRideForReview(rideId, ot.review_reason)
+    }
+
     await pool.query(
       `UPDATE fare_snapshots
        SET actual_km               = $2,
@@ -2173,10 +2385,12 @@ export async function verifyEndOTP(
            total_final             = COALESCE($4::numeric, total_estimated),
            early_termination_km    = $5,
            early_termination_min   = $6,
+           overtime_min            = $7,
+           overtime_fare           = $8,
            status                  = 'final',
            finalised_at            = now()
        WHERE ride_id = $1`,
-      [rideId, billedKm, billedMin, totalFinal, earlyTermKm, earlyTermMin]
+      [rideId, billedKm, billedMin, totalFinal, earlyTermKm, earlyTermMin, overtimeMin, overtimeFare]
     )
 
     finalFare = totalFinal

@@ -5,7 +5,8 @@ import { motion } from 'framer-motion'
 import { Star } from 'lucide-react'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import { useParams, useRouter } from 'next/navigation'
-import { rideApi } from '@/lib/ride-api'
+import { rideApi, type RideDetail } from '@/lib/ride-api'
+import { DriverAvatar, driverViewFromRide } from '@/components/ride/DriverIdentity'
 import { safetyApi, type RatingTag } from '@/lib/safety-api'
 import { cn } from '@/lib/utils'
 
@@ -14,7 +15,7 @@ export default function RateRidePage() {
   const rideId = params?.id ?? ''
   const router  = useRouter()
 
-  const [driverName,    setDriverName]    = useState<string | null>(null)
+  const [rideInfo,      setRideInfo]      = useState<RideDetail | null>(null)
   const [driverId,      setDriverId]      = useState<string | null>(null)
   const [origin,        setOrigin]        = useState<string | null>(null)
   const [destination,   setDestination]   = useState<string | null>(null)
@@ -31,7 +32,7 @@ export default function RateRidePage() {
   useEffect(() => {
     if (!rideId) return
     void rideApi.getRide(rideId).then(ride => {
-      setDriverName(ride.driver_name)
+      setRideInfo(ride)
       setDriverId(ride.driver_id)
       setOrigin(ride.origin_address)
       setDestination(ride.destination_address)
@@ -106,14 +107,15 @@ export default function RateRidePage() {
     )
   }
 
+  const driverView = driverViewFromRide(rideInfo)
+
   return (
     <div className="h-full bg-background flex flex-col px-6 pb-8 overflow-y-auto">
       <div className="pt-12 pb-6 flex flex-col items-center text-center">
-        <div className="w-16 h-16 rounded-2xl bg-primary-subtle flex items-center justify-center text-3xl mb-4">
-          👤
-        </div>
+        <div className="mb-5"><DriverAvatar view={driverView} photo={rideInfo?.driver_photo ?? null} size="lg" chip /></div>
         <h1 className="text-xl font-bold text-text-primary mb-1">How was your ride?</h1>
-        <p className="text-text-muted text-sm">{driverName ?? 'Your Driver'}</p>
+        <p className="text-text-primary text-sm font-semibold">{driverView.name}</p>
+        <p className="text-text-muted text-xs mt-0.5">{driverView.vehicleLine}{driverView.plate ? ` · ${driverView.plate}` : ''}</p>
       </div>
 
       {(origin || destination || fare) && (

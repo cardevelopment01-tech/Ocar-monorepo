@@ -114,7 +114,7 @@ export default function MapPickerScreen() {
       </Pressable>
 
       <View style={[styles.card, { paddingBottom: insets.bottom + spacing.md }]}>
-        <Text style={styles.cardLabel}>{isPickup ? 'PICKUP LOCATION' : 'DESTINATION'}</Text>
+        <Text style={styles.cardLabel}>{isPickup ? 'Pickup location' : 'Destination'}</Text>
         <View style={styles.addressRow}>
           {resolving ? (
             <ActivityIndicator size="small" color={colors.primary} />
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
-  cardLabel: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold, letterSpacing: 0.5 },
+  cardLabel: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
   addressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   addressText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold, flex: 1 },
 })

@@ -42,6 +42,11 @@ export type RideDetail = {
   return_at: string | null
   trip_hours: number | null
   started_at: string | null
+  bookedUntil?: string | null
+  overtimeRate?: number | null
+  overtimeGraceMin?: number | null
+  overtimeMin?: number | null
+  overtimeFare?: number | null
   stops: RideStop[]
   payment_channel: 'cash' | 'online' | 'wallet'
   cash_collected_at: string | null
@@ -152,6 +157,13 @@ export const driverRideApi = {
   acceptRide: async (rideId: string): Promise<{ success: boolean; rideId: string; ride: RideDetail | null }> => {
     const res = await api.post(`/api/v1/rides/${rideId}/accept`)
     return res.data as { success: boolean; rideId: string; ride: RideDetail | null }
+  },
+
+  // Tells the server this offer is dead so a reconnect within its window (tab
+  // backgrounded/foregrounded, a network blip) doesn't replay it over the socket
+  // and restart the ringtone for a ride the driver already declined.
+  declineRide: async (rideId: string): Promise<void> => {
+    await api.post(`/api/v1/rides/${rideId}/decline`).catch(() => {})
   },
 
   markArrived: async (rideId: string): Promise<{ success: boolean }> => {

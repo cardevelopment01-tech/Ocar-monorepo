@@ -30,6 +30,10 @@ export interface ActiveRide {
   userRating?: number
   returnAt?: string
   tripHours?: number
+  // Booked-window facts for hourly round trips (api lib/trip-window.ts); absent = no clock.
+  bookedUntil?: string
+  overtimeRate?: number
+  overtimeGraceMin?: number
   rideStartedAt?: string
   stops?: RideStop[]
   paymentChannel?: 'cash' | 'online' | 'wallet'
@@ -65,6 +69,7 @@ interface RideState {
   updateRideStatus:  (status: string) => void
   setFare:           (fare: number) => void
   setRideStartedAt:  (ts: string) => void
+  setBookedWindow:   (ride: { bookedUntil?: string | null; overtimeRate?: number | null; overtimeGraceMin?: number | null }) => void
   updatePickup:      (lat: number, lng: number, address: string | null) => void
   arriveStop:        (sequence: number, arrivedAt: string | null, waitCharge?: string | null) => void
   updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null, waitCharge?: string | null) => void
@@ -96,6 +101,16 @@ export const useRideStore = create<RideState>()(
 
       setFare: (fare) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, fare } : null })),
+
+      setBookedWindow: (w) =>
+        set((s) => {
+          if (!s.activeRide) return {}
+          const next = { ...s.activeRide }
+          if (w.bookedUntil != null) next.bookedUntil = w.bookedUntil
+          if (w.overtimeRate != null) next.overtimeRate = w.overtimeRate
+          if (w.overtimeGraceMin != null) next.overtimeGraceMin = w.overtimeGraceMin
+          return { activeRide: next }
+        }),
 
       setRideStartedAt: (ts) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, rideStartedAt: ts } : null })),

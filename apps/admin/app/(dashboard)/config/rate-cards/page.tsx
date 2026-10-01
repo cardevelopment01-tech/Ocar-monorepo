@@ -229,6 +229,13 @@ function UpdateRateDialog({
                     className={`${inputCls} font-mono`} placeholder="e.g. 300" />
                   <p className="text-xs text-text-muted mt-1">was {fmt(card.driver_allowance_per_day)}</p>
                 </div>
+                <div className="col-span-2">
+                  <label className={labelCls}>Waiting and overtime rate /hour (₹)</label>
+                  <input type="number" step="0.01" value={form.hour_rate}
+                    onChange={e => setForm(f => ({ ...f, hour_rate: e.target.value }))}
+                    className={`${inputCls} font-mono`} placeholder="e.g. 100" />
+                  <p className="text-xs text-text-muted mt-1">was {fmt(card.hour_rate)}. Billed per booked hour on same-day round trips (up to 24h), and per minute (rate ÷ 60) as overtime after the booked time and a short grace period.</p>
+                </div>
               </div>
             )}
             <div>
@@ -707,7 +714,7 @@ export default function RateCardsPage() {
                                         <span className="block text-[11px] font-sans font-medium text-text-muted mt-0.5">Return {fmt(card.return_rate_per_km)}/km</span>
                                       )}
                                       {card.ride_type === 'round_trip' && (
-                                        <span className="block text-[11px] font-sans font-medium text-text-muted mt-0.5">{card.km_per_day ?? '—'} km/day · {fmt(card.driver_allowance_per_day)} allowance</span>
+                                        <span className="block text-[11px] font-sans font-medium text-text-muted mt-0.5">{card.km_per_day ?? '—'} km/day · {fmt(card.driver_allowance_per_day)} allowance · {fmt(card.hour_rate)}/hr</span>
                                       )}
                                     </td>
                                     <td className="!text-right font-mono">{fmt(card.rate_per_min)}</td>
@@ -963,6 +970,12 @@ function CreateRateCardDialog({
                   <label className={labelCls}>Driver Allowance/day (₹)</label>
                   <input type="number" step="0.01" value={form.driver_allowance_per_day}
                     onChange={e => set('driver_allowance_per_day', e.target.value)} className={`${inputCls} font-mono`} placeholder="e.g. 300" />
+                </div>
+                <div className="col-span-2">
+                  <label className={labelCls}>Waiting and overtime rate /hour (₹)</label>
+                  <input type="number" step="0.01" value={form.hour_rate}
+                    onChange={e => set('hour_rate', e.target.value)} className={`${inputCls} font-mono`} placeholder="e.g. 100" />
+                  <p className="text-xs text-text-muted mt-1">Billed per booked hour on same-day round trips (up to 24h), and per minute (rate ÷ 60) as overtime after the booked time and a short grace period.</p>
                 </div>
               </div>
             )}

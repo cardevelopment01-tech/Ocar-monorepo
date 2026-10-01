@@ -78,6 +78,8 @@ export interface Ride {
   driver_name: string | null
   driver_phone: string | null
   driver_rating: string | null
+  driver_total_trips: number | null
+  driver_verified: boolean | null
   driver_photo: string | null
   total_estimated: string | null
   vehicle_number_plate: string | null
@@ -90,6 +92,7 @@ export interface Ride {
   driver_current_lat: number | null
   driver_current_lng: number | null
   payment_status: string | null
+  resolved_by?: 'admin' | 'timeout' | null
   billing_mode_snapshot: BillingMode | null
 }
 
@@ -100,12 +103,12 @@ export interface Ride {
 // getRideCoreForDriverAction for call sites that never read a joined field.
 export type RideCore = Omit<Ride,
   | 'user_phone' | 'user_name' | 'user_rating'
-  | 'driver_name' | 'driver_phone' | 'driver_rating' | 'driver_photo'
+  | 'driver_name' | 'driver_phone' | 'driver_rating' | 'driver_total_trips' | 'driver_verified' | 'driver_photo'
   | 'total_estimated'
   | 'vehicle_number_plate' | 'vehicle_color' | 'vehicle_name' | 'vehicle_model' | 'vehicle_brand'
   | 'booked_category_name' | 'assigned_category_name'
   | 'driver_current_lat' | 'driver_current_lng'
-  | 'payment_status'
+  | 'payment_status' | 'resolved_by'
 >
 
 export interface StopInput {

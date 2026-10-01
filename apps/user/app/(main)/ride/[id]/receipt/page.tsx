@@ -3,15 +3,12 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { ChevronLeft, CheckCircle2, XCircle, Navigation, Clock, Star, LifeBuoy, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronLeft, CheckCircle2, XCircle, Navigation, Clock, Star, LifeBuoy, AlertCircle } from 'lucide-react'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
 import { openRidePaymentCheckout } from '@/lib/razorpay-checkout'
+import { DriverRow, driverViewFromRide } from '@/components/ride/DriverIdentity'
 
 const EASE = [0.22, 1, 0.36, 1] as const
-
-function getInitials(name: string) {
-  return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
-}
 
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString('en-IN', {
@@ -19,20 +16,45 @@ function fmtDateTime(iso: string) {
   })
 }
 
-function money(v: string | null): string | null {
+function money(v: string | null | undefined): string | null {
   const n = v != null ? parseFloat(v) : null
   return n && n > 0 ? `₹${Math.round(n).toLocaleString('en-IN')}` : null
 }
 
-const FARE_LINES: { key: 'base_fare' | 'distance_fare' | 'time_fare' | 'stop_fare' | 'hour_surcharge' | 'surge_fare' | 'overage_fare'; label: string }[] = [
+const FARE_LINES: { key: 'base_fare' | 'distance_fare' | 'time_fare' | 'stop_fare' | 'hour_surcharge' | 'waiting_fare' | 'surge_fare' | 'overage_fare'; label: string }[] = [
   { key: 'base_fare',      label: 'Base fare' },
   { key: 'distance_fare',  label: 'Distance' },
   { key: 'time_fare',      label: 'Time' },
   { key: 'stop_fare',      label: 'Stops' },
   { key: 'hour_surcharge', label: 'Driver allowance' },
+  // Hourly round trips: the booked hours are their own line, not an unexplained remainder.
+  { key: 'waiting_fare',   label: 'Booked time' },
   { key: 'surge_fare',     label: 'Surge' },
   { key: 'overage_fare',   label: 'Overage' },
 ]
+
+// Quiet second line under a receipt label (quantity), same wording as the rider app.
+function fareDetail(key: string, ride: RideDetail): string | null {
+  if (key === 'distance_fare' && ride.actual_km) return `${parseFloat(ride.actual_km)} km`
+  if (key === 'time_fare' && ride.actual_min) return `${Math.round(parseFloat(ride.actual_min))} min`
+  if (key === 'waiting_fare' && ride.trip_hours) return `${ride.trip_hours} ${ride.trip_hours === 1 ? 'hour' : 'hours'}`
+  return null
+}
+
+const clock = (d: Date) => d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()
+
+// Only a round trip that ran past its booked window has a breakdown; start = booked end minus booked hours.
+function timeline(ride: RideDetail) {
+  if (!ride.bookedUntil || !ride.trip_hours || !ride.completed_at || (ride.overtimeMin ?? 0) <= 0) return null
+  const end = new Date(ride.bookedUntil)
+  const grace = ride.overtimeGraceMin ?? 0
+  return [
+    { time: clock(new Date(end.getTime() - ride.trip_hours * 3_600_000)), label: 'Trip started', note: null },
+    { time: clock(end), label: 'Booked time ended', note: grace > 0 ? `${grace} free minutes` : null },
+    { time: clock(new Date(end.getTime() + grace * 60_000)), label: 'Extra time started', note: ride.overtimeRate ? `₹${ride.overtimeRate} an hour` : null },
+    { time: clock(new Date(ride.completed_at)), label: 'Trip ended', note: `${ride.overtimeMin} min extra` },
+  ]
+}
 
 export default function RideReceiptPage() {
   const params = useParams<{ id: string }>()
@@ -183,11 +205,11 @@ export default function RideReceiptPage() {
             </div>
             <div className="flex-1 min-w-0 space-y-3">
               <div>
-                <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">Pickup</p>
+                <p className="text-xs text-text-secondary">Pickup</p>
                 <p className="text-sm font-medium text-text-primary">{ride.origin_address ?? '—'}</p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">Drop</p>
+                <p className="text-xs text-text-secondary">Drop</p>
                 <p className="text-sm font-medium text-text-primary">{ride.destination_address ?? '—'}</p>
               </div>
             </div>
@@ -216,48 +238,8 @@ export default function RideReceiptPage() {
 
         {/* Driver */}
         {ride.driver_name && (
-          <div className="bg-surface rounded-2xl border border-border p-4 flex items-center gap-3">
-            {ride.driver_photo ? (
-              <img
-                src={ride.driver_photo}
-                alt={ride.driver_name}
-                className="w-11 h-11 rounded-2xl object-cover flex-shrink-0"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-              />
-            ) : (
-              <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-white text-sm font-black bg-gradient-primary">
-                {getInitials(ride.driver_name)}
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-text-primary">{ride.driver_name}</p>
-              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                {ride.driver_rating && (
-                  <>
-                    <Star size={11} className="fill-status-warning text-status-warning" />
-                    <span className="text-xs font-semibold text-text-secondary">{Number(ride.driver_rating).toFixed(1)}</span>
-                  </>
-                )}
-                {(ride.vehicle_model || ride.vehicle_name) && (
-                  <span className="text-xs text-text-muted inline-flex items-center gap-1">
-                    {ride.driver_rating && '· '}
-                    {ride.vehicle_color && (
-                      <span
-                        className="inline-block w-2.5 h-2.5 rounded-full border border-black/10 flex-shrink-0"
-                        style={{ background: ride.vehicle_color.toLowerCase() }}
-                        title={ride.vehicle_color}
-                      />
-                    )}
-                    {[ride.vehicle_color, ride.vehicle_model ?? ride.vehicle_name].filter(Boolean).join(' ')}
-                  </span>
-                )}
-              </div>
-            </div>
-            {ride.vehicle_number_plate && (
-              <span className="text-[11px] font-bold tracking-wider text-text-secondary bg-surface-2 border border-border rounded px-1.5 py-0.5 flex-shrink-0">
-                {ride.vehicle_number_plate}
-              </span>
-            )}
+          <div className="bg-surface rounded-2xl border border-border p-4">
+            <DriverRow view={driverViewFromRide(ride)} photo={ride.driver_photo} />
           </div>
         )}
 
@@ -265,39 +247,76 @@ export default function RideReceiptPage() {
         {isCancelled ? (
           ride.cancellation_reason && (
             <div className="bg-surface rounded-2xl border border-border p-4">
-              <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1">Cancellation reason</p>
+              <p className="text-xs text-text-secondary mb-1">Cancellation reason</p>
               <p className="text-sm text-text-primary">{ride.cancellation_reason}</p>
             </div>
           )
         ) : (
-          <div className="card">
-            <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-3">{totalLabel} breakdown</p>
-            <div className="space-y-2">
+          <div className="bg-surface rounded-2xl border border-border p-4">
+            <p className="text-sm font-semibold text-text-primary mb-3">Fare receipt</p>
+            <div className="space-y-3">
               {FARE_LINES.map(({ key, label }) => {
                 const amount = money(ride[key])
                 if (!amount) return null
+                const detail = fareDetail(key, ride)
                 return (
-                  <div key={key} className="flex items-center justify-between text-sm">
-                    <span className="text-text-secondary">{label}</span>
-                    <span className="text-text-primary font-medium">{amount}</span>
+                  <div key={key} className="flex items-start justify-between gap-3 text-sm">
+                    <div>
+                      <p className="text-text-primary">{label}</p>
+                      {detail && <p className="text-xs text-text-secondary">{detail}</p>}
+                    </div>
+                    <span className="text-text-primary font-semibold tabular-nums">{amount}</span>
                   </div>
                 )
               })}
+              {/* After surge: overtime is not surged. Only present when the trip ran past the booked window. */}
+              {(ride.overtimeMin ?? 0) > 0 && ride.overtimeFare != null && (
+                <div className="flex items-start justify-between gap-3 text-sm">
+                  <div>
+                    <p className="text-text-primary">Extra time</p>
+                    <p className="text-xs text-text-secondary">
+                      {ride.overtimeMin} min{ride.overtimeGraceMin ? `, after ${ride.overtimeGraceMin} free minutes` : ''}
+                    </p>
+                  </div>
+                  <span className="text-text-primary font-semibold tabular-nums">₹{ride.overtimeFare.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                </div>
+              )}
               {(() => {
                 const waitTotal = (ride.stops ?? []).reduce((s, st) => s + parseFloat(st.wait_charge ?? '0'), 0)
                 return waitTotal > 0 ? (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-text-secondary">Waiting at stops</span>
-                    <span className="text-text-primary font-medium">₹{Math.round(waitTotal).toLocaleString('en-IN')}</span>
+                  <div className="flex items-start justify-between gap-3 text-sm">
+                    <p className="text-text-primary">Waiting at stops</p>
+                    <span className="text-text-primary font-semibold tabular-nums">₹{Math.round(waitTotal).toLocaleString('en-IN')}</span>
                   </div>
                 ) : null
               })()}
-              <div className="flex items-center justify-between pt-2 mt-1 border-t border-border">
-                <span className="text-sm font-bold text-text-primary">Total</span>
-                <span className="text-base font-black text-text-primary">{total ?? '—'}</span>
+              <div className="flex items-baseline justify-between pt-3 border-t border-border">
+                <span className="text-base font-bold text-text-primary">{totalLabel === 'Final fare' ? 'Total' : 'Estimated total'}</span>
+                <span className="text-xl font-bold text-text-primary tabular-nums">{total ?? '—'}</span>
               </div>
             </div>
           </div>
+        )}
+
+        {/* Time breakdown: only exists when a round trip ran past its booked window. */}
+        {isCompleted && timeline(ride) && (
+          <details className="bg-surface rounded-2xl border border-border group">
+            <summary className="flex items-center justify-between min-h-[48px] px-4 text-sm font-semibold text-text-primary cursor-pointer list-none">
+              Time breakdown
+              <ChevronDown size={18} className="text-text-secondary transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="px-4 pb-4 space-y-3">
+              {timeline(ride)!.map((step) => (
+                <div key={step.label} className="flex gap-3 text-sm">
+                  <span className="w-[72px] flex-shrink-0 font-semibold text-text-primary tabular-nums">{step.time}</span>
+                  <div>
+                    <p className="text-text-primary">{step.label}</p>
+                    {step.note && <p className="text-xs text-text-secondary">{step.note}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </details>
         )}
       </div>
 

@@ -10,3 +10,11 @@ export const api = createApiClient({
   refresher: tokenRefresher,
   onAuthFailure: () => useAuthStore.getState().clearAuth(),
 })
+
+let serverSkewMs = 0
+api.interceptors.response.use((res) => {
+  const serverTime = Date.parse(String(res.headers?.['date'] ?? ''))
+  if (!Number.isNaN(serverTime)) serverSkewMs = serverTime - Date.now()
+  return res
+})
+export const serverNow = (): number => Date.now() + serverSkewMs

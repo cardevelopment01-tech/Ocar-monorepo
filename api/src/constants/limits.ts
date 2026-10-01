@@ -136,3 +136,12 @@ export const RATE_CARD_CACHE_TTL_SECONDS = 3600 // 1h — money-affecting, short
 export const CONFIG_CACHE_TTL_SECONDS = 30 // kill switches — bounds worst-case staleness only; a real flip is invalidated immediately
 export const STRUCTURAL_CACHE_TTL_SECONDS = 21600 // 6h — structural, changes are rare and deliberate
 export const NOTIFICATION_TEMPLATE_CACHE_TTL_SECONDS = 900 // 15min — edited via admin UI, keep the feedback loop tight
+
+// Round-trip booked window (pricing_version 2, bookings up to 24h): time past the booked
+// hours is free for this long, then billed per minute at hour_rate / 60. Same value as the
+// rental grace by design; clients receive it as `overtimeGraceMin` rather than hardcoding it.
+export const ROUND_TRIP_OVERTIME_GRACE_MIN = 5
+// Overtime beyond this many billed minutes is still billed in full but flagged for ops review.
+export const ROUND_TRIP_OVERTIME_REVIEW_MIN = 60
+// Longest booking priced per hour; above this the per-day package applies (unchanged).
+export const ROUND_TRIP_HOURLY_MAX_HOURS = 24

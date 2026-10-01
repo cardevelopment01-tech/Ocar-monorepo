@@ -15,6 +15,12 @@ function getSocketActions(): { connectSocket: () => void; disconnectSocket: () =
   return require('@/services/socket')
 }
 
+// Same lazy-require reason as getSocketActions: useLocationStore -> booking/api -> services/api -> useAuthStore.
+function clearSavedLocation(): void {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deliberate lazy require, see above
+  require('@/store/useLocationStore').useLocationStore.getState().clearSaved()
+}
+
 export interface UserProfile {
   id: string
   code: string
@@ -55,6 +61,7 @@ export const useAuthStore = create<AuthState>()(
 
       clearAuth: () => {
         getSocketActions().disconnectSocket()
+        clearSavedLocation() // the next rider on this phone must not see the last rider's place/address
         set({ token: null, refreshToken: null, user: null, isAuthenticated: false })
       },
 

@@ -73,6 +73,14 @@ export type RideDetail = {
   status: string
   rideType: string
   tripHours: number | null
+  // Booked-window facts for hourly round trips (api lib/trip-window.ts); null/absent = no clock.
+  bookedUntil?: string | null
+  overtimeRate?: number | null
+  overtimeGraceMin?: number | null
+  overtimeMin?: number | null
+  overtimeFare?: number | null
+  // Booked-hours charge (pre-surge) for hourly round trips; numeric string like the other fare parts.
+  waitingFare?: string | null
   returnAt: string | null
   scheduledFor: string | null
   userId: string
@@ -88,6 +96,8 @@ export type RideDetail = {
   driverName: string | null
   driverPhone: string | null
   driverRating: string | null
+  driverTotalTrips: number | null
+  driverVerified: boolean | null
   driverPhoto: string | null
   vehicleNumberPlate: string | null
   vehicleColor: string | null
@@ -114,6 +124,8 @@ export type RideDetail = {
   startOtp: string | null
   endOtp: string | null
   stops: RideStop[]
+  // Set when admin/the sweeper force-ended the ride -- lets a resync tell it from a normal end.
+  resolvedBy?: 'admin' | 'timeout' | null
 }
 
 // Matches GET /rides/me/history's exact row shape (api/src/modules/rides/rides.repository.ts's

@@ -94,7 +94,7 @@ function PackageTierScroller({
             >
               {isRec ? (
                 <View style={styles.bestFitTag}>
-                  <Text style={styles.bestFitText} numberOfLines={1}>BEST FIT</Text>
+                  <Text style={styles.bestFitText} numberOfLines={1}>Best fit</Text>
                 </View>
               ) : null}
               <Text style={[styles.tierDuration, active ? styles.tierTextActive : null]} numberOfLines={1}>{formatDuration(pkg.durationMinutes)}</Text>
@@ -360,7 +360,7 @@ export default function RentalScreen() {
 
         {/* Vehicle list — every option visible on one vertical scroll */}
         <View style={styles.vehHeader}>
-          <Text style={styles.sectionLabel}>CHOOSE YOUR RIDE</Text>
+          <Text style={styles.sectionLabel}>Choose your ride</Text>
           <Text style={styles.vehCount}>{categories.length} options</Text>
         </View>
 
@@ -402,7 +402,7 @@ export default function RentalScreen() {
                     {premium ? (
                       <View style={styles.premiumBadge}>
                         <Feather name="star" size={8} color={h.gold} />
-                        <Text style={styles.premiumBadgeText}>PREMIUM FLEET</Text>
+                        <Text style={styles.premiumBadgeText}>Premium fleet</Text>
                       </View>
                     ) : null}
                   </View>
@@ -581,7 +581,7 @@ const styles = StyleSheet.create({
   vehNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   vehName: { fontSize: 14, fontFamily: fonts.bold, color: h.ivory },
   premiumBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FBF3E6', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2 },
-  premiumBadgeText: { fontSize: 9.5, fontFamily: fonts.bold, letterSpacing: 0.3, color: '#8A6323' },
+  premiumBadgeText: { fontSize: 12, fontFamily: fonts.semibold, color: '#8A6323' },
   vehSeatsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   vehSeats: { ...typography.caption, color: h.ivoryDim, fontSize: 11 },
   vehFareBlock: { alignItems: 'flex-end', minWidth: 56 },
@@ -604,7 +604,7 @@ const styles = StyleSheet.create({
   tierTextActive: { color: '#FFFFFF' },
   tierKmActive: { color: 'rgba(255,255,255,0.75)' },
   bestFitTag: { alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2, marginBottom: 4, boxShadow: '0 2px 6px rgba(20,23,26,0.12)' },
-  bestFitText: { fontSize: 9, fontFamily: fonts.bold, color: h.teal, flexShrink: 0 },
+  bestFitText: { fontSize: 12, fontFamily: fonts.semibold, color: h.teal, flexShrink: 0 },
   trayDivider: { height: 1, backgroundColor: h.line08, marginBottom: spacing.sm },
   trayTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   trayTotalInfo: { flex: 1, minWidth: 0 },

@@ -89,6 +89,7 @@ const BASE_REQUEST = {
 }
 
 const FARE_STUB = {
+  pricing_version:  1 as const,
   rate_card_id:     1,
   surge_event_id:   null,
   surge_multiplier: 1.0,
@@ -156,3 +157,35 @@ describe('createBooking — book-for-someone-else', () => {
     expect(repo.createRide).not.toHaveBeenCalled()
   })
 })
+
+describe('createBooking, pricing_version on the fare snapshot', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(repo.createRide).mockResolvedValue({ ...RIDE_STUB, ride_type: 'round_trip' } as never)
+    vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 0 } as never)
+    vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
+    vi.mocked(repo.getActiveRideIdForUser).mockResolvedValue(null)
+  })
+
+  const snapshotInsert = () => vi.mocked(pool.query).mock.calls.find(c => /INSERT INTO fare_snapshots/.test(c[0] as string))!
+
+  it('a round trip is stored as version 2 with its booked-hours charge', async () => {
+    vi.mocked(pricing.getFareEstimate).mockResolvedValue({
+      ...FARE_STUB, pricing_version: 2 as const,
+      breakdown: { ...FARE_STUB.breakdown, waiting_fare: 108 },
+    })
+    await createBooking(USER_ID, { ...BASE_REQUEST, rideType: 'round_trip', tripHours: 6 })
+    const params = snapshotInsert()[1] as unknown[]
+    expect(params.at(-2)).toBe(2)
+    expect(params.at(-1)).toBe(108)
+  })
+
+  it('a one-way booking stays version 1 with no waiting fare', async () => {
+    vi.mocked(pricing.getFareEstimate).mockResolvedValue(FARE_STUB)
+    await createBooking(USER_ID, { ...BASE_REQUEST })
+    const params = snapshotInsert()[1] as unknown[]
+    expect(params.at(-2)).toBe(1)
+    expect(params.at(-1)).toBe(0)
+  })
+})
+

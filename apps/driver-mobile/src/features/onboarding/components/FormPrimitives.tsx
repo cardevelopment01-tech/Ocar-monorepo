@@ -160,7 +160,7 @@ export function PickerField({
 
 const styles = StyleSheet.create({
   fieldWrap: { gap: spacing.xs },
-  fieldLabel: { ...typography.caption, color: colors.ink600, fontFamily: fonts.bold, textTransform: 'uppercase', letterSpacing: 0.4 },
+  fieldLabel: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
   fieldHint: { ...typography.caption, color: colors.ink400 },
   fieldError: { ...typography.caption, color: colors.error, fontFamily: fonts.semibold },
   // Explicit border, not shadow-only -- a live device showed the multiline
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
   // font), and '800' was dead weight on top of that -- 700 is the heaviest
   // weight useAppFonts loads.
   stepperValue: { fontSize: 32, fontFamily: fonts.bold, color: colors.ink900 },
-  stepperUnit: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold, textTransform: 'uppercase', marginBottom: spacing.sm },
+  stepperUnit: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold, marginBottom: spacing.sm },
   stepperBtnRow: { flexDirection: 'row', gap: spacing.md },
   stepperBtn: { width: 32, height: 32, borderRadius: radii.full, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
   stepperBtnDisabled: { opacity: 0.3 },

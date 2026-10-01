@@ -5,6 +5,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withSequence, withT
 import { Feather } from '@expo/vector-icons'
 import { Button, colors, fonts, radii, spacing, typography, Text } from '@ocar/mobile-shared'
 import { OtpKeypad } from './OtpKeypad'
+import { SCRIM } from './scrim'
 
 export type OtpEntryCardProps = {
   phase: 'start' | 'end'
@@ -15,8 +16,8 @@ export type OtpEntryCardProps = {
 }
 
 const COPY = {
-  start: { cta: 'Enter rider OTP', hint: 'Ask the rider for their 4-digit code once they are in the cab', title: 'Start OTP', done: 'Trip started' },
-  end: { cta: 'Enter end OTP', hint: 'Ask the rider for the end code once you reach the drop', title: 'End OTP', done: 'Trip ended' },
+  start: { cta: 'Enter start OTP', hint: 'Ask the rider for their 4-digit start code', title: 'Start OTP', sub: 'Enter the 4-digit start code', done: 'Trip started' },
+  end: { cta: 'Enter end OTP', hint: 'Ask the rider for the end code at the drop', title: 'End OTP', sub: 'Enter the 4-digit end code', done: 'Trip ended' },
 } as const
 
 /**
@@ -29,8 +30,8 @@ export function OtpEntryCard({ phase, riderName, error, onSubmit }: OtpEntryCard
   const copy = COPY[phase]
   return (
     <View style={styles.card}>
-      <Text style={styles.hint}>{copy.hint}</Text>
       <Button label={copy.cta} icon="lock" onPress={() => setOpen(true)} />
+      <Text style={styles.hint}>{copy.hint}</Text>
       <OtpSheet visible={open} phase={phase} riderName={riderName} error={error} onSubmit={onSubmit} onClose={() => setOpen(false)} />
     </View>
   )
@@ -46,7 +47,6 @@ function OtpSheet({ visible, phase, riderName, error, onSubmit, onClose }: OtpEn
   const shake = useSharedValue(0)
   const rise = useSharedValue(0)
   const copy = COPY[phase]
-  const accent = phase === 'start' ? colors.primary : colors.warning
   // Scale with screen height: short phones get tighter keys and boxes so the pad never crowds the header.
   const keyHeight = Math.max(46, Math.min(64, Math.round(height * 0.068)))
   const boxSize = height < 700 ? { w: 56, h: 66 } : { w: 64, h: 76 }
@@ -96,8 +96,8 @@ function OtpSheet({ visible, phase, riderName, error, onSubmit, onClose }: OtpEn
           <View style={styles.handle} />
           <View style={styles.head}>
             <View style={styles.headText}>
-              <Text style={[styles.kicker, { color: accent }]}>{copy.title.toUpperCase()}</Text>
               <Text style={styles.title} numberOfLines={2}>{riderName ? `Ask ${riderName} for the code` : 'Ask the rider for the code'}</Text>
+              <Text style={styles.sub}>{copy.sub}</Text>
             </View>
             <Pressable onPress={() => !busy && onClose()} hitSlop={10} style={styles.close} accessibilityRole="button" accessibilityLabel="Close">
               <Feather name="x" size={20} color={colors.ink900} />
@@ -108,7 +108,7 @@ function OtpSheet({ visible, phase, riderName, error, onSubmit, onClose }: OtpEn
             {[0, 1, 2, 3].map((i) => {
               const active = !done && !busy && i === Math.min(otp.length, 3)
               return (
-                <View key={i} style={[styles.box, { width: boxSize.w, height: boxSize.h }, active && { borderColor: accent }, failed && styles.boxError, done && styles.boxDone]}>
+                <View key={i} style={[styles.box, { width: boxSize.w, height: boxSize.h }, active && styles.boxActive, failed && styles.boxError, done && styles.boxDone]}>
                   <Text style={styles.boxDigit} maxFontSizeMultiplier={1.2}>{otp[i] ?? ''}</Text>
                 </View>
               )
@@ -119,11 +119,11 @@ function OtpSheet({ visible, phase, riderName, error, onSubmit, onClose }: OtpEn
             {done ? (
               <View style={styles.statusRow}><Feather name="check-circle" size={16} color={colors.success} /><Text style={[styles.statusText, { color: colors.success }]}>{copy.done}</Text></View>
             ) : busy ? (
-              <Text style={[styles.statusText, { color: colors.ink600 }]}>Verifying...</Text>
+              <Text style={[styles.statusText, { color: colors.ink600 }]}>Verifying…</Text>
             ) : failed && error ? (
               <Text style={[styles.statusText, { color: colors.error }]}>{error}. Ask the rider to check and try again.</Text>
             ) : (
-              <Text style={[styles.statusText, { color: colors.ink400 }]}>The code verifies automatically</Text>
+              <Text style={[styles.statusText, { color: colors.ink600 }]}>The code verifies automatically</Text>
             )}
           </View>
 
@@ -136,18 +136,21 @@ function OtpSheet({ visible, phase, riderName, error, onSubmit, onClose }: OtpEn
 
 const styles = StyleSheet.create({
   card: { gap: spacing.sm },
-  hint: { ...typography.body, color: colors.ink600 },
+  // Guidance under the button, not a paragraph above it: the button is the action, this is
+  // just what to say to the rider.
+  hint: { ...typography.label, color: colors.ink600, textAlign: 'center' },
   backdrop: { flex: 1, justifyContent: 'flex-end' },
-  scrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(12,20,22,0.5)' },
+  scrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: SCRIM },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.md, maxHeight: '96%' },
   handle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   headText: { flex: 1, minWidth: 0, gap: 2 },
-  kicker: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1.2 },
-  title: { ...typography.title, color: colors.ink900 },
+  title: { ...typography.headline, color: colors.ink900 },
+  sub: { ...typography.label, color: colors.ink600 },
   close: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   boxes: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
   box: { borderRadius: radii.xl, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  boxActive: { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.surface },
   boxError: { borderColor: colors.error, backgroundColor: colors.errorLight },
   boxDone: { borderColor: colors.success, backgroundColor: colors.successLight },
   boxDigit: { fontFamily: fonts.bold, fontSize: 30, color: colors.ink900 },

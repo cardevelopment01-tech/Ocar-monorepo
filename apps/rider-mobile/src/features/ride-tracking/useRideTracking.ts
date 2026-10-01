@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSharedValue } from 'react-native-reanimated'
 import { simplifyPolyline, useRoomJoin } from '@ocar/mobile-shared'
+import { statusShowsEta } from '@ocar/shared'
 import { socket } from '@/services/socket'
 import { fetchRide, fetchRouteLeg, fetchUnreadChatCount } from './api'
 import type { DriverCancelInfo, RideDetailExtra } from './types'
@@ -16,7 +17,8 @@ type DriverAssignedPayload = {
   assignedCategoryName?: string | null
 }
 type StopUpdatedPayload = { sequence: number; status: 'reached' | 'skipped'; reachedAt: string | null }
-type StopAddedPayload = { stop: RideDetailExtra['stops'][number] }
+// `stops` = the server's full re-ordered list (nearest-next); absent on older servers.
+type StopAddedPayload = { stop: RideDetailExtra['stops'][number]; stops?: RideDetailExtra['stops'] }
 type ChatMessagePayload = { senderType: 'user' | 'driver' }
 
 type RouteMode = 'pickup-dest' | 'driver-pickup' | 'driver-dest' | 'returning' | 'recap'
@@ -37,6 +39,9 @@ export function useRideTracking(rideId: string) {
   const [driverCancelled, setDriverCancelled] = useState<DriverCancelInfo | null>(null)
   const [lastLocationAt, setLastLocationAt] = useState<number | null>(null)
   const [driverPos, setDriverPos] = useState<[number, number] | null>(null)
+  // True only once we have a REAL driver fix (API snapshot or a live tick). driverPos alone can be the pickup
+  // point used as a stand-in so the marker isn't at 0,0 -- routing/ETA from that would read "0 min · 0.0 km".
+  const [driverLocated, setDriverLocated] = useState(false)
   const [driverHeading, setDriverHeading] = useState(0)
   const [driverHeadingKnown, setDriverHeadingKnown] = useState(false)
   const [routePoints, setRoutePoints] = useState<[number, number][]>([])
@@ -62,6 +67,7 @@ export function useRideTracking(rideId: string) {
       setLoadError(false)
       const fallbackLat = detail.driverCurrentLat ?? detail.originLat
       const fallbackLng = detail.driverCurrentLng ?? detail.originLng
+      if (detail.driverCurrentLat != null && detail.driverCurrentLng != null) setDriverLocated(true)
       if (!hasMarkerFix.current && fallbackLat != null && fallbackLng != null) {
         markerLat.value = fallbackLat
         markerLng.value = fallbackLng
@@ -102,6 +108,7 @@ export function useRideTracking(rideId: string) {
 
     function onDriverLocation(payload: DriverLocationTick) {
       hasMarkerFix.current = true
+      setDriverLocated(true)
       markerLat.value = payload.lat
       markerLng.value = payload.lng
       markerHeading.value = payload.heading ?? 0
@@ -130,6 +137,7 @@ export function useRideTracking(rideId: string) {
     }
 
     function onStopAdded(payload: StopAddedPayload) {
+      if (payload.stops) { setRide((prev) => (prev ? { ...prev, stops: payload.stops! } : prev)); return }
       setRide((prev) => (prev && !prev.stops.some((s) => s.sequence === payload.stop.sequence) ? { ...prev, stops: [...prev.stops, payload.stop] } : prev))
     }
 
@@ -181,11 +189,11 @@ export function useRideTracking(rideId: string) {
     let origin: [number, number] | undefined
     let dest: [number, number] | undefined
     if (routeMode === 'driver-pickup' || routeMode === 'returning') {
-      if (!driverPos) return
+      if (!driverPos || !driverLocated) return
       origin = driverPos
       dest = pickup
     } else if (routeMode === 'driver-dest') {
-      if (!driverPos || !drop) return
+      if (!driverPos || !driverLocated || !drop) return
       origin = driverPos
       dest = drop
     } else if (routeMode === 'pickup-dest') {
@@ -205,7 +213,7 @@ export function useRideTracking(rideId: string) {
 
     const seq = ++routeFetchSeq.current
     lastRouteFetch.current = { mode: routeMode, stopsKey, at: Date.now() }
-    const wantsEta = routeMode === 'driver-pickup' || routeMode === 'driver-dest' || routeMode === 'returning'
+    const wantsEta = (routeMode === 'driver-pickup' || routeMode === 'driver-dest' || routeMode === 'returning') && statusShowsEta(ride.status)
 
     // Stops sit between pickup and drop -- never bend the pickup leg or the
     // return-to-origin leg through them, only the pickup->dest leg (matches
@@ -240,7 +248,7 @@ export function useRideTracking(rideId: string) {
       .catch(() => {
         if (routeFetchSeq.current === seq) { setRoutePoints([]); setEta(null) }
       })
-  }, [routeMode, driverPos, ride, hasDest, stopsKey])
+  }, [routeMode, driverPos, driverLocated, ride, hasDest, stopsKey])
 
   const pickup = useMemo<[number, number]>(() => (ride ? [ride.originLat, ride.originLng] : [0, 0]), [ride])
   const drop = useMemo<[number, number] | null>(() => (hasDest ? [ride!.destLat!, ride!.destLng!] : null), [ride, hasDest])
@@ -261,7 +269,9 @@ export function useRideTracking(rideId: string) {
     pickup,
     drop,
     routePoints,
-    eta,
+    // stale value from the previous leg must not linger once the driver has arrived
+    eta: ride && statusShowsEta(ride.status) ? eta : null,
+    driverLocated,
     unreadChatCount,
     fareDrift,
     dismissFareDrift: () => setFareDrift(null),

@@ -118,7 +118,7 @@ export default function PendingReviewScreen() {
         <Text style={styles.body}>Your driver account has been temporarily suspended. Please contact our support team for more information.</Text>
         {driver.code ? (
           <View style={styles.codeCard}>
-            <Text style={styles.codeLabel}>YOUR DRIVER CODE</Text>
+            <Text style={styles.codeLabel}>Your driver code</Text>
             <Text style={styles.codeValuePrimary}>{driver.code}</Text>
             <Text style={styles.codeHint}>Provide this when contacting support</Text>
           </View>
@@ -138,7 +138,7 @@ export default function PendingReviewScreen() {
         </Text>
         {driver.code ? (
           <View style={styles.codeCard}>
-            <Text style={styles.codeLabel}>YOUR DRIVER CODE</Text>
+            <Text style={styles.codeLabel}>Your driver code</Text>
             <Text style={styles.codeValue}>{driver.code}</Text>
           </View>
         ) : null}
@@ -156,7 +156,7 @@ export default function PendingReviewScreen() {
       <ReviewTimeline />
       {driver?.code ? (
         <View style={styles.codeCard}>
-          <Text style={styles.codeLabel}>YOUR DRIVER CODE</Text>
+          <Text style={styles.codeLabel}>Your driver code</Text>
           <Text style={styles.codeValuePrimary}>{driver.code}</Text>
           <Text style={styles.codeHint}>Keep this for support enquiries</Text>
         </View>
@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
   title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold, textAlign: 'center' },
   body: { ...typography.body, color: colors.ink600, textAlign: 'center', marginBottom: spacing.md },
   codeCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: spacing.xl, paddingVertical: spacing.md, width: '100%', maxWidth: 320, alignItems: 'center', marginBottom: spacing.md },
-  codeLabel: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold, letterSpacing: 0.5, marginBottom: spacing.xs },
+  codeLabel: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold, marginBottom: spacing.xs },
   // Both previously fell back to the OS default font -- codeValue never set a
   // fontFamily at all (typography.title's Jakarta family was there, but '800'
   // was still dead weight), and codeValuePrimary set raw fontSize/fontWeight

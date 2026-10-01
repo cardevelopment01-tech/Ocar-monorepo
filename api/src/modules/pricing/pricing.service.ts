@@ -46,6 +46,10 @@ export async function getFareEstimate(
     rentalHours  = Math.round(pkg.duration_minutes / 60)
   }
 
+  // New round-trip quotes use the hourly window model (version 2); a re-quote of a ride booked
+  // before this shipped passes its stored version so its price basis never changes underneath it.
+  const pricingVersion: 1 | 2 = req.ride_type === 'round_trip' ? (req.pricing_version ?? 2) : 1
+
   const breakdown = estimateFare({
     rate_card: {
       rate_per_km:        parseFloat(rateCard.rate_per_km),
@@ -69,6 +73,7 @@ export async function getFareEstimate(
     stop_count:       req.stop_count  ?? 0,
     charge_per_stop:  chargePerStop,
     trip_hours:       clampTripHours(req.ride_type, req.trip_hours),
+    pricing_version:  pricingVersion,
     surge_multiplier: surgeMultiplier,
     package_fare:     packageFare,
     extra_per_km:     extraPerKm,
@@ -76,6 +81,7 @@ export async function getFareEstimate(
   })
 
   const response: import('./pricing.types').FareEstimateResponse = {
+    pricing_version:  pricingVersion,
     rate_card_id:     rateCard.id,
     surge_event_id:   surgeEvent?.id ?? null,
     surge_multiplier: surgeMultiplier,

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { fetchMyVehicle } from '@/features/go-online/api'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
@@ -55,7 +56,7 @@ export default function StandardConfirmScreen() {
           </View>
         ) : null}
 
-        <View style={styles.vehicleCard}>
+        <LinearGradient colors={['#0B4A50', '#0E8FA3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.vehicleCard}>
           <View style={styles.vehicleIconTile}>
             <Feather name="truck" size={24} color={colors.inkInverse} />
           </View>
@@ -73,7 +74,7 @@ export default function StandardConfirmScreen() {
               <Text style={styles.vehicleMissing}>No vehicle registered</Text>
             )}
           </View>
-        </View>
+        </LinearGradient>
 
         <View style={styles.checklistCard}>
           <View style={styles.checklistHeader}>
@@ -103,14 +104,7 @@ export default function StandardConfirmScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-        <Pressable onPress={start} disabled={!canGo} style={[styles.ctaBtn, !canGo ? styles.disabled : null]}>
-          {goingOnline ? <ActivityIndicator color={colors.inkInverse} /> : (
-            <>
-              <Feather name="zap" size={16} color={colors.inkInverse} />
-              <Text style={styles.ctaText}>Go Online Now</Text>
-            </>
-          )}
-        </Pressable>
+        <Button label="Go Online Now" icon="zap" loading={goingOnline} disabled={!canGo} onPress={start} />
       </View>
 
       <LocationDisclosure visible={showDisclosure} onAccept={() => void handleDisclosureAccept()} onDecline={handleDisclosureDecline} />
@@ -126,7 +120,14 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xl },
   gateCard: { flexDirection: 'row', gap: spacing.sm, backgroundColor: colors.errorLight, borderRadius: radii.lg, padding: spacing.sm + 4 },
   gateText: { ...typography.caption, color: colors.ink900, flex: 1 },
-  vehicleCard: { flexDirection: 'row', gap: spacing.md, backgroundColor: '#14171A', borderRadius: radii['2xl'], padding: spacing.lg, alignItems: 'center' },
+  vehicleCard: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    borderRadius: radii['2xl'],
+    padding: spacing.lg,
+    alignItems: 'center',
+    boxShadow: '0 12px 28px rgba(14,143,163,0.22)',
+  },
   vehicleIconTile: { width: 56, height: 56, borderRadius: radii.xl, backgroundColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
   plateBadge: { alignSelf: 'flex-start', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: radii.md, paddingHorizontal: spacing.sm + 4, paddingVertical: 4, marginBottom: 4 },
   plateText: { fontSize: 20, fontFamily: fonts.bold, color: colors.inkInverse, letterSpacing: 2 },
@@ -138,13 +139,10 @@ const styles = StyleSheet.create({
   checklistHint: { ...typography.caption, color: colors.ink400, marginLeft: 'auto' },
   checklistRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
   checkbox: { width: 22, height: 22, borderRadius: radii.full, borderWidth: 2, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  checkboxOn: { backgroundColor: '#14171A', borderColor: '#14171A' },
+  checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   checklistText: { ...typography.body, color: colors.ink900, fontFamily: fonts.medium },
   checklistTextOff: { color: colors.ink400, textDecorationLine: 'line-through' },
   warningText: { ...typography.caption, color: colors.ink600, textAlign: 'center' },
   errorText: { ...typography.caption, color: colors.error, textAlign: 'center' },
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  ctaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: '#14171A', borderRadius: radii.xl, paddingVertical: spacing.md, minHeight: 56 },
-  disabled: { opacity: 0.4 },
-  ctaText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
 })

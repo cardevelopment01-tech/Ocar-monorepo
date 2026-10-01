@@ -53,3 +53,38 @@
 **Effort:** S
 **Priority:** P2
 **Depends on:** None
+
+
+## Pricing
+
+### Admin force-complete should bill waiting fare and overtime for v2 round trips
+
+**What:** Make `forceResolveRide` (completed branch) add the waiting fare and the overtime charge for `pricing_version = 2` round trips, reusing `settleRoundTripOvertime`.
+
+**Why:** Forced completion finalises `total_final = total_estimated + one-way stop wait` only. After the round-trip booked-window change, a v2 round trip that ran over its window would be force-completed with no overtime, so ops would have to correct the fare by hand.
+
+**Pros:** Closes the last billing path without a special rule; ops stop hand-adjusting forced completions.
+
+**Cons:** Touches a money path and needs its own tests (v2 over the window, inside the grace, v1 untouched).
+
+**Context:** Surfaced in the `/plan-eng-review` of the round-trip booked-window plan (2026-10-01, decision D12). `forceResolveRide` lives in `api/src/modules/rides/rides.service.ts`. The ride's `started_at` and the snapshot's `trip_hours` are enough to compute the window. Start after the plan's migration and `settleRoundTripOvertime` land.
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** Round-trip booked-window change (migration + `settleRoundTripOvertime`)
+
+### Booked-vs-actual hours report for round trips
+
+**What:** Admin report showing booked hours against actual hours and how often overtime happens for round trips.
+
+**Why:** The round-trip booked-window change sets `hour_rate` pricing, a 5-minute grace and a per-minute overtime rule without data on how long riders really keep the cab. A report would show whether those numbers are right.
+
+**Pros:** Replaces guesses with data when tuning rate cards and the grace.
+
+**Cons:** Only useful after a few weeks of trips; adds an analytics query and a Reports card.
+
+**Context:** Surfaced in the `/plan-eng-review` of the round-trip booked-window plan (2026-10-01, decision D13). Data comes from `rides.started_at/completed_at` and `fare_snapshots.trip_hours/overtime_min`; build on the existing analytics module and admin Reports page.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** Round-trip booked-window change shipping

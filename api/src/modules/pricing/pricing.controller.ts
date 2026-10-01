@@ -3,7 +3,9 @@ import * as service from './pricing.service'
 
 export async function estimateFare(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    res.json(await service.getFareEstimate(req.body))
+    // pricing_version is server-internal (scheduled-ride re-quotes); a public caller must not pick the formula.
+    const { pricing_version: _ignored, ...body } = req.body as Record<string, unknown>
+    res.json(await service.getFareEstimate(body as unknown as Parameters<typeof service.getFareEstimate>[0]))
   } catch (err) { next(err) }
 }
 

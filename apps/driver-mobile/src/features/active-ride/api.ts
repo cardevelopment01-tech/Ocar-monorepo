@@ -76,6 +76,12 @@ export async function markStopStatus(rideId: string, sequence: number, status: '
   await api.patch(`/api/v1/rides/${rideId}/stops/${sequence}`, { status })
 }
 
+// Starts the server-side wait clock at a stop (one-way rides bill wait beyond the
+// free window; the clock is server time, never client-supplied).
+export async function markStopArrived(rideId: string, sequence: number): Promise<void> {
+  await api.patch(`/api/v1/rides/${rideId}/stops/${sequence}`, { status: 'arrived' })
+}
+
 // Web driver's counterpart: apps/driver/src/lib/ride-api.ts's cancelRideAsDriver,
 // same /cancel-driver endpoint (separate from rider's /cancel -- rides.routes.ts:214,223).
 export async function cancelRideAsDriver(rideId: string, reasonCode: string): Promise<void> {

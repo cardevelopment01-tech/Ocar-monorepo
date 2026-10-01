@@ -50,6 +50,8 @@ export async function processDispatchScheduled(data: DispatchScheduledJobData): 
       duration_min:  recomputeInput.estimated_min,
       stop_count:    recomputeInput.stop_count,
       trip_hours:    recomputeInput.trip_hours,
+      // keep the formula the ride was booked under; a deploy must not re-price it
+      pricing_version: recomputeInput.pricing_version,
     }
     if (recomputeInput.rental_package_id != null) fareReq.rental_package_id = recomputeInput.rental_package_id
     if (recomputeInput.origin_city_id    != null) fareReq.city_id           = recomputeInput.origin_city_id

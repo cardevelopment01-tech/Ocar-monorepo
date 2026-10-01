@@ -93,7 +93,7 @@ export default function TripTypeScreen() {
           {cheaperOneWay ? (
             <View style={styles.bestFareBadge}>
               <Feather name="zap" size={10} color={colors.success} />
-              <Text style={styles.bestFareText}>BEST FARE</Text>
+              <Text style={styles.bestFareText}>Best fare</Text>
             </View>
           ) : null}
           <View style={styles.cardHeader}>
@@ -123,7 +123,7 @@ export default function TripTypeScreen() {
           {roundTripEst && !cheaperOneWay ? (
             <View style={styles.bestFareBadge}>
               <Feather name="zap" size={10} color={colors.success} />
-              <Text style={styles.bestFareText}>BEST FARE</Text>
+              <Text style={styles.bestFareText}>Best fare</Text>
             </View>
           ) : null}
           <View style={styles.cardHeader}>
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   bodyContent: { padding: spacing.lg, gap: spacing.md },
   card: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.md + 4 },
   bestFareBadge: { flexDirection: 'row', alignSelf: 'flex-end', alignItems: 'center', gap: 4, backgroundColor: colors.successLight, borderRadius: radii.full, paddingHorizontal: spacing.xs + 2, paddingVertical: 4, marginBottom: spacing.xs },
-  bestFareText: { ...typography.caption, color: colors.success, fontFamily: fonts.bold, fontSize: 10 },
+  bestFareText: { ...typography.caption, color: colors.success, fontFamily: fonts.semibold },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   iconWrap: { width: 44, height: 44, borderRadius: 16, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
   cardTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },

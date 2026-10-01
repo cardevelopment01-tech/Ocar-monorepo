@@ -26,12 +26,12 @@ export const h = {
 
 // Card / label recipes shared by every rider screen (the home screen's .card and .tt-label).
 export const card = { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: 20 } as const
+// DESIGN.md "No Eyebrow Rule": a group label is plain sentence-case text in readable ink, never small tracked caps.
 export const sectionLabel = {
-  fontFamily: 'PlusJakartaSans_700Bold',
-  fontSize: 12,
-  letterSpacing: 1.4,
-  textTransform: 'uppercase',
-  color: h.teal,
+  fontFamily: 'PlusJakartaSans_600SemiBold',
+  fontSize: 14,
+  lineHeight: 20,
+  color: h.ivory,
 } as const
 
 // RN 0.86 (new arch) parses CSS box-shadow strings, spread included.

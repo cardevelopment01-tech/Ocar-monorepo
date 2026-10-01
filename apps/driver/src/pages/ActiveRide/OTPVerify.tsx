@@ -1,28 +1,62 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { KeyRound, RotateCcw, Clock } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { KeyRound, RotateCcw, Clock, X } from 'lucide-react'
 import OtpVerifyPanel from '@/components/ui/OtpVerifyPanel'
 import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi } from '@/lib/ride-api'
 import { fmtReturn } from '@/lib/constants'
 
+// Same reason list as NavigateToPickup.tsx's CancelSheet -- kept identical so the
+// driver sees the same options whether they cancel before or after arriving.
+const CANCEL_REASONS = [
+  { code: 'passenger_not_found', label: 'Passenger not at pickup' },
+  { code: 'passenger_no_show',   label: 'Passenger did not show up' },
+  { code: 'rider_requested',     label: 'Rider asked me to cancel' },
+  { code: 'vehicle_breakdown',   label: 'Vehicle breakdown' },
+  { code: 'wrong_booking',        label: 'Wrong booking details' },
+  { code: 'emergency',            label: 'Emergency' },
+  { code: 'other',                label: 'Other reason' },
+]
+
 export default function OTPVerify() {
   const navigate = useNavigate()
-  const { activeRide, setRideStartedAt, updateRideStatus } = useRideStore()
+  const { activeRide, setRideStartedAt, setBookedWindow, updateRideStatus, clearRide } = useRideStore()
   const [otp, setOtp]     = useState('')
   const [error, setError] = useState(false)
+  const [showCancelSheet, setShowCancelSheet] = useState(false)
+  const [cancelReason,    setCancelReason]    = useState<string | null>(null)
+  const [cancellingRide,  setCancellingRide]  = useState(false)
 
   const handleVerify = async () => {
     if (!activeRide) return
     try {
       await driverRideApi.verifyStartOtp(activeRide.id, otp)
       setRideStartedAt(new Date().toISOString())
+      // bookedUntil exists only once the trip has started; a failed fetch just means no clock until the
+      // next restore, never a failed start.
+      void driverRideApi.getRide(activeRide.id).then(setBookedWindow).catch(() => {})
       updateRideStatus('in_progress')
     } catch {
       setError(true)
       setOtp('')
       throw new Error('otp-verify-failed')
+    }
+  }
+
+  // Backend allows driver cancel through driver_arrived too (CANCELLABLE_BY_DRIVER,
+  // rides.service.ts) -- this screen previously had no way to reach it, silently
+  // dropping cancel the moment the driver arrives and this screen replaces
+  // NavigateToPickup.tsx (which does have it).
+  const handleCancelRide = async () => {
+    if (!activeRide || !cancelReason || cancellingRide) return
+    setCancellingRide(true)
+    try {
+      await driverRideApi.cancelRideAsDriver(activeRide.id, cancelReason)
+      clearRide()
+      navigate('/')
+    } catch {
+      setCancellingRide(false)
     }
   }
 
@@ -102,10 +136,96 @@ export default function OTPVerify() {
           />
         </div>
 
-        <p className="text-text-muted text-xs text-center leading-relaxed">
+        <p className="text-text-muted text-xs text-center leading-relaxed mb-4">
           Make sure the passenger's app shows the same code before proceeding
         </p>
+
+        <button
+          onClick={() => setShowCancelSheet(true)}
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium text-red-400 active:opacity-70 transition-opacity"
+        >
+          <X size={14} strokeWidth={2} />
+          Cancel ride
+        </button>
       </motion.div>
+
+      <AnimatePresence>
+        {showCancelSheet && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-20 flex items-end"
+          >
+            <div
+              className="absolute inset-0 bg-black/50"
+              onClick={() => { if (!cancellingRide) setShowCancelSheet(false) }}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 350 }}
+              className="relative w-full rounded-t-3xl px-5 pt-5 bg-surface"
+              style={{ paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}
+            >
+              <div className="w-10 h-1 rounded-full bg-surface-3 mx-auto mb-4" />
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-black text-text-primary">Cancel this ride?</h3>
+                <button
+                  onClick={() => setShowCancelSheet(false)}
+                  disabled={cancellingRide}
+                  className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center active:scale-[0.97] transition-transform"
+                >
+                  <X size={15} className="text-text-secondary" />
+                </button>
+              </div>
+              <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2.5">Why are you cancelling?</p>
+              <div className="space-y-2 mb-5">
+                {CANCEL_REASONS.map(r => (
+                  <button
+                    key={r.code}
+                    onClick={() => setCancelReason(r.code)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left active:scale-[0.97] transition-transform ${
+                      cancelReason === r.code ? '' : 'bg-surface-2'
+                    }`}
+                    style={cancelReason === r.code
+                      ? { background: 'rgba(239,68,68,0.07)', border: '1.5px solid rgba(239,68,68,0.40)' }
+                      : { border: '1.5px solid #E2E8F0' }
+                    }
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={cancelReason === r.code
+                        ? { border: '5px solid #EF4444' }
+                        : { border: '2px solid #CBD5E1' }
+                      }
+                    />
+                    <span className={`text-sm font-medium ${cancelReason === r.code ? 'text-accent-red' : 'text-text-secondary'}`}>
+                      {r.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => void handleCancelRide()}
+                disabled={!cancelReason || cancellingRide}
+                className="w-full py-3.5 rounded-2xl text-sm font-bold text-text-inverse mb-2.5 disabled:opacity-40 active:scale-[0.97] transition-transform"
+                style={{ background: '#EF4444' }}
+              >
+                {cancellingRide ? 'Cancelling…' : 'Confirm cancellation'}
+              </button>
+              <button
+                onClick={() => setShowCancelSheet(false)}
+                disabled={cancellingRide}
+                className="w-full py-3 rounded-2xl text-sm font-semibold text-text-secondary disabled:opacity-50 active:scale-[0.97] transition-transform bg-surface-2 border border-border"
+              >
+                Keep my ride
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

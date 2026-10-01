@@ -1,6 +1,7 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios'
 import { clearAuth, getRefreshToken, storeTokens } from './auth'
 import { setMaintenance } from './maintenance-store'
+import { noteServerDate } from './serverClock'
 
 type RetriableRequest = InternalAxiosRequestConfig & { _retry?: boolean }
 
@@ -88,7 +89,10 @@ api.interceptors.request.use(
 )
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    noteServerDate(response.headers?.['date'])
+    return response
+  },
   async (error) => {
     const code = error.response?.data?.code
     const isTokenError = code === 'AUTH_UNAUTHORIZED' || code === 'AUTH_TOKEN_INVALID' || code === 'AUTH_TOKEN_EXPIRED'

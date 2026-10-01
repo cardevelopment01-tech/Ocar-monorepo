@@ -23,6 +23,7 @@ import { useTurnByTurn } from '@/lib/useTurnByTurn'
 import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
 import { useWakeLock } from '@/lib/useWakeLock'
 import { haversineMetres, remainingRoutePath } from '@/lib/geo'
+import RoundTripBanner from '@/components/ui/RoundTripBanner'
 
 const DriverMapView     = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap       = lazy(() => import('@/components/map/RecenterMap'))
@@ -540,6 +541,7 @@ export default function NavigateToPickup() {
                 </p>
               </div>
             )}
+            {activeRide?.rideType === 'round_trip' && <RoundTripBanner hours={activeRide.tripHours} />}
             {activeRide?.rideType === 'rental' && activeRide.tripHours != null && (
               <div className="flex items-center gap-2 mt-3 mb-3 px-3 py-2 rounded-xl" style={{ background: 'rgba(109,40,217,0.12)', border: '1px solid rgba(109,40,217,0.12)' }}>
                 <Clock size={11} style={{ color: '#6D28D9' }} className="flex-shrink-0" />

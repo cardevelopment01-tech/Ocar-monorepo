@@ -61,6 +61,8 @@ export type RideDetail = {
   driver_name: string | null
   driver_phone: string | null
   driver_rating: string | null
+  driver_total_trips?: number | null
+  driver_verified?: boolean | null
   driver_photo: string | null
   vehicle_number_plate: string | null
   vehicle_color: string | null
@@ -71,6 +73,13 @@ export type RideDetail = {
   assigned_category_name: string | null
   total_estimated: string | null
   total_final: string | null
+  // Booked-window facts for hourly round trips (api lib/trip-window.ts); null/absent = no clock.
+  bookedUntil?: string | null
+  overtimeRate?: number | null
+  overtimeGraceMin?: number | null
+  overtimeMin?: number | null
+  overtimeFare?: number | null
+  waiting_fare?: string | null
   base_fare: string | null
   distance_fare: string | null
   time_fare: string | null
