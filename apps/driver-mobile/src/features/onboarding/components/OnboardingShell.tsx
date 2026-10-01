@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
   headerInner: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
   backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(20,23,26,0.08)', boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
-  stepLabel: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: colors.primary },
+  stepLabel: { fontFamily: fonts.bold, fontSize: 12, color: colors.primary },
   // 700 is the heaviest weight useAppFonts loads for this family -- '800' here
   // silently rendered identical to 700 (RN doesn't synthesize bold on a custom
   // font with no bold file loaded).

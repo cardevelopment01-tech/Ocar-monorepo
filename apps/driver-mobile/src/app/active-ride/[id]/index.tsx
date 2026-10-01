@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
-import { BackHandler, Pressable, StyleSheet, View } from 'react-native'
+import { type ReactNode, useEffect, useState } from 'react'
+import { Alert, BackHandler, Pressable, StyleSheet, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
-import { Button, CancelSheet, ErrorState, SOSButton, Skeleton, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { CancelSheet, ErrorState, SOSButton, Skeleton, TripClock, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useActiveRide } from '@/features/active-ride/useActiveRide'
@@ -12,16 +12,20 @@ import { TripCompletionCard } from '@/features/active-ride/components/TripComple
 import { RateRiderSheet } from '@/features/active-ride/components/RateRiderSheet'
 import { RiderActionsRow } from '@/features/active-ride/components/RiderActionsRow'
 import { RideSheet } from '@/features/active-ride/components/RideSheet'
+import { StageSheet } from '@/features/active-ride/components/StageSheet'
+import type { StageHeaderProps } from '@/features/active-ride/components/StageHeader'
 import { RideTypeBadge } from '@/features/active-ride/components/RideTypeBadge'
 import { SlideToConfirm } from '@/features/active-ride/components/SlideToConfirm'
-import { TripBody } from '@/features/active-ride/components/TripBody'
-import { ArrivedBanner } from '@/features/active-ride/components/ArrivedBanner'
-import { PulsingDot } from '@/features/active-ride/components/PulsingDot'
+import { StopCard } from '@/features/active-ride/components/StopCard'
+import { StopTimeline } from '@/features/active-ride/components/StopTimeline'
+import { StopAddedBanner } from '@/features/active-ride/components/StopAddedBanner'
 import { ActiveRideMap } from '@/features/active-ride/components/ActiveRideMap'
+import { GoogleGuidedMap } from '@/features/active-ride/components/GoogleGuidedMap'
 import { SpeedAlertToast } from '@/features/active-ride/components/SpeedAlertToast'
 import { triggerSos } from '@/features/active-ride/safety-api'
 import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosition'
 import { useSpeedAlert } from '@/features/active-ride/useSpeedAlert'
+import { useTripWindow } from '@/features/active-ride/useTripWindow'
 
 // Same reason list as web driver's NavigateToPickup.tsx:691-698 (the confirmed
 // source for driver-side cancel reasons per the hardening design doc).
@@ -49,6 +53,10 @@ export default function ActiveRideScreen() {
     unreadChatCount,
     clearUnreadChatCount,
     reload,
+    refresh,
+    stopNotice,
+    endedExternally,
+    clearStopNotice,
     markArrivedAction,
     submitStartOtpAction,
     submitEndOtpAction,
@@ -62,6 +70,11 @@ export default function ActiveRideScreen() {
   const [cashLoading, setCashLoading] = useState(false)
   const [rateSheetOpen, setRateSheetOpen] = useState(true)
   const [showCancelSheet, setShowCancelSheet] = useState(false)
+  // Local, per-trip view state -- not persisted, not an admin config. Default is
+  // always the in-house map; tapping "Navigate" swaps to the Google-guided view in
+  // place, which swaps back on Close or final-destination arrival. See
+  // driver-mobile-nav-mode-design.md for why this shape (not a settings toggle).
+  const [navView, setNavView] = useState<'diy' | 'guided'>('diy')
 
   // No-op on the hardware back button while a ride is active -- a driver can't
   // accidentally back out mid-trip (Eng/Design review finding).
@@ -69,6 +82,23 @@ export default function ActiveRideScreen() {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => true)
     return () => sub.remove()
   }, [])
+
+  // Rider/system cancel or admin force-resolve: nothing left to do on this ride. Leaving
+  // unmounts GoogleGuidedMap, which tears the native nav session down.
+  useEffect(() => {
+    if (!endedExternally) return
+    setNavView('diy')
+    clearActiveRide(null)
+    Alert.alert('Ride ended', endedExternally)
+    router.replace('/(tabs)/home')
+  }, [endedExternally, clearActiveRide, router])
+
+  // Trip settled (e.g. server-side end) while guided nav owns the screen: the sheet with the
+  // cash/completion UI is hidden behind it, so drop back to DIY -- which also unmounts
+  // GoogleGuidedMap and tears the native session down.
+  useEffect(() => {
+    if (status === 'completed') setNavView('diy')
+  }, [status])
 
   // Must run on every render, including the loading/error early-returns below --
   // a hook called only after those guards passed 1 more hook on the "ride loaded"
@@ -83,6 +113,8 @@ export default function ActiveRideScreen() {
   // accepted/driver_arrived (driver may be moving fast on an empty highway
   // approach with no ride constraint on it) and completed.
   const { alertKey, limitKmph } = useSpeedAlert(status === 'in_progress' || status === 'returning')
+  // Booked-time clock for hourly round trips (null copy = no window: one-way, rental, legacy pricing).
+  const tripClock = useTripWindow(ride)
 
   if (loading) {
     return (
@@ -101,13 +133,17 @@ export default function ActiveRideScreen() {
     )
   }
 
-  const expectedFare = parseFloat(ride.totalEstimated ?? ride.totalFinal ?? '0')
+  // The settled fare wins once it exists: the server expects cash against total_final (overtime, extra km,
+  // rental overage all land there), so collecting against the quote records a false shortfall.
+  const expectedFare = parseFloat(ride.totalFinal ?? ride.totalEstimated ?? '0')
 
-  async function handleConfirmCashFull() {
+  // Resolves false on failure so the cash slider springs back instead of sticking on "Confirmed".
+  async function handleConfirmCashFull(): Promise<boolean> {
     setCashLoading(true)
     const result = await collectCashAction({ collectedAmount: expectedFare })
     setCashLoading(false)
     if (result) setCashResult({ collected: result.collected })
+    return !!result
   }
 
   async function handlePartialCash(input: { collectedAmount?: number; notCollected?: boolean; note: string }) {
@@ -157,26 +193,109 @@ export default function ActiveRideScreen() {
   const isRoundTrip = ride.rideType === 'round_trip'
   const isRental = ride.rideType === 'rental'
 
+  // Same reachability gating as ActiveRideMap's own stops prop below -- a stop is
+  // only routed through once it's reachable on the current leg.
+  const guidedStops =
+    status === 'in_progress' || isReturning
+      ? ride.stops.filter((s) => s.status === 'pending').map((s) => ({ sequence: s.sequence, lat: s.lat, lng: s.lng }))
+      : []
+
+  // ── Stage sheet content: accepted -> driver_arrived -> in_progress -> returning ──
+  // One header + one pinned primary action per stage; while a rider-added stop is pending the
+  // header becomes that stop, so the sheet never has two competing headlines.
+  const stopPosition = pendingStop ? ride.stops.indexOf(pendingStop) + 1 : 0
+  // Booked hours stay visible on every round-trip stage, so the driver never has to remember them.
+  const roundTripBadge = isRoundTrip && ride.tripHours ? <RideTypeBadge kind="round_trip" hours={ride.tripHours} /> : null
+  let header: StageHeaderProps
+  let primary: ReactNode
+  let stageKey: string
+  if (pendingStop && (status === 'in_progress' || isReturning)) {
+    header = {
+      icon: 'map-pin', tone: 'stop', label: `Stop ${stopPosition} of ${ride.stops.length}`, title: pendingStop.address ?? 'Stop location',
+      ...(roundTripBadge ? { badge: roundTripBadge } : {}),
+    }
+    primary = (
+      <StopCard
+        rideId={rideId}
+        sequence={pendingStop.sequence}
+        meterWait={ride.rideType === 'one_way'}
+        arrivedAt={pendingStop.arrivedAt}
+        onResolved={refresh}
+      />
+    )
+    stageKey = `stop-${pendingStop.sequence}-${pendingStop.arrivedAt ? 'waiting' : 'arriving'}`
+  } else if (status === 'in_progress') {
+    // Locked headline copy (Token Mapping table, hardening design doc).
+    header = {
+      icon: 'flag',
+      label: 'On your trip',
+      title: isRental ? 'Flexible route' : (ride.destinationAddress ?? 'Destination'),
+      ...(isRental ? { badge: <RideTypeBadge kind="rental" /> } : roundTripBadge ? { badge: roundTripBadge } : {}),
+    }
+    primary = isRoundTrip ? (
+      // Round-trip's single primary CTA is "start return", not "end trip" -- matches web's
+      // primaryAction (TripInProgress.tsx): a round_trip ride never shows the end-OTP card
+      // until the return leg has started. SlideToConfirm (not a tap button) so a ride can't
+      // end early by accident, same affordance CashCollectionCard uses.
+      <SlideToConfirm label="Slide to start return" doneLabel="Starting return" onConfirm={startReturnAction} />
+    ) : (
+      <OtpEntryCard phase="end" riderName={ride.riderName} error={actionError} onSubmit={(otp) => submitEndOtpAction(otp)} />
+    )
+    stageKey = isRoundTrip ? 'trip-return' : 'trip-end'
+  } else if (status === 'returning') {
+    header = {
+      icon: 'corner-up-left', label: 'Heading back', title: ride.originAddress ?? 'Pickup point',
+      badge: <>{roundTripBadge}<RideTypeBadge kind="return" /></>,
+    }
+    primary = <OtpEntryCard phase="end" riderName={ride.riderName} error={actionError} onSubmit={(otp) => submitEndOtpAction(otp)} />
+    stageKey = 'returning'
+  } else if (status === 'driver_arrived') {
+    header = {
+      icon: 'user-check', label: "You've arrived", title: ride.riderName ? `Pick up ${ride.riderName}` : 'Pick up the rider',
+      ...(roundTripBadge ? { badge: roundTripBadge } : {}),
+    }
+    primary = <OtpEntryCard phase="start" riderName={ride.riderName} error={actionError} onSubmit={(otp) => submitStartOtpAction(otp)} />
+    stageKey = 'arrived'
+  } else {
+    header = {
+      icon: 'navigation', label: 'Heading to pickup', title: ride.originAddress ?? 'Pickup location',
+      ...(roundTripBadge ? { badge: roundTripBadge } : {}),
+    }
+    primary = <SlideToConfirm label="Slide when you arrive" doneLabel="Arrived" onConfirm={markArrivedAction} />
+    stageKey = 'pickup'
+  }
+
   return (
     <View style={styles.container}>
-      <ActiveRideMap
-        pickup={pickup}
-        destination={showsDestination || isReturning ? destination : null}
-        leg={isReturning ? 'to-pickup' : showsDestination ? 'to-destination' : 'to-pickup'}
-        // Gated here, not just inside ActiveRideMap -- 'accepted'/'driver_arrived'
-        // share the same leg='to-pickup' value 'returning' reuses, and a stop can
-        // legitimately be pending before pickup too (STOP_ADDABLE_STATUSES
-        // includes accepted/driver_arrived). Only route through pending stops
-        // once they're actually reachable on this leg: in_progress (before the
-        // destination) or returning (after it, heading back to pickup) --
-        // never while still heading to pickup for the first time (code-review
-        // finding, 2026-09-22).
-        stops={
-          status === 'in_progress' || isReturning
-            ? ride.stops.filter((s) => s.status === 'pending').map((s): [number, number] => [s.lat, s.lng])
-            : []
-        }
-      />
+      {navView === 'guided' ? (
+        <GoogleGuidedMap
+          rideId={rideId}
+          destination={navigateTarget}
+          stops={guidedStops}
+          meterWait={ride.rideType === 'one_way'}
+          onClose={() => setNavView('diy')}
+          onStopResolved={refresh}
+        />
+      ) : (
+        <ActiveRideMap
+          pickup={pickup}
+          destination={showsDestination || isReturning ? destination : null}
+          leg={isReturning ? 'to-pickup' : showsDestination ? 'to-destination' : 'to-pickup'}
+          // Gated here, not just inside ActiveRideMap -- 'accepted'/'driver_arrived'
+          // share the same leg='to-pickup' value 'returning' reuses, and a stop can
+          // legitimately be pending before pickup too (STOP_ADDABLE_STATUSES
+          // includes accepted/driver_arrived). Only route through pending stops
+          // once they're actually reachable on this leg: in_progress (before the
+          // destination) or returning (after it, heading back to pickup) --
+          // never while still heading to pickup for the first time (code-review
+          // finding, 2026-09-22).
+          stops={
+            status === 'in_progress' || isReturning
+              ? ride.stops.filter((s) => s.status === 'pending').map((s): [number, number] => [s.lat, s.lng])
+              : []
+          }
+        />
+      )}
 
       <SOSButton
         enabled={status !== 'completed'}
@@ -186,7 +305,19 @@ export default function ActiveRideScreen() {
 
       <SpeedAlertToast alertKey={alertKey} limitKmph={limitKmph} />
 
-      {status === 'completed' && cashResult ? (
+      {/* Rider added a stop mid-trip -- tap to dismiss. Hidden while guided nav
+          owns the whole screen (the guided map re-routes itself to include it). */}
+      <StopAddedBanner
+        message={navView === 'diy' && status !== 'completed' ? (stopNotice?.message ?? null) : null}
+        noticeKey={stopNotice?.key ?? 0}
+        onDismiss={clearStopNotice}
+      />
+
+      {/* The guided map covers the whole screen and has its own "Close guidance"
+          button (bottom-left) -- the ride-status sheet would otherwise dock over
+          that exact corner and make it unreachable (code-review finding: driver
+          gets stuck in guided nav with no way back to the DIY view/rider actions). */}
+      {navView !== 'diy' ? null : status === 'completed' && cashResult ? (
         <>
           <RideSheet>
             <TripCompletionCard
@@ -211,115 +342,40 @@ export default function ActiveRideScreen() {
             riderName={ride.riderName}
             loading={cashLoading}
             error={null}
-            onConfirmFull={() => void handleConfirmCashFull()}
+            onConfirmFull={handleConfirmCashFull}
             onPartialOrNotCollected={(input) => void handlePartialCash(input)}
           />
         </RideSheet>
-      ) : status === 'in_progress' ? (
-        <RideSheet>
-          <TripBody
-            rideId={rideId}
-            riderName={ride.riderName}
-            navigateTo={navigateTarget}
-            unreadChatCount={unreadChatCount}
-            onOpenChat={handleOpenChat}
-            actionError={actionError}
-            // Locked headline copy (Token Mapping table, hardening design doc).
-            headline="On your trip"
-            badge={isRental ? <RideTypeBadge kind="rental" /> : undefined}
-            destinationLabel={isRental ? 'Flexible route' : (ride.destinationAddress ?? 'Destination')}
-            stops={ride.stops}
-            pendingStop={pendingStop}
-            onStopResolved={reload}
-            primaryAction={
-              isRoundTrip ? (
-                // Round-trip's single primary CTA is "start return", not "end
-                // trip" -- matches web's primaryAction (TripInProgress.tsx:477-486):
-                // a round_trip ride never shows the end-OTP card until the return
-                // leg has actually started. SlideToConfirm (not a tap button) so a
-                // ride can't end early by accident, same affordance CashCollectionCard
-                // already uses on this screen.
-                <SlideToConfirm
-                  key="start-return"
-                  label="Slide to start return"
-                  color={colors.warning}
-                  onConfirm={() => void startReturnAction()}
-                />
-              ) : (
-                <OtpEntryCard
-                  key="end-otp"
-                  phase="end"
-                  riderName={ride.riderName}
-                  error={actionError}
-                  onSubmit={(otp) => submitEndOtpAction(otp)}
-                />
-              )
-            }
-          />
-        </RideSheet>
-      ) : status === 'returning' ? (
-        <RideSheet>
-          <TripBody
-            rideId={rideId}
-            riderName={ride.riderName}
-            navigateTo={navigateTarget}
-            unreadChatCount={unreadChatCount}
-            onOpenChat={handleOpenChat}
-            actionError={actionError}
-            headline="Heading back"
-            badge={<RideTypeBadge kind="return" />}
-            destinationLabel={ride.originAddress ?? 'Pickup point'}
-            stops={ride.stops}
-            pendingStop={pendingStop}
-            onStopResolved={reload}
-            primaryAction={
-              <OtpEntryCard
-                key="end-otp"
-                phase="end"
-                riderName={ride.riderName}
-                error={actionError}
-                onSubmit={(otp) => submitEndOtpAction(otp)}
-              />
-            }
-          />
-        </RideSheet>
-      ) : status === 'driver_arrived' ? (
-        <RideSheet>
-          {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
-          <ArrivedBanner riderName={ride.riderName} />
-          <View style={styles.divider} />
-          <RiderActionsRow rideId={rideId} riderName={ride.riderName} navigateTo={navigateTarget} unreadChatCount={unreadChatCount} onOpenChat={handleOpenChat} />
-          <OtpEntryCard
-            key="start-otp"
-            phase="start"
-            riderName={ride.riderName}
-            error={actionError}
-            onSubmit={(otp) => submitStartOtpAction(otp)}
-          />
-        </RideSheet>
       ) : (
-        <RideSheet>
+        <StageSheet
+          header={header}
+          primary={primary}
+          stageKey={stageKey}
+          clock={
+            (status === 'in_progress' || isReturning) && tripClock.copy
+              ? <TripClock copy={tripClock.copy} stateKey={tripClock.state.kind} />
+              : null
+          }
+        >
           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
-          <RiderActionsRow rideId={rideId} riderName={ride.riderName} navigateTo={navigateTarget} unreadChatCount={unreadChatCount} onOpenChat={handleOpenChat} />
-          <View style={styles.divider} />
-          {/* Pulsing dot + single-line truncated address, matching web's
-              NavigateToPickup.tsx instruction row -- replaces the previous
-              plain two-line title/address block. */}
-          <View style={styles.addressRow}>
-            <PulsingDot />
-            <View style={styles.addressTextCol}>
-              <Text style={styles.addressLabel}>Heading to pickup</Text>
-              <Text style={styles.addressValue} numberOfLines={1}>
-                {ride.originAddress ?? 'Pickup location'}
-              </Text>
-            </View>
-          </View>
-          <Button label="I've arrived" icon="check-circle" onPress={() => void markArrivedAction()} />
-          <Pressable onPress={() => setShowCancelSheet(true)} style={styles.cancelLink} hitSlop={8}>
-            <Feather name="x" size={14} color={colors.error} />
-            <Text style={styles.cancelLinkText}>Cancel ride</Text>
-          </Pressable>
-        </RideSheet>
+          <RiderActionsRow
+            rideId={rideId}
+            riderName={ride.riderName}
+            navigateTo={navigateTarget}
+            unreadChatCount={unreadChatCount}
+            onOpenChat={handleOpenChat}
+            onNavigate={() => setNavView('guided')}
+          />
+          {/* Stops the rider added are listed in every stage, including before pickup, so none is a surprise. */}
+          <StopTimeline stops={ride.stops} />
+          {/* Backend allows driver cancel through driver_arrived too (CANCELLABLE_BY_DRIVER, rides.service.ts). */}
+          {status === 'accepted' || status === 'driver_arrived' ? (
+            <Pressable onPress={() => setShowCancelSheet(true)} style={styles.cancelLink} accessibilityRole="button" accessibilityLabel="Cancel ride">
+              <Feather name="x" size={16} color={colors.ink600} />
+              <Text style={styles.cancelLinkText}>Cancel ride</Text>
+            </Pressable>
+          ) : null}
+        </StageSheet>
       )}
 
       <CancelSheet
@@ -336,11 +392,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   centeredState: { flex: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.md },
   error: { ...typography.label, color: colors.error, backgroundColor: colors.errorLight, borderRadius: radii.md, padding: spacing.sm, overflow: 'hidden' },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-  addressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  addressTextCol: { flex: 1, minWidth: 0, gap: 1 },
-  addressLabel: { ...typography.caption, color: colors.ink400 },
-  addressValue: { ...typography.title, color: colors.ink900 },
-  cancelLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: spacing.sm },
-  cancelLinkText: { ...typography.label, color: colors.error, fontFamily: fonts.semibold },
+  // Tertiary: plain text, no fill. Cancel is destructive and rare; the confirm step lives in CancelSheet.
+  cancelLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs + 2, minHeight: 44 },
+  cancelLinkText: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
 })

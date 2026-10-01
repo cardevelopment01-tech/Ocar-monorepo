@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { fetchCities, fetchMyVehicle } from '@/features/go-online/api'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
@@ -91,14 +91,7 @@ export default function ReturnCabSetupScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-        <Pressable onPress={start} disabled={!canGo} style={[styles.ctaBtn, !canGo ? styles.disabled : null]}>
-          {goingOnline ? <ActivityIndicator color={colors.inkInverse} /> : (
-            <>
-              <Feather name="zap" size={16} color={colors.inkInverse} />
-              <Text style={styles.ctaText}>Go Online as Return Cab</Text>
-            </>
-          )}
-        </Pressable>
+        <Button label="Go Online as Return Cab" icon="zap" loading={goingOnline} disabled={!canGo} onPress={start} />
       </View>
 
       <LocationDisclosure visible={showDisclosure} onAccept={() => void handleDisclosureAccept()} onDecline={handleDisclosureDecline} />
@@ -116,7 +109,19 @@ const styles = StyleSheet.create({
   gateCard: { flexDirection: 'row', gap: spacing.sm, backgroundColor: colors.errorLight, borderRadius: radii.lg, padding: spacing.sm + 4 },
   gateText: { ...typography.caption, color: colors.ink900, flex: 1 },
   heroWrap: { alignItems: 'center', marginVertical: spacing.sm },
-  heroIcon: { width: 80, height: 80, borderRadius: radii['2xl'], backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center' },
+  heroIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: radii.full,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.accent,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
   card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.md, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
   cardTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold, marginBottom: spacing.xs },
   hint: { ...typography.caption, color: colors.ink400, marginTop: spacing.xs },
@@ -124,7 +129,4 @@ const styles = StyleSheet.create({
   warningText: { ...typography.caption, color: colors.ink600, textAlign: 'center' },
   errorText: { ...typography.caption, color: colors.error, textAlign: 'center' },
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  ctaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.success, borderRadius: radii.xl, paddingVertical: spacing.md, minHeight: 56 },
-  disabled: { opacity: 0.4 },
-  ctaText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
 })

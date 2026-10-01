@@ -92,6 +92,7 @@ export interface Ride {
   payment_status: string | null
   billing_mode_snapshot: BillingMode | null
 }
+  resolved_by?: 'admin' | 'timeout' | null
 
 // Columns that only exist via RIDE_SELECT_SQL's joins (users/drivers/
 // fare_snapshots/driver_vehicles/etc) — everything else is native to `rides`
@@ -105,7 +106,7 @@ export type RideCore = Omit<Ride,
   | 'vehicle_number_plate' | 'vehicle_color' | 'vehicle_name' | 'vehicle_model' | 'vehicle_brand'
   | 'booked_category_name' | 'assigned_category_name'
   | 'driver_current_lat' | 'driver_current_lng'
-  | 'payment_status'
+  | 'payment_status' | 'resolved_by'
 >
 
 export interface StopInput {

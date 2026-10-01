@@ -1,5 +1,17 @@
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator'
 import { getInfoAsync } from 'expo-file-system/legacy'
+
+// TEMP: expo-image-manipulator isn't autolinked in this local pnpm workspace
+// checkout (package lives hoisted at the repo root, not symlinked into
+// apps/driver-mobile/node_modules -- a pre-existing, separate bug from
+// whatever this debugging session is actually about). Its wrapper module
+// calls requireNativeModule() at import time, so a static top-level import
+// here crashed every route in the app (expo-router eagerly requires every
+// route file to build its manifest). Lazy-import so this file can be
+// imported without the crash; only actually failing when a caller uploads
+// an image. Revert to a static import once autolinking is fixed properly.
+async function loadManipulator() {
+  return import('expo-image-manipulator')
+}
 
 // Same targets as web's compressDocImage() (apps/driver/src/lib/onboarding-api.ts).
 // Picker/camera `quality` only re-encodes -- a 12MP photo stays 4000x3000 and
@@ -23,6 +35,7 @@ export function fitWithin(width: number, height: number, maxEdge = MAX_EDGE): { 
 export async function prepareImageForUpload<T extends UploadFile>(file: T): Promise<T> {
   if (!file.mimeType.startsWith('image/')) return file
   try {
+    const { ImageManipulator, SaveFormat } = await loadManipulator()
     // Each full-res decode of a 12MP photo is ~48MB of native memory -- release
     // every ref/context as soon as it's done rather than waiting for GC.
     const probe = ImageManipulator.manipulate(file.uri)

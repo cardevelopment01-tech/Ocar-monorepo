@@ -143,7 +143,7 @@ export default function ProfileScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(100).duration(360)}>
-          <Text style={styles.sectionLabel}>VEHICLE & DOCUMENTS</Text>
+          <Text style={styles.sectionLabel}>Vehicle & documents</Text>
           <View style={styles.menuCard}>
             <Pressable onPress={() => router.push('/documents')} style={[styles.menuRow, styles.menuRowBorder]} accessibilityRole="button">
               <View style={[styles.menuIcon, documentGate.hasRejected ? styles.menuIconAlert : null]}>
@@ -183,7 +183,7 @@ export default function ProfileScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(160).duration(360)}>
-          <Text style={styles.sectionLabel}>ACCOUNT</Text>
+          <Text style={styles.sectionLabel}>Account</Text>
           <View style={styles.menuCard}>
             <Pressable onPress={() => router.push('/wallet')} style={[styles.menuRow, styles.menuRowBorder]}>
               <View style={styles.menuIcon}>

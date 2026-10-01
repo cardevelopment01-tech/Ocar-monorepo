@@ -613,7 +613,12 @@ const RIDE_SELECT_SQL = `SELECT
        ST_Y(dls.location::geometry) AS driver_current_lat,
        ST_X(dls.location::geometry) AS driver_current_lng,
        p.status AS payment_status,
-       p.commission_percent, p.commission_amount, p.driver_earning
+       p.commission_percent, p.commission_amount, p.driver_earning,
+       -- Who force-ended the ride (admin override / inactivity sweeper), so a client that
+       -- missed the live socket event can still tell it apart from a normal end.
+       (SELECT h.actor FROM ride_status_history h
+         WHERE h.ride_id = r.id AND h.to_status IN ('completed', 'cancelled') AND h.actor IN ('admin', 'timeout')
+         ORDER BY h.created_at DESC LIMIT 1) AS resolved_by
      FROM rides r
      LEFT JOIN users u             ON u.id = r.user_id
      LEFT JOIN drivers d           ON d.id = r.driver_id

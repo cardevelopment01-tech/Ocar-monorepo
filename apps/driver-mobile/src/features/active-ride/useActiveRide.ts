@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import axios from 'axios'
 import { useRoomJoin, type RideDetail } from '@ocar/mobile-shared'
-import { socket } from '@/services/socket'
+import { connectSocket, socket } from '@/services/socket'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import {
   cancelRideAsDriver,
@@ -14,6 +14,7 @@ import {
   submitStartOtp,
 } from './api'
 import { activeRideReducer, displayStatus, type RideStatus } from './reducer'
+import { externalEndMessage, type ExternalEndInfo } from './externalEnd'
 
 function isInvalidOtp(err: unknown): boolean {
   return axios.isAxiosError(err) && err.response?.status === 422
@@ -40,11 +41,19 @@ export function useActiveRide(rideId: string) {
     pendingOptimisticStatus: null,
   })
   const setActiveRideSummary = useDriverSessionStore((s) => s.setActiveRide)
+  // Set once the ride was ended by someone else (rider/system cancel, admin force-resolve).
+  // The screen reacts by leaving -- see externalEnd.ts.
+  const [endedExternally, setEndedExternally] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
     fetchRide(rideId)
       .then((detail) => {
+        const endMessage = externalEndMessage(detail.status, detail.resolvedBy ? { resolvedBy: detail.resolvedBy } : {})
+        if (endMessage) {
+          setEndedExternally(endMessage)
+          return
+        }
         setRide(detail as RideDetailSettled)
         dispatch({ type: 'confirmed', status: detail.status as RideStatus })
         setLoadError(false)
@@ -56,6 +65,65 @@ export function useActiveRide(rideId: string) {
   useEffect(() => {
     load()
   }, [load])
+
+  // Refetch without the loading skeleton -- `load` swaps the whole screen (map,
+  // guided nav) for a skeleton, which is wrong for a stop added mid-navigation.
+  const refreshSeq = useRef(0)
+  const refresh = useCallback(() => {
+    // Two events back to back (add + reorder) can return out of order; only the
+    // latest request may overwrite the ride.
+    const seq = ++refreshSeq.current
+    fetchRide(rideId)
+      .then((detail) => {
+        if (seq !== refreshSeq.current) return
+        const endMessage = externalEndMessage(detail.status, detail.resolvedBy ? { resolvedBy: detail.resolvedBy } : {})
+        if (endMessage) {
+          setEndedExternally(endMessage)
+          return
+        }
+        setRide(detail as RideDetailSettled)
+        dispatch({ type: 'confirmed', status: detail.status as RideStatus })
+      })
+      .catch(() => {})
+  }, [rideId])
+
+  // Rider added a stop / a stop was resolved (see rides.service.ts addRideStop,
+  // markStopStatus). The push already fired, but it lands on the screen the driver
+  // is on, so without this the stop list, map and OTP gate stay stale.
+  const [stopNotice, setStopNotice] = useState<{ message: string; key: number } | null>(null)
+  useEffect(() => {
+    function onStopAdded(payload: { stop?: { address?: string | null } }) {
+      const message = payload.stop?.address ? `Rider added a stop: ${payload.stop.address}` : 'Rider added a stop'
+      setStopNotice((prev) => ({ message, key: (prev?.key ?? 0) + 1 }))
+      refresh()
+    }
+    socket.on('stop:added', onStopAdded)
+    socket.on('stop:updated', refresh)
+    return () => {
+      socket.off('stop:added', onStopAdded)
+      socket.off('stop:updated', refresh)
+    }
+  }, [refresh])
+
+  // Live end-of-ride from the other side. Socket.io doesn't replay missed events, so a
+  // disconnect is covered by `load` re-running on rejoin (useRoomJoin below).
+  useEffect(() => {
+    function onStatusUpdate(payload: { status: string } & ExternalEndInfo) {
+      const message = externalEndMessage(payload.status, payload)
+      if (message) setEndedExternally(message)
+    }
+    socket.on('ride:status_update', onStatusUpdate)
+    return () => { socket.off('ride:status_update', onStatusUpdate) }
+  }, [])
+
+  // A cold start mid-ride redirects straight here (app/index.tsx -> relaunchRoute),
+  // so Home's session check -- the only other place that connects the socket --
+  // never runs. Without this the driver gets no stop:added/stop:updated, chat, or
+  // admin force-resolve events until they leave the screen. connect() is a no-op
+  // when already connected; disconnecting stays with go-offline.
+  useEffect(() => {
+    connectSocket()
+  }, [])
 
   // Re-joins ride:{rideId} on mount and on every socket reconnect, per the
   // shared room-join contract -- a bare reconnect doesn't replay whatever
@@ -92,15 +160,19 @@ export function useActiveRide(rideId: string) {
     setActiveRideSummary({ id: rideId, status })
   }, [rideId, status, setActiveRideSummary])
 
-  const markArrivedAction = useCallback(async () => {
+  // Resolves true on success, false on failure: the slide-to-confirm control resets itself
+  // on false, so a failed call never leaves it stuck on "Confirmed".
+  const markArrivedAction = useCallback(async (): Promise<boolean> => {
     dispatch({ type: 'optimistic_advance', to: 'driver_arrived' })
     setActionError(null)
     try {
       await apiMarkArrived(rideId)
       dispatch({ type: 'confirmed', status: 'driver_arrived' })
+      return true
     } catch {
       dispatch({ type: 'reverted' })
       setActionError('Could not confirm arrival. Try again.')
+      return false
     }
   }, [rideId])
 
@@ -112,13 +184,15 @@ export function useActiveRide(rideId: string) {
       try {
         await submitStartOtp(rideId, otp)
         dispatch({ type: 'confirmed', status: 'in_progress' })
+        // started_at (and so bookedUntil for the trip clock) only exists now; the ride in hand predates it.
+        refresh()
         return true
       } catch (err) {
         setActionError(isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.')
         return false
       }
     },
-    [rideId]
+    [rideId, refresh]
   )
 
   // No optimistic advance: the OTP sheet stays open on "Verifying" until the server confirms,
@@ -129,24 +203,35 @@ export function useActiveRide(rideId: string) {
       try {
         await submitEndOtp(rideId, otp)
         dispatch({ type: 'confirmed', status: 'completed' })
+        // settled overtime (overtimeMin/overtimeFare) and the final fare exist only after settlement
+        refresh()
         return true
       } catch (err) {
-        setActionError(isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.')
+        if (axios.isAxiosError(err) && err.response?.data?.code === 'RIDE_HAS_PENDING_STOPS') {
+          // The OTP was never checked -- a stop is still open. Refetch so the stop
+          // card appears instead of leaving the driver guessing.
+          setActionError('Finish or skip the pending stop first, then enter the OTP.')
+          refresh()
+        } else {
+          setActionError(isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.')
+        }
         return false
       }
     },
-    [rideId]
+    [rideId, refresh]
   )
 
-  const startReturnAction = useCallback(async () => {
+  const startReturnAction = useCallback(async (): Promise<boolean> => {
     dispatch({ type: 'optimistic_advance', to: 'returning' })
     setActionError(null)
     try {
       await startReturn(rideId)
       dispatch({ type: 'confirmed', status: 'returning' })
+      return true
     } catch {
       dispatch({ type: 'reverted' })
       setActionError('Could not start the return leg. Try again.')
+      return false
     }
   }, [rideId])
 
@@ -189,6 +274,10 @@ export function useActiveRide(rideId: string) {
     unreadChatCount,
     clearUnreadChatCount: () => setUnreadChatCount(0),
     reload: load,
+    refresh,
+    stopNotice,
+    endedExternally,
+    clearStopNotice: () => setStopNotice(null),
     markArrivedAction,
     submitStartOtpAction,
     submitEndOtpAction,

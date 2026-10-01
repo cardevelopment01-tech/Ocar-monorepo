@@ -273,13 +273,6 @@ export default function HomeScreen() {
             <Feather name="chevron-right" size={14} color={colors.ink400} />
           </Pressable>
         </View>
-
-        <View style={styles.statusLine}>
-          <View style={[styles.statusDot, isOnline ? styles.statusDotOnline : styles.statusDotOffline]} />
-          <Text style={styles.statusText}>
-            {isOnline ? 'Searching for nearby rides. Stay in the area for faster matching.' : 'Tap the toggle above to go online'}
-          </Text>
-        </View>
       </View>
 
       <Modal visible={showOfflineConfirm} transparent animationType="fade">
@@ -366,11 +359,6 @@ const styles = StyleSheet.create({
   },
   actionLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
   actionLabel: { ...typography.label, color: colors.ink900, fontFamily: fonts.semibold },
-  statusLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingTop: spacing.xs },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusDotOnline: { backgroundColor: colors.success },
-  statusDotOffline: { backgroundColor: colors.ink400 },
-  statusText: { ...typography.caption, color: colors.ink600, flex: 1 },
   confirmBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: `${colors.ink900}72`, padding: spacing.lg },
   confirmCard: { gap: spacing.sm },
   confirmTitle: { ...typography.headline, color: colors.ink900 },

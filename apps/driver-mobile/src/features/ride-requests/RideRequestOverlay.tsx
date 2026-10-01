@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
-import { acceptRideRequest } from './api'
+import { acceptRideRequest, declineRideRequest } from './api'
 import { computeRemainingSeconds } from './countdown'
 import { useRideAlertSound } from './useRideAlertSound'
 
@@ -47,7 +47,11 @@ const C = {
   divider: '#2A3C40',
   primary: '#14ABBD',
   primaryGlow: '#14ABBD',
-  accent: '#D6A552',
+  // Brand pink, not gold -- matches the OTP icon gradient (TripInProgress.tsx,
+  // #0A9FB0 -> #DC3E93) and the real Ocar logo's teal+pink duo. This screen
+  // previously used a gold/amber accent that has no connection to the actual
+  // brand identity (code review finding, 2026-09-28).
+  accent: '#DC3E93',
   success: '#25B87A',
   error: '#E5484D',
   errorText: '#F5A3A6',
@@ -183,6 +187,7 @@ export function RideRequestOverlay() {
   const reject = useCallback(() => {
     if (dismissedRef.current || pending?.rideId == null) return
     setStatus('rejected')
+    void declineRideRequest(pending.rideId)
     animateOut(pending.rideId)
   }, [animateOut, pending?.rideId])
 
@@ -247,7 +252,15 @@ export function RideRequestOverlay() {
   // Autodismiss the terminal messages gracefully.
   useEffect(() => {
     if (!pending?.rideId) return
-    if (status === 'expired') schedule(() => animateOut(pending.rideId as string), 1200)
+    // A driver who never taps anything (the countdown just runs out) never hit
+    // reject()'s declineRideRequest call either -- without this, the assignment
+    // stays 'offered' server-side and the next socket reconnect (screen change,
+    // network blip, going back online) replays the exact same offer and restarts
+    // the ringtone, same bug as an un-propagated Decline tap.
+    if (status === 'expired') {
+      void declineRideRequest(pending.rideId)
+      schedule(() => animateOut(pending.rideId as string), 1200)
+    }
     if (status === 'raceLost') schedule(() => animateOut(pending.rideId as string), 1500)
   }, [status]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -448,7 +461,9 @@ export function RideRequestOverlay() {
                     <View style={[styles.disclosure, { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.24)' }]}>
                       <RefreshIcon color={C.warning} />
                       <View style={styles.disclosureTexts}>
-                        <Text style={[styles.disclosureTitle, { color: C.warningText }]}>Outstation return trip</Text>
+                        <Text style={[styles.disclosureTitle, { color: C.warningText }]}>
+                          {pending.rideType === 'round_trip' && pending.tripHours ? `Round trip · ${pending.tripHours}h booked` : 'Outstation return trip'}
+                        </Text>
                         <Text style={[styles.disclosureBody, { color: C.warningSub }]}>
                           {returnAtFormatted ? `Must return by ${returnAtFormatted}` : 'You must drive back to the pickup point'}
                         </Text>
@@ -597,9 +612,7 @@ const styles = StyleSheet.create({
   eyebrow: {
     ...typography.caption,
     color: C.primaryGlow,
-    letterSpacing: 1.4,
     fontFamily: fonts.bold,
-    textTransform: 'uppercase',
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs, flexWrap: 'wrap' },
   title: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 26, color: C.text },
@@ -624,7 +637,7 @@ const styles = StyleSheet.create({
   railDotDrop: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.primary },
   routeTexts: { flex: 1, gap: spacing.lg, paddingTop: 2 },
   routeRow: { gap: 2 },
-  routeLabel: { ...typography.caption, color: C.textFaint, textTransform: 'uppercase', letterSpacing: 0.6 },
+  routeLabel: { ...typography.caption, color: C.textFaint },
   routeAddress: { ...typography.body, color: C.text, fontFamily: fonts.semibold, fontSize: 15, lineHeight: 22 },
   disclosure: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start', borderRadius: radii.md, borderWidth: 1, padding: spacing.sm + 2 },
   disclosureTexts: { flex: 1, gap: 2 },

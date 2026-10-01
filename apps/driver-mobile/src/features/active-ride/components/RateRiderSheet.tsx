@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons'
 import axios from 'axios'
 import { Button, colors, radii, spacing, typography, type RatingTag, fonts, Text } from '@ocar/mobile-shared'
 import { fetchRiderTags, rateRider } from '../safety-api'
+import { SCRIM } from './scrim'
 
 export type RateRiderSheetProps = {
   visible: boolean
@@ -77,15 +78,15 @@ export function RateRiderSheet({ visible, rideId, riderName, onClose }: RateRide
           <>
             <View style={styles.header}>
               <Text style={styles.title}>Rate {riderName ?? 'your rider'}</Text>
-              <Pressable onPress={onClose} hitSlop={8} accessibilityLabel="Skip rating">
-                <Feather name="x" size={20} color={colors.ink400} />
+              <Pressable onPress={onClose} hitSlop={8} style={styles.close} accessibilityRole="button" accessibilityLabel="Skip rating">
+                <Feather name="x" size={20} color={colors.ink900} />
               </Pressable>
             </View>
 
             <View style={styles.starsRow}>
               {[1, 2, 3, 4, 5].map((star) => (
-                <Pressable key={star} onPress={() => setRating(star)} hitSlop={8}>
-                  <Feather name="star" size={34} color={rating >= star ? colors.warning : colors.border} />
+                <Pressable key={star} onPress={() => setRating(star)} style={styles.star} accessibilityRole="button" accessibilityLabel={`${star} star${star > 1 ? 's' : ''}`}>
+                  <Feather name="star" size={34} color={rating >= star ? colors.warning : colors.ink400} />
                 </Pressable>
               ))}
             </View>
@@ -121,16 +122,18 @@ export function RateRiderSheet({ visible, rideId, riderName, onClose }: RateRide
 }
 
 const styles = StyleSheet.create({
-  backdrop: { backgroundColor: 'rgba(20,23,26,0.45)' },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, gap: spacing.sm },
+  backdrop: { backgroundColor: SCRIM },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, gap: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.sm },
-  header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  starsRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm, marginVertical: spacing.md },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { ...typography.headline, color: colors.ink900 },
+  close: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  starsRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xs, marginVertical: spacing.sm },
+  star: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, justifyContent: 'center', marginBottom: spacing.xs },
-  tagChip: { paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.xs + 2, borderRadius: radii.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg },
+  tagChip: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: radii.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg },
   tagChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tagText: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
+  tagText: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
   tagTextActive: { color: colors.inkInverse },
   submittedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, paddingVertical: spacing.md },
   submittedText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
