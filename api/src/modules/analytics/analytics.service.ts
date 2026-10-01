@@ -129,8 +129,7 @@ export async function getFinance(p: ParsedRange): Promise<FinanceResponse> {
     ])
     return {
       from: p.from, to: p.to, generated_at: new Date().toISOString(),
-      totals, take_rate: takeRate(totals), // no delta against a previous window that had no money at all (would read as +100 pts)
-      previous_take_rate: previous && previous.gross_bookings > 0 ? takeRate(previous) : null,
+      totals, take_rate: takeRate(totals), previous_take_rate: previous ? takeRate(previous) : null,
       finance, cash,
     }
   })
