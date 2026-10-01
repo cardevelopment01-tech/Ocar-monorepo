@@ -17,6 +17,8 @@ export type RideMapViewProps = {
   // no visual confirmation anywhere on the map, so a newly added stop just
   // vanished from view once the sheet closed.
   stops?: [number, number][]
+  // Default suits a full-screen map; a small preview passes less so the pins are not squeezed together.
+  edgePadding?: { top: number; right: number; bottom: number; left: number }
 }
 
 // Real map replacing the earlier placeholder progress-bar "track" (LiveMarker) --
@@ -26,7 +28,7 @@ export type RideMapViewProps = {
 // drop/driver now use the same custom SVG markers as web (CarMarker/LocationPin)
 // instead of react-native-maps' default OS pin -- see the input-consistency +
 // premiumness pass this replaced.
-export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [] }: RideMapViewProps) {
+export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 } }: RideMapViewProps) {
   const mapRef = useRef<MapView>(null)
   // Same react-native-maps gotcha as SelectRideMap: fitToCoordinates called
   // before the native view's onMapReady fires silently no-ops, leaving the
@@ -43,10 +45,10 @@ export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHead
     if (points.length < 2) return
     mapRef.current?.fitToCoordinates(
       points.map(([latitude, longitude]) => ({ latitude, longitude })),
-      { edgePadding: { top: 80, right: 60, bottom: 80, left: 60 }, animated: true }
+      { edgePadding, animated: true }
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stops re-fit keyed by stopsKey, not the array reference
-  }, [mapReady, pickup, drop, driverPos, showDrop, stopsKey])
+  }, [mapReady, pickup, drop, driverPos, showDrop, stopsKey, edgePadding.top, edgePadding.bottom, edgePadding.left, edgePadding.right])
 
   const routeCoords = routePoints.map(([latitude, longitude]) => ({ latitude, longitude }))
 

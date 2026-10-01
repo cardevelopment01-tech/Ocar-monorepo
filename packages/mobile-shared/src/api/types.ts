@@ -109,6 +109,7 @@ export type RideDetail = {
   actualKm: string | null
   actualMin: string | null
   requestedAt: string | null
+  startedAt: string | null
   completedAt: string | null
   startOtp: string | null
   endOtp: string | null

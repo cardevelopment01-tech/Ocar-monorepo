@@ -80,13 +80,16 @@ export function tripTitle(r: Pick<RideDetail, 'rideType' | 'assignedCategoryName
   return [cat, type].filter(Boolean).join(' · ') || 'Ride'
 }
 
-// "58 min · 28.4 km" -- actuals when the trip ended, falls back to nothing rather than a guess.
-export function tripMetrics(r: Pick<RideDetail, 'actualKm' | 'actualMin'>, stopCount: number): string | null {
+// "58 min · 28.4 km". Actuals when the trip settled them; otherwise the duration from the ride's own
+// start/finish times (one-way rides never get actuals). No stop count: the stops are listed right above.
+export function tripMetrics(r: Pick<RideDetail, 'actualKm' | 'actualMin' | 'startedAt' | 'completedAt'>): string | null {
   const parts: string[] = []
-  const min = Math.round(num(r.actualMin))
+  let min = Math.round(num(r.actualMin))
+  if (min <= 0 && r.startedAt && r.completedAt) {
+    min = Math.round((new Date(r.completedAt).getTime() - new Date(r.startedAt).getTime()) / 60000)
+  }
   const km = num(r.actualKm)
-  if (min > 0) parts.push(`${min} min`)
+  if (Number.isFinite(min) && min > 0) parts.push(`${min} min`)
   if (km > 0) parts.push(`${km} km`)
-  if (stopCount > 0) parts.push(`${stopCount} ${stopCount === 1 ? 'stop' : 'stops'}`)
   return parts.length ? parts.join(' · ') : null
 }

@@ -60,10 +60,14 @@ describe('paymentState', () => {
 })
 
 describe('tripMetrics', () => {
-  it('joins duration, distance and stops', () => {
-    expect(tripMetrics({ actualKm: '28.40', actualMin: '58.00' }, 1)).toBe('58 min · 28.4 km · 1 stop')
+  const none = { actualKm: null, actualMin: null, startedAt: null, completedAt: null }
+  it('joins duration and distance from actuals', () => {
+    expect(tripMetrics({ ...none, actualKm: '28.40', actualMin: '58.00' })).toBe('58 min · 28.4 km')
+  })
+  it('falls back to start/finish times for one-way rides', () => {
+    expect(tripMetrics({ ...none, startedAt: '2026-10-01T10:00:00Z', completedAt: '2026-10-01T10:58:00Z' })).toBe('58 min')
   })
   it('returns null when nothing is known', () => {
-    expect(tripMetrics({ actualKm: null, actualMin: null }, 0)).toBeNull()
+    expect(tripMetrics(none)).toBeNull()
   })
 })

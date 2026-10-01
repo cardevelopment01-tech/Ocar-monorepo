@@ -21,6 +21,8 @@ const SUPPORT_EMAIL = 'support@ocarindia.com'
 const CASH_POLL_MS = 15_000
 const MAP_HEIGHT = 190
 const HERO_OVERLAP = 36
+// Clears the hero card that overlaps the map's lower edge.
+const MAP_FIT_PADDING = { top: 36, right: 48, bottom: HERO_OVERLAP + 36, left: 48 }
 
 export type TripSummaryProps = {
   ride: RideDetailExtra
@@ -64,7 +66,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
   const showFare = fareValue > 0
   const fareText = formatMoney(fareValue)
   const when = formatTripWhen(ride.completedAt ?? ride.requestedAt)
-  const metrics = tripMetrics(ride, ride.stops.length)
+  const metrics = tripMetrics(ride)
   const dropLabel = ride.rideType === 'round_trip' ? 'Drop & return' : ride.rideType === 'rental' ? 'Route' : 'Drop'
   const dropValue = ride.rideType === 'rental'
     ? (ride.tripHours ? `${ride.tripHours}h rental · flexible` : 'Hourly rental · flexible')
@@ -97,6 +99,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
                 drop={[ride.destLat!, ride.destLng!]}
                 driverPos={null}
                 routePoints={route}
+                edgePadding={MAP_FIT_PADDING}
                 showDrop
                 stops={ride.stops.map((s): [number, number] => [s.lat, s.lng])}
               />
@@ -120,14 +123,13 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
               <View
                 style={styles.fareRow}
                 accessible
-                accessibilityLabel={`${!completed ? 'Cancellation fee' : invoice.isEstimate ? 'Estimated fare' : 'Fare'} ${fareText}`}
+                accessibilityLabel={`${completed ? 'Fare' : 'Cancellation fee'} ${fareText}`}
               >
                 <Text style={styles.rupee} maxFontSizeMultiplier={1.3}>{fareText.slice(0, 1)}</Text>
                 <Text style={styles.fare} maxFontSizeMultiplier={1.3}>{fareText.slice(1)}</Text>
               </View>
             ) : null}
             {showFare && !completed ? <Text style={styles.heroWhen}>Cancellation fee</Text> : null}
-            {showFare && completed && invoice.isEstimate ? <Text style={styles.heroWhen}>Estimated fare</Text> : null}
             {pay ? (
               pay.kind === 'cash_due' ? (
                 <View style={styles.dueStrip} accessibilityRole="alert">
@@ -207,7 +209,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
                 </View>
               ))}
               <View style={styles.totalBand}>
-                <Text style={styles.totalLabel}>{invoice.isEstimate ? 'Estimated total' : 'Total'}</Text>
+                <Text style={styles.totalLabel}>Total</Text>
                 <Text style={styles.totalAmount} maxFontSizeMultiplier={1.3}>{formatMoney(invoice.total)}</Text>
               </View>
             </View>
