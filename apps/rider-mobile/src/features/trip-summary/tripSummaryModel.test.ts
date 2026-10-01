@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildInvoiceRows, formatMoney, paymentState, tripMetrics } from './tripSummaryModel'
+import { buildInvoiceRows, formatMoney, formatTripWhen, paymentState, tripMetrics, tripTitle } from './tripSummaryModel'
 
 const base = {
   baseFare: '120.00', distanceFare: '1020.00', timeFare: '290.00', stopFare: '0.00', hourSurcharge: '0.00',
@@ -69,5 +69,23 @@ describe('tripMetrics', () => {
   })
   it('returns null when nothing is known', () => {
     expect(tripMetrics(none)).toBeNull()
+  })
+})
+
+describe('tripTitle', () => {
+  it('prefers the assigned category and appends the ride type', () => {
+    expect(tripTitle({ rideType: 'round_trip', assignedCategoryName: 'Sedan', bookedCategoryName: 'Hatchback' })).toBe('Sedan · Round trip')
+  })
+  it('falls back to the booked category, then to Ride', () => {
+    expect(tripTitle({ rideType: 'one_way', assignedCategoryName: null, bookedCategoryName: 'Hatchback' })).toBe('Hatchback')
+    expect(tripTitle({ rideType: 'one_way', assignedCategoryName: null, bookedCategoryName: null })).toBe('Ride')
+  })
+})
+
+describe('formatTripWhen', () => {
+  it('formats a valid timestamp and rejects bad input', () => {
+    expect(formatTripWhen('2026-10-01T12:00:00Z')).toMatch(/Oct 2026 · /)
+    expect(formatTripWhen(null)).toBeNull()
+    expect(formatTripWhen('not a date')).toBeNull()
   })
 })

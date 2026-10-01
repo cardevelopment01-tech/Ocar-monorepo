@@ -164,7 +164,7 @@ export default function RideTrackingScreen() {
   const isInProgress = IN_PROGRESS_STATUSES.has(ride.status)
   const isCompleted = ride.status === 'completed'
   const isCancelled = ride.status === 'cancelled' || ride.status === 'no_drivers'
-  const hasDriver = ride.driverId != null && (isAssigned || isInProgress || isCompleted)
+  const hasDriver = ride.driverId != null && (isAssigned || isInProgress)
   const status = (ride.status as StatusKey)
   const canCall = ride.status === 'accepted' || ride.status === 'driver_arrived' || ride.status === 'in_progress'
   const canAddStop = ride.status === 'accepted' || ride.status === 'driver_arrived' || ride.status === 'in_progress'
@@ -200,7 +200,7 @@ export default function RideTrackingScreen() {
       </View>
 
       <SOSButton
-        enabled={!isCompleted && !isCancelled}
+        enabled
         onTrigger={() => triggerSos(rideId, riderLat ?? undefined, riderLng ?? undefined)}
         anchor="top-right"
       />
@@ -273,7 +273,7 @@ export default function RideTrackingScreen() {
           ) : null}
           {detailsExpanded && hasDriver ? (
             <View style={styles.detailsExpanded}>
-              <TripDetailsCard ride={ride} fare={!isCompleted ? fare : null} />
+              <TripDetailsCard ride={ride} fare={fare} />
               {ride.stops.length > 0 ? <StopTimeline stops={ride.stops} /> : null}
             </View>
           ) : null}

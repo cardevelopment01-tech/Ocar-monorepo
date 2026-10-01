@@ -108,7 +108,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
           {/* Hero: what happened, what it cost, whether it is settled. */}
           <View style={[styles.card, styles.hero, hasMap && { marginTop: -HERO_OVERLAP }]}>
-            <LinearGradient colors={['#E6F3F5', '#FFFFFF']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.85 }} style={styles.heroTint} />
+            <LinearGradient colors={[colors.primarySubtle, colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.85 }} style={styles.heroTint} />
             <View style={styles.heroTop}>
               <View style={styles.flex}>
                 <Text style={styles.heroTitle} numberOfLines={1}>{tripTitle(ride)}</Text>
@@ -116,7 +116,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
               </View>
               <View style={[styles.pill, completed ? styles.pillOk : styles.pillBad]}>
                 <Feather name={completed ? 'check' : 'x'} size={13} color={completed ? colors.success : colors.error} />
-                <Text style={[styles.pillText, { color: completed ? colors.success : colors.error }]}>{completed ? 'Completed' : 'Cancelled'}</Text>
+                <Text style={[styles.pillText, { color: completed ? colors.success : colors.error }]}>{completed ? 'Completed' : ride.status === 'no_drivers' ? 'No drivers found' : 'Cancelled'}</Text>
               </View>
             </View>
             {showFare ? (
