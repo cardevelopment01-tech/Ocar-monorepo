@@ -54,7 +54,7 @@ async function broadcastAndGetOffered(opts: {
     originLng: DEFAULT_BOOKING.originLng,
     rideType: opts.rideType,
     isReturnCab: false,
-    broadcastRound: opts.round ?? 3, // widest natural radius (20 km) so only the cap can limit it
+    broadcastRound: opts.round ?? 1, // round 1 = the base radius per ride type
     ...(opts.tripHours !== undefined ? { tripHours: opts.tripHours } : {}),
   })
   const { rows } = await pool.query<{ driver_id: string }>(
@@ -135,8 +135,11 @@ describe('Broadcast pickup-distance cap (real PostGIS)', () => {
     expect(offered.has(autoDrivers.get(2.2)!)).toBe(false)
   })
 
-  it('city rental stays capped in round 1 too (5 km natural radius must not leak past 2.5 km)', async () => {
-    const offered = await broadcastAndGetOffered({ categoryId: sedanCategoryId, rideType: 'rental', tripHours: 2, round: 1 })
-    expect(offered.has(sedanDrivers.get(3)!)).toBe(false)
+  it('radius grows 1 km per round: rental 2h is 2.5 km in round 1, 4.5 km in round 3', async () => {
+    const r1 = await broadcastAndGetOffered({ categoryId: sedanCategoryId, rideType: 'rental', tripHours: 2, round: 1 })
+    expect(r1.has(sedanDrivers.get(3)!)).toBe(false)
+    const r3 = await broadcastAndGetOffered({ categoryId: sedanCategoryId, rideType: 'rental', tripHours: 2, round: 3 })
+    for (const id of ids(sedanDrivers, [3, 3.9])) expect(r3.has(id)).toBe(true)
+    expect(r3.has(sedanDrivers.get(9)!)).toBe(false)
   })
 })
