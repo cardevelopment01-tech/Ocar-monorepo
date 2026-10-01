@@ -1,8 +1,9 @@
 import { memo } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { Feather } from '@expo/vector-icons'
+import { geo } from '@/theme/homeTokens'
 import { Card, colors, formatCurrency, spacing, typography, type RideHistoryItem, fonts } from '@ocar/mobile-shared'
 import { StatusBadge } from './StatusBadge'
+import { DriverAvatar, driverViewFromName } from '@/features/ride-tracking/components/DriverIdentity'
 import { RouteRow } from './RouteRow'
 
 function fmt(iso: string): string {
@@ -36,7 +37,7 @@ function RideHistoryRowBase({ item, onPress }: RideHistoryRowProps) {
 
         {item.driverName ? (
           <View style={styles.driverRow}>
-            <Feather name="map-pin" size={12} color={colors.ink400} />
+            <DriverAvatar view={driverViewFromName(item.driverName)} photo={null} size="sm" />
             <Text style={styles.driverText}>
               Driver: <Text style={styles.driverName}>{item.driverName}</Text>
             </Text>
@@ -50,7 +51,7 @@ function RideHistoryRowBase({ item, onPress }: RideHistoryRowProps) {
 export const RideHistoryRow = memo(RideHistoryRowBase)
 
 const styles = StyleSheet.create({
-  wrapper: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
+  wrapper: { paddingHorizontal: geo.gutter, paddingVertical: spacing.xs },
   card: { gap: spacing.sm },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   topRight: { alignItems: 'flex-end', gap: 2 },

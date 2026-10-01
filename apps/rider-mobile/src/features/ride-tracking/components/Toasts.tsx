@@ -5,7 +5,7 @@ export function FareDriftToast({ previousFare, currentFare, onDismiss }: { previ
   return (
     <View style={styles.driftContainer}>
       <View style={{ flex: 1 }}>
-        <Text style={styles.driftLabel}>FARE UPDATED</Text>
+        <Text style={styles.driftLabel}>Fare updated</Text>
         <Text style={styles.driftAmount}>₹{Math.round(previousFare)} → ₹{Math.round(currentFare)}</Text>
       </View>
       <Text style={styles.dismiss} onPress={onDismiss}>Dismiss</Text>
@@ -31,7 +31,7 @@ export function PickupUpdatedToast({ driverNotified }: { driverNotified: boolean
 
 const styles = StyleSheet.create({
   driftContainer: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.warningLight, borderWidth: 1, borderColor: colors.warning, borderRadius: radii.lg, padding: spacing.sm + 4 },
-  driftLabel: { ...typography.caption, color: colors.warning, fontFamily: fonts.bold, letterSpacing: 0.5 },
+  driftLabel: { ...typography.caption, color: colors.warning, fontFamily: fonts.semibold },
   driftAmount: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
   dismiss: { ...typography.caption, color: colors.warning, fontFamily: fonts.bold },
   upgradeContainer: { backgroundColor: colors.moneyLight, borderRadius: radii.md, padding: spacing.sm + 4 },

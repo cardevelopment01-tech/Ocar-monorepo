@@ -22,9 +22,9 @@ const USER_ID   = BigInt(42)
 const DRIVER_ID = BigInt(7)
 const RIDE_ID   = BigInt(101)
 
-// stage 'accepted' → after_acceptance → feeApplicable = true, driver assigned
+// stage 'driver_arrived' → after_arrival → feeApplicable = true, driver assigned
 const ACCEPTED_RIDE = {
-  id: RIDE_ID, user_id: USER_ID, driver_id: DRIVER_ID, status: 'accepted',
+  id: RIDE_ID, user_id: USER_ID, driver_id: DRIVER_ID, status: 'driver_arrived',
   ride_type: 'one_way', category_id: BigInt(2), origin_city_id: BigInt(1),
 }
 
@@ -77,6 +77,16 @@ describe('cancelRide — cancellation fee', () => {
     const userDebit = client.query.mock.calls.find((c: unknown[]) =>
       (c[0] as string).includes('INSERT INTO user_wallet_ledger'))
     expect(userDebit).toBeUndefined() // all-or-nothing: no partial debit
+  })
+
+  it('charges no fee when the driver has accepted but not yet arrived', async () => {
+    wireClient('500.00')
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({ ...ACCEPTED_RIDE, status: 'accepted' } as never)
+    await cancelRide(USER_ID, RIDE_ID, 'changed_mind')
+
+    const cancelInsert = client.query.mock.calls.find((c: unknown[]) => (c[0] as string).includes('INSERT INTO ride_cancellations'))
+    expect(cancelInsert![1]).not.toContain(50)
+    expect(client.query.mock.calls.some((c: unknown[]) => (c[0] as string).includes('INSERT INTO user_wallet_ledger'))).toBe(false)
   })
 
   it('increments the per-user daily cancellation counter', async () => {

@@ -15,7 +15,7 @@ const HOUR_OPTIONS = [4, 6, 8, 10, 12] as const
 
 const INCLUDED = [
   'Same driver for both legs, no second booking needed',
-  'Fare covers travel, waiting time, and the return',
+  'Your booked hours cover travel and waiting. Extra time is billed by the minute after a short grace period',
   'Minimum booking duration is 4 hours',
   'If you end early at a different location, return distance to pickup is added to your fare',
 ]

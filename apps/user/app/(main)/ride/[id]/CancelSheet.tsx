@@ -84,7 +84,7 @@ export default function CancelSheet({ feeWarning, onConfirm, onClose }: Props) {
           >
             <AlertCircle size={15} className="text-yellow-600 mt-0.5 flex-shrink-0" />
             <p className="text-sm text-yellow-800 font-medium leading-snug">
-              A small cancellation fee may apply since your driver has already accepted.
+              A small cancellation fee may apply since your driver has already arrived at your pick up point.
             </p>
           </div>
         )}

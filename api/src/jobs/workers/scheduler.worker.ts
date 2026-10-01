@@ -5,6 +5,10 @@ import {
   processDispatchScheduled,
   type DispatchScheduledJobData,
 } from '@/jobs/processors/dispatch-scheduled.processor'
+import {
+  processTripWindowNudge,
+  type TripWindowNudgeJobData,
+} from '@/jobs/processors/trip-window-nudge.processor'
 import { createWorkerLogger } from '@/lib/worker-logger'
 import { findDocsNeedingExpiryNotice } from '@/modules/drivers/drivers.repository'
 import { notifyDocumentExpiring, notifyDocumentExpired } from '@/modules/notifications/notifications.service'
@@ -14,7 +18,8 @@ import { sweepStaleSosAlerts, sweepBreachedDisputeSlas } from '@/modules/safety/
 
 const log = createWorkerLogger('scheduler')
 
-// Five job types share this queue:
+// Six job types share this queue ('trip_window_nudge': push at T-15 and at the end of a round
+// trip's booked window, one-shot delayed jobs set when the trip starts):
 //  - 'dispatch_scheduled_ride' — one-shot delayed job set at booking time, fires
 //    the moment a specific ride enters its dispatch buffer window
 //  - 'sweep_scheduled_rides'   — repeatable safety net (server restarts, delayed
@@ -30,6 +35,11 @@ export const schedulerWorker = new Worker(
   async (job) => {
     if (job.name === 'dispatch_scheduled_ride') {
       await processDispatchScheduled(job.data as DispatchScheduledJobData)
+      return
+    }
+
+    if (job.name === 'trip_window_nudge') {
+      await processTripWindowNudge(job.data as TripWindowNudgeJobData)
       return
     }
 

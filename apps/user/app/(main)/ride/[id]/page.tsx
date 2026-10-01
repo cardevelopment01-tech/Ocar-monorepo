@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Phone, X, ChevronDown, RotateCcw, CheckCircle, Shield, Clock, MessageCircle } from 'lucide-react'
+import { X, ChevronDown, RotateCcw, CheckCircle, Shield, Clock } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import axios from 'axios'
@@ -10,6 +10,8 @@ import { rideApi, type RideDetail, type RideStop } from '@/lib/ride-api'
 import RouteTimeline from '@/components/route/RouteTimeline'
 import { safetyApi } from '@/lib/safety-api'
 import { formatReturnAt } from '@/lib/utils'
+import { formatEta, statusShowsEta } from '@ocar/shared'
+import { DriverCard as DriverCardView, MeetAtRow, PinBand, driverViewFromRide } from '@/components/ride/DriverIdentity'
 import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
 import { useInterpolatedPosition } from '@/lib/useInterpolatedPosition'
@@ -17,6 +19,7 @@ import { decodePolyline } from '@/lib/polyline'
 import { openRidePaymentCheckout } from '@/lib/razorpay-checkout'
 import CancelSheet from './CancelSheet'
 import SOSButton from '@/components/ui/SOSButton'
+import TripClock from '@/components/ride/TripClock'
 import AddStopSheet, { type PickedStop } from '@/components/route/AddStopSheet'
 import { SHEET_SPRING } from '@/lib/motion'
 
@@ -75,10 +78,6 @@ const STATUS_CONFIG: Record<StatusKey, { label: string; sub?: string; dot: strin
   completed:      { label: 'You have arrived!',                                                     dot: '#16A34A', dotPulse: false },
   cancelled:      { label: 'Ride cancelled',               sub: 'Returning to home…',              dot: '#DC2626', dotPulse: false },
   no_drivers:     { label: 'No drivers available',         sub: 'Please try again in a moment',    dot: '#DC2626', dotPulse: false },
-}
-
-function getInitials(name: string) {
-  return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 }
 
 function SearchingDots() {
@@ -141,7 +140,7 @@ function RouteRow({ ride, fare, status }: { ride: RideDetail | null; fare: strin
 
 // Compact driver identity row for the sheet's peek state — avatar, name,
 // rating/plate, call. Replaces the always-expanded 64-line driver card.
-function DriverMiniRow({ ride, rideId, router, unreadChatCount, rideStatus }: { ride: RideDetail | null; rideId: string; router: ReturnType<typeof useRouter>; unreadChatCount: number; rideStatus: string }) {
+function DriverCard({ ride, rideId, router, unreadChatCount, rideStatus }: { ride: RideDetail | null; rideId: string; router: ReturnType<typeof useRouter>; unreadChatCount: number; rideStatus: string }) {
   const [calling, setCalling] = useState(false)
   const [callError, setCallError] = useState<string | null>(null)
   // hasDriver (this row's render gate, in the parent) also covers cancelled/no_drivers/
@@ -164,126 +163,20 @@ function DriverMiniRow({ ride, rideId, router, unreadChatCount, rideStatus }: { 
     }
   }
 
+  const view = driverViewFromRide(ride)
+  const upgradedTo = ride?.booked_category_name && ride?.assigned_category_name && ride.booked_category_name !== ride.assigned_category_name
+    ? ride.assigned_category_name : null
+
   return (
-    <div className="flex items-center gap-2.5 flex-1 min-w-0 px-3 py-2 rounded-2xl relative bg-background border border-border">
-      {callError && (
-        <span className="absolute -top-7 right-0 px-2.5 py-1 rounded-lg bg-red-50 text-[11px] font-medium text-red-600 shadow-sm whitespace-nowrap">
-          {callError}
-        </span>
-      )}
-      {ride?.driver_photo ? (
-        <img
-          src={ride.driver_photo}
-          alt={ride?.driver_name ?? 'Driver'}
-          className="w-9 h-9 rounded-xl object-cover flex-shrink-0"
-          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-        />
-      ) : (
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-[12px] font-bold bg-gradient-primary"
-        >
-          {ride?.driver_name ? getInitials(ride.driver_name) : '?'}
-        </div>
-      )}
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-[13px] leading-tight truncate text-text-primary">{ride?.driver_name ?? 'Your Driver'}</p>
-        <div className="flex items-center gap-1 mt-0.5">
-          {ride?.driver_rating ? (
-            <>
-              <span className="text-amber-400 text-[10px]">★</span>
-              <span className="text-[11px] font-medium text-text-secondary">{Number(ride.driver_rating).toFixed(1)}</span>
-            </>
-          ) : (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-money-light text-status-success">New</span>
-          )}
-          {ride?.vehicle_number_plate && (
-            <>
-              <span className="text-[10px] text-border">·</span>
-              <span className="text-[11px] font-semibold tracking-wide truncate text-text-secondary">{ride.vehicle_number_plate}</span>
-            </>
-          )}
-          {ride?.booked_category_name && ride?.assigned_category_name && ride.booked_category_name !== ride.assigned_category_name && (
-            <>
-              <span className="text-[10px] text-border">·</span>
-              <span
-                title={`You booked ${ride.booked_category_name} — upgraded to ${ride.assigned_category_name} at no extra cost.`}
-                className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 bg-money-light text-money"
-              >
-                Upgraded
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-      {/* Rider's phone never sees the driver's raw number — masking is server-side
-          (maskRideContacts nulls driver_phone), so this triggers an Exotel-bridged
-          call instead of a tel: link. Gated on canCall, not just hasDriver: hasDriver
-          also stays true during cancelled/no_drivers/completed's brief pre-redirect
-          window, where there's no live mask to call into. */}
-      {canCall && (
-        <button
-          onClick={handleCall}
-          disabled={calling}
-          className="w-11 h-11 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 disabled:opacity-50 bg-primary-subtle"
-          aria-label="Call driver"
-        >
-          <Phone size={14} className="text-primary" />
-        </button>
-      )}
-      {/* Chat doesn't need the driver's raw phone number (maskRideContacts nulls
-          it for the rider), only that a driver is assigned — this component is
-          only rendered once hasDriver is true, so no extra gate needed here. */}
-      <button
-        onClick={() => router.push(`/ride/${rideId}/chat`)}
-        className="w-11 h-11 rounded-xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 relative bg-primary-subtle"
-        aria-label="Message driver"
-      >
-        <MessageCircle size={14} className="text-primary" />
-        {unreadChatCount > 0 && (
-          <span
-            className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-red-600"
-          >
-            {unreadChatCount > 9 ? '9+' : unreadChatCount}
-          </span>
-        )}
-      </button>
-    </div>
+    <DriverCardView
+      view={view} photo={ride?.driver_photo ?? null} canCall={canCall} calling={calling} callError={callError}
+      unread={unreadChatCount} upgradedTo={upgradedTo}
+      onCall={handleCall} onMessage={() => router.push(`/ride/${rideId}/chat`)}
+    />
   )
 }
 
-// Single-row OTP display — replaces two 50-line gradient "OTP cards" (one per
-// phase). No copy affordance: this code is read aloud to the driver, never
-// shared or sent, so there's nothing to copy it into.
-function OtpBadge({ otp, phase }: { otp: string | null; phase: 'start' | 'end' }) {
-  const accentClass = phase === 'start' ? 'text-status-success' : 'text-accent'
-  const borderAccentClass = phase === 'start' ? 'border-status-success' : 'border-accent'
-  const bgClass      = phase === 'start' ? 'bg-money-light' : 'bg-accent-light'
-  const label  = phase === 'start' ? 'Start OTP' : 'End OTP'
-
-  if (!otp) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 rounded-xl flex-shrink-0 bg-background border border-border">
-        <div className={`w-3 h-3 rounded-full border-2 border-t-transparent animate-spin flex-shrink-0 ${borderAccentClass}`} style={{ borderTopColor: 'transparent' }} />
-        <span className="text-[12px] font-medium whitespace-nowrap text-text-secondary">Generating…</span>
-      </div>
-    )
-  }
-
-  return (
-    <div className={`flex items-center gap-2.5 pl-2.5 pr-3.5 py-2 rounded-xl flex-shrink-0 ${bgClass}`}>
-      <Shield size={14} className={`flex-shrink-0 ${accentClass}`} />
-      <div className="flex flex-col leading-none gap-1">
-        <span className={`text-[11px] font-medium ${accentClass}`}>{label}</span>
-        <span className="text-lg font-bold tabular-nums text-text-primary" style={{ letterSpacing: '0.14em' }}>{otp}</span>
-      </div>
-      <span className="text-[11px] leading-tight text-text-secondary max-w-[120px]">
-        {phase === 'start' ? 'Share only once you are in the cab' : 'Share only when you reach your drop'}
-      </span>
-    </div>
-  )
-}
-
-// Compact peek-row badge — same slot/sizing convention as OtpBadge above, so the
+// Compact peek-row badge — sized to sit in the same slot as the PIN band, so the
 // rider sees live stop-wait status without expanding "Trip details". Mirrors the
 // driver app's wait-meter card (colors, copy) so both sides read the same fact
 // the same way.
@@ -560,7 +453,8 @@ export default function RidePage() {
     }
     const onDriverAssigned = (data: {
       driverName?: string | null; driverPhone?: string | null
-      driverRating?: string | null; driverPhoto?: string | null
+      driverRating?: string | null; driverPhoto?: string | null; driverTotalTrips?: number | null
+      driverVerified?: boolean | null
       vehicleModel?: string | null; vehicleBrand?: string | null
       vehicleColor?: string | null; vehicleName?: string | null
       vehicleNumberPlate?: string | null
@@ -573,6 +467,8 @@ export default function RidePage() {
         driver_phone:         data.driverPhone         ?? prev.driver_phone,
         driver_rating:        data.driverRating        ?? prev.driver_rating,
         driver_photo:         data.driverPhoto         ?? prev.driver_photo,
+        driver_total_trips:   data.driverTotalTrips    ?? prev.driver_total_trips,
+        driver_verified:      data.driverVerified      ?? prev.driver_verified,
         vehicle_model:        data.vehicleModel        ?? prev.vehicle_model,
         vehicle_brand:        data.vehicleBrand        ?? prev.vehicle_brand,
         vehicle_color:        data.vehicleColor        ?? prev.vehicle_color,
@@ -616,7 +512,9 @@ export default function RidePage() {
           : s),
       } : prev)
     }
-    const onStopAdded = (data: { stop: RideStop }) => {
+    const onStopAdded = (data: { stop: RideStop; stops?: RideStop[] }) => {
+      // `stops` = server's full re-ordered list (nearest-next); fall back to append.
+      if (data.stops) { setRide(prev => prev ? { ...prev, stops: data.stops! } : prev); return }
       setRide(prev => prev && !prev.stops.some(s => s.sequence === data.stop.sequence)
         ? { ...prev, stops: [...prev.stops, data.stop] }
         : prev)
@@ -828,6 +726,8 @@ export default function RidePage() {
       ? { label: 'Rental in progress', sub: 'Flexible route active' }
       : {}),
   }
+  // No driver fix yet -> no ETA; say so instead of leaving the banner silently blank.
+  const bannerSub = (cfg as { sub?: string }).sub ?? (status === 'accepted' && !driverPos ? 'Locating your driver…' : undefined)
   const hasDriver = rideStatus !== 'requested' && rideStatus !== 'scheduled'
 
   const fare = ride?.total_final != null
@@ -917,7 +817,7 @@ export default function RidePage() {
         initial={{ y: 60, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ ...SHEET_SPRING, delay: 0.08 }}
-        className="bg-background rounded-t-[28px] shadow-[0_-4px_32px_rgba(0,0,0,0.10)]"
+        className="bg-background rounded-t-[28px] shadow-[0_-4px_32px_rgba(0,0,0,0.10)] max-h-[68dvh] overflow-y-auto"
         style={{ flexShrink: 0 }}
       >
         {/* Handle — tap to expand/collapse trip details */}
@@ -972,7 +872,7 @@ export default function RidePage() {
 
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-gray-900 leading-tight">{cfg.label}</p>
-              {cfg.sub && <p className="text-xs text-gray-500 mt-0.5">{cfg.sub}</p>}
+              {bannerSub && <p className="text-xs text-gray-500 mt-0.5">{bannerSub}</p>}
             </div>
             {!autoNavCancelled && (status === 'completed' || status === 'cancelled' || status === 'no_drivers') && (
               <button
@@ -984,10 +884,10 @@ export default function RidePage() {
             )}
 
             {status === 'requested' && <SearchingDots />}
-            {displayEta && (
+            {displayEta && statusShowsEta(status) && (
               <div className="flex-shrink-0 text-right">
-                <p className="text-sm font-bold text-gray-900 leading-tight tabular-nums">{displayEta.etaMin} min</p>
-                <p className="text-[11px] text-gray-500 tabular-nums">{displayEta.distanceKm.toFixed(1)} km</p>
+                <p className="text-sm font-bold text-gray-900 leading-tight tabular-nums">{formatEta(displayEta.etaMin, displayEta.distanceKm).time}</p>
+                <p className="text-[11px] text-gray-500 tabular-nums">{formatEta(displayEta.etaMin, displayEta.distanceKm).distance}</p>
               </div>
             )}
           </motion.div>
@@ -1111,8 +1011,24 @@ export default function RidePage() {
                   concern) — was one 5-item row fighting for space; splitting
                   by concern instead of cramming everything into one line. */}
               <div className="flex flex-col gap-2.5 mb-2">
-                <DriverMiniRow ride={ride} rideId={rideId} router={router} unreadChatCount={unreadChatCount} rideStatus={rideStatus} />
-                {(fare || rideStatus === 'driver_arrived' || rideStatus === 'in_progress' || rideStatus === 'returning') && (
+                {/* Same order as Uber/Rapido: where to meet, the PIN to read out, then who is coming. */}
+                {(rideStatus === 'accepted' || rideStatus === 'driver_arrived') && (
+                  <>
+                    <MeetAtRow address={ride?.origin_address ?? null} lat={ride?.origin_lat ?? null} lng={ride?.origin_lng ?? null} />
+                    <PinBand otp={startOtp} phase="start" />
+                  </>
+                )}
+                {/* Booked-time clock (hourly round trips only; renders nothing without a window) */}
+                {(rideStatus === 'in_progress' || rideStatus === 'returning') && (
+                  <TripClock bookedUntil={ride?.bookedUntil} overtimeGraceMin={ride?.overtimeGraceMin} overtimeRate={ride?.overtimeRate} />
+                )}
+                {(rideStatus === 'in_progress' || rideStatus === 'returning') && (
+                  waitingStop
+                    ? <StopWaitBadge stop={waitingStop} nowMs={waitNowMs} />
+                    : <PinBand otp={endOtp} phase="end" />
+                )}
+                <DriverCard ride={ride} rideId={rideId} router={router} unreadChatCount={unreadChatCount} rideStatus={rideStatus} />
+                {(rideStatus === 'accepted' || rideStatus === 'driver_arrived') && (
                   <div className="flex items-center justify-between gap-2">
                     {rideStatus === 'accepted' && fare && (
                       <div className="px-1">
@@ -1120,20 +1036,15 @@ export default function RidePage() {
                         <p className="text-sm font-bold text-text-primary">{fare}</p>
                       </div>
                     )}
-                    {rideStatus === 'driver_arrived' && <OtpBadge otp={startOtp} phase="start" />}
-                    {(rideStatus === 'in_progress' || rideStatus === 'returning') && (
-                      waitingStop
-                        ? <StopWaitBadge stop={waitingStop} nowMs={waitNowMs} />
-                        : <OtpBadge otp={endOtp} phase="end" />
-                    )}
                     {(rideStatus === 'accepted' || rideStatus === 'driver_arrived') && (
                       <button
                         onClick={() => setShowCancelSheet(true)}
                         aria-label="Cancel ride"
-                        className="relative flex-shrink-0 ml-auto w-9 h-9 rounded-full flex items-center justify-center active:opacity-70 transition-opacity before:absolute before:-inset-1 before:content-['']"
+                        className="relative flex-shrink-0 ml-auto h-10 px-4 rounded-full flex items-center gap-1.5 text-[13px] font-semibold text-red-600 active:opacity-70 transition-opacity before:absolute before:-inset-1 before:content-['']"
                         style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.18)' }}
                       >
-                        <X size={15} strokeWidth={2.5} className="text-red-600" />
+                        <X size={14} strokeWidth={2.5} />
+                        Cancel ride
                       </button>
                     )}
                   </div>
@@ -1258,7 +1169,7 @@ export default function RidePage() {
 
       {showCancelSheet && (
         <CancelSheet
-          feeWarning={rideStatus === 'accepted' || rideStatus === 'driver_arrived'}
+          feeWarning={rideStatus === 'driver_arrived'}
           onClose={() => setShowCancelSheet(false)}
           onConfirm={async (reasonCode, reason) => {
             setCancelling(true)

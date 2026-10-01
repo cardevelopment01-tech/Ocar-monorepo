@@ -10,6 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { formatEta } from '@ocar/shared'
 import { STATUS_CONFIG, statusBg, type StatusKey } from '../statusConfig'
 
 export type StatusBannerProps = {
@@ -66,8 +67,8 @@ export function StatusBanner({ status, overrideSub, eta }: StatusBannerProps) {
       </View>
       {eta ? (
         <View style={styles.etaCol}>
-          <Text style={styles.etaMin}>{eta.etaMin} min</Text>
-          <Text style={styles.etaKm}>{eta.distanceKm.toFixed(1)} km</Text>
+          <Text style={styles.etaMin}>{formatEta(eta.etaMin, eta.distanceKm).time}</Text>
+          <Text style={styles.etaKm}>{formatEta(eta.etaMin, eta.distanceKm).distance}</Text>
         </View>
       ) : null}
     </View>

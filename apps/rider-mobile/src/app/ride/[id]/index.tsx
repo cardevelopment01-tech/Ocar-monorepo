@@ -2,15 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
-import { Feather } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { ErrorState, SOSButton, Skeleton, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
-import { api } from '@/services/api'
+import { ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { api, serverNow } from '@/services/api'
 import { triggerSos } from '@/features/safety/api'
 import { useLocationStore } from '@/store/useLocationStore'
+import { useLiveLocation } from '@/features/home/useLiveLocation'
 import { SearchingBar } from '@/features/ride-tracking/components/SearchingBar'
 import { RideActions } from '@/features/ride-tracking/components/RideActions'
 import { DriverCard } from '@/features/ride-tracking/components/DriverCard'
+import { MeetAtRow, PinBand } from '@/features/ride-tracking/components/DriverIdentity'
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
 import { StatusBanner } from '@/features/ride-tracking/components/StatusBanner'
 import { CancelSheet } from '@/features/ride-tracking/components/CancelSheet'
@@ -19,7 +20,7 @@ import { EditPickupSheet } from '@/features/ride-tracking/components/EditPickupS
 import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { TripDetailsCard } from '@/features/ride-tracking/components/TripDetailsCard'
 import { FareDriftToast, UpgradeToast } from '@/features/ride-tracking/components/Toasts'
-import { CashCollectionBanner } from '@/features/ride-tracking/components/CashCollectionBanner'
+import { TripSummary } from '@/features/trip-summary/TripSummary'
 import { ReconnectBanner } from '@/features/ride-tracking/components/ReconnectBanner'
 import { DriverCancelledBanner } from '@/features/ride-tracking/components/DriverCancelledBanner'
 import { useRideTracking } from '@/features/ride-tracking/useRideTracking'
@@ -49,17 +50,27 @@ export default function RideTrackingScreen() {
   const insets = useSafeAreaInsets()
   const {
     ride, loading, loadError, socketConnected, driverCancelled, lastLocationAt,
-    driverPos, driverHeading, driverHeadingKnown, pickup, drop, routePoints, eta, unreadChatCount,
+    driverPos, driverHeading, driverHeadingKnown, pickup, drop, routePoints, eta, driverLocated, unreadChatCount,
     fareDrift, dismissFareDrift, upgradeCategory, retry,
   } = useRideTracking(rideId)
+
+  // Booked-time clock for hourly round trips, in rider wording and on the server clock. Null copy = no
+  // window (one-way, rental, legacy pricing), so those rides show nothing new. Runs before the early returns.
+  const tripClock = useTripWindow(ride, { now: serverNow, audience: 'rider' })
 
   const stale = useMemo(
     () => lastLocationAt != null && Date.now() - lastLocationAt > STALE_LOCATION_MS,
     [lastLocationAt]
   )
 
-  const riderLat = useLocationStore((s) => s.lat)
-  const riderLng = useLocationStore((s) => s.lng)
+  const storeLat = useLocationStore((s) => s.lat)
+  const storeLng = useLocationStore((s) => s.lng)
+  const locationGranted = useLocationStore((s) => s.permission === 'granted')
+  // The store fix is from launch/last foreground and stays put during a ride, so track the rider live here.
+  const live = useLiveLocation(locationGranted).coords
+  // SOS prefers the live fix but keeps the saved one as a fallback: a rough location beats none.
+  const riderLat = live?.lat ?? storeLat
+  const riderLng = live?.lng ?? storeLng
 
   const cancelInFlightRef = useRef(false)
   const [cancelling, setCancelling] = useState(false)
@@ -165,7 +176,6 @@ export default function RideTrackingScreen() {
   const isInProgress = IN_PROGRESS_STATUSES.has(ride.status)
   const isCompleted = ride.status === 'completed'
   const isCancelled = ride.status === 'cancelled' || ride.status === 'no_drivers'
-  const needsCashCollection = isCompleted && (ride.paymentChannel ?? 'cash') === 'cash' && !ride.cashCollectedAt
   const hasDriver = ride.driverId != null && (isAssigned || isInProgress || isCompleted)
   const status = (ride.status as StatusKey)
   const canCall = ride.status === 'accepted' || ride.status === 'driver_arrived' || ride.status === 'in_progress'
@@ -175,6 +185,9 @@ export default function RideTrackingScreen() {
   const fare = ride.totalFinal != null
     ? `₹${Math.round(parseFloat(ride.totalFinal))}`
     : ride.totalEstimated != null ? `₹${Math.round(parseFloat(ride.totalEstimated))}` : null
+
+  // A finished trip is a receipt, not a live map: full-screen summary, shared with My Trips.
+  if (isCompleted || isCancelled) return <TripSummary ride={ride} onRefresh={retry} />
 
   return (
     <View style={styles.screen}>
@@ -217,7 +230,9 @@ export default function RideTrackingScreen() {
             <FareDriftToast previousFare={fareDrift.previousFare} currentFare={fareDrift.currentFare} onDismiss={dismissFareDrift} />
           ) : null}
 
-          <StatusBanner status={status} eta={eta} />
+          <StatusBanner status={status} eta={eta} {...(status === 'accepted' && !driverLocated ? { overrideSub: 'Locating your driver…' } : {})} />
+
+          {isInProgress && tripClock.copy ? <TripClock copy={tripClock.copy} stateKey={tripClock.state.kind} /> : null}
 
           {isSearching ? (
             <View style={styles.searchingBlock}>
@@ -243,13 +258,19 @@ export default function RideTrackingScreen() {
             </View>
           ) : null}
 
+          {/* Same order as Uber/Rapido: where to meet, the PIN to read out, then who is coming.
+              The start OTP doesn't exist server-side until the driver hits 'driver_arrived'
+              (rides.service.ts's markArrived generates it) -- showing the band during plain
+              'accepted' left it stuck on "Generating..." for the whole en-route leg. */}
+          {hasDriver && isAssigned ? (
+            <MeetAtRow address={ride.originAddress} lat={ride.originLat} lng={ride.originLng} />
+          ) : null}
+          {hasDriver && status === 'driver_arrived' ? <PinBand otp={ride.startOtp ?? null} phase="start" /> : null}
+          {hasDriver && isInProgress ? <PinBand otp={ride.endOtp ?? null} phase="end" /> : null}
           {hasDriver ? (
             <DriverCard
               ride={ride}
               stale={stale}
-              otp={isAssigned ? ride.startOtp : isInProgress ? ride.endOtp : null}
-              otpLabel={isInProgress ? 'End OTP' : 'Start OTP'}
-              otpHint={isInProgress ? 'Share only when you reach your drop' : 'Share only once you are in the cab'}
               rideId={rideId}
               canCall={canCall}
               unreadChatCount={unreadChatCount}
@@ -277,41 +298,12 @@ export default function RideTrackingScreen() {
             </View>
           ) : null}
 
-          {isCompleted ? (
-            <>
-              <View style={styles.completeRow}>
-                <Feather name="check-circle" size={14} color={colors.success} />
-                <Text style={styles.completeText}>Trip complete</Text>
-                {fare ? <Text style={styles.completeFare}>{fare}</Text> : null}
-              </View>
-              {ride.userRatingGiven == null ? (
-                <Pressable onPress={() => router.push(`/ride/${rideId}/rate`)} style={styles.rateBtn}>
-                  <Feather name="star" size={14} color={colors.warning} />
-                  <Text style={styles.rateBtnText}>Rate your driver</Text>
-                  <Feather name="chevron-right" size={14} color={colors.ink400} />
-                </Pressable>
-              ) : (
-                <View style={styles.ratedRow}>
-                  <Feather name="star" size={13} color={colors.warning} />
-                  <Text style={styles.ratedText}>You rated this ride {ride.userRatingGiven}/5</Text>
-                </View>
-              )}
-            </>
-          ) : null}
-
-          {isCancelled ? (
-            <View style={styles.cancelledRow}>
-              <Text style={styles.cancelledText}>Returning to home…</Text>
-            </View>
-          ) : null}
-
-          {needsCashCollection ? <CashCollectionBanner amount={ride.totalFinal ?? ride.totalEstimated} /> : null}
         </ScrollView>
       </Animated.View>
 
       <CancelSheet
         visible={showCancelSheet}
-        feeWarning={ride.status === 'accepted' || ride.status === 'driver_arrived'}
+        feeWarning={ride.status === 'driver_arrived'}
         onClose={() => setShowCancelSheet(false)}
         onConfirm={handleCancelConfirm}
       />
@@ -327,7 +319,7 @@ export default function RideTrackingScreen() {
         originLat={ride.originLat}
         originLng={ride.originLng}
         originAddress={ride.originAddress}
-        userPos={riderLat != null && riderLng != null ? [riderLat, riderLng] : null}
+        userPos={live ? [live.lat, live.lng] : null} // live-only: a saved fix would draw a stale rider marker and distance
         driverAssigned={ride.driverId != null}
         confirming={pickupUpdating}
         error={pickupError}
@@ -394,13 +386,4 @@ const styles = StyleSheet.create({
   addStopError: { ...typography.caption, color: colors.error, alignSelf: 'flex-end', backgroundColor: colors.surface, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radii.md },
   detailsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: spacing.xs },
   detailsToggleText: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
-  completeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.successLight, borderRadius: radii.lg, padding: spacing.sm + 4 },
-  completeText: { ...typography.body, color: colors.success, fontFamily: fonts.bold, flex: 1 },
-  completeFare: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  rateBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.bg, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.sm + 4 },
-  rateBtnText: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
-  ratedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, justifyContent: 'center', paddingVertical: spacing.xs },
-  ratedText: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
-  cancelledRow: { alignItems: 'center', padding: spacing.md },
-  cancelledText: { ...typography.body, color: colors.error, fontFamily: fonts.semibold },
 })

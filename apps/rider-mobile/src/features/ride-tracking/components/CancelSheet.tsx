@@ -82,7 +82,7 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
             <View style={styles.feeWarning}>
               <Feather name="alert-circle" size={15} color={colors.warning} style={{ marginTop: 1 }} />
               <Text style={styles.feeWarningText}>
-                A small cancellation fee may apply since your driver has already accepted.
+                A small cancellation fee may apply since your driver has already arrived at your pick up point.
               </Text>
             </View>
           ) : null}

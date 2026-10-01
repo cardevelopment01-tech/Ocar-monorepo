@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather, Ionicons } from '@expo/vector-icons'
 import { Button, Skeleton, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { fetchRide } from '@/features/ride-tracking/api'
+import { DriverAvatar, driverViewFromRide } from '@/features/ride-tracking/components/DriverIdentity'
 import type { RideDetailExtra } from '@/features/ride-tracking/types'
+import { formatMoney } from '@/features/trip-summary/tripSummaryModel'
 import { fetchRatingTags, submitRating } from '@/features/safety/api'
 import type { RatingTag } from '@ocar/mobile-shared'
 
@@ -16,7 +18,7 @@ import type { RatingTag } from '@ocar/mobile-shared'
 const RATING_WORDS = ['', 'Poor', 'Below average', 'Okay', 'Good', 'Excellent']
 
 export default function RateRideScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, score } = useLocalSearchParams<{ id: string; score?: string }>()
   const rideId = id ?? ''
   const router = useRouter()
   const insets = useSafeAreaInsets()
@@ -25,7 +27,9 @@ export default function RateRideScreen() {
   const [loading, setLoading] = useState(true)
   const [alreadyRated, setAlreadyRated] = useState(false)
   const [tags, setTags] = useState<RatingTag[]>([])
-  const [rating, setRating] = useState(0)
+  // The Trip summary's stars hand off here with the tapped star pre-selected.
+  const initialScore = Number(score)
+  const [rating, setRating] = useState(Number.isInteger(initialScore) && initialScore >= 1 && initialScore <= 5 ? initialScore : 0)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -105,21 +109,18 @@ export default function RateRideScreen() {
     )
   }
 
+  const driverView = driverViewFromRide(ride)
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg }]}
     >
       <View style={styles.header}>
-        {ride?.driverPhoto ? (
-          <Image source={{ uri: ride.driverPhoto }} style={styles.photo} />
-        ) : (
-          <View style={[styles.photo, styles.photoFallback]}>
-            <Feather name="user" size={26} color={colors.primary} />
-          </View>
-        )}
+        <DriverAvatar view={driverView} photo={ride?.driverPhoto ?? null} size="lg" chip />
         <Text style={styles.title}>How was your ride?</Text>
-        <Text style={styles.subtitle}>{ride?.driverName ?? 'Your driver'}</Text>
+        <Text style={styles.subtitle}>{driverView.name}</Text>
+        <Text style={styles.vehicleLine}>{driverView.vehicleLine}{driverView.plate ? ` · ${driverView.plate}` : ''}</Text>
       </View>
 
       {(ride?.originAddress || ride?.destinationAddress || fare) ? (
@@ -138,7 +139,7 @@ export default function RateRideScreen() {
               </View>
             ) : null}
           </View>
-          {fare ? <Text style={styles.tripFare}>{`₹${Math.round(parseFloat(fare))}`}</Text> : null}
+          {fare ? <Text style={styles.tripFare}>{formatMoney(fare)}</Text> : null}
         </View>
       ) : null}
 
@@ -189,10 +190,9 @@ const styles = StyleSheet.create({
   centered: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
   content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
   header: { alignItems: 'center', gap: 4 },
-  photo: { width: 84, height: 84, borderRadius: 42, marginBottom: spacing.sm, borderWidth: 3, borderColor: colors.surface },
-  photoFallback: { backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
   title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold },
-  subtitle: { ...typography.body, color: colors.ink600 },
+  subtitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
+  vehicleLine: { ...typography.caption, color: colors.ink400 },
   tripCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
   tripRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   tripAddress: { ...typography.caption, color: colors.ink600, flex: 1 },

@@ -20,9 +20,14 @@ export const BCRYPT_ROUNDS = 12
 export const BROADCAST_WINDOW_SECONDS = 20
 export const BROADCAST_MAX_DRIVERS = 5
 export const BROADCAST_ROUND_MAX = 3
-// Hard cap on driver-to-pickup distance for ride requests. Client spec; TBC Monday.
+// Driver-to-pickup radius for ride requests. Client spec; TBC Monday.
 // City = rental. Outstation = one_way + round_trip.
-export function maxPickupRadiusMetres(rideType: string, categorySlug: string | null, tripHours?: number): number {
+// Round 1 uses the base value; each later broadcast round adds BROADCAST_ROUND_STEP_METRES.
+export const BROADCAST_ROUND_STEP_METRES = 1_000
+export function maxPickupRadiusMetres(rideType: string, categorySlug: string | null, tripHours?: number, round = 1): number {
+  return baseRadiusMetres(rideType, categorySlug, tripHours) + (Math.max(round, 1) - 1) * BROADCAST_ROUND_STEP_METRES
+}
+function baseRadiusMetres(rideType: string, categorySlug: string | null, tripHours?: number): number {
   if (rideType !== 'rental') return 10_000
   if (tripHours !== undefined && tripHours > 2) return 4_000
   return categorySlug === 'auto_rickshaw' ? 2_000 : 2_500
@@ -104,6 +109,15 @@ export const RENTAL_OVERAGE_GRACE_MIN = 5
 // stops included) is treated as noise (ST_Length over a jumpy trail) — km overage is
 // skipped and the ride is flagged. City rentals rarely average anywhere near this.
 export const RENTAL_MAX_PLAUSIBLE_AVG_KMH = 60
+
+// Round-trip booked window (pricing_version 2, bookings up to 24h): time past the booked
+// hours is free for this long, then billed per minute at hour_rate / 60. Same value as the
+// rental grace by design; clients receive it as `overtimeGraceMin` rather than hardcoding it.
+export const ROUND_TRIP_OVERTIME_GRACE_MIN = 5
+// Overtime beyond this many billed minutes is still billed in full but flagged for ops review.
+export const ROUND_TRIP_OVERTIME_REVIEW_MIN = 60
+// Longest booking priced per hour; above this the per-day package applies (unchanged).
+export const ROUND_TRIP_HOURLY_MAX_HOURS = 24
 
 // City boundary editor (admin) — see docs/superpowers/specs/2026-09-25-admin-city-boundary-editor-plan.md
 export const CITY_BOUNDARY_MAX_VERTICES = 10_000

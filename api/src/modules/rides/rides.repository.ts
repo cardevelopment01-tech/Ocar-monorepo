@@ -3,6 +3,7 @@ import { cachedRead } from '@/lib/cache/reference-cache'
 import { logger } from '@/lib/logger'
 import { categoryFallbackKey } from '@/constants/redis-keys'
 import { docIssueExistsSql } from '@/modules/drivers/drivers.repository'
+import type { TripWindowRow } from '@/lib/trip-window'
 import type { AssignCandidate, BillingMode, DriverSession, NearbyDriver, Ride, RideCore, RideStop, StopInput } from './rides.types'
 import {
   STALE_REQUESTED_MINUTES,
@@ -439,6 +440,38 @@ export async function appendRideStop(
   return res.rows[0]!
 }
 
+// Rewrites sequences for pending stops (see rides.service planStopOrder). Two-phase
+// because UNIQUE(ride_id, sequence) rejects a direct swap; the row lock keeps a
+// concurrent add/resolve from interleaving with the rewrite. `sequence` is a
+// SMALLINT with CHECK (> 0), so the parking offset must stay under 32767 and
+// can't go negative (a +1000000 offset overflowed and silently rolled back).
+export async function resequenceStops(
+  rideId: bigint,
+  moves: Array<{ id: string; sequence: number }>
+): Promise<void> {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query(`SELECT 1 FROM ride_stops WHERE ride_id = $1 FOR UPDATE`, [rideId])
+    await client.query(
+      `UPDATE ride_stops SET sequence = sequence + 10000 WHERE ride_id = $1 AND id = ANY($2::bigint[])`,
+      [rideId, moves.map(m => m.id)]
+    )
+    for (const m of moves) {
+      await client.query(
+        `UPDATE ride_stops SET sequence = $3, updated_at = now() WHERE ride_id = $1 AND id = $2`,
+        [rideId, m.id, m.sequence]
+      )
+    }
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
 // Stamp arrival at a stop so wait time can be measured server-side. Idempotent
 // (COALESCE) so a re-tap doesn't reset the clock. One-way only in practice —
 // the driver app only sends 'arrived' for one-way rides.
@@ -555,11 +588,14 @@ export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | n
        u.rating_avg AS user_rating,
        d.full_name  AS driver_name,
        d.phone      AS driver_phone,
-       fs.total_estimated
+       fs.total_estimated,
+       fs.pricing_version, fs.overtime_min, fs.overtime_fare,
+       hrc.hour_rate AS round_trip_hour_rate
      FROM rides r
      LEFT JOIN users u           ON u.id = r.user_id
      LEFT JOIN drivers d         ON d.id = r.driver_id
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+     LEFT JOIN rate_cards hrc    ON hrc.id = fs.rate_card_id
      WHERE r.driver_id = $1
        AND r.status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
      ORDER BY r.accepted_at DESC
@@ -595,11 +631,15 @@ const RIDE_SELECT_SQL = `SELECT
        d.full_name  AS driver_name,
        d.phone      AS driver_phone,
        d.rating_avg           AS driver_rating,
+       d.total_rides          AS driver_total_trips,
+       (d.status = 'active')  AS driver_verified,
        d.reference_selfie_url AS driver_photo,
        fs.total_estimated,
        fs.total_final, fs.base_fare, fs.distance_fare, fs.time_fare, fs.stop_fare,
        fs.hour_surcharge, fs.overage_fare, fs.surge_fare, fs.surge_multiplier,
        fs.actual_km, fs.actual_min,
+       fs.pricing_version, fs.waiting_fare, fs.overtime_min, fs.overtime_fare,
+       hrc.hour_rate  AS round_trip_hour_rate,
        rc.reason      AS cancellation_reason,
        rc.reason_code AS cancellation_reason_code,
        ur.score AS user_rating_given,
@@ -623,6 +663,7 @@ const RIDE_SELECT_SQL = `SELECT
      LEFT JOIN users u             ON u.id = r.user_id
      LEFT JOIN drivers d           ON d.id = r.driver_id
      LEFT JOIN fare_snapshots fs   ON fs.ride_id = r.id
+     LEFT JOIN rate_cards hrc      ON hrc.id = fs.rate_card_id
      LEFT JOIN ride_cancellations rc ON rc.ride_id = r.id
      LEFT JOIN ratings ur ON ur.ride_id = r.id AND ur.direction = 'user_to_driver'
      LEFT JOIN driver_vehicles dv  ON dv.driver_id = r.driver_id AND dv.is_primary = true AND dv.status != 'blacklisted'
@@ -632,6 +673,22 @@ const RIDE_SELECT_SQL = `SELECT
      LEFT JOIN vehicle_categories avc ON avc.id = dv.category_id
      LEFT JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
      LEFT JOIN payments p          ON p.ride_id = r.id`
+
+// Just the columns tripWindowFields needs, for callers that have no full ride row (start-of-trip
+// nudge scheduling and the socket payload). Same column names as RIDE_SELECT_SQL.
+export async function getTripWindowInputs(rideId: bigint): Promise<TripWindowRow | null> {
+  const res = await pool.query<TripWindowRow>(
+    `SELECT r.ride_type, r.status, r.started_at, r.trip_hours::float8 AS trip_hours,
+            fs.pricing_version::int AS pricing_version, fs.overtime_min, fs.overtime_fare,
+            hrc.hour_rate::float8 AS round_trip_hour_rate
+     FROM rides r
+     LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+     LEFT JOIN rate_cards hrc    ON hrc.id = fs.rate_card_id
+     WHERE r.id = $1`,
+    [rideId]
+  )
+  return res.rows[0] ?? null
+}
 
 export async function getRideById(rideId: bigint): Promise<Ride | null> {
   const res = await pool.query<Ride>(`${RIDE_SELECT_SQL} WHERE r.id = $1`, [rideId])
@@ -1126,6 +1183,20 @@ export async function expireAssignment(rideId: bigint, driverId: bigint): Promis
   )
 }
 
+// Driver explicitly declined the offer. Without this, declining was purely a
+// client-side dismissal — the row stayed 'offered' and getPendingAssignmentsForDriver
+// (below) would resurrect the same request, ringtone and all, on the driver's very
+// next socket reconnect within the offer's window (app foreground/background, a
+// network blip, even the reconnect right after finishing an unrelated trip).
+export async function declineAssignment(rideId: bigint, driverId: bigint): Promise<void> {
+  await pool.query(
+    `UPDATE ride_assignments
+     SET status = 'declined', responded_at = now()
+     WHERE ride_id = $1 AND driver_id = $2 AND status = 'offered'`,
+    [rideId, driverId]
+  )
+}
+
 export async function getCityBillingMode(cityId: bigint): Promise<BillingMode> {
   const res = await pool.query<{ billing_mode: BillingMode }>(
     `SELECT billing_mode FROM cities WHERE id = $1`,
@@ -1283,6 +1354,7 @@ export interface FareRecomputeInput {
   estimated_min:    number
   stop_count:       number
   trip_hours:       number
+  pricing_version:  1 | 2
   rental_package_id: number | null
   origin_city_id:   number | null
   total_estimated:  number
@@ -1292,7 +1364,7 @@ export async function getFareRecomputeInput(rideId: bigint): Promise<FareRecompu
   const res = await pool.query(
     `SELECT r.category_id::int, r.origin_city_id::int,
             fs.ride_type, fs.is_return_cab, fs.estimated_km::float8, fs.estimated_min::float8,
-            fs.stop_count::int, fs.trip_hours::float8, fs.rental_package_id::int,
+            fs.stop_count::int, fs.trip_hours::float8, fs.pricing_version::int, fs.rental_package_id::int,
             fs.total_estimated::float8
      FROM fare_snapshots fs
      JOIN rides r ON r.id = fs.ride_id
@@ -1311,6 +1383,7 @@ export async function updateFareSnapshotEstimate(
     breakdown: {
       base_fare: number; distance_fare: number; time_fare: number
       stop_fare: number; hour_surcharge: number; surge_fare: number; total: number
+      waiting_fare?: number
     }
   }
 ): Promise<void> {
@@ -1325,7 +1398,8 @@ export async function updateFareSnapshotEstimate(
          stop_fare        = $8,
          hour_surcharge   = $9,
          surge_fare       = $10,
-         total_estimated  = $11
+         total_estimated  = $11,
+         waiting_fare     = $12
      WHERE ride_id = $1`,
     [
       rideId,
@@ -1339,6 +1413,7 @@ export async function updateFareSnapshotEstimate(
       fareEstimate.breakdown.hour_surcharge,
       fareEstimate.breakdown.surge_fare,
       fareEstimate.breakdown.total,
+      fareEstimate.breakdown.waiting_fare ?? 0,
     ]
   )
 }
@@ -1447,7 +1522,7 @@ export async function getPendingAssignmentsForDriver(
      WHERE ra.driver_id = $1
        AND ra.expires_at > now()
        AND r.status = 'requested'
-       AND ra.status NOT IN ('accepted', 'cancelled')`,
+       AND ra.status NOT IN ('accepted', 'cancelled', 'declined', 'expired')`,
     [driverId]
   )
   return res.rows

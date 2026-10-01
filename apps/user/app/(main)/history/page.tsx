@@ -8,6 +8,7 @@ import { rideApi, type RideDetail, type RideHistoryItem, type UpcomingRide } fro
 import { cn } from '@/lib/utils'
 import { formatPickupTime } from '@/lib/format-pickup-time'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import { DriverAvatar, driverViewFromName } from '@/components/ride/DriverIdentity'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -106,7 +107,7 @@ function RideCard({ ride, onOpen }: { ride: RideHistoryItem; onOpen: () => void 
 
       {ride.driver_name && (
         <div className="flex items-center gap-2 pt-3 border-t border-border">
-          <MapPin size={12} className="text-text-muted flex-shrink-0" strokeWidth={1.8} />
+          <DriverAvatar view={driverViewFromName(ride.driver_name)} photo={null} size="sm" />
           <p className="text-xs text-text-muted">
             Driver: <span className="font-medium text-text-secondary">{ride.driver_name}</span>
           </p>

@@ -412,7 +412,7 @@ const styles = StyleSheet.create({
   listFlex: { flex: 1 },
   list: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   returnCabSection: { marginBottom: spacing.xs },
-  returnCabLabel: { ...typography.caption, fontFamily: fonts.bold, color: colors.success, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: spacing.xs },
+  returnCabLabel: { ...typography.caption, fontFamily: fonts.bold, color: colors.success, marginBottom: spacing.xs },
   returnCabDivider: { height: 1, backgroundColor: colors.borderLight, marginTop: spacing.xs, marginBottom: spacing.sm },
   divider: { height: 1, backgroundColor: colors.borderLight, marginVertical: 2 },
   skeletonCard: { height: 72, borderRadius: 16, backgroundColor: colors.surface3, marginBottom: spacing.sm },

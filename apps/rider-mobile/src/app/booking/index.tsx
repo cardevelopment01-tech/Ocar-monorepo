@@ -3,14 +3,14 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, pillTextFor } from '@ocar/mobile-shared'
 import { PlaceRow } from '@/features/booking/components/PlaceRow'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { fetchClassifyTrip, fetchNearestCityId, fetchPlaceDetail, fetchRoute, fetchSavedPlaces, type SavedPlace } from '@/features/booking/api'
 import { useAutocomplete } from '@/features/booking/hooks/useAutocomplete'
 import { useBookingDraftStore, type BookingPlace } from '@/features/booking/store'
 import type { RideType } from '@/features/booking/api'
-import { useLocationStore } from '@/store/useLocationStore'
+import { useFreshness, useLocationStore } from '@/store/useLocationStore'
 import { useRecentSearchesStore } from '@/store/useRecentSearchesStore'
 import { RedirectToast } from '@/features/booking/components/RedirectToast'
 import { sectionLabel } from '@/theme/homeTokens'
@@ -68,6 +68,7 @@ export default function BookingPickersScreen() {
   const [riderSheetOpen, setRiderSheetOpen] = useState(false)
 
   const location = useLocationStore()
+  const freshness = useFreshness()
   const recents = useRecentSearchesStore((s) => s.recents)
   const addRecent = useRecentSearchesStore((s) => s.addRecent)
 
@@ -76,15 +77,13 @@ export default function BookingPickersScreen() {
   // show fewer rows (same tolerance as the recent-searches/pickup-GPS paths).
   useEffect(() => { fetchSavedPlaces().then(setSavedPlaces).catch(() => {}) }, [])
 
-  // Pickup is always current location by default (per the search-flow redesign
-  // this replaced) -- filled the instant useLocationStore resolves, which is
-  // usually already in flight (or done) by the time this screen mounts, since
-  // root layout kicks it off at app open. Tapping FROM still lets the rider
-  // override it, same as web.
+  // Pickup defaults to the current location, but only from a fresh fix (GPS this launch, or under 2 minutes
+  // old). The saved location seeds the home map only: it must never become a booking pickup, since a stale
+  // spot would be quoted and dispatched. Tapping FROM still lets the rider override it, same as web.
   useEffect(() => {
-    if (pickup || !location.ready || location.permissionDenied || location.lat === null) return
+    if (pickup || freshness !== 'live' || location.lat === null) return
     setPickup({ address: location.address || 'Current Location', lat: location.lat, lng: location.lng! })
-  }, [pickup, location.ready, location.permissionDenied, location.lat, location.lng, location.address, setPickup])
+  }, [pickup, freshness, location.lat, location.lng, location.address, setPickup])
 
   // Which field is actively showing a TextInput right now -- null means both
   // rows show their confirmed/placeholder text. Distinct from "which field was
@@ -269,9 +268,8 @@ export default function BookingPickersScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleContinue closes over pickup/drop/rideType already in this render; including it would refire every render
   }, [pickup, drop])
 
-  const pickupLabel = !location.ready && !pickup
-    ? 'Finding your location…'
-    : pickup?.address || 'Set pickup location'
+  // Same wording as the home pill (pillTextFor), so both screens flip together at the 8 s fix cap.
+  const pickupLabel = pickup ? pickup.address || 'Set pickup location' : pillTextFor(freshness, '').text
   const canContinue = !!pickup && !!drop
 
   return (
@@ -409,7 +407,7 @@ export default function BookingPickersScreen() {
           <>
             {recents.length > 0 ? (
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>RECENT</Text>
+                <Text style={styles.sectionLabel}>Recent</Text>
                 {recents.map((r, i) => (
                   <PlaceRow
                     key={`${r.address}-${i}`}
@@ -425,7 +423,7 @@ export default function BookingPickersScreen() {
             ) : null}
             {savedPlaces.length > 0 ? (
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>FAVOURITES</Text>
+                <Text style={styles.sectionLabel}>Favourites</Text>
                 {savedPlaces.map((p, i) => (
                   <PlaceRow
                     key={p.id}
@@ -440,7 +438,7 @@ export default function BookingPickersScreen() {
               </View>
             ) : null}
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>POPULAR</Text>
+              <Text style={styles.sectionLabel}>Popular</Text>
               {POPULAR.map((p, i) => (
                 <PlaceRow
                   key={p.label}

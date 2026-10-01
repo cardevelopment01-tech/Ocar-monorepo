@@ -269,6 +269,15 @@ export interface AdminRideStop {
 
 export interface AdminRideFareBreakdown {
   base_fare: string | null
+  // Hourly round trips: the booked-hours charge (pre-surge); overtime is added after surge.
+  waiting_fare?: string | null
+  // Booked window (api lib/trip-window.ts): null for rides with no hourly window.
+  trip_hours?: number | null
+  bookedUntil?: string | null
+  overtimeRate?: number | null
+  overtimeGraceMin?: number | null
+  overtimeMin?: number | null
+  overtimeFare?: number | null
   distance_fare: string | null
   time_fare: string | null
   stop_fare: string | null

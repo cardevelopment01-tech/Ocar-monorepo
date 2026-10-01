@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
+import { geo } from '@/theme/homeTokens'
 import { Card, colors, formatCurrency, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { formatPickupTime } from '@/lib/formatPickupTime'
 import { RouteRow } from './RouteRow'
@@ -51,7 +52,7 @@ export function UpcomingCard({ ride, onOpen, onCancel, cancelling }: UpcomingCar
 }
 
 const styles = StyleSheet.create({
-  wrapper: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
+  wrapper: { paddingHorizontal: geo.gutter, paddingVertical: spacing.xs },
   card: { gap: spacing.sm },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   scheduledPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.infoLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },

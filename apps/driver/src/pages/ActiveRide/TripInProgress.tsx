@@ -6,6 +6,8 @@ import {
   useMotionValue, useTransform, useMotionValueEvent, animate,
 } from 'framer-motion'
 import SOSButton from '@/components/ui/SOSButton'
+import TripClock from '@/components/ui/TripClock'
+import RoundTripBanner from '@/components/ui/RoundTripBanner'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import OtpVerifyPanel from '@/components/ui/OtpVerifyPanel'
 import VoiceToggleButton from '@/components/ui/VoiceToggleButton'
@@ -684,6 +686,14 @@ export default function TripInProgress() {
             </div>
           </div>
 
+          {/* Booked-time clock (hourly round trips only; renders nothing without a window). Pinned with the
+              status line, above the primary action, so it stays visible when the sheet is collapsed. */}
+          <TripClock
+            bookedUntil={activeRide?.bookedUntil}
+            overtimeGraceMin={activeRide?.overtimeGraceMin}
+            overtimeRate={activeRide?.overtimeRate}
+          />
+
           {/* Slide, not tap — accident-proof like the stop-advance controls below;
               hidden while the end-OTP sheet is open so its own retry timer doesn't
               fire a false "couldn't confirm" (that sheet is the real completion, not this). */}
@@ -749,6 +759,7 @@ export default function TripInProgress() {
             {callError && <p className="text-accent-red text-xs mt-2 text-center">Couldn't connect the call. Try again.</p>}
 
             {/* Context banners */}
+            {activeRide?.rideType === 'round_trip' && <RoundTripBanner hours={activeRide.tripHours} />}
             {activeRide?.rideType === 'round_trip' && activeRide.returnAt && (
               <div className="flex items-center gap-2 mt-3 mb-3 px-3 py-2 rounded-xl" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)' }}>
                 <RotateCcw size={11} style={{ color: '#D97706' }} className="flex-shrink-0" />

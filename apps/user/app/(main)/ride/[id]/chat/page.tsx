@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useParams, useRouter } from 'next/navigation'
 import { ChevronLeft, Check, CheckCheck, Send } from 'lucide-react'
-import { rideApi, type ChatMessage } from '@/lib/ride-api'
+import { rideApi, type ChatMessage, type RideDetail } from '@/lib/ride-api'
+import { DriverRow, driverViewFromRide } from '@/components/ride/DriverIdentity'
 import { connectSocket, joinRideRoom, getSocket } from '@/lib/socket'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -25,18 +26,8 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
 }
 
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(w => w[0]?.toUpperCase())
-    .join('')
-}
-
 const CLOSED_STATUSES = new Set(['completed', 'cancelled', 'no_drivers'])
 
-type DriverInfo = { name: string | null; photo: string | null; rating: string | null }
 
 export default function RideChatPage() {
   const params = useParams<{ id: string }>()
@@ -46,7 +37,7 @@ export default function RideChatPage() {
   const [messages, setMessages] = useState<LocalMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [input, setInput] = useState('')
-  const [driver, setDriver] = useState<DriverInfo>({ name: null, photo: null, rating: null })
+  const [driverRide, setDriverRide] = useState<RideDetail | null>(null)
   const [rideStatus, setRideStatus] = useState<string | null>(null)
   const listEndRef = useRef<HTMLDivElement>(null)
   const lastSeenIdRef = useRef<string | undefined>(undefined)
@@ -90,7 +81,7 @@ export default function RideChatPage() {
 
     rideApi.getRide(rideId).then(ride => {
       if (!mounted) return
-      setDriver({ name: ride.driver_name, photo: ride.driver_photo, rating: ride.driver_rating })
+      setDriverRide(ride)
       setRideStatus(ride.status)
     }).catch(() => {})
 
@@ -202,29 +193,7 @@ export default function RideChatPage() {
         >
           <ChevronLeft size={18} className="text-text-primary" />
         </button>
-        {driver.photo ? (
-          <img
-            src={driver.photo}
-            alt={driver.name ?? 'Driver'}
-            className="w-9 h-9 rounded-xl object-cover flex-shrink-0"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-          />
-        ) : (
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-[12px] font-bold bg-gradient-primary"
-          >
-            {driver.name ? getInitials(driver.name) : '?'}
-          </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[15px] leading-tight truncate text-text-primary">{driver.name ?? 'Your driver'}</p>
-          {driver.rating && (
-            <div className="flex items-center gap-1 mt-0.5">
-              <span className="text-amber-400 text-[11px]">★</span>
-              <span className="text-[12px] font-medium text-text-secondary">{Number(driver.rating).toFixed(1)}</span>
-            </div>
-          )}
-        </div>
+        <DriverRow view={driverViewFromRide(driverRide)} photo={driverRide?.driver_photo ?? null} />
       </div>
 
       {/* Message list */}
