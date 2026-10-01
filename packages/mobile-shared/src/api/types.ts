@@ -105,6 +105,11 @@ export type RideDetail = {
   hourSurcharge: string | null
   overageFare: string | null
   surgeFare: string | null
+  surgeMultiplier: string | null
+  actualKm: string | null
+  actualMin: string | null
+  requestedAt: string | null
+  completedAt: string | null
   startOtp: string | null
   endOtp: string | null
   stops: RideStop[]
