@@ -13,6 +13,9 @@ const log = logger.child({ module: 'broadcast-processor' })
 
 const MAX_DRIVERS = BROADCAST_MAX_DRIVERS
 
+// Expanding search radius per round — generous for intercity context (Bhubaneswar city ~20km dia)
+const ROUND_RADII: Record<number, number> = { 1: 5000, 2: 10000, 3: 20000 }
+
 export interface BroadcastJobData {
   rideId: string
   categoryId: string
@@ -64,7 +67,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   }> = []
 
   const slug = data.rideType === 'rental' ? await repo.getCategorySlug(categoryId) : null
-  const cap = maxPickupRadiusMetres(data.rideType, slug, data.tripHours, data.broadcastRound)
+  const cap = maxPickupRadiusMetres(data.rideType, slug, data.tripHours)
 
   if (data.isReturnCab && data.destinationLat != null && data.destinationLng != null) {
     const returnDrivers = await repo.findReturnCabDrivers({
@@ -88,7 +91,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   }
 
   if (drivers.length < MAX_DRIVERS) {
-    const radiusMetres = Math.min(cap, data.radiusMetres ?? cap)
+    const radiusMetres = Math.min(cap, data.radiusMetres ?? ROUND_RADII[data.broadcastRound] ?? 8000)
     const standardDrivers = await repo.findNearbyDrivers({
       lat: data.originLat,
       lng: data.originLng,

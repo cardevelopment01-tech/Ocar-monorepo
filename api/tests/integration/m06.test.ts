@@ -84,17 +84,18 @@ describe('M06 — Pricing', () => {
     it('TC-M06-005: round-trip estimate doubles distance and applies the round_trip rate card', async () => {
       const res = await request(app)
         .post('/api/v1/pricing/estimate')
-        .send({ category_id: categoryId, ride_type: 'round_trip', distance_km: 15, duration_min: 30, trip_hours: 6 })
+        .send({ category_id: categoryId, ride_type: 'round_trip', distance_km: 15, duration_min: 30, trip_hours: 36 })
       expect(res.status, JSON.stringify(res.body)).toBe(200)
       expect(res.body.breakdown.total).toBeGreaterThan(0)
-      // trip_hours 6 -> clamped to max(4, ceil(6))=6 -> 1 day (ceil(6/24)=1).
-      // packageKm = 1 * km_per_day(250) = 250; distance_km sent is doubled to 30,
+      // Bookings over 24h keep the per-day package (pricing_version 1); up to 24h is hourly.
+      // trip_hours 36 -> 2 days (ceil(36/24)=2).
+      // packageKm = 2 * km_per_day(250) = 500; distance_km sent is doubled to 30,
       // which is under the 250km package floor, so overage is 0 and distance_fare
-      // is billed at the full package km (250 * 13/km = 3250).
-      expect(res.body.breakdown.distance_fare).toBe(3250)
+      // is billed at the full package km (500 * 13/km = 6500).
+      expect(res.body.breakdown.distance_fare).toBe(6500)
       expect(res.body.breakdown.overage_fare).toBe(0)
-      // driver allowance: 1 day * 300/day = 300 (surfaced via hour_surcharge field).
-      expect(res.body.breakdown.hour_surcharge).toBe(300)
+      // driver allowance: 2 days * 300/day = 600 (surfaced via hour_surcharge field).
+      expect(res.body.breakdown.hour_surcharge).toBe(600)
     })
 
     it('TC-M06-006: rental estimate uses the matched rental package fare', async () => {

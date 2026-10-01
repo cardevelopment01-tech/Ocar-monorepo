@@ -280,7 +280,7 @@ async function computeRoute(
     polyline,
     source: 'google',
   }
-  if (opts?.trafficAware) result.trafficDurationMin = durationMin(route.duration)
+  if (trafficAware) result.trafficDurationMin = durationMin(route.duration)
 
   if (opts?.withSteps) {
     const steps = route.legs?.[0]?.steps ?? []
