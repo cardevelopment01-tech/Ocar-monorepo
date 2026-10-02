@@ -69,7 +69,7 @@ export function RideHistoryList() {
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
             >
-              <Text style={[styles.tabPillText, active ? styles.tabPillTextActive : null]}>{t.label}</Text>
+              <Text style={[styles.tabPillText, active ? styles.tabPillTextActive : null]} maxFontSizeMultiplier={1.15} numberOfLines={1}>{t.label}</Text>
             </Pressable>
           )
         })}
@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
   totalPill: { backgroundColor: colors.surface2, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
   totalPillText: { ...typography.caption, fontSize: 11, color: colors.ink400, fontFamily: fonts.semibold },
   tabsRow: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: geo.gutter },
-  tabPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radii.full, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  tabPill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.full, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
   tabPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   tabPillText: { ...typography.caption, fontSize: 12, color: colors.ink400, fontFamily: fonts.semibold },
   tabPillTextActive: { color: colors.inkInverse },

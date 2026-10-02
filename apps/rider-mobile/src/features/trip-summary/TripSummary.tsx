@@ -74,7 +74,8 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
     : (ride.destinationAddress ?? 'Destination')
   const driverView = driverViewFromRide(ride)
   const hasDriver = completed && ride.driverId != null
-  const fareCaption = !completed ? 'Cancellation fee' : null
+  // Only label a fee that exists: a free cancellation has no fare to caption.
+  const fareCaption = !completed && showFare ? 'Cancellation fee' : null
 
   const emailSupport = (subject: string) =>
     void Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Ride #${ride.id} - ${subject}`)}`)
@@ -130,7 +131,8 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
               <Text style={[styles.pillText, { color: completed ? colors.success : colors.error }]}>{completed ? 'Completed' : ride.status === 'no_drivers' ? 'No drivers found' : 'Cancelled'}</Text>
             </View>
             {fareCaption ? <Text style={styles.sub}>{fareCaption}</Text> : null}
-            {pay && pay.kind === 'paid' ? <Text style={styles.sub}>{pay.text}</Text> : null}
+            {/* The receipt's Payment row says this when there are fare rows; only repeat it when there are none. */}
+            {pay && pay.kind === 'paid' && invoice.rows.length === 0 ? <Text style={styles.sub}>{pay.text}</Text> : null}
           </View>
           {pay && pay.kind === 'cash_due' ? (
             <View style={styles.dueStrip} accessibilityRole="alert">
@@ -238,11 +240,13 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
         {/* Help + ride id */}
         <View style={styles.ruled}>
-          <Pressable onPress={() => emailSupport('receipt')} accessibilityRole="link" accessibilityLabel="Email a receipt request" style={styles.listRow}>
-            <Text style={styles.listLabel}>Download receipt</Text>
-            <Feather name="chevron-right" size={20} color={colors.ink600} />
-          </Pressable>
-          <Pressable onPress={() => emailSupport('help')} accessibilityRole="link" accessibilityLabel="Get help with this trip, email support" style={[styles.listRow, styles.ruled]}>
+          {completed ? (
+            <Pressable onPress={() => emailSupport('receipt')} accessibilityRole="link" accessibilityLabel="Email a receipt request" style={styles.listRow}>
+              <Text style={styles.listLabel}>Download receipt</Text>
+              <Feather name="chevron-right" size={20} color={colors.ink600} />
+            </Pressable>
+          ) : null}
+          <Pressable onPress={() => emailSupport('help')} accessibilityRole="link" accessibilityLabel="Get help with this trip, email support" style={[styles.listRow, completed ? styles.ruled : null]}>
             <Text style={styles.listLabel}>Get help with this trip</Text>
             <Feather name="chevron-right" size={20} color={colors.ink600} />
           </Pressable>
