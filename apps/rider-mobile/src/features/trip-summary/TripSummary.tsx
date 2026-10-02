@@ -19,6 +19,9 @@ import {
 const SUPPORT_EMAIL = 'support@ocarindia.com'
 const CASH_POLL_MS = 15_000
 const MAP_HEIGHT = 168
+// Marker pins draw above their coordinate, so the top needs ~a pin of room; the default full-screen padding
+// (80 top + 80 bottom) is bigger than this whole map and makes it zoom out to the continent.
+const MAP_FIT_PADDING = { top: 64, right: 48, bottom: 28, left: 48 }
 
 export type TripSummaryProps = {
   ride: RideDetailExtra
@@ -71,7 +74,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
     : (ride.destinationAddress ?? 'Destination')
   const driverView = driverViewFromRide(ride)
   const hasDriver = completed && ride.driverId != null
-  const fareCaption = !completed ? 'Cancellation fee' : invoice.isEstimate ? 'Estimated fare' : null
+  const fareCaption = !completed ? 'Cancellation fee' : null
 
   const emailSupport = (subject: string) =>
     void Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Ride #${ride.id} - ${subject}`)}`)
@@ -97,6 +100,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
               drop={[ride.destLat!, ride.destLng!]}
               driverPos={null}
               routePoints={route}
+              edgePadding={MAP_FIT_PADDING}
               showDrop
               stops={ride.stops.map((s): [number, number] => [s.lat, s.lng])}
             />
@@ -175,7 +179,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
               ))}
             </View>
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>{invoice.isEstimate ? 'Estimated total' : 'Total'}</Text>
+              <Text style={styles.totalLabel}>Total</Text>
               <Text style={styles.totalAmount} maxFontSizeMultiplier={1.3}>{formatMoney(invoice.total)}</Text>
             </View>
             {pay ? (
