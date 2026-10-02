@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
@@ -18,10 +19,10 @@ import {
 // (apps/user/lib/company.ts). The ride id in the subject lets support find the trip.
 const SUPPORT_EMAIL = 'support@ocarindia.com'
 const CASH_POLL_MS = 15_000
-const MAP_HEIGHT = 168
+const MAP_HEIGHT = 196
 // Marker pins draw above their coordinate, so the top needs ~a pin of room; the default full-screen padding
 // (80 top + 80 bottom) is bigger than this whole map and makes it zoom out to the continent.
-const MAP_FIT_PADDING = { top: 64, right: 48, bottom: 28, left: 48 }
+const MAP_FIT_PADDING = { top: 56, right: 48, bottom: 28, left: 48 }
 
 export type TripSummaryProps = {
   ride: RideDetailExtra
@@ -90,7 +91,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + (canGoBack ? spacing.lg : 96) }}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + (canGoBack ? spacing.lg : 96) }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Route preview: non-interactive so it never fights the scroll. */}
@@ -110,6 +111,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
         {/* Headline: what happened on the left, what it cost on the right. */}
         <View style={styles.section}>
+          <LinearGradient colors={[colors.primarySubtle, colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.9 }} style={styles.heroTint} />
           <View style={styles.headRow}>
             <View style={styles.flex}>
               <Text style={styles.title} numberOfLines={2}>{tripTitle(ride)}</Text>
@@ -143,7 +145,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
         </View>
 
         {/* Route */}
-        <View style={[styles.section, styles.ruled]}>
+        <View style={styles.section}>
           <View style={styles.routeRow}>
             <View style={styles.dots}>
               <View style={[styles.dot, styles.dotPickup]} />
@@ -167,7 +169,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
         {/* Fare receipt: label and detail left, amount right in tabular figures. */}
         {completed && invoice.rows.length > 0 ? (
-          <View style={[styles.section, styles.ruled]}>
+          <View style={styles.section}>
             <Text style={styles.sectionTitle}>Fare receipt</Text>
             <View style={styles.receipt}>
               {invoice.rows.map((row) => (
@@ -195,7 +197,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
         {/* Time breakdown: only exists when a round trip ran past its booked window. */}
         {timeline ? (
-          <View style={styles.ruled}>
+          <View style={styles.listCard}>
             <Pressable
               onPress={() => setBreakdownOpen((o) => !o)}
               accessibilityRole="button"
@@ -224,14 +226,15 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
         {/* Driver + rating */}
         {hasDriver ? (
-          <View style={[styles.section, styles.ruled]}>
+          <View style={styles.section}>
             <View style={styles.driverRow}>
               <DriverAvatar view={driverView} photo={ride.driverPhoto} size="md" />
               <View style={styles.flex}>
                 <Text style={styles.driverName} numberOfLines={1}>{driverView.name}</Text>
                 <Text style={styles.sub} numberOfLines={1}>
-                  {driverView.ratingText ? `${driverView.ratingText} rating · ` : ''}{driverView.vehicleLine}{driverView.plate ? ` · ${driverView.plate}` : ''}
+                  {driverView.ratingText ? `${driverView.ratingText} rating · ` : ''}{driverView.vehicleLine}
                 </Text>
+                {driverView.plate ? <Text style={styles.plate} numberOfLines={1}>{driverView.plate}</Text> : null}
               </View>
             </View>
             <RatingSection rideId={ride.id} driverName={driverView.name} existing={ride.userRatingGiven} onRated={onRefresh} />
@@ -239,7 +242,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
         ) : null}
 
         {/* Help + ride id */}
-        <View style={styles.ruled}>
+        <View style={styles.listCard}>
           {completed ? (
             <Pressable onPress={() => emailSupport('receipt')} accessibilityRole="link" accessibilityLabel="Email a receipt request" style={styles.listRow}>
               <Text style={styles.listLabel}>Download receipt</Text>
@@ -264,21 +267,26 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 }
 
 const hair = { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border } as const
+const cardShadow = { shadowColor: colors.primary, shadowOpacity: 0.1, shadowRadius: 16, shadowOffset: { width: 0, height: 2 }, elevation: 3 } as const
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.surface },
+  screen: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1, minWidth: 0 },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
   backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { ...typography.headline, color: colors.ink900 },
-  map: { height: MAP_HEIGHT, backgroundColor: colors.surface3 },
+  content: { paddingHorizontal: spacing.md, gap: spacing.sm + 4 },
+  map: { height: MAP_HEIGHT, borderRadius: radii['2xl'], overflow: 'hidden', backgroundColor: colors.surface3 },
 
-  section: { paddingHorizontal: spacing.md + 4, paddingVertical: spacing.md + 4, gap: spacing.sm + 4 },
+  // DESIGN.md Cards: white, 24px radius, teal-tinted ambient shadow (never neutral grey), no nested cards.
+  section: { backgroundColor: colors.surface, borderRadius: radii['2xl'], padding: spacing.md + 4, gap: spacing.sm + 4, ...cardShadow },
+  listCard: { backgroundColor: colors.surface, borderRadius: radii['2xl'], ...cardShadow },
+  heroTint: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: radii['2xl'] },
   ruled: hair,
-  headRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  headRow: { gap: spacing.xs },
   title: { ...typography.title, fontSize: 20, lineHeight: 26, color: colors.ink900 },
   sub: { ...typography.label, color: colors.ink600 },
-  fare: { fontFamily: fonts.bold, fontSize: 30, lineHeight: 36, letterSpacing: -0.6, color: colors.ink900, fontVariant: ['tabular-nums'] },
+  fare: { fontFamily: fonts.bold, fontSize: 40, lineHeight: 46, letterSpacing: -1, color: colors.ink900, fontVariant: ['tabular-nums'] },
   statusRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
   pillOk: { backgroundColor: colors.successLight },
@@ -303,7 +311,7 @@ const styles = StyleSheet.create({
   receiptLabel: { ...typography.body, lineHeight: 22, color: colors.ink900 },
   receiptDetail: { ...typography.label, color: colors.ink600 },
   receiptAmount: { ...typography.body, lineHeight: 22, color: colors.ink900, fontFamily: fonts.semibold, fontVariant: ['tabular-nums'] },
-  totalRow: { ...hair, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.md, paddingTop: spacing.md },
+  totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, backgroundColor: colors.primarySubtle, borderRadius: radii.lg, paddingVertical: spacing.sm + 6, paddingHorizontal: spacing.md, marginTop: spacing.xs },
   totalLabel: { ...typography.title, color: colors.ink900, flex: 1 },
   totalAmount: { fontFamily: fonts.bold, fontSize: 22, lineHeight: 28, color: colors.ink900, fontVariant: ['tabular-nums'] },
 
@@ -315,8 +323,10 @@ const styles = StyleSheet.create({
 
   driverRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4 },
   driverName: { ...typography.title, fontSize: 16, color: colors.ink900 },
+  // The plate is what a rider matches against the car, so it never shares a truncating line.
+  plate: { ...typography.label, fontFamily: fonts.bold, letterSpacing: 1, color: colors.ink900 },
 
   rideId: { ...typography.label, color: colors.ink600, textAlign: 'center', paddingVertical: spacing.md },
 
-  footer: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.md, paddingTop: spacing.sm, backgroundColor: colors.surface },
+  footer: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.md, paddingTop: spacing.sm, backgroundColor: colors.bg },
 })
