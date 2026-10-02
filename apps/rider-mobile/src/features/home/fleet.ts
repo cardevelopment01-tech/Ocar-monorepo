@@ -23,8 +23,6 @@ const COPY: Record<string, { desc: string; image: ImageSourcePropType | null }> 
 /** Reference vehicle render for a category slug (null -> caller falls back to the shared VehicleIcon). */
 export const fleetImageFor = (slug: string): ImageSourcePropType | null => COPY[slug]?.image ?? null
 
-const ORDER = ['auto', 'auto_rickshaw', 'hatchback', 'sedan', 'luxury', 'suv', 'van']
-
 // Offline / first-paint fallback, exactly the five vehicles in the reference.
 const FALLBACK: FleetItem[] = [
   { slug: 'auto', name: 'Auto Rickshaw', seats: 3 },
@@ -45,7 +43,6 @@ export function useFleet(): FleetItem[] {
       .then((cats) => {
         const next = cats
           .filter((c) => c.isActive)
-          .sort((a, b) => (ORDER.indexOf(a.slug) + 1 || 99) - (ORDER.indexOf(b.slug) + 1 || 99))
           .map((c) => ({
             key: String(c.id),
             slug: c.slug,
