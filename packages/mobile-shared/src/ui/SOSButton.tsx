@@ -17,6 +17,8 @@ export type SOSButtonProps = {
   // bottom button to collide with. Active-ride screens that dock a full-width primary CTA to the
   // bottom (driver-mobile) need 'top-right'.
   anchor?: 'top-right' | 'bottom-right'
+  /** Distance from the anchored edge, overriding the default (safe-area top / spacing.xl bottom). */
+  offset?: number
 }
 
 type Phase = 'idle' | 'sending' | 'sent' | 'error' | 'rate_limited'
@@ -30,7 +32,7 @@ const OPEN_LABEL = 'Emergency SOS, double tap for safety options'
  * stray touch cannot page the safety team. The alert is sent by holding the red button for about a
  * second; calling the emergency number is one tap and always available.
  */
-export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = 'bottom-right' }: SOSButtonProps) {
+export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = 'bottom-right', offset }: SOSButtonProps) {
   const insets = useSafeAreaInsets()
   const [open, setOpen] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
@@ -67,7 +69,7 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
     void Linking.openURL(`tel:${number}`)
   }
 
-  const anchorStyle = anchor === 'top-right' ? { top: insets.top + spacing.md } : { bottom: spacing.xl }
+  const anchorStyle = anchor === 'top-right' ? { top: offset ?? insets.top + spacing.md } : { bottom: offset ?? spacing.xl }
   const busy = phase === 'sending'
   const canHold = phase === 'idle' || phase === 'error'
 

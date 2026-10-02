@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import { Alert, BackHandler, Pressable, StyleSheet, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { CancelSheet, ErrorState, SOSButton, Skeleton, TripClock, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
@@ -20,12 +21,15 @@ import { StopCard } from '@/features/active-ride/components/StopCard'
 import { StopTimeline } from '@/features/active-ride/components/StopTimeline'
 import { StopAddedBanner } from '@/features/active-ride/components/StopAddedBanner'
 import { ActiveRideMap } from '@/features/active-ride/components/ActiveRideMap'
-import { GoogleGuidedMap } from '@/features/active-ride/components/GoogleGuidedMap'
+import { GoogleGuidedMap, GUIDED_CONTROLS_HEIGHT } from '@/features/active-ride/components/GoogleGuidedMap'
 import { SpeedAlertToast } from '@/features/active-ride/components/SpeedAlertToast'
 import { triggerSos } from '@/features/active-ride/safety-api'
 import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosition'
 import { useSpeedAlert } from '@/features/active-ride/useSpeedAlert'
 import { useTripWindow } from '@/features/active-ride/useTripWindow'
+
+// SOSButton's circle diameter, to centre it in the guided-nav control strip.
+const SOS_SIZE = 56
 
 // Same reason list as web driver's NavigateToPickup.tsx:691-698 (the confirmed
 // source for driver-side cancel reasons per the hardening design doc).
@@ -43,6 +47,7 @@ export default function ActiveRideScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const rideId = id ?? ''
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const clearActiveRide = useDriverSessionStore((s) => s.setActiveRide)
   const {
     ride,
@@ -300,7 +305,8 @@ export default function ActiveRideScreen() {
       <SOSButton
         enabled={status !== 'completed'}
         onTrigger={() => triggerSos(rideId, live?.position[0], live?.position[1])}
-        anchor="top-right"
+        anchor={navView === 'guided' ? 'bottom-right' : 'top-right'}
+        {...(navView === 'guided' ? { offset: insets.bottom + (GUIDED_CONTROLS_HEIGHT - SOS_SIZE) / 2 } : {})}
       />
 
       <SpeedAlertToast alertKey={alertKey} limitKmph={limitKmph} />

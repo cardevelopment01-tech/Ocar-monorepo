@@ -21,6 +21,11 @@ describe('externalEndMessage', () => {
     expect(externalEndMessage('completed')).toBeNull()
   })
 
+  it('says "ended by support" for an admin/sweeper force-CANCEL, not "rider cancelled"', () => {
+    expect(externalEndMessage('cancelled', { resolvedBy: 'admin' })).toMatch(/support/)
+    expect(externalEndMessage('cancelled', { resolvedBy: 'timeout' })).toMatch(/inactivity/)
+  })
+
   it('flags a reverted force-assign', () => {
     expect(externalEndMessage('requested', { reason: 'force_assign_reverted' })).toMatch(/reassigned/)
     expect(externalEndMessage('requested')).toBeNull()
