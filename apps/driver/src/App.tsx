@@ -144,6 +144,7 @@ export default function App() {
         if (ride.return_at   != null) activeRideInput.returnAt      = ride.return_at
         if (ride.trip_hours  != null) activeRideInput.tripHours     = ride.trip_hours
         if (ride.started_at  != null) activeRideInput.rideStartedAt = ride.started_at
+        if (ride.drop_arrived_at != null) activeRideInput.dropArrivedAt = ride.drop_arrived_at
         if (ride.bookedUntil != null) activeRideInput.bookedUntil = ride.bookedUntil
         if (ride.overtimeRate != null) activeRideInput.overtimeRate = ride.overtimeRate
         if (ride.overtimeGraceMin != null) activeRideInput.overtimeGraceMin = ride.overtimeGraceMin

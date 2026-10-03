@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { Feather } from '@expo/vector-icons'
+import { Feather, FontAwesome } from '@expo/vector-icons'
 import { colors, fonts, spacing, typography } from '@ocar/mobile-shared'
 import { card } from '@/theme/homeTokens'
 import { triggerMaskedCall } from '../api'
 import type { RideDetailExtra } from '../types'
-import { DriverAvatar, PlateBadge, VehicleLine, driverViewFromRide } from './DriverIdentity'
+import { DriverAvatar, PlateBadge, driverViewFromRide } from './DriverIdentity'
 
 export type DriverCardProps = {
   ride: RideDetailExtra
@@ -50,28 +50,33 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
     <View style={styles.card} accessibilityRole="summary" accessibilityLabel={`Driver ${view.name}`}>
       {callError ? <Text style={styles.callError}>{callError}</Text> : null}
 
+      {/* Row 1: who. Photo left, name block in the middle, rating pill pinned right so no side is empty. */}
       <View style={styles.top}>
-        <DriverAvatar view={view} photo={ride.driverPhoto} size="lg" chip />
+        <DriverAvatar view={view} photo={ride.driverPhoto} size="lg" />
         <View style={styles.info}>
           <Text style={styles.name} numberOfLines={2}>{view.name}</Text>
           <Text style={styles.meta}>{view.tripsText}</Text>
           {view.verified ? (
             <View style={styles.verified}>
-              <Feather name="shield" size={11} color={colors.success} />
+              <Feather name="shield" size={12} color={colors.success} />
               <Text style={styles.verifiedText}>Verified driver</Text>
             </View>
           ) : null}
         </View>
+        <View style={styles.rating} accessibilityLabel={view.ratingText ? `Rated ${view.ratingText}` : 'New driver'}>
+          {view.ratingText ? <FontAwesome name="star" size={12} color={colors.accent} /> : null}
+          <Text style={styles.ratingText}>{view.ratingText ?? 'New'}</Text>
+        </View>
       </View>
 
-      <View style={styles.strip}>
-        <View style={styles.vehicleCol}>
-          <VehicleLine view={view} />
-          {upgradedTo ? (
-            <View style={styles.upgraded}><Text style={styles.upgradedText}>Upgraded to {upgradedTo}</Text></View>
-          ) : null}
-        </View>
-        <PlateBadge plate={view.plate} />
+      {/* Row 2: what to look for. One centred panel: the car, then its plate as the hero. */}
+      <View style={styles.ride}>
+        <Text style={styles.rideLabel}>Your ride</Text>
+        <Text style={styles.rideName} numberOfLines={2}>{view.vehicleLine}</Text>
+        {upgradedTo ? (
+          <View style={styles.upgraded}><Text style={styles.upgradedText}>Upgraded to {upgradedTo}</Text></View>
+        ) : null}
+        <PlateBadge plate={view.plate} large />
       </View>
 
       <View style={styles.actions}>
@@ -98,15 +103,18 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
 
 const styles = StyleSheet.create({
   card: { ...card, padding: spacing.md, gap: 14 },
-  top: { flexDirection: 'row', gap: 14, alignItems: 'center' },
+  top: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   info: { flex: 1, minWidth: 0, gap: 2 },
-  name: { ...typography.label, fontSize: 17, fontFamily: fonts.bold, color: colors.ink900 },
+  name: { ...typography.label, fontSize: 18, lineHeight: 24, fontFamily: fonts.bold, color: colors.ink900 },
   meta: { ...typography.caption, color: colors.ink600 },
   verified: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  verifiedText: { fontFamily: fonts.bold, fontSize: 11, color: colors.success },
-  strip: { gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
-  vehicleCol: { gap: 4, alignSelf: 'flex-start' },
-  upgraded: { alignSelf: 'flex-start', backgroundColor: colors.successLight, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  verifiedText: { fontFamily: fonts.bold, fontSize: 12, color: colors.success },
+  rating: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  ratingText: { fontFamily: fonts.bold, fontSize: 13, color: colors.ink900 },
+  ride: { alignItems: 'center', gap: 6, backgroundColor: colors.bg, borderRadius: 18, paddingVertical: 14, paddingHorizontal: spacing.md },
+  rideLabel: { ...typography.caption, color: colors.ink600 },
+  rideName: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 22, color: colors.ink900, textAlign: 'center' },
+  upgraded: { alignSelf: 'center', backgroundColor: colors.successLight, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   upgradedText: { fontFamily: fonts.bold, fontSize: 10, color: colors.success },
   actions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   message: { flex: 1, height: 46, borderRadius: 23, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primarySubtle },

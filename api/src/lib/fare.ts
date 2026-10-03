@@ -301,7 +301,8 @@ export function settleRoundTripOvertime(p: {
   const reviewMin = p.review_min ?? ROUND_TRIP_OVERTIME_REVIEW_MIN
   const elapsedMin = (new Date(p.completed_at).getTime() - new Date(p.started_at).getTime()) / 60000
   const overtime_min = Math.max(0, Math.ceil(elapsedMin - p.booked_hours * 60 - grace))
-  const overtime_fare = round2(overtime_min * p.hour_rate / 60)
+  // Whole rupees: a driver cannot collect paise in cash, and every screen then shows the same figure.
+  const overtime_fare = Math.round(overtime_min * p.hour_rate / 60)
   return {
     overtime_min,
     overtime_fare,

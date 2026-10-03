@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { Button, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts, SlideModal } from '@ocar/mobile-shared'
 
 export type RiderSheetProps = {
   visible: boolean
@@ -36,7 +36,7 @@ export function RiderSheet({ visible, onClose, riderName, riderPhone, onCommit, 
   const canSave = nameDraft.trim().length > 0 && phoneDraft.length === 10
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <SlideModal visible={visible} onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
         <View style={styles.handle} />
@@ -122,12 +122,12 @@ export function RiderSheet({ visible, onClose, riderName, riderPhone, onCommit, 
           </>
         )}
       </View>
-    </Modal>
+    </SlideModal>
   )
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(20,23,26,0.45)' },
+  backdrop: { flex: 1, backgroundColor: 'transparent' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: spacing.sm, paddingHorizontal: spacing.lg, gap: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.sm },
   title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold, marginBottom: spacing.xs },

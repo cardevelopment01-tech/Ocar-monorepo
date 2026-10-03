@@ -1,10 +1,24 @@
 import { Pressable, StyleSheet, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
-import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, gradientPrimary, radii, shadows, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { colors, fonts, h, shadow, spacing, typography, Text } from '@ocar/mobile-shared'
+import { GlassChip, ModeHero, type HeroKind } from '@/features/go-online/components/ModeHero'
+
+type Mode = {
+  key: HeroKind
+  href: '/go-online/standard' | '/go-online/return-cab'
+  chipIcon: keyof typeof Feather.glyphMap
+  chip: string
+  title: string
+  body: string
+}
+
+const MODES: Mode[] = [
+  { key: 'standard', href: '/go-online/standard', chipIcon: 'map-pin', chip: 'Anywhere in the city', title: 'Standard', body: 'Take any ride that comes your way.' },
+  { key: 'return', href: '/go-online/return-cab', chipIcon: 'corner-up-left', chip: 'Heading somewhere', title: 'Return cab', body: 'Pick a destination and only get rides on the way.' },
+]
 
 export default function ModeSelectionScreen() {
   const router = useRouter()
@@ -13,56 +27,39 @@ export default function ModeSelectionScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => { if (router.canGoBack()) router.back() }} style={styles.backBtn} accessibilityLabel="Go back" hitSlop={8}>
-          <Feather name="arrow-left" size={20} color={colors.ink600} />
+        <Pressable onPress={() => { if (router.canGoBack()) router.back() }} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Go back" hitSlop={4}>
+          <Feather name="arrow-left" size={20} color={colors.ink900} />
         </Pressable>
-        <Text style={styles.title}>How do you want to drive?</Text>
+        <Text style={styles.title} accessibilityRole="header">How do you want to drive?</Text>
+        <Text style={styles.subtitle}>You can switch from Home any time.</Text>
       </View>
 
       <View style={styles.content}>
-        <Animated.View entering={FadeInDown.duration(360).delay(0)}>
-          <Pressable onPress={() => router.push('/go-online/standard')} style={styles.card}>
-            <LinearGradient colors={gradientPrimary} start={{ x: 0.15, y: 0.1 }} end={{ x: 0.9, y: 1 }} style={[styles.iconTile, styles.iconTileShadowPrimary]}>
-              <Feather name="truck" size={24} color={colors.inkInverse} />
-            </LinearGradient>
-            <View style={styles.cardBodyWrap}>
-              <Text style={styles.cardTitle}>Standard Mode</Text>
-              <View style={styles.statusRow}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>Operational</Text>
-              </View>
-              <Text style={styles.cardBody}>Accept rides anywhere in the city.</Text>
-              <View style={styles.tagRow}>
-                <View style={styles.tag}><Text style={styles.tagText}>All areas</Text></View>
-                <View style={styles.tag}><Text style={styles.tagText}>No restriction</Text></View>
-              </View>
-            </View>
-            <Feather name="chevron-right" size={18} color={colors.ink900} style={styles.chevron} />
-          </Pressable>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.duration(360).delay(80)}>
-          <Pressable onPress={() => router.push('/go-online/return-cab')} style={styles.card}>
-            <View style={[styles.iconTile, styles.iconTileAccent, styles.iconTileShadowAccent]}>
-              <Feather name="corner-up-left" size={24} color={colors.inkInverse} />
-            </View>
-            <View style={styles.cardBodyWrap}>
-              <Text style={styles.cardTitle}>Return Cab</Text>
-              <View style={styles.statusRow}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>Active</Text>
-              </View>
-              <Text style={styles.cardBody}>Set a destination and only accept rides heading that way.</Text>
-              <View style={styles.tagRow}>
-                <View style={[styles.tag, styles.tagAccent]}><Text style={[styles.tagText, styles.tagTextAccent]}>One-way</Text></View>
-                <View style={[styles.tag, styles.tagAccent]}><Text style={[styles.tagText, styles.tagTextAccent]}>Earn on the way</Text></View>
-              </View>
-            </View>
-            <Feather name="chevron-right" size={18} color={colors.accent} style={styles.chevron} />
-          </Pressable>
-        </Animated.View>
-
-        <Text style={styles.footerNote}>You can go offline at any time from the home screen</Text>
+        {MODES.map((m, i) => (
+          <Animated.View key={m.key} entering={FadeInDown.duration(340).delay(i * 80)}>
+            <Pressable
+              onPress={() => router.push(m.href)}
+              accessibilityRole="button"
+              accessibilityLabel={`${m.title}. ${m.body}`}
+              style={({ pressed }) => (pressed ? styles.pressed : null)}
+            >
+              <ModeHero kind={m.key} height={212}>
+                <View style={styles.heroTop}>
+                  <GlassChip icon={m.chipIcon} label={m.chip} />
+                </View>
+                <View style={styles.heroBottom}>
+                  <View style={styles.heroText}>
+                    <Text style={styles.heroTitle}>{m.title}</Text>
+                    <Text style={styles.heroBody}>{m.body}</Text>
+                  </View>
+                  <View style={styles.go}>
+                    <Feather name="arrow-right" size={20} color={colors.inkInverse} />
+                  </View>
+                </View>
+              </ModeHero>
+            </Pressable>
+          </Animated.View>
+        ))}
       </View>
     </View>
   )
@@ -70,46 +67,17 @@ export default function ModeSelectionScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
-  backBtn: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
-  content: { paddingHorizontal: spacing.lg, gap: spacing.sm },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radii['2xl'],
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    position: 'relative',
-    ...shadows.card,
-  },
-  iconTile: { width: 56, height: 56, borderRadius: radii.xl, alignItems: 'center', justifyContent: 'center' },
-  iconTileAccent: { backgroundColor: colors.accent },
-  iconTileShadowPrimary: { shadowColor: colors.primary, shadowOpacity: 0.32, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
-  iconTileShadowAccent: { shadowColor: colors.accent, shadowOpacity: 0.32, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
-  // Room for the chevron, which is absolutely centered to the whole card
-  // (below) rather than laid out as a row sibling -- a flex sibling can only
-  // ever land at ITS OWN cross-axis position, which is what put the arrow at
-  // the tags' height instead of centered against the icon/title.
-  cardBodyWrap: { flex: 1, paddingRight: spacing.lg + 2 },
-  // Own line below the title, not squeezed onto it -- "Standard Mode" plus
-  // an inline "OPERATIONAL" badge left them touching with zero breathing
-  // room (space-between only has the row's leftover width to distribute,
-  // and a long title + badge leaves almost none). A status label doesn't
-  // need to fight the heading for the same line.
-  cardTitle: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, marginBottom: 4 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: spacing.xs },
-  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
-  statusText: { fontSize: 12, fontFamily: fonts.semibold, color: colors.ink600 },
-  cardBody: { ...typography.body, color: colors.ink600, marginBottom: spacing.sm },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  tag: { paddingHorizontal: spacing.sm + 2, paddingVertical: 4, borderRadius: radii.full, backgroundColor: colors.surface3 },
-  tagText: { fontSize: 11, fontFamily: fonts.bold, color: colors.ink600 },
-  tagAccent: { backgroundColor: colors.accentLight },
-  tagTextAccent: { color: colors.accent },
-  chevron: { position: 'absolute', right: spacing.lg, top: '50%', marginTop: -9 },
-  footerNote: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginTop: spacing.md },
+  header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.xs },
+  // Same round white control as Home's wallet and bell pills.
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: h.line08, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm, boxShadow: shadow.sm },
+  title: { ...typography.display, color: colors.ink900 },
+  subtitle: { ...typography.body, color: colors.ink600 },
+  content: { paddingHorizontal: spacing.lg, gap: spacing.md },
+  pressed: { transform: [{ scale: 0.985 }], opacity: 0.95 },
+  heroTop: { position: 'absolute', top: spacing.md + 2, left: spacing.md + 2 },
+  heroBottom: { position: 'absolute', left: spacing.md + 2, right: spacing.md + 2, bottom: spacing.md + 2, flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md },
+  heroText: { flex: 1, minWidth: 0, gap: 2 },
+  heroTitle: { fontFamily: fonts.bold, fontSize: 26, lineHeight: 32, letterSpacing: -0.4, color: colors.inkInverse },
+  heroBody: { ...typography.label, fontSize: 14, lineHeight: 20, color: 'rgba(255,255,255,0.88)' },
+  go: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.4)', alignItems: 'center', justifyContent: 'center' },
 })

@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Modal, Pressable, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import axios from 'axios'
-import { Button, colors, radii, spacing, typography, type RatingTag, fonts, Text } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, type RatingTag, fonts, Text, SlideModal } from '@ocar/mobile-shared'
 import { fetchRiderTags, rateRider } from '../safety-api'
-import { SCRIM } from './scrim'
 
 export type RateRiderSheetProps = {
   visible: boolean
@@ -64,7 +63,7 @@ export function RateRiderSheet({ visible, rideId, riderName, onClose }: RateRide
   })
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <SlideModal visible={visible} onRequestClose={onClose}>
       <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={onClose} />
       <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
         <View style={styles.handle} />
@@ -117,12 +116,12 @@ export function RateRiderSheet({ visible, rideId, riderName, onClose }: RateRide
           </>
         )}
       </View>
-    </Modal>
+    </SlideModal>
   )
 }
 
 const styles = StyleSheet.create({
-  backdrop: { backgroundColor: SCRIM },
+  backdrop: { backgroundColor: 'transparent' },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, gap: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.sm },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

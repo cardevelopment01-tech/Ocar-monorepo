@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { BlurView } from 'expo-blur'
-import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text, SlideModal } from '@ocar/mobile-shared'
 
 export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
@@ -120,11 +119,10 @@ export function PickerField({
         <Feather name="chevron-down" size={16} color={colors.ink400} />
       </Pressable>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+      <SlideModal visible={open} onRequestClose={() => setOpen(false)}>
         <View style={styles.backdrop}>
           <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
           <View style={[styles.sheet, { paddingBottom: Math.max(spacing.lg, insets.bottom + spacing.sm) }]}>
-            <BlurView intensity={60} tint="light" blurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
             <View style={styles.sheetTopEdge} />
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>{label}</Text>
@@ -135,7 +133,6 @@ export function PickerField({
                 placeholder="Search…"
                 placeholderTextColor={colors.ink400}
                 style={styles.searchInput}
-                autoFocus
               />
             ) : null}
             <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
@@ -153,7 +150,7 @@ export function PickerField({
             </ScrollView>
           </View>
         </View>
-      </Modal>
+      </SlideModal>
     </Field>
   )
 }
@@ -191,7 +188,7 @@ const styles = StyleSheet.create({
   pickerBtnDisabled: { opacity: 0.5 },
   pickerText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   pickerPlaceholder: { color: colors.ink400, fontFamily: fonts.regular },
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'transparent' },
   // Opaque, not translucent -- BlurView here had no blurMethod set, which on
   // Android renders fully transparent (not even a tint), leaving 0.75 alpha
   // white as the only real layer -- confirmed on a live device letting the

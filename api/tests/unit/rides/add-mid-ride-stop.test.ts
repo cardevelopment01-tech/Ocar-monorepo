@@ -6,6 +6,8 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   appendRideStop:  vi.fn(),
 }))
 
+vi.mock('@/db/client', () => ({ pool: { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 1 }) }, withTransaction: vi.fn() }))
+
 vi.mock('@/modules/pricing/pricing.repository', () => ({
   getStopCharge: vi.fn().mockResolvedValue(30),
 }))
@@ -26,6 +28,7 @@ vi.mock('@/modules/notifications/notifications.service', () => ({
 }))
 
 import * as repo from '@/modules/rides/rides.repository'
+import { pool } from '@/db/client'
 import { socketEvents } from '@/websocket/socket.server'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { addRideStop } from '@/modules/rides/rides.service'
@@ -103,6 +106,8 @@ describe('addRideStop', () => {
     await addRideStop(USER_ID, RIDE_ID, STOP)
 
     expect(repo.appendRideStop).toHaveBeenCalledWith(RIDE_ID, { ...STOP, chargeApplied: 30 })
+    // The charge must reach the fare snapshot settlement bills from.
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE fare_snapshots SET stop_fare'), [RIDE_ID, 30])
   })
 
   it('retries once on a unique-violation race and succeeds on the second attempt', async () => {

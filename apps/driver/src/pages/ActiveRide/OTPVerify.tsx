@@ -24,6 +24,7 @@ export default function OTPVerify() {
   const { activeRide, setRideStartedAt, setBookedWindow, updateRideStatus, clearRide } = useRideStore()
   const [otp, setOtp]     = useState('')
   const [error, setError] = useState(false)
+  const [locked, setLocked] = useState(false)
   const [showCancelSheet, setShowCancelSheet] = useState(false)
   const [cancelReason,    setCancelReason]    = useState<string | null>(null)
   const [cancellingRide,  setCancellingRide]  = useState(false)
@@ -37,7 +38,8 @@ export default function OTPVerify() {
       // next restore, never a failed start.
       void driverRideApi.getRide(activeRide.id).then(setBookedWindow).catch(() => {})
       updateRideStatus('in_progress')
-    } catch {
+    } catch (err) {
+      setLocked((err as { response?: { status?: number } })?.response?.status === 429)
       setError(true)
       setOtp('')
       throw new Error('otp-verify-failed')
@@ -128,7 +130,7 @@ export default function OTPVerify() {
             otp={otp}
             onChange={v => { setOtp(v); setError(false) }}
             error={error}
-            errorMessage="Wrong OTP. Ask the rider to check again."
+            errorMessage={locked ? 'Too many wrong codes. Try again in 15 minutes.' : 'Wrong OTP. Ask the rider to check again.'}
             submitLabel="Start Ride"
             verifiedLabel="Ride started"
             onSubmit={handleVerify}

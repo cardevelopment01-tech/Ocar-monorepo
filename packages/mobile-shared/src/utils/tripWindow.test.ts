@@ -36,17 +36,20 @@ describe('tripWindowCopy', () => {
   it('driver and rider words per state, icon and tone never rely on colour alone', () => {
     const grace = { kind: 'grace', msToOvertime: 252_000 } as const
     expect(tripWindowCopy(grace, 'driver', { rupees })).toMatchObject({
-      icon: 'bell', tone: 'warning', label: 'Booked time ended · Overtime starts in', value: '4:12',
+      icon: 'clock', tone: 'brand', label: 'Booked time ended · Overtime starts in', value: '4:12',
     })
     expect(tripWindowCopy(grace, 'rider', { rupees })).toMatchObject({ label: 'Extra time starts in', value: '4:12' })
 
     const ot = { kind: 'overtime', overtimeMs: 12_000, billedMin: 1, amount: 4 } as const
     expect(tripWindowCopy(ot, 'driver', { rupees })).toMatchObject({ icon: 'plus-circle', label: 'Overtime', value: '0:12 · ₹4' })
-    expect(tripWindowCopy(ot, 'rider', { rupees })).toMatchObject({ label: 'Extra time', value: '0:12 · ₹4 so far' })
+    // The rider is never shown a running charge: only the clock, and the per-minute rate as the note.
+    const rider = tripWindowCopy(ot, 'rider', { rupees, overtimeRate: 100, graceMin: 5 })!
+    expect(rider).toMatchObject({ label: 'Extra time', value: '0:12', note: 'Added to your final fare at ₹1.67 a minute.' })
+    expect(rider.value).not.toContain('₹')
   })
   it('rider sees the rate from the final 15 minutes on; the driver does not', () => {
     const final = { kind: 'final', msLeft: 12 * 60_000 } as const
-    expect(tripWindowCopy(final, 'rider', { rupees, overtimeRate: 60 })?.note).toBe('Extra time is ₹60 an hour, billed by the minute.')
+    expect(tripWindowCopy(final, 'rider', { rupees, overtimeRate: 60, graceMin: 5 })?.note).toBe('After 5 free minutes, extra time is ₹1 a minute.')
     expect(tripWindowCopy(final, 'driver', { rupees, overtimeRate: 60 })?.note).toBeUndefined()
   })
   it('none has no copy', () => {

@@ -36,7 +36,7 @@ const ICONS = { clock: Clock, bell: Bell, 'plus-circle': PlusCircle } as const
 
 // The rider's view of the booked window, in rider wording ("Extra time", not "Overtime") and with the
 // rate stated from the last 15 minutes on, so a charge is never a surprise. Mirrors the driver's clock:
-// one quiet row, tonal never red, icon AND words in every state, no pulse. Renders nothing without a window.
+// one quiet neutral row, never red or amber, no running charge, icon AND words in every state, no pulse. Renders nothing without a window.
 export default function TripClock({ bookedUntil, overtimeGraceMin, overtimeRate }: Props) {
   const graceMin = overtimeGraceMin ?? null
   const rate = overtimeRate ?? null
@@ -56,7 +56,7 @@ export default function TripClock({ bookedUntil, overtimeGraceMin, overtimeRate 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookedUntil, graceMin, rate])
 
-  const copy: TripWindowCopy | null = tripWindowCopy(state, 'rider', { overtimeRate: rate, rupees })
+  const copy: TripWindowCopy | null = tripWindowCopy(state, 'rider', { overtimeRate: rate, graceMin, rupees })
   const lastKind = useRef<TripWindowState['kind']>(state.kind)
   const [announcement, setAnnouncement] = useState('')
 
@@ -67,7 +67,6 @@ export default function TripClock({ bookedUntil, overtimeGraceMin, overtimeRate 
   }, [state.kind, copy])
 
   if (!copy) return null
-  const warn = copy.tone === 'warning'
   const Icon = ICONS[copy.icon]
   return (
     <>
@@ -75,17 +74,17 @@ export default function TripClock({ bookedUntil, overtimeGraceMin, overtimeRate 
         key={state.kind}
         role="timer"
         aria-label={copy.note ? `${copy.a11y}. ${copy.note}` : copy.a11y}
-        className={`rounded-lg px-3 py-1.5 min-h-[48px] flex flex-col justify-center animate-fade-in motion-reduce:animate-none ${warn ? 'bg-amber-500/10' : 'bg-primary-subtle'}`}
+        className="rounded-lg border border-border bg-surface px-3 py-2 min-h-[52px] flex flex-col justify-center animate-fade-in motion-reduce:animate-none"
       >
         <div className="flex items-center gap-2">
-          <Icon size={20} className={`flex-shrink-0 ${warn ? 'text-text-primary' : 'text-primary'}`} aria-hidden />
+          <Icon size={18} className="flex-shrink-0 text-text-secondary" aria-hidden />
           {/* Wraps instead of truncating: at large text the value drops under its label. */}
           <div className="flex-1 min-w-0 flex flex-wrap items-baseline justify-between gap-x-2">
             <span className="text-[13px] font-semibold text-text-secondary">{copy.label}</span>
             <span className="text-[20px] font-bold tabular-nums text-text-primary">{copy.value}</span>
           </div>
         </div>
-        {copy.note && <p className="text-xs text-text-secondary pl-7">{copy.note}</p>}
+        {copy.note && <p className="text-xs text-text-secondary pl-[26px]">{copy.note}</p>}
       </div>
       <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
     </>

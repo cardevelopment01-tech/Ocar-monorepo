@@ -42,6 +42,7 @@ export type RideDetail = {
   return_at: string | null
   trip_hours: number | null
   started_at: string | null
+  drop_arrived_at?: string | null
   bookedUntil?: string | null
   overtimeRate?: number | null
   overtimeGraceMin?: number | null
@@ -173,6 +174,12 @@ export const driverRideApi = {
 
   startReturn: async (rideId: string): Promise<{ success: boolean }> => {
     const res = await api.post(`/api/v1/rides/${rideId}/start-return`)
+    return res.data as { success: boolean }
+  },
+
+  // Driver reached the drop (round trip: the return point); releases the rider's end PIN.
+  arrivedAtDrop: async (rideId: string): Promise<{ success: boolean }> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/arrived-at-drop`)
     return res.data as { success: boolean }
   },
 

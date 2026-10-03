@@ -1,7 +1,8 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BackHandler, Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
-import Svg, { Path } from 'react-native-svg'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { BackHandler, Modal, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
+import Svg, { Circle } from 'react-native-svg'
 import { LinearGradient } from 'expo-linear-gradient'
+import { Feather } from '@expo/vector-icons'
 import Animated, {
   Easing,
   FadeIn,
@@ -11,7 +12,6 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withRepeat,
   withSpring,
   withTiming,
 } from 'react-native-reanimated'
@@ -19,110 +19,42 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { scheduleOnRN } from 'react-native-worklets'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { colors, fonts, radii, spacing, Text } from '@ocar/mobile-shared'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
+import { GlassChip } from '@/features/go-online/components/ModeHero'
 import { acceptRideRequest, declineRideRequest } from './api'
 import { computeRemainingSeconds } from './countdown'
 import { useRideAlertSound } from './useRideAlertSound'
 
-const AnimatedPath = Animated.createAnimatedComponent(Path)
+const AnimatedCircle = Animated.createAnimatedComponent(Circle)
 
 const WARNING_THRESHOLD_SECONDS = 5
-const RING_STROKE = 4
 const PAN_DISMISS_PX = 120
 const PAN_DISMISS_VELOCITY = 850
+const RING = 64
+const RING_STROKE = 4
+const RING_R = (RING - RING_STROKE) / 2
+// Edge-to-edge Modal: the 3-button Android nav bar is not in the safe-area insets here, so the actions
+// row (the one thing that must be tappable instantly) was drawn under it and clipped.
+const ANDROID_NAV_CLEARANCE = 56
 
-// Named palette for this deliberate, dark, high-contrast "incoming call" moment --
-// the ride request steals the whole screen so a phone in a car mount reads clearly
-// in bright sunlight, exactly like the web driver app's TripRequestCard. Kept on
-// the brand system (deep ink-teal surface, brand teal, gold accent) so it never drifts off-brand.
-const C = {
-  surface: '#0B1417',
-  surfaceDeep: '#070E10',
-  panel: '#122024',
-  text: '#F6FBFB',
-  textMuted: '#9DB3B8',
-  textFaint: '#6E8489',
-  divider: '#2A3C40',
-  primary: '#14ABBD',
-  primaryGlow: '#14ABBD',
-  // Brand pink, not gold -- matches the OTP icon gradient (TripInProgress.tsx,
-  // #0A9FB0 -> #DC3E93) and the real Ocar logo's teal+pink duo. This screen
-  // previously used a gold/amber accent that has no connection to the actual
-  // brand identity (code review finding, 2026-09-28).
-  accent: '#DC3E93',
-  success: '#25B87A',
-  error: '#E5484D',
-  errorText: '#F5A3A6',
-  warning: '#D6A552',
-  warningText: '#F3D9A6',
-  warningSub: '#8A6420',
-  info: '#14ABBD',
-  infoSub: '#0A6F80',
-  violet: '#C084FC',
-} as const
-
-// Strong ease-out for everything that enters/exits, ease-in-out for in-frame
-// movement (animate-expo tables -- never ease-in on UI).
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1)
 const EASE_IN_OUT = Easing.bezier(0.77, 0, 0.175, 1)
 
-// A rounded-rect outline for the countdown "ring" around the Accept button. Width
-// is dynamic (the button fills the sheet), so we can't use a fixed SVG circle --
-// a normalized path lets the stroke deplete like a timer no matter the width, which
-// is what makes countdown + accept feel like a single object (as on the web app).
-function roundedRectPath(w: number, h: number, r: number): string {
-  const rr = Math.min(r, w / 2, h / 2)
-  return [
-    `M ${rr} 0`,
-    `H ${w - rr}`,
-    `A ${rr} ${rr} 0 0 1 ${w} ${rr}`,
-    `V ${h - rr}`,
-    `A ${rr} ${rr} 0 0 1 ${w - rr} ${h}`,
-    `H ${rr}`,
-    `A ${rr} ${rr} 0 0 1 0 ${h - rr}`,
-    `V ${rr}`,
-    `A ${rr} ${rr} 0 0 1 ${rr} 0`,
-    'Z',
-  ].join(' ')
-}
-
-function NavigationIcon({ color }: { color: string }) {
-  return (
-    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-      <Path d="M3 11l19-9-9 19-2-8-8-2z" fill={color} />
-    </Svg>
-  )
-}
-
-function CheckIcon({ color }: { color: string }) {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M20 6L9 17l-5-5" />
-    </Svg>
-  )
-}
-
-function ClockIcon({ color }: { color: string }) {
-  return (
-    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-    </Svg>
-  )
-}
-
-function RefreshIcon({ color }: { color: string }) {
-  return (
-    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M1 4v6h6" />
-      <Path d="M23 20v-6h-6" />
-      <Path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" />
-    </Svg>
-  )
-}
-
 type Resolved = 'accepted' | 'expired' | 'raceLost' | 'rejected'
+
+// "Geeta Bhawan, Dakabangala Chhaka, Bhubaneswar, Odisha 751014" -> the place a driver recognises on the
+// first line, the rest of the address quietly under it (never cut mid-postcode).
+function splitAddress(address: string): { name: string; rest: string } {
+  const parts = address.split(',').map((p) => p.trim()).filter(Boolean)
+  return { name: parts[0] ?? address, rest: parts.slice(1).join(', ') }
+}
+
+function formatKm(km: number): string {
+  if (km < 1) return `${Math.round(km * 1000)} m`
+  return `${km.toFixed(1)} km`
+}
 
 export function RideRequestOverlay() {
   const pending = useRideRequestStore((s) => s.pending)
@@ -138,7 +70,6 @@ export function RideRequestOverlay() {
   const [isAccepting, setIsAccepting] = useState(false)
   const [accepted, setAccepted] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [frame, setFrame] = useState<{ w: number; h: number } | null>(null)
 
   const dismissedRef = useRef(false)
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -148,7 +79,6 @@ export function RideRequestOverlay() {
   const sheetOpacity = useSharedValue(1)
   const backdropOpacity = useSharedValue(0)
   const ringProgress = useSharedValue(1)
-  const urgentPulse = useSharedValue(1)
   const dragStartY = useSharedValue(0)
 
   const rideId = pending?.rideId
@@ -207,7 +137,6 @@ export function RideRequestOverlay() {
     setAccepted(false)
     setIsAccepting(false)
     setError(null)
-    setFrame(null)
 
     // Deplete the ring across the whole accept window on the UI thread.
     ringProgress.set(1)
@@ -221,7 +150,6 @@ export function RideRequestOverlay() {
 
     // Sheet + backdrop arrival. Spring for the sheet (finger-adjacent physics), a
     // short ease-out fade for the scrim. Reduced motion: cross-fade only.
-    urgentPulse.set(1)
     sheetOpacity.set(1)
     if (reduced) {
       sheetY.set(0)
@@ -271,16 +199,6 @@ export function RideRequestOverlay() {
     return () => sub.remove()
   }, [pending, handleBack])
 
-  // Urgency: under 5s the accept ring gently pulses. Skipped under reduced motion.
-  useEffect(() => {
-    if (reduced) return
-    if (isUrgent) {
-      urgentPulse.set(withRepeat(withTiming(1.05, { duration: 520, easing: EASE_IN_OUT }), -1, true))
-    } else {
-      urgentPulse.set(1)
-    }
-  }, [isUrgent, reduced]) // eslint-disable-line react-hooks/exhaustive-deps
-
   async function handleAccept() {
     if (isAccepting || accepted || dismissedRef.current || !pending) return
     setIsAccepting(true)
@@ -291,7 +209,7 @@ export function RideRequestOverlay() {
       setAccepted(true)
       setStatus('accepted')
       dismissedRef.current = true
-      // Success beat + a single confirmation haptic (the visual leads).
+      // Success beat, then into the ride.
       schedule(() => {
         router.push(`/active-ride/${pending.rideId}`)
         clearPending(pending.rideId)
@@ -336,20 +254,16 @@ export function RideRequestOverlay() {
 
   const sheetStyle = useAnimatedStyle(() => ({ opacity: sheetOpacity.get(), transform: [{ translateY: sheetY.get() }] }))
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdropOpacity.get() }))
-  const acceptScale = useAnimatedStyle(() => ({ transform: [{ scale: urgentPulse.get() }] }))
-  const ringProps = useAnimatedProps(() => {
-    const fraction = ringProgress.get() // 1 -> 0 remaining
-    return { strokeDashoffset: (1 - fraction) * 100 }
-  })
+  const ringProps = useAnimatedProps(() => ({ strokeDashoffset: (1 - ringProgress.get()) * 100 }))
 
-  // Staggered entrance for the info blocks -- never the Accept row, which must be
+  // Staggered entrance for the info blocks -- never the actions row, which must be
   // tappable the instant it lands (don't shrink the real reaction window).
   const entrances = useMemo(() => {
     const mk = (i: number) =>
       reduced
         ? FadeIn.duration(140).delay(i * 30)
-        : FadeInDown.duration(240).delay(70 + i * 42).withInitialValues({ transform: [{ translateY: 12 }] })
-    return [mk(0), mk(1), mk(2), mk(3)]
+        : FadeInDown.duration(240).delay(60 + i * 40).withInitialValues({ transform: [{ translateY: 10 }] })
+    return [mk(0), mk(1)]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideId, reduced])
 
@@ -358,132 +272,115 @@ export function RideRequestOverlay() {
   const km = pending.distanceToPickup / 1000
   const etaMin = km > 0 ? Math.max(1, Math.round(km / 0.6)) : 0
   const secondsLeft = Math.max(0, seconds)
-  const isReturn = pending.isReturnCab || pending.rideType === 'round_trip'
+  const isRound = pending.rideType === 'round_trip'
+  const isReturn = pending.isReturnCab || isRound
   const isRental = pending.rideType === 'rental'
   const stopCount = pending.stopCount ?? 0
   const returnAtFormatted = pending.returnAt
-    ? new Date(pending.returnAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    ? new Date(pending.returnAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()
     : null
 
-  const title = isReturn ? 'Round trip' : isRental ? 'Rental request' : 'Trip request'
-  const ringColor = isUrgent ? C.error : isReturn ? C.warning : isRental ? C.info : C.primary
+  const typeLabel = isRound
+    ? (pending.tripHours ? `Round trip · ${pending.tripHours}h` : 'Round trip')
+    : isRental ? (pending.tripHours ? `Rental · ${pending.tripHours}h` : 'Rental')
+    : isReturn ? 'Return trip' : 'One way'
+  const payLabel = pending.paymentChannel === 'online' ? 'Online' : pending.paymentChannel === 'wallet' ? 'Wallet' : pending.paymentChannel === 'cash' ? 'Cash' : null
 
+  const pickup = splitAddress(pending.pickup)
+  const drop = splitAddress(pending.drop)
+  const tripKm = pending.tripKm ? Math.max(1, Math.round(pending.tripKm)) : 0
+  const hours = pending.tripHours ?? 0
+  // Two identical blocks, each: label (left) + its metrics (right), place name, address.
+  // The drop block's metrics depend on the ride: a one-way is a distance and a time, a round trip is its
+  // one-way distance (the server stores the one-way route), a rental is its hours and included distance.
+  const pickupMetric = `${formatKm(km)}${etaMin ? ` · ${etaMin} min` : ''}`
+  // A rental always has a destination (the server requires one); it is still a rental, so it is labelled as one.
+  const dropLabel = isRental ? 'Rental destination' : isRound ? 'Drop and return' : 'Drop'
+  const dropMetric = isRental
+    ? [hours ? `${hours}h` : null, pending.kmLimit ? `${pending.kmLimit} km` : null].filter(Boolean).join(' · ')
+    : isRound
+      ? (tripKm ? `${tripKm} km each way` : '')
+      : [tripKm ? `${tripKm} km` : null, pending.tripMin ? `${pending.tripMin} min` : null].filter(Boolean).join(' · ')
+  const dropName = drop.name
+  const dropRest = drop.rest
+  // What a driver also needs to know before taking a long job: how long they are committed, and the terms.
+  const facts: { icon: 'clock' | 'corner-up-left' | 'navigation' | 'user'; text: string }[] = []
+  if (isRound) {
+    if (hours) facts.push({ icon: 'clock', text: `${hours}h booked` })
+    facts.push({ icon: 'corner-up-left', text: returnAtFormatted ? `Return by ${returnAtFormatted}` : 'Return to the pickup point' })
+  } else if (isRental) {
+    if (hours) facts.push({ icon: 'clock', text: `${hours}h booked` })
+    if (pending.kmLimit) facts.push({ icon: 'navigation', text: `${pending.kmLimit} km included` })
+    facts.push({ icon: 'user', text: 'Stay with the rider for the booked time' })
+  }
+
+  const ringColor = isUrgent ? colors.error : colors.primary
   const showActions = status === 'show'
   const showTerminal = status === 'expired' || status === 'raceLost'
+  const bottomPad = Math.max(insets.bottom, Platform.OS === 'android' ? ANDROID_NAV_CLEARANCE : 0) + spacing.md
 
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={handleBack}>
+    <Modal visible transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={handleBack}>
       <View style={styles.root}>
-        {/* Deep brand scrim -- an "incoming call" moment, dark + focused. */}
-        <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-          <LinearGradient
-            colors={[C.surfaceDeep, C.surface]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <LinearGradient
-            colors={['rgba(10,159,176,0.22)', 'rgba(10,159,176,0)']}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 0.8 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
+        <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, backdropStyle]} />
 
         <GestureDetector gesture={pan}>
           <Animated.View style={[styles.sheetWrap, sheetStyle]}>
-            {/* Modal draws edge-to-edge (edgeToEdgeEnabled, gradle.properties) --
-                a fixed bottom padding here left Accept/Decline sitting right at
-                or behind a 3-button nav bar; this is the real safe-area inset. */}
-            <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.xl + 12) }]}>
-              <View style={styles.handleRow}>
-                <View style={styles.handle} />
-              </View>
-
-              {/* Header: eyebrow + title + badges */}
-              <Animated.View entering={entrances[0]}>
-                <View style={styles.eyebrowRow}>
-                  <View style={styles.pulseDot} />
-                  <Text style={styles.eyebrow}>New ride request</Text>
+            {/* Hero band: type, payment and the fare, the three things the accept decision hangs on. */}
+            <LinearGradient colors={['#0B4A50', '#0E8FA3']} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={styles.band}>
+              <View style={styles.handle} />
+              <Animated.View entering={entrances[0]} style={styles.bandInner}>
+                <View style={styles.chipRow}>
+                  <GlassChip icon={isRental ? 'clock' : isReturn ? 'corner-up-left' : 'arrow-right'} label={typeLabel} />
+                  {stopCount > 0 ? <GlassChip label={stopCount === 1 ? '1 stop' : `${stopCount} stops`} /> : null}
                 </View>
-                <View style={styles.titleRow}>
-                  <Text style={styles.title}>{title}</Text>
-                  {isReturn ? <Badge bg="rgba(245,158,11,0.16)" color={C.warning}>Return</Badge> : null}
-                  {isRental ? <Badge bg="rgba(56,189,248,0.14)" color={C.info}>Rental</Badge> : null}
-                  {stopCount > 0 ? <Badge bg="rgba(192,132,252,0.16)" color={C.violet}>{stopCount === 1 ? '1 stop' : `${stopCount} stops`}</Badge> : null}
+                <View style={styles.fareRow} accessible accessibilityLabel={`Estimated fare ${Math.round(pending.estimatedFare)} rupees${payLabel ? `, ${payLabel}` : ''}`}>
+                  <Text style={styles.fare} maxFontSizeMultiplier={1.15}>₹{Math.round(pending.estimatedFare).toLocaleString('en-IN')}</Text>
+                  {payLabel ? <Text style={styles.pay}>{payLabel}</Text> : null}
                 </View>
+                <Text style={styles.fareNote}>Estimated fare</Text>
               </Animated.View>
+            </LinearGradient>
 
-              {/* ETA to pickup -- the #1 accept factor */}
-              <Animated.View entering={entrances[1]}>
-                <View style={styles.etaRow}>
-                  <NavigationIcon color={C.accent} />
-                  <Text style={styles.etaStrong}>{etaMin} min</Text>
-                  <Text style={styles.etaMuted}>· {formatKm(km)} away</Text>
+            <View style={[styles.body, { paddingBottom: bottomPad }]}>
+              <Animated.View entering={entrances[1]} style={styles.route}>
+                <View style={styles.rail}>
+                  <View style={styles.dotPickup} />
+                  <View style={styles.railLine} />
+                  <View style={styles.dotDrop} />
                 </View>
-              </Animated.View>
-
-              {/* Fare hero */}
-              <Animated.View entering={entrances[2]}>
-                <View style={styles.fareRow}>
-                  <Text style={styles.fare}>₹{pending.estimatedFare}</Text>
-                  <Text style={styles.fareMeta}>estimate</Text>
-                </View>
-              </Animated.View>
-
-              {/* Route panel: rail + pickup/drop */}
-              <Animated.View entering={entrances[3]}>
-                <View style={styles.routePanel}>
-                  <View style={styles.rail}>
-                    <View style={styles.railDotPickup} />
-                    <View style={styles.railLine} />
-                    <View style={styles.railDotDrop} />
+                <View style={styles.legs}>
+                  <View style={styles.leg}>
+                    <View style={styles.legHeader}>
+                      <Text style={styles.legLabel}>Pickup</Text>
+                      <Text style={styles.legMetric}>{pickupMetric}</Text>
+                    </View>
+                    <Text style={styles.place} numberOfLines={1}>{pickup.name}</Text>
+                    {pickup.rest ? <Text style={styles.placeRest} numberOfLines={2}>{pickup.rest}</Text> : null}
                   </View>
-                  <View style={styles.routeTexts}>
-                    <View style={styles.routeRow}>
-                      <Text style={styles.routeLabel}>Pickup</Text>
-                      <Text style={styles.routeAddress} numberOfLines={2}>{pending.pickup}</Text>
+                  <View style={styles.legDivider} />
+                  <View style={styles.leg}>
+                    <View style={styles.legHeader}>
+                      <Text style={styles.legLabel}>{dropLabel}</Text>
+                      {dropMetric ? <Text style={styles.legMetric}>{dropMetric}</Text> : null}
                     </View>
-                    <View style={styles.routeRow}>
-                      <Text style={styles.routeLabel}>{isRental ? 'Flexible route' : isReturn ? 'Drop · return' : 'Drop'}</Text>
-                      <Text style={[styles.routeAddress, isRental && { color: C.info }]} numberOfLines={2}>
-                        {isRental ? 'Hourly rental' : pending.drop}
-                      </Text>
-                    </View>
+                    <Text style={styles.place} numberOfLines={1}>{dropName}</Text>
+                    {dropRest ? <Text style={styles.placeRest} numberOfLines={2}>{dropRest}</Text> : null}
                   </View>
                 </View>
               </Animated.View>
 
-              {/* Ride-type disclosure band, round trip / rental only */}
-              {(isReturn || isRental) && (
-                <View style={styles.block}>
-                  {isReturn ? (
-                    <View style={[styles.disclosure, { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.24)' }]}>
-                      <RefreshIcon color={C.warning} />
-                      <View style={styles.disclosureTexts}>
-                        <Text style={[styles.disclosureTitle, { color: C.warningText }]}>
-                          {pending.rideType === 'round_trip' && pending.tripHours ? `Round trip · ${pending.tripHours}h booked` : 'Outstation return trip'}
-                        </Text>
-                        <Text style={[styles.disclosureBody, { color: C.warningSub }]}>
-                          {returnAtFormatted ? `Must return by ${returnAtFormatted}` : 'You must drive back to the pickup point'}
-                        </Text>
-                      </View>
+              {facts.length ? (
+                <View style={styles.facts}>
+                  {facts.map((f) => (
+                    <View key={f.text} style={styles.fact}>
+                      <Feather name={f.icon} size={15} color={colors.primaryDark} />
+                      <Text style={styles.factText}>{f.text}</Text>
                     </View>
-                  ) : (
-                    <View style={[styles.disclosure, { backgroundColor: 'rgba(56,189,248,0.10)', borderColor: 'rgba(56,189,248,0.2)' }]}>
-                      <ClockIcon color={C.info} />
-                      <View style={styles.disclosureTexts}>
-                        <Text style={[styles.disclosureTitle, { color: C.info }]}>
-                          {pending.tripHours ? `${pending.tripHours}-hour rental` : 'Hourly rental'}
-                        </Text>
-                        <Text style={[styles.disclosureBody, { color: C.infoSub }]}>Stay with the passenger for the full duration</Text>
-                      </View>
-                    </View>
-                  )}
+                  ))}
                 </View>
-              )}
+              ) : null}
 
-              {/* Error / terminal message */}
               {error && status === 'show' ? <Text style={styles.error}>{error}</Text> : null}
               {showTerminal ? (
                 <View style={styles.terminal}>
@@ -500,71 +397,47 @@ export function RideRequestOverlay() {
                     onPress={reject}
                     disabled={isAccepting}
                     accessibilityRole="button"
-                    accessibilityLabel="Decline ride request"
+                    accessibilityLabel={`Decline ride request, ${secondsLeft} seconds remaining`}
                     style={({ pressed }) => [styles.decline, pressed && !isAccepting ? styles.pressed : null]}
                   >
-                    <Text style={styles.declineText}>Decline</Text>
+                    <Svg width={RING} height={RING} style={StyleSheet.absoluteFill}>
+                      <Circle cx={RING / 2} cy={RING / 2} r={RING_R} stroke={colors.border} strokeWidth={RING_STROKE} fill="none" />
+                      <AnimatedCircle
+                        cx={RING / 2}
+                        cy={RING / 2}
+                        r={RING_R}
+                        stroke={ringColor}
+                        strokeWidth={RING_STROKE}
+                        fill="none"
+                        strokeDasharray="100 100"
+                        strokeLinecap="round"
+                        rotation={-90}
+                        origin={`${RING / 2}, ${RING / 2}`}
+                        animatedProps={ringProps}
+                        {...({ pathLength: 100 } as { pathLength?: number })}
+                      />
+                    </Svg>
+                    <Feather name="x" size={24} color={colors.ink900} />
                   </Pressable>
 
-                  <View
-                    style={styles.acceptFrame}
-                    onLayout={(e) => {
-                      const { width: w, height: h } = e.nativeEvent.layout
-                      setFrame({ w, h })
-                    }}
+                  <Pressable
+                    onPress={() => void handleAccept()}
+                    disabled={isAccepting || accepted}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: isAccepting || accepted }}
+                    accessibilityLabel={`Accept ride, ${secondsLeft} seconds remaining`}
+                    style={({ pressed }) => [styles.acceptWrap, pressed && !isAccepting ? styles.pressed : null]}
                   >
-                    <Animated.View style={[StyleSheet.absoluteFill, acceptScale]}>
-                      {frame && (
-                        <Svg width={frame.w} height={frame.h} style={StyleSheet.absoluteFill}>
-                          <AnimatedPath
-                            d={roundedRectPath(frame.w, frame.h, 16)}
-                            stroke={accepted ? C.success : ringColor}
-                            strokeWidth={RING_STROKE}
-                            fill="none"
-                            strokeDasharray="100 100"
-                            strokeLinecap="round"
-                            animatedProps={ringProps}
-                            // pathLength is a real, valid SVG attribute react-native-svg
-                            // supports at runtime, but Reanimated's createAnimatedComponent
-                            // wrapper type doesn't include it in either of its two Path
-                            // prop overloads -- spread a narrowly-typed object rather than
-                            // widening the whole component to `any`.
-                            {...({ pathLength: 100 } as { pathLength?: number })}
-                          />
-                        </Svg>
-                      )}
-                    </Animated.View>
-                    <Pressable
-                      onPress={() => void handleAccept()}
-                      disabled={isAccepting || accepted}
-                      accessibilityRole="button"
-                      accessibilityState={{ disabled: isAccepting || accepted }}
-                      accessibilityLabel={`Accept ride, ${secondsLeft} seconds remaining`}
-                      style={({ pressed }) => [pressed && !isAccepting ? styles.pressed : null]}
+                    <LinearGradient
+                      colors={accepted ? ['#2FCB8B', '#1B9A66'] : ['#14ABBD', '#0E8FA3']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.accept}
                     >
-                      <LinearGradient
-                        colors={accepted ? ['#2FCB8B', '#1B9A66'] : ['#14ABBD', '#0E8FA3']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.accept}
-                      >
-                        {accepted ? (
-                          <View style={styles.acceptLabelRow}>
-                            <CheckIcon color={C.text} />
-                            <Text style={styles.acceptLabel}>Accepted</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.acceptLabelRow}>
-                            <CheckIcon color={C.text} />
-                            <Text style={styles.acceptLabel}>Accept · ₹{pending.estimatedFare}</Text>
-                            <View style={[styles.secondsPill, isUrgent && { backgroundColor: 'rgba(239,68,68,0.22)' }]}>
-                              <Text style={[styles.secondsPillText, isUrgent && { color: C.errorText }]}>{secondsLeft}s</Text>
-                            </View>
-                          </View>
-                        )}
-                      </LinearGradient>
-                    </Pressable>
-                  </View>
+                      {accepted ? <Feather name="check" size={22} color={colors.inkInverse} /> : null}
+                      <Text style={styles.acceptLabel}>{accepted ? 'Accepted' : 'Accept'}</Text>
+                    </LinearGradient>
+                  </Pressable>
                 </View>
               ) : null}
             </View>
@@ -575,101 +448,51 @@ export function RideRequestOverlay() {
   )
 }
 
-function Badge({ children, bg, color }: { children: string; bg: string; color: string }) {
-  return (
-    <View style={[styles.badge, { backgroundColor: bg }]}>
-      <Text style={[styles.badgeText, { color }]}>{children}</Text>
-    </View>
-  )
-}
-
-function formatKm(km: number): string {
-  if (km < 1) return `${Math.round(km * 1000)} m`
-  return `${km.toFixed(1)} km`
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  scrim: { backgroundColor: 'rgba(7,20,23,0.58)' },
   sheetWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: C.surface,
-    borderTopLeftRadius: radii['3xl'],
-    borderTopRightRadius: radii['3xl'],
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     overflow: 'hidden',
   },
-  sheet: {
-    paddingHorizontal: spacing.lg,
-    gap: spacing.md,
-  },
-  handleRow: { alignItems: 'center', paddingTop: spacing.sm + 2, paddingBottom: spacing.xs },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(248,250,252,0.16)' },
-  block: {},
-  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.primaryGlow },
-  eyebrow: {
-    ...typography.caption,
-    color: C.primaryGlow,
-    fontFamily: fonts.bold,
-  },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs, flexWrap: 'wrap' },
-  title: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 26, color: C.text },
-  badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radii.full, marginLeft: 2 },
-  badgeText: { fontSize: 10, fontFamily: fonts.bold },
-  etaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  etaStrong: { ...typography.label, color: C.text, fontFamily: fonts.bold, fontSize: 15 },
-  etaMuted: { ...typography.label, color: C.textMuted, fontFamily: 'PlusJakartaSans_500Medium' },
+  band: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg - 2 },
+  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, marginTop: spacing.sm + 2, marginBottom: spacing.md, backgroundColor: 'rgba(255,255,255,0.4)' },
+  bandInner: { gap: 2 },
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap', marginBottom: spacing.sm },
   fareRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
-  fare: { fontFamily: fonts.bold, fontSize: 34, lineHeight: 38, letterSpacing: -1.2, color: C.text },
-  fareMeta: { ...typography.caption, color: C.textFaint, fontFamily: fonts.semibold },
-  routePanel: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    backgroundColor: C.panel,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-  },
-  rail: { alignItems: 'center', width: 10, paddingTop: 4 },
-  railDotPickup: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.text },
-  railLine: { width: 2, flex: 1, marginVertical: 4, borderRadius: 1, backgroundColor: C.divider },
-  railDotDrop: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.primary },
-  routeTexts: { flex: 1, gap: spacing.lg, paddingTop: 2 },
-  routeRow: { gap: 2 },
-  routeLabel: { ...typography.caption, color: C.textFaint },
-  routeAddress: { ...typography.body, color: C.text, fontFamily: fonts.semibold, fontSize: 15, lineHeight: 22 },
-  disclosure: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start', borderRadius: radii.md, borderWidth: 1, padding: spacing.sm + 2 },
-  disclosureTexts: { flex: 1, gap: 2 },
-  disclosureTitle: { ...typography.label, fontFamily: fonts.bold, fontSize: 13 },
-  disclosureBody: { ...typography.caption, fontSize: 12, lineHeight: 16 },
-  error: { ...typography.label, color: C.error, textAlign: 'center', marginTop: spacing.xs },
+  fare: { fontFamily: fonts.bold, fontSize: 48, lineHeight: 56, letterSpacing: -1.2, color: colors.inkInverse, fontVariant: ['tabular-nums'] },
+  pay: { fontFamily: fonts.semibold, fontSize: 18, lineHeight: 24, color: 'rgba(255,255,255,0.92)' },
+  fareNote: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 18, color: 'rgba(255,255,255,0.82)' },
+  body: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, gap: spacing.md },
+  route: { flexDirection: 'row', gap: spacing.md },
+  rail: { alignItems: 'center', width: 14, paddingTop: 30, paddingBottom: 30 },
+  dotPickup: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.primary, borderWidth: 3, borderColor: colors.primarySubtle },
+  railLine: { width: 2, flex: 1, marginVertical: 5, borderRadius: 1, backgroundColor: colors.border },
+  dotDrop: { width: 12, height: 12, borderRadius: 3, backgroundColor: colors.ink900 },
+  legs: { flex: 1, minWidth: 0 },
+  leg: { gap: 2 },
+  legHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.md },
+  legLabel: { fontFamily: fonts.semibold, fontSize: 14, lineHeight: 20, color: colors.ink600 },
+  legMetric: { fontFamily: fonts.bold, fontSize: 15, lineHeight: 20, color: colors.ink900, fontVariant: ['tabular-nums'] },
+  legDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.md },
+  place: { fontFamily: fonts.bold, fontSize: 18, lineHeight: 24, color: colors.ink900 },
+  placeRest: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: colors.ink600 },
+  facts: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, backgroundColor: colors.primarySubtle, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
+  fact: { flexDirection: 'row', alignItems: 'center', gap: 6, marginRight: spacing.md },
+  factText: { fontFamily: fonts.semibold, fontSize: 14, lineHeight: 20, color: colors.ink900 },
+  error: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 18, color: colors.error, textAlign: 'center' },
   terminal: { paddingVertical: spacing.sm },
-  terminalText: { ...typography.title, color: C.text, textAlign: 'center', fontFamily: fonts.bold },
-  actions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
-  decline: {
-    width: 108,
-    height: 58,
-    borderRadius: radii.lg,
-    backgroundColor: C.panel,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  declineText: { ...typography.label, color: C.textMuted, fontFamily: fonts.semibold, fontSize: 15 },
+  terminalText: { fontFamily: fonts.bold, fontSize: 18, lineHeight: 24, color: colors.ink900, textAlign: 'center' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.xs },
+  decline: { width: RING, height: RING, borderRadius: RING / 2, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   pressed: { transform: [{ scale: 0.97 }], opacity: 0.92 },
-  acceptFrame: { flex: 1, height: 58, justifyContent: 'center' },
-  accept: { flex: 1, margin: RING_STROKE, borderRadius: radii.lg - 2, alignItems: 'center', justifyContent: 'center' },
-  acceptLabelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, justifyContent: 'center' },
-  acceptLabel: { ...typography.title, color: C.text, fontFamily: fonts.bold, fontSize: 15 },
-  secondsPill: {
-    backgroundColor: 'rgba(248,250,252,0.12)',
-    borderRadius: radii.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    minWidth: 34,
-    alignItems: 'center',
-  },
-  secondsPillText: { color: C.text, fontFamily: fonts.bold, fontSize: 13, fontVariant: ['tabular-nums'] },
+  acceptWrap: { flex: 1, height: RING, borderRadius: radii.full, boxShadow: '0 10px 22px rgba(14,143,163,0.34)' },
+  accept: { flex: 1, borderRadius: radii.full, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  acceptLabel: { fontFamily: fonts.bold, fontSize: 19, lineHeight: 24, color: colors.inkInverse },
 })

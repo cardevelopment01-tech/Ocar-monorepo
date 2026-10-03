@@ -17,6 +17,14 @@ export type RideRequestPayload = {
   returnAt?: string
   tripHours?: number
   stopCount?: number
+  // cash | online | wallet, shown next to the fare
+  paymentChannel?: string
+  // estimated trip length in km from the fare quote; for a round trip this is the one-way distance
+  tripKm?: number
+  // estimated trip time in minutes from the fare quote
+  tripMin?: number
+  // a rental's included distance (its package km limit)
+  kmLimit?: number
 }
 
 export type PendingRideRequest = RideRequestPayload & {

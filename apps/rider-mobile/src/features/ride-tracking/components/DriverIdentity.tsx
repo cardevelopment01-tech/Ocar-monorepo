@@ -54,20 +54,22 @@ export function DriverAvatar({ view, photo, size = 'md', chip = false }: {
   )
 }
 
-export function PlateBadge({ plate }: { plate: string | null }) {
+export function PlateBadge({ plate, large = false }: { plate: string | null; large?: boolean }) {
   if (!plate) return null
   return (
-    <View style={styles.plate} accessibilityLabel={`Number plate ${plate}`}>
-      <Text style={styles.plateText} numberOfLines={1}>{plate}</Text>
+    // Drawn like a plate (same as the driver app): IND stripe, light plate, dark rim, one line.
+    <View style={[styles.plate, large && styles.plateLg]} accessible accessibilityLabel={`Number plate ${plate}`}>
+      <View style={[styles.plateStripe, large && styles.plateStripeLg]}><Text style={styles.plateStripeText}>IND</Text></View>
+      <Text style={[styles.plateText, large && styles.plateTextLg]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{plate}</Text>
     </View>
   )
 }
 
-export function VehicleLine({ view }: { view: DriverIdentityView }) {
+export function VehicleLine({ view, swatch = true, lines = 1 }: { view: DriverIdentityView; swatch?: boolean; lines?: number }) {
   return (
     <View style={styles.vehicle}>
-      {view.swatch ? <View style={[styles.swatch, { backgroundColor: view.swatch }]} /> : null}
-      <Text style={styles.vehicleText} numberOfLines={1}>{view.vehicleLine}</Text>
+      {swatch && view.swatch ? <View style={[styles.swatch, { backgroundColor: view.swatch }]} /> : null}
+      <Text style={styles.vehicleText} numberOfLines={lines}>{view.vehicleLine}</Text>
     </View>
   )
 }
@@ -143,8 +145,13 @@ const styles = StyleSheet.create({
   avatarInitials: { fontFamily: fonts.bold, color: colors.primary },
   chip: { position: 'absolute', bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   chipText: { fontFamily: fonts.bold, fontSize: 11, color: colors.ink900 },
-  plate: { flexShrink: 0, borderWidth: 2, borderColor: colors.ink900, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: colors.surface },
-  plateText: { fontFamily: fonts.bold, fontSize: 14, letterSpacing: 1.6, color: colors.ink900 },
+  plate: { flexShrink: 0, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', backgroundColor: '#FAFBFB', borderRadius: 8, borderWidth: 1.5, borderColor: colors.ink900, overflow: 'hidden' },
+  plateLg: { borderRadius: 10, borderWidth: 2 },
+  plateStripeLg: { width: 26 },
+  plateTextLg: { paddingHorizontal: 14, paddingVertical: 8, fontSize: 21, lineHeight: 28, letterSpacing: 1.4 },
+  plateStripe: { alignSelf: 'stretch', width: 20, backgroundColor: '#1D3F8F', alignItems: 'center', justifyContent: 'center' },
+  plateStripeText: { fontFamily: fonts.bold, fontSize: 8, lineHeight: 11, color: '#FFFFFF' },
+  plateText: { flexShrink: 1, paddingHorizontal: 8, paddingVertical: 5, fontFamily: fonts.bold, fontSize: 15, lineHeight: 20, letterSpacing: 0.8, color: colors.ink900, fontVariant: ['tabular-nums'] },
   vehicle: { minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
   swatch: { width: 14, height: 14, borderRadius: 7, borderWidth: 1, borderColor: colors.ink400 },
   swatchSm: { width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: colors.ink400 },

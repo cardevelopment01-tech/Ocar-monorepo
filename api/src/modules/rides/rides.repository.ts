@@ -507,7 +507,7 @@ export async function markStopStatus(
          reached_at = CASE WHEN $3::stop_status = 'reached' THEN now() ELSE reached_at END,
          wait_charge = CASE
            WHEN $3::stop_status = 'reached' AND arrived_at IS NOT NULL
-             THEN round(GREATEST(0::numeric, EXTRACT(EPOCH FROM (now() - arrived_at)) / 60.0 - $4::numeric) * $5::numeric, 2)
+             THEN round(GREATEST(0::numeric, EXTRACT(EPOCH FROM (now() - arrived_at)) / 60.0 - $4::numeric) * $5::numeric, 0)
            ELSE wait_charge END,
          updated_at = now()
      WHERE ride_id = $1 AND sequence = $2 AND status = 'pending'
@@ -637,7 +637,8 @@ const RIDE_SELECT_SQL = `SELECT
        fs.total_estimated,
        fs.total_final, fs.base_fare, fs.distance_fare, fs.time_fare, fs.stop_fare,
        fs.hour_surcharge, fs.overage_fare, fs.surge_fare, fs.surge_multiplier,
-       fs.actual_km, fs.actual_min,
+       fs.actual_km, fs.actual_min, fs.estimated_km::float8 AS estimated_km, fs.estimated_min::float8 AS estimated_min,
+       (SELECT rp.km_limit FROM rental_packages rp WHERE rp.id = r.rental_package_id) AS rental_km_limit,
        fs.pricing_version, fs.waiting_fare, fs.overtime_min, fs.overtime_fare,
        hrc.hour_rate  AS round_trip_hour_rate,
        rc.reason      AS cancellation_reason,
@@ -1485,6 +1486,10 @@ export interface PendingAssignment {
   return_at: string | null
   trip_hours: number | null
   stop_count: number
+  payment_channel: string | null
+  estimated_km: number | null
+  estimated_min: number | null
+  rental_km_limit: number | null
 }
 
 export async function getPendingAssignmentsForDriver(
@@ -1504,6 +1509,10 @@ export async function getPendingAssignmentsForDriver(
        r.is_return_cab,
        r.return_at,
        r.trip_hours,
+       r.payment_channel,
+       fs.estimated_km::float8 AS estimated_km,
+       fs.estimated_min::float8 AS estimated_min,
+       (SELECT rp.km_limit FROM rental_packages rp WHERE rp.id = r.rental_package_id) AS rental_km_limit,
        (SELECT COUNT(*)::int FROM ride_stops rs WHERE rs.ride_id = r.id) AS stop_count,
        fs.total_estimated,
        COALESCE(

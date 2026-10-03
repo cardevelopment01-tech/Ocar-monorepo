@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { Button, colors, formatCurrency, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, colors, formatCurrency, radii, spacing, typography, fonts, Text, SlideModal } from '@ocar/mobile-shared'
 import { SlideToConfirm } from './SlideToConfirm'
-import { SCRIM } from './scrim'
 
 export type CashCollectionCardProps = {
   expectedFare: number
@@ -73,7 +72,7 @@ export function CashCollectionCard({
         <Feather name="chevron-right" size={16} color={colors.ink600} />
       </Pressable>
 
-      <Modal visible={sheetOpen} transparent animationType="slide" onRequestClose={() => setSheetOpen(false)}>
+      <SlideModal visible={sheetOpen} onRequestClose={() => setSheetOpen(false)}>
         <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={() => !loading && setSheetOpen(false)} accessibilityLabel="Close" />
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
           <View style={styles.handle} />
@@ -128,7 +127,7 @@ export function CashCollectionCard({
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>
-      </Modal>
+      </SlideModal>
     </View>
   )
 }
@@ -148,7 +147,7 @@ const styles = StyleSheet.create({
   // A real 48px target, not a caption floating under the slider.
   altBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, minHeight: 48, borderRadius: radii.lg },
   altBtnText: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
-  backdrop: { backgroundColor: SCRIM },
+  backdrop: { backgroundColor: 'transparent' },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, gap: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.xs },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
