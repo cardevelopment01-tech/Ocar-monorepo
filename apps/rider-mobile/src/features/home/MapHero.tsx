@@ -282,6 +282,13 @@ export function MapHero({
     [expanded, extra, imgH, lift, onPickupMove]
   )
 
+  // Recenter: glide back to the rider's own fix and make it the pickup again (the pill re-resolves the address).
+  const recenter = useCallback(() => {
+    if (!user) return
+    dragged.current = false
+    goTo(user)
+    onPickupMove(user)
+  }, [user, goTo, onPickupMove])
   const box = useAnimatedStyle(() => ({ height: height.get() }))
   // slide the map up by half the height gained; the pin lifts by the same amount
   const rise = useAnimatedStyle(() => ({ transform: [{ translateY: -Math.max(0, height.get() - geo.peek) / 2 }] }))
@@ -296,6 +303,8 @@ export function MapHero({
     transform: [{ translateY: -Math.max(0, height.get() - geo.peek) / 2 + lift.get() }, { scale: interpolate(m.get(), [0.25, 0.9], [0.7, 1], 'clamp') }],
   }))
   const fixedPill = useAnimatedStyle(() => ({ opacity: interpolate(m.get(), [0.4, 1], [0, 1], 'clamp') }))
+  // Only offered once the sheet is dragged open and the map has room: fades in with the drag, above the fixed pill.
+  const recenterStyle = useAnimatedStyle(() => ({ opacity: interpolate(m.get(), [0.6, 1], [0, 1], 'clamp') }))
 
   // Only the visible pill may take touches: the peeking callout and the open-sheet pill share screen space with the map.
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -358,6 +367,19 @@ export function MapHero({
           </View>
         </Animated.View>
 
+        {/* recenter: right corner above the open-sheet pill; hidden while the sheet peeks */}
+        {locationEnabled && user ? (
+          <Animated.View style={[styles.recenter, recenterStyle]} pointerEvents={sheetOpen ? 'box-none' : 'none'}>
+            <Pressable onPress={recenter} accessibilityRole="button" accessibilityLabel="Go to my current location" style={styles.recenterBtn} hitSlop={2}>
+              <Svg width={22} height={22} viewBox="0 0 22 22">
+                <Circle cx={11} cy={11} r={7.5} fill="none" stroke={h.teal} strokeWidth={1.8} />
+                <Circle cx={11} cy={11} r={3.5} fill={h.teal} />
+                <Path d="M11 0.5V3.5M11 18.5V21.5M0.5 11H3.5M18.5 11H21.5" stroke={h.teal} strokeWidth={1.8} strokeLinecap="round" />
+              </Svg>
+            </Pressable>
+          </Animated.View>
+        ) : null}
+
         {/* open: the dot has become a pin fixed to the screen while the map moves under it; the pill drops to the sheet's edge */}
         <Animated.View style={[styles.pin, pin]} pointerEvents="none">
           <View style={styles.tagWrap}>
@@ -385,6 +407,18 @@ const styles = StyleSheet.create({
   tag: { height: 22, paddingHorizontal: 10, borderRadius: 11, backgroundColor: h.teal, justifyContent: 'center', boxShadow: '0 4px 10px rgba(10,60,66,0.28)' },
   tagText: { fontFamily: font.b, fontSize: 12, color: '#FFFFFF' }, // sentence case, 12 px: no all-caps tracked labels (DESIGN.md)
   fixedPill: { position: 'absolute', left: 16, right: 16, bottom: PILL_DOWN },
+  recenter: { position: 'absolute', right: 16, bottom: PILL_DOWN + PILL_H + 12 },
+  recenterBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: PILL_BG,
+    borderWidth: 1,
+    borderColor: h.line10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 12px 28px rgba(20,23,26,0.14), 0 3px 8px rgba(20,23,26,0.07)', // same lift as the pill
+  },
   anchor: { position: 'absolute', left: 16, right: 16, bottom: PILL_UP },
   pill: {
     height: PILL_H,
