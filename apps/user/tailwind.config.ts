@@ -1,6 +1,7 @@
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
+  future: { hoverOnlyWhenSupported: true },
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
@@ -76,6 +77,8 @@ const config: Config = {
         'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
         'fade-up': 'fadeUp 0.22s cubic-bezier(0.22, 1, 0.36, 1)',
         shimmer: 'shimmer 1.6s infinite linear',
+        marquee: 'marquee 40s linear infinite',
+        dash: 'dash 1.4s linear infinite',
       },
       keyframes: {
         slideUp: {
@@ -102,6 +105,8 @@ const config: Config = {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.5' },
         },
+        marquee: { to: { transform: 'translateX(-50%)' } },
+        dash: { to: { strokeDashoffset: '-20' } },
         shimmer: {
           '0%':   { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0'  },

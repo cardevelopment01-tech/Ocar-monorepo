@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { Info } from 'lucide-react'
 
 import SiteShell from '@/components/site/SiteShell'
+import PageHero from '@/components/site/PageHero'
+import Reveal from '@/components/landing/Reveal'
 
 export const metadata: Metadata = {
   title: 'Fares and Services',
@@ -90,20 +92,13 @@ export default async function PricingPage() {
 
   return (
     <SiteShell>
-      <div className="border-b border-border bg-surface">
-        <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 md:py-16">
-          <h1 className="font-display text-4xl font-bold tracking-tight text-text-primary md:text-5xl">
-            Fares and services
-          </h1>
-          <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-text-secondary">
-            Ocar fares are set by distance, travel time and vehicle type. You see the estimate before you book,
-            with no hidden charges added afterwards.
-          </p>
-        </div>
-      </div>
+      <PageHero eyebrow="Fares and services" title="Simple fares, shown before you book">
+        Ocar fares are set by distance, travel time and vehicle type. You see the estimate before you book, with no
+        hidden charges added afterwards.
+      </PageHero>
 
       <div className="mx-auto max-w-6xl space-y-16 px-4 py-12 sm:px-6 md:py-16">
-        <section aria-labelledby="rates">
+        <Reveal><section aria-labelledby="rates">
           <h2 id="rates" className="font-display text-2xl font-bold tracking-tight text-text-primary">
             Per-kilometre rates
           </h2>
@@ -117,7 +112,7 @@ export default async function PricingPage() {
               </div>
               <ul className="divide-y divide-border">
                 {rows.map((r) => (
-                  <li key={r.slug} className="grid gap-4 px-6 py-5 md:grid-cols-[1.2fr_1fr_1fr] md:items-center">
+                  <li key={r.slug} className="grid gap-4 px-6 py-5 transition-colors hover:bg-primary-subtle/40 md:grid-cols-[1.2fr_1fr_1fr] md:items-center">
                     <div>
                       <p className="font-display text-[19px] font-semibold text-text-primary">{r.category}</p>
                       <p className="text-[12.5px] text-text-muted">{SEATS[r.slug] ?? 'Verified driver included'}</p>
@@ -146,9 +141,9 @@ export default async function PricingPage() {
             All amounts are in Indian rupees. These are base rates; your fare also reflects travel time, any stops
             you add, city-specific rates and high-demand periods, and is confirmed on screen before you book.
           </p>
-        </section>
+        </section></Reveal>
 
-        <section aria-labelledby="how" className="grid gap-10 md:grid-cols-2">
+        <Reveal><section aria-labelledby="how" className="grid gap-10 md:grid-cols-2">
           <div>
             <h2 id="how" className="font-display text-2xl font-bold tracking-tight text-text-primary">
               How each service is priced
@@ -201,7 +196,7 @@ export default async function PricingPage() {
               .
             </p>
           </div>
-        </section>
+        </section></Reveal>
       </div>
     </SiteShell>
   )
