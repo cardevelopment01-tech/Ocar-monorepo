@@ -19,6 +19,8 @@ import {
 const SUPPORT_EMAIL = 'support@ocarindia.com'
 const CASH_POLL_MS = 15_000
 const MAP_HEIGHT = 168
+// The default fit padding (80 top and bottom) would swallow this short map and zoom it out to country level.
+const MAP_FIT_PADDING = { top: 28, right: 48, bottom: 28, left: 48 }
 
 export type TripSummaryProps = {
   ride: RideDetailExtra
@@ -97,6 +99,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
               drop={[ride.destLat!, ride.destLng!]}
               driverPos={null}
               routePoints={route}
+              edgePadding={MAP_FIT_PADDING}
               showDrop
               stops={ride.stops.map((s): [number, number] => [s.lat, s.lng])}
             />
