@@ -9,6 +9,7 @@ import {
   fetchUnreadChatCount,
   markArrived as apiMarkArrived,
   startReturn,
+  arrivedAtDrop,
   submitCashCollection,
   submitEndOtp,
   submitStartOtp,
@@ -235,6 +236,18 @@ export function useActiveRide(rideId: string) {
     }
   }, [rideId])
 
+  const arrivedAtDropAction = useCallback(async (): Promise<boolean> => {
+    setActionError(null)
+    try {
+      await arrivedAtDrop(rideId)
+      refresh()
+      return true
+    } catch {
+      setActionError('Could not mark your arrival. Try again.')
+      return false
+    }
+  }, [rideId, refresh])
+
   const collectCashAction = useCallback(
     async (input: { collectedAmount?: number; notCollected?: boolean; note?: string }) => {
       setActionError(null)
@@ -284,5 +297,6 @@ export function useActiveRide(rideId: string) {
     collectCashAction,
     cancelRideAction,
     startReturnAction,
+    arrivedAtDropAction,
   }
 }

@@ -123,6 +123,8 @@ export type RideDetail = {
   completedAt: string | null
   startOtp: string | null
   endOtp: string | null
+  // Set when the driver taps "Arrived at drop"; the rider's end PIN is only released after this.
+  dropArrivedAt?: string | null
   stops: RideStop[]
   // Set when admin/the sweeper force-ended the ride -- lets a resync tell it from a normal end.
   resolvedBy?: 'admin' | 'timeout' | null

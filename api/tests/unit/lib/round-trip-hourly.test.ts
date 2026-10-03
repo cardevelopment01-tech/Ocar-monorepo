@@ -118,13 +118,13 @@ describe('settleRoundTripOvertime (6h booked, grace 5 min)', () => {
   it('one second past the grace bills a started minute', () => {
     const r = settle(at(365, 1))
     expect(r.overtime_min).toBe(1)
-    expect(r.overtime_fare).toBe(0.3) // 18 / 60
+    expect(r.overtime_fare).toBe(0) // 18 / 60 = 0.3, whole rupees
   })
 
   it('per-minute amount after the grace', () => {
     const r = settle(at(380)) // 15 min past the grace
     expect(r.overtime_min).toBe(15)
-    expect(r.overtime_fare).toBe(4.5)
+    expect(r.overtime_fare).toBe(5) // 4.5, whole rupees
   })
 
   it('flags above 60 billed minutes, still billed in full; 60 exactly is not flagged', () => {
@@ -133,7 +133,7 @@ describe('settleRoundTripOvertime (6h booked, grace 5 min)', () => {
     expect(sixty.review_reason).toBeNull()
     const over = settle(at(426))
     expect(over.overtime_min).toBe(61)
-    expect(over.overtime_fare).toBe(18.3)
+    expect(over.overtime_fare).toBe(18) // 18.3, whole rupees
     expect(over.review_reason).toMatch(/over 60 minutes/i)
   })
 

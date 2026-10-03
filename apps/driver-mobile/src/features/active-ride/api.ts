@@ -47,6 +47,11 @@ export async function startReturn(rideId: string): Promise<void> {
   await api.post(`/api/v1/rides/${rideId}/start-return`)
 }
 
+// Driver reached the drop (round trip: the return point). The rider's end PIN is only shown after this.
+export async function arrivedAtDrop(rideId: string): Promise<void> {
+  await api.post(`/api/v1/rides/${rideId}/arrived-at-drop`)
+}
+
 // Same endpoint rider-mobile's triggerMaskedCall hits -- rides.routes.ts's
 // call handler checks req.user OR req.driver as the ride owner, so this
 // works unchanged for the driver side too.

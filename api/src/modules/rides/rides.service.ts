@@ -946,12 +946,38 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
 
   await scheduleTripWindowNudges(rideId)
 
+  // The end PIN is deliberately not pushed here: the rider only sees it once the driver taps
+  // "Arrived at drop" (markArrivedAtDrop), so it is not on screen for the whole trip.
+  socketEvents.sendUserUpdate(ride.user_id.toString(), { status: 'in_progress' })
+
+  return { success: true }
+}
+
+// Driver reached the drop (or, for a round trip, the return point). Idempotent. Reveals the end PIN to
+// the rider. The end code is entered by the driver as before; this only controls when the rider sees it.
+export async function markArrivedAtDrop(driverId: bigint, rideId: bigint) {
+  const ride = await repo.getRideCoreById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (!ride.driver_id || BigInt(ride.driver_id) !== driverId) {
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  }
+  // A round trip reaches its drop only on the return leg; everything else on the single in-progress leg.
+  const dropStatus = ride.ride_type === 'round_trip' ? 'returning' : 'in_progress'
+  if (ride.status !== dropStatus) {
+    throw Object.assign(new Error('Ride is not heading to its drop'), { httpStatus: 409, code: 'NOT_AT_DROP_STAGE' })
+  }
+  await pool.query(
+    'UPDATE rides SET drop_arrived_at = COALESCE(drop_arrived_at, now()), updated_at = now() WHERE id = $1',
+    [rideId],
+  )
+  const endOtp = await redis.get(endOtpKey(rideId.toString()))
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: ride.status, dropArrived: true })
   // Rider-only channel: the OTP must never reach the driver's socket.
   socketEvents.sendUserUpdate(ride.user_id.toString(), {
-    status: 'in_progress',
-    endOtp,
+    status: ride.status,
+    dropArrived: true,
+    ...(endOtp ? { endOtp } : {}),
   })
-
   return { success: true }
 }
 

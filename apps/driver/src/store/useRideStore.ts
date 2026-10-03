@@ -35,6 +35,8 @@ export interface ActiveRide {
   overtimeRate?: number
   overtimeGraceMin?: number
   rideStartedAt?: string
+  // Set once the driver taps "Arrived at drop"; the end code is asked for only after this.
+  dropArrivedAt?: string
   stops?: RideStop[]
   paymentChannel?: 'cash' | 'online' | 'wallet'
 }
@@ -69,6 +71,7 @@ interface RideState {
   updateRideStatus:  (status: string) => void
   setFare:           (fare: number) => void
   setRideStartedAt:  (ts: string) => void
+  setDropArrived:    () => void
   setBookedWindow:   (ride: { bookedUntil?: string | null; overtimeRate?: number | null; overtimeGraceMin?: number | null }) => void
   updatePickup:      (lat: number, lng: number, address: string | null) => void
   arriveStop:        (sequence: number, arrivedAt: string | null, waitCharge?: string | null) => void
@@ -101,6 +104,9 @@ export const useRideStore = create<RideState>()(
 
       setFare: (fare) =>
         set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, fare } : null })),
+
+      setDropArrived: () =>
+        set((s) => ({ activeRide: s.activeRide ? { ...s.activeRide, dropArrivedAt: new Date().toISOString() } : null })),
 
       setBookedWindow: (w) =>
         set((s) => {

@@ -60,6 +60,7 @@ export interface Ride {
   requested_at: string
   accepted_at: string | null
   driver_arrived_at: string | null
+  drop_arrived_at: string | null
   started_at: string | null
   completed_at: string | null
   cancelled_at: string | null

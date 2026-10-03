@@ -126,12 +126,12 @@ describe('verifyEndOTP, round trip quoted under pricing_version 2', () => {
   })
 
   it('normal completion past the grace adds per-minute overtime to the quote', async () => {
-    setup(380, V2_SNAP) // 15 min past the grace -> 15 x 18/60 = 4.50
+    setup(380, V2_SNAP) // 15 min past the grace -> 15 x 18/60 = 4.5, whole rupees 5
     await verifyEndOTP(BigInt(9), BigInt(101), '1234')
     await flush()
-    expect(updateParams![3]).toBe(1232.5)
+    expect(updateParams![3]).toBe(1233)
     expect(updateParams![6]).toBe(15)
-    expect(updateParams![7]).toBe(4.5)
+    expect(updateParams![7]).toBe(5)
   })
 
   it('extra km beyond the quoted route add to the fare; fewer km never lower it', async () => {
@@ -153,7 +153,7 @@ describe('verifyEndOTP, round trip quoted under pricing_version 2', () => {
     await verifyEndOTP(BigInt(9), BigInt(101), '1234')
     await flush()
     expect(updateParams![6]).toBe(61)
-    expect(updateParams![3]).toBe(1246.3) // 1228 + 61 x 18/60
+    expect(updateParams![3]).toBe(1246) // 1228 + round(61 x 18/60)
     expect(repo.flagRideForReview).toHaveBeenCalledWith(BigInt(101), expect.stringMatching(/over 60 minutes/i))
   })
 

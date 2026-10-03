@@ -42,7 +42,8 @@ export function tripWindow({ bookedUntil, graceMin, now, overtimeRate }: TripWin
 
   const overtimeMs = now - overtimeStart
   const billedMin = Math.ceil(overtimeMs / 60_000)
-  const amount = overtimeRate != null ? Math.round(billedMin * overtimeRate / 60 * 100) / 100 : null
+  // Whole rupees, same rounding as the server's settleRoundTripOvertime.
+  const amount = overtimeRate != null ? Math.round(billedMin * overtimeRate / 60) : null
   return { kind: 'overtime', overtimeMs, billedMin, amount }
 }
 
@@ -69,23 +70,33 @@ export interface TripWindowCopy {
   tone: 'brand' | 'warning'
   label: string
   value: string
-  /** Rider only: one line stating the rate, shown from the final 15 minutes on. */
+  /** Rider only: one line stating the per-minute rate, shown from the final 15 minutes on. */
   note?: string
   /** Full sentence for screen readers (focus and transition announcements). */
   a11y: string
 }
 
-/** Words for each state; `rupees` formats an amount (₹4) so each app keeps its own currency helper. */
+/** "₹1.67 a minute" from an hourly rate: the unit riders compare against other apps. */
+function perMinute(hourRate: number): string {
+  const v = hourRate / 60
+  return `₹${Number.isInteger(v) ? v : v.toFixed(2)} a minute`
+}
+
+/**
+ * Words for each state; `rupees` formats an amount (₹4) so each app keeps its own currency helper.
+ * The rider never sees a running charge: extra time is recorded and added to the final fare, and the
+ * clock only states the per-minute rate (after the free minutes) so nothing is a surprise.
+ */
 export function tripWindowCopy(
   state: TripWindowState,
   audience: TripWindowAudience,
-  opts: { overtimeRate?: number | null; rupees: (n: number) => string },
+  opts: { overtimeRate?: number | null; graceMin?: number | null; rupees: (n: number) => string },
 ): TripWindowCopy | null {
   const rider = audience === 'rider'
-  const rate = opts.overtimeRate != null
-    ? `${opts.rupees(opts.overtimeRate)} an hour, billed by the minute`
-    : undefined
-  const note = rider && rate ? { note: `Extra time is ${rate}.` } : {}
+  const rate = opts.overtimeRate != null ? perMinute(opts.overtimeRate) : undefined
+  const afterFree = opts.graceMin ? `After ${opts.graceMin} free minutes, extra` : 'Extra'
+  const finalNote = rider && rate ? { note: `${afterFree} time is ${rate}.` } : {}
+  const graceNote = rider && rate ? { note: `Extra time is ${rate}.` } : {}
 
   switch (state.kind) {
     case 'none':
@@ -97,32 +108,37 @@ export function tripWindowCopy(
     case 'final': {
       const value = formatTimeLeft(state.msLeft)
       return {
-        icon: 'bell', tone: 'warning',
-        label: 'Booked time ends soon',
-        value, ...note,
+        icon: 'clock', tone: 'brand',
+        label: rider ? 'Booked time ends in' : 'Booked time ends soon',
+        value, ...finalNote,
         a11y: `Booked time ends soon, ${value} left`,
       }
     }
     case 'grace': {
       const value = formatClock(state.msToOvertime)
       return {
-        icon: 'bell', tone: 'warning',
+        icon: 'clock', tone: 'brand',
         label: rider ? 'Extra time starts in' : 'Booked time ended · Overtime starts in',
-        value, ...note,
+        value, ...graceNote,
         a11y: rider ? `Booked time ended. Extra time starts in ${value}` : `Booked time ended. Overtime starts in ${value}`,
       }
     }
     case 'overtime': {
       const clock = formatClock(state.overtimeMs)
+      if (rider) {
+        return {
+          icon: 'plus-circle', tone: 'brand',
+          label: 'Extra time', value: clock,
+          ...(rate ? { note: `Added to your final fare at ${rate}.` } : {}),
+          a11y: `Extra time ${clock}. It is added to your final fare.`,
+        }
+      }
       const money = state.amount != null ? opts.rupees(state.amount) : null
-      const value = money ? `${clock} · ${money}${rider ? ' so far' : ''}` : clock
       return {
-        icon: 'plus-circle', tone: 'warning',
-        label: rider ? 'Extra time' : 'Overtime',
-        value, ...note,
-        a11y: rider
-          ? `Extra time ${clock}${money ? `, ${money} so far` : ''}`
-          : `Overtime ${clock}${money ? `, ${money}` : ''}`,
+        icon: 'plus-circle', tone: 'brand',
+        label: 'Overtime',
+        value: money ? `${clock} · ${money}` : clock,
+        a11y: `Overtime ${clock}${money ? `, ${money}` : ''}`,
       }
     }
   }

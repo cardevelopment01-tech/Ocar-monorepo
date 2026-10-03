@@ -63,6 +63,7 @@ export default function ActiveRideScreen() {
     collectCashAction,
     cancelRideAction,
     startReturnAction,
+    arrivedAtDropAction,
   } = useActiveRide(rideId)
 
   const driverRating = useAuthStore((s) => s.driver?.rating ?? null)
@@ -206,6 +207,12 @@ export default function ActiveRideScreen() {
   const stopPosition = pendingStop ? ride.stops.indexOf(pendingStop) + 1 : 0
   // Booked hours stay visible on every round-trip stage, so the driver never has to remember them.
   const roundTripBadge = isRoundTrip && ride.tripHours ? <RideTypeBadge kind="round_trip" hours={ride.tripHours} /> : null
+  // The end code is only asked for after "Arrived at drop": that tap is also what releases the rider's PIN.
+  const endStage = ride.dropArrivedAt ? (
+    <OtpEntryCard phase="end" riderName={ride.riderName} error={actionError} onSubmit={(otp) => submitEndOtpAction(otp)} />
+  ) : (
+    <SlideToConfirm label="Slide when you arrive at drop" doneLabel="Arrived" onConfirm={arrivedAtDropAction} />
+  )
   let header: StageHeaderProps
   let primary: ReactNode
   let stageKey: string
@@ -238,17 +245,15 @@ export default function ActiveRideScreen() {
       // until the return leg has started. SlideToConfirm (not a tap button) so a ride can't
       // end early by accident, same affordance CashCollectionCard uses.
       <SlideToConfirm label="Slide to start return" doneLabel="Starting return" onConfirm={startReturnAction} />
-    ) : (
-      <OtpEntryCard phase="end" riderName={ride.riderName} error={actionError} onSubmit={(otp) => submitEndOtpAction(otp)} />
-    )
-    stageKey = isRoundTrip ? 'trip-return' : 'trip-end'
+    ) : endStage
+    stageKey = isRoundTrip ? 'trip-return' : ride.dropArrivedAt ? 'trip-end' : 'trip-arrive'
   } else if (status === 'returning') {
     header = {
       icon: 'corner-up-left', label: 'Heading back', title: ride.originAddress ?? 'Pickup point',
       badge: <>{roundTripBadge}<RideTypeBadge kind="return" /></>,
     }
-    primary = <OtpEntryCard phase="end" riderName={ride.riderName} error={actionError} onSubmit={(otp) => submitEndOtpAction(otp)} />
-    stageKey = 'returning'
+    primary = endStage
+    stageKey = ride.dropArrivedAt ? 'returning' : 'returning-arrive'
   } else if (status === 'driver_arrived') {
     header = {
       icon: 'user-check', label: "You've arrived", title: ride.riderName ? `Pick up ${ride.riderName}` : 'Pick up the rider',

@@ -73,7 +73,7 @@ function useElapsed(startedAt?: string) {
 
 export default function TripInProgress() {
   const navigate = useNavigate()
-  const { activeRide, updateRideStatus, updateStop, arriveStop, setFare, clearRide, unreadChatCount } = useRideStore()
+  const { activeRide, updateRideStatus, updateStop, arriveStop, setFare, setDropArrived, clearRide, unreadChatCount } = useRideStore()
   const elapsed = useElapsed(activeRide?.rideStartedAt)
   const { sessionId } = useSessionStore()
 
@@ -416,6 +416,17 @@ export default function TripInProgress() {
     }
   }
 
+  // "Arrived at drop" releases the rider's end PIN; the end code is asked for only after it.
+  const handleArrivedAtDrop = async () => {
+    if (!activeRide) return
+    try {
+      await driverRideApi.arrivedAtDrop(activeRide.id)
+      setDropArrived()
+    } catch {
+      // SwipeToConfirm shows its own "couldn't confirm" message when it is still mounted.
+    }
+  }
+
   const handleStartReturn = async () => {
     if (!activeRide) return
     setStartingReturn(true)
@@ -482,6 +493,13 @@ export default function TripInProgress() {
         label: 'Slide to start return',
         onConfirm: () => void handleStartReturn(),
         disabled: startingReturn,
+      }
+    : !activeRide?.dropArrivedAt
+    ? {
+        key: 'arrived-drop',
+        label: 'Slide when you arrive at drop',
+        onConfirm: () => void handleArrivedAtDrop(),
+        disabled: false,
       }
     : {
         key: 'complete-trip',

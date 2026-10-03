@@ -266,7 +266,8 @@ export default function RideTrackingScreen() {
             <MeetAtRow address={ride.originAddress} lat={ride.originLat} lng={ride.originLng} />
           ) : null}
           {hasDriver && status === 'driver_arrived' ? <PinBand otp={ride.startOtp ?? null} phase="start" /> : null}
-          {hasDriver && isInProgress ? <PinBand otp={ride.endOtp ?? null} phase="end" /> : null}
+          {/* The end PIN is only released once the driver taps "Arrived at drop", so it is not on screen all trip. */}
+          {hasDriver && isInProgress && ride.dropArrivedAt ? <PinBand otp={ride.endOtp ?? null} phase="end" /> : null}
           {hasDriver ? (
             <DriverCard
               ride={ride}

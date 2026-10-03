@@ -224,6 +224,8 @@ export default function RidePage() {
   const [cancelling,     setCancelling]     = useState(false)
   const [startOtp,       setStartOtp]       = useState<string | null>(null)
   const [endOtp,         setEndOtp]         = useState<string | null>(null)
+  // The end PIN is released only after the driver taps "Arrived at drop".
+  const [dropArrived,    setDropArrived]    = useState(false)
   const [showCancelSheet, setShowCancelSheet] = useState(false)
   const [addStopOpen,    setAddStopOpen]    = useState(false)
   const [sheetExpanded,  setSheetExpanded]  = useState(false)
@@ -307,6 +309,7 @@ export default function RidePage() {
       setRideStatus(data.status)
       if (data.startOtp) setStartOtp(data.startOtp)
       if (data.endOtp)   setEndOtp(data.endOtp)
+      if (data.drop_arrived_at) setDropArrived(true)
       if (data.driver_current_lat != null && data.driver_current_lng != null) {
         setDriverPos(prev => prev ?? [data.driver_current_lat!, data.driver_current_lng!])
       }
@@ -411,7 +414,7 @@ export default function RidePage() {
       if (!pollRef.current) pollRef.current = setInterval(() => void loadRide(), 10_000)
     }
     const onStatusUpdate = (data: {
-      status: string; startOtp?: string; endOtp?: string
+      status: string; startOtp?: string; endOtp?: string; dropArrived?: boolean
       fareDrift?: { previousFare: number; currentFare: number }
       paymentChannel?: string
       razorpayOrderId?: string
@@ -425,6 +428,7 @@ export default function RidePage() {
       }
       if (data.startOtp) setStartOtp(data.startOtp)
       if (data.endOtp)   setEndOtp(data.endOtp)
+      if (data.dropArrived) setDropArrived(true)
       if (data.fareDrift) {
         setFareDrift(data.fareDrift)
         setRide(prev => prev ? { ...prev, total_estimated: String(data.fareDrift!.currentFare) } : prev)
@@ -1025,7 +1029,7 @@ export default function RidePage() {
                 {(rideStatus === 'in_progress' || rideStatus === 'returning') && (
                   waitingStop
                     ? <StopWaitBadge stop={waitingStop} nowMs={waitNowMs} />
-                    : <PinBand otp={endOtp} phase="end" />
+                    : dropArrived ? <PinBand otp={endOtp} phase="end" /> : null
                 )}
                 <DriverCard ride={ride} rideId={rideId} router={router} unreadChatCount={unreadChatCount} rideStatus={rideStatus} />
                 {(rideStatus === 'accepted' || rideStatus === 'driver_arrived') && (

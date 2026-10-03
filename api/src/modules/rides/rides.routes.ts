@@ -194,7 +194,8 @@ router.get('/:id', authenticate(), async (req, res, next) => {
     const isRider = !!req.user
     const [startOtp, endOtp, stops] = await Promise.all([
       isRider ? redis.get(startOtpKey(rideIdStr)) : Promise.resolve(null),
-      isRider ? redis.get(endOtpKey(rideIdStr)) : Promise.resolve(null),
+      // The end PIN stays hidden until the driver taps "Arrived at drop".
+      isRider && ride.drop_arrived_at ? redis.get(endOtpKey(rideIdStr)) : Promise.resolve(null),
       repo.getRideStops(BigInt(rideIdStr)),
     ])
 
@@ -270,6 +271,13 @@ router.post('/:id/arrived', authenticate(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const result = await service.markArrived(driverId, BigInt(req.params['id']!))
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
+router.post('/:id/arrived-at-drop', authenticate(), async (req, res, next) => {
+  try {
+    const result = await service.markArrivedAtDrop(req.driver!.id, BigInt(req.params['id']!))
     res.json(result)
   } catch (err) { next(err) }
 })
