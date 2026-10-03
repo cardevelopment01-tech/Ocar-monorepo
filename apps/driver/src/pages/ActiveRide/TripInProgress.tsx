@@ -396,7 +396,9 @@ export default function TripInProgress() {
       }
       setOtpErrorMessage(data?.code === 'RIDE_HAS_PENDING_STOPS'
         ? (data.error ?? 'Resolve the pending stop before completing the trip')
-        : 'Wrong OTP, try again')
+        : data?.code === 'RIDE_OTP_LOCKED'
+          ? 'Too many wrong codes. Try again in 15 minutes.'
+          : 'Wrong OTP, try again')
       setOtpError(true)
       setOtp('')
       throw new Error('otp-verify-failed')
