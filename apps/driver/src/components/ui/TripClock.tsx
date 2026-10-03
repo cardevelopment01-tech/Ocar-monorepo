@@ -49,7 +49,7 @@ export function useTripWindow(w: { bookedUntil?: string | undefined; overtimeGra
 const ICONS = { clock: Clock, bell: Bell, 'plus-circle': PlusCircle } as const
 
 // One quiet row under the header: booked time left, then the free grace, then overtime with its live
-// amount. Tonal, never red (overtime is billed time, not a fault), icon AND words in every state, and
+// amount. Neutral, never red or amber (overtime is billed time, not a fault), icon AND words in every state, and
 // no pulse. Reads second, after the destination. Renders nothing for rides without a booked window.
 export default function TripClock(props: { bookedUntil?: string | undefined; overtimeGraceMin?: number | undefined; overtimeRate?: number | undefined }) {
   const { state, copy } = useTripWindow(props)
@@ -63,7 +63,6 @@ export default function TripClock(props: { bookedUntil?: string | undefined; ove
   }, [state.kind, copy])
 
   if (!copy) return null
-  const warn = copy.tone === 'warning'
   const Icon = ICONS[copy.icon]
   return (
     <>
@@ -71,9 +70,9 @@ export default function TripClock(props: { bookedUntil?: string | undefined; ove
         key={state.kind}
         role="timer"
         aria-label={copy.a11y}
-        className={`flex items-center gap-2 mb-3 px-3 min-h-[48px] py-1.5 rounded-lg animate-fade-in motion-reduce:animate-none ${warn ? 'bg-accent-amber/10' : 'bg-primary-subtle'}`}
+        className="flex items-center gap-2 mb-3 px-3 min-h-[52px] py-2 rounded-lg border border-border bg-surface animate-fade-in motion-reduce:animate-none"
       >
-        <Icon size={20} className={`flex-shrink-0 ${warn ? 'text-text-primary' : 'text-primary'}`} aria-hidden />
+        <Icon size={18} className="flex-shrink-0 text-text-secondary" aria-hidden />
         {/* Wraps instead of truncating: at large text the value drops under its label. */}
         <div className="flex-1 min-w-0 flex flex-wrap items-baseline justify-between gap-x-2">
           <span className="text-[13px] font-semibold text-text-secondary">{copy.label}</span>

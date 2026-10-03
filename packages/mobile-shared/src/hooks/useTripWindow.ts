@@ -63,7 +63,7 @@ export function useTripWindow(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookedUntil, graceMin, rate])
 
-  const copy = tripWindowCopy(state, opts.audience, { overtimeRate: rate, rupees: formatCurrency })
+  const copy = tripWindowCopy(state, opts.audience, { overtimeRate: rate, graceMin, rupees: formatCurrency })
 
   useEffect(() => {
     if (state.kind !== lastKind.current && ANNOUNCED.includes(state.kind) && copy) {

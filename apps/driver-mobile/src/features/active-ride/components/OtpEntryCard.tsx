@@ -121,7 +121,7 @@ function OtpSheet({ visible, phase, riderName, error, onSubmit, onClose }: OtpEn
             ) : busy ? (
               <Text style={[styles.statusText, { color: colors.ink600 }]}>Verifying…</Text>
             ) : failed && error ? (
-              <Text style={[styles.statusText, { color: colors.error }]}>{error}. Ask the rider to check and try again.</Text>
+              <Text style={[styles.statusText, { color: colors.error }]}>{error === 'Incorrect OTP' ? 'Incorrect OTP. Ask the rider to check and try again.' : error}</Text>
             ) : (
               <Text style={[styles.statusText, { color: colors.ink600 }]}>The code verifies automatically</Text>
             )}

@@ -4,6 +4,7 @@ import MapView, { type Region } from 'react-native-maps'
 import { OCAR_MAP_PROPS } from '@/theme/mapStyle'
 import { PinGlyph } from '@/features/map/components/PinGlyph'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { Button, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
@@ -80,7 +81,7 @@ export default function MapPickerScreen() {
       setDrop(place)
       addRecent(place)
     }
-    router.back()
+    goBack(router)
   }
 
   return (
@@ -104,7 +105,7 @@ export default function MapPickerScreen() {
       </View>
 
       <Pressable
-        onPress={() => router.back()}
+        onPress={() => goBack(router)}
         style={[styles.backButton, { top: insets.top + spacing.md }]}
         hitSlop={8}
         accessibilityRole="button"

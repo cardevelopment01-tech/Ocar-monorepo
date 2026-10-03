@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { BadgeCheck, Building2, MapPin } from 'lucide-react'
 
 import SiteShell from '@/components/site/SiteShell'
+import PageHero from '@/components/site/PageHero'
+import Reveal from '@/components/landing/Reveal'
 import { CITIES_TEXT, COMPANY, formatAddress } from '@/lib/company'
 
 export const metadata: Metadata = {
@@ -23,19 +25,13 @@ const CHECKS = [
 export default function AboutPage() {
   return (
     <SiteShell>
-      <div className="border-b border-border bg-surface">
-        <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 md:py-20">
-          <h1 className="max-w-3xl font-display text-4xl font-bold leading-[1.08] tracking-tight text-text-primary md:text-5xl">
-            Reliable intercity travel for Odisha, without the guesswork
-          </h1>
-          <p className="mt-5 max-w-2xl text-[16px] leading-relaxed text-text-secondary">
-            Ocar is a cab booking platform for the Bhubaneswar, Cuttack and Puri corridor. We built it so anyone
-            can book a trip knowing the fare, the driver and the route before they leave.
-          </p>
-        </div>
-      </div>
+      <PageHero eyebrow="About Ocar" title="Reliable intercity travel for Odisha, without the guesswork">
+        Ocar is a cab booking platform for the Bhubaneswar, Cuttack and Puri corridor. We built it so anyone can book
+        a trip knowing the fare, the driver and the route before they leave.
+      </PageHero>
 
       <div className="mx-auto max-w-6xl space-y-16 px-4 py-12 sm:px-6 md:space-y-24 md:py-20">
+        <Reveal>
         <section className="grid gap-8 md:grid-cols-[0.8fr_1.2fr] md:gap-16">
           <h2 className="font-display text-3xl font-bold tracking-tight text-text-primary">What Ocar does</h2>
           <div className="space-y-4 text-[15.5px] leading-relaxed text-text-secondary">
@@ -51,8 +47,10 @@ export default function AboutPage() {
             </p>
           </div>
         </section>
+        </Reveal>
 
-        <section className="grid gap-8 rounded-3xl bg-gradient-hero p-8 text-text-inverse md:grid-cols-[0.8fr_1.2fr] md:gap-16 md:p-12">
+        <Reveal>
+        <section className="grid gap-8 rounded-[32px] bg-gradient-hero p-8 text-text-inverse md:grid-cols-[0.8fr_1.2fr] md:gap-16 md:p-12">
           <div>
             <h2 className="font-display text-3xl font-bold tracking-tight">How we vet drivers</h2>
             <p className="mt-4 max-w-sm text-[15px] leading-relaxed text-slate-300">
@@ -61,14 +59,16 @@ export default function AboutPage() {
           </div>
           <ul className="grid gap-3 sm:grid-cols-2">
             {CHECKS.map((c) => (
-              <li key={c} className="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3.5 text-[14.5px] font-medium">
+              <li key={c} className="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3.5 text-[14.5px] font-medium ring-1 ring-white/10 transition-colors hover:bg-white/15">
                 <BadgeCheck size={18} className="flex-shrink-0 text-primary-light" />
                 {c}
               </li>
             ))}
           </ul>
         </section>
+        </Reveal>
 
+        <Reveal>
         <section className="grid gap-8 md:grid-cols-[0.8fr_1.2fr] md:gap-16">
           <h2 className="font-display text-3xl font-bold tracking-tight text-text-primary">Where we operate</h2>
           <div>
@@ -89,7 +89,9 @@ export default function AboutPage() {
             </p>
           </div>
         </section>
+        </Reveal>
 
+        <Reveal>
         <section className="grid gap-8 md:grid-cols-[0.8fr_1.2fr] md:gap-16">
           <h2 className="font-display text-3xl font-bold tracking-tight text-text-primary">Business details</h2>
           <div className="rounded-3xl border border-border bg-surface p-7">
@@ -124,6 +126,7 @@ export default function AboutPage() {
             </div>
           </div>
         </section>
+        </Reveal>
       </div>
     </SiteShell>
   )

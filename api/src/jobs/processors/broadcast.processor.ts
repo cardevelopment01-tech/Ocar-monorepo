@@ -202,6 +202,10 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     if (ride.return_at)   requestPayload['returnAt']  = ride.return_at
     if (ride.trip_hours)  requestPayload['tripHours'] = Number(ride.trip_hours)
     if (categoryName)     requestPayload['rideCategoryName'] = categoryName
+    if (ride.payment_channel) requestPayload['paymentChannel'] = ride.payment_channel
+    if (ride.estimated_km != null) requestPayload['tripKm'] = Number(ride.estimated_km)
+    if (ride.estimated_min != null) requestPayload['tripMin'] = Math.round(Number(ride.estimated_min))
+    if (ride.rental_km_limit != null) requestPayload['kmLimit'] = Number(ride.rental_km_limit)
     socketEvents.sendRideRequest(driver.driver_id.toString(), requestPayload)
 
     // A backgrounded driver's socket is very likely dead — don't wait for

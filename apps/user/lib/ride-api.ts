@@ -74,6 +74,7 @@ export type RideDetail = {
   total_estimated: string | null
   total_final: string | null
   // Booked-window facts for hourly round trips (api lib/trip-window.ts); null/absent = no clock.
+  drop_arrived_at?: string | null
   bookedUntil?: string | null
   overtimeRate?: number | null
   overtimeGraceMin?: number | null

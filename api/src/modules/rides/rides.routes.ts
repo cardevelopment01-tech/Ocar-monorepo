@@ -1,4 +1,5 @@
-import { Router, IRouter } from 'express'
+import { Router, IRouter, RequestHandler } from 'express'
+import { AppErrors } from '@/constants/errors'
 import { authenticate } from '@/middleware/auth.middleware'
 import { client as redis } from '@/db/redis'
 import { startOtpKey, endOtpKey } from '@/constants/redis-keys'
@@ -10,11 +11,21 @@ import * as paymentsService from '@/modules/payments/payments.service'
 
 const HISTORY_LIMIT = 20
 
+// Right token, wrong app (e.g. a rider token on a driver route): 403, not a TypeError on req.driver!.
+const onlyDriver: RequestHandler = (req, res, next) => {
+  if (req.driver) { next(); return }
+  res.status(403).json({ error: AppErrors.AUTH_FORBIDDEN.message, code: AppErrors.AUTH_FORBIDDEN.code })
+}
+const onlyUser: RequestHandler = (req, res, next) => {
+  if (req.user) { next(); return }
+  res.status(403).json({ error: AppErrors.AUTH_FORBIDDEN.message, code: AppErrors.AUTH_FORBIDDEN.code })
+}
+
 const router: IRouter = Router()
 
 // ── User ride history ─────────────────────────────────────────
 
-router.get('/me/history', authenticate(), async (req, res, next) => {
+router.get('/me/history', authenticate(), onlyUser, async (req, res, next) => {
   try {
     const userId = req.user!.id
     const page  = Math.max(parseInt((req.query['page'] as string) ?? '1', 10), 1)
@@ -26,7 +37,7 @@ router.get('/me/history', authenticate(), async (req, res, next) => {
 
 // ── User upcoming (scheduled) rides ───────────────────────────
 
-router.get('/me/upcoming', authenticate(), async (req, res, next) => {
+router.get('/me/upcoming', authenticate(), onlyUser, async (req, res, next) => {
   try {
     const userId = req.user!.id
     const rides = await repo.getUpcomingRides(userId)
@@ -38,7 +49,7 @@ router.get('/me/upcoming', authenticate(), async (req, res, next) => {
 
 const VALID_PERIODS = new Set(['today', 'week', 'month'])
 
-router.get('/me/earnings-summary', authenticate(), async (req, res, next) => {
+router.get('/me/earnings-summary', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const period = (req.query['period'] as string) ?? 'today'
@@ -55,7 +66,7 @@ router.get('/me/earnings-summary', authenticate(), async (req, res, next) => {
 
 // ── Driver trip history ────────────────────────────────────────
 
-router.get('/me/trips', authenticate(), async (req, res, next) => {
+router.get('/me/trips', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const page  = Math.max(parseInt((req.query['page'] as string) ?? '1', 10), 1)
@@ -67,7 +78,7 @@ router.get('/me/trips', authenticate(), async (req, res, next) => {
 
 // ── User active ride ──────────────────────────────────────────
 
-router.get('/me/active-user', authenticate(), async (req, res, next) => {
+router.get('/me/active-user', authenticate(), onlyUser, async (req, res, next) => {
   try {
     const userId = req.user!.id
     const rideId = await repo.getActiveRideIdForUser(userId)
@@ -78,7 +89,7 @@ router.get('/me/active-user', authenticate(), async (req, res, next) => {
 
 // ── Driver active ride ────────────────────────────────────────
 
-router.get('/me/active', authenticate(), async (req, res, next) => {
+router.get('/me/active', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const ride = await repo.getActiveRideForDriver(driverId)
@@ -90,7 +101,7 @@ router.get('/me/active', authenticate(), async (req, res, next) => {
 
 // ── Driver session ────────────────────────────────────────────
 
-router.post('/sessions/online', authenticate(), async (req, res, next) => {
+router.post('/sessions/online', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const session = await service.goOnline(driverId, req.body as Parameters<typeof service.goOnline>[1])
@@ -98,7 +109,7 @@ router.post('/sessions/online', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/sessions/offline', authenticate(), async (req, res, next) => {
+router.post('/sessions/offline', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const session = await service.goOffline(driverId, (req.body as { reason?: string }).reason)
@@ -106,7 +117,7 @@ router.post('/sessions/offline', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/sessions/location', authenticate(), async (req, res, next) => {
+router.post('/sessions/location', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     await service.updateLocation(driverId, req.body as Parameters<typeof service.updateLocation>[1])
@@ -114,21 +125,21 @@ router.post('/sessions/location', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/sessions/pause', authenticate(), async (req, res, next) => {
+router.post('/sessions/pause', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     await service.pauseAvailability(req.driver!.id)
     res.json({ success: true })
   } catch (err) { next(err) }
 })
 
-router.post('/sessions/resume', authenticate(), async (req, res, next) => {
+router.post('/sessions/resume', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     await service.resumeAvailability(req.driver!.id)
     res.json({ success: true })
   } catch (err) { next(err) }
 })
 
-router.get('/sessions/current', authenticate(), async (req, res, next) => {
+router.get('/sessions/current', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const session = await repo.getActiveSession(driverId)
@@ -138,7 +149,7 @@ router.get('/sessions/current', authenticate(), async (req, res, next) => {
 
 // ── Ride booking (user) ───────────────────────────────────────
 
-router.post('/', authenticate(), async (req, res, next) => {
+router.post('/', authenticate(), onlyUser, async (req, res, next) => {
   try {
     const userId = req.user!.id
     const result = await service.createBooking(userId, req.body as import('./rides.types').BookingRequest)
@@ -194,7 +205,8 @@ router.get('/:id', authenticate(), async (req, res, next) => {
     const isRider = !!req.user
     const [startOtp, endOtp, stops] = await Promise.all([
       isRider ? redis.get(startOtpKey(rideIdStr)) : Promise.resolve(null),
-      isRider ? redis.get(endOtpKey(rideIdStr)) : Promise.resolve(null),
+      // The end PIN stays hidden until the driver taps "Arrived at drop".
+      isRider && ride.drop_arrived_at ? redis.get(endOtpKey(rideIdStr)) : Promise.resolve(null),
       repo.getRideStops(BigInt(rideIdStr)),
     ])
 
@@ -212,7 +224,7 @@ router.get('/:id', authenticate(), async (req, res, next) => {
 
 // ── Ride cancellation ─────────────────────────────────────────
 
-router.post('/:id/cancel', authenticate(), async (req, res, next) => {
+router.post('/:id/cancel', authenticate(), onlyUser, async (req, res, next) => {
   try {
     const userId = req.user!.id
     const { reasonCode, reason } = req.body as { reasonCode?: string; reason?: string }
@@ -221,7 +233,7 @@ router.post('/:id/cancel', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/:id/cancel-driver', authenticate(), async (req, res, next) => {
+router.post('/:id/cancel-driver', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const { reasonCode, reason } = req.body as { reasonCode?: string; reason?: string }
@@ -230,7 +242,7 @@ router.post('/:id/cancel-driver', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/:id/end-early', authenticate(), async (req, res, next) => {
+router.post('/:id/end-early', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const body = req.body as { reasonCode?: string; actualDistanceKm?: number; actualDurationMin?: number }
@@ -250,7 +262,7 @@ router.post('/:id/end-early', authenticate(), async (req, res, next) => {
 
 // ── Driver ride actions ───────────────────────────────────────
 
-router.post('/:id/accept', authenticate(), async (req, res, next) => {
+router.post('/:id/accept', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const result = await service.acceptRide(driverId, BigInt(req.params['id']!))
@@ -258,7 +270,7 @@ router.post('/:id/accept', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/:id/decline', authenticate(), async (req, res, next) => {
+router.post('/:id/decline', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     await service.declineRide(driverId, BigInt(req.params['id']!))
@@ -266,7 +278,7 @@ router.post('/:id/decline', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/:id/arrived', authenticate(), async (req, res, next) => {
+router.post('/:id/arrived', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const result = await service.markArrived(driverId, BigInt(req.params['id']!))
@@ -274,7 +286,14 @@ router.post('/:id/arrived', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/:id/start-return', authenticate(), async (req, res, next) => {
+router.post('/:id/arrived-at-drop', authenticate(), onlyDriver, async (req, res, next) => {
+  try {
+    const result = await service.markArrivedAtDrop(req.driver!.id, BigInt(req.params['id']!))
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
+router.post('/:id/start-return', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const result = await service.startReturn(driverId, BigInt(req.params['id']!))
@@ -282,22 +301,21 @@ router.post('/:id/start-return', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/:id/start-otp', authenticate(), async (req, res, next) => {
+router.post('/:id/start-otp', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
-    const result = await service.verifyStartOTP(
-      driverId,
-      BigInt(req.params['id']!),
-      (req.body as { otp: string }).otp
-    )
+    const otp = (req.body as { otp?: unknown }).otp
+    if (typeof otp !== 'string' || !otp) { res.status(400).json({ error: 'otp is required' }); return }
+    const result = await service.verifyStartOTP(driverId, BigInt(req.params['id']!), otp)
     res.json(result)
   } catch (err) { next(err) }
 })
 
-router.post('/:id/end-otp', authenticate(), async (req, res, next) => {
+router.post('/:id/end-otp', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const body = req.body as { otp: string; actual_distance_km?: number; actual_duration_min?: number; actual_end_lat?: number; actual_end_lng?: number }
+    if (typeof body.otp !== 'string' || !body.otp) { res.status(400).json({ error: 'otp is required' }); return }
     const result = await service.verifyEndOTP(
       driverId,
       BigInt(req.params['id']!),
@@ -311,7 +329,7 @@ router.post('/:id/end-otp', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/:id/collect-cash', authenticate(), async (req, res, next) => {
+router.post('/:id/collect-cash', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const rideId = BigInt(req.params['id']!)
@@ -343,7 +361,7 @@ router.post('/:id/collect-cash', authenticate(), async (req, res, next) => {
 
 // ── Online ride payment verification (user) ────────────────────
 
-router.post('/:id/payment/verify', authenticate(), async (req, res, next) => {
+router.post('/:id/payment/verify', authenticate(), onlyUser, async (req, res, next) => {
   try {
     const rideId = BigInt(req.params['id']!)
     const { orderId, paymentId, signature } = req.body as {
@@ -354,7 +372,7 @@ router.post('/:id/payment/verify', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/:id/payment/retry', authenticate(), async (req, res, next) => {
+router.post('/:id/payment/retry', authenticate(), onlyUser, async (req, res, next) => {
   try {
     const rideId = BigInt(req.params['id']!)
     const result = await paymentsService.retryRidePayment(rideId, req.user!.id)
@@ -362,7 +380,7 @@ router.post('/:id/payment/retry', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.post('/:id/stops', authenticate(), async (req, res, next) => {
+router.post('/:id/stops', authenticate(), onlyUser, async (req, res, next) => {
   try {
     const userId = req.user!.id
     const stop = req.body as import('./rides.types').StopInput
@@ -373,7 +391,7 @@ router.post('/:id/stops', authenticate(), async (req, res, next) => {
 
 // ── Pickup pin edit (rider, bounded-radius correction) ────────
 
-router.patch('/:id/pickup', authenticate(), async (req, res, next) => {
+router.patch('/:id/pickup', authenticate(), onlyUser, async (req, res, next) => {
   try {
     const userId = req.user!.id
     const { lat, lng, address } = req.body as { lat?: unknown; lng?: unknown; address?: unknown }
@@ -388,7 +406,7 @@ router.patch('/:id/pickup', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.patch('/:id/stops/:sequence', authenticate(), async (req, res, next) => {
+router.patch('/:id/stops/:sequence', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const sequence = parseInt(req.params['sequence']!, 10)

@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native'
+import { Platform, Pressable, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Feather } from '@expo/vector-icons'
-import { BlurView } from 'expo-blur'
-import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text, SlideModal } from '@ocar/mobile-shared'
 import { Field } from './FormPrimitives'
 
 export type DateFieldProps = {
@@ -72,11 +71,10 @@ export function DateField({ label, value, onChange, minDate, maxDate, placeholde
         <Text style={[styles.text, !value ? styles.placeholder : null]}>{value || placeholder}</Text>
         <Feather name="calendar" size={16} color={colors.ink400} />
       </Pressable>
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+      <SlideModal visible={open} onRequestClose={() => setOpen(false)}>
         <View style={styles.backdrop}>
           <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
           <View style={[styles.sheet, { paddingBottom: Math.max(spacing.lg, insets.bottom + spacing.sm) }]}>
-            <BlurView intensity={60} tint="light" blurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
             <View style={styles.sheetTopEdge} />
             <View style={styles.handle} />
             <DateTimePicker
@@ -91,7 +89,7 @@ export function DateField({ label, value, onChange, minDate, maxDate, placeholde
             </Pressable>
           </View>
         </View>
-      </Modal>
+      </SlideModal>
     </Field>
   )
 }
@@ -100,7 +98,7 @@ const styles = StyleSheet.create({
   btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6, minHeight: 52 },
   text: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   placeholder: { color: colors.ink400, fontFamily: fonts.regular },
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'transparent' },
   // Opaque, not translucent -- same fix as FormPrimitives.tsx's PickerField
   // sheet: BlurView with no blurMethod renders fully transparent on Android,
   // so 0.75-alpha white was the only real layer, letting content underneath

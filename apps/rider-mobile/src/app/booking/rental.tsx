@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native'
 import { useRouter } from 'expo-router'
+import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -304,7 +305,7 @@ export default function RentalScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => goBack(router)}
           style={({ pressed }) => [styles.backButton, pressed ? styles.pressedScale : null]}
           hitSlop={8}
           accessibilityRole="button"

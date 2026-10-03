@@ -11,13 +11,11 @@ export type TripClockProps = {
   stateKey: string
 }
 
-// One quiet 48px row under the stage header (driver) or status title (rider): how much of the booked
-// time is left, then the free grace, then overtime with its live amount. It reads second, after the
-// destination, so it is tonal (no card, no shadow) and never red: overtime is billed time, not a fault.
-// Every state carries an icon AND words, so nothing depends on colour. No pulse: a ticking number is
-// enough. The rider copy adds one line stating the rate from the last 15 minutes on.
+// One quiet row under the stage header (driver) or status title (rider): how much of the booked
+// time is left, then the free grace, then extra time. It reads second, after the destination, so it
+// is a neutral hairline row (no tint, no amber, no shadow): extra time is billed time, not a fault,
+// and the rider is never shown a running charge. Icon AND words in every state; no pulse.
 export function TripClock({ copy, stateKey }: TripClockProps) {
-  const warn = copy.tone === 'warning'
   return (
     <Animated.View
       key={stateKey}
@@ -25,10 +23,10 @@ export function TripClock({ copy, stateKey }: TripClockProps) {
       accessible
       accessibilityRole="timer"
       accessibilityLabel={copy.note ? `${copy.a11y}. ${copy.note}` : copy.a11y}
-      style={[styles.wrap, { backgroundColor: warn ? colors.warningLight : colors.primarySubtle }]}
+      style={styles.wrap}
     >
       <View style={styles.row}>
-        <Feather name={copy.icon} size={20} color={warn ? colors.ink900 : colors.primary} />
+        <Feather name={copy.icon} size={18} color={colors.ink600} />
         {/* Wraps instead of truncating: at large font the value drops under its label. */}
         <View style={styles.text}>
           <Text style={styles.label}>{copy.label}</Text>
@@ -41,11 +39,11 @@ export function TripClock({ copy, stateKey }: TripClockProps) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { minHeight: 48, justifyContent: 'center', paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, borderRadius: radii.lg, gap: 2 },
+  wrap: { minHeight: 52, justifyContent: 'center', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, gap: 2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   text: { flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: spacing.sm },
   // ink600, not ink400: 4.5:1 on both tints.
   label: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold, flexShrink: 1 },
   value: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, fontVariant: ['tabular-nums'] },
-  note: { ...typography.caption, color: colors.ink600, paddingLeft: 20 + spacing.sm },
+  note: { ...typography.caption, color: colors.ink600, paddingLeft: 18 + spacing.sm },
 })

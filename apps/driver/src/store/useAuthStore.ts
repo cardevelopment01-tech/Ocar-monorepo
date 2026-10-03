@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { useRideStore } from '@/store/useRideStore'
 
 export interface DriverProfile {
   id: string
@@ -33,8 +34,14 @@ export const useAuthStore = create<AuthState>()(
       setAuth: (token, refreshToken, driver) =>
         set({ token, refreshToken, driver, isAuthenticated: true }),
 
-      clearAuth: () =>
-        set({ token: null, refreshToken: null, driver: null, isAuthenticated: false }),
+      clearAuth: () => {
+        // App.tsx's ringtone effect is keyed off incomingRequest alone, so a
+        // still-active ride-request alarm (e.g. the driver logged out before its
+        // countdown resolved) would otherwise keep ringing right through logout
+        // and into the next session.
+        useRideStore.getState().clearIncomingRequest()
+        set({ token: null, refreshToken: null, driver: null, isAuthenticated: false })
+      },
 
       updateDriver: (updates) =>
         set((state) => ({

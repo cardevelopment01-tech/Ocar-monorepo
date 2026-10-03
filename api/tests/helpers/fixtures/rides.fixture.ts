@@ -258,6 +258,14 @@ export async function driveRideToCompletion(
 ) {
   const { startOtp } = await driveRideToInProgress(app, rideId, driver, userToken)
 
+  // The rider only sees the end PIN once the driver has arrived at the drop.
+  const dropRes = await request(app)
+    .post(`/api/v1/rides/${rideId}/arrived-at-drop`)
+    .set('Authorization', `Bearer ${driver.accessToken}`)
+  if (dropRes.status !== 200) {
+    throw new Error(`Arrived-at-drop failed for ride ${rideId}: ${JSON.stringify(dropRes.body)}`)
+  }
+
   const rideAsUser2 = await request(app)
     .get(`/api/v1/rides/${rideId}`)
     .set('Authorization', `Bearer ${userToken}`)

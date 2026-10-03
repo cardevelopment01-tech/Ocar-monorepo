@@ -9,6 +9,7 @@ import {
   fetchUnreadChatCount,
   markArrived as apiMarkArrived,
   startReturn,
+  arrivedAtDrop,
   submitCashCollection,
   submitEndOtp,
   submitStartOtp,
@@ -18,6 +19,12 @@ import { externalEndMessage, type ExternalEndInfo } from './externalEnd'
 
 function isInvalidOtp(err: unknown): boolean {
   return axios.isAxiosError(err) && err.response?.status === 422
+}
+
+// Five wrong codes lock the ride's OTP for 15 minutes (429 RIDE_OTP_LOCKED).
+function otpErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err) && err.response?.status === 429) return 'Too many wrong codes. Try again in 15 minutes.'
+  return isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.'
 }
 
 // GET /rides/:id's own query already joins payments and returns these
@@ -188,7 +195,7 @@ export function useActiveRide(rideId: string) {
         refresh()
         return true
       } catch (err) {
-        setActionError(isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.')
+        setActionError(otpErrorMessage(err))
         return false
       }
     },
@@ -213,7 +220,7 @@ export function useActiveRide(rideId: string) {
           setActionError('Finish or skip the pending stop first, then enter the OTP.')
           refresh()
         } else {
-          setActionError(isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.')
+          setActionError(otpErrorMessage(err))
         }
         return false
       }
@@ -234,6 +241,18 @@ export function useActiveRide(rideId: string) {
       return false
     }
   }, [rideId])
+
+  const arrivedAtDropAction = useCallback(async (): Promise<boolean> => {
+    setActionError(null)
+    try {
+      await arrivedAtDrop(rideId)
+      refresh()
+      return true
+    } catch {
+      setActionError('Could not mark your arrival. Try again.')
+      return false
+    }
+  }, [rideId, refresh])
 
   const collectCashAction = useCallback(
     async (input: { collectedAmount?: number; notCollected?: boolean; note?: string }) => {
@@ -284,5 +303,6 @@ export function useActiveRide(rideId: string) {
     collectCashAction,
     cancelRideAction,
     startReturnAction,
+    arrivedAtDropAction,
   }
 }
