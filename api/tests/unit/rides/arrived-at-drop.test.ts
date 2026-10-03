@@ -7,7 +7,7 @@ vi.mock('@/websocket/socket.server', () => ({
   getIO: vi.fn(),
 }))
 vi.mock('@/jobs/queues', () => ({ queues: {}, QUEUE_NAMES: {}, gpsFlushQueue: { add: vi.fn() } }))
-vi.mock('@/modules/rides/rides.repository', () => ({ getRideCoreById: vi.fn() }))
+vi.mock('@/modules/rides/rides.repository', () => ({ getRideCoreById: vi.fn(), getRideStops: vi.fn().mockResolvedValue([]) }))
 
 import * as repo from '@/modules/rides/rides.repository'
 import { client as redis } from '@/db/redis'
@@ -33,6 +33,12 @@ describe('markArrivedAtDrop', () => {
     await expect(markArrivedAtDrop(9n, 5n)).rejects.toMatchObject({ httpStatus: 409 })
     vi.mocked(repo.getRideCoreById).mockResolvedValue(ride({ ride_type: 'round_trip', status: 'returning' }) as never)
     await expect(markArrivedAtDrop(9n, 5n)).resolves.toEqual({ success: true })
+  })
+
+  it('refuses while a stop is still pending', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(ride({}) as never)
+    vi.mocked(repo.getRideStops).mockResolvedValueOnce([{ status: 'pending' }] as never)
+    await expect(markArrivedAtDrop(9n, 5n)).rejects.toMatchObject({ code: 'RIDE_HAS_PENDING_STOPS' })
   })
 
   it('refuses another driver', async () => {

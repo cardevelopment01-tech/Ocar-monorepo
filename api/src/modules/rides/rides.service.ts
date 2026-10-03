@@ -966,6 +966,11 @@ export async function markArrivedAtDrop(driverId: bigint, rideId: bigint) {
   if (ride.status !== dropStatus) {
     throw Object.assign(new Error('Ride is not heading to its drop'), { httpStatus: 409, code: 'NOT_AT_DROP_STAGE' })
   }
+  // Every stop must be reached or skipped first, same rule the end code enforces.
+  const stops = await repo.getRideStops(rideId)
+  if (stops.some(s => s.status === 'pending')) {
+    throw Object.assign(new Error('Resolve all stops before arriving at the drop'), { httpStatus: 409, code: 'RIDE_HAS_PENDING_STOPS' })
+  }
   await pool.query(
     'UPDATE rides SET drop_arrived_at = COALESCE(drop_arrived_at, now()), updated_at = now() WHERE id = $1',
     [rideId],
@@ -1133,6 +1138,13 @@ export async function addRideStop(
     throw Object.assign(new Error('Stops can only be added while the ride is on the way'), { httpStatus: 409 })
   }
 
+  if (ride.drop_arrived_at) {
+    throw Object.assign(new Error('The driver has already reached the drop'), { httpStatus: 409, code: 'DROP_ALREADY_REACHED' })
+  }
+  if (!Number.isFinite(stop?.lat) || !Number.isFinite(stop?.lng) || Math.abs(stop.lat) > 90 || Math.abs(stop.lng) > 180) {
+    throw Object.assign(new Error('Stop needs a valid location'), { httpStatus: 400, code: 'INVALID_STOP_LOCATION' })
+  }
+
   const existingStops = await repo.getRideStops(rideId)
   if (existingStops.length + 1 > MAX_STOPS_PER_RIDE) {
     throw Object.assign(new Error(`A ride can have at most ${MAX_STOPS_PER_RIDE} stops`), { httpStatus: 422 })
@@ -1140,6 +1152,15 @@ export async function addRideStop(
   const anchors: Array<{ lat: number; lng: number }> = [{ lat: ride.origin_lat, lng: ride.origin_lng }]
   if (ride.dest_lat !== null && ride.dest_lng !== null) {
     anchors.push({ lat: ride.dest_lat, lng: ride.dest_lng })
+  }
+  // Route sanity: a stop must lie on a plausible detour, not a different city.
+  if (anchors.length === 2) {
+    const [a, b] = anchors as [typeof anchors[0], typeof anchors[0]]
+    const direct = distanceMetres(a.lat, a.lng, b.lat, b.lng)
+    const via = distanceMetres(a.lat, a.lng, stop.lat, stop.lng) + distanceMetres(stop.lat, stop.lng, b.lat, b.lng)
+    if (via > direct * 1.5 + 20_000) {
+      throw Object.assign(new Error('This stop is too far from your route'), { httpStatus: 422, code: 'STOP_TOO_FAR_FROM_ROUTE' })
+    }
   }
   const others = [...anchors, ...existingStops.map(s => ({ lat: s.lat, lng: s.lng }))]
   for (const other of others) {
@@ -1162,6 +1183,14 @@ export async function addRideStop(
       if ((err as { code?: string }).code === '23505' && attempt < MAX_ATTEMPTS) continue
       throw err
     }
+  }
+
+  // Settlement bills snap.stop_fare, so a charged stop added after booking must land there too.
+  if (chargeApplied > 0) {
+    await pool.query(
+      `UPDATE fare_snapshots SET stop_fare = stop_fare + $2, stop_count = COALESCE(stop_count, 0) + 1 WHERE ride_id = $1`,
+      [rideId, chargeApplied],
+    )
   }
 
   // Re-order so the new stop sits where the driver will actually reach it, then

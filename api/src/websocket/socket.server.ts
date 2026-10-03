@@ -143,6 +143,10 @@ export function initSocketServer(httpServer: HttpServer): Server {
             if (a.return_at != null)  payload['returnAt']  = a.return_at
             if (a.trip_hours != null) payload['tripHours'] = Number(a.trip_hours)
             payload['stopCount'] = a.stop_count
+            if (a.payment_channel) payload['paymentChannel'] = a.payment_channel
+            if (a.estimated_km != null) payload['tripKm'] = Number(a.estimated_km)
+            if (a.estimated_min != null) payload['tripMin'] = Math.round(Number(a.estimated_min))
+            if (a.rental_km_limit != null) payload['kmLimit'] = Number(a.rental_km_limit)
             // Emit directly to this socket so the driver sees remaining time, not original
             socket.emit('ride:request', payload)
           }
