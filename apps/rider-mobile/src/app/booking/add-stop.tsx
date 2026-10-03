@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useRouter } from 'expo-router'
+import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
@@ -39,7 +40,7 @@ export default function AddStopScreen() {
     try {
       const d = await fetchPlaceDetail(placeId)
       addStop({ address: d.address || description, lat: d.lat, lng: d.lng })
-      router.back()
+      goBack(router)
     } catch {
       setResolving(false)
     }
@@ -48,7 +49,7 @@ export default function AddStopScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel">
+        <Pressable onPress={() => goBack(router)} style={styles.backButton} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel">
           <Feather name="arrow-left" size={17} color={colors.ink900} />
         </Pressable>
         <Text style={styles.title}>Add a stop</Text>
@@ -106,7 +107,7 @@ export default function AddStopScreen() {
                 icon="map-pin"
                 label={p.label}
                 address={p.address}
-                onPress={() => { addStop({ address: p.address, lat: p.lat, lng: p.lng }); router.back() }}
+                onPress={() => { addStop({ address: p.address, lat: p.lat, lng: p.lng }); goBack(router) }}
                 last={i === POPULAR.length - 1}
               />
             ))}

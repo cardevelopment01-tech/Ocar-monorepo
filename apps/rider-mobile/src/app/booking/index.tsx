@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useFocusEffect, useRouter } from 'expo-router'
+import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography, fonts, pillTextFor } from '@ocar/mobile-shared'
@@ -278,7 +279,7 @@ export default function BookingPickersScreen() {
           mirrors web's own flex-shrink-0 header (never part of the scroll). */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => { resetDraft(); router.back() }}
+          onPress={() => { resetDraft(); goBack(router) }}
           style={({ pressed }) => [styles.backButton, pressed ? styles.pressedScale : null]}
           hitSlop={8}
           accessibilityRole="button"
