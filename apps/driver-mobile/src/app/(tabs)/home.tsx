@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Dimensions, Modal, Pressable, StyleSheet, View } from 'react-native'
+import { Dimensions, Pressable, StyleSheet, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -9,6 +9,7 @@ import { Button, Card, OCAR_MAP_PROPS, PulseDot, card, colors, geo, h, shadow, u
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { OnlineToggle } from '@/features/go-online/components/OnlineToggle'
+import { BottomSheet } from '@/features/go-online/components/BottomSheet'
 import { useGoOnlineFlow } from '@/features/go-online/useGoOnlineFlow'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
@@ -275,24 +276,28 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <Modal visible={showOfflineConfirm} transparent animationType="fade">
-        <View style={styles.confirmBackdrop}>
-          <Card style={styles.confirmCard}>
-            <Text style={styles.confirmTitle}>Go offline?</Text>
-            <Text style={styles.confirmBody}>You'll stop receiving ride requests until you go online again.</Text>
-            <View style={styles.confirmActions}>
-              <Button label="Cancel" variant="secondary" onPress={() => setShowOfflineConfirm(false)} />
-              <Button
-                label="Go Offline"
-                onPress={() => {
-                  setShowOfflineConfirm(false)
-                  void flow.goOffline()
-                }}
-              />
+      <BottomSheet visible={showOfflineConfirm} onClose={() => setShowOfflineConfirm(false)}>
+        <View style={styles.confirmBody}>
+          <View style={styles.confirmIconRing}>
+            <View style={styles.confirmIcon}>
+              <Feather name="power" size={26} color={colors.primary} />
             </View>
-          </Card>
+          </View>
+          <Text style={styles.confirmTitle} accessibilityRole="header">Go offline?</Text>
+          <Text style={styles.confirmText}>You will stop receiving ride requests until you go online again.</Text>
+          <View style={styles.confirmActions}>
+            <Button label="Stay online" onPress={() => setShowOfflineConfirm(false)} />
+            <Button
+              label="Go offline"
+              variant="secondary"
+              onPress={() => {
+                setShowOfflineConfirm(false)
+                void flow.goOffline()
+              }}
+            />
+          </View>
         </View>
-      </Modal>
+      </BottomSheet>
     </View>
   )
 }
@@ -359,9 +364,11 @@ const styles = StyleSheet.create({
   },
   actionLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
   actionLabel: { ...typography.label, color: colors.ink900, fontFamily: fonts.semibold },
-  confirmBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: `${colors.ink900}72`, padding: spacing.lg },
-  confirmCard: { gap: spacing.sm },
-  confirmTitle: { ...typography.headline, color: colors.ink900 },
-  confirmBody: { ...typography.body, color: colors.ink600 },
-  confirmActions: { flexDirection: 'row', gap: spacing.sm },
+  // One centered column: icon, title and body share an axis; the buttons span the full width.
+  confirmBody: { paddingHorizontal: spacing.lg, alignItems: 'center' },
+  confirmIconRing: { width: 84, height: 84, borderRadius: 42, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
+  confirmIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', boxShadow: shadow.sm },
+  confirmTitle: { fontFamily: fonts.bold, fontSize: 24, lineHeight: 30, letterSpacing: -0.3, color: colors.ink900, textAlign: 'center', marginTop: spacing.lg },
+  confirmText: { fontFamily: fonts.regular, fontSize: 16, lineHeight: 24, color: colors.ink600, textAlign: 'center', marginTop: spacing.sm, maxWidth: 300 },
+  confirmActions: { alignSelf: 'stretch', gap: spacing.sm + 2, marginTop: spacing.lg + 4 },
 })

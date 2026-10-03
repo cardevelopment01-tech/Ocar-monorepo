@@ -21,6 +21,12 @@ function isInvalidOtp(err: unknown): boolean {
   return axios.isAxiosError(err) && err.response?.status === 422
 }
 
+// Five wrong codes lock the ride's OTP for 15 minutes (429 RIDE_OTP_LOCKED).
+function otpErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err) && err.response?.status === 429) return 'Too many wrong codes. Try again in 15 minutes.'
+  return isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.'
+}
+
 // GET /rides/:id's own query already joins payments and returns these
 // (rides.repository.ts's getRideById), same fields web's TripEnd.tsx polls
 // for -- just not declared on the shared RideDetail type since only the
@@ -189,7 +195,7 @@ export function useActiveRide(rideId: string) {
         refresh()
         return true
       } catch (err) {
-        setActionError(isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.')
+        setActionError(otpErrorMessage(err))
         return false
       }
     },
@@ -214,7 +220,7 @@ export function useActiveRide(rideId: string) {
           setActionError('Finish or skip the pending stop first, then enter the OTP.')
           refresh()
         } else {
-          setActionError(isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.')
+          setActionError(otpErrorMessage(err))
         }
         return false
       }

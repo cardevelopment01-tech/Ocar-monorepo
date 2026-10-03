@@ -92,13 +92,13 @@ export const buttonRadius = 16
 // Jakarta Sans. A single shared `typography` object previously gave
 // rider-mobile Space Grotesk headlines it was never supposed to have.
 const riderDisplay = {
-  display: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 26, fontWeight: '700', lineHeight: 32 },
-  headline: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 20, fontWeight: '700', lineHeight: 26 },
+  display: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 26, lineHeight: 32 },
+  headline: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 20, lineHeight: 26 },
 } as const
 
 export const typography = {
   ...riderDisplay,
-  title: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 18, fontWeight: '600', lineHeight: 25 },
+  title: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 18, lineHeight: 25 },
   body: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 16, fontWeight: '400', lineHeight: 26 },
   label: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 13, fontWeight: '500', lineHeight: 18 },
   caption: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, fontWeight: '400', lineHeight: 18 },
