@@ -18,10 +18,6 @@ export const COMPANY = {
     country: 'India',
   },
   gstin: '21AAFCO1215R1ZH',
-  grievanceOfficer: {
-    name: '[Add Grievance Officer name]',
-    email: 'grievance@ocarindia.com',
-  },
   serviceCities: ['Bhubaneswar', 'Cuttack', 'Puri'],
 } as const
 
