@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Clock3, Mail, MapPin, Phone, Scale } from 'lucide-react'
+import { Clock3, Mail, MapPin, Phone } from 'lucide-react'
 
 import SiteShell from '@/components/site/SiteShell'
 import PageHero from '@/components/site/PageHero'
@@ -10,7 +10,7 @@ import { COMPANY, formatAddress } from '@/lib/company'
 export const metadata: Metadata = {
   title: 'Contact Us',
   description:
-    'Contact Ocar support by email or phone, find our registered office address, and reach our Grievance Officer.',
+    'Contact Ocar support by email or phone, and find our registered office address.',
   alternates: { canonical: '/contact' },
 }
 
@@ -21,7 +21,7 @@ export default function ContactPage() {
         Questions about a booking, a payment or a refund? Write or call us and a real person will reply.
       </PageHero>
 
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 md:py-16 lg:grid-cols-[1.2fr_0.8fr] lg:gap-16">
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 md:py-16">
         <Reveal><section aria-labelledby="support">
           <h2 id="support" className="font-display text-2xl font-bold tracking-tight text-text-primary">
             Customer support
@@ -66,35 +66,6 @@ export default function ContactPage() {
             first; it explains what to send us and how long each step takes.
           </p>
         </section></Reveal>
-
-        <Reveal className="self-start"><aside className="rounded-3xl bg-primary-subtle p-7 md:p-9">
-          <Scale size={22} className="text-primary-dark" />
-          <h2 className="mt-4 font-display text-2xl font-bold tracking-tight text-text-primary">Grievance Officer</h2>
-          <p className="mt-2 text-[14px] leading-relaxed text-text-secondary">
-            If your complaint is not resolved by support, write to our Grievance Officer as required under the
-            Information Technology Act, 2000.
-          </p>
-          <dl className="mt-5 space-y-3 text-[14.5px]">
-            <div>
-              <dt className="text-[12.5px] font-semibold text-text-muted">Name</dt>
-              <dd className="font-semibold text-text-primary">{COMPANY.grievanceOfficer.name}</dd>
-            </div>
-            <div>
-              <dt className="text-[12.5px] font-semibold text-text-muted">Email</dt>
-              <dd>
-                <a
-                  href={`mailto:${COMPANY.grievanceOfficer.email}`}
-                  className="break-all font-semibold text-primary-dark"
-                >
-                  {COMPANY.grievanceOfficer.email}
-                </a>
-              </dd>
-            </div>
-          </dl>
-          <p className="mt-5 text-[13px] text-text-secondary">
-            We acknowledge complaints within 48 hours and aim to resolve them within 15 days.
-          </p>
-        </aside></Reveal>
       </div>
     </SiteShell>
   )
