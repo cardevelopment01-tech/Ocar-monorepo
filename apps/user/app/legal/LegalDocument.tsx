@@ -1,8 +1,7 @@
 import Link from 'next/link'
-import { AlertTriangle } from 'lucide-react'
 
 import PageHero from '@/components/site/PageHero'
-import { LEGAL_DRAFT_NOTICE, LEGAL_LAST_UPDATED } from '@/lib/company'
+import { LEGAL_LAST_UPDATED } from '@/lib/company'
 
 export type LegalSection = {
   heading: string
@@ -88,17 +87,6 @@ export function LegalDocument({
         </aside>
 
         <article className="min-w-0 rounded-[28px] border border-border bg-surface p-6 shadow-card sm:p-8 md:p-12">
-          {LEGAL_DRAFT_NOTICE && (
-            <div className="mb-8 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <AlertTriangle size={15} className="mt-0.5 flex-shrink-0 text-amber-600" />
-              <p className="text-[12.5px] leading-relaxed text-amber-800">
-                <span className="font-semibold">Draft pending legal review.</span> This document reflects
-                Ocar&apos;s actual practices but has not yet been reviewed by a lawyer. Set
-                LEGAL_DRAFT_NOTICE to false in lib/company.ts once counsel signs off.
-              </p>
-            </div>
-          )}
-
           <div className="space-y-10">
             {sections.map((s) => (
               <section key={s.heading} id={slug(s.heading)} className="scroll-mt-24">
