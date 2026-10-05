@@ -25,10 +25,6 @@ export const COMPANY = {
   serviceCities: ['Bhubaneswar', 'Cuttack', 'Puri'],
 } as const
 
-// The legal pages were drafted from Ocar's real data practices but have not
-// been reviewed by counsel. Flip to false only once a lawyer has signed off.
-export const LEGAL_DRAFT_NOTICE = true
-
 export const LEGAL_LAST_UPDATED = '25 September 2026'
 
 export function formatAddress(): string {
