@@ -9,6 +9,7 @@ import { rideApi, type RideDetail } from '@/lib/ride-api'
 import { DriverAvatar, driverViewFromRide } from '@/components/ride/DriverIdentity'
 import { safetyApi, type RatingTag } from '@/lib/safety-api'
 import { cn } from '@/lib/utils'
+import { getApiErrorMessage } from '@ocar/shared'
 
 export default function RateRidePage() {
   const params = useParams<{ id: string }>()
@@ -65,8 +66,8 @@ export default function RateRidePage() {
       })
       setSubmitted(true)
       setTimeout(() => router.replace('/home'), 1200)
-    } catch {
-      setError('Could not submit rating. Please try again.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Could not submit rating. Please try again.'))
       setSubmitting(false)
     }
   }

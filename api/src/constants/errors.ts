@@ -7,27 +7,27 @@ interface AppError {
 export const AppErrors = {
   AUTH_OTP_EXPIRED: {
     code: 'AUTH_OTP_EXPIRED',
-    message: 'OTP has expired',
+    message: 'That code has expired. Request a new one',
     httpStatus: 401,
   },
   AUTH_OTP_INVALID: {
     code: 'AUTH_OTP_INVALID',
-    message: 'Invalid OTP',
+    message: 'That code is incorrect. Check it and try again',
     httpStatus: 401,
   },
   AUTH_OTP_LOCKED: {
     code: 'AUTH_OTP_LOCKED',
-    message: 'OTP verification locked due to too many failed attempts',
+    message: 'Too many incorrect attempts. Try again in a few minutes',
     httpStatus: 429,
   },
   AUTH_OTP_RATE_LIMITED: {
     code: 'AUTH_OTP_RATE_LIMITED',
-    message: 'Too many OTP requests. Please wait before trying again',
+    message: 'Too many code requests. Please wait a few minutes and try again',
     httpStatus: 429,
   },
   AUTH_TOKEN_INVALID: {
     code: 'AUTH_TOKEN_INVALID',
-    message: 'Invalid authentication token',
+    message: 'Your session is not valid. Please sign in again',
     httpStatus: 401,
   },
   AUTH_SESSION_REPLACED: {
@@ -37,7 +37,7 @@ export const AppErrors = {
   },
   AUTH_TOKEN_EXPIRED: {
     code: 'AUTH_TOKEN_EXPIRED',
-    message: 'Authentication token has expired',
+    message: 'Your session has expired. Please sign in again',
     httpStatus: 401,
   },
   AUTH_UNAUTHORIZED: {
@@ -47,7 +47,7 @@ export const AppErrors = {
   },
   AUTH_FORBIDDEN: {
     code: 'AUTH_FORBIDDEN',
-    message: 'You do not have permission to perform this action',
+    message: 'You do not have permission to do that',
     httpStatus: 403,
   },
   TOTP_SETUP_REQUIRED: {
@@ -70,14 +70,19 @@ export const AppErrors = {
     message: 'This verification session has expired — please log in again',
     httpStatus: 401,
   },
+  DRIVER_ONBOARDING_INCOMPLETE: {
+    code: 'DRIVER_ONBOARDING_INCOMPLETE',
+    message: 'Finish your onboarding to continue',
+    httpStatus: 403,
+  },
   DRIVER_NOT_APPROVED: {
     code: 'DRIVER_NOT_APPROVED',
-    message: 'Driver account is pending approval',
+    message: 'Your account is still under review. You can go online once it is approved',
     httpStatus: 403,
   },
   DRIVER_SUSPENDED: {
     code: 'DRIVER_SUSPENDED',
-    message: 'Driver account is suspended',
+    message: 'Your account is suspended. Please contact Ocar support',
     httpStatus: 403,
   },
   DRIVER_DOCS_REJECTED: {
@@ -87,27 +92,27 @@ export const AppErrors = {
   },
   LOW_WALLET_BALANCE: {
     code: 'LOW_WALLET_BALANCE',
-    message: 'Wallet balance is below the minimum required to receive rides',
+    message: 'Your wallet balance is too low to receive rides. Recharge your wallet to continue',
     httpStatus: 402,
   },
   DRIVER_SESSION_ACTIVE: {
     code: 'DRIVER_SESSION_ACTIVE',
-    message: 'Driver already has an active session',
+    message: 'You are already online on another device',
     httpStatus: 409,
   },
   RIDE_NO_DRIVERS: {
     code: 'RIDE_NO_DRIVERS',
-    message: 'No drivers available in your area',
+    message: 'No drivers are available nearby right now. Please try again in a moment',
     httpStatus: 404,
   },
   RIDE_OTP_FAILED: {
     code: 'RIDE_OTP_FAILED',
-    message: 'Invalid ride OTP',
+    message: 'That ride code is incorrect. Check it and try again',
     httpStatus: 401,
   },
   RIDE_OTP_LOCKED: {
     code: 'RIDE_OTP_LOCKED',
-    message: 'Ride OTP locked due to too many failed attempts',
+    message: 'Too many incorrect ride codes. Try again in 15 minutes',
     httpStatus: 429,
   },
   RIDE_ALREADY_ACTIVE: {
@@ -117,32 +122,32 @@ export const AppErrors = {
   },
   RIDE_NOT_FOUND: {
     code: 'RIDE_NOT_FOUND',
-    message: 'Ride not found',
+    message: 'We could not find that ride',
     httpStatus: 404,
   },
   RIDE_INVALID_STATUS: {
     code: 'RIDE_INVALID_STATUS',
-    message: 'This action is not allowed in the current ride status',
+    message: 'This is not possible at this stage of the ride',
     httpStatus: 422,
   },
   PAYMENT_DUPLICATE: {
     code: 'PAYMENT_DUPLICATE',
-    message: 'Payment already exists for this ride',
+    message: 'This ride has already been paid for',
     httpStatus: 409,
   },
   PAYMENT_NOT_FOUND: {
     code: 'PAYMENT_NOT_FOUND',
-    message: 'Payment not found',
+    message: 'We could not find that payment',
     httpStatus: 404,
   },
   WALLET_INSUFFICIENT: {
     code: 'WALLET_INSUFFICIENT',
-    message: 'Insufficient wallet balance',
+    message: 'Your wallet balance is too low. Recharge your wallet to continue',
     httpStatus: 422,
   },
   WALLET_FROZEN: {
     code: 'WALLET_FROZEN',
-    message: 'Wallet is frozen',
+    message: 'Your wallet is frozen. Please contact Ocar support',
     httpStatus: 403,
   },
   VALIDATION_ERROR: {
@@ -152,12 +157,12 @@ export const AppErrors = {
   },
   NOT_FOUND: {
     code: 'NOT_FOUND',
-    message: 'Resource not found',
+    message: 'We could not find what you were looking for',
     httpStatus: 404,
   },
   DUPLICATE_ENTRY: {
     code: 'DUPLICATE_ENTRY',
-    message: 'Resource already exists',
+    message: 'This already exists',
     httpStatus: 409,
   },
   ADMIN_INVITE_DUPLICATE: {
@@ -177,7 +182,7 @@ export const AppErrors = {
   },
   MAINTENANCE_MODE: {
     code: 'MAINTENANCE_MODE',
-    message: 'Service is under maintenance',
+    message: 'Ocar is under maintenance right now. Please try again shortly',
     httpStatus: 503,
   },
 } as const satisfies Record<string, AppError>

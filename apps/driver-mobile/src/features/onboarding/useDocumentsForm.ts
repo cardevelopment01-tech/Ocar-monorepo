@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { onboardingApi, type DocumentStatus, type PickedFile } from './api'
 import { DRIVER_DOC_GROUPS, VEHICLE_DOC_GROUPS, ALL_DOC_KEYS } from './constants'
+import { getApiErrorMessage } from '@ocar/mobile-shared'
 
 export type SlotState = { state: 'idle' | 'uploading' | 'done' | 'error'; url: string | null; docStatus: string | null; rejectionNote: string | null; rejectionCount: number; error: string | null }
 
@@ -79,8 +80,8 @@ export function useDocumentsForm() {
     try {
       await onboardingApi.saveIdentityNumbers({ license_number: licenseNumber.trim().toUpperCase(), aadhaar_number: aadhaarNumber })
       setIdentitySaved(true)
-    } catch {
-      setIdentityError("Couldn't save. Check your details.")
+    } catch (err) {
+      setIdentityError(getApiErrorMessage(err, "Couldn't save. Check your details."))
     }
   }
 
@@ -100,8 +101,8 @@ export function useDocumentsForm() {
       await onboardingApi.saveIdentityNumbers({ license_number: licenseNumber.trim().toUpperCase(), aadhaar_number: aadhaarNumber })
       setIdentitySaved(true)
       return true
-    } catch {
-      setIdentityError("Couldn't save. Check your details.")
+    } catch (err) {
+      setIdentityError(getApiErrorMessage(err, "Couldn't save. Check your details."))
       return false
     } finally {
       setIsSaving(false)

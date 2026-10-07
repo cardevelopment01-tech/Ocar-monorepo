@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils'
 import {
   InitialsAvatar, fmt, docLabel, REQUIRED_DRIVER_DOCS, REQUIRED_VEHICLE_DOCS, DocCheckItem,
 } from '../shared'
+import { extractErrorMessage } from '@/lib/http-errors'
 
 type Tab = 'overview' | 'documents' | 'vehicle' | 'activity' | 'rides' | 'earnings' | 'history'
 const TABS: { key: Tab; label: string }[] = [
@@ -364,8 +365,7 @@ export default function DriverDetailPage() {
       setPendingAction(null)
       await fetchDetail()
     } catch (err) {
-      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      setActionError(message ?? 'Action failed. Please try again.')
+      setActionError(extractErrorMessage(err, 'Action failed. Please try again.'))
     }
     finally { setActionLoading(false) }
   }

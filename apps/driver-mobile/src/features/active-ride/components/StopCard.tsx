@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Alert, StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { Button, colors, fonts, radii, spacing, typography, Text } from '@ocar/mobile-shared'
+import { Button, colors, fonts, radii, spacing, typography, Text, getApiErrorMessage } from '@ocar/mobile-shared'
 import { serverNow } from '@/services/api'
 import { markStopArrived, markStopStatus } from '../api'
 import { SlideToConfirm } from './SlideToConfirm'
@@ -45,8 +45,8 @@ export function StopCard({ rideId, sequence, meterWait, arrivedAt, onResolved }:
       else await markStopStatus(rideId, sequence, step)
       onResolved()
       return true
-    } catch {
-      setError("Couldn't update the stop. Try again.")
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Couldn't update the stop. Try again."))
       return false
     } finally {
       setSubmitting(null)

@@ -9,6 +9,7 @@ import api from '@/lib/api'
 import { registerPush } from '@/lib/push'
 import { useAuthStore, type DriverProfile } from '@/store/useAuthStore'
 import { TERMS_URL, PRIVACY_URL } from '@/lib/constants'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 type Step = 'phone' | 'otp'
 
@@ -125,7 +126,7 @@ export default function Login() {
       if (code === 'AUTH_OTP_INVALID')    setError('Incorrect code. Please try again.')
       else if (code === 'AUTH_OTP_EXPIRED') { setError('Code has expired. Request a new one.'); setStep('phone') }
       else if (code === 'AUTH_OTP_LOCKED')  setError('Too many attempts. Please wait 15 minutes.')
-      else setError('Verification failed. Please try again.')
+      else setError(getApiErrorMessage(err, 'Verification failed. Please try again.'))
     } finally { otpVerifyInFlightRef.current = false; setLoading(false) }
   }
 

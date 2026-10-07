@@ -6,7 +6,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera'
 import { getInfoAsync } from 'expo-file-system/legacy'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text, getApiErrorMessage } from '@ocar/mobile-shared'
 import { OvalOverlay } from '@/components/camera/OvalOverlay'
 import { RectOverlay } from '@/components/camera/RectOverlay'
 import { submitVerification, type PickedPhoto } from '@/features/verification/api'
@@ -92,8 +92,8 @@ export default function DailyVerificationScreen() {
     try {
       await submitVerification(selfie, plate)
       router.replace('/go-online/mode')
-    } catch {
-      setSubmitError('Something went wrong submitting your verification. Please try again.')
+    } catch (err) {
+      setSubmitError(getApiErrorMessage(err, 'Something went wrong submitting your verification. Please try again.'))
       setSubmitting(false)
     }
   }

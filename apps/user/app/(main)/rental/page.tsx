@@ -21,6 +21,7 @@ import PickupTimeChip from '@/components/ui/PickupTimeChip'
 import RouteTimeline, { type TimelineNode } from '@/components/route/RouteTimeline'
 import AddStopSheet from '@/components/route/AddStopSheet'
 import BookingForSheet from '@/components/booking/BookingForSheet'
+import { getApiErrorMessage } from '@ocar/shared'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -404,9 +405,7 @@ function RentalContent() {
       const result = await rideApi.createBooking(params)
       router.push(scheduledFor ? '/history?scheduled=1' : `/ride/${result.rideId}`)
     } catch (err) {
-      const status = isAxiosError(err) ? err.response?.status : undefined
-      const serverMessage = isAxiosError(err) ? (err.response?.data as { error?: string } | undefined)?.error : undefined
-      setBookError(status === 422 && serverMessage ? serverMessage : 'Booking failed. Please try again.')
+      setBookError(getApiErrorMessage(err, 'Booking failed. Please try again.'))
       setIsBooking(false)
     }
   }

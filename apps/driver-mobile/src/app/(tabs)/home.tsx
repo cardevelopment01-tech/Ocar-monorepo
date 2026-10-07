@@ -118,7 +118,7 @@ export default function HomeScreen() {
   async function handleToggle() {
     if (isOnline) { setShowOfflineConfirm(true); return }
     const nextRoute = await flow.requestGoOnline()
-    router.push(nextRoute)
+    if (nextRoute) router.push(nextRoute)
   }
 
   return (

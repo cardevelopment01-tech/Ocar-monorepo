@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import * as Location from 'expo-location'
 import { useRouter } from 'expo-router'
-import { getCurrentOrLastKnownPosition } from '@ocar/mobile-shared'
+import { getApiErrorMessage, getCurrentOrLastKnownPosition } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { connectSocket } from '@/services/socket'
 import { startBackgroundTracking } from '@/services/location/backgroundTask'
@@ -77,7 +77,7 @@ export function useConfirmGoOnline(
       connectSocket()
       router.replace('/(tabs)/home')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to go online. Please try again.')
+      setError(getApiErrorMessage(err, 'Failed to go online. Please try again.'))
     } finally {
       setGoingOnline(false)
     }

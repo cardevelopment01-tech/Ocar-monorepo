@@ -10,6 +10,7 @@ import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
 import type { SlotDef, SlotState } from '@/components/documents/types'
 import { DRIVER_GROUPS, VEHICLE_GROUPS, ALL_GROUPS, initSlotState } from '@/components/documents/groups'
 import FieldError, { ShakeWrap, useShake } from '@/components/ui/FieldError'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
@@ -102,8 +103,8 @@ export default function Documents() {
         aadhaar_number: aadhaarNumber,
       })
       setIdentitySaved(true)
-    } catch {
-      setIdentityError("Couldn't save. Check your details.")
+    } catch (err) {
+      setIdentityError(getApiErrorMessage(err, "Couldn't save. Check your details."))
     }
   }
 
@@ -124,8 +125,8 @@ export default function Documents() {
           aadhaar_number: aadhaarNumber,
         })
         setIdentitySaved(true)
-      } catch {
-        setIdentityError("Couldn't save. Check your details.")
+      } catch (err) {
+        setIdentityError(getApiErrorMessage(err, "Couldn't save. Check your details."))
         setIsSaving(false)
         return
       }

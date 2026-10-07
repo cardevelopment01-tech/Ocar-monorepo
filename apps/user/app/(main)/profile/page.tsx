@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth-context'
 import { userApi } from '@/lib/auth'
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import { SHEET_SPRING } from '@/lib/motion'
+import { getApiErrorMessage } from '@ocar/shared'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -99,8 +100,8 @@ export default function ProfilePage() {
       const fresh = await userApi.getMe()
       setStats(s => s ? { ...s, name: fresh.name, email: fresh.email, phone: fresh.phone ?? null } : s)
       setEditing(false)
-    } catch {
-      setSaveErr('Could not save. Please try again.')
+    } catch (err) {
+      setSaveErr(getApiErrorMessage(err, 'Could not save. Please try again.'))
     } finally {
       setSaving(false)
     }
