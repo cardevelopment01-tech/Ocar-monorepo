@@ -1,28 +1,33 @@
 import { useEffect, useState } from 'react'
-import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import Constants from 'expo-constants'
+import { useRouter } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { h } from '@/theme/homeTokens'
 import { useNavClearance } from '@/features/home/FloatingTabBar'
 import { card, geo, sectionLabel } from '@/theme/homeTokens'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, fonts } from '@ocar/mobile-shared'
+import Animated, { FadeInDown, FadeIn, useAnimatedStyle } from 'react-native-reanimated'
+import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, fonts, useKeyboardOffset, mapSaveError } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { teardownPushNotifications } from '@/services/notifications'
 import { fetchProfile, updateProfile, type ProfileStats } from '@/features/profile/api'
 
-// Menu items are visual-parity ports of the web profile page's inert placeholders --
-// apps/user/app/(main)/profile/page.tsx's own MENU items have no working nav
-// wired yet either (see CLAUDE.md's "Known UI Caveats"), so these stay
-// non-functional the same way, not a mobile-specific gap.
-const MENU = [
-  { icon: 'map-pin' as const, label: 'Saved places', sub: 'Home, Work & more' },
-  { icon: 'credit-card' as const, label: 'Payment methods', sub: 'UPI, Cards & Wallet' },
-  { icon: 'bell' as const, label: 'Notifications', sub: 'Push & SMS alerts' },
-  { icon: 'shield' as const, label: 'Safety', sub: 'Emergency contacts' },
-  { icon: 'help-circle' as const, label: 'Help & Support', sub: 'FAQs, raise a ticket' },
+// `go` = live row (chevron); rows without it are inert and show `badge` (default "Soon").
+type Go = 'notifications' | 'places' | 'safety' | 'support'
+type MenuItem = { icon: React.ComponentProps<typeof Feather>['name']; label: string; sub: string; go?: Go; badge?: string }
+const MENU: MenuItem[] = [
+  { icon: 'bell', label: 'Notifications', sub: 'Trip updates & alerts', go: 'notifications' },
+  { icon: 'map-pin', label: 'Saved places', sub: 'Home, Work & more', go: 'places' },
+  { icon: 'shield', label: 'Safety', sub: 'Emergency contacts', go: 'safety' },
+  { icon: 'credit-card', label: 'Payment', sub: 'Pay your driver in cash', badge: 'Cash' },
+  { icon: 'help-circle', label: 'Help & Support', sub: 'Email our support team', go: 'support' },
 ]
+const ROUTES: Record<Exclude<Go, 'support'>, string> = { notifications: '/notifications', places: '/saved-places', safety: '/safety' }
+const SUPPORT_EMAIL = 'grievance@ocarindia.com'
+const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=Ocar%20rider%20support`
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0'
 
 function normalizePhone(raw: string | null | undefined): string {
   if (!raw) return '-'
@@ -31,12 +36,16 @@ function normalizePhone(raw: string | null | undefined): string {
 }
 
 export default function ProfileScreen() {
+  const router = useRouter()
   const insets = useSafeAreaInsets()
   const clearance = useNavClearance()
   const user = useAuthStore((s) => s.user)
   const clearAuth = useAuthStore((s) => s.clearAuth)
   const updateUser = useAuthStore((s) => s.updateUser)
 
+  // edge-to-edge breaks KeyboardAvoidingView on Android -- see useKeyboardOffset
+  const kbOffset = useKeyboardOffset()
+  const kbStyle = useAnimatedStyle(() => ({ paddingBottom: kbOffset.value }))
   const [stats, setStats] = useState<ProfileStats | null>(null)
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState('')
@@ -66,14 +75,17 @@ export default function ProfileScreen() {
     setSaving(true)
     setSaveErr('')
     try {
-      const body: { full_name: string; email?: string } = { full_name: editName.trim() }
+      const hadEmail = !!displayEmail
+      const body: { full_name: string; email?: string | null } = { full_name: editName.trim() }
       if (editEmail.trim()) body.email = editEmail.trim()
+      else if (hadEmail) body.email = null // field cleared -> remove the saved email
+      // PATCH returns the bare user row (no rides/rating/wallet), so merge instead of replacing stats
       const fresh = await updateProfile(body)
-      setStats(fresh)
+      setStats((prev) => (prev ? { ...prev, name: fresh.name, email: fresh.email } : fresh))
       updateUser({ name: fresh.name, email: fresh.email })
       setEditing(false)
-    } catch {
-      setSaveErr('Could not save. Please try again.')
+    } catch (err) {
+      setSaveErr(mapSaveError(err))
     } finally {
       setSaving(false)
     }
@@ -122,18 +134,28 @@ export default function ProfileScreen() {
         <Animated.View entering={FadeInDown.delay(120).duration(360)}>
           <Text style={styles.sectionLabel}>Account</Text>
           <View style={styles.menuCard}>
-            {MENU.map((item) => (
-              <Pressable key={item.label} style={[styles.menuRow, styles.menuRowBorder]}>
-                <View style={styles.menuIcon}>
-                  <Feather name={item.icon} size={15} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.menuLabel}>{item.label}</Text>
-                  <Text style={styles.menuSub}>{item.sub}</Text>
-                </View>
-                <Feather name="chevron-right" size={14} color={colors.ink400} />
-              </Pressable>
-            ))}
+            {MENU.map((item) => {
+              const live = item.go !== undefined
+              const onPress = () => (item.go === 'support' ? void Linking.openURL(SUPPORT_MAILTO).catch(() => Alert.alert('Email us', SUPPORT_EMAIL)) : item.go ? router.push(ROUTES[item.go] as never) : undefined)
+              return (
+                <Pressable key={item.label} disabled={!live} onPress={onPress} style={[styles.menuRow, styles.menuRowBorder]}>
+                  <View style={styles.menuIcon}>
+                    <Feather name={item.icon} size={15} color={live ? colors.primary : colors.ink400} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.menuLabel}>{item.label}</Text>
+                    <Text style={styles.menuSub}>{item.sub}</Text>
+                  </View>
+                  {live ? (
+                    <Feather name="chevron-right" size={14} color={colors.ink400} />
+                  ) : (
+                    <View style={styles.soonBadge}>
+                      <Text style={styles.soonBadgeText}>{item.badge ?? 'Soon'}</Text>
+                    </View>
+                  )}
+                </Pressable>
+              )
+            })}
             {/* The only functional row in this menu -- deep-links to apps/user's
                 hosted /legal/terms (which itself cross-links to /legal/privacy)
                 rather than duplicating the legal text natively. */}
@@ -155,7 +177,7 @@ export default function ProfileScreen() {
             <Feather name="log-out" size={15} color={colors.error} />
             <Text style={styles.signOutText}>Sign out</Text>
           </Pressable>
-          <Text style={styles.version}>Ocar v1.0.0</Text>
+          <Text style={styles.version}>Ocar v{APP_VERSION}</Text>
         </Animated.View>
       </ScrollView>
 
@@ -179,7 +201,7 @@ export default function ProfileScreen() {
       </Modal>
 
       <Modal visible={editing} transparent animationType="fade" onRequestClose={() => setEditing(false)}>
-        <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Animated.View style={[styles.backdrop, kbStyle]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => !saving && setEditing(false)} />
           <View style={styles.sheet}>
             <View style={styles.handle} />
@@ -228,7 +250,7 @@ export default function ProfileScreen() {
               </LinearGradient>
             </Pressable>
           </View>
-        </KeyboardAvoidingView>
+        </Animated.View>
       </Modal>
     </View>
   )
@@ -264,6 +286,8 @@ const styles = StyleSheet.create({
   menuIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   menuLabel: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   menuSub: { ...typography.caption, color: colors.ink400, marginTop: 1 },
+  soonBadge: { paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.full, backgroundColor: colors.surface2 },
+  soonBadgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.ink400 },
   signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: spacing.sm + 6, marginTop: spacing.md },
   signOutText: { ...typography.body, color: colors.error, fontFamily: fonts.bold },
   version: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginTop: spacing.md },

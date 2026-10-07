@@ -79,6 +79,7 @@ export async function triggerSos(input: TriggerSosInput) {
       rideId:      String(input.rideId),
       userId:      String(triggeredUserId ?? ''),
       userPhone,
+      triggeredByRole: principal.role,
       lat:         input.lat  ?? 0,
       lng:         input.lng  ?? 0,
       triggeredAt: new Date().toISOString(),
