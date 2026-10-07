@@ -30,6 +30,11 @@ export const AppErrors = {
     message: 'Invalid authentication token',
     httpStatus: 401,
   },
+  AUTH_SESSION_REPLACED: {
+    code: 'AUTH_SESSION_REPLACED',
+    message: 'You were logged out because your account was signed in on another device',
+    httpStatus: 401,
+  },
   AUTH_TOKEN_EXPIRED: {
     code: 'AUTH_TOKEN_EXPIRED',
     message: 'Authentication token has expired',

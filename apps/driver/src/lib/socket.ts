@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { io, Socket } from 'socket.io-client'
 import { useAuthStore } from '@/store/useAuthStore'
+import { sessionReplaced } from '@/lib/api'
 
 let socket: Socket | null = null
 let refreshInProgress = false
@@ -33,7 +34,10 @@ export function getDriverSocket(): Socket {
     // When the server rejects the connection due to an expired/invalid token,
     // refresh and retry once. All other connect_error causes (network down, server
     // unreachable) are left to Socket.IO's built-in exponential back-off.
+    socket.on('session:replaced', sessionReplaced)
+
     socket.on('connect_error', (err) => {
+      if (err.message === 'AUTH_SESSION_REPLACED') return sessionReplaced()
       const isAuthError =
         err.message === 'Invalid token' || err.message === 'Authentication required'
       if (!isAuthError || refreshInProgress) return
