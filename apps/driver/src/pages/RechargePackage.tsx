@@ -6,6 +6,7 @@ import StatusBar from '@/components/ui/StatusBar'
 import { useSessionStore } from '@/store/useSessionStore'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 interface PackageTier {
   id: number
@@ -123,8 +124,8 @@ export default function RechargePackage() {
         },
       })
       rzp.open()
-    } catch {
-      setMsg('Payment failed. Please try again.')
+    } catch (err) {
+      setMsg(getApiErrorMessage(err, 'Payment failed. Please try again.'))
     } finally {
       setBuying(false)
     }

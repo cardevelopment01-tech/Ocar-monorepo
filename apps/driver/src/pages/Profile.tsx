@@ -11,6 +11,7 @@ import api from '@/lib/api'
 import { unregisterPush } from '@/lib/push'
 import { useDocumentGate } from '@/lib/useDocumentGate'
 import { TERMS_URL } from '@/lib/constants'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 type MenuAction = 'vehicle' | 'documents' | 'personal' | 'email' | 'terms'
 
@@ -125,8 +126,8 @@ export default function Profile() {
       const res = await api.patch<{ driver: { full_name: string; email: string | null } }>('/api/v1/drivers/me', body)
       updateDriver({ full_name: res.data.driver.full_name, email: res.data.driver.email })
       setEditing(false)
-    } catch {
-      setSaveErr('Could not save. Please try again.')
+    } catch (err) {
+      setSaveErr(getApiErrorMessage(err, 'Could not save. Please try again.'))
     } finally {
       setSaving(false)
     }

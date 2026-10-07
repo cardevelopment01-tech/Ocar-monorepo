@@ -125,7 +125,7 @@ export async function getMe(driverId: bigint): Promise<{
 
 export async function updateProfile(
   driverId: bigint,
-  data: { full_name: string; email?: string }
+  data: { full_name: string; email?: string | null }
 ): Promise<Driver> {
   return repo.updateProfile(driverId, data)
 }

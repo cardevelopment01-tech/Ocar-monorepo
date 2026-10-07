@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
-import { Button, Input, colors, fonts, spacing, typography } from '@ocar/mobile-shared'
+import { Button, Input, colors, fonts, spacing, typography, getApiErrorMessage } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { updateProfile } from '@/features/profile/api'
 
@@ -33,8 +33,8 @@ export default function OnboardingScreen() {
       const profile = await updateProfile(data)
       updateUser({ name: profile.name, email: profile.email })
       router.replace('/(tabs)/home')
-    } catch {
-      setError('Something went wrong. Please try again.')
+    } catch (err) {
+      setError(getApiErrorMessage(err))
     } finally {
       setLoading(false)
     }

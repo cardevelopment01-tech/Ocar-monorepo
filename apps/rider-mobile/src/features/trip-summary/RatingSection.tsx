@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import Animated, { FadeIn } from 'react-native-reanimated'
 import { Ionicons } from '@expo/vector-icons'
-import { Button, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, fonts, radii, spacing, typography, getApiErrorMessage } from '@ocar/mobile-shared'
 import type { RatingTag } from '@ocar/mobile-shared'
 import { fetchRatingTags, submitRating } from '@/features/safety/api'
 
@@ -40,8 +40,8 @@ export function RatingSection({ rideId, driverName, existing, onRated }: {
       await submitRating({ rideId, direction: 'user_to_driver', score, tagIds: picked })
       setDoneScore(score)
       onRated()
-    } catch {
-      setError("Couldn't submit your rating. Please try again.")
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Couldn't submit your rating. Please try again."))
     } finally {
       setSubmitting(false)
     }

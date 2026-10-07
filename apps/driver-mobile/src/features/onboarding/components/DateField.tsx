@@ -29,6 +29,10 @@ function rangeProps(minDate?: string, maxDate?: string): { minimumDate?: Date; m
   return props
 }
 
+// YYYY-MM-DD -> "15 May 1990" (local midnight so the day never shifts with timezone)
+const formatDisplay = (v: string) =>
+  new Date(`${v.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+
 export function DateField({ label, value, onChange, minDate, maxDate, placeholder }: DateFieldProps) {
   const insets = useSafeAreaInsets()
   const [open, setOpen] = useState(false)
@@ -46,7 +50,7 @@ export function DateField({ label, value, onChange, minDate, maxDate, placeholde
     return (
       <Field label={label}>
         <Pressable onPress={openPicker} style={({ pressed }) => [styles.btn, pressed ? styles.pressedScale : null]}>
-          <Text style={[styles.text, !value ? styles.placeholder : null]}>{value || placeholder}</Text>
+          <Text style={[styles.text, !value ? styles.placeholder : null]}>{value ? formatDisplay(value) : placeholder}</Text>
           <Feather name="calendar" size={16} color={colors.ink400} />
         </Pressable>
         {open ? (
@@ -68,7 +72,7 @@ export function DateField({ label, value, onChange, minDate, maxDate, placeholde
   return (
     <Field label={label}>
       <Pressable onPress={openPicker} style={({ pressed }) => [styles.btn, pressed ? styles.pressedScale : null]}>
-        <Text style={[styles.text, !value ? styles.placeholder : null]}>{value || placeholder}</Text>
+        <Text style={[styles.text, !value ? styles.placeholder : null]}>{value ? formatDisplay(value) : placeholder}</Text>
         <Feather name="calendar" size={16} color={colors.ink400} />
       </Pressable>
       <SlideModal visible={open} onRequestClose={() => setOpen(false)}>

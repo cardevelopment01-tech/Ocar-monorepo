@@ -12,7 +12,7 @@ export async function getMe(req: Request, res: Response, next: NextFunction): Pr
 
 export async function updateMe(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const body = req.body as { full_name: string; email?: string }
+    const body = req.body as { full_name: string; email?: string | null }
     const updated = await service.updateProfile(req.driver!.id, body)
     res.status(200).json({ driver: updated })
   } catch (err) {

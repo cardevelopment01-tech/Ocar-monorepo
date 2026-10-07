@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import axios from 'axios'
-import { useRoomJoin, type RideDetail } from '@ocar/mobile-shared'
+import { getApiErrorMessage, useRoomJoin, type RideDetail } from '@ocar/mobile-shared'
 import { connectSocket, socket } from '@/services/socket'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import {
@@ -24,7 +24,7 @@ function isInvalidOtp(err: unknown): boolean {
 // Five wrong codes lock the ride's OTP for 15 minutes (429 RIDE_OTP_LOCKED).
 function otpErrorMessage(err: unknown): string {
   if (axios.isAxiosError(err) && err.response?.status === 429) return 'Too many wrong codes. Try again in 15 minutes.'
-  return isInvalidOtp(err) ? 'Incorrect OTP' : 'Could not confirm. Try again.'
+  return isInvalidOtp(err) ? 'Incorrect OTP' : getApiErrorMessage(err, 'Could not confirm. Try again.')
 }
 
 // GET /rides/:id's own query already joins payments and returns these
@@ -176,9 +176,9 @@ export function useActiveRide(rideId: string) {
       await apiMarkArrived(rideId)
       dispatch({ type: 'confirmed', status: 'driver_arrived' })
       return true
-    } catch {
+    } catch (err) {
       dispatch({ type: 'reverted' })
-      setActionError('Could not confirm arrival. Try again.')
+      setActionError(getApiErrorMessage(err, 'Could not confirm arrival. Try again.'))
       return false
     }
   }, [rideId])
@@ -235,9 +235,9 @@ export function useActiveRide(rideId: string) {
       await startReturn(rideId)
       dispatch({ type: 'confirmed', status: 'returning' })
       return true
-    } catch {
+    } catch (err) {
       dispatch({ type: 'reverted' })
-      setActionError('Could not start the return leg. Try again.')
+      setActionError(getApiErrorMessage(err, 'Could not start the return leg. Try again.'))
       return false
     }
   }, [rideId])
@@ -248,8 +248,8 @@ export function useActiveRide(rideId: string) {
       await arrivedAtDrop(rideId)
       refresh()
       return true
-    } catch {
-      setActionError('Could not mark your arrival. Try again.')
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, 'Could not mark your arrival. Try again.'))
       return false
     }
   }, [rideId, refresh])
@@ -266,8 +266,8 @@ export function useActiveRide(rideId: string) {
         // completion screen falls back to an estimate if it's still missing).
         setTimeout(load, 1200)
         return result
-      } catch {
-        setActionError('Could not record cash collection. Try again.')
+      } catch (err) {
+        setActionError(getApiErrorMessage(err, 'Could not record cash collection. Try again.'))
         return null
       }
     },

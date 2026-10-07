@@ -970,7 +970,11 @@ export async function setDriverAvailability(driverId: bigint, isAvailable: boole
 }
 
 // Idle (status = 'online', never 'on_trip' — that's the separate in-progress-ride
-// sweep above) drivers whose GPS has gone stale. Same staleSeconds param is reused
+// sweep above) drivers whose GPS has gone stale. Staleness runs from the later of the
+// last GPS fix and the session's last change (ds.updated_at, trigger-maintained): the
+// snapshot is not refreshed during a trip, so without the session term a driver coming
+// off a >10 min ride was forced offline the moment they became 'online' again.
+// Same staleSeconds param is reused
 // for both the short pause-from-pool tier and the longer force-offline tier —
 // see cleanup.worker.ts.
 export async function findStaleOnlineDrivers(staleSeconds: number): Promise<{ driver_id: string }[]> {
@@ -979,7 +983,7 @@ export async function findStaleOnlineDrivers(staleSeconds: number): Promise<{ dr
      FROM driver_sessions ds
      JOIN driver_location_snapshots dls ON dls.driver_id = ds.driver_id
      WHERE ds.status = 'online'
-       AND now() - dls.recorded_at > ($1 || ' seconds')::interval`,
+       AND now() - GREATEST(dls.recorded_at, ds.updated_at) > ($1 || ' seconds')::interval`,
     [staleSeconds]
   )
   return res.rows

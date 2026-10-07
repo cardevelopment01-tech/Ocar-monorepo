@@ -10,6 +10,7 @@ import {
 import type { DriverDetail } from '@/lib/admin-api'
 import StatusPill from './StatusPill'
 import { cn } from '@/lib/utils'
+import { extractErrorMessage } from '@/lib/http-errors'
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -499,8 +500,7 @@ export default function DocReviewModal({
       await onDriverAction(type, reason)
       onClose()
     } catch (err) {
-      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      setDriverActionError(message ?? 'Action failed. Please try again.')
+      setDriverActionError(extractErrorMessage(err, 'Action failed. Please try again.'))
     } finally { setDriverLoading(false) }
   }
 

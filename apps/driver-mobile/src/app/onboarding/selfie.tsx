@@ -6,7 +6,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera'
 import { getInfoAsync } from 'expo-file-system/legacy'
 import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Button, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts, Text, getApiErrorMessage } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type PickedFile } from '@/features/onboarding/api'
 import { OnboardingShell } from '@/features/onboarding/components/OnboardingShell'
@@ -60,8 +60,8 @@ export default function ReferenceSelfieScreen() {
       await onboardingApi.submitApplication()
       updateDriver({ onboarding_step: 'pending_review', status: 'pending_approval' })
       router.replace('/onboarding/pending-review')
-    } catch {
-      setSubmitError('Something went wrong submitting your application. Please try again.')
+    } catch (err) {
+      setSubmitError(getApiErrorMessage(err, 'Something went wrong submitting your application. Please try again.'))
       setStage('preview')
     }
   }

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { onboardingApi } from '@/lib/onboarding-api'
 import { useAuthStore } from '@/store/useAuthStore'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 type Stage = 'gate' | 'camera' | 'preview' | 'submitting'
 
@@ -225,8 +226,8 @@ export default function ReferenceSelfie() {
       await onboardingApi.submitApplication()
       updateDriver({ onboarding_step: 'pending_review', status: 'pending_approval' })
       navigate('/onboarding/pending-review', { replace: true })
-    } catch {
-      setSubmitError('Submission failed. Please try again.')
+    } catch (err) {
+      setSubmitError(getApiErrorMessage(err, 'Submission failed. Please try again.'))
       setStage('preview')
     }
   }

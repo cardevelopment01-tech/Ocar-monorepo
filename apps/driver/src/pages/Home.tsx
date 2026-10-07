@@ -17,6 +17,8 @@ import { driverVerificationApi } from '@/lib/driver-verification-api'
 import api from '@/lib/api'
 import { disconnectDriverSocket } from '@/lib/socket'
 import { useDriverLocation } from '@/lib/useDriverLocation'
+import { getApiErrorMessage } from '@/lib/api-error'
+import axios from 'axios'
 
 const DriverMapView = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap   = lazy(() => import('@/components/map/RecenterMap'))
@@ -66,6 +68,7 @@ export default function Home() {
   const [geoLoading,         setGeoLoading]        = useState(false)
   const [showOfflineConfirm, setShowOfflineConfirm] = useState(false)
   const [checkingVerification, setCheckingVerification] = useState(false)
+  const [goOnlineError, setGoOnlineError] = useState<string | null>(null)
   const [todayEarnings, setTodayEarnings] = useState<EarningsSummary>({
     total_earnings: 0, trip_count: 0, online_hours: '0m', rating: null,
     chart: [], chart_labels: [],
@@ -139,12 +142,19 @@ export default function Home() {
   const handleToggle = () => {
     if (!isOnline) {
       if (checkingVerification) return // already awaiting a status check from a prior tap
+      setGoOnlineError(null)
       setCheckingVerification(true)
       driverVerificationApi.getStatus()
         .then((status) => {
           navigate(status.complete ? '/go-online/mode' : '/daily-verification')
         })
-        .catch(() => navigate('/go-online/mode')) // status check failed — don't block going online on a network hiccup; goOnline() itself still enforces the gate server-side
+        .catch((err) => {
+          // A 4xx means the server refused (not approved, suspended...): say why and stay here.
+          // A network blip / 5xx must not block going online; goOnline() itself still enforces the gate server-side.
+          const status = axios.isAxiosError(err) ? err.response?.status : undefined
+          if (status !== undefined && status < 500) setGoOnlineError(getApiErrorMessage(err))
+          else navigate('/go-online/mode')
+        })
         .finally(() => setCheckingVerification(false))
     } else if (activeRide) {
       // A driver mid-fare shouldn't be able to exit the online session at all —
@@ -448,6 +458,10 @@ export default function Home() {
               </div>
               <OnlineToggle isOnline={isOnline} onToggle={handleToggle} disabled={checkingVerification} />
             </div>
+
+            {goOnlineError && (
+              <p role="alert" className="text-red-600 text-[12px] font-semibold mt-2">{goOnlineError}</p>
+            )}
 
             <DocumentGateCard {...documentGate} />
 
