@@ -29,6 +29,10 @@
   },
   "packageManager": "pnpm@9.0.0",
   "pnpm": {
+    "overrides": {
+      "proxy-addr": "^2.0.8",
+      "shell-quote": "^1.11.0"
+    },
     "onlyBuiltDependencies": ["esbuild", "msgpackr-extract"]
   }
 }
