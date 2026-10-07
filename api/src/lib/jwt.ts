@@ -9,6 +9,8 @@ export interface AccessTokenPayload {
   role: PrincipalRole
   adminRole?: AdminRole
   status?: string
+  /** driver session id (refresh family) — lets authenticate() reject a replaced device */
+  sid?: string
 }
 
 export interface DecodedAccessToken extends AccessTokenPayload {

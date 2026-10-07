@@ -2,7 +2,7 @@ import { RequestHandler } from 'express'
 import { verifyAccessToken } from '@/lib/jwt'
 import { AppErrors } from '@/constants/errors'
 import { PrincipalRole, AdminRole } from '@/constants/enums'
-import { getJSON, setWithTTL } from '@/db/redis'
+import { getJSON, setWithTTL, client as redis } from '@/db/redis'
 import {
   findUserById,
   findDriverById,
@@ -24,6 +24,17 @@ type CachedAdmin = {
   role: AdminRole
   is_active: boolean
   totp_enabled: boolean
+}
+
+// Legacy tokens (no sid) and a missing Redis key both pass: fail open on infra loss.
+export async function isDriverSessionReplaced(driverId: string, sid: string | undefined): Promise<boolean> {
+  if (!sid) return false
+  try {
+    const current = await redis.get(`auth:driver-sid:${driverId}`)
+    return current !== null && current !== sid
+  } catch {
+    return false
+  }
 }
 
 export function authenticate(): RequestHandler {
@@ -66,6 +77,13 @@ export function authenticate(): RequestHandler {
         }
         req.user = { id: BigInt(user.id), code: user.code, role: 'user', status: user.status }
       } else if (payload.role === PrincipalRole.DRIVER) {
+        if (await isDriverSessionReplaced(payload.sub, payload.sid)) {
+          res.status(401).json({
+            error: AppErrors.AUTH_SESSION_REPLACED.message,
+            code: AppErrors.AUTH_SESSION_REPLACED.code,
+          })
+          return
+        }
         const cacheKey = `auth:driver:${id}`
         let driver = await getJSON<CachedDriver>(cacheKey)
         if (!driver) {

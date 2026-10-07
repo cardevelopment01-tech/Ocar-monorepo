@@ -1,5 +1,6 @@
 import { createApiClient } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
+import { handleSessionReplaced } from '@/services/sessionReplaced'
 import { tokenRefresher } from '@/services/tokenRefresher'
 
 const API_URL = process.env['EXPO_PUBLIC_API_URL'] ?? 'http://10.0.2.2:4000'
@@ -9,6 +10,7 @@ export const api = createApiClient({
   getAccessToken: () => useAuthStore.getState().token,
   refresher: tokenRefresher,
   onAuthFailure: () => useAuthStore.getState().clearAuth(),
+  onSessionReplaced: handleSessionReplaced,
 })
 
 // Wait at a stop is billed from the server's `arrived_at`, so on-screen timers must
