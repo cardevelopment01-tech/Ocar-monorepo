@@ -9,6 +9,7 @@ import { rideAckKey } from '@/constants/redis-keys'
 import { getPendingAssignmentsForDriver } from '@/modules/rides/rides.repository'
 import { updateLocation } from '@/modules/rides/rides.service'
 import { logger } from '@/lib/logger'
+import { isDriverSessionReplaced } from '@/middleware/auth.middleware'
 
 // Room naming conventions:
 //   ride:{rideId}   user + driver tracking a ride
@@ -61,7 +62,10 @@ export function initSocketServer(httpServer: HttpServer): Server {
     try {
       const decoded = verifyAccessToken(token)
       socket.data.user = decoded
-      next()
+      if (decoded.role !== 'driver') return next()
+      void isDriverSessionReplaced(decoded.sub, decoded.sid).then((replaced) =>
+        next(replaced ? new Error('AUTH_SESSION_REPLACED') : undefined)
+      )
     } catch {
       next(new Error('Invalid token'))
     }

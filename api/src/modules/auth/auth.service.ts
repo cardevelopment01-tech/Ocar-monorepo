@@ -9,6 +9,10 @@ import { signAccessToken, generateRefreshToken, hashRefreshToken, signPendingTot
 import { comparePassword } from '@/lib/hash'
 import type { AccessTokenPayload } from '@/lib/jwt'
 import * as repo from './auth.repository'
+import { setWithTTL } from '@/db/redis'
+import { getIO } from '@/websocket/socket.server'
+import * as ridesRepo from '@/modules/rides/rides.repository'
+import { goOffline } from '@/modules/rides/rides.service'
 import { notificationsQueue } from '@/jobs/queues'
 import { verifyLoginCode } from '@/modules/admin-totp/admin-totp.service'
 import type {
@@ -52,6 +56,7 @@ async function issueTokenPair(
     status: (principal as UserRecord | DriverRecord).status ?? 'active',
   }
   if (adminRole) payload.adminRole = adminRole as import('@/constants/enums').AdminRole
+  if (role === PrincipalRole.DRIVER) payload.sid = familyId
 
   const accessToken = signAccessToken(payload)
   const refreshToken = generateRefreshToken()
@@ -68,7 +73,28 @@ async function issueTokenPair(
     expiresAt,
   })
 
+  if (role === PrincipalRole.DRIVER) await replaceDriverSession(BigInt(principal.id), familyId, refreshExpiresIn)
+
   return { accessToken, refreshToken, expiresIn: accessExpiresIn, refreshExpiresIn }
+}
+
+export const driverSidKey = (driverId: bigint | string) => `auth:driver-sid:${driverId}`
+
+// One device per driver: the newest login wins. An active ride is NOT blocked —
+// the new device takes it over (its socket re-joins the ride room on connect).
+async function replaceDriverSession(driverId: bigint, sid: string, ttlSec: number): Promise<void> {
+  await setWithTTL(driverSidKey(driverId), sid, ttlSec)
+  await repo.revokeOtherDriverSessions(driverId, sid)
+  // Online (not on_trip) session belongs to the old device; end it. An on_trip one stays.
+  const active = await ridesRepo.getActiveSession(driverId)
+  if (active?.status === 'online') await goOffline(driverId, 'session_replaced')
+  try {
+    const io = getIO()
+    const room = `driver:${driverId}`
+    // Emit before the new device connects, so only the old sockets hear it.
+    io.to(room).emit('session:replaced', { code: 'AUTH_SESSION_REPLACED' })
+    io.in(room).disconnectSockets(true)
+  } catch { /* socket server not up (tests/workers) */ }
 }
 
 // ── Public service functions ──────────────────────────────────────────────────
@@ -230,6 +256,7 @@ export async function refreshTokens(refreshToken: string): Promise<{ tokens: Aut
     status: (principal as UserRecord | DriverRecord).status ?? 'active',
   }
   if (adminRole) payload.adminRole = adminRole as import('@/constants/enums').AdminRole
+  if (role === PrincipalRole.DRIVER) payload.sid = stored.family_id
 
   const newRefreshToken = generateRefreshToken()
   const newTokenHash = hashRefreshToken(newRefreshToken)

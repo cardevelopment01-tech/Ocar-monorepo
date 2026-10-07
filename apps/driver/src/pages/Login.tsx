@@ -47,7 +47,13 @@ export default function Login() {
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => {
+    try {
+      if (sessionStorage.getItem('ocar_session_replaced') === null) return ''
+      sessionStorage.removeItem('ocar_session_replaced')
+    } catch { return '' }
+    return 'You were logged out because your account was signed in on another device.'
+  })
   const [countdown, setCountdown] = useState(0)
   const [devOtp, setDevOtp] = useState('')
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
