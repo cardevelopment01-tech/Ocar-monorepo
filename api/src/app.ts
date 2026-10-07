@@ -23,6 +23,7 @@ import paymentsRouter from '@/modules/payments/payments.routes'
 import safetyRouter     from '@/modules/safety/safety.routes'
 import usersRouter      from '@/modules/users/users.routes'
 import savedPlacesRouter from '@/modules/saved-places/saved-places.routes'
+import emergencyContactsRouter from '@/modules/emergency-contacts/emergency-contacts.routes'
 import analyticsRouter  from '@/modules/analytics/analytics.routes'
 import notificationsRouter from '@/modules/notifications/notifications.routes'
 import templatesRouter from '@/modules/notifications/templates.routes'
@@ -195,6 +196,7 @@ apiRouter.use('/payments/settlements', settlementsRouter)
   apiRouter.use('/safety',    safetyRouter)
   apiRouter.use('/users',     usersRouter)
   apiRouter.use('/saved-places', savedPlacesRouter)
+  apiRouter.use('/emergency-contacts', emergencyContactsRouter)
   apiRouter.use('/admin/analytics', analyticsRouter)
   apiRouter.use('/admin/notification-templates', templatesRouter)
   apiRouter.use('/admin/system-config', systemConfigRouter)
