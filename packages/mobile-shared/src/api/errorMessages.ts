@@ -27,3 +27,11 @@ export function mapBookingErrorCode(code: string): string {
       return 'Something went wrong, please try again'
   }
 }
+
+// Server-side validation (422 VALIDATION_ERROR, see api validate middleware) -> first field message,
+// so a profile save can say "Invalid email address" instead of a generic failure.
+export function mapSaveError(err: unknown, fallback = 'Could not save. Please try again.'): string {
+  const data = (err as { response?: { data?: { fields?: Record<string, string[]> } } })?.response?.data
+  const first = data?.fields ? Object.values(data.fields).flat()[0] : undefined
+  return first ?? fallback
+}
