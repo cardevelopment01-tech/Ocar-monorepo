@@ -186,6 +186,22 @@ export default function DriverDetailPage() {
   }, [driverId])
 
   useEffect(() => { fetchDetail() }, [fetchDetail])
+
+  // While the review modal is open, keep the doc versions fresh (on open and when the tab regains
+  // focus) so a driver re-upload doesn't leave the admin approving a stale updated_at.
+  // Quiet: a failed refresh must not replace the modal with the error screen.
+  useEffect(() => {
+    if (!reviewOpen) return
+    const refresh = () => { adminDriverApi.getById(driverId).then(setDetail).catch(() => {}) }
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
+    refresh()
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [reviewOpen, driverId])
   useEffect(() => { cityApi.list().then(setCities).catch(() => {}) }, [])
 
   useEffect(() => {
@@ -383,10 +399,19 @@ export default function DriverDetailPage() {
     await fetchDetail()
   }
 
-  async function handleDriverDocApprove(docId: string, verifiedValidUntil: string, seenUpdatedAt: string) { await adminDriverApi.approveDriverDoc(docId, verifiedValidUntil, seenUpdatedAt); await fetchDetail() }
-  async function handleDriverDocReject(docId: string, reason: string, seenUpdatedAt: string) { await adminDriverApi.rejectDriverDoc(docId, reason, seenUpdatedAt); await fetchDetail() }
-  async function handleVehicleDocApprove(docId: string, verifiedValidUntil: string, seenUpdatedAt: string) { await adminDriverApi.approveVehicleDoc(docId, verifiedValidUntil, seenUpdatedAt); await fetchDetail() }
-  async function handleVehicleDocReject(docId: string, reason: string, seenUpdatedAt: string) { await adminDriverApi.rejectVehicleDoc(docId, reason, seenUpdatedAt); await fetchDetail() }
+  // Run a doc approve/reject; on a stale-version 409 reload so the modal shows the current doc.
+  async function reviewDoc(action: () => Promise<void>) {
+    try { await action() }
+    catch (err) {
+      if ((err as { response?: { status?: number } })?.response?.status === 409) await fetchDetail()
+      throw err
+    }
+    await fetchDetail()
+  }
+  async function handleDriverDocApprove(docId: string, verifiedValidUntil: string, seenUpdatedAt: string) { await reviewDoc(() => adminDriverApi.approveDriverDoc(docId, verifiedValidUntil, seenUpdatedAt)) }
+  async function handleDriverDocReject(docId: string, reason: string, seenUpdatedAt: string) { await reviewDoc(() => adminDriverApi.rejectDriverDoc(docId, reason, seenUpdatedAt)) }
+  async function handleVehicleDocApprove(docId: string, verifiedValidUntil: string, seenUpdatedAt: string) { await reviewDoc(() => adminDriverApi.approveVehicleDoc(docId, verifiedValidUntil, seenUpdatedAt)) }
+  async function handleVehicleDocReject(docId: string, reason: string, seenUpdatedAt: string) { await reviewDoc(() => adminDriverApi.rejectVehicleDoc(docId, reason, seenUpdatedAt)) }
 
   function openReview(initDocIdx = 0) { setReviewInitIdx(initDocIdx); setReviewOpen(true) }
 
@@ -433,7 +458,7 @@ export default function DriverDetailPage() {
     finally { setPkgAdjustLoading(false) }
   }
 
-  if (loading) {
+  if (loading && !detail) {
     return <div className="p-6 space-y-4">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-6 bg-surface-2 rounded animate-pulse" />)}</div>
   }
   if (error || !detail) {

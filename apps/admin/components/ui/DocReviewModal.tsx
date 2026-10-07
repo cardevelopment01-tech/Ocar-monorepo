@@ -265,9 +265,9 @@ function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onC
           <p className="text-xs text-text-muted mt-1.5">
             Driver claims: {claimedDate ? claimedDate : 'not provided'}
           </p>
-          {error && <p className="text-xs text-danger mt-1.5">{error}</p>}
         </div>
       )}
+      {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex items-center gap-2.5">
         <button
           onClick={() => onSubmit(noExpiry ? '' : value)}
