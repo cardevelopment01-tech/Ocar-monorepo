@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import axios from 'axios'
 import { Button, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
@@ -26,6 +26,8 @@ const DOB_MIN = new Date(today.getFullYear() - 70, today.getMonth(), today.getDa
 
 export default function PersonalDetailsScreen() {
   const router = useRouter()
+  // ?edit=1 -> opened from Profile by an onboarded driver: save and go back instead of advancing the wizard
+  const isEdit = useLocalSearchParams<{ edit?: string }>().edit === '1'
   const updateDriver = useAuthStore((s) => s.updateDriver)
 
   const [fullName, setFullName] = useState('')
@@ -108,8 +110,13 @@ export default function PersonalDetailsScreen() {
       if (email.trim()) payload.email = email.trim()
       if (cityId !== undefined) payload.city_id = cityId
       const result = await onboardingApi.savePersonalInfo(payload)
-      updateDriver({ onboarding_step: result.next_step })
-      router.push('/onboarding/vehicle')
+      if (isEdit) {
+        updateDriver({ full_name: payload.full_name, email: payload.email ?? null })
+        router.back()
+      } else {
+        updateDriver({ onboarding_step: result.next_step })
+        router.push('/onboarding/vehicle')
+      }
     } catch (err) {
       const data = axios.isAxiosError(err)
         ? (err.response?.data as { error?: string; fields?: Record<string, string[]> } | undefined)
@@ -155,12 +162,12 @@ export default function PersonalDetailsScreen() {
         </Text>
       ) : null}
       {error ? <FieldError message={error} /> : null}
-      <Button label="Continue" onPress={handleContinue} loading={isLoading} disabled={!isValid} />
+      <Button label={isEdit ? 'Save changes' : 'Continue'} onPress={handleContinue} loading={isLoading} disabled={!isValid} />
     </>
   )
 
   return (
-    <OnboardingShell stepIndex={0} title="Personal Details" footer={footer}>
+    <OnboardingShell stepIndex={0} title="Personal Details" subtitle={isEdit ? 'Update your details' : 'Progress is saved automatically'} hideProgress={isEdit} footer={footer}>
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Feather name="user" size={15} color={colors.primary} />

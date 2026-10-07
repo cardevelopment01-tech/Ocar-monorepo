@@ -118,7 +118,7 @@ export default function HomeScreen() {
   async function handleToggle() {
     if (isOnline) { setShowOfflineConfirm(true); return }
     const nextRoute = await flow.requestGoOnline()
-    router.push(nextRoute)
+    if (nextRoute) router.push(nextRoute)
   }
 
   return (
@@ -164,12 +164,9 @@ export default function HomeScreen() {
           <MaterialCommunityIcons name="currency-inr" size={13} color={colors.accent} />
           <Text style={styles.walletPillText}>{walletGate.loading ? '-' : Math.round(walletGate.balance).toLocaleString('en-IN')}</Text>
         </View>
-        {/* No notifications feature exists yet in driver-mobile (unlike the
-            web app) -- visual-parity placeholder only, same treatment as
-            rider-mobile profile's inert MENU rows. */}
-        <View style={styles.bellBtn} accessibilityElementsHidden>
+        <Pressable onPress={() => router.push('/notifications')} style={styles.bellBtn} accessibilityRole="button" accessibilityLabel="Notifications">
           <Feather name="bell" size={15} color={colors.ink600} />
-        </View>
+        </Pressable>
       </View>
 
       <View style={[styles.sheet, { bottom: sheetBottom }]} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>

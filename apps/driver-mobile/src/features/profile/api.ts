@@ -15,7 +15,7 @@ export async function fetchDriverStats(): Promise<{ stats: DriverStats; onboardi
   return res.data as { stats: DriverStats; onboarding: DriverOnboarding }
 }
 
-export async function updateDriverProfile(data: { full_name: string; email?: string }): Promise<{ full_name: string; email: string | null }> {
+export async function updateDriverProfile(data: { full_name: string; email?: string | null }): Promise<{ full_name: string; email: string | null }> {
   const res = await api.patch('/api/v1/drivers/me', data)
   return res.data.driver as { full_name: string; email: string | null }
 }
