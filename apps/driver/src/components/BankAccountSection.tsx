@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { driverPayoutApi, type DriverBankAccount } from '@/lib/ride-api'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 function maskIfsc(ifsc: string): string {
   return `****${ifsc.slice(-4)}`
@@ -61,8 +62,8 @@ export default function BankAccountSection({
     try {
       await driverPayoutApi.submitPan(pan)
       setPanSaved(true)
-    } catch {
-      setPanError('Could not save PAN. Please check the details and try again.')
+    } catch (err) {
+      setPanError(getApiErrorMessage(err, 'Could not save PAN. Please check the details and try again.'))
     } finally {
       setPanSaving(false)
     }
@@ -86,8 +87,8 @@ export default function BankAccountSection({
       setIfsc('')
       setUpiVpa('')
       onAdded()
-    } catch {
-      setError('Could not add bank account. Please check the details and try again.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Could not add bank account. Please check the details and try again.'))
     } finally {
       setSaving(false)
     }

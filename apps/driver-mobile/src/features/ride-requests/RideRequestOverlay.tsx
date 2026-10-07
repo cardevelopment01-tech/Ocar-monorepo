@@ -19,7 +19,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { scheduleOnRN } from 'react-native-worklets'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { colors, fonts, radii, spacing, Text } from '@ocar/mobile-shared'
+import { colors, fonts, radii, spacing, Text, getApiErrorMessage } from '@ocar/mobile-shared'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { GlassChip } from '@/features/go-online/components/ModeHero'
@@ -218,7 +218,7 @@ export function RideRequestOverlay() {
       const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
       if (code === 'RIDE_ALREADY_ASSIGNED') setStatus('raceLost')
       else {
-        setError('Could not accept. Try again.')
+        setError(getApiErrorMessage(err, 'Could not accept. Try again.'))
         setIsAccepting(false)
       }
     }

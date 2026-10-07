@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Camera, RefreshCw } from 'lucide-react'
 import { driverVerificationApi } from '@/lib/driver-verification-api'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 type Step = 'selfie' | 'plate'
 type Stage = 'camera' | 'preview'
@@ -123,8 +124,8 @@ export default function DailyVerification() {
     try {
       await driverVerificationApi.submit(pendingSelfie, file)
       navigate('/go-online/mode', { replace: true })
-    } catch {
-      setSubmitError('Submission failed. Please try again.')
+    } catch (err) {
+      setSubmitError(getApiErrorMessage(err, 'Submission failed. Please try again.'))
       setSubmitting(false)
     }
   }

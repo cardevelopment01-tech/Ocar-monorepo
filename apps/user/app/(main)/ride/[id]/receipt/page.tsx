@@ -7,6 +7,7 @@ import { ChevronDown, ChevronLeft, CheckCircle2, XCircle, Navigation, Clock, Sta
 import { rideApi, type RideDetail } from '@/lib/ride-api'
 import { openRidePaymentCheckout } from '@/lib/razorpay-checkout'
 import { DriverRow, driverViewFromRide } from '@/components/ride/DriverIdentity'
+import { getApiErrorMessage } from '@ocar/shared'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
@@ -97,8 +98,8 @@ export default function RideReceiptPage() {
       } else {
         setPayMsg('Not enough wallet balance. Top up your wallet and try again.')
       }
-    } catch {
-      setPayMsg('Could not start payment. Please try again.')
+    } catch (err) {
+      setPayMsg(getApiErrorMessage(err, 'Could not start payment. Please try again.'))
     } finally {
       setRetrying(false)
     }

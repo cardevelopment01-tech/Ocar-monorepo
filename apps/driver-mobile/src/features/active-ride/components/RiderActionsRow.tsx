@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Linking, Platform, StyleSheet, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
-import { colors, gradientPrimary, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, spacing, typography, fonts, Text, getApiErrorMessage } from '@ocar/mobile-shared'
 import { triggerMaskedCall } from '../api'
 import { PressableScale } from './PressableScale'
 
@@ -43,8 +43,8 @@ export function RiderActionsRow({ rideId, riderName, navigateTo, unreadChatCount
         setCallNote(null)
         setCalling(false)
       }, 20000)
-    } catch {
-      setCallError('Could not connect the call')
+    } catch (err) {
+      setCallError(getApiErrorMessage(err, 'Could not connect the call'))
       setTimeout(() => setCallError(null), 4000)
       setCalling(false)
     }
