@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import axios from 'axios'
-import { Button, colors, radii, spacing, typography, fonts, Text, VehicleIcon, getApiErrorMessage } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts, Text, VehicleIcon } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type VehicleBrand, type VehicleCategory, type VehicleInfoPayload, type VehicleModel } from '@/features/onboarding/api'
 import { FUEL_TYPES, VEHICLE_COLORS } from '@/features/onboarding/constants'
@@ -126,7 +126,7 @@ export default function VehicleRegistrationScreen() {
       const data = axios.isAxiosError(err) ? (err.response?.data as { code?: string; fields?: Record<string, string[]> } | undefined) : undefined
       if (data?.code === 'DUPLICATE_ENTRY') setError('This number plate is already registered. Contact support if this is your vehicle.')
       else if (data?.code === 'VALIDATION_ERROR') setError(data.fields?.['number_plate']?.[0] ?? 'Please check your vehicle details.')
-      else setError(getApiErrorMessage(err))
+      else setError('Something went wrong. Please try again.')
     } finally {
       setIsLoading(false)
     }
