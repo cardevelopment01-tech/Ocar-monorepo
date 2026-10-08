@@ -16,7 +16,7 @@ import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
 import { useInterpolatedPosition } from '@/lib/useInterpolatedPosition'
 import { decodePolyline } from '@/lib/polyline'
-import { openRidePaymentCheckout } from '@/lib/razorpay-checkout'
+import { submitPayuForm, type PayuForm } from '@/lib/payu-checkout'
 import CancelSheet from './CancelSheet'
 import SOSButton from '@/components/ui/SOSButton'
 import TripClock from '@/components/ride/TripClock'
@@ -404,8 +404,7 @@ export default function RidePage() {
       status: string; startOtp?: string; endOtp?: string; dropArrived?: boolean
       fareDrift?: { previousFare: number; currentFare: number }
       paymentChannel?: string
-      razorpayOrderId?: string
-      razorpayKey?: string
+      payu?: PayuForm
       amount?: number
       finalFare?: number
     }) => {
@@ -424,22 +423,12 @@ export default function RidePage() {
         breadcrumbRef.current = []
         setBreadcrumb([])
       }
-      if (
-        data.status === 'completed' &&
-        data.paymentChannel === 'online' &&
-        data.razorpayOrderId && data.razorpayKey && typeof data.amount === 'number'
-      ) {
-        void openRidePaymentCheckout(rideId, {
-          orderId: data.razorpayOrderId,
-          key: data.razorpayKey,
-          amount: data.amount,
-        }).catch(() => {
-          // Checkout failed to open (ad-blocker, offline, CSP). The payment row
-          // stays 'pending'; the backend reconciliation sweep eventually marks it
-          // 'failed' and notifies the rider (notifyRidePaymentFailed), who can
-          // retry from the trip receipt page (ride/[id]/receipt) — see the
-          // "Pay now" banner there for the recovery flow.
-        })
+      if (data.status === 'completed' && data.paymentChannel === 'online' && data.payu) {
+        // PayU is a full-page redirect; the payment row stays 'pending' until the
+        // return endpoint / webhook / reconcile confirms it. If the redirect
+        // never happens (offline, blocked), the receipt page's "Pay now" banner
+        // is the recovery path (rideApi.retryPayment).
+        submitPayuForm(data.payu)
       }
     }
     const onDriverAssigned = (data: {

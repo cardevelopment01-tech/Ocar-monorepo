@@ -2548,17 +2548,18 @@ export async function settleRideCompletionPayment(
   const fareAmount = parseFloat(fareRow.rows[0]?.amount ?? '0')
 
   if (paymentChannel === 'online') {
-    await createPaymentRecord(rideId, 'razorpay_online', { status: 'pending' })
+    await createPaymentRecord(rideId, 'payu_online', { status: 'pending' })
     if (rideData?.user_id == null || fareAmount <= 0) return
     const order = await createRidePaymentOrder(rideId, BigInt(rideData.user_id), fareAmount)
-    // order is null in dev (auto-confirmed); with keys, push order id so the
-    // app opens Checkout. Commission + cashback run only on confirm.
+    // order is null in dev (auto-confirmed); with keys, push the signed PayU
+    // form so the app opens Checkout. Commission + cashback run only on confirm.
+    // Rider-only channel: the form carries the rider's phone/email/name, and
+    // the driver is in ride:{id} (see maskRideContacts).
     if (order) {
-      socketEvents.sendRideStatusUpdate(rideId.toString(), {
+      socketEvents.sendUserUpdate(String(rideData.user_id), {
         status:          'completed',
         paymentChannel:  'online',
-        razorpayOrderId: order.orderId,
-        razorpayKey:     order.key,
+        payu:            order.payu,
         amount:          order.amount,
       })
     }

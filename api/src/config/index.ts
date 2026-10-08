@@ -57,6 +57,14 @@ const envSchema = z.object({
   // RazorpayX current/virtual account number to debit driver payouts from
   // (NOT the API key id — see RazorpayX dashboard > Accounts)
   RAZORPAYX_ACCOUNT_NUMBER: z.string().default(''),
+  // PayU (collections: ride fares, driver wallet top-ups, package purchases).
+  // Test and live use different key/salt pairs; PAYU_ENV selects the endpoints.
+  PAYU_KEY: z.string().default(''),
+  PAYU_SALT: z.string().default(''),
+  PAYU_ENV: z.enum(['test', 'prod']).default('test'),
+  // Portals PayU's return redirect sends the browser back to.
+  USER_APP_URL: z.string().default('http://localhost:3000').transform(s => s.replace(/\/+$/, '')), // no trailing slash: callers append paths
+  DRIVER_APP_URL: z.string().default('http://localhost:5173').transform(s => s.replace(/\/+$/, '')), // no trailing slash: callers append paths
 
   // SMS
   MSG91_AUTH_KEY: z.string().default(''),
@@ -95,7 +103,7 @@ const envSchema = z.object({
 
   // App
   API_PORT: z.coerce.number().default(4000),
-  API_BASE_URL: z.string().default('http://localhost:4000'),
+  API_BASE_URL: z.string().default('http://localhost:4000').transform(s => s.replace(/\/+$/, '')), // no trailing slash: callers append paths
   ADMIN_APP_URL: z.string().default('http://localhost:3002'),
   ALLOWED_ORIGINS: z.string().default('http://localhost:3000'),
 
@@ -116,7 +124,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 })
 
-const envSchemaChecked = envSchema.superRefine((env, ctx) => {
+export const envSchemaChecked = envSchema.superRefine((env, ctx) => {
   if (env.DB_AUTH_MODE === 'password' && !env.DATABASE_URL) {
     ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: 'required when DB_AUTH_MODE=password' })
   }
@@ -125,6 +133,15 @@ const envSchemaChecked = envSchema.superRefine((env, ctx) => {
   }
   if (env.DB_AUTH_MODE === 'secrets-manager' && (!env.DB_HOST || !env.DB_NAME || !env.DB_USER || !env.DB_SECRET_ARN)) {
     ctx.addIssue({ code: 'custom', path: ['DB_SECRET_ARN'], message: 'DB_HOST, DB_NAME, DB_USER, DB_SECRET_ARN all required when DB_AUTH_MODE=secrets-manager' })
+  }
+  if (env.NODE_ENV === 'production') {
+    if (!env.PAYU_KEY || !env.PAYU_SALT) {
+      ctx.addIssue({ code: 'custom', path: ['PAYU_KEY'], message: 'PAYU_KEY and PAYU_SALT required in production (empty keys enable the dev auto-confirm bypass)' })
+    }
+    const badUrl = (u: string) => !u.startsWith('https://') || /localhost|127.0.0.1/.test(u)
+    if ([env.API_BASE_URL, env.USER_APP_URL, env.DRIVER_APP_URL].some(badUrl)) {
+      ctx.addIssue({ code: 'custom', path: ['API_BASE_URL'], message: 'API_BASE_URL, USER_APP_URL and DRIVER_APP_URL must be https URLs (not localhost) in production' })
+    }
   }
 })
 

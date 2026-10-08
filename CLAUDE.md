@@ -14,7 +14,7 @@ Turborepo + pnpm workspaces monorepo. Build is module-by-module (M01–M12).
 | Cache/Queues | Redis protocol (ioredis client), BullMQ. Prod and staging run on AWS ElastiCache, Valkey engine, single node (`infra/terraform/elasticache.tf`) — replaced the external Redis Cloud instance |
 | Real-time | Socket.io v4 (attached to same HTTP server) |
 | Auth | JWT access + refresh; SHA-256 refresh hash stored in DB |
-| Payments | Razorpay + driver/user wallet ledger (M08 done) |
+| Payments | PayU for collections (ride fares, driver wallet top-ups, package purchases) + driver/user wallet ledger; Razorpay/RazorpayX remains for driver payouts only (M08 done) |
 | Storage | AWS S3 (`@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`) |
 | OTP | SHA-256 hash of numeric OTP stored in DB/Redis (6-digit login OTP, 4-digit ride start/end OTP) |
 | Observability | Pino (JSON logs) + OTel tracing + prom-client metrics, shipped by one Grafana Alloy agent per host to Grafana Cloud (Loki/Mimir/Tempo) — see `docs/superpowers/specs/2026-08-08-observability-stack-design.md`. Every log line and metric series carries a `color` label (`blue`/`green`, from `ALLOY_COLOR`) since the 2026-08-30 blue/green migration. `node_exporter` is filtered to ~15 metric families (`config.alloy`'s `prometheus.relabel "node"`) after unfiltered per-host cardinality (~500-700 series/host) tipped Grafana Cloud's 15,000 active-series cap during that migration's repeated instance churn — see `docs/OPS_RUNBOOK.md`'s "Diagnose a failed blue/green deploy" section if `up`/live-instance queries ever come back empty despite a healthy fleet. |
@@ -101,6 +101,17 @@ admins drew (083 clobbering 055 is exactly how Khordha↔Bhubaneswar broke until
 smallest area → nearest centroid → id, so overlapping boundaries (Bhubaneswar/Cuttack) are safe.
 Writes go through `admin.repository.ts` (`FOR UPDATE` + millisecond-precision `updated_at`
 compare; 409 `BOUNDARY_CHANGED` on a stale save) — never `geo.repository.updateCity`.
+
+### PayU collections
+Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`
+(browser) and `POST /payments/webhook/payu`: response hash → `verify_payment` (`unmappedstatus == 'captured'`,
+amount vs stored) → existing idempotent confirm. Never confirm from the callback's posted `status`/`amount`.
+`txnid` is ours (`R<rideId>x…` ride, `W<driverId>x…` top-up, `P<driverId>x…` package); top-up orders are durable in
+`wallet_topup_orders` (Redis binding is a fast path). The payment-reconcile worker also sweeps pending PayU
+top-ups/package purchases (10 min .. 3 days) through the same settler. Production refuses to boot without `PAYU_KEY`/`PAYU_SALT` (empty keys = dev auto-confirm) or
+with non-https/localhost `API_BASE_URL`/`USER_APP_URL`/`DRIVER_APP_URL`. Captured money we cannot attribute lands in
+`payment_gateway_events` with `processed=false` and bumps `payu_unattributed_captures_total{reason}` — see
+`docs/OPS_RUNBOOK.md` "PayU collections".
 
 ### `exactOptionalPropertyTypes: true`
 Cannot pass `field: value | undefined` where `field?: value` is expected.
@@ -197,7 +208,7 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 | M06 — Pricing & Fare | 006_m4_pricing.sql | pricing module | admin rate cards + surge UI |
 | M07-A — Rides backend | 007_m5_booking.sql | rides module | — |
 | M07-B — Rides frontend | — | — | driver GoOnline/ActiveRide flow, user ride booking + tracking |
-| M08 — Payments | 008_m6_payments.sql + 011_wallet.sql | payments module (Razorpay webhook, wallet, ledger, commission) | admin payments page, user/driver wallet pages |
+| M08 — Payments | 008_m6_payments.sql + 011_wallet.sql | payments module (PayU return/webhook + legacy Razorpay webhook, wallet, ledger, commission) | admin payments page, user/driver wallet pages |
 | M09 — Safety | 009_m7_safety.sql | ratings/SOS/disputes services | admin disputes + SOS pages; user rating flow |
 | M10 — Notifications | 013_messaging.sql + 034_device_tokens.sql + 035_notifications_feed.sql + 036_notification_templates.sql | notifications module (SMS via Fast2SMS + push via FCM fully live; `notification_logs` doubles as a per-owner in-app feed with read/unread state; `notifyOwner()`/`notifyAllAdmins()` persist + push + socket-emit in one call; `notification_templates` render engine — worker fully rewired off hardcoded strings) | push registration (FCM) in all three apps; in-app notification bell/feed live in all three (driver bottom sheet, user `/notifications` page, admin dropdown) with live socket updates + foreground toast; admin "Notification Templates" config page for editing SMS/push copy |
 | M11 — Live Map | 010_m8_config.sql (config/flags portion still a stub) | admin socket-fed driver location endpoints | admin live-map page (`LiveMap.tsx`, real-time via Socket.io) |
@@ -289,6 +300,7 @@ api/src/lib/otp.ts                 — OTP generate/hash/verify (SHA-256 + Redis
 api/src/lib/jwt.ts                 — sign/verify access tokens
 api/src/lib/hash.ts                — sha256 helper
 api/src/lib/storage.ts             — S3 uploadFile(), getPresignedUrl(), deleteFile()
+api/src/lib/payu.ts                — PayU form/hash build, reverse-hash verify, verify_payment client
 api/src/middleware/auth.middleware.ts — authenticate() — sets req.user/driver/admin
 api/src/jobs/queues/index.ts       — BullMQ queue instances (NOTIFICATIONS, GPS_FLUSH, etc.)
 api/src/jobs/processors/broadcast.processor.ts — ride broadcast fan-out

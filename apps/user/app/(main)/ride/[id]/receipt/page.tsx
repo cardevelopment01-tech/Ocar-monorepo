@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ChevronDown, ChevronLeft, CheckCircle2, XCircle, Navigation, Clock, Star, LifeBuoy, AlertCircle } from 'lucide-react'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
-import { openRidePaymentCheckout } from '@/lib/razorpay-checkout'
+import { submitPayuForm, payMessage } from '@/lib/payu-checkout'
 import { DriverRow, driverViewFromRide } from '@/components/ride/DriverIdentity'
 import { getApiErrorMessage } from '@ocar/shared'
 
@@ -72,6 +72,11 @@ export default function RideReceiptPage() {
     rideApi.getRide(rideId).then(setRide).catch(() => {}).finally(() => setLoading(false))
   }, [rideId])
 
+  useEffect(() => {
+    const msg = payMessage(new URLSearchParams(window.location.search).get('pay'))
+    if (msg) setPayMsg(msg)
+  }, [])
+
   const needsPayment =
     (ride?.payment_status === 'pending' || ride?.payment_status === 'failed') &&
     (ride?.payment_channel === 'online' || ride?.payment_channel === 'wallet')
@@ -84,14 +89,12 @@ export default function RideReceiptPage() {
       const result = await rideApi.retryPayment(rideId)
       if (result.channel === 'online') {
         if (result.order) {
-          await openRidePaymentCheckout(rideId, result.order, () => {
-            rideApi.getRide(rideId).then(setRide).catch(() => {})
-          })
-        } else {
-          // dev auto-confirmed (no Razorpay keys) — refresh to clear the banner
-          const fresh = await rideApi.getRide(rideId)
-          setRide(fresh)
+          submitPayuForm(result.order.payu) // leaves the page; the return redirect brings the rider back
+          return
         }
+        // dev auto-confirmed (no PayU keys) — refresh to clear the banner
+        const fresh = await rideApi.getRide(rideId)
+        setRide(fresh)
       } else if (result.paid) {
         const fresh = await rideApi.getRide(rideId)
         setRide(fresh)

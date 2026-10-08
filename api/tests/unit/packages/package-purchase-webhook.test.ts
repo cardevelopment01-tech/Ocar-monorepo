@@ -10,23 +10,34 @@ vi.mock('@/db/client', () => ({
   pool: { query: vi.fn(), connect: vi.fn(() => Promise.resolve(fakeClient)) },
 }))
 vi.mock('@/db/redis', () => ({ client: { get: vi.fn(), set: vi.fn(), del: vi.fn() } }))
-vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '' } }))
+vi.mock('@/config', () => ({
+  config: {
+    RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '',
+    PAYU_KEY: 'testkey', PAYU_SALT: 'testsalt', PAYU_ENV: 'test', API_BASE_URL: 'https://api.example',
+  },
+}))
 
 const findPendingPurchaseByOrderId = vi.fn()
 const markPurchaseCompleted = vi.fn()
+const getTierById = vi.fn()
+const createPayuPurchaseOrder = vi.fn().mockResolvedValue({ id: '9' })
 vi.mock('@/modules/packages/packages.repository', () => ({
   findPendingPurchaseByOrderId: (...a: unknown[]) => findPendingPurchaseByOrderId(...a),
   markPurchaseCompleted: (...a: unknown[]) => markPurchaseCompleted(...a),
+  getTierById: (...a: unknown[]) => getTierById(...a),
+  createPayuPurchaseOrder: (...a: unknown[]) => createPayuPurchaseOrder(...a),
 }))
 
 const creditPackageBalance = vi.fn(() => Promise.resolve())
-vi.mock('@/modules/packages/packages.service', () => ({
+vi.mock('@/modules/packages/packages.service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/modules/packages/packages.service')>()),
   creditPackageBalance: (...a: unknown[]) => creditPackageBalance(...a),
   consumePackageBalance: vi.fn(() => Promise.resolve()),
 }))
 
 import { handleWebhookEvent } from '@/modules/payments/payments.service'
 import { pool } from '@/db/client'
+import { createPackagePurchaseOrder } from '@/modules/packages/packages.service'
 
 function capturedPayload(paymentId: string, orderId: string) {
   return {
@@ -106,5 +117,32 @@ describe('handleWebhookEvent — payment.captured for a package purchase order',
 
     expect(findPendingPurchaseByOrderId).not.toHaveBeenCalled()
     expect(creditPackageBalance).not.toHaveBeenCalled()
+  })
+})
+
+describe('createPackagePurchaseOrder (PayU)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getTierById.mockResolvedValue({ id: '3', is_active: true, price: '1000.00', threshold_value: '1200.00' })
+    vi.mocked(pool.query).mockResolvedValue({
+      rows: [{ name: 'Ravi', email: 'r@x.in', phone: '8888888888' }], rowCount: 1,
+    } as never)
+  })
+
+  it('persists a pending purchase keyed by txnid and returns a signed form for the tier price', async () => {
+    const out = await createPackagePurchaseOrder(7n, 3n)
+    if (!('payu' in out)) throw new Error('expected payu form')
+    expect(out.amount).toBe(1000)
+    expect(out.payu.fields['amount']).toBe('1000.00')
+    const txnId = out.payu.fields['txnid']!
+    expect(txnId).toMatch(/^P7x/)
+    expect(createPayuPurchaseOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ driverId: 7n, tierId: 3n, amount: 1000, thresholdValue: 1200, txnId })
+    )
+  })
+
+  it('rejects an inactive tier with 404', async () => {
+    getTierById.mockResolvedValue({ id: '3', is_active: false })
+    await expect(createPackagePurchaseOrder(7n, 3n)).rejects.toMatchObject({ httpStatus: 404 })
   })
 })

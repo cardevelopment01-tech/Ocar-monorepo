@@ -90,3 +90,49 @@ export async function markPurchaseCompleted(
   )
   return res.rows[0] ?? null
 }
+
+export async function createPayuPurchaseOrder(args: {
+  driverId: bigint
+  tierId: bigint
+  amount: number
+  thresholdValue: number
+  txnId: string
+}): Promise<{ id: string }> {
+  const res = await pool.query<{ id: string }>(
+    `INSERT INTO package_purchase_orders
+       (driver_id, package_tier_id, amount, threshold_value, gateway, gateway_txn_id, status)
+     VALUES ($1,$2,$3,$4,'payu',$5,'pending')
+     RETURNING id`,
+    [args.driverId, args.tierId, args.amount, args.thresholdValue, args.txnId]
+  )
+  return res.rows[0]!
+}
+
+// No status filter on purpose: the notification funnel needs to tell
+// "already completed" (no-op success) from "unknown txn" (money unaccounted for).
+export async function findPurchaseByTxnId(txnId: string): Promise<{
+  id: string; driver_id: string; threshold_value: string; amount: string; status: string
+  gateway_payment_id: string | null
+} | null> {
+  const res = await pool.query(
+    `SELECT id, driver_id, threshold_value, amount, status, gateway_payment_id
+     FROM package_purchase_orders WHERE gateway_txn_id = $1`,
+    [txnId]
+  )
+  return res.rows[0] ?? null
+}
+
+// Same atomic claim as markPurchaseCompleted: WHERE status='pending' is in the UPDATE.
+export async function markPurchaseCompletedPayu(
+  id: string,
+  paymentId: string
+): Promise<{ id: string; driver_id: string; threshold_value: string } | null> {
+  const res = await pool.query(
+    `UPDATE package_purchase_orders
+     SET status = 'completed', gateway_payment_id = $2, completed_at = now()
+     WHERE id = $1 AND status = 'pending'
+     RETURNING id, driver_id, threshold_value`,
+    [id, paymentId]
+  )
+  return res.rows[0] ?? null
+}
