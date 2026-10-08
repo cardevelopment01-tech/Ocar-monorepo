@@ -55,7 +55,7 @@ router.post('/wallet/driver/topup/order', authenticate(), async (req, res, next)
 
     const sdk = (req.body as { client?: unknown }).client === 'sdk'
     if (sdk) await payuSdk.assertMobilePaymentsEnabled()
-    const order = await service.createDriverTopupOrder(driverId, amount, sdk)
+    const order = await service.createDriverTopupOrder(driverId, amount)
     res.json(sdk ? payuSdk.withSdkParams(order) : order)
   } catch (err) { next(err) }
 })
@@ -126,8 +126,7 @@ router.post('/packages/purchase/order', authenticate(), async (req, res, next) =
     if (sdk) await payuSdk.assertMobilePaymentsEnabled()
     const result = await packagesService.createPackagePurchaseOrder(
       req.driver!.id,
-      BigInt(req.body.tierId),
-      sdk
+      BigInt(req.body.tierId)
     )
     res.json(sdk && 'payu' in result ? payuSdk.withSdkParams(result) : result)
   } catch (err) { next(err) }
@@ -183,35 +182,18 @@ function payuFallbackUrl(txnid: unknown): string {
   return `${config.USER_APP_URL}/`
 }
 
-// `?c=app` (set on orders created by the driver app): finish in the app via its
-// deep link instead of the web portal. Only fixed words reach the URL.
-function payuAppUrl(kind: 'wallet' | 'package' | 'unknown', result: string): string {
-  return `ocardriver://payment/result?kind=${kind}&pay=${result}`
-}
-
 router.post('/payu/return', async (req, res) => {
-  const toApp = req.query['c'] === 'app'
   try {
     const out = await service.handlePayuNotification(req.body as Record<string, string>)
     // out.error (infrastructure failure) deliberately does not change the
     // redirect: the user lands on the right page with pay=pending.
-    if (toApp) {
-      res.redirect(303, payuAppUrl(out.kind === 'wallet' || out.kind === 'package' ? out.kind : 'unknown', out.result))
-      return
-    }
     res.redirect(303, payuRedirectUrl(out))
   } catch (err) {
     // The funnel throws only for a bad hash (httpStatus 400); anything else is
     // unexpected. Either way never redirect to a success page.
     if ((err as { httpStatus?: number }).httpStatus === 400) log.warn({ err }, 'PayU return rejected: bad hash')
     else log.error({ err }, 'PayU return failed unexpectedly')
-    const txnid = (req.body as Record<string, unknown> | undefined)?.['txnid']
-    if (toApp) {
-      const prefix = typeof txnid === 'string' ? txnid.charAt(0) : ''
-      res.redirect(303, payuAppUrl(prefix === 'W' ? 'wallet' : prefix === 'P' ? 'package' : 'unknown', 'pending'))
-      return
-    }
-    res.redirect(303, payuFallbackUrl(txnid))
+    res.redirect(303, payuFallbackUrl((req.body as Record<string, unknown> | undefined)?.['txnid']))
   }
 })
 

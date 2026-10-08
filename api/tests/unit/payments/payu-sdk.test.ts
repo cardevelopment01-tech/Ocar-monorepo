@@ -105,7 +105,7 @@ describe('sdkParams', () => {
   const form = (over: Record<string, string> = {}) => ({
     action: 'https://test.payu.in/_payment',
     fields: { key: 'KEY', txnid: 'W7xabc', amount: '500.00', productinfo: 'Ocar wallet top-up', firstname: 'Asha',
-      email: 'a@b.co', phone: '+91 99999-99999', surl: 'https://api/x?c=app', furl: 'https://api/x?c=app', hash: 'h', ...over },
+      email: 'a@b.co', phone: '+91 99999-99999', surl: 'https://api/x', furl: 'https://api/x', hash: 'h', ...over },
   })
   it('maps the web form to SDK params, 10-digit phone, test environment, no hash/salt', () => {
     const p = sdkParams(form())

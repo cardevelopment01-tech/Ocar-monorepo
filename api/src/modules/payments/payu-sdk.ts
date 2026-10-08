@@ -4,7 +4,7 @@ import { client as redis } from '@/db/redis'
 import { payuConfirmCooldownKey } from '@/constants/redis-keys'
 import { getConfigValue } from '@/lib/system-config'
 import {
-  buildPayuForm, customerFor, payuSignString, PAYU_APP_RETURN_PATH,
+  buildPayuForm, customerFor, payuSignString, PAYU_RETURN_PATH,
   TOPUP_PRODUCT_INFO, packageProductInfo, type PayuForm,
 } from '@/lib/payu'
 import * as packagesRepo from '@/modules/packages/packages.repository'
@@ -117,7 +117,7 @@ export async function signSdkHash(driverId: bigint, hashName: unknown, hashStrin
     const form = buildPayuForm({
       txnId: order.txnId, amount: Number(order.amount), productInfo: order.productInfo,
       customer: customerFor(driverRes.rows[0] ?? {}, 'driver', driverId),
-      returnUrl: `${config.API_BASE_URL}${PAYU_APP_RETURN_PATH}`,
+      returnUrl: `${config.API_BASE_URL}${PAYU_RETURN_PATH}`,
     })
     return form.fields['hash'] ?? fail(500, 'Could not sign')
   }

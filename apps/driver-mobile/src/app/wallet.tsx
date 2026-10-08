@@ -4,8 +4,13 @@ import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
-import { EmptyState, ErrorState, Skeleton, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { ErrorState, Skeleton, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { fetchBillingMode, fetchDriverWallet, type DriverWallet, type LedgerEntry } from '@/features/wallet/api'
+import { usePayment } from '@/features/payments/usePayment'
+import { createTopupOrder, createPackageOrder } from '@/features/payments/api'
+import { PaymentStatus } from '@/features/payments/PaymentStatus'
+import { AddMoneyCard } from '@/features/payments/AddMoneyCard'
+import { PackageCard } from '@/features/payments/PackageCard'
 
 // Same "temporarily disabled" gate as the web Wallet.tsx -- MIN_BALANCE is a
 // ponytail: client requested the recharge gate off for driver testing (see
@@ -41,8 +46,9 @@ export default function WalletScreen() {
   const [error, setError] = useState(false)
   const [packageMode, setPackageMode] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // `silent` refreshes in place (after a payment) without swapping the screen for a skeleton.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     setError(false)
     try {
       // Package-mode drivers (billing_mode='package') get a prepaid ride-credit
@@ -55,6 +61,7 @@ export default function WalletScreen() {
         setLoading(false)
         return
       }
+      setPackageMode(false)
       setWallet(await fetchDriverWallet())
     } catch {
       setError(true)
@@ -64,6 +71,8 @@ export default function WalletScreen() {
   }, [])
 
   useEffect(() => { void load() }, [load])
+
+  const payment = usePayment(() => { void load(true) })
 
   const balance = wallet ? parseFloat(wallet.balance) : 0
   const isLow = !packageMode && balance < MIN_BALANCE
@@ -87,8 +96,9 @@ export default function WalletScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        <PaymentStatus state={payment.state} onDismiss={payment.reset} />
         {packageMode ? (
-          <EmptyState title="Package billing" description="Your account uses prepaid ride packages, not a deposit wallet. Contact support for package details." />
+          <PackageCard busy={payment.busy} onBuy={(tierId) => payment.start('package', () => createPackageOrder(tierId))} />
         ) : loading ? (
           <Skeleton height={144} borderRadius={24} />
         ) : (
@@ -119,10 +129,12 @@ export default function WalletScreen() {
               </View>
             ) : null}
 
+            <AddMoneyCard busy={payment.busy} onPay={(amount) => payment.start('topup', () => createTopupOrder(amount))} />
+
             <View style={styles.ledgerCard}>
               <Text style={styles.ledgerTitle}>Recent Transactions</Text>
               {error ? (
-                <ErrorState message="Failed to load transactions" onRetry={load} />
+                <ErrorState message="Failed to load transactions" onRetry={() => void load()} />
               ) : ledger.length === 0 ? (
                 <Text style={styles.emptyText}>No transactions yet</Text>
               ) : (

@@ -119,6 +119,11 @@ describe('createDriverTopupOrder', () => {
     await expect(createDriverTopupOrder(7n, NaN)).rejects.toMatchObject({ httpStatus: 400 })
   })
 
+  it('rejects a top-up above the maximum (no order row, no form)', async () => {
+    await expect(createDriverTopupOrder(7n, 50_001)).rejects.toMatchObject({ httpStatus: 400 })
+    await expect(createDriverTopupOrder(7n, 50_000)).resolves.toBeDefined()
+  })
+
   it('rounds to whole paise', async () => {
     const out = await createDriverTopupOrder(7n, 100.005)
     expect(out.payu.fields['amount']).toMatch(/^100\.0[01]$/)

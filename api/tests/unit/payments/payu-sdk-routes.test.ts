@@ -44,40 +44,12 @@ const forbidden = () => Object.assign(new Error('In-app payments are not availab
 
 beforeEach(() => { Object.values(m).forEach((f) => f.mockReset()) })
 
-describe('POST /payu/return?c=app', () => {
-  it.each([
-    [{ kind: 'wallet', id: '7', result: 'success' }, 'ocardriver://payment/result?kind=wallet&pay=success'],
-    [{ kind: 'package', id: '7', result: 'pending' }, 'ocardriver://payment/result?kind=package&pay=pending'],
-    [{ kind: 'wallet', id: '7', result: 'failed' }, 'ocardriver://payment/result?kind=wallet&pay=failed'],
-    [{ kind: 'ride', id: '9', result: 'success' }, 'ocardriver://payment/result?kind=unknown&pay=success'],
-  ])('deep-links %j', async (outcome, location) => {
-    m.handle.mockResolvedValue(outcome)
-    const res = await request(app).post(`${P}/payu/return?c=app`).type('form').send({ txnid: 'W7x', hash: 'h' })
-    expect(res.status).toBe(303)
-    expect(res.headers['location']).toBe(location)
-  })
-
-  it.each([
-    ['Wabc', 'wallet'], ['Pabc', 'package'], ['Rabc', 'unknown'], ['', 'unknown'], ['w', 'unknown'],
-  ])('bad hash with txnid %j goes to kind=%s and never echoes a posted value', async (txnid, kind) => {
-    m.handle.mockRejectedValue(Object.assign(new Error('bad'), { httpStatus: 400 }))
-    const res = await request(app).post(`${P}/payu/return?c=app`).type('form').send({ txnid, evil: 'x&pay=success' })
-    expect(res.headers['location']).toBe(`ocardriver://payment/result?kind=${kind}&pay=pending`)
-  })
-
-  it('without ?c=app still redirects to the web portal', async () => {
-    m.handle.mockResolvedValue({ kind: 'wallet', id: '7', result: 'success' })
-    const res = await request(app).post(`${P}/payu/return`).type('form').send({ txnid: 'W7x' })
-    expect(res.headers['location']).toBe('https://driver.example/wallet?pay=success')
-  })
-})
-
 describe('order endpoints with client:"sdk"', () => {
-  it('top-up: gated by the flag, app-return URL, SDK params added', async () => {
+  it('top-up: gated by the flag, SDK params added', async () => {
     m.topup.mockResolvedValue({ payu: { action: 'a', fields: {} }, amount: 500 })
     const res = await request(app).post(`${P}/wallet/driver/topup/order`).send({ amount: 500, client: 'sdk' })
     expect(m.enabled).toHaveBeenCalled()
-    expect(m.topup).toHaveBeenCalledWith(7n, 500, true)
+    expect(m.topup).toHaveBeenCalledWith(7n, 500)
     expect(res.body.sdk).toEqual({ transactionId: 'W7x' })
   })
   it('top-up: flag off -> 403 and no order is created', async () => {
@@ -90,13 +62,13 @@ describe('order endpoints with client:"sdk"', () => {
     m.topup.mockResolvedValue({ payu: { action: 'a', fields: {} }, amount: 500 })
     const res = await request(app).post(`${P}/wallet/driver/topup/order`).send({ amount: 500 })
     expect(m.enabled).not.toHaveBeenCalled()
-    expect(m.topup).toHaveBeenCalledWith(7n, 500, false)
+    expect(m.topup).toHaveBeenCalledWith(7n, 500)
     expect(res.body).not.toHaveProperty('sdk')
   })
   it('package: sdk order gated and flagged; dev credit passes through untouched', async () => {
     m.pkg.mockResolvedValue({ payu: { action: 'a', fields: {} }, amount: 999 })
     let res = await request(app).post(`${P}/packages/purchase/order`).send({ tierId: 3, client: 'sdk' })
-    expect(m.pkg).toHaveBeenCalledWith(7n, 3n, true)
+    expect(m.pkg).toHaveBeenCalledWith(7n, 3n)
     expect(res.body.sdk).toEqual({ transactionId: 'W7x' })
     m.pkg.mockResolvedValue({ dev: true, credited: 1000 })
     res = await request(app).post(`${P}/packages/purchase/order`).send({ tierId: 3, client: 'sdk' })

@@ -13,9 +13,6 @@ const UDF = ['', '', '', '', '']
 const UNUSED = ['', '', '', '', '']
 
 export const PAYU_RETURN_PATH = '/api/v1/payments/payu/return'
-// `?c=app` makes /payu/return finish in the driver app (deep link) instead of the web portal.
-export const PAYU_APP_RETURN_PATH = `${PAYU_RETURN_PATH}?c=app`
-
 // productinfo is part of the request hash, so the order creators and the SDK hash
 // signer must build it from the same place.
 export const TOPUP_PRODUCT_INFO = 'Ocar wallet top-up'
