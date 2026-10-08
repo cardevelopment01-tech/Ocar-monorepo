@@ -1,6 +1,7 @@
 import { pool } from '@/db/client'
 import { config } from '@/config'
 import * as repo from './packages.repository'
+import { payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, type PayuForm } from '@/lib/payu'
 
 async function writeLedgerEntry(
   client: { query: (sql: string, params: unknown[]) => Promise<{ rows: unknown[] }> },
@@ -196,13 +197,13 @@ export async function adjustPackageBalance(
 
 // ── Package purchase — Razorpay order (or dev-mode direct credit) ──────────
 // Mirrors createRidePaymentOrder's dev-mode bypass in payments.service.ts: no
-// Razorpay keys configured means local/staging environments credit immediately
+// PayU keys configured means local/staging environments credit immediately
 // instead of opening Checkout, so the purchase flow stays exercisable end to
 // end without a gateway.
 export async function createPackagePurchaseOrder(
   driverId: bigint,
   tierId: bigint
-): Promise<{ orderId: string; key: string; amount: number } | { dev: true; credited: number }> {
+): Promise<{ payu: PayuForm; amount: number } | { dev: true; credited: number }> {
   const tier = await repo.getTierById(tierId)
   if (!tier || !tier.is_active) {
     throw Object.assign(new Error('Package tier not found or inactive'), { httpStatus: 404 })
@@ -210,23 +211,19 @@ export async function createPackagePurchaseOrder(
   const price = parseFloat(tier.price)
   const threshold = parseFloat(tier.threshold_value)
 
-  if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) {
+  if (!payuConfigured()) {
     await creditPackageBalance(driverId, threshold, `dev_${Date.now()}`)
     return { dev: true, credited: threshold }
   }
 
-  const Razorpay = (await import('razorpay')).default
-  const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
-  const order = await (rzp.orders.create as Function)({
-    amount: Math.round(price * 100),
-    currency: 'INR',
-    receipt: `pkg_${driverId}_${Date.now()}`,
+  const driverRes = await pool.query(`SELECT full_name AS name, email, phone FROM drivers WHERE id = $1`, [driverId])
+  const txnId = newTxnId('P', driverId)
+  const payu = buildPayuForm({
+    txnId, amount: price,
+    productInfo: `Ocar package ${tierId}`,
+    customer: customerFor(driverRes.rows[0] ?? {}, 'driver', driverId),
+    returnUrl: `${config.API_BASE_URL}${PAYU_RETURN_PATH}`,
   })
-  const orderId = (order as { id: string }).id
-
-  await repo.createPurchaseOrder({
-    driverId, tierId, amount: price, thresholdValue: threshold, razorpayOrderId: orderId,
-  })
-
-  return { orderId, key: config.RAZORPAY_KEY_ID, amount: price }
+  await repo.createPayuPurchaseOrder({ driverId, tierId, amount: price, thresholdValue: threshold, txnId })
+  return { payu, amount: price }
 }
