@@ -10,6 +10,7 @@ import {
 import type { DriverDetail } from '@/lib/admin-api'
 import StatusPill from './StatusPill'
 import { cn } from '@/lib/utils'
+import { extractErrorMessage } from '@/lib/http-errors'
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -265,9 +266,9 @@ function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onC
           <p className="text-xs text-text-muted mt-1.5">
             Driver claims: {claimedDate ? claimedDate : 'not provided'}
           </p>
-          {error && <p className="text-xs text-danger mt-1.5">{error}</p>}
         </div>
       )}
+      {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex items-center gap-2.5">
         <button
           onClick={() => onSubmit(noExpiry ? '' : value)}
@@ -499,8 +500,7 @@ export default function DocReviewModal({
       await onDriverAction(type, reason)
       onClose()
     } catch (err) {
-      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      setDriverActionError(message ?? 'Action failed. Please try again.')
+      setDriverActionError(extractErrorMessage(err, 'Action failed. Please try again.'))
     } finally { setDriverLoading(false) }
   }
 

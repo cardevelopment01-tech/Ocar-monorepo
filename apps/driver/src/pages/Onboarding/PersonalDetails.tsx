@@ -9,6 +9,7 @@ import SelectSheet from '@/components/ui/SelectSheet'
 import DatePickerSheet from '@/components/ui/DatePickerSheet'
 import OnboardingShell from '@/components/onboarding/OnboardingShell'
 import FieldError, { ShakeWrap, useShake } from '@/components/ui/FieldError'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 const INDIAN_LANGUAGES = [
   'Hindi', 'English', 'Odia', 'Bengali', 'Tamil', 'Telugu',
@@ -169,7 +170,7 @@ export default function PersonalDetails() {
       if ((apiError as { code?: string })?.code === 'VALIDATION_ERROR') {
         setError('Please check your details and try again.')
       } else {
-        setError('Something went wrong. Please try again.')
+        setError(getApiErrorMessage(err))
       }
     } finally {
       setIsLoading(false)

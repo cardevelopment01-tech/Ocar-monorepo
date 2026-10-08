@@ -5,6 +5,7 @@ import autoImg from '../../../assets/home/fleet-auto.png'
 import hatchbackImg from '../../../assets/home/fleet-hatchback.png'
 import sedanImg from '../../../assets/home/fleet-sedan.png'
 import luxuryImg from '../../../assets/home/fleet-luxury.png'
+import suvImg from '../../../assets/home/fleet-suv.png'
 import vanImg from '../../../assets/home/fleet-van.png'
 
 export type FleetItem = { key: string; slug: string; name: string; seats: number; desc: string; image: ImageSourcePropType | null }
@@ -17,13 +18,11 @@ const COPY: Record<string, { desc: string; image: ImageSourcePropType | null }> 
   hatchback: { desc: 'Light and easy for quick trips around town', image: hatchbackImg },
   sedan: { desc: 'Comfortable and efficient for everyday outstation trips', image: sedanImg },
   luxury: { desc: 'Our finest cars, chauffeur-driven for special occasions', image: luxuryImg },
-  suv: { desc: 'Roomy and relaxed for family and group journeys', image: null },
+  suv: { desc: 'Roomy and relaxed for family and group journeys', image: suvImg },
   van: { desc: 'Tempo travellers for weddings, pilgrimages and group trips', image: vanImg },
 }
 /** Reference vehicle render for a category slug (null -> caller falls back to the shared VehicleIcon). */
 export const fleetImageFor = (slug: string): ImageSourcePropType | null => COPY[slug]?.image ?? null
-
-const ORDER = ['auto', 'auto_rickshaw', 'hatchback', 'sedan', 'luxury', 'suv', 'van']
 
 // Offline / first-paint fallback, exactly the five vehicles in the reference.
 const FALLBACK: FleetItem[] = [
@@ -45,7 +44,6 @@ export function useFleet(): FleetItem[] {
       .then((cats) => {
         const next = cats
           .filter((c) => c.isActive)
-          .sort((a, b) => (ORDER.indexOf(a.slug) + 1 || 99) - (ORDER.indexOf(b.slug) + 1 || 99))
           .map((c) => ({
             key: String(c.id),
             slug: c.slug,

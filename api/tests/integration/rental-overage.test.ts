@@ -97,6 +97,8 @@ async function runRental(opts: {
     )
   }
 
+  const dropRes = await request(app).post(`/api/v1/rides/${rideId}/arrived-at-drop`).set('Authorization', `Bearer ${driver.accessToken}`)
+  expect(dropRes.status, JSON.stringify(dropRes.body)).toBe(200)
   const rideAsUser = await request(app).get(`/api/v1/rides/${rideId}`).set('Authorization', `Bearer ${userToken}`)
   const endOtpRes = await request(app)
     .post(`/api/v1/rides/${rideId}/end-otp`)

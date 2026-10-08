@@ -63,6 +63,8 @@ export type ApiClientConfig = {
   getAccessToken: () => string | null
   refresher: TokenRefresher
   onAuthFailure: () => void
+  /** Driver logged in on another device (401 AUTH_SESSION_REPLACED). Falls back to onAuthFailure. */
+  onSessionReplaced?: () => void
   isAuthEndpoint?: (url: string | undefined) => boolean
 }
 
@@ -80,6 +82,7 @@ function defaultIsAuthEndpoint(url?: string): boolean {
 // per-app auth storage since rider and driver each keep tokens in their own store shape.
 export function createApiClient(config: ApiClientConfig): AxiosInstance {
   const { baseURL, getAccessToken, onAuthFailure } = config
+  const onSessionReplaced = config.onSessionReplaced ?? onAuthFailure
   const isAuthEndpoint = config.isAuthEndpoint ?? defaultIsAuthEndpoint
   const { refreshAccessToken } = config.refresher
 
@@ -122,6 +125,11 @@ export function createApiClient(config: ApiClientConfig): AxiosInstance {
       const code = axios.isAxiosError(error) ? (error.response?.data as ApiError | undefined)?.code : undefined
       const isTokenError = code === 'AUTH_UNAUTHORIZED' || code === 'AUTH_TOKEN_INVALID' || code === 'AUTH_TOKEN_EXPIRED'
       const original = error.config as RetriableRequest | undefined
+
+      if (code === 'AUTH_SESSION_REPLACED') {
+        onSessionReplaced()
+        return Promise.reject(error)
+      }
 
       if (
         axios.isAxiosError(error) &&

@@ -10,7 +10,7 @@ import { rideApi, type RideDetail, type RideStop } from '@/lib/ride-api'
 import RouteTimeline from '@/components/route/RouteTimeline'
 import { safetyApi } from '@/lib/safety-api'
 import { formatReturnAt } from '@/lib/utils'
-import { formatEta, statusShowsEta } from '@ocar/shared'
+import { formatEta, statusShowsEta, getApiErrorMessage } from '@ocar/shared'
 import { DriverCard as DriverCardView, MeetAtRow, PinBand, driverViewFromRide } from '@/components/ride/DriverIdentity'
 import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
@@ -155,8 +155,7 @@ function DriverCard({ ride, rideId, router, unreadChatCount, rideStatus }: { rid
     try {
       await rideApi.triggerMaskedCall(rideId)
     } catch (err) {
-      const msg = (axios.isAxiosError(err) && (err.response?.data as { error?: string } | undefined)?.error) || 'Could not connect the call'
-      setCallError(msg)
+      setCallError(getApiErrorMessage(err, 'Could not connect the call'))
       setTimeout(() => setCallError(null), 4000)
     } finally {
       setCalling(false)
@@ -354,13 +353,7 @@ export default function RidePage() {
       setRide(prev => prev ? { ...prev, stops: [...prev.stops, newStop] } : prev)
       setAddStopError(null)
     } catch (err) {
-      const status = axios.isAxiosError(err) ? err.response?.status : undefined
-      const serverMessage = axios.isAxiosError(err) ? (err.response?.data as { error?: string } | undefined)?.error : undefined
-      setAddStopError(
-        (status === 409 || status === 422) && serverMessage
-          ? serverMessage
-          : "Couldn't add that stop. Please try again.",
-      )
+      setAddStopError(getApiErrorMessage(err, "Couldn't add that stop. Please try again."))
       setTimeout(() => setAddStopError(null), 5000)
     }
   }
@@ -380,13 +373,7 @@ export default function RidePage() {
       setPickupToast(true)
       setTimeout(() => setPickupToast(false), 2600)
     } catch (err) {
-      const status = axios.isAxiosError(err) ? err.response?.status : undefined
-      const serverMessage = axios.isAxiosError(err) ? (err.response?.data as { error?: string } | undefined)?.error : undefined
-      setPickupError(
-        (status === 409 || status === 422) && serverMessage
-          ? serverMessage
-          : "Couldn't update pickup. Please try again."
-      )
+      setPickupError(getApiErrorMessage(err, "Couldn't update pickup. Please try again."))
     } finally {
       setPickupUpdating(false)
     }

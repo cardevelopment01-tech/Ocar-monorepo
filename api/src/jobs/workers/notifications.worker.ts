@@ -116,6 +116,7 @@ export const notificationsWorker = new Worker(
         userPhone:   string
         lat:         number
         lng:         number
+        triggeredByRole?: 'user' | 'driver'
         triggeredAt: string
       }
       // In-app + push to every admin goes first and on its own: an SMS vendor outage must never
@@ -133,6 +134,35 @@ export const notificationsWorker = new Worker(
           })
         } catch (err) {
           log.error({ err }, 'notify failed for sos_alert')
+        }
+
+        // Rider's own emergency contacts, only when the rider pressed SOS (a driver-triggered alert
+        // must not text the rider's family as if the rider asked for help). Best effort per contact,
+        // first attempt only, so one bad number or vendor error never blocks the admin SMS below.
+        if (data.triggeredByRole === 'user' && data.userId) {
+          try {
+            const { rows } = await pool.query<{ name: string | null; phone: string; rider_name: string | null }>(
+              `SELECT c.name, c.phone, u.name AS rider_name
+                 FROM user_emergency_contacts c JOIN users u ON u.id = c.user_id
+                WHERE c.user_id = $1`,
+              [data.userId]
+            )
+            for (const c of rows) {
+              const logId = await notifService.logNotification({ jobName: 'sos_contact', recipientPhone: c.phone, payload: { rideId: data.rideId } })
+              try {
+                const { body } = await renderTemplate('sos_contact', 'sms', {
+                  riderName: c.rider_name ?? 'Your contact', lat: String(data.lat), lng: String(data.lng),
+                })
+                await sendSms(c.phone, body)
+                await notifService.markSent(logId)
+              } catch (err) {
+                await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
+                log.error({ err }, 'sos_contact SMS failed')
+              }
+            }
+          } catch (err) {
+            log.error({ err }, 'sos emergency-contact fan-out failed')
+          }
         }
       }
 

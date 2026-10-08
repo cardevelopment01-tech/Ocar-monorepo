@@ -3,7 +3,7 @@ import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, colors, radii, spacing, typography, fonts, getApiErrorMessage } from '@ocar/mobile-shared'
 import { api, serverNow } from '@/services/api'
 import { triggerSos } from '@/features/safety/api'
 import { useLocationStore } from '@/store/useLocationStore'
@@ -126,8 +126,8 @@ export default function RideTrackingScreen() {
       // change anywhere unless they thought to tap the (collapsed) toggle.
       setDetailsExpanded(true)
       retry()
-    } catch {
-      setAddStopError("Couldn't add that stop. Please try again.")
+    } catch (err) {
+      setAddStopError(getApiErrorMessage(err, "Couldn't add that stop. Please try again."))
       setTimeout(() => setAddStopError(null), 5000)
     }
   }

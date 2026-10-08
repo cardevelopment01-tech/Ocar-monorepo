@@ -6,14 +6,15 @@ export type ExternalEndInfo = { resolvedBy?: string; reason?: string; cancelledB
 // the update is part of the normal flow -- including the driver's own cancel (the cancel
 // handler navigates itself) and a plain `completed` (verifyEndOtp never sets resolvedBy).
 export function externalEndMessage(status: string, info: ExternalEndInfo = {}): string | null {
-  if (status === 'cancelled') {
-    if (info.cancelledBy === 'driver') return null
-    return info.cancelledBy === 'system' ? 'This ride was cancelled' : 'The rider cancelled this ride'
-  }
-  if (status === 'completed' && info.resolvedBy) {
+  // Force-resolved by admin/sweeper -- either outcome, so check before the cancel branch.
+  if ((status === 'completed' || status === 'cancelled') && info.resolvedBy) {
     return info.resolvedBy === 'timeout'
       ? 'This trip was automatically ended due to inactivity'
       : 'This trip was ended by support'
+  }
+  if (status === 'cancelled') {
+    if (info.cancelledBy === 'driver') return null
+    return info.cancelledBy === 'system' ? 'This ride was cancelled' : 'The rider cancelled this ride'
   }
   if (status === 'requested' && info.reason === 'force_assign_reverted') {
     return 'This ride was reassigned to another driver'

@@ -9,6 +9,7 @@ import {
 } from '@/lib/ride-api'
 import { cn } from '@/lib/utils'
 import { Car, Check } from 'lucide-react'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 type Period = 'today' | 'week' | 'month'
 
@@ -94,8 +95,8 @@ export default function Earnings() {
       const updated = await driverPayoutApi.getEarningsBalance()
       setPayout(updated)
       setCashOutSuccess(true)
-    } catch {
-      setCashOutError('Cash out failed. Please try again.')
+    } catch (err) {
+      setCashOutError(getApiErrorMessage(err, 'Cash out failed. Please try again.'))
     } finally {
       setCashingOut(false)
     }

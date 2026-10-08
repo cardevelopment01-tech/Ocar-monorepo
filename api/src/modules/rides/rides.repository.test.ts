@@ -14,7 +14,7 @@ vi.mock('@/db/redis', () => ({
   client: { del: vi.fn().mockResolvedValue(1) },
 }))
 
-import { getEligibleDriverCategoryIds, findNearbyDrivers, findReturnCabDrivers, getCategoryDisplayName, getRideById, getRideCoreById, getRideCoreForDriverAction } from './rides.repository'
+import { getEligibleDriverCategoryIds, findNearbyDrivers, findStaleOnlineDrivers, findReturnCabDrivers, getCategoryDisplayName, getRideById, getRideCoreById, getRideCoreForDriverAction } from './rides.repository'
 
 describe('findNearbyDrivers', () => {
   beforeEach(() => { mockQuery.mockReset() })
@@ -32,6 +32,23 @@ describe('findNearbyDrivers', () => {
     const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]]
     expect(sql).toContain('ds.category_id = ANY($3::bigint[])')
     expect(params[2]).toEqual([2n, 1n])
+  })
+})
+
+describe('findStaleOnlineDrivers', () => {
+  beforeEach(() => { mockQuery.mockReset() })
+
+  // Regression: the GPS snapshot is not refreshed while on_trip, so a driver finishing a ride
+  // longer than the offline threshold was forced offline (stale_heartbeat) the moment their session
+  // flipped back to 'online'. Staleness must also respect the session's own last change.
+  it('measures staleness from the later of the last fix and the session update', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+
+    await findStaleOnlineDrivers(600)
+
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('GREATEST(dls.recorded_at, ds.updated_at)')
+    expect(params).toEqual([600])
   })
 })
 

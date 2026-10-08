@@ -1,8 +1,8 @@
-import axios, { type AxiosRequestConfig } from 'axios'
+import type { AxiosRequestConfig } from 'axios'
 import {
   camelizeKeys,
   decodePolyline,
-  mapBookingErrorCode,
+  getApiErrorMessage,
   type BookingResult,
   type FareEstimate,
   type GeoAutocompleteResult,
@@ -21,11 +21,7 @@ import { api } from '@/services/api'
 // trip". Falling straight to a generic message for those hides an actionable,
 // already-human-readable reason -- same fallback web's rental/page.tsx uses.
 export function resolveBookingError(err: unknown): string {
-  if (!axios.isAxiosError(err)) return 'Something went wrong, please try again'
-  const data = err.response?.data as { code?: string; error?: string } | undefined
-  if (data?.code) return mapBookingErrorCode(data.code)
-  if (err.response?.status === 422 && data?.error) return data.error
-  return 'Something went wrong, please try again'
+  return getApiErrorMessage(err, 'Something went wrong, please try again')
 }
 
 // GET /geo/place/:placeId and GET /geo/reverse both come back as

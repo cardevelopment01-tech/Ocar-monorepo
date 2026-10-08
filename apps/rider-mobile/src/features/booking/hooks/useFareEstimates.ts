@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FareEstimate, VehicleCategory } from '@ocar/mobile-shared'
 import { fetchFareEstimate, fetchReturnCabAvailable, fetchVehicleCategories, type RideType } from '../api'
+import { getApiErrorMessage } from '@ocar/mobile-shared'
 
 export type FareEstimatesState = {
   categories: VehicleCategory[]
@@ -110,9 +111,9 @@ export function useFareEstimates(
           setReturnCabEstimates({})
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (generation !== generationRef.current) return
-        setError("Couldn't get a fare estimate, try again")
+        setError(getApiErrorMessage(err, "Couldn't get a fare estimate, try again"))
         setLoading(false)
       })
   }, [distanceKm, durationMin, originCityId, rideType, tripHours, pickup, drop, scheduledFor])

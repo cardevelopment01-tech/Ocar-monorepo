@@ -16,6 +16,7 @@ import { cityApi, type AdminCity } from '@/lib/city-api'
 import { vehicleCategoryApi, type VehicleCategory } from '@/lib/vehicle-api'
 import { cn } from '@/lib/utils'
 import { InitialsAvatar, fmt } from './shared'
+import { extractErrorMessage } from '@/lib/http-errors'
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 
@@ -198,8 +199,7 @@ function DriversPageInner() {
       await Promise.all([fetchList(), fetchBanner()])
       setSuccessMsg(type === 'approve' ? 'Driver activated' : type === 'rejectDocs' ? 'Documents rejected' : 'Driver banned')
     } catch (err) {
-      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      setActionError(message ?? 'Action failed. Please try again.')
+      setActionError(extractErrorMessage(err, 'Action failed. Please try again.'))
     }
     finally { setActionLoading(false) }
   }

@@ -30,6 +30,7 @@ import { classifyLimit, HIGHWAY_SPEED_LIMIT_KMPH, type SpeedLimitCity } from '@/
 import api from '@/lib/api'
 import { useWakeLock } from '@/lib/useWakeLock'
 import { haversineMetres, remainingRoutePath } from '@/lib/geo'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 const DriverMapView     = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap       = lazy(() => import('@/components/map/RecenterMap'))
@@ -464,8 +465,8 @@ export default function TripInProgress() {
       if (result.finalFare !== undefined) setFare(result.finalFare)
       updateRideStatus('completed')
       navigate(activeRide.paymentChannel === 'cash' ? '/ride/collect-cash' : '/ride/end', { replace: true })
-    } catch {
-      setEndEarlyError('Could not end the trip. Check your connection and try again.')
+    } catch (err) {
+      setEndEarlyError(getApiErrorMessage(err, 'Could not end the trip. Check your connection and try again.'))
       setEndingEarly(false)
     }
   }

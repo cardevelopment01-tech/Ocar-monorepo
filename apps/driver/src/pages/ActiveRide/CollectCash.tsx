@@ -5,6 +5,7 @@ import { Banknote, X } from 'lucide-react'
 import { useRideStore } from '@/store/useRideStore'
 import { driverRideApi } from '@/lib/ride-api'
 import SwipeToConfirm from '@/components/ui/SwipeToConfirm'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 function fmt(n: number) {
   const s = n.toFixed(2)
@@ -31,8 +32,8 @@ export default function CollectCash() {
     try {
       await driverRideApi.collectCash(activeRide.id, body)
       navigate('/ride/end', { replace: true })
-    } catch {
-      setError('Could not save this. Check your connection and try again.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Could not save this. Check your connection and try again.'))
       setSubmitting(false)
     }
   }

@@ -11,6 +11,7 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { useWalletGate } from '@/lib/useWalletGate'
 import { useDocumentGate } from '@/lib/useDocumentGate'
 import { unlockRideSound } from '@/lib/rideSound'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 const CHECKLIST = [
   'Vehicle is clean and ready',
@@ -50,7 +51,7 @@ export default function StandardConfirm() {
   useEffect(() => {
     driverRideApi.getMyVehicle()
       .then(v => setVehicle(v))
-      .catch(() => setError('Could not load vehicle info'))
+      .catch((err) => setError(getApiErrorMessage(err, 'Could not load vehicle info')))
       .finally(() => setLoading(false))
   }, [])
 

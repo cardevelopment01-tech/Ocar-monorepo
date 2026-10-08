@@ -22,6 +22,13 @@ export function requireUser(): RequestHandler {
   }
 }
 
+const DRIVER_STATUS_ERRORS: Partial<Record<DriverStatus, (typeof AppErrors)[keyof typeof AppErrors]>> = {
+  pending_docs: AppErrors.DRIVER_ONBOARDING_INCOMPLETE,
+  pending_approval: AppErrors.DRIVER_NOT_APPROVED,
+  docs_rejected: AppErrors.DRIVER_DOCS_REJECTED,
+  suspended: AppErrors.DRIVER_SUSPENDED,
+}
+
 export function requireDriver(...allowedStatuses: DriverStatus[]): RequestHandler {
   return (req, res, next) => {
     if (!req.driver) {
@@ -32,10 +39,10 @@ export function requireDriver(...allowedStatuses: DriverStatus[]): RequestHandle
       return
     }
     if (allowedStatuses.length > 0 && !allowedStatuses.includes(req.driver.status as DriverStatus)) {
-      res.status(403).json({
-        error: AppErrors.AUTH_FORBIDDEN.message,
-        code: AppErrors.AUTH_FORBIDDEN.code,
-      })
+      // Say *why* the driver is blocked so clients can show a real message
+      // instead of a bare 403.
+      const err = DRIVER_STATUS_ERRORS[req.driver.status as DriverStatus] ?? AppErrors.AUTH_FORBIDDEN
+      res.status(403).json({ error: err.message, code: err.code })
       return
     }
     next()

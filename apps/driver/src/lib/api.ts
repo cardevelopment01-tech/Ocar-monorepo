@@ -42,6 +42,13 @@ function shouldClearAfterRefreshFailure(err: unknown): boolean {
   return err instanceof MissingRefreshTokenError || isRefreshAuthFailure(err)
 }
 
+export const SESSION_REPLACED_KEY = 'ocar_session_replaced'
+
+export function sessionReplaced() {
+  try { sessionStorage.setItem(SESSION_REPLACED_KEY, '1') } catch { /* private mode */ }
+  clearAndRedirect()
+}
+
 function clearAndRedirect() {
   useAuthStore.getState().clearAuth()
   window.location.href = '/login'
@@ -95,6 +102,11 @@ api.interceptors.response.use(
     const code = error.response?.data?.code
     const isTokenError = code === 'AUTH_UNAUTHORIZED' || code === 'AUTH_TOKEN_INVALID' || code === 'AUTH_TOKEN_EXPIRED'
     const original = error.config as RetriableRequest | undefined
+
+    if (code === 'AUTH_SESSION_REPLACED') {
+      sessionReplaced()
+      return Promise.reject(error)
+    }
 
     if (error.response?.status === 503 && code === 'MAINTENANCE_MODE') {
       const retryAfterHeader = Number(error.response.headers?.['retry-after'])

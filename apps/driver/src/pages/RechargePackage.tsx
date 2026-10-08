@@ -7,6 +7,7 @@ import { useSessionStore } from '@/store/useSessionStore'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { payMessage, submitPayuForm, type PayuForm } from '@/lib/payu-checkout'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 interface PackageTier {
   id: number
@@ -106,8 +107,8 @@ export default function RechargePackage() {
       }
       if (!res.data.payu) throw new Error('missing payu form')
       submitPayuForm(res.data.payu)
-    } catch {
-      setMsg('Payment failed. Please try again.')
+    } catch (err) {
+      setMsg(getApiErrorMessage(err, 'Payment failed. Please try again.'))
     } finally {
       setBuying(false)
     }

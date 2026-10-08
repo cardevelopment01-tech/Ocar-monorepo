@@ -12,6 +12,7 @@ import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { notificationsQueue } from '@/jobs/queues'
 import { recordAuditLog } from '@/lib/audit-log'
+import { logger } from '@/lib/logger'
 import { withTripWindow } from '@/lib/trip-window'
 import { hasAllRequiredDocsApproved, findDriverById } from '@/modules/drivers/drivers.repository'
 
@@ -379,6 +380,21 @@ function validateVerifiedExpiry(docType: string, verifiedValidUntil: string): st
   return verifiedValidUntil
 }
 
+// The doc row is already committed when this runs. A notify/status-sync failure must not
+// surface as a 500 — the admin UI would keep the old updated_at and every retry would 409.
+async function afterDocChange(driverId: bigint, adminId: bigint, notify?: () => Promise<unknown>) {
+  try {
+    await notify?.()
+  } catch (err) {
+    logger.error({ err, driverId: String(driverId) }, 'doc review: notification failed after commit')
+  }
+  try {
+    await repo.syncDriverStatusAfterDocChange(driverId, adminId)
+  } catch (err) {
+    logger.error({ err, driverId: String(driverId) }, 'doc review: driver status sync failed after commit')
+  }
+}
+
 export async function approveDriverDoc(
   docId: bigint,
   adminId: bigint,
@@ -400,7 +416,7 @@ export async function approveDriverDoc(
     adminId, action: 'driver_documents.approve', targetTable: 'driver_documents', targetId: docId,
     afterState: { status: 'approved', verified_valid_until: expiry }, ipAddress,
   })
-  await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
+  await afterDocChange(BigInt(approved.driver_id), adminId)
 }
 
 export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: string, seenUpdatedAt: string, ipAddress: string | null) {
@@ -417,8 +433,7 @@ export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: stri
     adminId, action: 'driver_documents.reject', targetTable: 'driver_documents', targetId: docId,
     afterState: { status: 'rejected', doc_type: rejected.doc_type, note }, ipAddress,
   })
-  await notifyDocumentRejected(BigInt(rejected.driver_id), rejected.doc_type, note, rejected.rejection_count)
-  await repo.syncDriverStatusAfterDocChange(BigInt(rejected.driver_id), adminId)
+  await afterDocChange(BigInt(rejected.driver_id), adminId, () => notifyDocumentRejected(BigInt(rejected.driver_id), rejected.doc_type, note, rejected.rejection_count))
   return rejected
 }
 
@@ -443,7 +458,7 @@ export async function approveVehicleDoc(
     adminId, action: 'vehicle_documents.approve', targetTable: 'driver_vehicle_documents', targetId: docId,
     afterState: { status: 'approved', verified_valid_until: expiry }, ipAddress,
   })
-  await repo.syncDriverStatusAfterDocChange(BigInt(approved.driver_id), adminId)
+  await afterDocChange(BigInt(approved.driver_id), adminId)
 }
 
 export async function rejectVehicleDoc(docId: bigint, adminId: bigint, note: string, seenUpdatedAt: string, ipAddress: string | null) {
@@ -460,8 +475,7 @@ export async function rejectVehicleDoc(docId: bigint, adminId: bigint, note: str
     adminId, action: 'vehicle_documents.reject', targetTable: 'driver_vehicle_documents', targetId: docId,
     afterState: { status: 'rejected', doc_type: rejected.doc_type, note }, ipAddress,
   })
-  await notifyDocumentRejected(BigInt(rejected.driver_id), rejected.doc_type, note, rejected.rejection_count)
-  await repo.syncDriverStatusAfterDocChange(BigInt(rejected.driver_id), adminId)
+  await afterDocChange(BigInt(rejected.driver_id), adminId, () => notifyDocumentRejected(BigInt(rejected.driver_id), rejected.doc_type, note, rejected.rejection_count))
   return rejected
 }
 

@@ -4,6 +4,7 @@ vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 vi.mock('@/db/redis', () => ({ client: { set: vi.fn(), del: vi.fn() } }))
 vi.mock('@/lib/otp', () => ({
   generateOtp: vi.fn(() => '5678'),
+  deriveRideEndOtp: vi.fn(() => '5678'),
   hashOtp: vi.fn((v: string) => (v === '1234' ? 'HASH' : 'WRONG')),
   checkRideOtpAttempts: vi.fn().mockResolvedValue(1),
   clearRideOtpAttempts: vi.fn().mockResolvedValue(undefined),

@@ -16,9 +16,10 @@ import { markStopArrived, markStopStatus } from '../api'
 
 export type GuidedStop = { sequence: number; lat: number; lng: number }
 
-// Our own close button sits above the SDK's native bottom ETA/distance bar
-// (~48dp tall) so the two never overlap.
-const CLOSE_BUTTON_CLEARANCE = 56
+// Height of the control strip under the nav view (excluding the bottom safe-area inset).
+// Exported so the screen can dock its SOS button inside it.
+export const GUIDED_CONTROLS_HEIGHT = 76
+const CONTROLS_HEIGHT = GUIDED_CONTROLS_HEIGHT
 
 export type GoogleGuidedMapProps = {
   rideId: string
@@ -165,23 +166,23 @@ function GuidedMapInner({ rideId, destination, stops = [], meterWait = false, on
   }, [status, onClose])
 
   return (
-    <View style={StyleSheet.absoluteFill}>
-      {/* Insets the SDK's own native UI (turn banner, ETA bar) off the status bar and
-          system nav bar -- the view otherwise draws edge-to-edge under both, overlapping
-          the clock/notification icons up top and getting cut off by gesture buttons below. */}
-      <NavigationView
-        style={StyleSheet.absoluteFill}
-        mapPadding={{ top: insets.top, bottom: insets.bottom + CLOSE_BUTTON_CLEARANCE, left: 0, right: 0 }}
-      />
-      <Pressable
-        onPress={handleClose}
-        style={[styles.closeButton, { bottom: insets.bottom + spacing.md }]}
-        accessibilityRole="button"
-        accessibilityLabel="Close guidance"
-      >
-        <Feather name="x" size={16} color={colors.inkInverse} />
-        <Text style={styles.closeLabel}>Close guidance</Text>
-      </Pressable>
+    // Native nav UI (turn banner, ETA card) ignores mapPadding and draws edge-to-edge, so the
+    // view itself is inset: below the status bar/notch, above a dedicated control strip that
+    // sits clear of the system nav bar. The strip holds Close (left) and leaves room for the
+    // screen's SOS button (right) -- nothing floats over the SDK's own UI.
+    <View style={[StyleSheet.absoluteFill, styles.root, { paddingTop: insets.top }]}>
+      <NavigationView style={styles.nav} />
+      <View style={[styles.controls, { height: CONTROLS_HEIGHT + insets.bottom, paddingBottom: insets.bottom }]}>
+        <Pressable
+          onPress={handleClose}
+          style={styles.closeButton}
+          accessibilityRole="button"
+          accessibilityLabel="Close guidance"
+        >
+          <Feather name="x" size={16} color={colors.inkInverse} />
+          <Text style={styles.closeLabel}>Close guidance</Text>
+        </Pressable>
+      </View>
     </View>
   )
 }
@@ -204,9 +205,15 @@ export function GoogleGuidedMap(props: GoogleGuidedMapProps) {
 }
 
 const styles = StyleSheet.create({
+  root: { backgroundColor: colors.surface ?? '#fff' },
+  nav: { flex: 1 },
+  controls: {
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface ?? '#fff',
+  },
   closeButton: {
-    position: 'absolute',
-    left: spacing.md,
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,

@@ -12,6 +12,7 @@ import { useWalletGate } from '@/lib/useWalletGate'
 import { useDocumentGate } from '@/lib/useDocumentGate'
 import api from '@/lib/api'
 import { unlockRideSound } from '@/lib/rideSound'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
@@ -52,7 +53,7 @@ export default function ReturnCabSetup() {
         setCities(cityList)
         setVehicle(v)
       })
-      .catch(() => setError('Could not load data. Please go back and try again.'))
+      .catch((err) => setError(getApiErrorMessage(err, 'Could not load data. Please go back and try again.')))
       .finally(() => setLoadingInit(false))
   }, [])
 

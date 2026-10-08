@@ -8,6 +8,7 @@ import { ArrowLeft, MapPin, Home, Briefcase, Plus, X, Check, Trash2, Clock } fro
 import OcarSpinner from '@/components/ui/OcarSpinner'
 import { savedPlacesApi, type SavedPlace, type SavedPlaceKind } from '@/lib/saved-places-api'
 import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
+import { getApiErrorMessage } from '@ocar/shared'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
@@ -191,7 +192,7 @@ function PlaceSheet({
       }
       onSaved()
     } catch (err) {
-      setError(axios.isAxiosError(err) ? err.response?.data?.error ?? 'Could not save this place' : 'Could not save this place')
+      setError(getApiErrorMessage(err, 'Could not save this place'))
     } finally {
       setSaving(false)
     }
@@ -205,7 +206,7 @@ function PlaceSheet({
       await savedPlacesApi.remove(editing.id)
       onSaved()
     } catch (err) {
-      setError(axios.isAxiosError(err) ? err.response?.data?.error ?? 'Could not remove this place' : 'Could not remove this place')
+      setError(getApiErrorMessage(err, 'Could not remove this place'))
     } finally {
       setSaving(false)
     }

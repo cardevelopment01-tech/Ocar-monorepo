@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/features/home/Text'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router'
+import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg'
 import { font, geo, h, shadow } from '@/theme/homeTokens'
@@ -114,7 +115,7 @@ export default function InfoScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Press onPress={() => router.back()} scaleTo={0.88} label="Back" style={styles.back}>
+        <Press onPress={() => goBack(router)} scaleTo={0.88} label="Back" style={styles.back}>
           <BackIcon />
         </Press>
         <Text style={styles.title}>{info.title}</Text>

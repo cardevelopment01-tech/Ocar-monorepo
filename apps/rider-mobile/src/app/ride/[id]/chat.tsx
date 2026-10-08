@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { FadeInDown, FadeInUp, useAnimatedStyle } from 'react-native-reanimated'
 import { Feather, Ionicons } from '@expo/vector-icons'
@@ -204,7 +205,7 @@ export default function RideChatScreen() {
     // app's own chat screen.
     <Animated.View style={[styles.container, keyboardStyle]}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Back">
+        <Pressable onPress={() => goBack(router, { pathname: '/ride/[id]', params: { id: rideId } })} style={styles.backBtn} accessibilityLabel="Back">
           <Feather name="chevron-left" size={20} color={colors.ink900} />
         </Pressable>
         <DriverRow view={driverViewFromRide(driverRide)} photo={driverRide?.driverPhoto ?? null} />

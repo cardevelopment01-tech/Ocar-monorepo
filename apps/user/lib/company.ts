@@ -5,29 +5,21 @@
 // in before the site is submitted for payment-gateway approval.
 export const COMPANY = {
   brand: 'Ocar',
-  legalName: '[Add registered company name]',
+  legalName: 'OD CAR RENTALS PRIVATE LIMITED',
   siteUrl: 'https://ocarindia.com',
   supportEmail: 'support@ocarindia.com',
-  supportPhone: '[Add support phone number, +91 XXXXX XXXXX]',
+  supportPhone: '+91 95565 37170',
   supportHours: '7:00 AM to 10:00 PM IST, every day',
   address: {
-    line1: '[Add registered office address]',
-    city: 'Bhubaneswar',
+    line1: 'LIG-873 K-4, Kalinga Vihar, Patrapada',
+    city: 'Bhubaneswar, Khordha',
     state: 'Odisha',
-    pincode: '[PIN]',
+    pincode: '751019',
     country: 'India',
   },
-  gstin: '[Add GSTIN, if registered]',
-  grievanceOfficer: {
-    name: '[Add Grievance Officer name]',
-    email: 'grievance@ocarindia.com',
-  },
+  gstin: '21AAFCO1215R1ZH',
   serviceCities: ['Bhubaneswar', 'Cuttack', 'Puri'],
 } as const
-
-// The legal pages were drafted from Ocar's real data practices but have not
-// been reviewed by counsel. Flip to false only once a lawyer has signed off.
-export const LEGAL_DRAFT_NOTICE = true
 
 export const LEGAL_LAST_UPDATED = '25 September 2026'
 

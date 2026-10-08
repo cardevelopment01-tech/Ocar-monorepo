@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { payMessage, retryErrorMessage, submitPayuForm } from '../lib/payu-checkout'
+import { payMessage, submitPayuForm } from '../lib/payu-checkout'
 
 describe('payMessage', () => {
   it('maps failed and pending, ignores everything else', () => {
@@ -28,25 +28,5 @@ describe('submitPayuForm', () => {
     expect(inputs.every(i => i.type === 'hidden')).toBe(true)
     expect(Object.fromEntries(inputs.map(i => [i.name, i.value]))).toEqual(fields)
     expect(submit).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('retryErrorMessage', () => {
-  const generic = 'Could not start payment. Please try again.'
-  const axiosErr = (status: number, error: unknown) => ({ response: { status, data: { error } } })
-
-  it('shows the server wording for 409 and 503', () => {
-    expect(retryErrorMessage(axiosErr(409, 'Payment is already being confirmed'))).toBe('Payment is already being confirmed')
-    expect(retryErrorMessage(axiosErr(503, 'Could not check your previous payment. Please try again shortly.')))
-      .toBe('Could not check your previous payment. Please try again shortly.')
-  })
-
-  it('keeps the generic message for other statuses, missing or non-string bodies, and non-axios errors', () => {
-    expect(retryErrorMessage(axiosErr(500, 'internal detail'))).toBe(generic)
-    expect(retryErrorMessage(axiosErr(409, undefined))).toBe(generic)
-    expect(retryErrorMessage(axiosErr(409, { nested: true }))).toBe(generic)
-    expect(retryErrorMessage(axiosErr(409, ''))).toBe(generic)
-    expect(retryErrorMessage(new Error('network'))).toBe(generic)
-    expect(retryErrorMessage(null)).toBe(generic)
   })
 })

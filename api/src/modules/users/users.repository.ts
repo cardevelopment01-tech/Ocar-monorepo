@@ -36,7 +36,7 @@ export async function findWithStats(id: bigint): Promise<UserProfile | null> {
 
 export async function updateProfile(
   id: bigint,
-  data: { name: string; email?: string }
+  data: { name: string; email?: string | null }
 ): Promise<UserRecord> {
   const params: unknown[] = [data.name, id.toString()]
   let sql = 'UPDATE users SET name = $1, updated_at = now()'

@@ -7,6 +7,7 @@ import OcarSpinner from '@/components/ui/OcarSpinner'
 import { useRouter } from 'next/navigation'
 import { userApi } from '@/lib/auth'
 import { useAuth } from '@/lib/auth-context'
+import { getApiErrorMessage } from '@ocar/shared'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -38,8 +39,8 @@ export default function OnboardingPage() {
       await userApi.updateProfile(body)
       await refreshUser()
       router.push('/home')
-    } catch {
-      setError('Something went wrong. Please try again.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Something went wrong. Please try again.'))
     } finally {
       setLoading(false)
     }
