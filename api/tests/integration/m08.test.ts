@@ -145,7 +145,11 @@ async function waitForPendingOnlinePayment(rideId: string) {
   throw new Error(`Timed out waiting for pending online payment with gateway_txn_id for ride ${rideId}`)
 }
 
-/** Settlement side effects a confirmed ride payment writes exactly once. */
+/**
+ * Settlement side effects a confirmed ride payment writes exactly once.
+ * The 1/1/1 counts asserted below assume the default commission billing mode
+ * (not package) and the seeded cashback config; change either and they move.
+ */
 async function countSettlementRows(rideId: string) {
   const { rows } = await pool.query<{ commission: number; earning: number; cashback: number }>(
     `SELECT

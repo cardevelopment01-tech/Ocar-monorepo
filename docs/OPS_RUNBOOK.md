@@ -287,16 +287,19 @@ health check and never takes traffic (safe, but the deploy fails).
    **Failed**, **Refund**, **Dispute** (refund/dispute are acknowledged and
    logged only, never acted on). Do it in test mode first for staging.
 
-**Razorpay drain window.** Razorpay ride-payment order bindings live 30
-minutes, so riders who opened a Razorpay checkout just before the cutover can
-still pay it for up to 30 minutes afterwards. Those confirm through the
-unchanged `/payment/verify` and `/webhook/razorpay` paths — keep the Razorpay
-keys and Razorpay webhook in place, and don't treat the cutover as done (or
-remove anything Razorpay-side) until 30 minutes have passed. Check what is
-still in flight:
+**Razorpay drain window.** Riders who opened a Razorpay checkout just before
+the cutover can still pay it afterwards. The 30-minute Redis order binding
+only limits `/payment/verify`; `/webhook/razorpay` and the Razorpay branch of
+the reconcile sweep still confirm a late capture with no time limit. So keep
+the Razorpay keys and Razorpay webhook in place, and don't treat the cutover
+as done (or remove anything Razorpay-side), until this drain query returns no
+rows:
 ```sql
 SELECT ride_id, status, updated_at FROM payments
-WHERE channel = 'razorpay_online' AND status = 'pending' ORDER BY updated_at;
+WHERE status = 'pending'
+  AND razorpay_order_id IS NOT NULL
+  AND gateway IS DISTINCT FROM 'payu'
+ORDER BY updated_at;
 ```
 
 ### Unattributed PayU captures
@@ -310,6 +313,9 @@ Money PayU captured that the API did not credit increments
 | `amount_mismatch` | captured amount differs from what we stored — not confirmed |
 | `duplicate_capture` | ride payment already settled by a different payment (rider paid twice) |
 | `confirm_lost_race` | ride payment re-failed between revive and confirm |
+
+Note: an `amount_mismatch` ride row stays `pending`, so the reconcile sweep
+re-increments the counter for it on every run until someone resolves it by hand.
 
 **Alert:** create by hand in Grafana Cloud (not in Terraform):
 `increase(payu_unattributed_captures_total[10m]) > 0`.

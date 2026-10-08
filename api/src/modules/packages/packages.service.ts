@@ -207,7 +207,7 @@ export async function adjustPackageBalance(
   }
 }
 
-// ── Package purchase — Razorpay order (or dev-mode direct credit) ──────────
+// ── Package purchase — PayU order (or dev-mode direct credit) ──────────────
 // Mirrors createRidePaymentOrder's dev-mode bypass in payments.service.ts: no
 // PayU keys configured means local/staging environments credit immediately
 // instead of opening Checkout, so the purchase flow stays exercisable end to
