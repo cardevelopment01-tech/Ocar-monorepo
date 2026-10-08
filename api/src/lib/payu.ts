@@ -116,3 +116,37 @@ export function verifyPayuResponseHash(body: Record<string, string | undefined>)
 export function payuApiHash(command: string, var1: string): string {
   return sha512([config.PAYU_KEY, command, var1, config.PAYU_SALT])
 }
+
+export type PayuState = 'captured' | 'failed' | 'pending' | 'unknown'
+export interface PayuStatus { state: PayuState; amountPaise: number; mihpayid: string | null }
+
+const FAILED = new Set(['failed', 'failure', 'usercancelled', 'dropped', 'bounced'])
+const PENDING = new Set(['pending', 'auth', 'initiated', 'in_progress'])
+
+// Authoritative state of one txn straight from PayU. Never trust a browser
+// callback's `status`/`amount` — this is the only source we confirm money from.
+export async function fetchPayuStatus(txnId: string): Promise<PayuStatus> {
+  const res = await fetch(payuUrls().api, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      key: config.PAYU_KEY, command: 'verify_payment', var1: txnId, hash: payuApiHash('verify_payment', txnId),
+    }).toString(),
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!res.ok) throw new Error(`PayU verify_payment HTTP ${res.status}`)
+
+  const json = JSON.parse(await res.text()) as {
+    transaction_details?: Record<string, { unmappedstatus?: string; amt?: string; mihpayid?: string }>
+  }
+  const d = json.transaction_details?.[txnId]
+  const unmapped = d?.unmappedstatus?.toLowerCase()
+  if (!d || !unmapped) return { state: 'unknown', amountPaise: 0, mihpayid: null }
+
+  const state: PayuState =
+    unmapped === 'captured' ? 'captured'
+    : FAILED.has(unmapped) ? 'failed'
+    : PENDING.has(unmapped) ? 'pending'
+    : 'unknown'
+  return { state, amountPaise: toPaise(d.amt ?? '0'), mihpayid: d.mihpayid && d.mihpayid !== 'Not Found' ? d.mihpayid : null }
+}

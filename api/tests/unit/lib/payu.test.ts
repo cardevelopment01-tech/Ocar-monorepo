@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('@/config', () => ({
   config: { PAYU_KEY: 'testkey', PAYU_SALT: 'testsalt', PAYU_ENV: 'test' },
@@ -6,7 +6,7 @@ vi.mock('@/config', () => ({
 
 import {
   buildPayuForm, verifyPayuResponseHash, payuApiHash, toPaise, newTxnId,
-  sanitizeFirstname, customerFor, payuConfigured, payuUrls,
+  sanitizeFirstname, customerFor, payuConfigured, payuUrls, fetchPayuStatus,
 } from '@/lib/payu'
 
 const REQ_HASH =
@@ -100,5 +100,70 @@ describe('helpers', () => {
   it('payuConfigured / payuUrls reflect config', () => {
     expect(payuConfigured()).toBe(true)
     expect(payuUrls().api).toBe('https://test.payu.in/merchant/postservice.php?form=2')
+  })
+})
+
+describe('fetchPayuStatus', () => {
+  const fetchMock = vi.fn()
+  beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal('fetch', fetchMock) })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  function reply(body: unknown, ok = true, status = 200) {
+    fetchMock.mockResolvedValue({ ok, status, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) })
+  }
+  const detail = (d: Record<string, string>) =>
+    ({ status: 1, msg: '1 out of 1 Transactions Fetched Successfully', transaction_details: { R1xabc: d } })
+
+  it('posts the signed verify_payment command with an abort signal', async () => {
+    reply(detail({ status: 'success', unmappedstatus: 'captured', amt: '500.00', mihpayid: '403993715' }))
+    await fetchPayuStatus('R1xabc')
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(url).toBe('https://test.payu.in/merchant/postservice.php?form=2')
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+    const body = new URLSearchParams(init.body as string)
+    expect(body.get('command')).toBe('verify_payment')
+    expect(body.get('var1')).toBe('R1xabc')
+    expect(body.get('key')).toBe('testkey')
+    expect(body.get('hash')).toBe(API_HASH)
+    expect(body.get('hash')).not.toContain('testsalt')
+  })
+
+  it('maps unmappedstatus=captured to captured with paise + mihpayid', async () => {
+    reply(detail({ status: 'success', unmappedstatus: 'captured', amt: '500.00', mihpayid: '403993715' }))
+    expect(await fetchPayuStatus('R1xabc')).toEqual({ state: 'captured', amountPaise: 50000, mihpayid: '403993715' })
+  })
+
+  it.each(['failed', 'usercancelled', 'dropped', 'bounced'])('maps %s to failed', async (u) => {
+    reply(detail({ status: 'failure', unmappedstatus: u, amt: '500.00', mihpayid: '1' }))
+    expect((await fetchPayuStatus('R1xabc')).state).toBe('failed')
+  })
+
+  it.each(['pending', 'auth', 'initiated'])('maps %s to pending', async (u) => {
+    reply(detail({ status: 'pending', unmappedstatus: u, amt: '500.00', mihpayid: '1' }))
+    expect((await fetchPayuStatus('R1xabc')).state).toBe('pending')
+  })
+
+  it('status=success alone is NOT captured (unmappedstatus decides)', async () => {
+    reply(detail({ status: 'success', unmappedstatus: 'auth', amt: '500.00', mihpayid: '1' }))
+    expect((await fetchPayuStatus('R1xabc')).state).toBe('pending')
+  })
+
+  it('returns unknown when PayU has no record of the txnid', async () => {
+    reply({ status: 1, msg: 'ok', transaction_details: { R1xabc: { mihpayid: 'Not Found', status: 'Not Found' } } })
+    expect((await fetchPayuStatus('R1xabc')).state).toBe('unknown')
+    reply({ status: 0, msg: 'Invalid' })
+    expect((await fetchPayuStatus('R1xabc')).state).toBe('unknown')
+  })
+
+  it('throws on HTTP failure or non-JSON so callers can degrade to pending', async () => {
+    reply('upstream error', false, 502)
+    await expect(fetchPayuStatus('R1xabc')).rejects.toThrow()
+    reply('<html>maintenance</html>')
+    await expect(fetchPayuStatus('R1xabc')).rejects.toThrow()
+  })
+
+  it('rejects when the request times out / aborts', async () => {
+    fetchMock.mockRejectedValue(new DOMException('timed out', 'TimeoutError'))
+    await expect(fetchPayuStatus('R1xabc')).rejects.toThrow('timed out')
   })
 })
