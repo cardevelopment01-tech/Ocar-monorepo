@@ -896,7 +896,9 @@ async function recordPayuEvent(
 }
 
 // Lazy import: the metrics module pulls in pool + queues at load time.
-async function countUnattributedCapture(reason: 'unknown_txn' | 'amount_mismatch'): Promise<void> {
+async function countUnattributedCapture(
+  reason: 'unknown_txn' | 'amount_mismatch' | 'duplicate_capture' | 'confirm_lost_race'
+): Promise<void> {
   try {
     const { payuUnattributedCapturesTotal } = await import('@/observability/metrics')
     payuUnattributedCapturesTotal.inc({ reason })
@@ -965,13 +967,38 @@ export async function handlePayuNotification(body: Record<string, string>): Prom
           [rideId]
         )
       }
-      // Already 'completed' (replay / return+webhook race): the guarded UPDATE
-      // matches 0 rows and confirmRidePayment returns false — nothing re-runs.
-      await confirmRidePayment(rideId, paymentId, 'payu')
+      if (!(await confirmRidePayment(rideId, paymentId, 'payu'))) {
+        // The guarded UPDATE matched nothing. Only a row settled by THIS capture
+        // is a replay (return + webhook race, repeated webhook). Anything else is
+        // captured money we did not credit: settled by another payment (retry
+        // race → double charge) or re-failed by the sweep between revive and
+        // confirm. Not retryable — flag for manual refund.
+        const cur = await pool.query(
+          `SELECT status, gateway_payment_id FROM payments WHERE ride_id = $1`, [rideId]
+        )
+        const row = cur.rows[0] as { status: string; gateway_payment_id: string | null } | undefined
+        if (!(row?.status === 'completed' && row.gateway_payment_id === paymentId)) {
+          const reason = row?.status === 'completed' ? 'duplicate_capture' : 'confirm_lost_race'
+          log.error({ txnId, rideId: ride.ride_id, mihpayid: status.mihpayid, rowStatus: row?.status ?? null, reason },
+            'PayU capture on a ride payment it did not settle — needs manual review/refund')
+          await countUnattributedCapture(reason)
+          await recordPayuEvent(body, status, false, 'capture on settled ride')
+          return { kind, id, result: 'pending' }
+        }
+      }
     } else if (pkg) {
       const claimed = await packagesRepo.markPurchaseCompletedPayu(pkg.id, paymentId)
       if (claimed) {
         await packagesService.creditPackageBalance(BigInt(claimed.driver_id), parseFloat(claimed.threshold_value), paymentId)
+      } else {
+        // Claim already won (replay, or a previous attempt whose credit threw
+        // after the claim committed). Re-run the credit with the payment id the
+        // claim stored: creditPackageBalance dedupes on it, so this credits only
+        // if the earlier credit never landed.
+        const cur = await packagesRepo.findPurchaseByTxnId(txnId)
+        if (cur?.status === 'completed' && cur.gateway_payment_id) {
+          await packagesService.creditPackageBalance(BigInt(cur.driver_id), parseFloat(cur.threshold_value), cur.gateway_payment_id)
+        }
       }
     } else if (binding) {
       // reference_id = txnid: topUpDriverWallet dedupes on (wallet, reference_id)

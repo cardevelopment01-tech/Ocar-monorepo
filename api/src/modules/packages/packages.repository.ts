@@ -112,9 +112,10 @@ export async function createPayuPurchaseOrder(args: {
 // "already completed" (no-op success) from "unknown txn" (money unaccounted for).
 export async function findPurchaseByTxnId(txnId: string): Promise<{
   id: string; driver_id: string; threshold_value: string; amount: string; status: string
+  gateway_payment_id: string | null
 } | null> {
   const res = await pool.query(
-    `SELECT id, driver_id, threshold_value, amount, status
+    `SELECT id, driver_id, threshold_value, amount, status, gateway_payment_id
      FROM package_purchase_orders WHERE gateway_txn_id = $1`,
     [txnId]
   )

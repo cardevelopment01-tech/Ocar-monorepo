@@ -84,7 +84,11 @@ describe('handlePayuNotification', () => {
   })
 
   it('replay on an already-completed ride payment: success, guarded confirm is a no-op', async () => {
-    sql({ 'FROM payments WHERE gateway_txn_id': { rows: [{ ride_id: '101', amount: '500.00', status: 'completed' }] } })
+    sql({
+      'FROM payments WHERE gateway_txn_id': { rows: [{ ride_id: '101', amount: '500.00', status: 'completed' }] },
+      // settled by THIS capture (same mihpayid) → a true replay
+      'FROM payments WHERE ride_id': { rows: [{ status: 'completed', gateway_payment_id: '555' }] },
+    })
     vi.mocked(payu.fetchPayuStatus).mockResolvedValue(captured(50000))
     // The guarded UPDATE ... WHERE status = 'pending' matches nothing on a completed row.
     fakeClient.query.mockResolvedValue({ rows: [], rowCount: 0 })
@@ -100,6 +104,38 @@ describe('handlePayuNotification', () => {
     expect(pkgSvc.consumePackageBalance).not.toHaveBeenCalled()
     // No revive of a non-failed row.
     expect(vi.mocked(pool.query).mock.calls.some(c => (c[0] as string).includes("SET status = 'pending'"))).toBe(false)
+    expect(payuUnattributedCapturesTotal.inc).not.toHaveBeenCalled()
+  })
+
+  it('second capture on a ride already settled by a DIFFERENT payment is flagged, not success', async () => {
+    // retry race: R1 confirmed the ride, then the rider also paid R2 (this txn)
+    sql({
+      'FROM payments WHERE gateway_txn_id': { rows: [{ ride_id: '101', amount: '500.00', status: 'completed' }] },
+      'FROM payments WHERE ride_id': { rows: [{ status: 'completed', gateway_payment_id: '444' }] },
+    })
+    vi.mocked(payu.fetchPayuStatus).mockResolvedValue(captured(50000))
+    fakeClient.query.mockResolvedValue({ rows: [], rowCount: 0 })
+    const out = await handlePayuNotification(body)
+    expect(out).toEqual({ kind: 'ride', id: '101', result: 'pending' }) // no error flag: not retryable
+    expect(payuUnattributedCapturesTotal.inc).toHaveBeenCalledWith({ reason: 'duplicate_capture' })
+    const ev = vi.mocked(pool.query).mock.calls.find(c => (c[0] as string).includes('INSERT INTO payment_gateway_events'))
+    expect(ev).toBeTruthy()
+    expect(ev![0]).toContain('false')
+    expect(ev![1]![2]).toContain('capture on settled ride')
+  })
+
+  it('confirm loses a race with the fail-sweep (row re-failed) → flagged, not success', async () => {
+    sql({
+      'FROM payments WHERE gateway_txn_id': { rows: [{ ride_id: '101', amount: '500.00', status: 'failed' }] },
+      'FROM payments WHERE ride_id': { rows: [{ status: 'failed', gateway_payment_id: null }] },
+    })
+    vi.mocked(payu.fetchPayuStatus).mockResolvedValue(captured(50000))
+    fakeClient.query.mockResolvedValue({ rows: [], rowCount: 0 }) // guarded UPDATE matched nothing
+    const out = await handlePayuNotification(body)
+    expect(out).toEqual({ kind: 'ride', id: '101', result: 'pending' })
+    expect(payuUnattributedCapturesTotal.inc).toHaveBeenCalledWith({ reason: 'confirm_lost_race' })
+    expect(vi.mocked(pool.query).mock.calls.some(c =>
+      (c[0] as string).includes('INSERT INTO payment_gateway_events') && (c[0] as string).includes('false'))).toBe(true)
   })
 
   it('amount mismatch is not confirmed, is recorded unprocessed, and counts amount_mismatch', async () => {
@@ -251,18 +287,43 @@ describe('handlePayuNotification', () => {
     expect(fakeClient.query.mock.calls.some(c => (c[0] as string).includes('INSERT INTO driver_wallet_ledger'))).toBe(false)
   })
 
-  it('package captured: claims the purchase and credits the threshold exactly once', async () => {
+  const pendingPurchase = { id: '4', driver_id: '7', threshold_value: '1200.00', amount: '1000.00', status: 'pending', gateway_payment_id: null }
+
+  it('package captured: claims the purchase and credits the threshold', async () => {
     sql({})
     vi.mocked(redis.get).mockResolvedValue(null)
-    vi.mocked(pkgRepo.findPurchaseByTxnId).mockResolvedValue({ id: '4', driver_id: '7', threshold_value: '1200.00', amount: '1000.00', status: 'pending' })
+    vi.mocked(pkgRepo.findPurchaseByTxnId).mockResolvedValue(pendingPurchase)
     vi.mocked(payu.fetchPayuStatus).mockResolvedValue(captured(100000))
     vi.mocked(pkgRepo.markPurchaseCompletedPayu).mockResolvedValue({ id: '4', driver_id: '7', threshold_value: '1200.00' })
     const out = await handlePayuNotification({ ...body, txnid: 'P7xabc' })
     expect(out).toEqual({ kind: 'package', id: '7', result: 'success' })
+    expect(pkgSvc.creditPackageBalance).toHaveBeenCalledTimes(1)
     expect(pkgSvc.creditPackageBalance).toHaveBeenCalledWith(7n, 1200, '555')
+  })
 
-    vi.mocked(pkgRepo.markPurchaseCompletedPayu).mockResolvedValue(null) // lost the claim race
-    vi.mocked(pkgSvc.creditPackageBalance).mockClear()
+  it('package: claim already won (credit may have failed last time) → re-runs the deduped credit with the stored payment id', async () => {
+    sql({})
+    vi.mocked(redis.get).mockResolvedValue(null)
+    vi.mocked(pkgRepo.findPurchaseByTxnId)
+      .mockResolvedValueOnce(pendingPurchase) // resolution (stale read)
+      .mockResolvedValueOnce({ ...pendingPurchase, status: 'completed', gateway_payment_id: '555' }) // re-read
+    vi.mocked(payu.fetchPayuStatus).mockResolvedValue(captured(100000))
+    vi.mocked(pkgRepo.markPurchaseCompletedPayu).mockResolvedValue(null)
+    const out = await handlePayuNotification({ ...body, txnid: 'P7xabc' })
+    expect(out).toEqual({ kind: 'package', id: '7', result: 'success' })
+    // creditPackageBalance dedupes on (wallet, reference_id) → a no-op if it already ran
+    expect(pkgSvc.creditPackageBalance).toHaveBeenCalledTimes(1)
+    expect(pkgSvc.creditPackageBalance).toHaveBeenCalledWith(7n, 1200, '555')
+  })
+
+  it('package: claim lost and purchase not completed → no credit', async () => {
+    sql({})
+    vi.mocked(redis.get).mockResolvedValue(null)
+    vi.mocked(pkgRepo.findPurchaseByTxnId)
+      .mockResolvedValueOnce(pendingPurchase)
+      .mockResolvedValueOnce({ ...pendingPurchase, status: 'failed' })
+    vi.mocked(payu.fetchPayuStatus).mockResolvedValue(captured(100000))
+    vi.mocked(pkgRepo.markPurchaseCompletedPayu).mockResolvedValue(null)
     await handlePayuNotification({ ...body, txnid: 'P7xabc' })
     expect(pkgSvc.creditPackageBalance).not.toHaveBeenCalled()
   })

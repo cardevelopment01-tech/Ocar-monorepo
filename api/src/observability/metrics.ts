@@ -43,11 +43,13 @@ export const pgQueryErrorsTotal = new Counter({
 })
 
 // Money PayU captured that we did not credit: unknown/superseded txnid or an
-// expired top-up binding (unknown_txn), or a captured amount that differs from
-// what we stored (amount_mismatch). Each one needs manual review + refund.
+// expired top-up binding (unknown_txn), a captured amount that differs from
+// what we stored (amount_mismatch), a ride payment already settled by another
+// payment (duplicate_capture), or a ride payment re-failed between revive and
+// confirm (confirm_lost_race). Each one needs manual review + refund.
 export const payuUnattributedCapturesTotal = new Counter({
   name: 'payu_unattributed_captures_total',
-  help: 'PayU captures not credited, by reason (unknown_txn | amount_mismatch)',
+  help: 'PayU captures not credited, by reason (unknown_txn | amount_mismatch | duplicate_capture | confirm_lost_race)',
   labelNames: ['reason'],
   registers: [register],
 })

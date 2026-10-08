@@ -67,6 +67,28 @@ describe('creditPackageBalance', () => {
     expect(ledgerCall?.[0]).toContain("'topup'")
     expect(ledgerCall?.[0]).toContain("'credit'")
   })
+
+  it('a second call with the same referenceId credits nothing (ledger dedupe under the wallet lock)', async () => {
+    client.query.mockReset()
+    client.query.mockImplementation((sql: string) => {
+      if (sql.includes('SELECT id, balance FROM driver_package_wallets')) {
+        return Promise.resolve({ rows: [{ id: 9, balance: '600.00' }], rowCount: 1 })
+      }
+      if (sql.includes('FROM driver_package_ledger WHERE wallet_id')) {
+        return Promise.resolve({ rows: [{ id: 77 }], rowCount: 1 }) // already credited
+      }
+      return Promise.resolve({ rows: [], rowCount: 0 })
+    })
+    await creditPackageBalance(BigInt(1), 500, 'pay_abc123')
+
+    const sqls = client.query.mock.calls.map((c: unknown[]) => c[0] as string)
+    const dupeCall = client.query.mock.calls.find((c: unknown[]) => (c[0] as string).includes('FROM driver_package_ledger WHERE wallet_id'))
+    expect(dupeCall?.[1]).toEqual([9, 'pay_abc123'])
+    expect(sqls.some(s => s.includes('UPDATE driver_package_wallets'))).toBe(false)
+    expect(sqls.some(s => s.includes('INSERT INTO driver_package_ledger'))).toBe(false)
+    expect(sqls).toContain('ROLLBACK')
+    expect(sqls).not.toContain('COMMIT')
+  })
 })
 
 describe('adjustPackageBalance', () => {

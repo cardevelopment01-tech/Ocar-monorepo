@@ -120,6 +120,18 @@ export async function creditPackageBalance(
       [driverId]
     )
     const wallet = walletRes.rows[0] as { id: number; balance: string }
+
+    // Idempotency: a retried/replayed confirmation for the same gateway payment
+    // must not credit twice. Checked under the wallet row lock above.
+    const dupe = await client.query(
+      `SELECT id FROM driver_package_ledger WHERE wallet_id = $1 AND reference_id = $2 LIMIT 1`,
+      [wallet.id, referenceId]
+    )
+    if ((dupe.rowCount ?? 0) > 0) {
+      await client.query('ROLLBACK')
+      return
+    }
+
     const newBalance = Math.round((parseFloat(wallet.balance) + thresholdValue) * 100) / 100
 
     await client.query(
