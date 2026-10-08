@@ -9,7 +9,9 @@ import {
   OTP_RATE_LIMIT_MAX_REQUESTS,
   RIDE_OTP_MAX_ATTEMPTS,
   RIDE_OTP_LOCKOUT_SECONDS,
+  RIDE_OTP_LENGTH,
 } from '@/constants/limits'
+import { config } from '@/config'
 import { sha256 } from '@/lib/hash'
 import { httpError } from '@/lib/errors'
 import type { OtpPurpose, PrincipalRole } from '@/constants/enums'
@@ -23,6 +25,13 @@ interface OtpState {
 
 export function generateOtp(length: number = OTP_LENGTH): string {
   return String(crypto.randomInt(0, 10 ** length)).padStart(length, '0')
+}
+
+// Ride end PIN, recomputable from the ride id + a server secret so it can never be "lost" (Redis eviction,
+// TTL, restart). Still only the SHA-256 hash is stored in rides.end_otp_hash; unpredictable without the secret.
+export function deriveRideEndOtp(rideId: bigint, length: number = RIDE_OTP_LENGTH): string {
+  const mac = crypto.createHmac('sha256', config.JWT_REFRESH_SECRET).update(`ride-end-otp:${rideId}`).digest()
+  return String(mac.readUInt32BE(0) % 10 ** length).padStart(length, '0')
 }
 
 export function hashOtp(otp: string): string {

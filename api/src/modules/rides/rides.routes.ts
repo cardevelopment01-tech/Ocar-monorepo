@@ -2,7 +2,7 @@ import { Router, IRouter, RequestHandler } from 'express'
 import { AppErrors } from '@/constants/errors'
 import { authenticate } from '@/middleware/auth.middleware'
 import { client as redis } from '@/db/redis'
-import { startOtpKey, endOtpKey } from '@/constants/redis-keys'
+import { startOtpKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
 import { withTripWindow } from '@/lib/trip-window'
 import * as service from './rides.service'
@@ -206,7 +206,9 @@ router.get('/:id', authenticate(), async (req, res, next) => {
     const [startOtp, endOtp, stops] = await Promise.all([
       isRider ? redis.get(startOtpKey(rideIdStr)) : Promise.resolve(null),
       // The end PIN stays hidden until the driver taps "Arrived at drop".
-      isRider && ride.drop_arrived_at ? redis.get(endOtpKey(rideIdStr)) : Promise.resolve(null),
+      isRider && ride.drop_arrived_at && ['in_progress', 'returning'].includes(ride.status)
+        ? service.getEndOtp(BigInt(rideIdStr))
+        : Promise.resolve(null),
       repo.getRideStops(BigInt(rideIdStr)),
     ])
 
