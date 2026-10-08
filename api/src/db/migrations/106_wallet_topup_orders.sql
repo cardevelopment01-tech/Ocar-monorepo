@@ -16,6 +16,8 @@ CREATE TABLE wallet_topup_orders (
 CREATE UNIQUE INDEX wallet_topup_orders_gateway_txn_uidx
   ON wallet_topup_orders (gateway_txn_id);
 
+CREATE INDEX wallet_topup_orders_driver_idx ON wallet_topup_orders (driver_id);
+
 -- Reconcile sweep: pending rows by age. Literal comparison only (now() is not
 -- IMMUTABLE and cannot appear in an index predicate).
 CREATE INDEX wallet_topup_orders_pending_created_idx

@@ -330,8 +330,11 @@ Money PayU captured that the API did not credit increments
 | `duplicate_capture` | ride payment already settled by a different payment (rider paid twice) |
 | `confirm_lost_race` | ride payment re-failed between revive and confirm |
 
-Note: an `amount_mismatch` ride row stays `pending`, so the reconcile sweep
+Note: an `amount_mismatch` row stays `pending`, so the reconcile sweep
 re-increments the counter for it on every run until someone resolves it by hand.
+That includes wallet top-up and package purchase mismatches: they are
+re-checked every 5-minute sweep for up to 3 days, so the
+`increase(...[10m]) > 0` alert below keeps firing until the row is resolved.
 
 **Alert:** create by hand in Grafana Cloud (not in Terraform):
 `increase(payu_unattributed_captures_total[10m]) > 0`.
