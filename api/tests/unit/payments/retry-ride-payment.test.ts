@@ -5,8 +5,15 @@ vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn(() => Pro
 vi.mock('@/db/redis', () => ({ client: { get: vi.fn(), set: vi.fn(), del: vi.fn() } }))
 vi.mock('@/config', () => ({ config: { PAYU_KEY: 'testkey', PAYU_SALT: 'testsalt', PAYU_ENV: 'test', API_BASE_URL: 'https://api.example' } }))
 
+vi.mock('@/lib/payu', async (orig) => ({
+  ...(await orig<typeof import('@/lib/payu')>()),
+  fetchPayuStatus: vi.fn(),
+  payuConfigured: vi.fn(() => true),
+}))
+
 import * as svc from '@/modules/payments/payments.service'
 import { pool } from '@/db/client'
+import * as payu from '@/lib/payu'
 
 // Route pool.query by SQL fragment so tests don't depend on call ordering.
 // `payment` is the row returned by the initial `SELECT ... FROM payments`.
@@ -39,7 +46,7 @@ function mockClient(balance: string) {
 }
 
 describe('retryRidePayment', () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => { vi.clearAllMocks(); vi.mocked(payu.payuConfigured).mockReturnValue(true) })
 
   it('online: resets the row and mints a fresh PayU form', async () => {
     mockPool({ user_id: 42, channel: 'payu_online', status: 'failed', amount: '500.00' })
@@ -83,5 +90,66 @@ describe('retryRidePayment', () => {
   it('rejects an already-completed payment', async () => {
     mockPool({ user_id: 42, channel: 'razorpay_online', status: 'completed', amount: '500.00' })
     await expect(svc.retryRidePayment(BigInt(101), BigInt(42))).rejects.toMatchObject({ httpStatus: 400 })
+  })
+})
+
+describe('retryRidePayment — previous PayU txn still in flight', () => {
+  const inFlight = { user_id: 42, channel: 'payu_online', status: 'pending', amount: '500.00', gateway: 'payu', gateway_txn_id: 'R101xold' }
+  const resetIssued = () => vi.mocked(pool.query).mock.calls.some(c => (c[0] as string).includes("SET status='pending'"))
+  const status = (state: 'captured' | 'failed' | 'pending' | 'unknown') =>
+    vi.mocked(payu.fetchPayuStatus).mockResolvedValue({ state, amountPaise: state === 'captured' ? 50000 : 0, mihpayid: null })
+
+  beforeEach(() => { vi.clearAllMocks(); vi.mocked(payu.payuConfigured).mockReturnValue(true) })
+
+  it('captured → 409, row untouched, no new form', async () => {
+    mockPool(inFlight); status('captured')
+    await expect(svc.retryRidePayment(BigInt(101), BigInt(42))).rejects.toMatchObject({ httpStatus: 409, message: 'Payment is already being confirmed' })
+    expect(payu.fetchPayuStatus).toHaveBeenCalledWith('R101xold')
+    expect(resetIssued()).toBe(false)
+  })
+
+  it('pending → 409 "still being processed", row untouched', async () => {
+    mockPool(inFlight); status('pending')
+    await expect(svc.retryRidePayment(BigInt(101), BigInt(42))).rejects.toMatchObject({
+      httpStatus: 409, message: 'Your previous payment is still being processed. Please wait a few minutes.',
+    })
+    expect(resetIssued()).toBe(false)
+  })
+
+  it.each(['failed', 'unknown'] as const)('%s → proceeds with the retry', async (state) => {
+    mockPool({ ...inFlight, status: 'failed' }); status(state)
+    const result = await svc.retryRidePayment(BigInt(101), BigInt(42))
+    expect(resetIssued()).toBe(true)
+    expect(result).toMatchObject({ channel: 'online', order: { amount: 500 } })
+  })
+
+  it('PayU status fetch throws → 503 (fail closed), row untouched', async () => {
+    mockPool(inFlight); vi.mocked(payu.fetchPayuStatus).mockRejectedValue(new Error('timeout'))
+    await expect(svc.retryRidePayment(BigInt(101), BigInt(42))).rejects.toMatchObject({
+      httpStatus: 503, message: 'Could not check your previous payment. Please try again shortly.',
+    })
+    expect(resetIssued()).toBe(false)
+  })
+
+  it('legacy razorpay_online row (no gateway txn) is not checked', async () => {
+    mockPool({ user_id: 42, channel: 'razorpay_online', status: 'failed', amount: '500.00', gateway: null, gateway_txn_id: null })
+    await svc.retryRidePayment(BigInt(101), BigInt(42))
+    expect(payu.fetchPayuStatus).not.toHaveBeenCalled()
+    expect(resetIssued()).toBe(true)
+  })
+
+  it('wallet channel is not checked', async () => {
+    mockPool({ user_id: 42, channel: 'platform_wallet', status: 'failed', amount: '500.00', gateway: null, gateway_txn_id: null })
+    mockClient('1000.00')
+    expect(await svc.retryRidePayment(BigInt(101), BigInt(42))).toEqual({ channel: 'wallet', paid: true })
+    expect(payu.fetchPayuStatus).not.toHaveBeenCalled()
+  })
+
+  it('no PayU keys (dev) skips the check', async () => {
+    vi.mocked(payu.payuConfigured).mockReturnValue(false)
+    mockPool({ ...inFlight, status: 'failed' })
+    await svc.retryRidePayment(BigInt(101), BigInt(42))
+    expect(payu.fetchPayuStatus).not.toHaveBeenCalled()
+    expect(resetIssued()).toBe(true)
   })
 })

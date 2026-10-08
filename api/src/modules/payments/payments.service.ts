@@ -537,7 +537,7 @@ export async function retryRidePayment(
   userId: bigint
 ): Promise<RetryRidePaymentResult> {
   const payRes = await pool.query(
-    `SELECT user_id, channel, status, amount FROM payments WHERE ride_id = $1`,
+    `SELECT user_id, channel, status, amount, gateway, gateway_txn_id FROM payments WHERE ride_id = $1`,
     [rideId]
   )
   const payment = payRes.rows[0]
@@ -550,6 +550,27 @@ export async function retryRidePayment(
   const resettable = payment.status === 'pending' || payment.status === 'failed'
   if (!retryable || !resettable) {
     throw Object.assign(new Error('Payment is not eligible for retry'), { httpStatus: 400 })
+  }
+
+  // Retrying mints a new txnid and overwrites the stored one, which would
+  // orphan a capture still landing on the old txn (rider charged twice). Ask
+  // PayU first; refuse while it is captured/in flight. Before the reset, so a
+  // refused retry leaves the row untouched.
+  if (payment.gateway === 'payu' && payment.gateway_txn_id && payuConfigured()) {
+    let prev: PayuStatus
+    try {
+      prev = await fetchPayuStatus(String(payment.gateway_txn_id))
+    } catch (err) {
+      log.error({ err, rideId: rideId.toString() }, 'retry: PayU status check failed — refusing retry')
+      throw Object.assign(new Error('Could not check your previous payment. Please try again shortly.'), { httpStatus: 503 })
+    }
+    if (prev.state === 'captured') {
+      throw Object.assign(new Error('Payment is already being confirmed'), { httpStatus: 409 })
+    }
+    if (prev.state === 'pending') {
+      throw Object.assign(new Error('Your previous payment is still being processed. Please wait a few minutes.'), { httpStatus: 409 })
+    }
+    // failed / unknown → safe to mint a new txn
   }
 
   const amount = parseFloat(payment.amount)
