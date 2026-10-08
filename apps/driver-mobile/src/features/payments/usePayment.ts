@@ -5,7 +5,7 @@ import {
   type PayKind, type PaymentState,
 } from './paymentMachine'
 import { confirmPayment, signHash, PaymentsUnavailableError, type SdkOrder } from './api'
-import { startSdkPayment, sdkAvailable } from './payuSdk'
+import { startSdkPayment, sdkAvailable, type PayMode } from './payuSdk'
 
 const OPEN_PAYMENT_KEY = 'ocar_driver_open_payment'
 const BUILD_ENV = process.env['EXPO_PUBLIC_PAYU_ENV'] // 'prod' for production builds, else test
@@ -26,6 +26,7 @@ async function readOpen(): Promise<Persisted | null> {
 export function usePayment(onSettled: () => void) {
   const [state, dispatch] = useReducer(paymentReducer, initialPayment)
   const orderRef = useRef<SdkOrder | null>(null)
+  const modeRef = useRef<PayMode | undefined>(undefined)
   const launched = useRef<string | null>(null)
   const stateRef = useRef<PaymentState>(state)
   stateRef.current = state
@@ -37,10 +38,11 @@ export function usePayment(onSettled: () => void) {
     void readOpen().then((open) => { if (open) dispatch({ type: 'RESUME', kind: open.kind, txnId: open.txnId }) })
   }, [])
 
-  const start = useCallback((kind: PayKind, create: () => Promise<SdkOrder>) => {
+  const start = useCallback((kind: PayKind, create: () => Promise<SdkOrder>, mode?: PayMode) => {
     // Only an idle machine starts; the reducer ignores a second START, but the
     // order request itself must not fire twice either.
     if (isBusy(stateRef.current)) return
+    modeRef.current = mode
     dispatch({ type: 'START', kind })
     void (async () => {
       try {
@@ -59,7 +61,7 @@ export function usePayment(onSettled: () => void) {
   useEffect(() => {
     if (state.phase !== 'sdk' || launched.current === state.txnId || !orderRef.current) return
     launched.current = state.txnId
-    void startSdkPayment(orderRef.current, signHash).then((exit) => dispatch({ type: 'SDK_EXIT', exit }))
+    void startSdkPayment(orderRef.current, signHash, modeRef.current).then((exit) => dispatch({ type: 'SDK_EXIT', exit }))
   }, [state])
 
   // Confirm with the server (immediately, then with backoff while it is pending).

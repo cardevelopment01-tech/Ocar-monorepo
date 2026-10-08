@@ -17,11 +17,18 @@ const sdk = (): PayuModule | null => (NativeModules['PayUBizSdk'] as PayuModule 
 
 export const sdkAvailable = (): boolean => sdk() !== null
 
+const BRAND_TEAL = '#0E8FA3'
+const BRAND_INK = '#14171A'
+
+export type PayMode = 'UPI' | 'CARD' | 'NB' | 'WALLET'
+
 let active = false
 
 export function startSdkPayment(
   order: SdkOrder,
   sign: (hashName: string, hashString: string) => Promise<string>,
+  // One mode opens PayU straight on that method (our own method picker comes first); none = all four.
+  mode?: PayMode,
 ): Promise<SdkExit> {
   const mod = sdk()
   if (!mod) return Promise.resolve('error')
@@ -72,7 +79,18 @@ export function startSdkPayment(
           // reused between payments, so saved cards stay effectively off in v1.
           userCredential: `${order.key}:${order.transactionId}`,
         },
-        payUCheckoutProConfig: { merchantName: 'Ocar', primaryColor: '#0E8FA3', showExitConfirmationOnCheckoutScreen: true },
+        payUCheckoutProConfig: {
+          merchantName: 'Ocar',
+          primaryColor: BRAND_TEAL,
+          secondaryColor: BRAND_INK,
+          showExitConfirmationOnCheckoutScreen: true,
+          // A wallet deposit never needs EMI / BNPL / NEFT: show only what a driver actually uses.
+          enforcePaymentList: (mode ? [mode] : (['UPI', 'CARD', 'NB', 'WALLET'] as const)).map((payment_type) => ({ payment_type })),
+          // UPI apps first: the fastest path for most drivers.
+          paymentModesOrder: [{ UPI: 'TEZ' }, { UPI: 'PHONEPE' }, { Wallets: 'PAYTM' }],
+          // Order summary line inside the sheet.
+          cartDetails: [{ [order.productInfo]: `₹${order.amount}` }],
+        },
       })
     } catch {
       finish('error')

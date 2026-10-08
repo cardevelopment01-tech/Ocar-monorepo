@@ -141,7 +141,7 @@ export default function WalletScreen() {
               </View>
             ) : null}
 
-            <AddMoneyCard busy={payment.busy} onPay={(amount) => payment.start('topup', () => createTopupOrder(amount))} />
+            <AddMoneyCard busy={payment.busy} balance={balance} onPay={(amount, mode) => payment.start('topup', () => createTopupOrder(amount), mode)} />
 
             <View style={styles.ledgerCard}>
               <Text style={styles.ledgerTitle}>Recent Transactions</Text>
