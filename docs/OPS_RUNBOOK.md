@@ -222,6 +222,20 @@ Deploy-day note: Overview "revenue today" and completed count moved from `paymen
 ride `completed_at` clock (shared definitions in `api/src/modules/analytics/kpi-definitions.ts`), so rides that cross
 midnight IST land on their completion day; expect a one-time shift versus yesterday's numbers.
 
+## Web deploys (Vercel, admin / driver / user)
+
+The three web apps deploy from GitHub Actions (`.github/workflows/deploy-web.yml`), not from
+Vercel's Git integration: Vercel blocks deployments whose commit author is not a seat on the
+team (single-seat plan, pushes come from another account), so each app's `vercel.json` sets
+`git.deploymentEnabled: false` and the workflow deploys with a token instead.
+
+- **Production:** every push to `main` deploys all three apps. Manual re-run: Actions > "Deploy Web (Vercel)" > Run workflow (on `main`).
+- **Preview:** every same-repo PR gets a preview URL per app (in the job summary).
+- **Secrets** (repo Actions secrets): `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_ADMIN`, `VERCEL_PROJECT_ID_DRIVER`, `VERCEL_PROJECT_ID_USER`. The job fails fast with a clear message if one is missing.
+- **Env vars** (`NEXT_PUBLIC_*`, `VITE_*`) live in the Vercel projects and are pulled at build time; change them in Vercel, then re-run the workflow.
+- **Rotate the token:** create a new one at vercel.com/account/tokens (scope = the team), update `VERCEL_TOKEN`, delete the old one.
+- **Rollback:** Vercel dashboard > the project > Deployments > promote a previous production deployment.
+
 ## Rotate a secret (DB URL, JWT secret, Razorpay keys, etc.)
 
 All of it lives in one SSM `SecureString` parameter, `/ocar/prod/api-env` —

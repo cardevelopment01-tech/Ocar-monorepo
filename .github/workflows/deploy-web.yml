@@ -1,0 +1,101 @@
+name: Deploy Web (Vercel)
+
+# Vercel's own Git integration blocks deployments when the commit author is not a
+# seat on the Vercel team (single-seat plan, pushes come from another account).
+# Deploying with a Vercel token from here avoids that check entirely: the deploy is
+# attributed to the token's owner, not the commit author. Each app's vercel.json sets
+# `git.deploymentEnabled: false` so the native integration stops posting failed checks.
+#
+# One-time setup (repo Settings > Secrets and variables > Actions):
+#   VERCEL_TOKEN                 account token (vercel.com/account/tokens), scope = the team
+#   VERCEL_ORG_ID                team/org id (Team Settings > General, or .vercel/project.json "orgId")
+#   VERCEL_PROJECT_ID_ADMIN      project id of ocar-monorepo-admin   (Project Settings > General)
+#   VERCEL_PROJECT_ID_DRIVER     project id of ocar-monorepo-driver
+#   VERCEL_PROJECT_ID_USER       project id of ocar-monorepo-user
+# Env vars (NEXT_PUBLIC_*, VITE_*) stay in the Vercel projects; `vercel pull` fetches them.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Pinned (supply chain), not "latest".
+  VERCEL_CLI_VERSION: 60.1.1
+
+jobs:
+  deploy:
+    name: Deploy ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    # Same-repo PRs only: fork PRs get no secrets anyway. Manual runs only deploy main.
+    if: >-
+      (github.event_name == 'push') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    concurrency:
+      group: deploy-web-${{ matrix.app }}-${{ github.ref }}
+      # Never cancel a production deploy half-way; superseded PR previews can be cancelled.
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: admin
+            project_secret: VERCEL_PROJECT_ID_ADMIN
+          - app: driver
+            project_secret: VERCEL_PROJECT_ID_DRIVER
+          - app: user
+            project_secret: VERCEL_PROJECT_ID_USER
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+      # push / manual run on main = production; pull requests = preview.
+      TARGET: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
+    steps:
+      - name: Check Vercel secrets are configured
+        run: |
+          missing=0
+          for v in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!v}" ]; then echo "::error::$v is not set (see the setup notes at the top of this workflow)"; missing=1; fi
+          done
+          exit $missing
+
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@${{ env.VERCEL_CLI_VERSION }}
+
+      # Pulls project settings (root directory, framework, build commands) and the env
+      # vars for this target into .vercel/. Run from the repo root so the monorepo root
+      # directory configured in the project is honoured.
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=${{ env.TARGET }}
+
+      - name: Build
+        run: |
+          if [ "$TARGET" = "production" ]; then vercel build --prod; else vercel build; fi
+
+      - name: Deploy
+        id: deploy
+        run: |
+          if [ "$TARGET" = "production" ]; then
+            url=$(vercel deploy --prebuilt --prod)
+          else
+            url=$(vercel deploy --prebuilt)
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          {
+            echo "### ${{ matrix.app }} (${TARGET})"
+            echo "$url"
+          } >> "$GITHUB_STEP_SUMMARY"
