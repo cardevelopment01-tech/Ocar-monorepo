@@ -3,12 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const client = { query: vi.fn(), release: vi.fn() }
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn(() => Promise.resolve(client)) } }))
 vi.mock('@/db/redis', () => ({ client: { get: vi.fn(), set: vi.fn(), del: vi.fn() } }))
-vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: 'rzp_test', RAZORPAY_KEY_SECRET: 'secret' } }))
-
-const ordersCreate = vi.fn()
-vi.mock('razorpay', () => ({
-  default: class { orders = { create: ordersCreate, fetchPayments: vi.fn() }; payments = { fetch: vi.fn() } },
-}))
+vi.mock('@/config', () => ({ config: { PAYU_KEY: 'testkey', PAYU_SALT: 'testsalt', PAYU_ENV: 'test', API_BASE_URL: 'https://api.example' } }))
 
 import * as svc from '@/modules/payments/payments.service'
 import { pool } from '@/db/client'
@@ -20,7 +15,8 @@ function mockPool(payment: Record<string, unknown>) {
     const sql = text as string
     if (sql.startsWith('SELECT user_id, channel, status, amount')) return { rows: [payment], rowCount: 1 } as never
     if (sql.includes("SET status='pending'")) return { rows: [], rowCount: 1 } as never       // reset UPDATE
-    if (sql.includes('razorpay_order_id = $2')) return { rows: [], rowCount: 1 } as never       // order id write
+    if (sql.includes('FROM users')) return { rows: [{ name: 'Asha', email: null, phone: '9999999999' }], rowCount: 1 } as never
+    if (sql.includes('gateway_txn_id')) return { rows: [], rowCount: 1 } as never               // txn id write
     if (sql.includes('system_config')) return { rows: [], rowCount: 0 } as never                // getConfigValue → fallback
     return { rows: [], rowCount: 0 } as never
   })
@@ -43,14 +39,19 @@ function mockClient(balance: string) {
 }
 
 describe('retryRidePayment', () => {
-  beforeEach(() => { vi.clearAllMocks(); ordersCreate.mockResolvedValue({ id: 'order_new' }) })
+  beforeEach(() => { vi.clearAllMocks() })
 
-  it('online → resets the row and mints a fresh Razorpay order', async () => {
-    mockPool({ user_id: 42, channel: 'razorpay_online', status: 'failed', amount: '500.00' })
+  it('online: resets the row and mints a fresh PayU form', async () => {
+    mockPool({ user_id: 42, channel: 'payu_online', status: 'failed', amount: '500.00' })
     const result = await svc.retryRidePayment(BigInt(101), BigInt(42))
     expect(vi.mocked(pool.query).mock.calls.some(c => (c[0] as string).includes("SET status='pending'"))).toBe(true)
-    expect(ordersCreate).toHaveBeenCalledOnce()
-    expect(result).toEqual({ channel: 'online', order: { orderId: 'order_new', key: 'rzp_test', amount: 500 } })
+    expect(result).toEqual({ channel: 'online', order: { payu: expect.objectContaining({ action: expect.any(String) }), amount: 500 } })
+  })
+
+  it('legacy razorpay_online row retried: still returns a PayU order', async () => {
+    mockPool({ user_id: 42, channel: 'razorpay_online', status: 'failed', amount: '500.00' })
+    const result = await svc.retryRidePayment(BigInt(101), BigInt(42))
+    expect(result).toEqual({ channel: 'online', order: { payu: expect.objectContaining({ action: expect.any(String) }), amount: 500 } })
   })
 
   it('wallet with enough balance → debits, confirms, returns paid:true', async () => {

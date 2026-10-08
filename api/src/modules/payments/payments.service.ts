@@ -8,6 +8,7 @@ import { accrueDriverEarning, mapPayoutFailureCode } from '@/modules/payments/su
 import { getConfigValue } from '@/lib/system-config'
 import { verifyHmacSignature } from '@/lib/hash'
 import { logger } from '@/lib/logger'
+import { payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, type PayuForm } from '@/lib/payu'
 import * as packagesService from '@/modules/packages/packages.service'
 import * as packagesRepo from '@/modules/packages/packages.repository'
 import type { BillingMode } from '@/modules/rides/rides.types'
@@ -255,7 +256,8 @@ export async function creditCashback(
 // reconciliation path.
 export async function confirmRidePayment(
   rideId: bigint,
-  razorpayPaymentId?: string
+  paymentId?: string,
+  gateway: 'razorpay' | 'payu' = 'razorpay'
 ): Promise<boolean> {
   const client = await pool.connect()
   try {
@@ -263,9 +265,10 @@ export async function confirmRidePayment(
 
     const params: unknown[] = [rideId]
     let extraSet = ''
-    if (razorpayPaymentId !== undefined) {
-      params.push(razorpayPaymentId)
-      extraSet = ', razorpay_payment_id = $2'
+    if (paymentId !== undefined) {
+      params.push(paymentId)
+      // column names are hardcoded (never from input)
+      extraSet = gateway === 'payu' ? ', gateway_payment_id = $2' : ', razorpay_payment_id = $2'
     }
 
     const res = await client.query(
@@ -395,40 +398,41 @@ export async function payFromUserWallet(
   }
 }
 
-// ── Create a Razorpay order for an online ride payment ──────────
-// Returns the order handle for the client to open Checkout, or null in dev
-// (no Razorpay keys) after auto-confirming — same dev shortcut the driver
-// wallet top-up uses so the online flow is exercisable without a gateway.
+// ── Build a PayU hosted-checkout form for an online ride payment ──
+// Returns the signed form for the client to POST, or null in dev (no PayU
+// keys) after auto-confirming — same dev shortcut the driver wallet top-up
+// uses so the online flow is exercisable without a gateway.
+export interface RidePayuOrder { payu: PayuForm; amount: number }
+
 export async function createRidePaymentOrder(
   rideId: bigint,
   userId: bigint,
   amount: number
-): Promise<{ orderId: string; key: string; amount: number } | null> {
-  if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) {
-    // Dev mode: no Razorpay keys — auto-confirm so the online-payment flow is
-    // exercisable without a gateway, mirroring the driver wallet top-up dev path.
+): Promise<RidePayuOrder | null> {
+  if (!payuConfigured()) {
+    // Dev mode: no PayU keys — auto-confirm so the online-payment flow is
+    // exercisable without a gateway. Production refuses to boot in this state
+    // (see envSchemaChecked) so this can never give away real rides.
     await confirmRidePayment(rideId)
     return null
   }
 
-  const Razorpay = (await import('razorpay')).default
-  const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
-  const order = await (rzp.orders.create as Function)({
-    amount: Math.round(amount * 100),
-    currency: 'INR',
-    receipt: `ride_${rideId}_${Date.now()}`,
+  const userRes = await pool.query(`SELECT name, email, phone FROM users WHERE id = $1`, [userId])
+  const txnId = newTxnId('R', rideId)
+  const payu = buildPayuForm({
+    txnId, amount,
+    productInfo: `Ocar ride ${rideId}`,
+    customer: customerFor(userRes.rows[0] ?? {}, 'user', userId),
+    returnUrl: `${config.API_BASE_URL}${PAYU_RETURN_PATH}`,
   })
-  const orderId = (order as { id: string }).id
 
+  // Overwrites any earlier txn from a retry. A capture on the superseded txn is
+  // caught by handlePayuNotification's unknown-txn path (Task 7).
   await pool.query(
-    `UPDATE payments SET razorpay_order_id = $2 WHERE ride_id = $1`,
-    [rideId, orderId]
+    `UPDATE payments SET gateway = 'payu', gateway_txn_id = $2 WHERE ride_id = $1`,
+    [rideId, txnId]
   )
-  // Bind this order to the user who created it so /verify (Task 8) can reject
-  // a paymentId/signature obtained for one user being replayed by another.
-  await redis.set(ridePaymentOrderKey(orderId), userId.toString(), 'EX', 1800)
-
-  return { orderId, key: config.RAZORPAY_KEY_ID, amount }
+  return { payu, amount }
 }
 
 // ── Client-driven verify (primary confirmation path) ───────────
@@ -494,7 +498,7 @@ export async function verifyRidePayment(
 // lock. The reset itself is guarded so a payment a concurrent path just
 // completed is never dragged back to 'pending'.
 export type RetryRidePaymentResult =
-  | { channel: 'online'; order: { orderId: string; key: string; amount: number } | null }
+  | { channel: 'online'; order: RidePayuOrder | null }
   | { channel: 'wallet'; paid: boolean }
 
 export async function retryRidePayment(
@@ -511,7 +515,7 @@ export async function retryRidePayment(
     throw Object.assign(new Error('Payment does not belong to this user'), { httpStatus: 403 })
   }
 
-  const retryable = payment.channel === 'razorpay_online' || payment.channel === 'platform_wallet'
+  const retryable = payment.channel === 'razorpay_online' || payment.channel === 'payu_online' || payment.channel === 'platform_wallet'
   const resettable = payment.status === 'pending' || payment.status === 'failed'
   if (!retryable || !resettable) {
     throw Object.assign(new Error('Payment is not eligible for retry'), { httpStatus: 400 })
@@ -527,7 +531,7 @@ export async function retryRidePayment(
   )
   const alreadySettled = (reset.rowCount ?? 0) === 0
 
-  if (payment.channel === 'razorpay_online') {
+  if (payment.channel === 'razorpay_online' || payment.channel === 'payu_online') {
     if (alreadySettled) return { channel: 'online', order: null }
     const order = await createRidePaymentOrder(rideId, userId, amount)
     return { channel: 'online', order }

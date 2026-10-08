@@ -40,7 +40,7 @@ vi.mock('@/modules/payments/payments.service', () => ({
   creditCashback:        vi.fn().mockResolvedValue(undefined),
   confirmRidePayment:    vi.fn().mockResolvedValue(true),
   payFromUserWallet:     vi.fn().mockResolvedValue(true),
-  createRidePaymentOrder: vi.fn().mockResolvedValue({ orderId: 'order_XYZ', key: 'k', amount: 500 }),
+  createRidePaymentOrder: vi.fn().mockResolvedValue({ payu: { action: 'https://test.payu.in/_payment', fields: { txnid: 'R101xabc' } }, amount: 500 }),
 }))
 vi.mock('@/lib/system-config', () => ({ getConfigValue: vi.fn().mockResolvedValue('true') }))
 
@@ -115,16 +115,16 @@ describe('verifyEndOTP — payment channel branch', () => {
     expect(upd![1]).toEqual([BigInt(101), 500])
   })
 
-  it('online: pending payment + order + emits razorpayOrderId, defers commission', async () => {
+  it('online: pending payment + order + emits payu form, defers commission', async () => {
     vi.mocked(repo.getRideById).mockResolvedValue(baseRide('online') as never)
     await verifyEndOTP(BigInt(9), BigInt(101), '1234')
     await flush()
-    expect(pay.createPaymentRecord).toHaveBeenCalledWith(BigInt(101), 'razorpay_online', { status: 'pending' })
+    expect(pay.createPaymentRecord).toHaveBeenCalledWith(BigInt(101), 'payu_online', { status: 'pending' })
     expect(pay.createRidePaymentOrder).toHaveBeenCalledWith(BigInt(101), BigInt(42), 500)
     expect(pay.deductCommission).not.toHaveBeenCalled()
     const emitted = vi.mocked(socketEvents.sendRideStatusUpdate).mock.calls
       .map(c => c[1] as Record<string, unknown>)
-      .find(p => p['razorpayOrderId'] === 'order_XYZ')
+      .find(p => (p['payu'] as { fields: Record<string, string> } | undefined)?.fields['txnid'] === 'R101xabc')
     expect(emitted).toBeTruthy()
   })
 
