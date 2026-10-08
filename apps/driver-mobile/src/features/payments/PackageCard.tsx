@@ -28,7 +28,7 @@ export function PackageCard({ busy, onBuy }: { busy: boolean; onBuy: (tierId: st
         <View key={t.id} style={styles.row}>
           <View style={{ flex: 1 }}>
             <Text style={styles.price}>₹{rupees(t.price)}</Text>
-            <Text style={styles.credit}>Ride credit ₹{rupees(t.threshold_value)}</Text>
+            <Text style={styles.credit}>{t.label ? `${t.label} · ` : ''}Ride credit ₹{rupees(t.threshold_value)}</Text>
           </View>
           <Button
             label="Buy"

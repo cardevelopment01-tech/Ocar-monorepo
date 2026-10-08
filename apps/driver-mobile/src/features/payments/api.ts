@@ -50,7 +50,7 @@ export async function confirmPayment(txnId: string): Promise<ConfirmResult> {
 
 export type PackageTier = {
   id: string
-  name?: string
+  label?: string
   price: string
   threshold_value: string
   is_active?: boolean

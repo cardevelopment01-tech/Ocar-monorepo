@@ -4,7 +4,8 @@ import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
-import { ErrorState, Skeleton, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import * as WebBrowser from 'expo-web-browser'
+import { Button, ErrorState, Skeleton, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { fetchBillingMode, fetchDriverWallet, type DriverWallet, type LedgerEntry } from '@/features/wallet/api'
 import { usePayment } from '@/features/payments/usePayment'
 import { createTopupOrder, createPackageOrder } from '@/features/payments/api'
@@ -18,6 +19,10 @@ import { PackageCard } from '@/features/payments/PackageCard'
 // only, not an enforcement gate -- useWalletGate.ts's own MIN_BALANCE (which
 // DOES gate Go Online) is a separate constant, already mirrored to -999999.
 const MIN_BALANCE = 0
+
+// Fallback when the in-app payment is unavailable (kill switch off, SDK failed to start):
+// the web portal's wallet/package page in a Custom Tab -- never an embedded WebView.
+const DRIVER_WEB_URL = process.env['EXPO_PUBLIC_DRIVER_WEB_URL'] ?? ''
 
 function entryLabel(e: LedgerEntry): string {
   switch (e.entry_type) {
@@ -86,7 +91,7 @@ export default function WalletScreen() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Wallet</Text>
-          <Text style={styles.subtitle}>Compliance deposit</Text>
+          <Text style={styles.subtitle}>{packageMode ? 'Ride package' : 'Compliance deposit'}</Text>
         </View>
         {!loading ? (
           <Pressable onPress={() => void load()} style={styles.refreshBtn} accessibilityLabel="Refresh wallet">
@@ -97,6 +102,13 @@ export default function WalletScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         <PaymentStatus state={payment.state} onDismiss={payment.reset} />
+        {payment.state.phase === 'failed' && payment.state.reason === 'unavailable' && DRIVER_WEB_URL ? (
+          <Button
+            label="Pay on the web instead"
+            variant="secondary"
+            onPress={() => { void WebBrowser.openBrowserAsync(`${DRIVER_WEB_URL}${packageMode ? '/recharge-package' : '/wallet'}`) }}
+          />
+        ) : null}
         {packageMode ? (
           <PackageCard busy={payment.busy} onBuy={(tierId) => payment.start('package', () => createPackageOrder(tierId))} />
         ) : loading ? (
