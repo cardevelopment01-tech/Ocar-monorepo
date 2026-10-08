@@ -57,6 +57,30 @@ describe('POST /payu/return', () => {
     expect(res.status).toBe(303)
     expect(res.headers['location']).toBe('https://app.example/')
   })
+
+  // Hash unverified here: portal chosen from a fixed map by the txnid's first
+  // character only — never a pay= flag, never any posted value in the URL.
+  describe.each([
+    ['400 bad hash', () => Object.assign(new Error('Invalid signature'), { httpStatus: 400 })],
+    ['unexpected throw', () => new Error('boom')],
+  ])('%s: lands on the portal the txnid prefix names', (_label, mkErr) => {
+    beforeEach(() => { handle.mockImplementation(async () => { throw mkErr() }) })
+
+    it.each([
+      ['wallet', 'txnid=W7xabc', 'https://driver.example/wallet'],
+      ['package', 'txnid=P7xabc', 'https://driver.example/recharge-package'],
+      ['ride', 'txnid=R101xabc', 'https://app.example/'],
+      ['missing', 'hash=h', 'https://app.example/'],
+      ['array', 'txnid=W7xabc&txnid=P7xabc', 'https://app.example/'],
+      ['empty', 'txnid=', 'https://app.example/'],
+      ['lowercase', 'txnid=w7xabc', 'https://app.example/'],
+      ['garbage', 'txnid=%2F%2Fevil.example', 'https://app.example/'],
+    ])('%s', async (_k, form, location) => {
+      const res = await request(app).post(RETURN).type('form').send(form)
+      expect(res.status).toBe(303)
+      expect(res.headers['location']).toBe(location)
+    })
+  })
 })
 
 describe('POST /webhook/payu', () => {

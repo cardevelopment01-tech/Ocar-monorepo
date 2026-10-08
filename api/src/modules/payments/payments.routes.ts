@@ -164,6 +164,16 @@ function payuRedirectUrl(out: PayuOutcome): string {
   return `${config.USER_APP_URL}/`
 }
 
+// Failed return (bad hash / unexpected throw): nothing posted is trusted, so the
+// destination comes from a fixed map keyed on the txnid's first character only —
+// no pay= flag and no posted value ever reaches the URL.
+function payuFallbackUrl(txnid: unknown): string {
+  const prefix = typeof txnid === 'string' ? txnid.charAt(0) : ''
+  if (prefix === 'W') return `${config.DRIVER_APP_URL}/wallet`
+  if (prefix === 'P') return `${config.DRIVER_APP_URL}/recharge-package`
+  return `${config.USER_APP_URL}/`
+}
+
 router.post('/payu/return', async (req, res) => {
   try {
     const out = await service.handlePayuNotification(req.body as Record<string, string>)
@@ -175,7 +185,7 @@ router.post('/payu/return', async (req, res) => {
     // unexpected. Either way never redirect to a success page.
     if ((err as { httpStatus?: number }).httpStatus === 400) log.warn({ err }, 'PayU return rejected: bad hash')
     else log.error({ err }, 'PayU return failed unexpectedly')
-    res.redirect(303, `${config.USER_APP_URL}/`)
+    res.redirect(303, payuFallbackUrl((req.body as Record<string, unknown> | undefined)?.['txnid']))
   }
 })
 
