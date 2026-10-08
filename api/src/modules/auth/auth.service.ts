@@ -14,6 +14,7 @@ import { getIO } from '@/websocket/socket.server'
 import * as ridesRepo from '@/modules/rides/rides.repository'
 import { goOffline } from '@/modules/rides/rides.service'
 import { notificationsQueue } from '@/jobs/queues'
+import { logger } from '@/lib/logger'
 import { verifyLoginCode } from '@/modules/admin-totp/admin-totp.service'
 import type {
   AuthTokens,
@@ -85,9 +86,15 @@ export const driverSidKey = (driverId: bigint | string) => `auth:driver-sid:${dr
 async function replaceDriverSession(driverId: bigint, sid: string, ttlSec: number): Promise<void> {
   await setWithTTL(driverSidKey(driverId), sid, ttlSec)
   await repo.revokeOtherDriverSessions(driverId, sid)
-  // Online (not on_trip) session belongs to the old device; end it. An on_trip one stays.
-  const active = await ridesRepo.getActiveSession(driverId)
-  if (active?.status === 'online') await goOffline(driverId, 'session_replaced')
+  // The session switch above is the commit point. Everything below is cleanup of the old device and must
+  // never fail the login: a retry would just repeat it, and the new device would be locked out meanwhile.
+  try {
+    // Online (not on_trip) session belongs to the old device; end it. An on_trip one stays.
+    const active = await ridesRepo.getActiveSession(driverId)
+    if (active?.status === 'online') await goOffline(driverId, 'session_replaced')
+  } catch (err) {
+    logger.error({ err, driverId: driverId.toString() }, 'driver session replace: go-offline cleanup failed')
+  }
   try {
     const io = getIO()
     const room = `driver:${driverId}`
