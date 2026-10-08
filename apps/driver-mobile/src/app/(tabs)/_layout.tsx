@@ -9,10 +9,10 @@ export default function TabsLayout() {
   const documentGate = useDocumentGate()
   if (!isAuthenticated) return <Redirect href="/(auth)/phone" />
 
-  // Wallet is not a separate tab; it is reachable from the Account section of Profile.
   const TABS: TabDef[] = [
     { route: 'home', label: 'Home', icon: 'map' },
     { route: 'earnings', label: 'Earnings', icon: 'earnings' },
+    { route: 'wallet', label: 'Wallet', icon: 'wallet' },
     { route: 'profile', label: 'Profile', icon: 'account', badge: documentGate.hasRejected },
   ]
 
@@ -22,6 +22,7 @@ export default function TabsLayout() {
     <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <FloatingTabBar {...props} tabs={TABS} />}>
       <Tabs.Screen name="home" options={{ title: 'Home' }} />
       <Tabs.Screen name="earnings" options={{ title: 'Earnings' }} />
+      <Tabs.Screen name="wallet" options={{ title: 'Wallet' }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
     </Tabs>
   )

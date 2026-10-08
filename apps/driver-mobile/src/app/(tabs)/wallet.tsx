@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
-import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
 import * as WebBrowser from 'expo-web-browser'
-import { Button, ErrorState, Skeleton, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, ErrorState, Skeleton, colors, radii, spacing, typography, fonts, useNavClearance, Text } from '@ocar/mobile-shared'
 import { fetchBillingMode, fetchDriverWallet, type DriverWallet, type LedgerEntry } from '@/features/wallet/api'
 import { usePayment } from '@/features/payments/usePayment'
 import { createTopupOrder, createPackageOrder } from '@/features/payments/api'
@@ -44,7 +43,7 @@ function formatMoney(amount: number): string {
 }
 
 export default function WalletScreen() {
-  const router = useRouter()
+  const clearance = useNavClearance()
   const insets = useSafeAreaInsets()
   const [wallet, setWallet] = useState<DriverWallet | null>(null)
   const [loading, setLoading] = useState(true)
@@ -86,9 +85,6 @@ export default function WalletScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => { if (router.canGoBack()) router.back() }} style={styles.backBtn} accessibilityLabel="Go back" hitSlop={8}>
-          <Feather name="arrow-left" size={20} color={colors.ink600} />
-        </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Wallet</Text>
           <Text style={styles.subtitle}>{packageMode ? 'Ride package' : 'Compliance deposit'}</Text>
@@ -100,7 +96,7 @@ export default function WalletScreen() {
         ) : null}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: clearance }]}>
         <PaymentStatus state={payment.state} onDismiss={payment.reset} />
         {payment.state.phase === 'failed' && payment.state.reason === 'unavailable' && DRIVER_WEB_URL ? (
           <Button
@@ -180,7 +176,6 @@ export default function WalletScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
-  backBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold },
   subtitle: { ...typography.caption, color: colors.ink400 },
   refreshBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
