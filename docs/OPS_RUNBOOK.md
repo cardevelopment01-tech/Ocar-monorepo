@@ -249,6 +249,84 @@ aws autoscaling start-instance-refresh \
   --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'
 ```
 
+## PayU collections
+
+PayU collects ride fares, driver wallet top-ups and package purchases
+(design: `docs/superpowers/specs/2026-10-06-payu-collections-migration-design.md`).
+Razorpay/RazorpayX stays for driver payouts — keep its keys.
+
+**Required env** (in the `api-env` SSM blob, `/ocar/{prod,staging}/api-env`):
+
+| Key | Value |
+|---|---|
+| `PAYU_KEY`, `PAYU_SALT` | from the PayU dashboard; test and live are different pairs |
+| `PAYU_ENV` | `prod` for live keys, `test` for sandbox keys (selects the PayU endpoints) |
+| `API_BASE_URL` | public https API origin — PayU posts the browser back to `<API_BASE_URL>/api/v1/payments/payu/return` (verify it; it used to be unused in prod) |
+| `USER_APP_URL` | public https rider portal origin (ride receipt redirect) |
+| `DRIVER_APP_URL` | public https driver portal origin (wallet / package redirect) |
+
+**The API refuses to boot in production** if `PAYU_KEY`/`PAYU_SALT` is empty
+or any of the three URLs is not `https://` or points at localhost. So secrets
+go in **before** the image: a deploy without them fails the idle color's
+health check and never takes traffic (safe, but the deploy fails).
+
+1. Pull, edit, push the whole blob (same as "Rotate a secret" above; staging:
+   `/ocar/staging/api-env`):
+   ```bash
+   aws ssm get-parameter --name /ocar/prod/api-env --with-decryption \
+     --query 'Parameter.Value' --output text > api-env.txt
+   # add PAYU_KEY, PAYU_SALT, PAYU_ENV, USER_APP_URL, DRIVER_APP_URL; verify API_BASE_URL
+   aws ssm put-parameter --name /ocar/prod/api-env --type SecureString \
+     --value "$(cat api-env.txt)" --overwrite
+   rm api-env.txt
+   ```
+2. Then deploy the image tag (normal merge-to-`main` deploy, or the `Deploy`
+   workflow for staging). New instances read SSM at boot.
+3. PayU dashboard → Developers → Webhooks → Create Webhook → URL
+   `https://<api>/api/v1/payments/webhook/payu`, events **Successful**,
+   **Failed**, **Refund**, **Dispute** (refund/dispute are acknowledged and
+   logged only, never acted on). Do it in test mode first for staging.
+
+**Razorpay drain window.** Razorpay ride-payment order bindings live 30
+minutes, so riders who opened a Razorpay checkout just before the cutover can
+still pay it for up to 30 minutes afterwards. Those confirm through the
+unchanged `/payment/verify` and `/webhook/razorpay` paths — keep the Razorpay
+keys and Razorpay webhook in place, and don't treat the cutover as done (or
+remove anything Razorpay-side) until 30 minutes have passed. Check what is
+still in flight:
+```sql
+SELECT ride_id, status, updated_at FROM payments
+WHERE channel = 'razorpay_online' AND status = 'pending' ORDER BY updated_at;
+```
+
+### Unattributed PayU captures
+
+Money PayU captured that the API did not credit increments
+`payu_unattributed_captures_total{reason}`:
+
+| `reason` | Meaning |
+|---|---|
+| `unknown_txn` | capture for a txnid we can't map (superseded retry txn, expired 24 h top-up binding) |
+| `amount_mismatch` | captured amount differs from what we stored — not confirmed |
+| `duplicate_capture` | ride payment already settled by a different payment (rider paid twice) |
+| `confirm_lost_race` | ride payment re-failed between revive and confirm |
+
+**Alert:** create by hand in Grafana Cloud (not in Terraform):
+`increase(payu_unattributed_captures_total[10m]) > 0`.
+
+Each one also leaves an unprocessed audit row (txnid, mihpayid, amount — no
+card data):
+```sql
+SELECT id, event_type, gateway_event_id, payload, created_at
+FROM payment_gateway_events
+WHERE processed = false AND gateway_event_id IS NOT NULL
+ORDER BY created_at DESC;
+```
+Action: look up the `mihpayid` in the PayU dashboard. Refund it there
+manually (duplicate / unknown / wrong amount), or, if it clearly belongs to a
+pending payment, attribute it by hand and record what you did. The API never
+guesses an owner.
+
 ## Updating an observability secret (Grafana Cloud alerting/SLO/synthetics)
 
 `infra/terraform/observability/` (alert rules, SLOs, synthetic monitoring —
