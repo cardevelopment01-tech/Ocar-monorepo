@@ -3,6 +3,7 @@ import { config } from '@/config'
 import { client as redis } from '@/db/redis'
 import { payuConfirmCooldownKey } from '@/constants/redis-keys'
 import { getConfigValue } from '@/lib/system-config'
+import { logger } from '@/lib/logger'
 import {
   buildPayuForm, customerFor, payuSignString, PAYU_RETURN_PATH,
   TOPUP_PRODUCT_INFO, packageProductInfo, type PayuForm,
@@ -15,6 +16,8 @@ import { settlePayuTxn } from '@/modules/payments/payments.service'
 // it is a validating signer, never an oracle: every accepted request is either a
 // string we rebuilt from an order the caller owns, or a shape that cannot collide
 // with a money-path string (those start with the merchant key, these with '{').
+
+const log = logger.child({ module: 'payu-sdk' })
 
 const MAX_HASH_STRING = 2000
 const SDK_TXN_ID_MAX = 25 // PayU SDK limit on transactionId
@@ -89,8 +92,18 @@ async function findOwnedOrder(driverId: bigint, txnId: string): Promise<OwnedOrd
 }
 
 const KEY_PREFIXED = new Set(['get_sdk_configuration', 'get_checkout_details'])
-const JSON_DATED = new Set(['get_all_offer_details', 'quickPayEvent', 'device_id'])
+const JSON_DATED = new Set(['get_all_offer_details', 'quickPayEvent', 'device_id', 'binBaseDetails'])
 const DATED_JSON = /^(\{[\s\S]*\})\|[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT\|$/
+
+// JSON.parse keeps the LAST duplicate key; PayU may read the first. The fields we check
+// (ownership, amount) must therefore appear exactly once in the text we sign.
+const occursOnce = (text: string, key: string): boolean => (text.match(new RegExp(`"${key}"\s*:`, 'g')) ?? []).length === 1
+
+// Strict decimal compare: numbers or plain decimal strings only ("1e2", " 100 ", true are refused).
+function sameAmount(sent: unknown, stored: string): boolean {
+  const ok = typeof sent === 'number' || (typeof sent === 'string' && /^\d+(\.\d{1,2})?$/.test(sent))
+  return ok && Number.isFinite(Number(sent)) && Number(sent) === Number(stored)
+}
 
 function parseJson(text: string): Record<string, unknown> {
   try {
@@ -129,11 +142,13 @@ export async function signSdkHash(driverId: bigint, hashName: unknown, hashStrin
     }
     const prefix = `${key}|get_checkout_details|`
     if (!hashString.startsWith(prefix) || !hashString.endsWith('|')) return fail(400, 'Invalid hash request')
-    const body = parseJson(hashString.slice(prefix.length, -1))
+    const raw = hashString.slice(prefix.length, -1)
+    if (!occursOnce(raw, 'txnId') || !occursOnce(raw, 'transactionDetails') || !occursOnce(raw, 'amount')) return fail(400, 'Invalid hash request')
+    const body = parseJson(raw)
     const details = body['transactionDetails'] as { txnId?: unknown; amount?: unknown } | undefined
     if (typeof details?.txnId !== 'string') return fail(400, 'Invalid hash request')
     const order = await findOwnedOrder(driverId, details.txnId)
-    if (!order || Number(details.amount) !== Number(order.amount)) return fail(404, 'Order not found')
+    if (!order || !sameAmount(details.amount, order.amount)) return fail(404, 'Order not found')
     return payuSignString(hashString)
   }
 
@@ -141,10 +156,17 @@ export async function signSdkHash(driverId: bigint, hashName: unknown, hashStrin
     // `{json}|<date>|` can never equal a key-prefixed payment/refund/verify string.
     const m = DATED_JSON.exec(hashString)
     if (!m) return fail(400, 'Invalid hash request')
-    parseJson(m[1] ?? '')
+    const body = parseJson(m[1] ?? '')
+    if (hashName === 'binBaseDetails') {
+      if (!occursOnce(m[1] ?? '', 'txnId') || !occursOnce(m[1] ?? '', 'amount')) return fail(400, 'Invalid hash request')
+      // PayU's card BIN lookup. The string carries the card number: sign it, never log or store it.
+      const order = typeof body['txnId'] === 'string' ? await findOwnedOrder(driverId, body['txnId']) : null
+      if (!order || !sameAmount(body['amount'], order.amount)) return fail(404, 'Order not found')
+    }
     return payuSignString(hashString)
   }
 
+  log.warn({ hashName: hashName.slice(0, 60) }, 'PayU SDK asked for a hash name we do not sign')
   return fail(400, 'Unsupported hash')
 }
 
@@ -154,7 +176,10 @@ export type SdkConfirmResult = 'success' | 'failed' | 'pending'
 // idempotent-credit funnel as the webhook, for an order the caller owns.
 export async function confirmSdkPayment(driverId: bigint, txnId: unknown): Promise<{ result: SdkConfirmResult }> {
   if (typeof txnId !== 'string' || txnId.length === 0 || txnId.length > 40) return fail(400, 'Invalid order')
-  if (!(await findOwnedOrder(driverId, txnId))) return fail(404, 'Order not found')
+  const order = await findOwnedOrder(driverId, txnId)
+  if (!order) return fail(404, 'Order not found')
+  // Already credited: answer from our own record, no PayU call.
+  if (order.status === 'completed') return { result: 'success' }
   // Each call spends a PayU verify_payment request: collapse rapid repeats.
   const first = await redis.set(payuConfirmCooldownKey(txnId), '1', 'EX', 3, 'NX')
   if (first === null) return { result: 'pending' }

@@ -9,6 +9,7 @@ const { query, redisSet, getCfg, findPurchase, settle } = vi.hoisted(() => ({
 }))
 vi.mock('@/db/client', () => ({ pool: { query } }))
 vi.mock('@/db/redis', () => ({ client: { set: redisSet } }))
+vi.mock('@/lib/logger', () => ({ logger: { child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) } }))
 vi.mock('@/lib/system-config', () => ({ getConfigValue: getCfg }))
 vi.mock('@/modules/packages/packages.repository', () => ({ findPurchaseByTxnId: findPurchase }))
 vi.mock('@/modules/payments/payments.service', () => ({ settlePayuTxn: settle }))
@@ -85,6 +86,25 @@ describe('signSdkHash', () => {
     await rejects(signSdkHash(DRIVER, name, `{not json}|${DATE}|`), 400)
   })
 
+  it('binBaseDetails (card BIN lookup) needs the caller txn and stored amount', async () => {
+    const mk = (txn: string, amount: string): string =>
+      `${JSON.stringify({ cardNumber: '5123456789012346', amount, txnId: txn, merchantKey: 'KEY' })}|${DATE}|`
+    expect(await signSdkHash(DRIVER, 'binBaseDetails', mk('Wtxn', '500.00'))).toBe(sha(mk('Wtxn', '500.00') + 'SALT'))
+    await rejects(signSdkHash(DRIVER, 'binBaseDetails', mk('Wtxn', '1.00')), 404)
+    query.mockResolvedValue({ rows: [] })
+    await rejects(signSdkHash(DRIVER, 'binBaseDetails', mk('Wother', '500.00')), 404)
+    await rejects(signSdkHash(DRIVER, 'binBaseDetails', '{"cardNumber":"1"}'), 400)
+  })
+
+  it('refuses duplicate txnId/amount keys (parser differential) and loose amount forms', async () => {
+    const dup = `KEY|get_checkout_details|{"transactionDetails":{"txnId":"Wvictim","amount":1},"transactionDetails":{"txnId":"Wtxn","amount":500}}|`
+    await rejects(signSdkHash(DRIVER, 'get_checkout_details', dup), 400)
+    const mk = (amount: unknown): string => `KEY|get_checkout_details|${JSON.stringify({ transactionDetails: { amount, txnId: 'Wtxn' } })}|`
+    for (const a of ['1e2', ' 500 ', true, null]) await rejects(signSdkHash(DRIVER, 'get_checkout_details', mk(a)), 404)
+    const bin = `{"txnId":"Wvictim","amount":"1.00","txnId":"Wtxn","amount":"500.00"}|${DATE}|`
+    await rejects(signSdkHash(DRIVER, 'binBaseDetails', bin), 400)
+  })
+
   it('cannot be used as a signing oracle for money-path or API commands', async () => {
     const payment = 'KEY|Wtxn|1|Ocar wallet top-up|Asha|a@b.co|||||||||||'
     // a payment string smuggled through a JSON-dated name
@@ -129,6 +149,12 @@ describe('confirmSdkPayment', () => {
   it('rejects bad input', async () => {
     await rejects(confirmSdkPayment(DRIVER, undefined), 400)
     await rejects(confirmSdkPayment(DRIVER, 'W' + 'x'.repeat(60)), 400)
+  })
+  it('answers a completed order from our own record without calling PayU', async () => {
+    ownTopup('completed')
+    expect(await confirmSdkPayment(DRIVER, 'Wtxn')).toEqual({ result: 'success' })
+    expect(settle).not.toHaveBeenCalled()
+    expect(redisSet).not.toHaveBeenCalled()
   })
   it('runs the verify-then-credit funnel and returns its result', async () => {
     redisSet.mockResolvedValue('OK')
