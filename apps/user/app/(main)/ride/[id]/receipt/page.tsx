@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ChevronDown, ChevronLeft, CheckCircle2, XCircle, Navigation, Clock, Star, LifeBuoy, AlertCircle } from 'lucide-react'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
-import { submitPayuForm, payMessage } from '@/lib/payu-checkout'
+import { submitPayuForm, payMessage, retryErrorMessage } from '@/lib/payu-checkout'
 import { DriverRow, driverViewFromRide } from '@/components/ride/DriverIdentity'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -100,8 +100,8 @@ export default function RideReceiptPage() {
       } else {
         setPayMsg('Not enough wallet balance. Top up your wallet and try again.')
       }
-    } catch {
-      setPayMsg('Could not start payment. Please try again.')
+    } catch (err) {
+      setPayMsg(retryErrorMessage(err))
     } finally {
       setRetrying(false)
     }

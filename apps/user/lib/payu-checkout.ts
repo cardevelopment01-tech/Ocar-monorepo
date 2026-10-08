@@ -25,3 +25,13 @@ export function payMessage(pay: string | null): string | null {
   if (pay === 'pending') return 'We are confirming your payment. This usually takes a minute.'
   return null
 }
+
+// Retry errors the API words for the rider (409: previous payment still being
+// processed/confirmed, 503: couldn't check it). Show those; "try again" is wrong
+// advice for them, so everything else keeps the generic message.
+export function retryErrorMessage(err: unknown): string {
+  const res = (err as { response?: { status?: number; data?: { error?: unknown } } } | null)?.response
+  const msg = res?.data?.error
+  if ((res?.status === 409 || res?.status === 503) && typeof msg === 'string' && msg) return msg
+  return 'Could not start payment. Please try again.'
+}
