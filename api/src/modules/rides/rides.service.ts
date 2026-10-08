@@ -2539,8 +2539,10 @@ export async function settleRideCompletionPayment(
     const order = await createRidePaymentOrder(rideId, BigInt(rideData.user_id), fareAmount)
     // order is null in dev (auto-confirmed); with keys, push the signed PayU
     // form so the app opens Checkout. Commission + cashback run only on confirm.
+    // Rider-only channel: the form carries the rider's phone/email/name, and
+    // the driver is in ride:{id} (see maskRideContacts).
     if (order) {
-      socketEvents.sendRideStatusUpdate(rideId.toString(), {
+      socketEvents.sendUserUpdate(String(rideData.user_id), {
         status:          'completed',
         paymentChannel:  'online',
         payu:            order.payu,
