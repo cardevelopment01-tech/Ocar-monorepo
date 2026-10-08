@@ -8,7 +8,10 @@ import { accrueDriverEarning, mapPayoutFailureCode } from '@/modules/payments/su
 import { getConfigValue } from '@/lib/system-config'
 import { verifyHmacSignature } from '@/lib/hash'
 import { logger } from '@/lib/logger'
-import { payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, type PayuForm } from '@/lib/payu'
+import {
+  payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, type PayuForm,
+  verifyPayuResponseHash, fetchPayuStatus, toPaise, type PayuStatus,
+} from '@/lib/payu'
 import * as packagesService from '@/modules/packages/packages.service'
 import * as packagesRepo from '@/modules/packages/packages.repository'
 import type { BillingMode } from '@/modules/rides/rides.types'
@@ -844,6 +847,145 @@ export async function handleWebhookEvent(
         )
       }
     }
+  }
+}
+
+// ── PayU notification funnel (browser return + webhook) ─────────
+// Both entry points land here. Order of trust: (1) response hash proves the
+// callback came from PayU un-tampered; (2) verify_payment proves the actual
+// state + captured amount — the posted status/amount are never used to move
+// money; (3) the existing idempotent confirm paths do the crediting, so a
+// return + webhook race, or a repeated webhook, credits at most once.
+// Only a bad hash throws. Any other failure degrades to 'pending' with
+// error: true, so the return route still redirects the rider/driver and the
+// webhook route answers non-2xx and PayU retries it (reconcile is the backstop).
+export type PayuKind = 'ride' | 'wallet' | 'package' | 'unknown'
+export interface PayuOutcome {
+  kind: PayuKind
+  id: string | null
+  result: 'success' | 'failed' | 'pending'
+  error?: true
+}
+
+// Card/VPA-adjacent fields never reach the log table — keep an allowlist.
+const PAYU_LOG_FIELDS = ['txnid', 'mihpayid', 'status', 'unmappedstatus', 'amount', 'mode', 'bank_ref_num', 'error', 'error_Message']
+
+// Audit row only — best-effort, never throws: a failed insert after money has
+// already moved must not turn a confirmed payment into an error.
+async function recordPayuEvent(
+  body: Record<string, string>,
+  status: PayuStatus,
+  processed: boolean,
+  note: string
+): Promise<void> {
+  try {
+    const mihpayid = status.mihpayid ?? body['mihpayid'] ?? 'none'
+    const eventId = `${mihpayid}:${status.state}`.slice(0, 80)
+    const payload: Record<string, string> = { note }
+    for (const k of PAYU_LOG_FIELDS) if (body[k] !== undefined) payload[k] = body[k]!
+    await pool.query(
+      `INSERT INTO payment_gateway_events
+         (event_type, gateway_event_id, payload, processed, processed_at)
+       VALUES ($1,$2,$3,${processed ? 'true' : 'false'},${processed ? 'now()' : 'NULL'})
+       ON CONFLICT (gateway_event_id) WHERE gateway_event_id IS NOT NULL DO NOTHING`,
+      [status.state === 'captured' ? 'payment_captured' : 'payment_failed', eventId, JSON.stringify(payload)]
+    )
+  } catch (err) {
+    log.error({ err, txnId: body['txnid'], note }, 'PayU audit event insert failed')
+  }
+}
+
+// Lazy import: the metrics module pulls in pool + queues at load time.
+async function countUnattributedCapture(reason: 'unknown_txn' | 'amount_mismatch'): Promise<void> {
+  try {
+    const { payuUnattributedCapturesTotal } = await import('@/observability/metrics')
+    payuUnattributedCapturesTotal.inc({ reason })
+  } catch (err) {
+    log.error({ err, reason }, 'payu_unattributed_captures_total increment failed')
+  }
+}
+
+export async function handlePayuNotification(body: Record<string, string>): Promise<PayuOutcome> {
+  if (!verifyPayuResponseHash(body)) {
+    throw Object.assign(new Error('Invalid signature'), { httpStatus: 400, code: 'WEBHOOK_INVALID_SIGNATURE' })
+  }
+  const txnId = body['txnid'] ?? ''
+  let kind: PayuKind = 'unknown'
+  let id: string | null = null
+
+  try {
+    // Resolve what this txn pays for BEFORE calling PayU, so a failed API call
+    // still lets the caller redirect to the right place.
+    const rideRes = await pool.query(
+      `SELECT ride_id, amount, status FROM payments WHERE gateway_txn_id = $1`, [txnId]
+    )
+    const ride = rideRes.rows[0] as { ride_id: string; amount: string; status: string } | undefined
+    const pkg = ride ? null : await packagesRepo.findPurchaseByTxnId(txnId)
+    const bindingRaw = ride || pkg ? null : await redis.get(walletTopupOrderKey(txnId))
+    const binding = bindingRaw ? (JSON.parse(bindingRaw) as TopupBinding) : null
+
+    kind = ride ? 'ride' : pkg ? 'package' : binding ? 'wallet' : 'unknown'
+    id = ride ? String(ride.ride_id) : pkg ? String(pkg.driver_id) : binding ? binding.driverId : null
+
+    // A throw here (timeout, HTTP 5xx) is an infra failure → pending + error below.
+    const status = await fetchPayuStatus(txnId)
+
+    if (status.state === 'failed') return { kind, id, result: 'failed' }
+    if (status.state !== 'captured') return { kind, id, result: 'pending' }
+
+    const paymentId = status.mihpayid ?? txnId
+    const expectedPaise =
+      ride ? toPaise(ride.amount) : pkg ? toPaise(pkg.amount) : binding ? binding.amountPaise : null
+
+    // Money is captured at PayU but we cannot attribute it (superseded retry txn,
+    // expired top-up binding): never guess an owner — flag for manual refund.
+    if (expectedPaise === null) {
+      log.error({ txnId, mihpayid: status.mihpayid, amountPaise: status.amountPaise }, 'PayU capture for unknown txn — needs manual review/refund')
+      await countUnattributedCapture('unknown_txn')
+      await recordPayuEvent(body, status, false, 'unknown txn captured')
+      return { kind: 'unknown', id: null, result: 'pending' }
+    }
+    // expectedPaise <= 0: fetchPayuStatus reports 0 when PayU omits amt, so a
+    // zero/negative expectation could "match" a missing amount — never confirm it.
+    if (expectedPaise <= 0 || status.amountPaise !== expectedPaise) {
+      log.error({ txnId, expectedPaise, capturedPaise: status.amountPaise }, 'PayU captured amount differs from stored amount — not confirmed')
+      await countUnattributedCapture('amount_mismatch')
+      await recordPayuEvent(body, status, false, 'amount mismatch')
+      return { kind, id, result: 'pending' }
+    }
+
+    if (ride) {
+      const rideId = BigInt(ride.ride_id)
+      if (ride.status === 'failed') {
+        // Reconcile (or an earlier failed callback) failed this row while the rider
+        // was still paying; the capture is real, so reopen it for the guarded confirm.
+        await pool.query(
+          `UPDATE payments SET status = 'pending', failed_at = NULL, failure_reason = NULL
+           WHERE ride_id = $1 AND status = 'failed'`,
+          [rideId]
+        )
+      }
+      // Already 'completed' (replay / return+webhook race): the guarded UPDATE
+      // matches 0 rows and confirmRidePayment returns false — nothing re-runs.
+      await confirmRidePayment(rideId, paymentId, 'payu')
+    } else if (pkg) {
+      const claimed = await packagesRepo.markPurchaseCompletedPayu(pkg.id, paymentId)
+      if (claimed) {
+        await packagesService.creditPackageBalance(BigInt(claimed.driver_id), parseFloat(claimed.threshold_value), paymentId)
+      }
+    } else if (binding) {
+      // reference_id = txnid: topUpDriverWallet dedupes on (wallet, reference_id)
+      // under a row lock, so return + webhook racing credit once. The Redis binding
+      // is left to expire (not deleted) so the slower of the two still resolves it.
+      await topUpDriverWallet(BigInt(binding.driverId), expectedPaise / 100, txnId)
+    }
+
+    await recordPayuEvent(body, status, true, 'confirmed')
+    return { kind, id, result: 'success' }
+  } catch (err) {
+    // Never log the body (hash, PII) or config — txn id + resolved target only.
+    log.error({ err, txnId, kind, id }, 'PayU notification processing failed — left for webhook retry/reconcile')
+    return { kind, id, result: 'pending', error: true }
   }
 }
 

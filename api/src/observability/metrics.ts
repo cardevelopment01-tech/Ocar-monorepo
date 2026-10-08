@@ -42,6 +42,16 @@ export const pgQueryErrorsTotal = new Counter({
   registers: [register],
 })
 
+// Money PayU captured that we did not credit: unknown/superseded txnid or an
+// expired top-up binding (unknown_txn), or a captured amount that differs from
+// what we stored (amount_mismatch). Each one needs manual review + refund.
+export const payuUnattributedCapturesTotal = new Counter({
+  name: 'payu_unattributed_captures_total',
+  help: 'PayU captures not credited, by reason (unknown_txn | amount_mismatch)',
+  labelNames: ['reason'],
+  registers: [register],
+})
+
 new Gauge({
   name: 'pg_pool_connections',
   help: 'pg.Pool connection counts by state',
