@@ -52,6 +52,10 @@ const PHONES = {
   payuReturnDriver: '+919700000072',
   payuWebhookPayer: '+919700000073',
   payuWebhookDriver: '+919700000074',
+  retryCapturedPayer: '+919700000075',
+  retryCapturedDriver: '+919700000076',
+  retryPendingPayer: '+919700000077',
+  retryPendingDriver: '+919700000078',
 } as const
 
 let categoryId: number
@@ -523,7 +527,10 @@ describe('M08 — Payments', () => {
 
       // retryRidePayment (payments.service.ts) re-runs createRidePaymentOrder for
       // an online payment stuck pending — same { payu: { action, fields }, amount }
-      // shape the settlement pushed over the socket.
+      // shape the settlement pushed over the socket. Before overwriting the old
+      // txn, retryRidePayment asks PayU about it (fail-closed guard): here the
+      // rider never opened PayU's page, so verify_payment has no record of it.
+      vi.mocked(fetchPayuStatus).mockResolvedValueOnce({ state: 'unknown', amountPaise: 0, mihpayid: null })
       const retryRes = await request(app)
         .post(`/api/v1/rides/${rideId}/payment/retry`)
         .set('Authorization', `Bearer ${userToken}`)
@@ -548,6 +555,28 @@ describe('M08 — Payments', () => {
       expect(paymentRows[0]!.status).toBe('pending')
       expect(paymentRows[0]!.gateway).toBe('payu')
       expect(paymentRows[0]!.gateway_txn_id).toBe(fields['txnid'])
+    })
+
+    it.each([
+      ['captured', 'Payment is already being confirmed'],
+      ['pending', 'Your previous payment is still being processed'],
+    ] as const)('retry is refused with 409 while the previous PayU txn is %s, leaving the row untouched', async (state, message) => {
+      const { rideId, userToken, txnId } = await completeOnlineRide(
+        state === 'captured' ? PHONES.retryCapturedDriver : PHONES.retryPendingDriver,
+        state === 'captured' ? PHONES.retryCapturedPayer : PHONES.retryPendingPayer,
+      )
+      vi.mocked(fetchPayuStatus).mockResolvedValueOnce({ state, amountPaise: 0, mihpayid: null })
+      const retryRes = await request(app)
+        .post(`/api/v1/rides/${rideId}/payment/retry`)
+        .set('Authorization', `Bearer ${userToken}`)
+      expect(retryRes.status, JSON.stringify(retryRes.body)).toBe(409)
+      expect(retryRes.body.error).toContain(message)
+
+      const { rows } = await pool.query<{ status: string; gateway_txn_id: string }>(
+        `SELECT status, gateway_txn_id FROM payments WHERE ride_id = $1`, [rideId]
+      )
+      expect(rows[0]!.status).toBe('pending')
+      expect(rows[0]!.gateway_txn_id).toBe(txnId)
     })
   })
 
