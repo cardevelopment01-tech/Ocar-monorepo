@@ -231,7 +231,7 @@ export default function Wallet() {
         </div>
         {topupMsg && (
           <p className={cn('text-sm text-center mb-3 font-semibold',
-            topupMsg.includes('success') ? 'text-accent-green' : 'text-accent-red'
+            topupMsg.includes('failed') ? 'text-accent-red' : 'text-accent-green'
           )}>{topupMsg}</p>
         )}
         <button

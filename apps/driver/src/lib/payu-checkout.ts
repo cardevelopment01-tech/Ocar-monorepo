@@ -20,8 +20,7 @@ export function submitPayuForm(form: PayuForm): void {
   el.submit()
 }
 
-// Banner copy for the ?pay= return flag. Wallet.tsx colours a message green when
-// it includes 'success'; only the success copy may contain that word.
+// Banner copy for the ?pay= return flag. Failure copy must contain 'failed' (Wallet.tsx colours red on that).
 export function payMessage(pay: string | null, kind: 'wallet' | 'package'): string | null {
   const wallet = kind === 'wallet'
   if (pay === 'success') return wallet ? 'Payment successful — your wallet has been topped up.' : 'Payment successful — your ride credit has been added.'

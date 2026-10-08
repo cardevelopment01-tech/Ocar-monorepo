@@ -3,13 +3,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { payMessage, submitPayuForm } from '../payu-checkout'
 
 describe('payMessage', () => {
-  it('maps wallet returns; only success contains "success"', () => {
+  it('maps wallet returns', () => {
     expect(payMessage('success', 'wallet')).toBe('Payment successful — your wallet has been topped up.')
     expect(payMessage('failed', 'wallet')).toBe('Payment failed. Please try again.')
     expect(payMessage('pending', 'wallet')).toBe('We are confirming your payment. Your balance will update shortly.')
-    expect(payMessage('success', 'wallet')).toContain('success')
-    expect(payMessage('failed', 'wallet')).not.toContain('success')
-    expect(payMessage('pending', 'wallet')).not.toContain('success')
   })
 
   it('maps package returns', () => {
