@@ -353,6 +353,9 @@ importers:
       eslint-plugin-react-hooks:
         specifier: ^7.0.0
         version: 7.1.1(eslint@9.39.5(jiti@1.21.7))
+      jsdom:
+        specifier: ^30.1.1
+        version: 30.1.1(@noble/hashes@2.2.0)
       postcss:
         specifier: ^8.5.15
         version: 8.5.15
@@ -368,6 +371,9 @@ importers:
       vite:
         specifier: ^5.0.0
         version: 5.4.21(@types/node@22.19.20)(lightningcss@1.33.0)(terser@5.51.2)
+      vitest:
+        specifier: 1.6.1
+        version: 1.6.1(@types/node@22.19.20)(jsdom@30.1.1(@noble/hashes@2.2.0))(lightningcss@1.33.0)(terser@5.51.2)
 
   apps/driver-mobile:
     dependencies:
@@ -18489,7 +18495,7 @@ snapshots:
   lru-memoizer@3.0.0:
     dependencies:
       lodash.clonedeep: 4.5.0
-      lru-cache: 11.5.2
+      lru-cache: 11.5.3
 
   lucide-react@1.17.0(react@19.2.7):
     dependencies:
