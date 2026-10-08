@@ -13,7 +13,7 @@ import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.servi
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES, gpsFlushQueue } from '@/jobs/queues'
 import { socketEvents } from '@/websocket/socket.server'
-import { generateOtp, hashOtp, checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
+import { generateOtp, hashOtp, deriveRideEndOtp, checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
 import {
   RIDE_OTP_LENGTH,
   ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES,
@@ -912,8 +912,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
 
   await clearRideOtpAttempts(rideId, 'start')
 
-  const endOtp  = generateOtp(RIDE_OTP_LENGTH)
-  const endHash = hashOtp(endOtp)
+  const endHash = hashOtp(deriveRideEndOtp(rideId))
 
   await repo.updateRideStatus(rideId, 'in_progress', {
     started_at:   new Date().toISOString(),
@@ -937,7 +936,6 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
   })
 
   await redis.del(startOtpKey(rideId.toString()))
-  await redis.set(endOtpKey(rideId.toString()), endOtp, 'EX', 43200)
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status:    'in_progress',
@@ -951,6 +949,22 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
   socketEvents.sendUserUpdate(ride.user_id.toString(), { status: 'in_progress' })
 
   return { success: true }
+}
+
+// The end PIN is derived from the ride id + a server secret, so it is always recomputable and the rider and
+// driver can never disagree. Rides started before that change have a random PIN known only to Redis; if Redis
+// still has it, use it, otherwise swap the stored hash to the derived PIN (idempotent, so no race).
+// ponytail: legacy branch can go once rides started before the derived-PIN deploy have all completed.
+export async function getEndOtp(rideId: bigint): Promise<string> {
+  const derived = deriveRideEndOtp(rideId)
+  const { rows } = await pool.query<{ end_otp_hash: string | null }>('SELECT end_otp_hash FROM rides WHERE id = $1', [rideId])
+  const stored = rows[0]?.end_otp_hash ?? null
+  if (stored === hashOtp(derived)) return derived
+  const legacy = await redis.get(endOtpKey(rideId.toString()))
+  if (legacy && stored === hashOtp(legacy)) return legacy
+  await pool.query('UPDATE rides SET end_otp_hash = $2, updated_at = now() WHERE id = $1', [rideId, hashOtp(derived)])
+  logger.warn({ rideId: rideId.toString() }, 'end OTP unrecoverable, reset to derived PIN')
+  return derived
 }
 
 // Driver reached the drop (or, for a round trip, the return point). Idempotent. Reveals the end PIN to
@@ -975,7 +989,7 @@ export async function markArrivedAtDrop(driverId: bigint, rideId: bigint) {
     'UPDATE rides SET drop_arrived_at = COALESCE(drop_arrived_at, now()), updated_at = now() WHERE id = $1',
     [rideId],
   )
-  const endOtp = await redis.get(endOtpKey(rideId.toString()))
+  const endOtp = await getEndOtp(rideId)
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: ride.status, dropArrived: true })
   // Rider-only channel: the OTP must never reach the driver's socket.
   socketEvents.sendUserUpdate(ride.user_id.toString(), {

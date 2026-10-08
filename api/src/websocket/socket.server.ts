@@ -63,9 +63,10 @@ export function initSocketServer(httpServer: HttpServer): Server {
       const decoded = verifyAccessToken(token)
       socket.data.user = decoded
       if (decoded.role !== 'driver') return next()
-      void isDriverSessionReplaced(decoded.sub, decoded.sid).then((replaced) =>
-        next(replaced ? new Error('AUTH_SESSION_REPLACED') : undefined)
-      )
+      // Fail open like the helper itself: a throw here must not leave the handshake hanging.
+      void isDriverSessionReplaced(decoded.sub, decoded.sid)
+        .catch(() => false)
+        .then((replaced) => next(replaced ? new Error('AUTH_SESSION_REPLACED') : undefined))
     } catch {
       next(new Error('Invalid token'))
     }
