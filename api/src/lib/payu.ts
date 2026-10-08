@@ -13,6 +13,16 @@ const UDF = ['', '', '', '', '']
 const UNUSED = ['', '', '', '', '']
 
 export const PAYU_RETURN_PATH = '/api/v1/payments/payu/return'
+// productinfo is part of the request hash, so the order creators and the SDK hash
+// signer must build it from the same place.
+export const TOPUP_PRODUCT_INFO = 'Ocar wallet top-up'
+export const packageProductInfo = (tierId: bigint | string): string => `Ocar package ${tierId}`
+
+// PayU mobile-SDK hash: sha512(hashString + salt). Only the SDK hash signer calls
+// this, and only with a string it has validated or built itself.
+export function payuSignString(hashString: string): string {
+  return crypto.createHash('sha512').update(hashString + config.PAYU_SALT).digest('hex')
+}
 
 export function payuConfigured(): boolean {
   return Boolean(config.PAYU_KEY && config.PAYU_SALT)

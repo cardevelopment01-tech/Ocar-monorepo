@@ -1,7 +1,7 @@
 import { pool } from '@/db/client'
 import { config } from '@/config'
 import * as repo from './packages.repository'
-import { payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, type PayuForm } from '@/lib/payu'
+import { payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, packageProductInfo, type PayuForm } from '@/lib/payu'
 
 async function writeLedgerEntry(
   client: { query: (sql: string, params: unknown[]) => Promise<{ rows: unknown[] }> },
@@ -232,7 +232,7 @@ export async function createPackagePurchaseOrder(
   const txnId = newTxnId('P', driverId)
   const payu = buildPayuForm({
     txnId, amount: price,
-    productInfo: `Ocar package ${tierId}`,
+    productInfo: packageProductInfo(tierId),
     customer: customerFor(driverRes.rows[0] ?? {}, 'driver', driverId),
     returnUrl: `${config.API_BASE_URL}${PAYU_RETURN_PATH}`,
   })

@@ -332,6 +332,34 @@ SELECT * FROM package_purchase_orders
 WHERE gateway = 'payu' AND status = 'pending' AND created_at < now() - interval '3 days';
 ```
 
+### Driver app in-app payments (PayU native SDK)
+
+The driver app pays through PayU's native sheet. Server pieces: `client: 'sdk'` on
+`POST /payments/wallet/driver/topup/order` and `/payments/packages/purchase/order`,
+`POST /payments/payu/sdk-hash` (validating signer) and `POST /payments/payu/confirm`.
+
+**Kill switch** (default OFF; both order creation and hash signing refuse with 403 while off; `confirm` keeps
+working so in-flight payments always resolve). There is no admin UI yet; flip it in SQL:
+
+```sql
+INSERT INTO system_config (key, value, description)
+VALUES ('mobile_payments_enabled', 'true', 'Driver app native PayU payments')
+ON CONFLICT (key) DO UPDATE SET value = 'true';   -- set 'false' to switch off
+```
+
+Config reads are cached for a few minutes (`CONFIG_CACHE_TTL_SECONDS`); expect the change to apply within that window.
+
+**Rollout order:** ship the app with the flag off → enable for internal drivers on **test keys** (`PAYU_ENV=test`, EAS
+`preview`/`development` builds) → switch to live keys + `PAYU_ENV=prod` and use a **production** EAS build (it is
+built with `EXPO_PUBLIC_PAYU_ENV=prod`; a build and server on different environments refuse to open the sheet) → one
+small live ₹ UPI payment on a real phone (UPI intent cannot be tested in PayU test mode) → enable for everyone → only
+then restore `driver_minimum_balance` to 500.
+
+**Support:** a driver who paid but sees no credit: the app resumes unresolved payments on next launch, the webhook
+and the 5-minute sweep credit them anyway. Check `wallet_topup_orders` / `package_purchase_orders` by `gateway_txn_id`
+and `payment_gateway_events`. Signer rejections show up as 400s on `/payu/sdk-hash`; an SDK that asks for a hash name
+we do not allow-list (new SDK version) fails payments — see `payu-sdk.ts` before widening the allow-list.
+
 ### Unattributed PayU captures
 
 Money PayU captured that the API did not credit increments

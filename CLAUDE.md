@@ -113,6 +113,15 @@ with non-https/localhost `API_BASE_URL`/`USER_APP_URL`/`DRIVER_APP_URL`. Capture
 `payment_gateway_events` with `processed=false` and bumps `payu_unattributed_captures_total{reason}` — see
 `docs/OPS_RUNBOOK.md` "PayU collections".
 
+**Driver app (native PayU SDK).** `client: 'sdk'` on the top-up/package order endpoints returns SDK params; the app
+asks `POST /payments/payu/sdk-hash` (`payu-sdk.ts`) for each hash the SDK emits. That endpoint is a **validating
+signer, never an oracle**: `payment_source` is signed from the stored order (client text ignored), other names only
+for exact allow-listed shapes (`{json}|<date>|` strings can never equal a key-prefixed payment/refund string) — never add a
+`hashName` without the same discipline. The SDK callback is never trusted: the app calls `POST /payments/payu/confirm`
+(ownership check + `settlePayuTxn`). Never use the SDK's `makeHttpRequest` (trust-all TLS). Kill switch:
+`system_config.mobile_payments_enabled` (`'true'` to enable; default off). Test builds must not talk to live PayU:
+`EXPO_PUBLIC_PAYU_ENV` is set per EAS profile and the app refuses a mismatching server `environment`.
+
 ### `exactOptionalPropertyTypes: true`
 Cannot pass `field: value | undefined` where `field?: value` is expected.
 **Pattern:** build the object first, then conditionally set optional fields:

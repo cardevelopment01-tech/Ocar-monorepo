@@ -9,7 +9,7 @@ import { getConfigValue } from '@/lib/system-config'
 import { verifyHmacSignature } from '@/lib/hash'
 import { logger } from '@/lib/logger'
 import {
-  payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, type PayuForm,
+  payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, TOPUP_PRODUCT_INFO, type PayuForm,
   verifyPayuResponseHash, fetchPayuStatus, toPaise, type PayuStatus,
 } from '@/lib/payu'
 import * as packagesService from '@/modules/packages/packages.service'
@@ -39,6 +39,7 @@ async function getCashbackExpiryDays(): Promise<number> {
 // ── Driver wallet top-up (PayU) ────────────────────────────────
 
 export const TOPUP_BINDING_TTL_SEC = 86_400
+export const MAX_TOPUP_RUPEES = 50_000
 export interface TopupBinding { driverId: string; amountPaise: number }
 
 export async function createDriverTopupOrder(
@@ -48,6 +49,9 @@ export async function createDriverTopupOrder(
   if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 100) {
     throw Object.assign(new Error('Minimum top-up is ₹100'), { httpStatus: 400 })
   }
+  if (amount > MAX_TOPUP_RUPEES) {
+    throw Object.assign(new Error(`Maximum top-up is ₹${MAX_TOPUP_RUPEES.toLocaleString('en-IN')}`), { httpStatus: 400 })
+  }
   const amountPaise = Math.round(amount * 100)
   const rupees = amountPaise / 100
 
@@ -55,7 +59,7 @@ export async function createDriverTopupOrder(
   const txnId = newTxnId('W', driverId)
   const payu = buildPayuForm({
     txnId, amount: rupees,
-    productInfo: 'Ocar wallet top-up',
+    productInfo: TOPUP_PRODUCT_INFO,
     customer: customerFor(driverRes.rows[0] ?? {}, 'driver', driverId),
     returnUrl: `${config.API_BASE_URL}${PAYU_RETURN_PATH}`,
   })
@@ -958,7 +962,7 @@ async function resolveTopupBinding(txnId: string): Promise<TopupBinding | null> 
 // callback) and reconcilePendingPayuPurchases (txnid read from our own DB; no hash
 // exists there). Trust comes from verify_payment either way — auditBody is only
 // what gets written to the audit table.
-async function settlePayuTxn(txnId: string, auditBody: Record<string, string>): Promise<PayuOutcome> {
+export async function settlePayuTxn(txnId: string, auditBody: Record<string, string>): Promise<PayuOutcome> {
   let kind: PayuKind = 'unknown'
   let id: string | null = null
 

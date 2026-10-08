@@ -240,3 +240,4 @@ jobs:
       - run: pnpm --filter @ocar/mobile-shared exec vitest run
       - run: pnpm --filter @ocar/rider-mobile exec tsc --noEmit
       - run: pnpm --filter @ocar/driver-mobile exec tsc --noEmit
+      - run: pnpm --filter @ocar/driver-mobile exec vitest run
