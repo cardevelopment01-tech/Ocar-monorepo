@@ -3,6 +3,7 @@ import { authenticate } from '@/middleware/auth.middleware'
 import { config } from '@/config'
 import { client as redis } from '@/db/redis'
 import { walletTopupOrderKey } from '@/constants/redis-keys'
+import { payuConfigured } from '@/lib/payu'
 import { verifyHmacSignature } from '@/lib/hash'
 import * as service from './payments.service'
 import * as packagesService from '@/modules/packages/packages.service'
@@ -35,27 +36,18 @@ router.post('/wallet/driver/topup/order', authenticate(), async (req, res, next)
   try {
     const driverId = req.driver!.id
     const { amount } = req.body as { amount: number }
-    if (!amount || amount < 100) { res.status(400).json({ error: 'Minimum top-up is ₹100' }); return }
 
-    // Dev mode: no Razorpay keys — credit wallet directly so testing works
-    if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) {
+    // Dev mode: no PayU keys — credit wallet directly so testing works
+    if (!payuConfigured()) {
+      if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 100) {
+        res.status(400).json({ error: 'Minimum top-up is ₹100' }); return
+      }
       await service.topUpDriverWallet(driverId, amount, `dev_${Date.now()}`)
       res.json({ dev: true, credited: amount })
       return
     }
 
-    const Razorpay = (await import('razorpay')).default
-    const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
-    const order = await (rzp.orders.create as Function)({
-      amount: Math.round(amount * 100),
-      currency: 'INR',
-      receipt: `wallet_${driverId}_${Date.now()}`,
-    })
-    const orderId = (order as { id: string }).id
-    // Bind this order to the driver who created it so /verify can reject a
-    // paymentId/signature obtained for one driver being replayed by another.
-    await redis.set(walletTopupOrderKey(orderId), driverId.toString(), 'EX', 1800)
-    res.json({ orderId, amount, currency: 'INR', key: config.RAZORPAY_KEY_ID })
+    res.json(await service.createDriverTopupOrder(driverId, amount))
   } catch (err) { next(err) }
 })
 

@@ -3,7 +3,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const client = { query: vi.fn(), release: vi.fn() }
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn(() => Promise.resolve(client)) } }))
 
-import { topUpDriverWallet } from '@/modules/payments/payments.service'
+vi.mock('@/db/redis', () => ({ client: { set: vi.fn(), get: vi.fn(), del: vi.fn() } }))
+vi.mock('@/config', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@/config')>()
+  return {
+    ...orig,
+    config: { ...orig.config, PAYU_KEY: 'testkey', PAYU_SALT: 'testsalt', PAYU_ENV: 'test', API_BASE_URL: 'https://api.example' },
+  }
+})
+
+import { pool } from '@/db/client'
+import { client as redis } from '@/db/redis'
+import { topUpDriverWallet, createDriverTopupOrder } from '@/modules/payments/payments.service'
 
 function scriptTopup(balance: string, existingDupe: boolean) {
   client.query.mockReset()
@@ -66,5 +77,33 @@ describe('topUpDriverWallet', () => {
     const params = ledgerCall![1] as unknown[]
     expect(params[3]).toBe(600) // 100 + 500
     expect(params[5] as string).toBe('Wallet top-up via Razorpay')
+  })
+})
+
+describe('createDriverTopupOrder', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ name: 'Ravi', email: null, phone: '8888888888' }], rowCount: 1 } as never)
+  })
+
+  it('binds txnid → driver + paise in Redis for 24h and returns the signed form', async () => {
+    const out = await createDriverTopupOrder(7n, 500)
+    const txnId = out.payu.fields['txnid']!
+    expect(txnId).toMatch(/^W7x/)
+    expect(out.payu.fields['amount']).toBe('500.00')
+    expect(vi.mocked(redis.set)).toHaveBeenCalledWith(
+      `wallet:topup_order:${txnId}`, JSON.stringify({ driverId: '7', amountPaise: 50000 }), 'EX', 86400,
+    )
+  })
+
+  it('rejects non-numeric or sub-minimum amounts (a string must not reach toFixed)', async () => {
+    await expect(createDriverTopupOrder(7n, 99)).rejects.toMatchObject({ httpStatus: 400 })
+    await expect(createDriverTopupOrder(7n, '500' as unknown as number)).rejects.toMatchObject({ httpStatus: 400 })
+    await expect(createDriverTopupOrder(7n, NaN)).rejects.toMatchObject({ httpStatus: 400 })
+  })
+
+  it('rounds to whole paise', async () => {
+    const out = await createDriverTopupOrder(7n, 100.005)
+    expect(out.payu.fields['amount']).toMatch(/^100\.0[01]$/)
   })
 })

@@ -2,7 +2,7 @@ import type { PoolClient } from 'pg'
 import { pool } from '@/db/client'
 import { config } from '@/config'
 import { client as redis } from '@/db/redis'
-import { ridePaymentOrderKey } from '@/constants/redis-keys'
+import { ridePaymentOrderKey, walletTopupOrderKey } from '@/constants/redis-keys'
 import { notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
 import { accrueDriverEarning, mapPayoutFailureCode } from '@/modules/payments/submodules/settlements/settlements.service'
 import { getConfigValue } from '@/lib/system-config'
@@ -31,6 +31,34 @@ async function getCashbackPercent(): Promise<number> {
 
 async function getCashbackExpiryDays(): Promise<number> {
   return parseInt(await getConfigValue('cashback_expiry_days', '30'))
+}
+
+// ── Driver wallet top-up (PayU) ────────────────────────────────
+
+export const TOPUP_BINDING_TTL_SEC = 86_400
+export interface TopupBinding { driverId: string; amountPaise: number }
+
+export async function createDriverTopupOrder(
+  driverId: bigint,
+  amount: number
+): Promise<{ payu: PayuForm; amount: number }> {
+  if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 100) {
+    throw Object.assign(new Error('Minimum top-up is ₹100'), { httpStatus: 400 })
+  }
+  const amountPaise = Math.round(amount * 100)
+  const rupees = amountPaise / 100
+
+  const driverRes = await pool.query(`SELECT full_name AS name, email, phone FROM drivers WHERE id = $1`, [driverId])
+  const txnId = newTxnId('W', driverId)
+  const payu = buildPayuForm({
+    txnId, amount: rupees,
+    productInfo: 'Ocar wallet top-up',
+    customer: customerFor(driverRes.rows[0] ?? {}, 'driver', driverId),
+    returnUrl: `${config.API_BASE_URL}${PAYU_RETURN_PATH}`,
+  })
+  const binding: TopupBinding = { driverId: driverId.toString(), amountPaise }
+  await redis.set(walletTopupOrderKey(txnId), JSON.stringify(binding), 'EX', TOPUP_BINDING_TTL_SEC)
+  return { payu, amount: rupees }
 }
 
 // ── Payment record creation ────────────────────────────────────
