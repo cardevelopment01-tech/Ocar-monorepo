@@ -4,25 +4,23 @@ import crypto from 'crypto'
 import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
+import { config } from '@/config'
+import { fetchPayuStatus, toPaise } from '@/lib/payu'
 import {
   loginUser, setupOnlineDriver, cleanupRideAndDriverData, DEFAULT_BOOKING, driveRideToCompletion,
   waitForWalletPaymentCompleted,
 } from '../helpers/fixtures/rides.fixture'
 
-// Real order-creation flow (payments.service.ts::createRidePaymentOrder) only takes
-// the "create a Razorpay order and leave the payment pending" path when RAZORPAY_KEY_ID
-// / RAZORPAY_KEY_SECRET are configured (see .env) — with them unset it auto-confirms the
-// payment immediately in dev mode and never touches the webhook path at all. So we
-// configure real-looking keys and mock the 'razorpay' SDK itself (same pattern as
-// mocking '@/lib/storage' in m07.test.ts) rather than hitting the network.
-vi.mock('razorpay', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    orders: {
-      create: vi.fn().mockImplementation((opts: { receipt: string }) =>
-        Promise.resolve({ id: `order_test_${opts.receipt}` })
-      ),
-    },
-  })),
+// Online ride payments go through PayU (payments.service.ts::createRidePaymentOrder):
+// with PAYU_KEY / PAYU_SALT configured (see .env / ci.yml) it writes a pending
+// payment with a gateway_txn_id and returns a signed hosted-checkout form; with
+// them unset it auto-confirms in dev mode and never reaches the return/webhook
+// path. Confirmation calls PayU's verify_payment (fetchPayuStatus) — mocked here
+// at the module boundary so the network is never touched; everything else in
+// lib/payu (hashing, form building) is the real code.
+vi.mock('@/lib/payu', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/payu')>()),
+  fetchPayuStatus: vi.fn(),
 }))
 
 vi.mock('@/lib/storage', () => ({
@@ -50,6 +48,10 @@ const PHONES = {
   autoSettleDriver: '+919700000046',
   cashbackPayer: '+919700000047',
   cashbackDriver: '+919700000048',
+  payuReturnPayer: '+919700000071',
+  payuReturnDriver: '+919700000072',
+  payuWebhookPayer: '+919700000073',
+  payuWebhookDriver: '+919700000074',
 } as const
 
 let categoryId: number
@@ -57,6 +59,11 @@ let categoryId: number
 beforeAll(async () => {
   if (!WEBHOOK_SECRET) {
     throw new Error('RAZORPAY_WEBHOOK_SECRET must be set in the test environment for M08 webhook tests')
+  }
+  if (!config.PAYU_KEY || !config.PAYU_SALT) {
+    // Empty keys = dev auto-confirm: the online payment would complete without
+    // ever reaching the PayU return/webhook path these tests exercise.
+    throw new Error('PAYU_KEY and PAYU_SALT must be set in the test environment for M08 PayU tests')
   }
   const { rows } = await pool.query<{ id: string }>(
     "SELECT id FROM vehicle_categories WHERE slug = 'sedan' LIMIT 1"
@@ -83,20 +90,92 @@ function signWebhook(bodyObj: unknown): { body: string; signature: string } {
 }
 
 /**
+ * PayU reverse (response) hash, built exactly like verifyPayuResponseHash in
+ * lib/payu.ts: SALT|status|udf10..udf6|udf5..udf1|email|firstname|productinfo|
+ * amount|txnid|KEY (all ten udf slots empty), from the same config the server
+ * reads. Signs whatever fields are posted, so the posted values and the hash
+ * always agree.
+ */
+function signPayu(fields: Record<string, string>): Record<string, string> {
+  const g = (k: string): string => fields[k] ?? ''
+  const parts = [
+    config.PAYU_SALT, g('status'),
+    '', '', '', '', '', // udf10..udf6
+    '', '', '', '', '', // udf5..udf1
+    g('email'), g('firstname'), g('productinfo'), g('amount'), g('txnid'), config.PAYU_KEY,
+  ]
+  const hash = crypto.createHash('sha512').update(parts.join('|')).digest('hex')
+  return { ...fields, hash }
+}
+
+/** A PayU success callback body (return POST or webhook) for one txn. */
+function payuSuccessBody(txnid: string, amount: string, mihpayid: string): Record<string, string> {
+  return signPayu({
+    txnid, mihpayid, amount,
+    status: 'success',
+    productinfo: 'Ocar ride',
+    firstname: 'Customer',
+    email: 'rider@example.test',
+  })
+}
+
+/**
+ * Make the mocked verify_payment report this txn as captured for exactly the
+ * stored amount — the only source the funnel confirms money from.
+ */
+function mockPayuCaptured(amount: string, mihpayid: string) {
+  vi.mocked(fetchPayuStatus).mockResolvedValue({ state: 'captured', amountPaise: toPaise(amount), mihpayid })
+}
+
+/**
  * settleRideCompletionPayment (rides.service.ts) runs fire-and-forget after
  * end-otp verification (`void settleRideCompletionPayment(...).catch(...)`),
  * so the payments row for an online ride appears asynchronously, not
- * synchronously with the end-otp HTTP response. Poll for it.
+ * synchronously with the end-otp HTTP response. Poll until createRidePaymentOrder
+ * has stamped the PayU gateway_txn_id on it.
  */
 async function waitForPendingOnlinePayment(rideId: string) {
   for (let i = 0; i < 20; i++) {
-    const { rows } = await pool.query<{ id: string; status: string; razorpay_order_id: string | null }>(
-      'SELECT id, status, razorpay_order_id FROM payments WHERE ride_id = $1', [rideId]
+    const { rows } = await pool.query<{ id: string; status: string; amount: string; gateway_txn_id: string | null }>(
+      'SELECT id, status, amount, gateway_txn_id FROM payments WHERE ride_id = $1', [rideId]
     )
-    if (rows[0]?.razorpay_order_id) return rows[0]
+    if (rows[0]?.gateway_txn_id) return rows[0]
     await new Promise((r) => setTimeout(r, 100))
   }
-  throw new Error(`Timed out waiting for pending online payment with razorpay_order_id for ride ${rideId}`)
+  throw new Error(`Timed out waiting for pending online payment with gateway_txn_id for ride ${rideId}`)
+}
+
+/** Settlement side effects a confirmed ride payment writes exactly once. */
+async function countSettlementRows(rideId: string) {
+  const { rows } = await pool.query<{ commission: number; earning: number; cashback: number }>(
+    `SELECT
+       (SELECT count(*)::int FROM driver_wallet_ledger WHERE ride_id = $1 AND entry_type = 'commission_debit') AS commission,
+       (SELECT count(*)::int FROM driver_earnings WHERE ride_id = $1 AND entry_type = 'ride_fare_net') AS earning,
+       (SELECT count(*)::int FROM user_wallet_ledger WHERE ride_id = $1 AND entry_type = 'cashback') AS cashback`,
+    [rideId]
+  )
+  return rows[0]!
+}
+
+/** Book an online ride and drive it to completion; returns the pending PayU payment. */
+async function completeOnlineRide(driverPhone: string, payerPhone: string) {
+  const driver = await setupOnlineDriver(app, pool, redis, driverPhone)
+  const { accessToken: userToken, userId } = await loginUser(app, redis, payerPhone)
+
+  const bookRes = await request(app)
+    .post('/api/v1/rides')
+    .set('Authorization', `Bearer ${userToken}`)
+    .send({ categoryId: driver.categoryId, ...DEFAULT_BOOKING, paymentChannel: 'online' })
+  expect(bookRes.status, JSON.stringify(bookRes.body)).toBe(201)
+  const rideId = bookRes.body.rideId as string
+
+  // The pending payment (and its PayU txn) is only created by
+  // settleRideCompletionPayment on ride completion, not at booking time.
+  await driveRideToCompletion(app, rideId, driver, userToken)
+
+  const payment = await waitForPendingOnlinePayment(rideId)
+  expect(payment.status).toBe('pending')
+  return { rideId, userId, userToken, payment, txnId: payment.gateway_txn_id! }
 }
 
 /**
@@ -172,25 +251,20 @@ async function getConfigValue(key: string): Promise<string> {
 
 describe('M08 — Payments', () => {
   describe('Webhook processing', () => {
-    it('TC-M08-003 + TC-M08-004: webhook payment.captured marks payment completed, duplicate webhook is idempotent', async () => {
-      const driver = await setupOnlineDriver(app, pool, redis, PHONES.onlineDriver)
-      const { accessToken: userToken } = await loginUser(app, redis, PHONES.payer)
-
-      const bookRes = await request(app)
-        .post('/api/v1/rides')
-        .set('Authorization', `Bearer ${userToken}`)
-        .send({ categoryId: driver.categoryId, ...DEFAULT_BOOKING, paymentChannel: 'online' })
-      expect(bookRes.status, JSON.stringify(bookRes.body)).toBe(201)
-      const rideId = bookRes.body.rideId as string
-
-      // Drive the ride to completion — createRidePaymentOrder (and thus a pending
-      // payment with a real razorpay_order_id) is only created by
-      // settleRideCompletionPayment on ride completion, not at booking time.
-      await driveRideToCompletion(app, rideId, driver, userToken)
-
-      const payment = await waitForPendingOnlinePayment(rideId)
-      expect(payment.status).toBe('pending')
-      const orderId = payment.razorpay_order_id!
+    it('TC-M08-003 + TC-M08-004: legacy Razorpay webhook payment.captured marks payment completed, duplicate webhook is idempotent', async () => {
+      // New online payments go through PayU, so the API no longer creates a
+      // Razorpay order. /webhook/razorpay stays live for payments created before
+      // the cutover (and for payouts), so seed such an in-flight row directly:
+      // complete an online ride, then turn its pending payment back into the
+      // pre-PayU shape (razorpay_online, razorpay_order_id, no PayU txn).
+      const { rideId, payment } = await completeOnlineRide(PHONES.onlineDriver, PHONES.payer)
+      const orderId = `order_test_${rideId}`
+      await pool.query(
+        `UPDATE payments
+           SET channel = 'razorpay_online', gateway = NULL, gateway_txn_id = NULL, razorpay_order_id = $2
+         WHERE id = $1`,
+        [payment.id, orderId]
+      )
 
       const eventPayload = {
         event: 'payment.captured',
@@ -440,51 +514,114 @@ describe('M08 — Payments', () => {
   })
 
   describe('Online payment order creation', () => {
-    it('TC-M08-002: retrying a pending online payment issues a fresh Razorpay order', async () => {
-      const driver = await setupOnlineDriver(app, pool, redis, PHONES.retryDriver)
-      const { accessToken: userToken, userId } = await loginUser(app, redis, PHONES.retryPayer)
-
-      const bookRes = await request(app)
-        .post('/api/v1/rides')
-        .set('Authorization', `Bearer ${userToken}`)
-        .send({ categoryId: driver.categoryId, ...DEFAULT_BOOKING, paymentChannel: 'online' })
-      expect(bookRes.status, JSON.stringify(bookRes.body)).toBe(201)
-      const rideId = bookRes.body.rideId as string
-
-      await driveRideToCompletion(app, rideId, driver, userToken)
-
-      const initialPayment = await waitForPendingOnlinePayment(rideId)
-      expect(initialPayment.status).toBe('pending')
+    it('TC-M08-002: retrying a pending online payment issues a fresh PayU txnid', async () => {
+      const { rideId, userToken, txnId: initialTxnId } = await completeOnlineRide(PHONES.retryDriver, PHONES.retryPayer)
 
       // retryRidePayment (payments.service.ts) re-runs createRidePaymentOrder for
-      // an 'online' channel payment stuck pending — same shape returned to the
-      // client as the initial settlement would have pushed over the socket:
-      // { orderId, key, amount }.
+      // an online payment stuck pending — same { payu: { action, fields }, amount }
+      // shape the settlement pushed over the socket.
       const retryRes = await request(app)
         .post(`/api/v1/rides/${rideId}/payment/retry`)
         .set('Authorization', `Bearer ${userToken}`)
       expect(retryRes.status, JSON.stringify(retryRes.body)).toBe(200)
       expect(retryRes.body.channel).toBe('online')
       expect(retryRes.body.order).not.toBeNull()
-      expect(typeof retryRes.body.order.orderId).toBe('string')
-      expect(retryRes.body.order.orderId).toMatch(/^order_test_/)
-      expect(retryRes.body.order.key).toBe(process.env['RAZORPAY_KEY_ID'])
+      const fields = retryRes.body.order.payu.fields as Record<string, string>
+      expect(typeof retryRes.body.order.payu.action).toBe('string')
+      expect(fields['key']).toBe(config.PAYU_KEY)
+      expect(fields['txnid']).toMatch(new RegExp(`^R${rideId}x`))
+      expect(fields['txnid']).not.toBe(initialTxnId)
+      expect(fields['hash']).toMatch(/^[0-9a-f]{128}$/)
       expect(typeof retryRes.body.order.amount).toBe('number')
       expect(retryRes.body.order.amount).toBeGreaterThan(0)
 
-      // Order creation alone never confirms the payment — status stays
-      // 'pending' until /payment/verify or the webhook lands.
-      const { rows: paymentRows } = await pool.query<{ status: string; razorpay_order_id: string }>(
-        `SELECT status, razorpay_order_id FROM payments WHERE ride_id = $1`, [rideId]
+      // Form creation alone never confirms the payment — status stays 'pending'
+      // until the PayU return/webhook (or reconcile) lands. The fresh txnid
+      // supersedes the old one on the row.
+      const { rows: paymentRows } = await pool.query<{ status: string; gateway: string; gateway_txn_id: string }>(
+        `SELECT status, gateway, gateway_txn_id FROM payments WHERE ride_id = $1`, [rideId]
       )
       expect(paymentRows[0]!.status).toBe('pending')
-      expect(paymentRows[0]!.razorpay_order_id).toBe(retryRes.body.order.orderId)
+      expect(paymentRows[0]!.gateway).toBe('payu')
+      expect(paymentRows[0]!.gateway_txn_id).toBe(fields['txnid'])
+    })
+  })
 
-      // The fresh order is bound to the requesting user in Redis (ridePaymentOrderKey),
-      // same as the original settlement-time order — this is what /payment/verify
-      // checks to reject a replayed order/signature from a different user.
-      const boundUserId = await redis.get(`ride:payment_order:${retryRes.body.order.orderId}`)
-      expect(boundUserId).toBe(userId)
+  describe('PayU return and webhook', () => {
+    it('signed return POST confirms the payment once; replaying it is a no-op', async () => {
+      const { rideId, payment, txnId } = await completeOnlineRide(PHONES.payuReturnDriver, PHONES.payuReturnPayer)
+      const mihpayid = `mp${txnId}`
+      mockPayuCaptured(payment.amount, mihpayid)
+      const body = payuSuccessBody(txnId, payment.amount, mihpayid)
+      const receiptUrl = `${config.USER_APP_URL}/ride/${rideId}/receipt?pay=success`
+
+      const firstRes = await request(app).post('/api/v1/payments/payu/return').type('form').send(body)
+      expect(firstRes.status).toBe(303)
+      expect(firstRes.headers['location']).toBe(receiptUrl)
+
+      const { rows: afterFirst } = await pool.query<{ status: string; gateway_payment_id: string | null }>(
+        'SELECT status, gateway_payment_id FROM payments WHERE id = $1', [payment.id]
+      )
+      expect(afterFirst[0]?.status).toBe('completed')
+      expect(afterFirst[0]?.gateway_payment_id).toBe(mihpayid)
+      expect(await countSettlementRows(rideId)).toEqual({ commission: 1, earning: 1, cashback: 1 })
+
+      // Browser back/refresh re-posts the same form: confirmRidePayment's
+      // WHERE status='pending' guard matches nothing and the row was settled by
+      // this very capture, so it is a replay — still success, nothing re-credited.
+      const replayRes = await request(app).post('/api/v1/payments/payu/return').type('form').send(body)
+      expect(replayRes.status).toBe(303)
+      expect(replayRes.headers['location']).toBe(receiptUrl)
+
+      const { rows: afterReplay } = await pool.query<{ status: string }>(
+        'SELECT status FROM payments WHERE id = $1', [payment.id]
+      )
+      expect(afterReplay[0]?.status).toBe('completed')
+      expect(await countSettlementRows(rideId)).toEqual({ commission: 1, earning: 1, cashback: 1 })
+    })
+
+    it('rejects a bad hash on both entry points without touching the payment; a signed webhook confirms idempotently', async () => {
+      const { rideId, payment, txnId } = await completeOnlineRide(PHONES.payuWebhookDriver, PHONES.payuWebhookPayer)
+      const mihpayid = `mp${txnId}`
+      mockPayuCaptured(payment.amount, mihpayid)
+      const body = payuSuccessBody(txnId, payment.amount, mihpayid)
+
+      // Bad hash on the return route: never a ride page, just the portal home.
+      const badReturn = await request(app).post('/api/v1/payments/payu/return').type('form')
+        .send({ ...body, hash: 'ab'.repeat(64) })
+      expect(badReturn.status).toBe(303)
+      expect(badReturn.headers['location']).toBe(`${config.USER_APP_URL}/`)
+
+      // Tampered amount under the original hash is a bad hash too.
+      const badWebhook = await request(app).post('/api/v1/payments/webhook/payu').type('form')
+        .send({ ...body, amount: '1.00' })
+      expect(badWebhook.status).toBe(400)
+
+      const { rows: afterBad } = await pool.query<{ status: string }>(
+        'SELECT status FROM payments WHERE id = $1', [payment.id]
+      )
+      expect(afterBad[0]?.status).toBe('pending')
+      expect(await countSettlementRows(rideId)).toEqual({ commission: 0, earning: 0, cashback: 0 })
+
+      // Signed webhook delivered twice (PayU may retry): confirms once.
+      for (let i = 0; i < 2; i++) {
+        const res = await request(app).post('/api/v1/payments/webhook/payu').type('form').send(body)
+        expect(res.status, JSON.stringify(res.body)).toBe(200)
+      }
+
+      const { rows: afterWebhook } = await pool.query<{ status: string; gateway_payment_id: string | null }>(
+        'SELECT status, gateway_payment_id FROM payments WHERE id = $1', [payment.id]
+      )
+      expect(afterWebhook[0]?.status).toBe('completed')
+      expect(afterWebhook[0]?.gateway_payment_id).toBe(mihpayid)
+      expect(await countSettlementRows(rideId)).toEqual({ commission: 1, earning: 1, cashback: 1 })
+
+      // Audit row deduped on `${mihpayid}:${state}` (recordPayuEvent).
+      const { rows: events } = await pool.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM payment_gateway_events WHERE gateway_event_id = $1`,
+        [`${mihpayid}:captured`]
+      )
+      expect(events[0]?.n).toBe(1)
     })
   })
 
