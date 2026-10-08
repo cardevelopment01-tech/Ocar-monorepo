@@ -660,8 +660,8 @@ export async function topUpDriverWallet(
     const debtCleared = prevBalance < 0 ? Math.min(amount, -prevBalance) : 0
     const spendable = Math.round((amount - debtCleared) * 100) / 100
     const note = debtCleared > 0
-      ? `Wallet top-up ₹${amount} via Razorpay (₹${debtCleared} cleared dues, ₹${spendable} spendable)`
-      : 'Wallet top-up via Razorpay'
+      ? `Wallet top-up ₹${amount} (₹${debtCleared} cleared dues, ₹${spendable} spendable)`
+      : 'Wallet top-up'
 
     await client.query(
       `UPDATE driver_wallets
@@ -879,8 +879,9 @@ async function recordPayuEvent(
   note: string
 ): Promise<void> {
   try {
-    const mihpayid = status.mihpayid ?? body['mihpayid'] ?? 'none'
-    const eventId = `${mihpayid}:${status.state}`.slice(0, 80)
+    // No mihpayid anywhere → txnid, so unrelated txns never share one dedupe key.
+    const ref = status.mihpayid ?? body['mihpayid'] ?? body['txnid'] ?? 'none'
+    const eventId = `${ref}:${status.state}`.slice(0, 80)
     const payload: Record<string, string> = { note }
     for (const k of PAYU_LOG_FIELDS) if (body[k] !== undefined) payload[k] = body[k]!
     await pool.query(
@@ -909,7 +910,7 @@ async function countUnattributedCapture(
 
 export async function handlePayuNotification(body: Record<string, string>): Promise<PayuOutcome> {
   if (!verifyPayuResponseHash(body)) {
-    throw Object.assign(new Error('Invalid signature'), { httpStatus: 400, code: 'WEBHOOK_INVALID_SIGNATURE' })
+    throw Object.assign(new Error('Invalid signature'), { httpStatus: 400, appCode: 'WEBHOOK_INVALID_SIGNATURE' })
   }
   const txnId = body['txnid'] ?? ''
   let kind: PayuKind = 'unknown'
@@ -1029,6 +1030,9 @@ export async function reconcilePendingRidePayments(): Promise<void> {
 
   // updated_at, not created_at: retry/initiate bump it, so a rider who retried
   // (or is still on PayU's page) is not failed out from under themselves.
+  // random(), not oldest-first: rows a sweep leaves untouched (PayU pending,
+  // young unknown, amount mismatch) keep their old updated_at and would
+  // otherwise fill every batch and starve newer rows.
   const res = await pool.query(
     `SELECT ride_id, razorpay_order_id, gateway, gateway_txn_id, user_id, amount,
             (updated_at < now() - interval '60 minutes') AS stale_60m
@@ -1036,10 +1040,11 @@ export async function reconcilePendingRidePayments(): Promise<void> {
      WHERE status = 'pending'
        AND (razorpay_order_id IS NOT NULL OR gateway_txn_id IS NOT NULL)
        AND updated_at < now() - interval '10 minutes'
-     ORDER BY updated_at ASC
+     ORDER BY random()
      LIMIT 50`
   )
   if (res.rows.length === 0) return
+  if (res.rows.length === 50) log.warn({ count: res.rows.length }, 'reconcile: batch full — pending backlog exceeds one sweep')
 
   const failAndNotify = async (row: { ride_id: string; user_id: string; amount: string }) => {
     const upd = await pool.query(

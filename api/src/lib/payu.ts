@@ -100,6 +100,7 @@ function safeEqualHex(a: string, b: string): boolean {
 // Reverse hash. The key is ours (config), never the posted one, so a forged
 // callback cannot choose what gets hashed. Missing fields hash as empty.
 export function verifyPayuResponseHash(body: Record<string, string | undefined>): boolean {
+  if (!payuConfigured()) return false // empty key/salt → hash is publicly computable
   const received = body['hash']
   if (typeof received !== 'string' || received.length === 0) return false
   const g = (k: string): string => body[k] ?? ''

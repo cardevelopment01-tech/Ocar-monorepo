@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { createHash } from 'node:crypto'
+import { config } from '@/config'
 
 vi.mock('@/config', () => ({
   config: { PAYU_KEY: 'testkey', PAYU_SALT: 'testsalt', PAYU_ENV: 'test' },
@@ -49,6 +51,20 @@ describe('verifyPayuResponseHash', () => {
   })
   it('accepts the additional_charges variant', () => {
     expect(verifyPayuResponseHash({ ...base, additional_charges: '12.50', hash: RESP_HASH_AC })).toBe(true)
+  })
+  it('never verifies when PayU is unconfigured (empty key/salt), even a hash anyone can compute', () => {
+    const cfg = config as unknown as Record<string, string>
+    const saved = { k: cfg['PAYU_KEY'], s: cfg['PAYU_SALT'] }
+    cfg['PAYU_KEY'] = ''; cfg['PAYU_SALT'] = ''
+    try {
+      // Public reverse-hash formula with empty salt/key: salt|status|||||||||||email|firstname|productinfo|amount|txnid|key
+      const forged = createHash('sha512').update(
+        ['', base.status, ...Array(10).fill(''), base.email, base.firstname, base.productinfo, base.amount, base.txnid, ''].join('|'),
+      ).digest('hex')
+      expect(verifyPayuResponseHash({ ...base, hash: forged })).toBe(false)
+    } finally {
+      cfg['PAYU_KEY'] = saved.k!; cfg['PAYU_SALT'] = saved.s!
+    }
   })
   it('rejects a tampered amount', () => {
     expect(verifyPayuResponseHash({ ...base, amount: '1.00', hash: RESP_HASH })).toBe(false)

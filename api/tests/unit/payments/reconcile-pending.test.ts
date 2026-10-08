@@ -7,6 +7,8 @@ vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn(() => Pro
 vi.mock('@/db/redis', () => ({ client: { get: vi.fn(), set: vi.fn(), del: vi.fn() } }))
 vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: 'rzp_test', RAZORPAY_KEY_SECRET: 'secret' } }))
 vi.mock('@/modules/notifications/notifications.service', () => ({ notifyRidePaymentFailed: vi.fn() }))
+const { warn } = vi.hoisted(() => ({ warn: vi.fn() }))
+vi.mock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn, error: vi.fn() }) } }))
 
 vi.mock('@/lib/payu', async (orig) => ({
   ...(await orig<typeof import('@/lib/payu')>()),
@@ -118,13 +120,29 @@ describe('reconcilePendingRidePayments - PayU rows', () => {
   const status = (state: 'captured' | 'failed' | 'pending' | 'unknown', amountPaise = 0) =>
     vi.mocked(payu.fetchPayuStatus).mockResolvedValue({ state, amountPaise, mihpayid: state === 'captured' ? '555' : null } as never)
 
-  it('selects by updated_at oldest-first with a limit', async () => {
+  it('selects past the updated_at grace in random order with a limit', async () => {
     await svc.reconcilePendingRidePayments()
     const q = vi.mocked(pool.query).mock.calls[0]![0] as string
-    expect(q).toContain('updated_at < now()')
+    expect(q).toContain("updated_at < now() - interval '10 minutes'")
     expect(q).not.toContain('created_at < now()')
-    expect(q).toContain('ORDER BY updated_at ASC')
+    // random(): untouched pending/young-unknown/mismatch rows keep an old
+    // updated_at and would otherwise starve newer rows forever.
+    expect(q).toContain('ORDER BY random()')
+    expect(q).not.toContain('ORDER BY updated_at')
     expect(q).toContain('LIMIT 50')
+  })
+
+  it('warns (count only) when the batch is full', async () => {
+    select(...Array.from({ length: 50 }, (_, i) => ({ ...row, ride_id: String(200 + i) }))); status('pending')
+    await svc.reconcilePendingRidePayments()
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]![0]).toEqual({ count: 50 })
+  })
+
+  it('does not warn for a partial batch', async () => {
+    select(row); status('pending')
+    await svc.reconcilePendingRidePayments()
+    expect(warn).not.toHaveBeenCalled()
   })
 
   it('captured + matching amount confirms with gateway payu', async () => {

@@ -66,7 +66,7 @@ describe('handlePayuNotification', () => {
 
   it('invalid hash throws 400 and touches nothing', async () => {
     vi.mocked(payu.verifyPayuResponseHash).mockReturnValue(false)
-    await expect(handlePayuNotification(body)).rejects.toMatchObject({ httpStatus: 400, code: 'WEBHOOK_INVALID_SIGNATURE' })
+    await expect(handlePayuNotification(body)).rejects.toMatchObject({ httpStatus: 400, appCode: 'WEBHOOK_INVALID_SIGNATURE', message: 'Invalid signature' })
     expect(payu.fetchPayuStatus).not.toHaveBeenCalled()
     expect(pool.query).not.toHaveBeenCalled()
     expect(redis.get).not.toHaveBeenCalled()
@@ -136,6 +136,16 @@ describe('handlePayuNotification', () => {
     expect(payuUnattributedCapturesTotal.inc).toHaveBeenCalledWith({ reason: 'confirm_lost_race' })
     expect(vi.mocked(pool.query).mock.calls.some(c =>
       (c[0] as string).includes('INSERT INTO payment_gateway_events') && (c[0] as string).includes('false'))).toBe(true)
+  })
+
+  it('audit dedupe key falls back to txnid when no mihpayid exists anywhere', async () => {
+    sql(pendingRide)
+    vi.mocked(payu.fetchPayuStatus).mockResolvedValue({ state: 'captured', amountPaise: 100, mihpayid: null }) // mismatch → audited
+    const { mihpayid: _drop, ...noMihpayid } = body
+    await handlePayuNotification(noMihpayid)
+    const ev = vi.mocked(pool.query).mock.calls.find(c => (c[0] as string).includes('INSERT INTO payment_gateway_events'))
+    expect(ev).toBeTruthy()
+    expect(ev![1]![1]).toBe('R101xabc:captured') // not 'none:captured', which would collide across txns
   })
 
   it('amount mismatch is not confirmed, is recorded unprocessed, and counts amount_mismatch', async () => {

@@ -69,9 +69,10 @@ describe('POST /webhook/payu', () => {
   })
 
   it('400 on a bad hash', async () => {
-    handle.mockImplementation(async () => { throw Object.assign(new Error('Invalid signature'), { httpStatus: 400, code: 'WEBHOOK_INVALID_SIGNATURE' }) })
+    handle.mockImplementation(async () => { throw Object.assign(new Error('Invalid signature'), { httpStatus: 400, appCode: 'WEBHOOK_INVALID_SIGNATURE' }) })
     const res = await request(app).post(HOOK).type('form').send({ txnid: 'x', hash: 'bad' })
     expect(res.status).toBe(400)
+    expect(res.body.code).toBe('WEBHOOK_INVALID_SIGNATURE')
   })
 
   it('200 on a verified payment notification', async () => {

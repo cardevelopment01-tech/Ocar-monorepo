@@ -596,6 +596,7 @@ describe('M08 — Payments', () => {
       const badWebhook = await request(app).post('/api/v1/payments/webhook/payu').type('form')
         .send({ ...body, amount: '1.00' })
       expect(badWebhook.status).toBe(400)
+      expect(badWebhook.body.code).toBe('WEBHOOK_INVALID_SIGNATURE')
 
       const { rows: afterBad } = await pool.query<{ status: string }>(
         'SELECT status FROM payments WHERE id = $1', [payment.id]

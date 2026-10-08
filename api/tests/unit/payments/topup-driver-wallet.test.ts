@@ -62,8 +62,7 @@ describe('topUpDriverWallet', () => {
     expect(params[3]).toBe(300)
     // note documents the debt-first split: ₹200 cleared, ₹300 spendable
     const note = params[5] as string
-    expect(note).toContain('200')
-    expect(note).toContain('300')
+    expect(note).toBe('Wallet top-up ₹500 (₹200 cleared dues, ₹300 spendable)') // gateway-neutral
 
     const updateCall = client.query.mock.calls.find(c => (c[0] as string).includes('UPDATE driver_wallets'))
     expect((updateCall![1] as unknown[])[1]).toBe(300)
@@ -76,7 +75,7 @@ describe('topUpDriverWallet', () => {
     const ledgerCall = client.query.mock.calls.find(c => (c[0] as string).includes('INSERT INTO driver_wallet_ledger'))
     const params = ledgerCall![1] as unknown[]
     expect(params[3]).toBe(600) // 100 + 500
-    expect(params[5] as string).toBe('Wallet top-up via Razorpay')
+    expect(params[5] as string).toBe('Wallet top-up')
   })
 })
 
