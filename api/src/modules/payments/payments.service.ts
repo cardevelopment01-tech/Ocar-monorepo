@@ -1017,27 +1017,74 @@ export async function handlePayuNotification(body: Record<string, string>): Prom
 }
 
 // ── Reconciliation sweep (app-killed-before-verify safety net) ──
-// Pending online payments older than the grace window get rechecked directly
-// against Razorpay. Captured → same confirm funnel. Not captured → failed
+// Pending online payments older than the grace window are rechecked directly
+// against the gateway. Captured → same confirm funnel. Not captured → failed
 // (guarded on status='pending' so a payment another path already confirmed is
 // never overwritten). Ride stays completed either way.
+// PayU: `failed` fails immediately; `unknown`/`pending` are left alone until the
+// row is 60+ min old, and then only `unknown` is failed (`pending` never is).
 export async function reconcilePendingRidePayments(): Promise<void> {
-  if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) return
+  const razorpayOn = Boolean(config.RAZORPAY_KEY_ID && config.RAZORPAY_KEY_SECRET)
+  if (!razorpayOn && !payuConfigured()) return
 
+  // updated_at, not created_at: retry/initiate bump it, so a rider who retried
+  // (or is still on PayU's page) is not failed out from under themselves.
   const res = await pool.query(
-    `SELECT ride_id, razorpay_order_id, user_id, amount
+    `SELECT ride_id, razorpay_order_id, gateway, gateway_txn_id, user_id, amount,
+            (updated_at < now() - interval '60 minutes') AS stale_60m
      FROM payments
      WHERE status = 'pending'
-       AND razorpay_order_id IS NOT NULL
-       AND created_at < now() - interval '10 minutes'`
+       AND (razorpay_order_id IS NOT NULL OR gateway_txn_id IS NOT NULL)
+       AND updated_at < now() - interval '10 minutes'
+     ORDER BY updated_at ASC
+     LIMIT 50`
   )
   if (res.rows.length === 0) return
 
-  const Razorpay = (await import('razorpay')).default
-  const rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID, key_secret: config.RAZORPAY_KEY_SECRET })
+  const failAndNotify = async (row: { ride_id: string; user_id: string; amount: string }) => {
+    const upd = await pool.query(
+      `UPDATE payments
+         SET status = 'failed', failed_at = now(), failure_reason = 'reconciliation_no_capture'
+       WHERE ride_id = $1 AND status = 'pending'`,
+      [BigInt(row.ride_id)]
+    )
+    // Only notify if we actually flipped it to failed — a payment another
+    // path (verify/webhook) confirmed in the meantime hits 0 rows here.
+    // Lazy import: this module is imported broadly, and its transitive
+    // chain (socket.server → rides.service → jobs/queues) shouldn't load
+    // eagerly for every consumer of payments.service.ts.
+    if ((upd.rowCount ?? 0) > 0) {
+      const { notifyRidePaymentFailed } = await import('@/modules/notifications/notifications.service')
+      await notifyRidePaymentFailed(BigInt(row.user_id), BigInt(row.ride_id), parseFloat(row.amount))
+    }
+  }
+
+  // Constructed only when Razorpay rows exist, so PayU-only deployments never load the SDK.
+  let rzp: import('razorpay') | null = null
+  if (razorpayOn && res.rows.some(r => r.gateway !== 'payu')) {
+    const Razorpay = (await import('razorpay')).default
+    rzp = new Razorpay({ key_id: config.RAZORPAY_KEY_ID!, key_secret: config.RAZORPAY_KEY_SECRET! })
+  }
 
   for (const row of res.rows) {
     try {
+      if (row.gateway === 'payu') {
+        if (!payuConfigured()) continue
+        const st = await fetchPayuStatus(row.gateway_txn_id as string)
+        if (st.state === 'captured') {
+          if (st.amountPaise === toPaise(String(row.amount))) {
+            await confirmRidePayment(BigInt(row.ride_id), st.mihpayid ?? (row.gateway_txn_id as string), 'payu')
+          } else {
+            await countUnattributedCapture('amount_mismatch')
+            log.error({ rideId: row.ride_id, expected: row.amount, capturedPaise: st.amountPaise }, 'reconcile: PayU amount mismatch — not confirmed')
+          }
+        } else if (st.state === 'failed' || (st.state === 'unknown' && row.stale_60m)) {
+          await failAndNotify(row)
+        } // pending / young unknown: rider may still be on PayU's page — next sweep decides
+        continue
+      }
+
+      if (!rzp) continue
       const orderId = row.razorpay_order_id as string
       const list = await (rzp.orders.fetchPayments as Function)(orderId) as {
         items: Array<{ id: string; status: string }>
@@ -1046,21 +1093,7 @@ export async function reconcilePendingRidePayments(): Promise<void> {
       if (captured) {
         await confirmRidePayment(BigInt(row.ride_id), captured.id)
       } else {
-        const upd = await pool.query(
-          `UPDATE payments
-             SET status = 'failed', failed_at = now(), failure_reason = 'reconciliation_no_capture'
-           WHERE ride_id = $1 AND status = 'pending'`,
-          [BigInt(row.ride_id)]
-        )
-        // Only notify if we actually flipped it to failed — a payment another
-        // path (verify/webhook) confirmed in the meantime hits 0 rows here.
-        // Lazy import: this module is imported broadly, and its transitive
-        // chain (socket.server → rides.service → jobs/queues) shouldn't load
-        // eagerly for every consumer of payments.service.ts.
-        if ((upd.rowCount ?? 0) > 0) {
-          const { notifyRidePaymentFailed } = await import('@/modules/notifications/notifications.service')
-          await notifyRidePaymentFailed(BigInt(row.user_id), BigInt(row.ride_id), parseFloat(row.amount))
-        }
+        await failAndNotify(row)
       }
     } catch (err) {
       log.error({ err, rideId: row.ride_id }, 'payment reconcile failed')

@@ -8,6 +8,12 @@ vi.mock('@/db/redis', () => ({ client: { get: vi.fn(), set: vi.fn(), del: vi.fn(
 vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: 'rzp_test', RAZORPAY_KEY_SECRET: 'secret' } }))
 vi.mock('@/modules/notifications/notifications.service', () => ({ notifyRidePaymentFailed: vi.fn() }))
 
+vi.mock('@/lib/payu', async (orig) => ({
+  ...(await orig<typeof import('@/lib/payu')>()),
+  fetchPayuStatus: vi.fn(),
+  payuConfigured: vi.fn(() => true),
+}))
+
 const fetchPayments = vi.fn()
 vi.mock('razorpay', () => ({
   default: class { orders = { create: vi.fn(), fetchPayments }; payments = { fetch: vi.fn() } },
@@ -15,6 +21,7 @@ vi.mock('razorpay', () => ({
 
 import * as svc from '@/modules/payments/payments.service'
 import { pool } from '@/db/client'
+import * as payu from '@/lib/payu'
 import { notifyRidePaymentFailed } from '@/modules/notifications/notifications.service'
 
 // NOTE: vi.spyOn(svc, 'confirmRidePayment') does NOT intercept confirmRidePayment
@@ -92,5 +99,83 @@ describe('reconcilePendingRidePayments', () => {
     const failUpdate = vi.mocked(pool.query).mock.calls.find(c => (c[0] as string).includes("status = 'failed'"))
     expect(failUpdate).toBeTruthy()
     expect(notifyRidePaymentFailed).not.toHaveBeenCalled()
+  })
+})
+
+describe('reconcilePendingRidePayments - PayU rows', () => {
+  const row = { ride_id: '101', razorpay_order_id: null, gateway: 'payu', gateway_txn_id: 'R101xabc', user_id: '5', amount: '500.00', stale_60m: false }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(payu.payuConfigured).mockReturnValue(true)
+    fakeClient.query.mockResolvedValue({ rows: [], rowCount: 0 } as never)
+    vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 1 } as never)
+  })
+
+  const confirmed = () => fakeClient.query.mock.calls.some(c => (c[0] as string).includes("SET status = 'completed'"))
+  const failedUpdate = () => vi.mocked(pool.query).mock.calls.some(c => (c[0] as string).includes("SET status = 'failed'"))
+  const select = (...rows: object[]) => vi.mocked(pool.query).mockResolvedValueOnce({ rows } as never)
+  const status = (state: 'captured' | 'failed' | 'pending' | 'unknown', amountPaise = 0) =>
+    vi.mocked(payu.fetchPayuStatus).mockResolvedValue({ state, amountPaise, mihpayid: state === 'captured' ? '555' : null } as never)
+
+  it('selects by updated_at oldest-first with a limit', async () => {
+    await svc.reconcilePendingRidePayments()
+    const q = vi.mocked(pool.query).mock.calls[0]![0] as string
+    expect(q).toContain('updated_at < now()')
+    expect(q).not.toContain('created_at < now()')
+    expect(q).toContain('ORDER BY updated_at ASC')
+    expect(q).toContain('LIMIT 50')
+  })
+
+  it('captured + matching amount confirms with gateway payu', async () => {
+    select(row); status('captured', 50000)
+    await svc.reconcilePendingRidePayments()
+    expect(confirmed()).toBe(true)
+    expect(fakeClient.query.mock.calls.some(c => (c[0] as string).includes('gateway_payment_id = $2'))).toBe(true)
+  })
+
+  it('captured + mismatching amount is never confirmed', async () => {
+    select(row); status('captured', 100)
+    await svc.reconcilePendingRidePayments()
+    expect(confirmed()).toBe(false)
+    expect(failedUpdate()).toBe(false)
+  })
+
+  it('failed at PayU fails + notifies immediately', async () => {
+    select(row); status('failed')
+    await svc.reconcilePendingRidePayments()
+    expect(failedUpdate()).toBe(true)
+    expect(notifyRidePaymentFailed).toHaveBeenCalledWith(BigInt(5), BigInt(101), 500)
+  })
+
+  it('unknown at 30 min is left alone', async () => {
+    select(row); status('unknown')
+    await svc.reconcilePendingRidePayments()
+    expect(failedUpdate()).toBe(false)
+    expect(notifyRidePaymentFailed).not.toHaveBeenCalled()
+  })
+
+  it('unknown at 90 min is failed + notified', async () => {
+    select({ ...row, stale_60m: true }); status('unknown')
+    await svc.reconcilePendingRidePayments()
+    expect(failedUpdate()).toBe(true)
+    expect(notifyRidePaymentFailed).toHaveBeenCalled()
+  })
+
+  it.each([false, true])('pending is never failed (stale=%s)', async (stale) => {
+    select({ ...row, stale_60m: stale }); status('pending')
+    await svc.reconcilePendingRidePayments()
+    expect(failedUpdate()).toBe(false)
+    expect(confirmed()).toBe(false)
+  })
+
+  it('a PayU API error on one row does not abort the sweep', async () => {
+    select(row, { ...row, ride_id: '102', gateway_txn_id: 'R102xabc' })
+    vi.mocked(payu.fetchPayuStatus)
+      .mockRejectedValueOnce(new Error('502'))
+      .mockResolvedValueOnce({ state: 'failed', amountPaise: 0, mihpayid: null } as never)
+    await svc.reconcilePendingRidePayments()
+    expect(payu.fetchPayuStatus).toHaveBeenCalledTimes(2)
+    expect(notifyRidePaymentFailed).toHaveBeenCalledWith(BigInt(5), BigInt(102), 500)
   })
 })
