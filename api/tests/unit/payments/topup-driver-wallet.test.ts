@@ -95,6 +95,24 @@ describe('createDriverTopupOrder', () => {
     )
   })
 
+  it('persists a durable wallet_topup_orders row (driver, txnid, rupees) alongside the Redis binding', async () => {
+    const out = await createDriverTopupOrder(7n, 500)
+    const txnId = out.payu.fields['txnid']!
+    const ins = vi.mocked(pool.query).mock.calls.find(c => (c[0] as string).includes('INSERT INTO wallet_topup_orders'))
+    expect(ins).toBeTruthy()
+    expect(ins![0]).toContain('(driver_id, gateway_txn_id, amount)')
+    expect(ins![1]).toEqual([7n, txnId, 500])
+    expect(vi.mocked(redis.set)).toHaveBeenCalledTimes(1)
+  })
+
+  it('throws (no form returned) when the durable row cannot be inserted', async () => {
+    vi.mocked(pool.query).mockImplementation((async (q: string) => {
+      if (q.includes('INSERT INTO wallet_topup_orders')) throw new Error('connection reset')
+      return { rows: [{ name: 'Ravi', email: null, phone: '8888888888' }], rowCount: 1 }
+    }) as never)
+    await expect(createDriverTopupOrder(7n, 500)).rejects.toThrow('connection reset')
+  })
+
   it('rejects non-numeric or sub-minimum amounts (a string must not reach toFixed)', async () => {
     await expect(createDriverTopupOrder(7n, 99)).rejects.toMatchObject({ httpStatus: 400 })
     await expect(createDriverTopupOrder(7n, '500' as unknown as number)).rejects.toMatchObject({ httpStatus: 400 })

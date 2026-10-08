@@ -59,6 +59,12 @@ export async function createDriverTopupOrder(
     customer: customerFor(driverRes.rows[0] ?? {}, 'driver', driverId),
     returnUrl: `${config.API_BASE_URL}${PAYU_RETURN_PATH}`,
   })
+  // Durable row first: a form without it is a top-up nothing can ever sweep.
+  // A failed insert throws, so no form is returned.
+  await pool.query(
+    `INSERT INTO wallet_topup_orders (driver_id, gateway_txn_id, amount) VALUES ($1, $2, $3)`,
+    [driverId, txnId, rupees]
+  )
   const binding: TopupBinding = { driverId: driverId.toString(), amountPaise }
   await redis.set(walletTopupOrderKey(txnId), JSON.stringify(binding), 'EX', TOPUP_BINDING_TTL_SEC)
   return { payu, amount: rupees }
