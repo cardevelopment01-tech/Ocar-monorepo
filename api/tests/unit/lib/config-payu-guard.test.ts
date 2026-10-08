@@ -32,3 +32,14 @@ describe('PayU prod boot guard', () => {
     expect(r.success).toBe(true)
   })
 })
+
+describe('URL normalization', () => {
+  it.each(['API_BASE_URL', 'USER_APP_URL', 'DRIVER_APP_URL'] as const)('strips trailing slashes from %s', (k) => {
+    const r = envSchemaChecked.safeParse({ ...prod, [k]: 'https://x.example.com//' })
+    expect(r.success).toBe(true)
+    expect(r.data?.[k]).toBe('https://x.example.com')
+  })
+  it('the prod guard still sees the normalized value', () => {
+    expect(envSchemaChecked.safeParse({ ...prod, API_BASE_URL: 'https://localhost/' }).success).toBe(false)
+  })
+})

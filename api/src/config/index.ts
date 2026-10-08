@@ -63,8 +63,8 @@ const envSchema = z.object({
   PAYU_SALT: z.string().default(''),
   PAYU_ENV: z.enum(['test', 'prod']).default('test'),
   // Portals PayU's return redirect sends the browser back to.
-  USER_APP_URL: z.string().default('http://localhost:3000'),
-  DRIVER_APP_URL: z.string().default('http://localhost:5173'),
+  USER_APP_URL: z.string().default('http://localhost:3000').transform(s => s.replace(/\/+$/, '')), // no trailing slash: callers append paths
+  DRIVER_APP_URL: z.string().default('http://localhost:5173').transform(s => s.replace(/\/+$/, '')), // no trailing slash: callers append paths
 
   // SMS
   MSG91_AUTH_KEY: z.string().default(''),
@@ -103,7 +103,7 @@ const envSchema = z.object({
 
   // App
   API_PORT: z.coerce.number().default(4000),
-  API_BASE_URL: z.string().default('http://localhost:4000'),
+  API_BASE_URL: z.string().default('http://localhost:4000').transform(s => s.replace(/\/+$/, '')), // no trailing slash: callers append paths
   ADMIN_APP_URL: z.string().default('http://localhost:3002'),
   ALLOWED_ORIGINS: z.string().default('http://localhost:3000'),
 
