@@ -9,7 +9,7 @@ import { getConfigValue } from '@/lib/system-config'
 import { verifyHmacSignature } from '@/lib/hash'
 import { logger } from '@/lib/logger'
 import {
-  payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, type PayuForm,
+  payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, PAYU_APP_RETURN_PATH, TOPUP_PRODUCT_INFO, type PayuForm,
   verifyPayuResponseHash, fetchPayuStatus, toPaise, type PayuStatus,
 } from '@/lib/payu'
 import * as packagesService from '@/modules/packages/packages.service'
@@ -43,7 +43,8 @@ export interface TopupBinding { driverId: string; amountPaise: number }
 
 export async function createDriverTopupOrder(
   driverId: bigint,
-  amount: number
+  amount: number,
+  appReturn = false
 ): Promise<{ payu: PayuForm; amount: number }> {
   if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 100) {
     throw Object.assign(new Error('Minimum top-up is ₹100'), { httpStatus: 400 })
@@ -55,9 +56,9 @@ export async function createDriverTopupOrder(
   const txnId = newTxnId('W', driverId)
   const payu = buildPayuForm({
     txnId, amount: rupees,
-    productInfo: 'Ocar wallet top-up',
+    productInfo: TOPUP_PRODUCT_INFO,
     customer: customerFor(driverRes.rows[0] ?? {}, 'driver', driverId),
-    returnUrl: `${config.API_BASE_URL}${PAYU_RETURN_PATH}`,
+    returnUrl: `${config.API_BASE_URL}${appReturn ? PAYU_APP_RETURN_PATH : PAYU_RETURN_PATH}`,
   })
   // Durable row first: a form without it is a top-up nothing can ever sweep.
   // A failed insert throws, so no form is returned.
@@ -958,7 +959,7 @@ async function resolveTopupBinding(txnId: string): Promise<TopupBinding | null> 
 // callback) and reconcilePendingPayuPurchases (txnid read from our own DB; no hash
 // exists there). Trust comes from verify_payment either way — auditBody is only
 // what gets written to the audit table.
-async function settlePayuTxn(txnId: string, auditBody: Record<string, string>): Promise<PayuOutcome> {
+export async function settlePayuTxn(txnId: string, auditBody: Record<string, string>): Promise<PayuOutcome> {
   let kind: PayuKind = 'unknown'
   let id: string | null = null
 

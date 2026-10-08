@@ -68,6 +68,8 @@ export function rateCardKey(
 // Coordinates rounded to 4 decimal places (~11m precision) so nearby-identical
 // requests hit the same cache entry. Options are folded into the key since they
 // change the response shape (e.g. withSteps adds a steps array).
+export const payuConfirmCooldownKey = (txnId: string): string => `payu:confirm:${txnId}`
+
 export const routeKey = (
   originLat: number, originLng: number, destLat: number, destLng: number,
   opts?: { language?: string; withSteps?: boolean; trafficAware?: boolean; withTrafficIntervals?: boolean },

@@ -1,7 +1,7 @@
 import { pool } from '@/db/client'
 import { config } from '@/config'
 import * as repo from './packages.repository'
-import { payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, type PayuForm } from '@/lib/payu'
+import { payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, PAYU_APP_RETURN_PATH, packageProductInfo, type PayuForm } from '@/lib/payu'
 
 async function writeLedgerEntry(
   client: { query: (sql: string, params: unknown[]) => Promise<{ rows: unknown[] }> },
@@ -214,7 +214,8 @@ export async function adjustPackageBalance(
 // end without a gateway.
 export async function createPackagePurchaseOrder(
   driverId: bigint,
-  tierId: bigint
+  tierId: bigint,
+  appReturn = false
 ): Promise<{ payu: PayuForm; amount: number } | { dev: true; credited: number }> {
   const tier = await repo.getTierById(tierId)
   if (!tier || !tier.is_active) {
@@ -232,9 +233,9 @@ export async function createPackagePurchaseOrder(
   const txnId = newTxnId('P', driverId)
   const payu = buildPayuForm({
     txnId, amount: price,
-    productInfo: `Ocar package ${tierId}`,
+    productInfo: packageProductInfo(tierId),
     customer: customerFor(driverRes.rows[0] ?? {}, 'driver', driverId),
-    returnUrl: `${config.API_BASE_URL}${PAYU_RETURN_PATH}`,
+    returnUrl: `${config.API_BASE_URL}${appReturn ? PAYU_APP_RETURN_PATH : PAYU_RETURN_PATH}`,
   })
   await repo.createPayuPurchaseOrder({ driverId, tierId, amount: price, thresholdValue: threshold, txnId })
   return { payu, amount: price }

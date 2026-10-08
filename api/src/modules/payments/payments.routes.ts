@@ -4,6 +4,9 @@ import { config } from '@/config'
 import { client as redis } from '@/db/redis'
 import { walletTopupOrderKey } from '@/constants/redis-keys'
 import { payuConfigured } from '@/lib/payu'
+import { requireDriver } from '@/middleware/role.middleware'
+import { payuHashLimiter, payuConfirmLimiter } from '@/middleware/rateLimit.middleware'
+import * as payuSdk from '@/modules/payments/payu-sdk'
 import { verifyHmacSignature } from '@/lib/hash'
 import * as service from './payments.service'
 import type { PayuOutcome } from './payments.service'
@@ -50,7 +53,10 @@ router.post('/wallet/driver/topup/order', authenticate(), async (req, res, next)
       return
     }
 
-    res.json(await service.createDriverTopupOrder(driverId, amount))
+    const sdk = (req.body as { client?: unknown }).client === 'sdk'
+    if (sdk) await payuSdk.assertMobilePaymentsEnabled()
+    const order = await service.createDriverTopupOrder(driverId, amount, sdk)
+    res.json(sdk ? payuSdk.withSdkParams(order) : order)
   } catch (err) { next(err) }
 })
 
@@ -116,11 +122,14 @@ router.get('/packages/wallet', authenticate(), async (req, res, next) => {
 // Driver: create a package purchase order (or direct credit in dev)
 router.post('/packages/purchase/order', authenticate(), async (req, res, next) => {
   try {
+    const sdk = (req.body as { client?: unknown }).client === 'sdk'
+    if (sdk) await payuSdk.assertMobilePaymentsEnabled()
     const result = await packagesService.createPackagePurchaseOrder(
       req.driver!.id,
-      BigInt(req.body.tierId)
+      BigInt(req.body.tierId),
+      sdk
     )
-    res.json(result)
+    res.json(sdk && 'payu' in result ? payuSdk.withSdkParams(result) : result)
   } catch (err) { next(err) }
 })
 
@@ -174,19 +183,53 @@ function payuFallbackUrl(txnid: unknown): string {
   return `${config.USER_APP_URL}/`
 }
 
+// `?c=app` (set on orders created by the driver app): finish in the app via its
+// deep link instead of the web portal. Only fixed words reach the URL.
+function payuAppUrl(kind: 'wallet' | 'package' | 'unknown', result: string): string {
+  return `ocardriver://payment/result?kind=${kind}&pay=${result}`
+}
+
 router.post('/payu/return', async (req, res) => {
+  const toApp = req.query['c'] === 'app'
   try {
     const out = await service.handlePayuNotification(req.body as Record<string, string>)
     // out.error (infrastructure failure) deliberately does not change the
     // redirect: the user lands on the right page with pay=pending.
+    if (toApp) {
+      res.redirect(303, payuAppUrl(out.kind === 'wallet' || out.kind === 'package' ? out.kind : 'unknown', out.result))
+      return
+    }
     res.redirect(303, payuRedirectUrl(out))
   } catch (err) {
     // The funnel throws only for a bad hash (httpStatus 400); anything else is
     // unexpected. Either way never redirect to a success page.
     if ((err as { httpStatus?: number }).httpStatus === 400) log.warn({ err }, 'PayU return rejected: bad hash')
     else log.error({ err }, 'PayU return failed unexpectedly')
-    res.redirect(303, payuFallbackUrl((req.body as Record<string, unknown> | undefined)?.['txnid']))
+    const txnid = (req.body as Record<string, unknown> | undefined)?.['txnid']
+    if (toApp) {
+      const prefix = typeof txnid === 'string' ? txnid.charAt(0) : ''
+      res.redirect(303, payuAppUrl(prefix === 'W' ? 'wallet' : prefix === 'P' ? 'package' : 'unknown', 'pending'))
+      return
+    }
+    res.redirect(303, payuFallbackUrl(txnid))
   }
+})
+
+// Driver app (native PayU SDK): hash signing for the SDK's generateHash callback.
+router.post('/payu/sdk-hash', authenticate(), requireDriver(), payuHashLimiter, async (req, res, next) => {
+  try {
+    await payuSdk.assertMobilePaymentsEnabled()
+    const { hashName, hashString } = req.body as { hashName?: unknown; hashString?: unknown }
+    res.json({ hash: await payuSdk.signSdkHash(req.driver!.id, hashName, hashString) })
+  } catch (err) { next(err) }
+})
+
+// Driver app: resolve an order after the SDK callback (or on next launch). The
+// callback is never trusted; this runs verify_payment + the idempotent credit.
+router.post('/payu/confirm', authenticate(), requireDriver(), payuConfirmLimiter, async (req, res, next) => {
+  try {
+    res.json(await payuSdk.confirmSdkPayment(req.driver!.id, (req.body as { txnId?: unknown }).txnId))
+  } catch (err) { next(err) }
 })
 
 // Webhook (configure in PayU dashboard -> Developers -> Webhooks). Payment

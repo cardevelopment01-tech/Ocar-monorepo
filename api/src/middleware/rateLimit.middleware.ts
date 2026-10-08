@@ -116,6 +116,25 @@ const chatStore = redisStore('rl:chat:')
 if (chatStore !== undefined) chatMessageLimiterOptions.store = chatStore
 export const chatMessageLimiter = rateLimit(chatMessageLimiterOptions)
 
+// PayU SDK endpoints (hash signing / confirm): per principal, per minute.
+function payuSdkLimiter(prefix: string, max: number) {
+  const options: Parameters<typeof rateLimit>[0] = {
+    windowMs: 60 * 1000,
+    max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: skipInTest,
+    passOnStoreError: true,
+    keyGenerator: (req) => `${prefix}:${principalKey(req)}`,
+    message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
+  }
+  const store = redisStore(`rl:${prefix}:`)
+  if (store !== undefined) options.store = store
+  return rateLimit(options)
+}
+export const payuHashLimiter = payuSdkLimiter('payuhash', 60)
+export const payuConfirmLimiter = payuSdkLimiter('payuconfirm', 20)
+
 // Per (principal, ride) masked-call throttle — real phone calls cost real
 // money per minute, so this is intentionally tighter than chat.
 const maskedCallLimiterOptions: Parameters<typeof rateLimit>[0] = {
