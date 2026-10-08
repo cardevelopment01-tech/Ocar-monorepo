@@ -197,3 +197,87 @@ describe('reconcilePendingRidePayments - PayU rows', () => {
     expect(notifyRidePaymentFailed).toHaveBeenCalledWith(BigInt(5), BigInt(102), 500)
   })
 })
+
+describe('reconcilePendingPayuPurchases', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(payu.payuConfigured).mockReturnValue(true)
+    fakeClient.query.mockResolvedValue({ rows: [], rowCount: 0 } as never)
+    vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 0 } as never)
+  })
+
+  const select = (...txnIds: string[]) =>
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: txnIds.map(t => ({ gateway_txn_id: t })) } as never)
+  const status = (state: 'captured' | 'failed' | 'pending' | 'unknown', amountPaise = 0) =>
+    vi.mocked(payu.fetchPayuStatus).mockResolvedValue({ state, amountPaise, mihpayid: state === 'captured' ? '555' : null } as never)
+  const completingUpdates = () => vi.mocked(pool.query).mock.calls.filter(c =>
+    /UPDATE (wallet_topup_orders|package_purchase_orders)/.test(c[0] as string))
+  const ledgerInserts = () => fakeClient.query.mock.calls.filter(c => (c[0] as string).includes('INSERT INTO driver_wallet_ledger'))
+
+  it('selects the pending purchase/top-up union inside 10 min .. 3 days, random order, limit 50', async () => {
+    await svc.reconcilePendingPayuPurchases()
+    const q = vi.mocked(pool.query).mock.calls[0]![0] as string
+    expect(q).toContain('FROM package_purchase_orders')
+    expect(q).toContain("gateway = 'payu'")
+    expect(q).toContain('gateway_txn_id IS NOT NULL')
+    expect(q).toContain('FROM wallet_topup_orders')
+    expect(q).toContain('UNION')
+    expect(q.match(/status = 'pending'/g)).toHaveLength(2)
+    expect(q.match(/created_at < now\(\) - interval '10 minutes'/g)).toHaveLength(2)
+    expect(q.match(/created_at > now\(\) - interval '3 days'/g)).toHaveLength(2)
+    expect(q).toContain('ORDER BY random()')
+    expect(q).toContain('LIMIT 50')
+    expect(payu.fetchPayuStatus).not.toHaveBeenCalled() // empty batch
+  })
+
+  it('returns early when PayU is not configured', async () => {
+    vi.mocked(payu.payuConfigured).mockReturnValue(false)
+    await svc.reconcilePendingPayuPurchases()
+    expect(pool.query).not.toHaveBeenCalled()
+  })
+
+  it('warns (count only) on a full batch', async () => {
+    select(...Array.from({ length: 50 }, (_, i) => `W${i}xabc`)); status('pending')
+    await svc.reconcilePendingPayuPurchases()
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]![0]).toEqual({ count: 50 })
+  })
+
+  it.each(['pending', 'failed', 'unknown'] as const)('PayU %s leaves every row untouched', async (st) => {
+    select('W7xabc', 'P7xabc'); status(st)
+    await svc.reconcilePendingPayuPurchases()
+    expect(vi.mocked(payu.fetchPayuStatus).mock.calls.map(c => c[0])).toEqual(['W7xabc', 'P7xabc'])
+    expect(completingUpdates()).toHaveLength(0)
+    expect(ledgerInserts()).toHaveLength(0)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('a captured top-up with no Redis binding is credited from the DB row and marked completed', async () => {
+    vi.mocked(pool.query).mockImplementation(async (text: unknown) => {
+      const sql = text as string
+      if (sql.includes('UNION')) return { rows: [{ gateway_txn_id: 'W7xabc' }], rowCount: 1 } as never
+      if (sql.includes('FROM wallet_topup_orders WHERE gateway_txn_id')) {
+        return { rows: [{ driver_id: '7', amount: '500.00', status: 'pending' }], rowCount: 1 } as never
+      }
+      return { rows: [], rowCount: 0 } as never
+    })
+    fakeClient.query.mockImplementation(async (q: string) =>
+      (q.includes('FROM driver_wallet_ledger WHERE wallet_id')
+        ? { rows: [], rowCount: 0 }
+        : { rows: [{ id: 1, balance: '1000' }], rowCount: 1 }) as never)
+    status('captured', 50000)
+    await svc.reconcilePendingPayuPurchases()
+    expect(ledgerInserts()).toHaveLength(1)
+    expect(ledgerInserts()[0]![1]).toContain('W7xabc')
+    expect(completingUpdates().map(c => c[1])).toEqual([['W7xabc']])
+  })
+
+  it('one failing row does not abort the rest of the sweep', async () => {
+    select('W7xabc', 'W8xabc')
+    vi.mocked(payu.fetchPayuStatus)
+      .mockRejectedValueOnce(new Error('502'))
+      .mockResolvedValueOnce({ state: 'pending', amountPaise: 0, mihpayid: null } as never)
+    await svc.reconcilePendingPayuPurchases()
+    expect(vi.mocked(payu.fetchPayuStatus).mock.calls.map(c => c[0])).toEqual(['W7xabc', 'W8xabc'])
+  })
+})

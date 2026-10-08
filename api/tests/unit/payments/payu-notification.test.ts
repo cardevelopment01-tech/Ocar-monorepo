@@ -297,6 +297,59 @@ describe('handlePayuNotification', () => {
     expect(fakeClient.query.mock.calls.some(c => (c[0] as string).includes('INSERT INTO driver_wallet_ledger'))).toBe(false)
   })
 
+  // Redis binding gone (24h TTL / flush) → the durable wallet_topup_orders row attributes it.
+  const dbTopup = { 'FROM wallet_topup_orders WHERE gateway_txn_id': { rows: [{ driver_id: '7', amount: '500.00', status: 'pending' }] } }
+  const completingTopupUpdate = () => vi.mocked(pool.query).mock.calls.find(c =>
+    (c[0] as string).includes('UPDATE wallet_topup_orders') && (c[0] as string).includes("status = 'completed'"))
+  const freshLedger = () => fakeClient.query.mockImplementation(async (q: string) =>
+    q.includes('FROM driver_wallet_ledger WHERE wallet_id')
+      ? { rows: [], rowCount: 0 }
+      : { rows: [{ id: 1, balance: '1000' }], rowCount: 1 })
+
+  it('wallet top-up: no Redis binding → DB row credits once via the ledger with the DB amount, row marked completed', async () => {
+    sql(dbTopup)
+    vi.mocked(pkgRepo.findPurchaseByTxnId).mockResolvedValue(null)
+    vi.mocked(redis.get).mockResolvedValue(null)
+    freshLedger()
+    vi.mocked(payu.fetchPayuStatus).mockResolvedValue(captured(50000))
+    const out = await handlePayuNotification({ ...body, txnid: 'W7xabc' })
+    expect(out).toEqual({ kind: 'wallet', id: '7', result: 'success' })
+    const ledgers = fakeClient.query.mock.calls.filter(c => (c[0] as string).includes('INSERT INTO driver_wallet_ledger'))
+    expect(ledgers).toHaveLength(1)
+    expect(ledgers[0]![1]).toContain('W7xabc')
+    expect(ledgers[0]![1]).toContain(500)
+    const upd = completingTopupUpdate()
+    expect(upd).toBeTruthy()
+    expect(upd![0]).toContain("status = 'pending'") // guarded
+    expect(upd![1]).toEqual(['W7xabc'])
+  })
+
+  it('wallet top-up: a failing completed-flag UPDATE does not change the success result', async () => {
+    vi.mocked(pool.query).mockImplementation((async (q: string) => {
+      if (q.includes('UPDATE wallet_topup_orders')) throw new Error('deadlock')
+      if (q.includes('FROM wallet_topup_orders WHERE gateway_txn_id')) return { rows: [{ driver_id: '7', amount: '500.00', status: 'pending' }], rowCount: 1 }
+      return { rows: [], rowCount: 0 }
+    }) as never)
+    vi.mocked(pkgRepo.findPurchaseByTxnId).mockResolvedValue(null)
+    vi.mocked(redis.get).mockResolvedValue(null)
+    freshLedger()
+    vi.mocked(payu.fetchPayuStatus).mockResolvedValue(captured(50000))
+    await expect(handlePayuNotification({ ...body, txnid: 'W7xabc' }))
+      .resolves.toEqual({ kind: 'wallet', id: '7', result: 'success' })
+  })
+
+  it('wallet top-up: amount mismatch vs the DB row credits nothing and leaves the row pending', async () => {
+    sql(dbTopup)
+    vi.mocked(pkgRepo.findPurchaseByTxnId).mockResolvedValue(null)
+    vi.mocked(redis.get).mockResolvedValue(null)
+    vi.mocked(payu.fetchPayuStatus).mockResolvedValue(captured(100))
+    const out = await handlePayuNotification({ ...body, txnid: 'W7xabc' })
+    expect(out).toEqual({ kind: 'wallet', id: '7', result: 'pending' })
+    expect(fakeClient.query.mock.calls.some(c => (c[0] as string).includes('INSERT INTO driver_wallet_ledger'))).toBe(false)
+    expect(completingTopupUpdate()).toBeUndefined()
+    expect(payuUnattributedCapturesTotal.inc).toHaveBeenCalledWith({ reason: 'amount_mismatch' })
+  })
+
   const pendingPurchase = { id: '4', driver_id: '7', threshold_value: '1200.00', amount: '1000.00', status: 'pending', gateway_payment_id: null }
 
   it('package captured: claims the purchase and credits the threshold', async () => {

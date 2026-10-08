@@ -939,7 +939,26 @@ export async function handlePayuNotification(body: Record<string, string>): Prom
   if (!verifyPayuResponseHash(body)) {
     throw Object.assign(new Error('Invalid signature'), { httpStatus: 400, appCode: 'WEBHOOK_INVALID_SIGNATURE' })
   }
-  const txnId = body['txnid'] ?? ''
+  return settlePayuTxn(body['txnid'] ?? '', body)
+}
+
+// Wallet top-up attribution: Redis binding (fast path), else the durable
+// wallet_topup_orders row — survives the 24h TTL and a Redis flush.
+async function resolveTopupBinding(txnId: string): Promise<TopupBinding | null> {
+  const raw = await redis.get(walletTopupOrderKey(txnId))
+  if (raw) return JSON.parse(raw) as TopupBinding
+  const res = await pool.query(
+    `SELECT driver_id, amount, status FROM wallet_topup_orders WHERE gateway_txn_id = $1`, [txnId]
+  )
+  const row = res.rows[0] as { driver_id: string; amount: string } | undefined
+  return row ? { driverId: String(row.driver_id), amountPaise: toPaise(String(row.amount)) } : null
+}
+
+// Everything after the hash check. Callers: handlePayuNotification (hash-verified
+// callback) and reconcilePendingPayuPurchases (txnid read from our own DB; no hash
+// exists there). Trust comes from verify_payment either way — auditBody is only
+// what gets written to the audit table.
+async function settlePayuTxn(txnId: string, auditBody: Record<string, string>): Promise<PayuOutcome> {
   let kind: PayuKind = 'unknown'
   let id: string | null = null
 
@@ -951,8 +970,7 @@ export async function handlePayuNotification(body: Record<string, string>): Prom
     )
     const ride = rideRes.rows[0] as { ride_id: string; amount: string; status: string } | undefined
     const pkg = ride ? null : await packagesRepo.findPurchaseByTxnId(txnId)
-    const bindingRaw = ride || pkg ? null : await redis.get(walletTopupOrderKey(txnId))
-    const binding = bindingRaw ? (JSON.parse(bindingRaw) as TopupBinding) : null
+    const binding = ride || pkg ? null : await resolveTopupBinding(txnId)
 
     kind = ride ? 'ride' : pkg ? 'package' : binding ? 'wallet' : 'unknown'
     id = ride ? String(ride.ride_id) : pkg ? String(pkg.driver_id) : binding ? binding.driverId : null
@@ -972,7 +990,7 @@ export async function handlePayuNotification(body: Record<string, string>): Prom
     if (expectedPaise === null) {
       log.error({ txnId, mihpayid: status.mihpayid, amountPaise: status.amountPaise }, 'PayU capture for unknown txn — needs manual review/refund')
       await countUnattributedCapture('unknown_txn')
-      await recordPayuEvent(body, status, false, 'unknown txn captured')
+      await recordPayuEvent(auditBody, status, false, 'unknown txn captured')
       return { kind: 'unknown', id: null, result: 'pending' }
     }
     // expectedPaise <= 0: fetchPayuStatus reports 0 when PayU omits amt, so a
@@ -980,7 +998,7 @@ export async function handlePayuNotification(body: Record<string, string>): Prom
     if (expectedPaise <= 0 || status.amountPaise !== expectedPaise) {
       log.error({ txnId, expectedPaise, capturedPaise: status.amountPaise }, 'PayU captured amount differs from stored amount — not confirmed')
       await countUnattributedCapture('amount_mismatch')
-      await recordPayuEvent(body, status, false, 'amount mismatch')
+      await recordPayuEvent(auditBody, status, false, 'amount mismatch')
       return { kind, id, result: 'pending' }
     }
 
@@ -1010,7 +1028,7 @@ export async function handlePayuNotification(body: Record<string, string>): Prom
           log.error({ txnId, rideId: ride.ride_id, mihpayid: status.mihpayid, rowStatus: row?.status ?? null, reason },
             'PayU capture on a ride payment it did not settle — needs manual review/refund')
           await countUnattributedCapture(reason)
-          await recordPayuEvent(body, status, false, 'capture on settled ride')
+          await recordPayuEvent(auditBody, status, false, 'capture on settled ride')
           return { kind, id, result: 'pending' }
         }
       }
@@ -1033,9 +1051,20 @@ export async function handlePayuNotification(body: Record<string, string>): Prom
       // under a row lock, so return + webhook racing credit once. The Redis binding
       // is left to expire (not deleted) so the slower of the two still resolves it.
       await topUpDriverWallet(BigInt(binding.driverId), expectedPaise / 100, txnId)
+      // Best-effort: this flag only stops the sweep re-polling the txn; the
+      // ledger dedupe above is the double-credit guard.
+      try {
+        await pool.query(
+          `UPDATE wallet_topup_orders SET status = 'completed', completed_at = now()
+           WHERE gateway_txn_id = $1 AND status = 'pending'`,
+          [txnId]
+        )
+      } catch (err) {
+        log.error({ err, txnId }, 'wallet_topup_orders completed-flag update failed')
+      }
     }
 
-    await recordPayuEvent(body, status, true, 'confirmed')
+    await recordPayuEvent(auditBody, status, true, 'confirmed')
     return { kind, id, result: 'success' }
   } catch (err) {
     // Never log the body (hash, PII) or config — txn id + resolved target only.
@@ -1129,6 +1158,40 @@ export async function reconcilePendingRidePayments(): Promise<void> {
       }
     } catch (err) {
       log.error({ err, rideId: row.ride_id }, 'payment reconcile failed')
+    }
+  }
+}
+
+// ── PayU purchase/top-up sweep (missed webhook + driver closed the tab) ──
+// Pending package purchases and wallet top-ups are re-run through the same
+// settler the callbacks use; verify_payment decides. Non-captured states leave
+// the row untouched, and rows older than 3 days are never marked failed — a
+// failed row could not be credited if PayU later reports a capture.
+// random(): see reconcilePendingRidePayments (untouched rows would starve newer ones).
+export async function reconcilePendingPayuPurchases(): Promise<void> {
+  if (!payuConfigured()) return
+  const res = await pool.query(
+    `SELECT gateway_txn_id FROM (
+       SELECT gateway_txn_id FROM package_purchase_orders
+        WHERE gateway = 'payu' AND gateway_txn_id IS NOT NULL AND status = 'pending'
+          AND created_at < now() - interval '10 minutes'
+          AND created_at > now() - interval '3 days'
+       UNION ALL
+       SELECT gateway_txn_id FROM wallet_topup_orders
+        WHERE status = 'pending'
+          AND created_at < now() - interval '10 minutes'
+          AND created_at > now() - interval '3 days'
+     ) t
+     ORDER BY random()
+     LIMIT 50`
+  )
+  if (res.rows.length === 50) log.warn({ count: res.rows.length }, 'payu purchase reconcile: batch full — pending backlog exceeds one sweep')
+  for (const row of res.rows as Array<{ gateway_txn_id: string }>) {
+    const txnId = row.gateway_txn_id
+    try {
+      await settlePayuTxn(txnId, { txnid: txnId })
+    } catch (err) {
+      log.error({ err, txnId }, 'payu purchase reconcile failed')
     }
   }
 }
