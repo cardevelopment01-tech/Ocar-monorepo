@@ -6,10 +6,13 @@ import { walletTopupOrderKey } from '@/constants/redis-keys'
 import { payuConfigured } from '@/lib/payu'
 import { verifyHmacSignature } from '@/lib/hash'
 import * as service from './payments.service'
+import type { PayuOutcome } from './payments.service'
+import { logger } from '@/lib/logger'
 import * as packagesService from '@/modules/packages/packages.service'
 import * as packagesRepo from '@/modules/packages/packages.repository'
 
 const router: IRouter = Router()
+const log = logger.child({ module: 'payments-routes' })
 
 // Driver: get own wallet
 router.get('/wallet/driver', authenticate(), async (req, res, next) => {
@@ -144,6 +147,55 @@ router.post('/webhook/razorpay', async (req, res, next) => {
     }
 
     await service.handleWebhookEvent(req.body as Record<string, unknown>)
+    res.json({ status: 'ok' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// PayU redirects the browser here (surl/furl/curl are all this URL) as a
+// form POST. Public: authenticity comes from the response hash, then from
+// verify_payment inside the funnel — not from a session.
+function payuRedirectUrl(out: PayuOutcome): string {
+  const q = `?pay=${out.result}`
+  if (out.kind === 'ride' && out.id) return `${config.USER_APP_URL}/ride/${out.id}/receipt${q}`
+  if (out.kind === 'wallet') return `${config.DRIVER_APP_URL}/wallet${q}`
+  if (out.kind === 'package') return `${config.DRIVER_APP_URL}/recharge-package${q}`
+  return `${config.USER_APP_URL}/`
+}
+
+router.post('/payu/return', async (req, res) => {
+  try {
+    const out = await service.handlePayuNotification(req.body as Record<string, string>)
+    // out.error (infrastructure failure) deliberately does not change the
+    // redirect: the user lands on the right page with pay=pending.
+    res.redirect(303, payuRedirectUrl(out))
+  } catch (err) {
+    // The funnel throws only for a bad hash (httpStatus 400); anything else is
+    // unexpected. Either way never redirect to a success page.
+    if ((err as { httpStatus?: number }).httpStatus === 400) log.warn({ err }, 'PayU return rejected: bad hash')
+    else log.error({ err }, 'PayU return failed unexpectedly')
+    res.redirect(303, `${config.USER_APP_URL}/`)
+  }
+})
+
+// Webhook (configure in PayU dashboard -> Developers -> Webhooks). Payment
+// success/failure arrive form-encoded WITH a hash; refund/dispute arrive as JSON
+// with no documented hash — acknowledge and log only, never act on them.
+router.post('/webhook/payu', async (req, res, next) => {
+  try {
+    const body = req.body as Record<string, string>
+    if (!body['hash']) {
+      log.info({ keys: Object.keys(body) }, 'PayU webhook without hash (refund/dispute) acknowledged')
+      res.json({ status: 'ok' })
+      return
+    }
+    const out = await service.handlePayuNotification(body)
+    if (out.error) {
+      // Non-2xx so PayU may retry (its retry schedule is undocumented).
+      res.status(500).json({ error: 'Temporary failure', code: 'PAYMENT_CONFIRM_RETRY' })
+      return
+    }
     res.json({ status: 'ok' })
   } catch (err) {
     next(err)
