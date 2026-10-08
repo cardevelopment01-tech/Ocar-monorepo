@@ -302,6 +302,22 @@ WHERE status = 'pending'
 ORDER BY updated_at;
 ```
 
+### Missed PayU webhooks (reconcile sweep)
+
+Every payment-reconcile worker run also sweeps pending PayU package purchases
+(`package_purchase_orders`) and wallet top-ups (`wallet_topup_orders`, a
+durable row written when the order is created) aged 10 minutes to 3 days, and
+re-runs each through `verify_payment`: captured → credited once (same
+idempotent path as the webhook); pending/failed/unknown → row left as is. Rows
+older than 3 days are not polled and never auto-failed. Find stuck ones and
+check each txnid in the PayU dashboard:
+```sql
+SELECT * FROM wallet_topup_orders
+WHERE status = 'pending' AND created_at < now() - interval '3 days';
+SELECT * FROM package_purchase_orders
+WHERE gateway = 'payu' AND status = 'pending' AND created_at < now() - interval '3 days';
+```
+
 ### Unattributed PayU captures
 
 Money PayU captured that the API did not credit increments
@@ -309,7 +325,7 @@ Money PayU captured that the API did not credit increments
 
 | `reason` | Meaning |
 |---|---|
-| `unknown_txn` | capture for a txnid we can't map (superseded retry txn, expired 24 h top-up binding) |
+| `unknown_txn` | capture for a txnid we can't map (e.g. a superseded ride retry txn) |
 | `amount_mismatch` | captured amount differs from what we stored — not confirmed |
 | `duplicate_capture` | ride payment already settled by a different payment (rider paid twice) |
 | `confirm_lost_race` | ride payment re-failed between revive and confirm |

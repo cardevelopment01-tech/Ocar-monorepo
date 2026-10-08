@@ -103,11 +103,12 @@ Writes go through `admin.repository.ts` (`FOR UPDATE` + millisecond-precision `u
 compare; 409 `BOUNDARY_CHANGED` on a stale save) — never `geo.repository.updateCity`.
 
 ### PayU collections
-Collections confirm only via `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`
+Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`
 (browser) and `POST /payments/webhook/payu`: response hash → `verify_payment` (`unmappedstatus == 'captured'`,
 amount vs stored) → existing idempotent confirm. Never confirm from the callback's posted `status`/`amount`.
-`txnid` is ours (`R<rideId>x…` ride, `W<driverId>x…` top-up, `P<driverId>x…` package); the wallet top-up binding
-lives in Redis (24 h). Production refuses to boot without `PAYU_KEY`/`PAYU_SALT` (empty keys = dev auto-confirm) or
+`txnid` is ours (`R<rideId>x…` ride, `W<driverId>x…` top-up, `P<driverId>x…` package); top-up orders are durable in
+`wallet_topup_orders` (Redis binding is a fast path). The payment-reconcile worker also sweeps pending PayU
+top-ups/package purchases (10 min .. 3 days) through the same settler. Production refuses to boot without `PAYU_KEY`/`PAYU_SALT` (empty keys = dev auto-confirm) or
 with non-https/localhost `API_BASE_URL`/`USER_APP_URL`/`DRIVER_APP_URL`. Captured money we cannot attribute lands in
 `payment_gateway_events` with `processed=false` and bumps `payu_unattributed_captures_total{reason}` — see
 `docs/OPS_RUNBOOK.md` "PayU collections".
