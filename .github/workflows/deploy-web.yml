@@ -1,11 +1,23 @@
 name: Deploy Web (Vercel)
 
-# Vercel's Git integration and Vercel-side builds are blocked when the commit author is not a
-# seat on the Vercel team (single-seat plan, pushes come from another account): every
-# deployment Vercel builds itself ends up BLOCKED ("commit author doesn't have permission").
-# Prebuilt deployments (build on the runner, upload the result) are not subject to that check,
-# so this workflow builds here and uploads with a token. Each app's vercel.json sets
-# `git.deploymentEnabled: false`.
+# Release order and safety net for the three web apps (admin, driver, user):
+#
+#   push to main -> CI -> Deploy (API, blue/green + bake) -> THIS workflow (production)
+#
+# - Production web deploys run only AFTER the API deploy finished and only if it did not fail
+#   or roll back (`gate` job), so a site never ships against a backend that was rolled back.
+#   The API must stay backward compatible with the previous web build: expand/contract
+#   migrations, additive endpoints (see docs/OPS_RUNBOOK.md "Releases and rollbacks").
+# - After each production deploy the live site is checked (pages load, no baked
+#   "[SENSITIVE]" placeholder, prod API address present, API healthy). If the check fails, the
+#   previous production deployment is restored with `vercel rollback` (Pro plan: any earlier
+#   production deployment) and the job fails loudly.
+# - Pull requests get preview deployments only. Manual runs deploy main to production.
+#
+# Why prebuilt deploys: Vercel blocks every deployment it builds itself when the commit author
+# is not a seat on the team (single-seat plan, pushes come from another account); prebuilt
+# deployments (build here, upload the result) are not subject to that check. Each app's
+# vercel.json sets `git.deploymentEnabled: false`.
 #
 # One-time setup (repo Settings > Secrets and variables > Actions):
 #   VERCEL_TOKEN                 account token (vercel.com/account/tokens), scope = the team
@@ -19,9 +31,11 @@ name: Deploy Web (Vercel)
 #       shipped JS anyway.
 
 on:
-  push:
-    branches: [main]
   pull_request:
+    branches: [main]
+  workflow_run:
+    workflows: ["Deploy"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -31,19 +45,50 @@ permissions:
 env:
   # Pinned (supply chain), not "latest".
   VERCEL_CLI_VERSION: 60.1.1
+  API_URL: https://ocar-api.clienttesting.in
 
 jobs:
+  # Production only: did CI pass and did the API deploy succeed (or have nothing to deploy)?
+  gate:
+    name: Gate on the API deploy
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      ok: ${{ steps.gate.outputs.ok }}
+    steps:
+      # Script comes from the tested commit, not from anything the triggering run produced.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - id: gate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          out=$(python3 .github/scripts/web_release.py gate "${{ github.repository }}" "${{ github.event.workflow_run.id }}")
+          echo "$out"
+          echo "$out" | grep -E '^ok=' >> "$GITHUB_OUTPUT"
+          echo "### Web release gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "$out" | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+
   deploy:
     name: Deploy ${{ matrix.app }}
+    needs: [gate]
     runs-on: ubuntu-latest
+    # gate is skipped for PR / manual runs; for workflow_run it must have said ok=true.
     # Same-repo PRs only: fork PRs get no secrets anyway. Manual runs only deploy main.
     if: >-
-      (github.event_name == 'push') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
-    timeout-minutes: 20
+      ${{ !cancelled() && (
+        (github.event_name == 'workflow_run' && needs.gate.outputs.ok == 'true') ||
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      ) }}
+    timeout-minutes: 25
     concurrency:
-      group: deploy-web-${{ matrix.app }}-${{ github.ref }}
+      group: deploy-web-${{ matrix.app }}-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
       # Never cancel a production deploy half-way; superseded PR previews can be cancelled.
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     strategy:
@@ -53,18 +98,21 @@ jobs:
           - app: admin
             project_secret: VERCEL_PROJECT_ID_ADMIN
             env_secret: WEB_ENV_ADMIN
+            domain: https://ocar-admin.clienttesting.in
           - app: driver
             project_secret: VERCEL_PROJECT_ID_DRIVER
             env_secret: WEB_ENV_DRIVER
+            domain: https://ocar-driver.clienttesting.in
           - app: user
             project_secret: VERCEL_PROJECT_ID_USER
             env_secret: WEB_ENV_USER
+            domain: https://ocar-user.clienttesting.in
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
       WEB_ENV: ${{ secrets[matrix.env_secret] }}
-      # push / manual run on main = production; pull requests = preview.
+      # pull requests = preview; everything else (gated workflow_run, manual) = production.
       TARGET: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
     steps:
       - name: Check Vercel secrets are configured
@@ -75,7 +123,10 @@ jobs:
           done
           exit $missing
 
+      # workflow_run runs the default branch's workflow file, so check out the tested commit explicitly.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -84,6 +135,15 @@ jobs:
 
       - name: Install Vercel CLI
         run: npm install --global vercel@${{ env.VERCEL_CLI_VERSION }}
+
+      # What is serving production right now: the rollback target if the new release fails.
+      - name: Remember the current production deployment
+        id: prev
+        if: env.TARGET == 'production'
+        run: |
+          prev=$(python3 .github/scripts/web_release.py current "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" || true)
+          echo "id=$prev" >> "$GITHUB_OUTPUT"
+          echo "Current production deployment: ${prev:-none}"
 
       # Pulls project settings (root directory, framework, build commands) and env vars into
       # .vercel/. Run from the repo root so the monorepo root directory is honoured.
@@ -144,4 +204,38 @@ jobs:
           {
             echo "### ${{ matrix.app }} (${TARGET})"
             echo "$url"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---- production only: make it live, check it, roll back if it is bad ----
+
+      # After a rollback, Vercel stops auto-assigning production domains to new deployments
+      # until one is promoted. Promoting the deployment we just made always re-enables that.
+      - name: Promote the new deployment (re-enables auto-assign after any earlier rollback)
+        id: promote
+        if: env.TARGET == 'production'
+        continue-on-error: true
+        run: vercel promote "${{ steps.deploy.outputs.url }}" --yes --timeout 3m
+
+      - name: Wait until the new deployment is the live production deployment
+        id: live
+        if: env.TARGET == 'production'
+        run: |
+          new_id=$(python3 .github/scripts/web_release.py deployment-id "${{ steps.deploy.outputs.url }}" "$VERCEL_ORG_ID")
+          echo "new_id=$new_id" >> "$GITHUB_OUTPUT"
+          python3 .github/scripts/web_release.py live "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" "$new_id" 240
+
+      - name: Smoke-test the live site
+        id: smoke
+        if: env.TARGET == 'production'
+        run: python3 .github/scripts/web_release.py smoke "${{ matrix.domain }}" "$API_URL"
+
+      - name: Roll back to the previous production deployment
+        if: failure() && env.TARGET == 'production' && steps.deploy.outcome == 'success' && (steps.live.outcome == 'failure' || steps.smoke.outcome == 'failure') && steps.prev.outputs.id != ''
+        run: |
+          echo "::error::Release of ${{ matrix.app }} failed its live checks; restoring ${{ steps.prev.outputs.id }}"
+          vercel rollback "${{ steps.prev.outputs.id }}" --timeout 3m
+          {
+            echo "### :rotating_light: ${{ matrix.app }} ROLLED BACK"
+            echo "The new release failed its live checks; production was restored to ${{ steps.prev.outputs.id }}."
+            echo "Fix forward, then re-run; the next production deploy re-enables auto-assignment."
           } >> "$GITHUB_STEP_SUMMARY"
