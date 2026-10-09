@@ -222,19 +222,43 @@ Deploy-day note: Overview "revenue today" and completed count moved from `paymen
 ride `completed_at` clock (shared definitions in `api/src/modules/analytics/kpi-definitions.ts`), so rides that cross
 midnight IST land on their completion day; expect a one-time shift versus yesterday's numbers.
 
-## Web deploys (Vercel, admin / driver / user)
+## Releases and rollbacks (API + web + mobile)
+
+**Order of a release:** push to `main` -> CI -> `Deploy` (API: migrations, blue/green, 10-minute
+bake, automatic flip-back) -> `Deploy Web (Vercel)`. The web workflow runs only if CI passed and
+the API deploy neither failed nor rolled back (`gate` job, `.github/scripts/web_release.py gate`),
+so a site never ships against a backend that was rolled back. PRs get preview deployments only.
+Manual run (Actions > Deploy Web (Vercel) > Run workflow, on `main`) deploys production without
+the gate: use it only when you know the API is healthy.
+
+**What rolls back automatically**
+- API: failed health/smoke test (nothing user-facing changed) or 5xx during the bake -> traffic flips back to the old color.
+- Web: after a production deploy the workflow promotes it, waits until it is the live production
+  deployment, then checks the live domain (pages load, no baked `[SENSITIVE]` placeholder, prod API
+  address present, `/health` ok). On failure it runs `vercel rollback <previous deployment>` (Pro
+  plan: any earlier production deployment) and the job fails. After a rollback Vercel stops
+  auto-assigning domains to new deployments; the next production deploy runs `vercel promote`, which
+  re-enables it. Manual rollback: Vercel dashboard > project > Deployments > Instant Rollback.
+- Mobile apps: nothing rolls back (installed builds stay in use). The API must therefore stay
+  compatible with old app versions; `mobile_payments_enabled` is the kill switch for in-app payments.
+
+**What does NOT roll back: the database.** Migrations run before the traffic flip and are never
+undone, so after a flip-back the old API runs against the new schema. Rules (expand/contract):
+1. Ship additive changes first (new nullable column / new table / new index / new endpoint). Old code must keep working with them.
+2. Never drop, rename or change the type of something the previous release still reads or writes in the same release as the code change. Remove it in a later release, after the bake window and after old app versions are retired.
+3. Backfills run as separate jobs, not inside the release migration.
+4. New endpoints and response fields are additive; do not change or remove existing ones while old web/mobile builds exist.
+
+## Web deploys (Vercel, admin / driver / user): setup
 
 The three web apps deploy from GitHub Actions (`.github/workflows/deploy-web.yml`), not from
-Vercel's Git integration: Vercel blocks deployments whose commit author is not a seat on the
-team (single-seat plan, pushes come from another account), so each app's `vercel.json` sets
-`git.deploymentEnabled: false` and the workflow deploys with a token instead.
+Vercel's Git integration: Vercel blocks every deployment it builds itself when the commit author is
+not a seat on the team (single-seat plan, pushes come from another account), so each app's
+`vercel.json` sets `git.deploymentEnabled: false` and the workflow builds on the runner and uploads
+the result (`--prebuilt`, which is not subject to that check).
 
-- **Production:** every push to `main` deploys all three apps. Manual re-run: Actions > "Deploy Web (Vercel)" > Run workflow (on `main`).
-- **Preview:** every same-repo PR gets a preview URL per app (in the job summary).
-- **Secrets** (repo Actions secrets): `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_ADMIN`, `VERCEL_PROJECT_ID_DRIVER`, `VERCEL_PROJECT_ID_USER`. The job fails fast with a clear message if one is missing.
-- **Env vars** (`NEXT_PUBLIC_*`, `VITE_*`) live in the Vercel projects and are pulled at build time; change them in Vercel, then re-run the workflow.
+- **Secrets** (repo Actions secrets): `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_ADMIN`, `VERCEL_PROJECT_ID_DRIVER`, `VERCEL_PROJECT_ID_USER`, and `WEB_ENV_ADMIN` / `WEB_ENV_DRIVER` / `WEB_ENV_USER` (each app's public `NEXT_PUBLIC_*` / `VITE_*` settings as a dotenv block). The Vercel projects keep those settings as Sensitive, which `vercel pull` cannot read (it returns the text `[SENSITIVE]`), so the workflow overrides them from these secrets; a guard fails the job if the placeholder is still in the build. To change a public setting, update the matching `WEB_ENV_*` secret (and Vercel, for consistency) and re-run the workflow.
 - **Rotate the token:** create a new one at vercel.com/account/tokens (scope = the team), update `VERCEL_TOKEN`, delete the old one.
-- **Rollback:** Vercel dashboard > the project > Deployments > promote a previous production deployment.
 
 ## Rotate a secret (DB URL, JWT secret, Razorpay keys, etc.)
 
