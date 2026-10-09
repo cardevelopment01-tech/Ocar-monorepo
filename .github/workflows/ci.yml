@@ -44,6 +44,26 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
 
+  # The API deploy runs migrations before flipping traffic and never undoes them, so a rollback
+  # leaves the OLD release on the NEW schema. Migrations must be backward compatible
+  # (expand/contract): see docs/OPS_RUNBOOK.md "Releases and rollbacks". Pull requests only.
+  migration-check:
+    name: Migration safety
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: ci-migration-check-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Unit tests for the CI scripts
+        run: python3 -m unittest discover -s .github/scripts -p "test_*.py"
+      - name: Check migrations added or changed by this PR
+        run: python3 .github/scripts/migration_check.py --base "origin/${{ github.base_ref }}"
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
