@@ -1,18 +1,22 @@
 name: Deploy Web (Vercel)
 
-# Vercel's own Git integration blocks deployments when the commit author is not a
-# seat on the Vercel team (single-seat plan, pushes come from another account).
-# Deploying with a Vercel token from here avoids that check entirely: the deploy is
-# attributed to the token's owner, not the commit author. Each app's vercel.json sets
-# `git.deploymentEnabled: false` so the native integration stops posting failed checks.
+# Vercel's Git integration and Vercel-side builds are blocked when the commit author is not a
+# seat on the Vercel team (single-seat plan, pushes come from another account): every
+# deployment Vercel builds itself ends up BLOCKED ("commit author doesn't have permission").
+# Prebuilt deployments (build on the runner, upload the result) are not subject to that check,
+# so this workflow builds here and uploads with a token. Each app's vercel.json sets
+# `git.deploymentEnabled: false`.
 #
 # One-time setup (repo Settings > Secrets and variables > Actions):
 #   VERCEL_TOKEN                 account token (vercel.com/account/tokens), scope = the team
-#   VERCEL_ORG_ID                team/org id (Team Settings > General, or .vercel/project.json "orgId")
-#   VERCEL_PROJECT_ID_ADMIN      project id of ocar-monorepo-admin   (Project Settings > General)
-#   VERCEL_PROJECT_ID_DRIVER     project id of ocar-monorepo-driver
-#   VERCEL_PROJECT_ID_USER       project id of ocar-monorepo-user
-# Env vars (NEXT_PUBLIC_*, VITE_*) stay in the Vercel projects; `vercel pull` fetches them.
+#   VERCEL_ORG_ID                team/org id
+#   VERCEL_PROJECT_ID_ADMIN / _DRIVER / _USER   project ids (Project Settings > General)
+#   WEB_ENV_ADMIN / _DRIVER / _USER             the app's public build settings as a dotenv block
+#       (NEXT_PUBLIC_* for admin and user, VITE_* for driver: API URL, Firebase, Maps, app name,
+#       demo mode). Needed because the Vercel projects store these as "Sensitive" and
+#       `vercel pull` cannot read those: it returns the literal text "[SENSITIVE]", which then
+#       gets baked into the bundles and breaks every API call. These values are public in the
+#       shipped JS anyway.
 
 on:
   push:
@@ -37,6 +41,7 @@ jobs:
       (github.event_name == 'push') ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    timeout-minutes: 20
     concurrency:
       group: deploy-web-${{ matrix.app }}-${{ github.ref }}
       # Never cancel a production deploy half-way; superseded PR previews can be cancelled.
@@ -47,21 +52,25 @@ jobs:
         include:
           - app: admin
             project_secret: VERCEL_PROJECT_ID_ADMIN
+            env_secret: WEB_ENV_ADMIN
           - app: driver
             project_secret: VERCEL_PROJECT_ID_DRIVER
+            env_secret: WEB_ENV_DRIVER
           - app: user
             project_secret: VERCEL_PROJECT_ID_USER
+            env_secret: WEB_ENV_USER
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+      WEB_ENV: ${{ secrets[matrix.env_secret] }}
       # push / manual run on main = production; pull requests = preview.
       TARGET: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
     steps:
       - name: Check Vercel secrets are configured
         run: |
           missing=0
-          for v in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+          for v in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID WEB_ENV; do
             if [ -z "${!v}" ]; then echo "::error::$v is not set (see the setup notes at the top of this workflow)"; missing=1; fi
           done
           exit $missing
@@ -76,36 +85,63 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@${{ env.VERCEL_CLI_VERSION }}
 
-      # Build on Vercel, not on the runner. `vercel pull` + `vercel build` cannot read env
-      # vars marked "Sensitive" in the project (it substitutes the literal text
-      # "[SENSITIVE]"), which broke every NEXT_PUBLIC_* / VITE_* value baked into the
-      # bundles (API URL, Firebase, Maps). A remote build resolves them server-side.
-      # Run from the repo root so the project's monorepo Root Directory setting applies.
-      - name: Deploy (remote build on Vercel)
+      # Pulls project settings (root directory, framework, build commands) and env vars into
+      # .vercel/. Run from the repo root so the monorepo root directory is honoured.
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=${{ env.TARGET }}
+
+      # Replace the "[SENSITIVE]" placeholders: for every key in WEB_ENV, drop the pulled line
+      # and write the real value, in the env file(s) `vercel build` reads and in the job env.
+      - name: Apply public build settings from WEB_ENV
+        run: |
+          python3 - <<'PY'
+          import os, pathlib
+          vals = {}
+          for line in os.environ["WEB_ENV"].splitlines():
+              line = line.strip()
+              if line and not line.startswith("#") and "=" in line:
+                  k, v = line.split("=", 1)
+                  vals[k.strip()] = v.strip().strip('"').strip("'")
+          if not vals:
+              raise SystemExit("WEB_ENV is empty")
+          target = os.environ["TARGET"]
+          files = [p for p in pathlib.Path(".").rglob(f".env.{target}.local") if ".vercel" in p.parts and "node_modules" not in p.parts]
+          for p in files:
+              kept = [l for l in p.read_text().splitlines() if l.split("=", 1)[0] not in vals]
+              kept += [f'{k}="{v}"' for k, v in vals.items()]
+              p.write_text("\n".join(kept) + "\n")
+              print(f"patched {p} with {len(vals)} keys")
+          if not files:
+              print("::warning::no pulled env file found; relying on job env only")
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              for k, v in vals.items():
+                  f.write(f"{k}={v}\n")
+          PY
+
+      - name: Build
+        run: |
+          if [ "$TARGET" = "production" ]; then vercel build --prod; else vercel build; fi
+
+      # Guard: never upload a build that has the placeholder baked in.
+      - name: Verify no placeholder env values are baked into the build
+        run: |
+          if grep -rIl --include='*.js' --include='*.html' --include='*.json' '\[SENSITIVE\]' .vercel/output 2>/dev/null | head -5 | grep -q .; then
+            echo "::error::Found the literal [SENSITIVE] placeholder in the build output - a Sensitive env var was not resolved. Not deploying."
+            grep -rIl --include='*.js' --include='*.html' --include='*.json' '\[SENSITIVE\]' .vercel/output | head -5
+            exit 1
+          fi
+          echo "build output is free of the [SENSITIVE] placeholder"
+
+      - name: Deploy
         id: deploy
         run: |
           if [ "$TARGET" = "production" ]; then
-            url=$(vercel deploy --yes --prod)
+            url=$(vercel deploy --prebuilt --prod)
           else
-            url=$(vercel deploy --yes)
+            url=$(vercel deploy --prebuilt)
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
           {
             echo "### ${{ matrix.app }} (${TARGET})"
             echo "$url"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      # Guard: fail the job if the placeholder ever ships again.
-      - name: Verify no placeholder env values were baked in
-        run: |
-          url="${{ steps.deploy.outputs.url }}"
-          html=$(curl -s --max-time 30 "$url" || true)
-          # Deployment protection can answer previews with a login page; only fail on real content.
-          if echo "$html" | grep -q "<html" && echo "$html" | grep -q "_next\|/assets/"; then
-            scripts=$(echo "$html" | grep -o '"/[^"]*\.js"' | tr -d '"' | head -30)
-            for s in $scripts; do
-              if curl -s --max-time 30 "$url$s" | grep -q '\[SENSITIVE\]'; then
-                echo "::error::Found the literal [SENSITIVE] placeholder in $s - a Sensitive env var was not resolved"; exit 1
-              fi
-            done
-          fi
