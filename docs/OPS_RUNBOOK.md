@@ -249,6 +249,20 @@ undone, so after a flip-back the old API runs against the new schema. Rules (exp
 3. Backfills run as separate jobs, not inside the release migration.
 4. New endpoints and response fields are additive; do not change or remove existing ones while old web/mobile builds exist.
 
+**Enforced in CI.** The `Migration safety` job (pull requests, `.github/scripts/migration_check.py`)
+fails a PR that edits, renames or deletes an existing migration (the runner skips files it already ran,
+so such an edit never reaches existing databases), reuses a migration number, or adds a statement that
+breaks the previous release: DROP TABLE/COLUMN/TYPE, RENAME, ALTER COLUMN TYPE, SET NOT NULL, ADD COLUMN
+NOT NULL without DEFAULT, TRUNCATE, DELETE/UPDATE without WHERE, UPDATE cities.boundary, UPDATE rate_cards.
+A reviewed exception goes in the file, with a reason on the same line:
+`-- migration-check: allow drop-column no reader since release 2026-09, backfill done in 104`.
+
+**API smoke test before the traffic flip** (`.github/scripts/api_smoke.py`, run by the Deploy workflow
+against the idle color): health (db + redis), a public read, request validation, auth middleware on
+wallet/rides/admin, and the PayU money routes (SDK signer + confirm, return redirect, webhook ack). Ten
+harmless calls; any failure rolls the idle color back with nothing user-facing changed. Add a check there
+when you add a route whose absence would be a silent outage.
+
 ## Web deploys (Vercel, admin / driver / user): setup
 
 The three web apps deploy from GitHub Actions (`.github/workflows/deploy-web.yml`), not from

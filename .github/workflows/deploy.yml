@@ -221,6 +221,13 @@ jobs:
       BAKE_POLL_INTERVAL: 60
       MAX_5XX_PER_POLL: 5
     steps:
+      # Only the CI helper scripts (the smoke test), from the exact commit being deployed.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: true
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -410,20 +417,21 @@ jobs:
           done
           echo "result=failed" >> "$GITHUB_OUTPUT"
 
+      # 10 harmless checks (.github/scripts/api_smoke.py): health (db + redis), a public read,
+      # request validation, auth middleware on wallet/rides/admin, and the PayU money routes
+      # (SDK signer + confirm, return redirect, webhook ack). This replaces a single cities
+      # read, which let a broken login or payments router through. It runs against the idle
+      # color only; a failure rolls the idle color back with nothing user-facing changed.
       - name: Smoke-test the idle color directly through the ALB (preview header)
         id: smoke
         if: steps.wait.outputs.result == 'success'
         run: |
           set +e
-          for i in 1 2 3; do
-            if curl -sk --max-time 5 -H "Host: $SMOKE_TEST_HOST" -H "X-Deploy-Preview: ${{ steps.colors.outputs.idle }}" \
-                 "https://$ALB_DNS_NAME/api/v1/geo/cities" | grep -q '"slug"'; then
-              echo "result=success" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            sleep 3
-          done
-          echo "result=failed" >> "$GITHUB_OUTPUT"
+          if python3 .github/scripts/api_smoke.py "$ALB_DNS_NAME" "$SMOKE_TEST_HOST" "${{ steps.colors.outputs.idle }}"; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=failed" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Roll back idle color on failed health-check/smoke-test (nothing user-facing ever changed)
         if: steps.wait.outputs.result != 'success' || steps.smoke.outputs.result != 'success'
