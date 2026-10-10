@@ -83,6 +83,15 @@ Rate cards are city-scoped as of migration 078: `city_id IS NULL` = global defau
 Uniqueness for "current row" is per `(COALESCE(city_id, 0), category_id, ride_type)`,
 not just `(category_id, ride_type)` — a city override and the global row can coexist.
 
+### Per-stop charge lives on the rate card
+`rate_cards.stop_charge` (migration 106; `NOT NULL DEFAULT 0`, 0 = stops are free) is the flat fee per added stop, for
+**any** ride type, versioned and city-scoped like every other rate. The old `stop_charges` table is deprecated and no
+longer read. The quote returns it as `charge_per_stop`; booking stamps it on each `ride_stops.stop_charge_applied`;
+`addRideStop` uses the rate card the ride was quoted on (`fare_snapshots.rate_card_id`), so an admin edit mid-trip never
+reprices a ride. A new rate-card version that omits `stop_charge` **carries the previous value forward**; send
+`stop_charge: 0` to make stops free. Both create paths (`pricing.repository.createRateCard`,
+`admin.repository.createAdminRateCard`) must keep doing this.
+
 ### Round-trip pricing versions
 `fare_snapshots.pricing_version` records which formula a ride was quoted under, so settlement bills it the same way
 whenever it completes: **1** = per-day package (km_per_day + driver allowance), **2** = hourly window for bookings up to
@@ -253,6 +262,12 @@ Server initialised in `api/src/websocket/socket.server.ts`.
                                           bumps version), PATCH /:id/active (toggle)
 /api/v1/rides/:id/messages             — POST (send, rate-limited), GET (list), PATCH /read
                                           (mark read) — in-ride chat between rider and driver
+/api/v1/rides/:id/stops                — POST (rider adds a stop; allowed accepted→returning, i.e. also on a
+                                          round trip's return leg, until the driver reaches the drop)
+/api/v1/rides/:id/stops/:seq/skip      — POST, rider only: the only user action that skips a stop (the driver's
+                                          PATCH accepts just arrived|reached; force-completion also skips leftovers). Any stop charge already added stays.
+/api/v1/rides/:id/stops/:seq/unreachable — POST, driver only: "can't reach this stop" asks the rider to skip
+                                          (sets ride_stops.unreachable_requested_at, pushes the rider); never resolves it
 ```
 
 ---

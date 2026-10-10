@@ -14,7 +14,6 @@ vi.mock('@/modules/pricing/pricing.service', () => ({
   getFareEstimate: vi.fn(),
   clampTripHours:  vi.fn((_t: string, h: number | undefined) => h ?? 0),
 }))
-vi.mock('@/modules/pricing/pricing.repository', () => ({ getStopCharge: vi.fn() }))
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 vi.mock('@/websocket/socket.server', () => ({
   socketEvents: { broadcastNewRide: vi.fn(), notifyUserRideUpdate: vi.fn(), sendStopUpdated: vi.fn() },
@@ -32,7 +31,6 @@ vi.mock('@/modules/payments/payments.service', () => ({
 
 import * as repo    from '@/modules/rides/rides.repository'
 import * as pricing from '@/modules/pricing/pricing.service'
-import { getStopCharge } from '@/modules/pricing/pricing.repository'
 import { pool }     from '@/db/client'
 import { createBooking, markStopStatus } from '@/modules/rides/rides.service'
 import { STOP_FREE_WAIT_MINUTES } from '@/constants/limits'
@@ -46,7 +44,7 @@ const BASE = {
   destinationLat: 19.8010, destinationLng: 85.8210, destinationAddress: 'Puri',
   distanceKm: 65, durationMin: 90, originCityId: 1,
 }
-const FARE = { rate_card_id: 1, surge_event_id: null, surge_multiplier: 1,
+const FARE = { rate_card_id: 1, surge_event_id: null, surge_multiplier: 1, charge_per_stop: 0,
   breakdown: { base_fare: 0, distance_fare: 650, time_fare: 108, stop_fare: 0,
     hour_surcharge: 0, overage_fare: 0, surge_fare: 0, subtotal: 758, total: 758 } }
 const RIDE = { id: BigInt(101), user_id: USER_ID, status: 'requested',
@@ -60,25 +58,32 @@ beforeEach(() => {
   vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 0 } as never)
   vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
   vi.mocked(repo.getActiveRideIdForUser).mockResolvedValue(null)
-  vi.mocked(getStopCharge).mockResolvedValue(25 as never)
 })
 
-describe('createBooking — stops are not double-charged on one-way', () => {
-  it('one-way stops carry NO flat per-stop fee (priced via detour distance)', async () => {
+describe('createBooking — per-stop price comes from the rate card the fare was quoted on', () => {
+  // The estimate carries the card's stop_charge (0 = free, the default). Every ride type passes its
+  // stop count and every stop row is stamped with exactly that charge.
+  it('one-way with the default rate card: stops are free', async () => {
     await createBooking(USER_ID, { ...BASE, rideType: 'one_way', stops: [CUTTACK] })
 
-    // fareStopCount must be 0 for one-way — the flat fee would double-charge the detour.
-    expect(vi.mocked(pricing.getFareEstimate).mock.calls[0]![0].stop_count).toBe(0)
-    expect(getStopCharge).not.toHaveBeenCalled()
+    expect(vi.mocked(pricing.getFareEstimate).mock.calls[0]![0].stop_count).toBe(1)
     const insertedStops = vi.mocked(repo.insertRideStops).mock.calls[0]![1]
     expect(insertedStops[0]!.chargeApplied).toBe(0)
   })
 
-  it('round-trip stops DO carry the flat per-stop fee', async () => {
+  it('one-way with an admin-set stop_charge: each stop carries it', async () => {
+    vi.mocked(pricing.getFareEstimate).mockResolvedValue({ ...FARE, charge_per_stop: 15 } as never)
+    await createBooking(USER_ID, { ...BASE, rideType: 'one_way', stops: [CUTTACK] })
+
+    const insertedStops = vi.mocked(repo.insertRideStops).mock.calls[0]![1]
+    expect(insertedStops[0]!.chargeApplied).toBe(15)
+  })
+
+  it('round-trip stops carry the card charge', async () => {
+    vi.mocked(pricing.getFareEstimate).mockResolvedValue({ ...FARE, charge_per_stop: 25 } as never)
     await createBooking(USER_ID, { ...BASE, rideType: 'round_trip', tripHours: 4, stops: [CUTTACK] })
 
     expect(vi.mocked(pricing.getFareEstimate).mock.calls[0]![0].stop_count).toBe(1)
-    expect(getStopCharge).toHaveBeenCalled()
     const insertedStops = vi.mocked(repo.insertRideStops).mock.calls[0]![1]
     expect(insertedStops[0]!.chargeApplied).toBe(25)
   })

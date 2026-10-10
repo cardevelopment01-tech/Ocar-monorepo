@@ -42,7 +42,6 @@ import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
 import { calculateFare, isHourlyRoundTrip, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
 import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
-import { getStopCharge } from '@/modules/pricing/pricing.repository'
 import {
   MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
   RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
@@ -469,11 +468,11 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   // Derived server-side so the persisted count and ride_stops rows can never
   // diverge — client-supplied stopCount is accepted-but-ignored (see BookingRequest).
   const stopCount = data.stops?.length ?? 0
-  // Only round trips levy the flat per-stop charge. Rental stops are a free
-  // itinerary (§2.2); one-way stops are priced through the detour distance the
-  // client routes through the waypoints (§5.2 v2 trigger) — the flat fee would
-  // double-charge on a per-km ride type, so both pass 0 here.
-  const fareStopCount = data.rideType === 'round_trip' ? stopCount : 0
+  // Every ride type passes its stop count; what a stop costs is the rate card's stop_charge
+  // (0 = free, the default). Round trips carry a flat fee. One-way is also priced through the
+  // detour distance the client routes through the waypoints, so an admin who sets a one-way
+  // stop_charge adds a flat fee on top of that — their call, off by default.
+  const fareStopCount = stopCount
 
   // Enforce minimum 4h for round trips — must match pricing.service clamp so
   // fare_snapshots.trip_hours records the same value used to compute the fare.
@@ -564,7 +563,8 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   const ride = await repo.createRide(rideInput)
 
   if (data.stops && data.stops.length > 0) {
-    const chargePerStop = data.rideType === 'round_trip' ? await getStopCharge(data.categoryId) : 0
+    // Same rate card the fare above was quoted on, so each stop row and stop_fare agree.
+    const chargePerStop = fareEstimate.charge_per_stop
     await repo.insertRideStops(
       BigInt(ride.id),
       data.stops.map(stop => ({ ...stop, chargeApplied: chargePerStop }))
@@ -1093,7 +1093,84 @@ export async function markStopStatus(
   return { success: true, stop }
 }
 
-const STOP_ADDABLE_STATUSES = new Set(['accepted', 'driver_arrived', 'in_progress'])
+// Driver can't get to a pending stop (closed road, unsafe spot). They cannot skip it
+// themselves, so this asks the rider to — the rider's skipRideStop is the only thing
+// that resolves it. Pushes the rider (they may not have the app open) and flags the
+// stop over the ride room so both screens update live; the flag also rides on every
+// stop read, so a rider who opens the app later still sees the prompt.
+export async function reportStopUnreachable(driverId: bigint, rideId: bigint, sequence: number) {
+  const ride = await assertRideStopAccess(driverId, rideId)
+
+  const before = (await repo.getRideStops(rideId)).find(s => s.sequence === sequence)
+  const stop = await repo.markStopUnreachable(rideId, sequence)
+  if (!stop) {
+    throw Object.assign(new Error('Stop not found or already resolved'), { httpStatus: 409 })
+  }
+
+  socketEvents.sendStopUpdated(rideId.toString(), {
+    rideId: rideId.toString(),
+    sequence: stop.sequence,
+    status: stop.status,
+    reachedAt: stop.reached_at,
+    unreachableRequestedAt: stop.unreachable_requested_at,
+  })
+
+  // Only the first request notifies; a repeat tap is a no-op for the rider.
+  if (!before?.unreachable_requested_at) {
+    try {
+      await notifyOwner({
+        ownerType: 'user',
+        ownerId: BigInt(ride.user_id),
+        type: 'stop_unreachable',
+        title: "Your driver can't reach a stop",
+        body: `${stop.address ?? `Stop ${stop.sequence}`} — open the trip to skip it or keep it.`,
+        rideId,
+        tag: `stop-unreachable:${rideId}:${stop.sequence}`,
+      })
+    } catch (err) {
+      log.error({ err, rideId }, 'stop-unreachable notification failed')
+    }
+  }
+
+  return { success: true, stop }
+}
+
+// Stops can be added (and skipped) while the ride is on the way. 'returning' is a round trip's
+// return leg: the rider may add a stop on the way back, and a pending one must stay skippable,
+// or the end-code's pending-stops block could strand the trip.
+const STOP_ADDABLE_STATUSES = new Set(['accepted', 'driver_arrived', 'in_progress', 'returning'])
+
+// The rider decides to drop a pending stop. The driver can no longer skip (see
+// markStopStatus callers), so this is the only path to 'skipped' besides forced
+// completion. The stop's flat charge is NOT reversed here — that is a pricing
+// decision (new pricing_version), not something to change silently.
+export async function skipRideStop(userId: bigint, rideId: bigint, sequence: number) {
+  const ride = await repo.getRideCoreById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (BigInt(ride.user_id) !== userId) {
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  }
+  if (!STOP_ADDABLE_STATUSES.has(ride.status)) {
+    throw Object.assign(new Error('Stops can only be skipped while the ride is on the way'), { httpStatus: 409 })
+  }
+  if (ride.drop_arrived_at) {
+    throw Object.assign(new Error('The driver has already reached the drop'), { httpStatus: 409, code: 'DROP_ALREADY_REACHED' })
+  }
+
+  const stop = await repo.markStopStatus(rideId, sequence, 'skipped')
+  if (!stop) {
+    throw Object.assign(new Error('Stop not found or already resolved'), { httpStatus: 409 })
+  }
+
+  socketEvents.sendStopUpdated(rideId.toString(), {
+    rideId: rideId.toString(),
+    sequence: stop.sequence,
+    status: stop.status,
+    reachedAt: stop.reached_at,
+  })
+
+  return { success: true, stop }
+}
 
 // Visiting order for pending stops: nearest-next, so a stop added late doesn't
 // zig-zag the driver. Once the trip is under way the first pending stop is the
@@ -1183,9 +1260,9 @@ export async function addRideStop(
     }
   }
 
-  const chargeApplied = ride.ride_type === 'round_trip'
-    ? await getStopCharge(Number(ride.category_id))
-    : 0
+  // The rate card this ride was quoted on (its fare snapshot), so an admin editing the card mid-trip
+  // doesn't make later stops cost differently from the fare the rider accepted. 0 = free.
+  const chargeApplied = await repo.getRideStopCharge(rideId)
 
   let newStop
   const MAX_ATTEMPTS = 3
@@ -1214,7 +1291,7 @@ export async function addRideStop(
   const moves = planStopOrder(
     allStops,
     { lat: ride.origin_lat, lng: ride.origin_lng },
-    ride.status === 'in_progress'
+    ride.status === 'in_progress' || ride.status === 'returning'
   )
   if (moves.length > 0) {
     try {
@@ -1261,7 +1338,7 @@ export async function addRideStop(
 // Uber/Ola/Rapido's own pattern: the rider can nudge the pickup point after
 // booking, bounded to a small radius so it reads as a GPS correction, not a
 // new pickup choice — no fare recompute needed (the delta never crosses a
-// rate bucket). Same statuses as STOP_ADDABLE_STATUSES minus in_progress:
+// rate bucket). Only before the driver has arrived:
 // once the driver has arrived, "where do I pick you up" no longer applies.
 const PICKUP_EDITABLE_STATUSES = ['requested', 'accepted']
 

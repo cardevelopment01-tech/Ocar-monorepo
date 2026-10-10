@@ -16,7 +16,13 @@ type DriverAssignedPayload = {
   bookedCategoryName?: string | null
   assignedCategoryName?: string | null
 }
-type StopUpdatedPayload = { sequence: number; status: 'reached' | 'skipped'; reachedAt: string | null }
+type StopUpdatedPayload = {
+  sequence: number
+  status: 'pending' | 'reached' | 'skipped'
+  reachedAt: string | null
+  // Present only when the driver asked the rider to skip this stop.
+  unreachableRequestedAt?: string | null
+}
 // `stops` = the server's full re-ordered list (nearest-next); absent on older servers.
 type StopAddedPayload = { stop: RideDetailExtra['stops'][number]; stops?: RideDetailExtra['stops'] }
 type ChatMessagePayload = { senderType: 'user' | 'driver' }
@@ -131,7 +137,17 @@ export function useRideTracking(rideId: string) {
     function onStopUpdated(payload: StopUpdatedPayload) {
       setRide((prev) =>
         prev
-          ? { ...prev, stops: prev.stops.map((s) => (s.sequence === payload.sequence ? { ...s, status: payload.status, reachedAt: payload.reachedAt } : s)) }
+          ? {
+              ...prev,
+              stops: prev.stops.map((s) => (s.sequence === payload.sequence
+                ? {
+                    ...s,
+                    status: payload.status,
+                    reachedAt: payload.reachedAt,
+                    ...(payload.unreachableRequestedAt !== undefined ? { unreachableRequestedAt: payload.unreachableRequestedAt } : {}),
+                  }
+                : s)),
+            }
           : prev
       )
     }

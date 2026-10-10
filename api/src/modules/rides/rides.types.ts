@@ -133,6 +133,8 @@ export interface RideStop {
   reached_at: string | null
   stop_charge_applied: string
   wait_charge: string
+  /** Set when the driver asked the rider to skip this stop; the rider decides. */
+  unreachable_requested_at: string | null
 }
 
 export interface BookingRequest {

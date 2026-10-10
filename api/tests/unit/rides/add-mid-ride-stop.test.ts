@@ -4,13 +4,10 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   getRideCoreById: vi.fn(),
   getRideStops:    vi.fn(),
   appendRideStop:  vi.fn(),
+  getRideStopCharge: vi.fn(),
 }))
 
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 1 }) }, withTransaction: vi.fn() }))
-
-vi.mock('@/modules/pricing/pricing.repository', () => ({
-  getStopCharge: vi.fn().mockResolvedValue(30),
-}))
 
 vi.mock('@/websocket/socket.server', () => ({
   socketEvents: { sendStopAdded: vi.fn() },
@@ -42,6 +39,7 @@ describe('addRideStop', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(repo.getRideStops).mockResolvedValue([])
+    vi.mocked(repo.getRideStopCharge).mockResolvedValue(0)
     vi.mocked(repo.appendRideStop).mockResolvedValue({
       id: BigInt(9), ride_id: RIDE_ID, sequence: 2, lat: 20.30, lng: 85.83,
       address: 'Patia', status: 'pending', arrived_at: null, reached_at: null,
@@ -69,7 +67,7 @@ describe('addRideStop', () => {
     expect(repo.appendRideStop).not.toHaveBeenCalled()
   })
 
-  it('adds a stop with no charge for a one_way ride in progress', async () => {
+  it('adds a free stop on a one_way ride whose rate card has no stop charge', async () => {
     vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: RIDE_ID, user_id: USER_ID, driver_id: BigInt(55), status: 'in_progress', ride_type: 'one_way', category_id: BigInt(1),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
@@ -97,7 +95,8 @@ describe('addRideStop', () => {
     expect(notifyOwner).not.toHaveBeenCalled()
   })
 
-  it('applies the flat stop charge for a round_trip ride', async () => {
+  it("applies the ride's rate-card stop charge", async () => {
+    vi.mocked(repo.getRideStopCharge).mockResolvedValue(30)
     vi.mocked(repo.getRideCoreById).mockResolvedValue({
       id: RIDE_ID, user_id: USER_ID, status: 'accepted', ride_type: 'round_trip', category_id: BigInt(3),
       origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
@@ -108,6 +107,30 @@ describe('addRideStop', () => {
     expect(repo.appendRideStop).toHaveBeenCalledWith(RIDE_ID, { ...STOP, chargeApplied: 30 })
     // The charge must reach the fare snapshot settlement bills from.
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE fare_snapshots SET stop_fare'), [RIDE_ID, 30])
+  })
+
+  it("adds a stop on a round trip's return leg ('returning') with the rate-card stop charge", async () => {
+    vi.mocked(repo.getRideStopCharge).mockResolvedValue(30)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
+      id: RIDE_ID, user_id: USER_ID, driver_id: BigInt(55), status: 'returning', ride_type: 'round_trip', category_id: BigInt(3),
+      origin_lat: 20.10, origin_lng: 85.70, dest_lat: 20.60, dest_lng: 85.90, drop_arrived_at: null,
+    } as never)
+
+    await addRideStop(USER_ID, RIDE_ID, STOP)
+
+    expect(repo.appendRideStop).toHaveBeenCalledWith(RIDE_ID, { ...STOP, chargeApplied: 30 })
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE fare_snapshots SET stop_fare'), [RIDE_ID, 30])
+    expect(socketEvents.sendStopAdded).toHaveBeenCalled()
+  })
+
+  it('refuses a stop once the driver has reached the drop, even on the return leg', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
+      id: RIDE_ID, user_id: USER_ID, driver_id: BigInt(55), status: 'returning', ride_type: 'round_trip', category_id: BigInt(3),
+      origin_lat: 20.10, origin_lng: 85.70, dest_lat: 20.60, dest_lng: 85.90, drop_arrived_at: new Date(),
+    } as never)
+
+    await expect(addRideStop(USER_ID, RIDE_ID, STOP)).rejects.toMatchObject({ code: 'DROP_ALREADY_REACHED' })
+    expect(repo.appendRideStop).not.toHaveBeenCalled()
   })
 
   it('retries once on a unique-violation race and succeeds on the second attempt', async () => {

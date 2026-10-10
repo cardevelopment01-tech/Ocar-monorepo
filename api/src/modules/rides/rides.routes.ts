@@ -391,6 +391,24 @@ router.post('/:id/stops', authenticate(), onlyUser, async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+router.post('/:id/stops/:sequence/unreachable', authenticate(), onlyDriver, async (req, res, next) => {
+  try {
+    const sequence = parseInt(req.params['sequence']!, 10)
+    if (isNaN(sequence)) { res.status(400).json({ error: 'sequence required' }); return }
+    const result = await service.reportStopUnreachable(req.driver!.id, BigInt(req.params['id']!), sequence)
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
+router.post('/:id/stops/:sequence/skip', authenticate(), onlyUser, async (req, res, next) => {
+  try {
+    const sequence = parseInt(req.params['sequence']!, 10)
+    if (isNaN(sequence)) { res.status(400).json({ error: 'sequence required' }); return }
+    const result = await service.skipRideStop(req.user!.id, BigInt(req.params['id']!), sequence)
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
 // ── Pickup pin edit (rider, bounded-radius correction) ────────
 
 router.patch('/:id/pickup', authenticate(), onlyUser, async (req, res, next) => {
@@ -417,9 +435,15 @@ router.patch('/:id/stops/:sequence', authenticate(), onlyDriver, async (req, res
       res.status(400).json({ error: 'sequence and status (arrived|reached|skipped) required' }); return
     }
     const rideId = BigInt(req.params['id']!)
+    // Skipping is rider-only now (POST /:id/stops/:sequence/skip). Driver builds from before that
+    // still send 'skipped' from their Skip button, so treat it as the new "can't reach this stop"
+    // request, which asks the rider, instead of failing it with a 400 mid-trip.
+    // ponytail: remove the 'skipped' branch once those driver builds are retired.
     const result = status === 'arrived'
       ? await service.markStopArrived(driverId, rideId, sequence)
-      : await service.markStopStatus(driverId, rideId, sequence, status)
+      : status === 'skipped'
+        ? await service.reportStopUnreachable(driverId, rideId, sequence)
+        : await service.markStopStatus(driverId, rideId, sequence, status)
     res.json(result)
   } catch (err) { next(err) }
 })
