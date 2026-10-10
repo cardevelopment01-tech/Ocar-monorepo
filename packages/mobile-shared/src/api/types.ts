@@ -22,6 +22,8 @@ export type RideStop = {
   reachedAt: string | null
   stopChargeApplied: string
   waitCharge: string
+  // Set when the driver asked the rider to skip this stop (they can't reach it); the rider decides.
+  unreachableRequestedAt?: string | null
 }
 
 export type FareEstimate = {

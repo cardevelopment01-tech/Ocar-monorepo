@@ -516,6 +516,10 @@ export async function listAdminSurgeEvents() { return repo.listAdminSurgeEvents(
 export async function createAdminRateCard(data: Parameters<typeof repo.createAdminRateCard>[0]) {
   if (!data.categoryId || !data.rideType) throw createHttpError(AppErrors.VALIDATION_ERROR)
   if (data.ratePerKm <= 0 || data.minFare <= 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  // Per-stop price: 0 (free) or a positive amount. The column CHECK (>= 0) is the last line; this keeps a bad value a 4xx, not a 500.
+  if (data.stopCharge !== undefined && (!Number.isFinite(data.stopCharge) || data.stopCharge < 0 || data.stopCharge > 99999)) {
+    throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
   return repo.createAdminRateCard(data)
 }
 

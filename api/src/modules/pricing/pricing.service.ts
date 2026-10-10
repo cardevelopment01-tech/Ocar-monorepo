@@ -15,11 +15,10 @@ export function clampTripHours(rideType: string, tripHours: number | undefined):
 export async function getFareEstimate(
   req: FareEstimateRequest
 ): Promise<FareEstimateResponse> {
-  // These four lookups are independent of each other — run them concurrently
-  // instead of paying 4 sequential round trips.
-  const [rateCard, chargePerStop, surgeEvent, pkg] = await Promise.all([
+  // These lookups are independent of each other — run them concurrently
+  // instead of paying sequential round trips.
+  const [rateCard, surgeEvent, pkg] = await Promise.all([
     repo.getCurrentRateCard(req.category_id, req.ride_type, req.city_id ?? null),
-    repo.getStopCharge(req.category_id),
     req.city_id ? repo.getActiveSurge(req.city_id, req.category_id) : Promise.resolve(null),
     req.ride_type === 'rental' && req.rental_package_id
       ? repo.getRentalPackage(req.rental_package_id)
@@ -34,6 +33,9 @@ export async function getFareEstimate(
   }
 
   const surgeMultiplier = surgeEvent ? parseFloat(surgeEvent.multiplier) : 1.0
+  // Per-stop price lives on the rate card (rate_cards.stop_charge, 0 = free) so it is versioned and
+  // city-scoped like every other rate. Applies to any ride type the admin sets it on.
+  const chargePerStop = rateCard.stop_charge != null ? parseFloat(rateCard.stop_charge) : 0
 
   let packageFare: number | null = null
   let extraPerKm = 0
@@ -85,6 +87,7 @@ export async function getFareEstimate(
     rate_card_id:     rateCard.id,
     surge_event_id:   surgeEvent?.id ?? null,
     surge_multiplier: surgeMultiplier,
+    charge_per_stop:  chargePerStop,
     breakdown,
   }
   if (rentalHours !== undefined) response.rental_hours = rentalHours

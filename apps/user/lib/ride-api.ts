@@ -15,6 +15,8 @@ export type RideStop = {
   reached_at: string | null
   stop_charge_applied: string
   wait_charge: string
+  // Set when the driver asked the rider to skip this stop (they can't reach it).
+  unreachable_requested_at?: string | null
 }
 
 export type FareEstimate = {
@@ -300,6 +302,11 @@ export const rideApi = {
   addStop: async (rideId: string, stop: StopInput): Promise<RideStop> => {
     const res = await api.post(`/api/v1/rides/${rideId}/stops`, stop)
     return res.data
+  },
+
+  // The driver can no longer skip a stop; the rider owns it. The server keeps any stop charge.
+  skipStop: async (rideId: string, sequence: number): Promise<void> => {
+    await api.post(`/api/v1/rides/${rideId}/stops/${sequence}/skip`)
   },
 
   updatePickup: async (

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, colors, radii, spacing, typography, fonts, getApiErrorMessage } from '@ocar/mobile-shared'
+import { Button, ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, colors, radii, spacing, typography, fonts, getApiErrorMessage } from '@ocar/mobile-shared'
 import { api, serverNow } from '@/services/api'
 import { triggerSos } from '@/features/safety/api'
 import { useLocationStore } from '@/store/useLocationStore'
@@ -18,13 +18,14 @@ import { CancelSheet } from '@/features/ride-tracking/components/CancelSheet'
 import { AddStopSheet } from '@/features/ride-tracking/components/AddStopSheet'
 import { EditPickupSheet } from '@/features/ride-tracking/components/EditPickupSheet'
 import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
+import { NextStopRow } from '@/features/ride-tracking/components/NextStopRow'
 import { TripDetailsCard } from '@/features/ride-tracking/components/TripDetailsCard'
 import { FareDriftToast, UpgradeToast } from '@/features/ride-tracking/components/Toasts'
 import { TripSummary } from '@/features/trip-summary/TripSummary'
 import { ReconnectBanner } from '@/features/ride-tracking/components/ReconnectBanner'
 import { DriverCancelledBanner } from '@/features/ride-tracking/components/DriverCancelledBanner'
 import { useRideTracking } from '@/features/ride-tracking/useRideTracking'
-import { cancelRide, addStop, updatePickup, type StopInput } from '@/features/ride-tracking/api'
+import { cancelRide, addStop, skipStop, updatePickup, type StopInput } from '@/features/ride-tracking/api'
 import { ASSIGNED_STATUSES, IN_PROGRESS_STATUSES, SEARCHING_STATUSES } from '@/features/ride-tracking/types'
 import type { StatusKey } from '@/features/ride-tracking/statusConfig'
 import { resolveBookingError } from '@/features/booking/api'
@@ -82,6 +83,9 @@ export default function RideTrackingScreen() {
   const [pickupError, setPickupError] = useState<string | null>(null)
   const [pickupToast, setPickupToast] = useState(false)
   const [detailsExpanded, setDetailsExpanded] = useState(false)
+  // Stops whose "driver can't reach this" prompt the rider chose to keep; the timeline Skip still works.
+  const [keptStops, setKeptStops] = useState<number[]>([])
+  const [skippingStop, setSkippingStop] = useState(false)
 
   // Sheet entrance: a plain fade + 40px rise (not a spring) -- same treatment
   // as driver-mobile's RideSheet, so every docked bottom sheet in the app
@@ -132,6 +136,27 @@ export default function RideTrackingScreen() {
     }
   }
 
+  // Every skip (the timeline, the next-stop row, or the answer to "driver can't reach this") goes
+  // through here, so the busy flag blocks a double tap and a failure surfaces the same way.
+  function runSkip(sequence: number) {
+    if (skippingStop) return
+    setSkippingStop(true)
+    skipStop(rideId, sequence)
+      .then(retry)
+      .catch((err) => {
+        setAddStopError(getApiErrorMessage(err, "Couldn't skip that stop. Please try again."))
+        setTimeout(() => setAddStopError(null), 5000)
+      })
+      .finally(() => setSkippingStop(false))
+  }
+
+  function handleSkipStop(stop: { sequence: number; address?: string | null }) {
+    Alert.alert('Skip this stop?', `${stop.address ?? `Stop ${stop.sequence}`} will be removed from your trip. Any stop charge already added to your fare stays.`, [
+      { text: 'Keep stop', style: 'cancel' },
+      { text: 'Skip stop', style: 'destructive', onPress: () => runSkip(stop.sequence) },
+    ])
+  }
+
   async function handleUpdatePickup(pickup: { lat: number; lng: number; address: string | null }) {
     setPickupUpdating(true)
     setPickupError(null)
@@ -178,8 +203,16 @@ export default function RideTrackingScreen() {
   const isCancelled = ride.status === 'cancelled' || ride.status === 'no_drivers'
   const hasDriver = ride.driverId != null && (isAssigned || isInProgress)
   const status = (ride.status as StatusKey)
-  const canCall = ride.status === 'accepted' || ride.status === 'driver_arrived' || ride.status === 'in_progress'
-  const canAddStop = ride.status === 'accepted' || ride.status === 'driver_arrived' || ride.status === 'in_progress'
+  // 'returning' = a round trip's return leg: calling, adding and skipping stops all stay available on it.
+  const canCall = ride.status === 'accepted' || ride.status === 'driver_arrived' || ride.status === 'in_progress' || ride.status === 'returning'
+  const canAddStop = canCall
+  // Mirrors api skipRideStop: the driver can no longer skip, so the rider owns it until the drop is reached.
+  const canSkipStop = canAddStop && !ride.dropArrivedAt
+  const unreachableStop = canSkipStop
+    ? ride.stops.find((s) => s.status === 'pending' && s.unreachableRequestedAt && !keptStops.includes(s.sequence))
+    : undefined
+  const pendingStops = ride.stops.filter((s) => s.status === 'pending')
+  const nextStop = canSkipStop ? pendingStops[0] : undefined
   const canCancel = ride.status === 'accepted' || ride.status === 'driver_arrived'
   const canEditPickup = PICKUP_EDITABLE_STATUSES.has(ride.status)
   const fare = ride.totalFinal != null
@@ -232,6 +265,28 @@ export default function RideTrackingScreen() {
 
           <StatusBanner status={status} eta={eta} {...(status === 'accepted' && !driverLocated ? { overrideSub: 'Locating your driver…' } : {})} />
 
+          {unreachableStop ? (
+            <View style={styles.unreachableBanner} accessibilityRole="alert">
+              <Text style={styles.unreachableTitle}>Your driver can't reach a stop</Text>
+              <Text style={styles.unreachableBody}>
+                {unreachableStop.address ?? `Stop ${unreachableStop.sequence}`}. Skip it, or keep it and your driver will continue to it.
+              </Text>
+              <View style={styles.unreachableActions}>
+                <Button
+                  label="Skip stop"
+                  loading={skippingStop}
+                  onPress={() => runSkip(unreachableStop.sequence)}
+                />
+                <Button
+                  label="Keep stop"
+                  variant="ghost"
+                  disabled={skippingStop}
+                  onPress={() => setKeptStops((k) => [...k, unreachableStop.sequence])}
+                />
+              </View>
+            </View>
+          ) : null}
+
           {isInProgress && tripClock.copy ? <TripClock copy={tripClock.copy} stateKey={tripClock.state.kind} /> : null}
 
           {isSearching ? (
@@ -282,6 +337,15 @@ export default function RideTrackingScreen() {
           {/* Ride actions as an icon-over-label strip (Uber's Share / Safety / Cancel row). Trip details (address
               + fare) stays collapsed by default -- Rapido's trip-detail expand -- so the fare isn't permanently
               in front of the rider; Cancel keeps its red, deliberate placement at the end of the row. */}
+          {hasDriver && nextStop && unreachableStop?.sequence !== nextStop.sequence ? (
+            <NextStopRow
+              stop={nextStop}
+              position={ride.stops.findIndex((s) => s.id === nextStop.id) + 1}
+              total={ride.stops.length}
+              busy={skippingStop}
+              onSkip={handleSkipStop}
+            />
+          ) : null}
           {hasDriver ? (
             <RideActions
               actions={[
@@ -295,7 +359,7 @@ export default function RideTrackingScreen() {
           {detailsExpanded && hasDriver ? (
             <View style={styles.detailsExpanded}>
               <TripDetailsCard ride={ride} fare={fare} />
-              {ride.stops.length > 0 ? <StopTimeline stops={ride.stops} /> : null}
+              {ride.stops.length > 0 ? <StopTimeline stops={ride.stops} {...(canSkipStop ? { onSkip: handleSkipStop } : {})} /> : null}
             </View>
           ) : null}
 
@@ -362,6 +426,15 @@ const styles = StyleSheet.create({
   editPickupLink: { alignItems: 'center', paddingVertical: spacing.xs },
   editPickupLinkText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
   detailsExpanded: { gap: spacing.sm },
+  unreachableBanner: {
+    gap: spacing.xs,
+    backgroundColor: colors.warningLight,
+    borderRadius: radii.md,
+    padding: spacing.md,
+  },
+  unreachableTitle: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
+  unreachableBody: { ...typography.body, color: colors.ink600 },
+  unreachableActions: { gap: spacing.xs, marginTop: spacing.xs },
   // Floats on the map, top-right below the "Add stop" pill.
   addStopBtn: {
     alignSelf: 'flex-end',

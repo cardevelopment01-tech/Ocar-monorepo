@@ -21,6 +21,7 @@ export type RideStop = {
   reached_at: string | null
   stop_charge_applied: string
   wait_charge: string
+  unreachable_requested_at?: string | null
 }
 
 export type RideDetail = {
@@ -208,9 +209,18 @@ export const driverRideApi = {
   markStopStatus: async (
     rideId: string,
     sequence: number,
-    status: 'arrived' | 'reached' | 'skipped'
+    status: 'arrived' | 'reached'
   ): Promise<{ success: boolean; stop: RideStop }> => {
     const res = await api.patch(`/api/v1/rides/${rideId}/stops/${sequence}`, { status })
+    return res.data as { success: boolean; stop: RideStop }
+  },
+
+  // The driver can't skip a stop themselves; this asks the rider to (push + prompt). Idempotent server-side.
+  reportStopUnreachable: async (
+    rideId: string,
+    sequence: number
+  ): Promise<{ success: boolean; stop: RideStop }> => {
+    const res = await api.post(`/api/v1/rides/${rideId}/stops/${sequence}/unreachable`)
     return res.data as { success: boolean; stop: RideStop }
   },
 

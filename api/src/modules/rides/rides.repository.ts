@@ -388,7 +388,7 @@ export async function insertRideStops(
          )
          RETURNING id, ride_id, sequence,
            ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-           address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
+           address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at`,
         [rideId, i + 1, stop.lat, stop.lng, stop.address ?? null, stop.chargeApplied]
       )
       rows.push(res.rows[0]!)
@@ -407,7 +407,7 @@ export async function getRideStops(rideId: bigint): Promise<RideStop[]> {
   const res = await pool.query<RideStop>(
     `SELECT id, ride_id, sequence,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at
      FROM ride_stops
      WHERE ride_id = $1
      ORDER BY sequence ASC`,
@@ -434,7 +434,7 @@ export async function appendRideStop(
      )
      RETURNING id, ride_id, sequence,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at`,
     [rideId, stop.lat, stop.lng, stop.address ?? null, stop.chargeApplied]
   )
   return res.rows[0]!
@@ -475,6 +475,20 @@ export async function resequenceStops(
 // Stamp arrival at a stop so wait time can be measured server-side. Idempotent
 // (COALESCE) so a re-tap doesn't reset the clock. One-way only in practice —
 // the driver app only sends 'arrived' for one-way rides.
+// Per-stop price of the rate card a ride was quoted on (fare_snapshots.rate_card_id). 0 when the
+// snapshot or card is missing, which is the safe side: never invent a charge.
+export async function getRideStopCharge(rideId: bigint): Promise<number> {
+  const res = await pool.query<{ stop_charge: string | null }>(
+    `SELECT rc.stop_charge::text AS stop_charge
+       FROM fare_snapshots fs
+       JOIN rate_cards rc ON rc.id = fs.rate_card_id
+      WHERE fs.ride_id = $1`,
+    [rideId]
+  )
+  const n = parseFloat(res.rows[0]?.stop_charge ?? '0')
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
 export async function markStopArrived(
   rideId: bigint,
   sequence: number
@@ -485,7 +499,25 @@ export async function markStopArrived(
      WHERE ride_id = $1 AND sequence = $2 AND status = 'pending'
      RETURNING id, ride_id, sequence,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at`,
+    [rideId, sequence]
+  )
+  return res.rows[0] ?? null
+}
+
+// Driver can't reach a pending stop. Idempotent (COALESCE) so a re-tap neither
+// resets the timestamp nor re-notifies; null = stop not found or already resolved.
+export async function markStopUnreachable(
+  rideId: bigint,
+  sequence: number
+): Promise<RideStop | null> {
+  const res = await pool.query<RideStop>(
+    `UPDATE ride_stops
+     SET unreachable_requested_at = COALESCE(unreachable_requested_at, now()), updated_at = now()
+     WHERE ride_id = $1 AND sequence = $2 AND status = 'pending'
+     RETURNING id, ride_id, sequence,
+       ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at`,
     [rideId, sequence]
   )
   return res.rows[0] ?? null
@@ -513,7 +545,7 @@ export async function markStopStatus(
      WHERE ride_id = $1 AND sequence = $2 AND status = 'pending'
      RETURNING id, ride_id, sequence,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at`,
     [rideId, sequence, status, freeMinutes, ratePerMin]
   )
   return res.rows[0] ?? null

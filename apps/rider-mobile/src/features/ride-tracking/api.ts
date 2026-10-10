@@ -69,7 +69,11 @@ export async function addStop(rideId: string, stop: StopInput) {
   return camelizeKeys(res.data)
 }
 
-export type PickupUpdate = { lat: number; lng: number; address: string | null }
+export async function skipStop(rideId: string, sequence: number): Promise<void> {
+  await api.post(`/api/v1/rides/${rideId}/stops/${sequence}/skip`)
+}
+
+export type PickupUpdate ={ lat: number; lng: number; address: string | null }
 export type PickupUpdateResult = { originLat: number; originLng: number; originAddress: string | null }
 
 export async function updatePickup(rideId: string, pickup: PickupUpdate): Promise<PickupUpdateResult> {
