@@ -1068,7 +1068,14 @@ export async function createRideAssignment(data: {
        (ride_id, driver_id, session_id, expires_at,
         broadcast_round, driver_lat, driver_lng)
      VALUES ($1,$2,$3,$4,$5,$6,$7)
-     ON CONFLICT (ride_id, driver_id) DO NOTHING`,
+     ON CONFLICT (ride_id, driver_id) DO UPDATE
+       SET status = 'offered', expires_at = EXCLUDED.expires_at,
+           session_id = EXCLUDED.session_id, broadcast_round = EXCLUDED.broadcast_round,
+           responded_at = NULL
+       -- Re-offer in a later broadcast round: reopen a declined/expired row, else
+       -- acceptAssignment (needs status = 'offered') rejects the fresh card with
+       -- "Ride no longer available". Accepted/cancelled rows stay untouched.
+       WHERE ride_assignments.status IN ('offered', 'declined', 'expired')`,
     [
       data.rideId, data.driverId, data.sessionId,
       data.expiresAt, data.broadcastRound,
