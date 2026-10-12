@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Alert, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Button, ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, colors, radii, spacing, typography, fonts, getApiErrorMessage } from '@ocar/mobile-shared'
+import { Button, ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, colors, radii, spacing, typography, fonts, getApiErrorMessage, getFreshFix, getLastKnownFix } from '@ocar/mobile-shared'
 import { api, serverNow } from '@/services/api'
 import { triggerSos } from '@/features/safety/api'
 import { useLocationStore } from '@/store/useLocationStore'
@@ -44,6 +44,15 @@ const MAX_SHEET_HEIGHT_RATIO = 0.62
 const SHEET_ENTRANCE_DISTANCE = 40
 const SHEET_ENTRANCE_DURATION_MS = 400
 
+// Booked-time clock for hourly round trips, in rider wording and on the server clock. Null copy = no
+// window (one-way, rental, legacy pricing), so those rides show nothing. It lives in its own component
+// because the hook ticks every second in grace/overtime; in the screen that re-rendered the map, driver
+// card and sheet every second.
+function RideTripClock({ ride }: { ride: NonNullable<ReturnType<typeof useRideTracking>['ride']> }) {
+  const tripClock = useTripWindow(ride, { now: serverNow, audience: 'rider' })
+  return tripClock.copy ? <TripClock copy={tripClock.copy} stateKey={tripClock.state.kind} /> : null
+}
+
 export default function RideTrackingScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const rideId = id ?? ''
@@ -55,23 +64,25 @@ export default function RideTrackingScreen() {
     fareDrift, dismissFareDrift, upgradeCategory, retry,
   } = useRideTracking(rideId)
 
-  // Booked-time clock for hourly round trips, in rider wording and on the server clock. Null copy = no
-  // window (one-way, rental, legacy pricing), so those rides show nothing new. Runs before the early returns.
-  const tripClock = useTripWindow(ride, { now: serverNow, audience: 'rider' })
-
-  const stale = useMemo(
-    () => lastLocationAt != null && Date.now() - lastLocationAt > STALE_LOCATION_MS,
-    [lastLocationAt]
-  )
+  // "Driver's location hasn't updated" must appear when updates STOP, so it needs a timer: a memo on
+  // lastLocationAt only recomputed when a new update arrived, i.e. exactly when it was never true.
+  const [stale, setStale] = useState(false)
+  useEffect(() => {
+    if (lastLocationAt == null) { setStale(false); return }
+    const remaining = lastLocationAt + STALE_LOCATION_MS - Date.now()
+    if (remaining <= 0) { setStale(true); return }
+    setStale(false)
+    const t = setTimeout(() => setStale(true), remaining)
+    return () => clearTimeout(t)
+  }, [lastLocationAt])
 
   const storeLat = useLocationStore((s) => s.lat)
   const storeLng = useLocationStore((s) => s.lng)
   const locationGranted = useLocationStore((s) => s.permission === 'granted')
-  // The store fix is from launch/last foreground and stays put during a ride, so track the rider live here.
-  const live = useLiveLocation(locationGranted).coords
-  // SOS prefers the live fix but keeps the saved one as a fallback: a rough location beats none.
-  const riderLat = live?.lat ?? storeLat
-  const riderLng = live?.lng ?? storeLng
+  // The rider's own position is only needed by "Edit pickup" (distance to the pin) and SOS, so no
+  // GPS/compass watch runs for the whole trip: the watcher starts only while the edit sheet is open
+  // (no compass), and SOS takes a one-off fix when it fires. A continuous watch plus a compass
+  // subscription re-rendered this entire screen on every heading change for hours.
 
   const cancelInFlightRef = useRef(false)
   const [cancelling, setCancelling] = useState(false)
@@ -79,6 +90,7 @@ export default function RideTrackingScreen() {
   const [addStopOpen, setAddStopOpen] = useState(false)
   const [addStopError, setAddStopError] = useState<string | null>(null)
   const [editPickupOpen, setEditPickupOpen] = useState(false)
+  const live = useLiveLocation(locationGranted && editPickupOpen, { heading: false }).coords
   const [pickupUpdating, setPickupUpdating] = useState(false)
   const [pickupError, setPickupError] = useState<string | null>(null)
   const [pickupToast, setPickupToast] = useState(false)
@@ -246,7 +258,16 @@ export default function RideTrackingScreen() {
 
       <SOSButton
         enabled
-        onTrigger={() => triggerSos(rideId, riderLat ?? undefined, riderLng ?? undefined)}
+        onTrigger={async () => {
+          // SOS must not wait on GPS: take a fresh fix only if it lands within 1.5s, else the OS
+          // last-known one, else the saved one (a rough location beats none).
+          const fresh = await Promise.race([
+            getFreshFix().catch(() => null),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+          ])
+          const fix = fresh ?? (await getLastKnownFix())
+          return triggerSos(rideId, fix?.lat ?? storeLat ?? undefined, fix?.lng ?? storeLng ?? undefined)
+        }}
         anchor="top-right"
       />
 
@@ -287,7 +308,7 @@ export default function RideTrackingScreen() {
             </View>
           ) : null}
 
-          {isInProgress && tripClock.copy ? <TripClock copy={tripClock.copy} stateKey={tripClock.state.kind} /> : null}
+          {isInProgress ? <RideTripClock ride={ride} /> : null}
 
           {isSearching ? (
             <View style={styles.searchingBlock}>

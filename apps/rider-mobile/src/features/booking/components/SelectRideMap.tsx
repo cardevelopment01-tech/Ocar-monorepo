@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useIsFocused } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
 import { OCAR_MAP_PROPS, ROUTE } from '@/theme/mapStyle'
@@ -46,7 +47,11 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
   // from. onMapReady is the actual native-ready signal.
   const [mapReady, setMapReady] = useState(false)
 
+  // No polling while another screen (sheet route, ride tracking) is on top.
+  const focused = useIsFocused()
+
   useEffect(() => {
+    if (!focused) return
     let cancelled = false
     async function poll() {
       try {
@@ -73,7 +78,7 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
     // deliberate exception -- bumping it forces this same tear-down/recreate
     // to fire poll() immediately, for a manual "Retry now" action.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickup[0], pickup[1], refreshSignal])
+  }, [pickup[0], pickup[1], refreshSignal, focused])
 
   useEffect(() => {
     if (!mapReady) return
@@ -88,7 +93,11 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, pickup[0], pickup[1], drop[0], drop[1]])
 
-  const routeCoords = routePoints.map(([latitude, longitude]) => ({ latitude, longitude }))
+  // Stable identity: a new array per render re-sent the whole polyline (twice) to the native map.
+  const routeCoords = useMemo(
+    () => routePoints.map(([latitude, longitude]) => ({ latitude, longitude })),
+    [routePoints],
+  )
 
   return (
     <View style={fill ? styles.fillContainer : styles.container}>

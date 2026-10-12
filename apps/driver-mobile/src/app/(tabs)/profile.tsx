@@ -160,7 +160,7 @@ export default function ProfileScreen() {
           <View style={styles.headerRow}>
             <Pressable onPress={openPhotoCamera} disabled={photoBusy} accessibilityRole="button" accessibilityLabel="Change profile photo">
               <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
-                {photoUrl ? <Image source={{ uri: photoUrl }} style={styles.avatarImg} /> : <Text style={styles.avatarText}>{initial}</Text>}
+                {photoUrl ? <Image source={{ uri: photoUrl }} style={styles.avatarImg} resizeMethod="resize" /> : <Text style={styles.avatarText}>{initial}</Text>}
                 {photoBusy ? <ActivityIndicator style={StyleSheet.absoluteFill} color={colors.inkInverse} /> : null}
               </LinearGradient>
               <View style={[styles.avatarBadge, photoRejected ? styles.avatarBadgeRejected : null]}>

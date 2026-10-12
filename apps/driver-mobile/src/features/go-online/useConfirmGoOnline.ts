@@ -5,6 +5,7 @@ import { getApiErrorMessage, getCurrentOrLastKnownPosition } from '@ocar/mobile-
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { connectSocket } from '@/services/socket'
 import { startBackgroundTracking } from '@/services/location/backgroundTask'
+import { promptBatteryOptimizationOnce } from '@/services/batteryOptimization'
 import { goOnline as apiGoOnline } from './api'
 import type { VehicleInfo } from './types'
 
@@ -75,7 +76,8 @@ export function useConfirmGoOnline(
       })
       await startBackgroundTracking()
       connectSocket()
-      router.replace('/(tabs)/home')
+      router.dismissTo('/(tabs)/home')
+      void promptBatteryOptimizationOnce()
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to go online. Please try again.'))
     } finally {

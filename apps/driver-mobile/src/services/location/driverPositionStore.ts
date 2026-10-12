@@ -31,7 +31,10 @@ export const useDriverPositionStore = create<DriverPositionState>()((set, get) =
   setPosition: (position) => {
     const { _staleTimer } = get()
     if (_staleTimer) clearTimeout(_staleTimer)
-    set({ position, lastUpdatedAt: Date.now(), isStale: false, _staleTimer: null })
+    // Position and the next stale deadline land in ONE set(), so subscribers are
+    // notified once per fix instead of twice.
+    const timer = setTimeout(() => set({ isStale: true }), STALE_AFTER_MS)
+    set({ position, lastUpdatedAt: Date.now(), isStale: false, _staleTimer: timer })
   },
 
   startStaleWatch: () => {

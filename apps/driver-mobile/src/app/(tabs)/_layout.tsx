@@ -19,7 +19,7 @@ export default function TabsLayout() {
   // Same floating pill bar as the rider app (one system across both apps); it floats over the screens, so
   // each tab pads its scroll content / docks its sheet using useNavClearance / useNavBottom.
   return (
-    <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <FloatingTabBar {...props} tabs={TABS} />}>
+    <Tabs screenOptions={{ headerShown: false, freezeOnBlur: true }} tabBar={(props) => <FloatingTabBar {...props} tabs={TABS} />}>
       <Tabs.Screen name="home" options={{ title: 'Home' }} />
       <Tabs.Screen name="earnings" options={{ title: 'Earnings' }} />
       <Tabs.Screen name="wallet" options={{ title: 'Wallet' }} />

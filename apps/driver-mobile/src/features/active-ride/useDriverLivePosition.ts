@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import * as Location from 'expo-location'
+import { useMemo } from 'react'
+import { useDriverPositionStore } from '@/services/location/driverPositionStore'
 
 export type DriverLivePosition = {
   position: [number, number]
@@ -10,48 +10,16 @@ export type DriverLivePosition = {
   headingKnown: boolean
 } | null
 
-// The active-ride screen needs the driver's OWN live position for the map
-// marker -- confirmed (outside review) that `backgroundTask.ts`'s location
-// ticks only flow to the server, never back into React state, so this is a
-// separate, local-only subscription. `expo-location` already provides a real
-// GPS heading field directly, so unlike the web app (which derives heading
-// from two relayed fixes) no synthetic bearing calculation is needed here.
+// The driver's own live position for the map marker. This used to start its own
+// High-accuracy watchPositionAsync (and three screens each mounted one, on top of the
+// background task). Now there is ONE stream: the background task's, tuned per ride state
+// in backgroundTask.ts, which fills useDriverPositionStore. This hook just reads it.
 export function useDriverLivePosition(active: boolean): DriverLivePosition {
-  const [state, setState] = useState<DriverLivePosition>(null)
-
-  useEffect(() => {
-    if (!active) {
-      setState(null)
-      return
-    }
-    let subscription: Location.LocationSubscription | null = null
-    let cancelled = false
-
-    Location.requestForegroundPermissionsAsync()
-      .then(({ status }) => {
-        if (cancelled || status !== 'granted') return
-        return Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 5 },
-          (fix) => {
-            const heading = fix.coords.heading
-            setState({
-              position: [fix.coords.latitude, fix.coords.longitude],
-              heading: heading != null && heading >= 0 ? heading : 0,
-              headingKnown: heading != null && heading >= 0,
-            })
-          }
-        )
-      })
-      .then((sub) => {
-        if (sub) subscription = sub
-      })
-      .catch(() => {})
-
-    return () => {
-      cancelled = true
-      subscription?.remove()
-    }
-  }, [active])
-
-  return state
+  const position = useDriverPositionStore((s) => s.position)
+  return useMemo(() => {
+    if (!active || !position) return null
+    const heading = position.heading
+    const known = heading != null && heading >= 0
+    return { position: [position.lat, position.lng], heading: known ? heading : 0, headingKnown: known }
+  }, [active, position])
 }

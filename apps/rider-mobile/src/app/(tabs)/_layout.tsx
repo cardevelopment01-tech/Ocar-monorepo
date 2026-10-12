@@ -28,7 +28,7 @@ export default function TabsLayout() {
   // positioned over the screens, so Trips and Profile pad their scroll content by
   // geo.scrollClearance to stay clear of it.
   return (
-    <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <FloatingTabBar {...props} />}>
+    <Tabs screenOptions={{ headerShown: false, freezeOnBlur: true }} tabBar={(props) => <FloatingTabBar {...props} />}>
       <Tabs.Screen name="home" options={{ title: 'Home' }} />
       <Tabs.Screen name="fleet" options={{ title: 'Fleet' }} />
       <Tabs.Screen name="trips" options={{ title: 'Trips' }} />

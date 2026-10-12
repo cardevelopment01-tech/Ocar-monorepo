@@ -1,7 +1,6 @@
-import { memo, useEffect } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Marker } from 'react-native-maps'
-import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
 import { PinGlyph, type PinVariant } from './PinGlyph'
 
 export type { PinVariant }
@@ -13,39 +12,29 @@ export type LocationPinProps = {
 
 // Matches web's LocationPin.tsx (apps/user/components/map/LocationPin.tsx): a
 // teardrop map pin (not the default OS pin) with a white ring dot, plus a soft
-// pulsing halo on pickup only (draws the eye to "you are here" on first render).
-function PulsingHalo() {
-  const reduced = useReducedMotion()
-  const scale = useSharedValue(1)
-  const opacity = useSharedValue(0.35)
-
-  useEffect(() => {
-    if (reduced) return
-    scale.set(withRepeat(withTiming(2.2, { duration: 1400, easing: Easing.out(Easing.ease) }), -1, false))
-    opacity.set(withRepeat(withTiming(0, { duration: 1400, easing: Easing.out(Easing.ease) }), -1, false))
-  }, [reduced, scale, opacity])
-
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }], opacity: opacity.get() }))
-
-  if (reduced) return null
-  return <Animated.View style={[styles.halo, style]} />
-}
+// halo on pickup only (draws the eye to "you are here").
+// The halo is static. It used to loop a reanimated animation inside the marker, which forced
+// tracksViewChanges=true for the pin's whole life: react-native-maps then re-rasterised the
+// marker to a bitmap about 25 times a second (the single biggest steady CPU/battery cost on the
+// ride screen). Instead the marker is tracked just long enough to paint once, then frozen --
+// the same "track briefly, then freeze" pattern MapHero's user dot uses.
+const SNAPSHOT_MS = 700
 
 function LocationPin({ position, variant }: LocationPinProps) {
+  const [track, setTrack] = useState(true)
+  useEffect(() => {
+    setTrack(true)
+    const t = setTimeout(() => setTrack(false), SNAPSHOT_MS)
+    return () => clearTimeout(t)
+  }, [variant])
   return (
     <Marker
       coordinate={{ latitude: position[0], longitude: position[1] }}
       anchor={{ x: 0.5, y: 1 }}
-      // The pickup pin's PulsingHalo starts its reanimated loop from a
-      // useEffect, which fires after the first paint -- with
-      // tracksViewChanges=false (a static one-time snapshot), react-native-maps
-      // on Android can snapshot before that first paint settles, leaving the
-      // whole marker blank/invisible (not just the halo frozen). The drop pin
-      // has no animation and is safe to snapshot once.
-      tracksViewChanges={variant === 'pickup'}
+      tracksViewChanges={track}
     >
       <View style={styles.wrap}>
-        {variant === 'pickup' ? <PulsingHalo /> : null}
+        {variant === 'pickup' ? <View style={styles.halo} /> : null}
         <PinGlyph variant={variant} />
       </View>
     </Marker>
@@ -54,7 +43,7 @@ function LocationPin({ position, variant }: LocationPinProps) {
 
 const styles = StyleSheet.create({
   wrap: { width: 28, height: 38, alignItems: 'center', justifyContent: 'flex-end' },
-  halo: { position: 'absolute', top: -6, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(14,143,163,0.25)' },
+  halo: { position: 'absolute', top: -6, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(14,143,163,0.18)' },
 })
 
 export default memo(LocationPin, (a, b) =>

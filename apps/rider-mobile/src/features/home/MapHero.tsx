@@ -3,6 +3,7 @@ import { AccessibilityInfo, Pressable, StyleSheet, View, useWindowDimensions } f
 import Animated, {
   FadeIn,
   type SharedValue,
+  cancelAnimation,
   interpolate,
   runOnJS,
   useAnimatedReaction,
@@ -18,6 +19,7 @@ import Animated, {
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg'
 import { LinearGradient } from 'expo-linear-gradient'
 import MapView, { Marker, type Region } from 'react-native-maps'
+import { useIsFocused } from 'expo-router'
 import { PinGlyph, a11yLabelFor, cameraMode, haversineMetres, pillTextFor, type Freshness } from '@ocar/mobile-shared'
 import { ease, font, geo, h } from '@/theme/homeTokens'
 import { OCAR_MAP_PROPS } from '@/theme/mapStyle'
@@ -63,13 +65,19 @@ function regionFor(c: LatLng, width: number, expanded: number, extra: number) {
 function Pulse() {
   const t = useSharedValue(0)
   const reduceMotion = useReducedMotion()
+  // Home stays mounted under booking and ride screens; don't keep a frame callback running there.
+  const focused = useIsFocused()
   useEffect(() => {
     if (reduceMotion) {
       t.set(0.5)
       return
     }
+    if (!focused) {
+      cancelAnimation(t)
+      return
+    }
     t.set(withRepeat(withSequence(withTiming(1, { duration: 2100, easing: ease.inOut }), withTiming(0, { duration: 2100, easing: ease.inOut })), -1))
-  }, [t, reduceMotion])
+  }, [t, reduceMotion, focused])
   const style = useAnimatedStyle(() => ({ opacity: 0.5 + 0.5 * t.get(), transform: [{ scale: 0.82 + 0.48 * t.get() }] }))
   return (
     <Animated.View style={[styles.pulse, style]} pointerEvents="none">
@@ -217,6 +225,7 @@ export function MapHero({
   /** The rider moved the map: this is the new coordinate under the pin. */
   onPickupMove: (c: LatLng) => void
 }) {
+  const focused = useIsFocused()
   const { width } = useWindowDimensions()
   const mapRef = useRef<MapView>(null)
   const extra = Math.round((expanded - geo.peek) / 2)
@@ -352,7 +361,7 @@ export function MapHero({
             onPanDrag={onPanDrag}
             onRegionChangeComplete={onRegionChangeComplete}
           >
-            <UserMarker enabled={locationEnabled} />
+            <UserMarker enabled={locationEnabled && focused} />
           </MapView>
         </Animated.View>
 

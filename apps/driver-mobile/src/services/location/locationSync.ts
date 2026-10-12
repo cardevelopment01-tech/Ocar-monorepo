@@ -34,6 +34,15 @@ export type LocationFix = {
 const FALLBACK_DEBOUNCE_MS = 2000
 let disconnectedSinceMs: number | null = null
 
+// HTTP fallback guard: at most one POST in flight, and after a failure wait out an
+// exponential backoff (3s -> 30s) instead of stacking a new 10s-timeout request on every
+// 3s tick while the network is down (each held the radio up and most were doomed).
+const BACKOFF_START_MS = 3000
+const BACKOFF_MAX_MS = 30_000
+let httpInFlight = false
+let httpBackoffMs = 0
+let httpRetryAt = 0
+
 export async function emitLocationTick(fix: LocationFix): Promise<void> {
   const sessionId = useDriverSessionStore.getState().sessionId
   if (!sessionId) return // not online -- nothing to report against
@@ -48,10 +57,17 @@ export async function emitLocationTick(fix: LocationFix): Promise<void> {
   if (disconnectedSinceMs === null) disconnectedSinceMs = Date.now()
   if (Date.now() - disconnectedSinceMs < FALLBACK_DEBOUNCE_MS) return
 
+  if (httpInFlight || Date.now() < httpRetryAt) return
+  httpInFlight = true
   try {
     await getApi().post('/api/v1/rides/sessions/location', { sessionId, ...fix })
+    httpBackoffMs = 0
   } catch {
-    // Best-effort -- the next ~3s tick retries, matches the existing web driver
-    // app's fire-and-forget location POST pattern.
+    // Best-effort, like the web driver app's fire-and-forget POST; a later tick retries once
+    // the backoff has elapsed.
+    httpBackoffMs = Math.min(httpBackoffMs ? httpBackoffMs * 2 : BACKOFF_START_MS, BACKOFF_MAX_MS)
+    httpRetryAt = Date.now() + httpBackoffMs
+  } finally {
+    httpInFlight = false
   }
 }

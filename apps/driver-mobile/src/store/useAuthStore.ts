@@ -2,7 +2,8 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createHybridStorage, createSecurePersistStorage } from '@ocar/mobile-shared'
-import { clearLoggedFixes, stopBackgroundTracking } from '@/services/location/backgroundTask'
+import { stopBackgroundTracking } from '@/services/location/backgroundTask'
+import { useDriverPositionStore } from '@/services/location/driverPositionStore'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
 
 export interface DriverProfile {
@@ -45,9 +46,9 @@ export const useAuthStore = create<AuthState>()(
         // Lifecycle ownership (Section 3): the auth store owns stopping anything that
         // depends on a live session -- an orphaned background-location task after
         // logout has no session to justify it (battery drain, Play Store risk) and
-        // leaves the spike's location log for the next driver on a shared device.
+        // leaves the last position for the next driver on a shared device.
         stopBackgroundTracking().catch(() => {})
-        clearLoggedFixes().catch(() => {})
+        useDriverPositionStore.getState().reset()
         // RideRequestOverlay is root-mounted and keyed off this store alone, so a
         // still-active ride-request alarm (e.g. the driver logged out before its
         // countdown resolved) would otherwise keep ringing/vibrating right through

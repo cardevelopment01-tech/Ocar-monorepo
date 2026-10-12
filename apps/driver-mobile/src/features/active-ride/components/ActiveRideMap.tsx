@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
 import * as Location from 'expo-location'
-import { OCAR_MAP_PROPS, colors, simplifyPolyline, spacing, typography, Text } from '@ocar/mobile-shared'
+import { OCAR_MAP_PROPS, colors, distanceToPolylineMetres, simplifyPolyline, spacing, typography, Text } from '@ocar/mobile-shared'
 import CarMarker from '@/features/map/components/CarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { useDriverLivePosition } from '../useDriverLivePosition'
 import { fetchRouteLeg } from '../api'
-import { haversineMetres } from '../geo'
 
 export type ActiveRideLeg = 'to-pickup' | 'to-destination'
 
@@ -27,8 +26,15 @@ export type ActiveRideMapProps = {
 }
 
 const DEFAULT_REGION = { latitude: 20.2961, longitude: 85.8245, latitudeDelta: 0.05, longitudeDelta: 0.05 }
-const ROUTE_STALE_MS = 20_000
-const ROUTE_DEVIATION_METRES = 200
+// A good route is only refetched on leg/stop change or when the driver is genuinely off it;
+// the long timer is just a safety net. (Measuring "deviation" from the last fetch ORIGIN made
+// ordinary driving along the route count as deviating every ~20s, ~360 Directions calls/hour.)
+const ROUTE_STALE_MS = 5 * 60_000
+// A failed fetch falls back to a straight line, so retry that soon.
+const ROUTE_RETRY_MS = 20_000
+const ROUTE_OFF_ROUTE_METRES = 75
+// After the driver pans/zooms, don't yank the camera back for this long.
+const USER_PAN_HOLD_MS = 10_000
 
 // Brief "here's the whole picture" beat whenever the leg changes (pickup ->
 // destination), then settles into following the driver -- same beat/duration
@@ -46,10 +52,11 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
   const [permissionDenied, setPermissionDenied] = useState(false)
   const live = useDriverLivePosition(!permissionDenied)
   const [overview, setOverview] = useState(true)
-  const prevLeg = useRef(leg)
+  const userPannedAt = useRef(0)
   const [routePoints, setRoutePoints] = useState<[number, number][]>([])
+  const routePointsRef = useRef<[number, number][]>([])
   const routeFetchSeq = useRef(0)
-  const lastRouteFetch = useRef<{ leg: ActiveRideLeg; stopsKey: string; origin: [number, number]; at: number } | null>(null)
+  const lastRouteFetch = useRef<{ leg: ActiveRideLeg; stopsKey: string; at: number; ok: boolean } | null>(null)
   const stopsKey = stops.map(([lat, lng]) => `${lat},${lng}`).join('|')
 
   useEffect(() => {
@@ -60,9 +67,9 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
 
   const legTarget = leg === 'to-pickup' ? pickup : destination
 
+  // Also runs on mount: `overview` starts true, and without a timer started here the first
+  // leg (and any relaunch mid-ride) stayed in overview forever, re-fitting on every GPS tick.
   useEffect(() => {
-    if (prevLeg.current === leg) return
-    prevLeg.current = leg
     setOverview(true)
     const t = setTimeout(() => setOverview(false), OVERVIEW_BEAT_MS)
     return () => clearTimeout(t)
@@ -70,6 +77,7 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
 
   useEffect(() => {
     if (!live || !legTarget || !mapRef.current) return
+    if (Date.now() - userPannedAt.current < USER_PAN_HOLD_MS) return
     if (overview) {
       mapRef.current.fitToCoordinates(
         [
@@ -95,12 +103,13 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
     if (!live || !legTarget) return
     const prev = lastRouteFetch.current
     const legChanged = !prev || prev.leg !== leg || prev.stopsKey !== stopsKey
-    const deviated = prev ? haversineMetres(live.position, prev.origin) > ROUTE_DEVIATION_METRES : false
-    const stale = prev ? Date.now() - prev.at > ROUTE_STALE_MS : true
-    if (!legChanged && !deviated && !stale) return
+    const stale = prev ? Date.now() - prev.at > (prev.ok ? ROUTE_STALE_MS : ROUTE_RETRY_MS) : true
+    const route = routePointsRef.current
+    const offRoute = !!prev?.ok && route.length >= 2 && distanceToPolylineMetres(live.position, route) > ROUTE_OFF_ROUTE_METRES
+    if (!legChanged && !offRoute && !stale) return
 
     const seq = ++routeFetchSeq.current
-    lastRouteFetch.current = { leg, stopsKey, origin: live.position, at: Date.now() }
+    lastRouteFetch.current = { leg, stopsKey, at: Date.now(), ok: false }
 
     const waypoints = stops
     const pts: [number, number][] = [live.position, ...waypoints, legTarget]
@@ -108,13 +117,24 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
       .then((legs) => {
         if (routeFetchSeq.current !== seq) return
         const points = simplifyPolyline(legs.flatMap((l) => l.polyline))
-        setRoutePoints(points.length >= 2 ? points : [live.position, legTarget])
+        routePointsRef.current = points.length >= 2 ? points : [live.position, legTarget]
+        setRoutePoints(routePointsRef.current)
+        if (lastRouteFetch.current && points.length >= 2) lastRouteFetch.current.ok = true
       })
       .catch(() => {
-        if (routeFetchSeq.current === seq) setRoutePoints([live.position, legTarget])
+        if (routeFetchSeq.current !== seq) return
+        routePointsRef.current = [live.position, legTarget]
+        setRoutePoints(routePointsRef.current)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stops re-fetch keyed by stopsKey, not the array reference
   }, [live, legTarget, leg, stopsKey])
+
+  // One coordinate array per route, not two fresh ones per GPS-tick render -- react-native-maps
+  // re-sends the whole polyline to the native map whenever the prop identity changes.
+  const routeCoords = useMemo(
+    () => routePoints.map(([latitude, longitude]) => ({ latitude, longitude })),
+    [routePoints],
+  )
 
   if (permissionDenied) {
     return (
@@ -135,6 +155,7 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
             : DEFAULT_REGION
         }
         loadingEnabled
+        onPanDrag={() => { userPannedAt.current = Date.now() }}
         {...OCAR_MAP_PROPS}
       >
         <LocationPin position={pickup} variant="pickup" />
@@ -147,12 +168,12 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
           <>
             {/* White halo under the color line, matching web's RoutePolyline.tsx layering. */}
             <Polyline
-              coordinates={routePoints.map(([latitude, longitude]) => ({ latitude, longitude }))}
+              coordinates={routeCoords}
               strokeColor="#ffffff"
               strokeWidth={leg === 'to-pickup' ? 6 : 11}
             />
             <Polyline
-              coordinates={routePoints.map(([latitude, longitude]) => ({ latitude, longitude }))}
+              coordinates={routeCoords}
               strokeColor={leg === 'to-pickup' ? colors.ink600 : colors.primary}
               strokeWidth={leg === 'to-pickup' ? 3 : 7}
               {...(leg === 'to-pickup' ? { lineDashPattern: [8, 8] } : {})}

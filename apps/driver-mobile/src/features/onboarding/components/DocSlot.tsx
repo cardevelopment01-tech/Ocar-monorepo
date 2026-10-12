@@ -95,7 +95,7 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
       style={({ pressed }) => [styles.slot, rejected ? styles.slotRejected : null, pressed && !uploading ? styles.pressedScale : null]}
     >
       {thumbnailUrl ? (
-        <Image source={{ uri: thumbnailUrl }} style={styles.thumb} />
+        <Image source={{ uri: thumbnailUrl }} style={styles.thumb} resizeMethod="resize" />
       ) : (
         <View style={[styles.thumb, styles.thumbEmpty]}>
           <Feather name="camera" size={18} color={colors.ink400} />

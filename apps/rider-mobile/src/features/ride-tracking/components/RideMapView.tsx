@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
 import { OCAR_MAP_PROPS, ROUTE } from '@/theme/mapStyle'
 import CarMarker from '@/features/map/components/CarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
+
+const USER_MOVE_HOLD_MS = 15_000
+const DRIVER_REFIT_MIN_MS = 5_000
 
 export type RideMapViewProps = {
   pickup: [number, number]
@@ -28,7 +31,7 @@ export type RideMapViewProps = {
 // drop/driver now use the same custom SVG markers as web (CarMarker/LocationPin)
 // instead of react-native-maps' default OS pin -- see the input-consistency +
 // premiumness pass this replaced.
-export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 } }: RideMapViewProps) {
+function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 } }: RideMapViewProps) {
   const mapRef = useRef<MapView>(null)
   // Same react-native-maps gotcha as SelectRideMap: fitToCoordinates called
   // before the native view's onMapReady fires silently no-ops, leaving the
@@ -36,9 +39,12 @@ export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHead
   // outside that tiny visible area, reading as "the route isn't there".
   const [mapReady, setMapReady] = useState(false)
   const stopsKey = stops.map(([lat, lng]) => `${lat},${lng}`).join('|')
+  // Bumped whenever the rider drags/zooms the map, so the camera stops fighting them.
+  const userMovedAt = useRef(0)
+  const lastDriverRefit = useRef(0)
+  const holdActive = () => Date.now() - userMovedAt.current < USER_MOVE_HOLD_MS
 
-  useEffect(() => {
-    if (!mapReady) return
+  const fit = useCallback(() => {
     const points: [number, number][] = [pickup, ...stops]
     if (showDrop && drop) points.push(drop)
     if (driverPos) points.push(driverPos)
@@ -47,10 +53,42 @@ export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHead
       points.map(([latitude, longitude]) => ({ latitude, longitude })),
       { edgePadding, animated: true }
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stops re-fit keyed by stopsKey, not the array reference
-  }, [mapReady, pickup, drop, driverPos, showDrop, stopsKey, edgePadding.top, edgePadding.bottom, edgePadding.left, edgePadding.right])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by fitKey below, not array identities
+  }, [pickup, drop, driverPos, showDrop, stopsKey, edgePadding.top, edgePadding.bottom, edgePadding.left, edgePadding.right])
 
-  const routeCoords = routePoints.map(([latitude, longitude]) => ({ latitude, longitude }))
+  // Re-fit when the SET of things on the map changes (status/leg, stops, driver first appearing),
+  // not on every driver location tick -- that animated the camera every few seconds, snapped the
+  // rider back whenever they panned, and kept the GPU at full frame rate for the whole trip.
+  const fitKey = `${pickup[0]},${pickup[1]}|${drop ? `${drop[0]},${drop[1]}` : ''}|${stopsKey}|${showDrop}|${driverPos ? 1 : 0}`
+  useEffect(() => {
+    if (mapReady && !holdActive()) fit()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fitKey captures every input that should trigger a re-fit
+  }, [mapReady, fitKey])
+
+  // The driver drove out of frame: bring everything back, at most every 5s, never while the rider is exploring.
+  useEffect(() => {
+    if (!mapReady || !driverPos || holdActive() || Date.now() - lastDriverRefit.current < DRIVER_REFIT_MIN_MS) return
+    let cancelled = false
+    mapRef.current?.getMapBoundaries().then(({ northEast, southWest }) => {
+      if (cancelled) return
+      const inside =
+        driverPos[0] <= northEast.latitude && driverPos[0] >= southWest.latitude &&
+        driverPos[1] <= northEast.longitude && driverPos[1] >= southWest.longitude
+      if (!inside && !holdActive()) {
+        lastDriverRefit.current = Date.now()
+        fit()
+      }
+    }).catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs per driver tick on purpose; fit is stable enough
+  }, [mapReady, driverPos])
+
+  // One coordinate array per route: a fresh array every render made react-native-maps re-send the
+  // whole polyline (twice: casing + core) to the native map on every driver tick and clock second.
+  const routeCoords = useMemo(
+    () => routePoints.map(([latitude, longitude]) => ({ latitude, longitude })),
+    [routePoints],
+  )
 
   return (
     <View style={styles.container}>
@@ -59,6 +97,7 @@ export function RideMapView({ pickup, drop, driverPos, driverHeading, driverHead
         style={StyleSheet.absoluteFill}
         initialRegion={{ latitude: pickup[0], longitude: pickup[1], latitudeDelta: 0.05, longitudeDelta: 0.05 }}
         onMapReady={() => setMapReady(true)}
+        onPanDrag={() => { userMovedAt.current = Date.now() }}
         loadingEnabled
         {...OCAR_MAP_PROPS}
       >
@@ -88,3 +127,5 @@ const styles = StyleSheet.create({
   // bottom edge). The caller positions this as the base layer.
   container: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 })
+
+export const RideMapView = memo(RideMapViewBase)

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
+import { useIsFocused } from 'expo-router'
 import Animated, {
   Easing,
   cancelAnimation,
@@ -24,7 +25,9 @@ export type OnlineToggleProps = {
 // expanding pulse ring when online, never a plain OS Switch.
 export function OnlineToggle({ isOnline, onToggle, disabled = false }: OnlineToggleProps) {
   const reduced = useReducedMotion()
-  const active = isOnline && !reduced
+  // Home stays mounted under the ride screen; a loop nobody can see still costs a frame callback.
+  const focused = useIsFocused()
+  const active = isOnline && !reduced && focused
   const t = useSharedValue(0)
 
   useEffect(() => {

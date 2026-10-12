@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { StyleSheet, Vibration, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
@@ -41,6 +41,8 @@ export function SlideToConfirm({ label, onConfirm, disabled = false, color = col
     x.set(withSpring(0, { duration: 300, dampingRatio: 1 }))
   }
 
+  // The pan below is memoised, so it must not close over this render's handler.
+  const confirmedRef = useRef<() => void>(() => {})
   function handleConfirmed() {
     setDone(true)
     Vibration.vibrate(30)
@@ -52,7 +54,9 @@ export function SlideToConfirm({ label, onConfirm, disabled = false, color = col
     }
   }
 
-  const pan = Gesture.Pan()
+  confirmedRef.current = handleConfirmed
+  const callConfirmed = useCallback(() => confirmedRef.current(), [])
+  const pan = useMemo(() => Gesture.Pan()
     .enabled(!disabled && !done && maxX > 0)
     .onChange((e) => {
       x.set(Math.min(Math.max(0, x.get() + e.changeX), maxX))
@@ -60,14 +64,15 @@ export function SlideToConfirm({ label, onConfirm, disabled = false, color = col
     .onFinalize(() => {
       if (x.get() >= maxX * THRESHOLD) {
         x.set(withSpring(maxX, { duration: 220, dampingRatio: 1 }))
-        scheduleOnRN(handleConfirmed)
+        scheduleOnRN(callConfirmed)
       } else {
         x.set(withSpring(0, { duration: 260, dampingRatio: 1 }))
       }
-    })
+    }), [disabled, done, maxX, x, callConfirmed])
 
   const handleStyle = useAnimatedStyle(() => ({ transform: [{ translateX: x.get() }] }))
-  const fillStyle = useAnimatedStyle(() => ({ width: x.get() + HANDLE }))
+  // Full-width fill slid with translateX: animating `width` ran a layout pass per drag frame.
+  const fillStyle = useAnimatedStyle(() => ({ transform: [{ translateX: x.get() + HANDLE - trackWidth }] }))
 
   return (
     <View
@@ -81,7 +86,7 @@ export function SlideToConfirm({ label, onConfirm, disabled = false, color = col
       accessibilityActions={[{ name: 'activate' }]}
       onAccessibilityAction={() => { if (!disabled && !done) handleConfirmed() }}
     >
-      <Animated.View style={[styles.fill, fillStyle, { backgroundColor: color }]} />
+      <Animated.View style={[styles.fill, fillStyle, { width: trackWidth, backgroundColor: color }]} />
       <Text style={styles.label} pointerEvents="none" numberOfLines={1}>{done ? doneLabel : label}</Text>
       <GestureDetector gesture={pan}>
         <Animated.View style={[styles.handle, handleStyle]}>

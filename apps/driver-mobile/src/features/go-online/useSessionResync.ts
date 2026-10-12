@@ -3,7 +3,7 @@ import { AppState } from 'react-native'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { connectSocket, disconnectSocket } from '@/services/socket'
-import { stopBackgroundTracking } from '@/services/location/backgroundTask'
+import { ensureBackgroundTracking, stopBackgroundTracking } from '@/services/location/backgroundTask'
 import { fetchCurrentSession } from './api'
 import { decideSessionSync } from './sessionReconcile'
 
@@ -29,6 +29,9 @@ export async function resyncSessionFromServer(): Promise<void> {
     now.setOnline({ id: server.id, vehicleId: server.vehicleId, categoryId: server.categoryId, mode: server.mode })
     connectSocket()
   }
+  // Covers a cold relaunch while online (persisted store or server-restored session): the
+  // task may survive but its ride-interval subscription never does.
+  if (useDriverSessionStore.getState().isOnline) await ensureBackgroundTracking().catch(() => {})
 }
 
 /** Re-syncs whenever the app comes back to the foreground, so a stale "Online" toggle never outlives the session. */
