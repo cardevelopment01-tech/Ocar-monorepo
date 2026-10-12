@@ -19,17 +19,13 @@ export default function EarningsScreen() {
 
   if (loading) {
     return (
-      <FlashList
-        style={styles.screen}
-        data={SKELETON_ROWS}
-        keyExtractor={(i) => String(i)}
-        renderItem={() => (
-          <View style={styles.skeletonRow}>
+      <View style={[styles.screen, styles.content, { paddingTop: insets.top, paddingBottom: clearance }]}>
+        {SKELETON_ROWS.map((i) => (
+          <View key={i} style={styles.skeletonRow}>
             <Skeleton height={80} borderRadius={16} />
           </View>
-        )}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top, paddingBottom: clearance }]}
-      />
+        ))}
+      </View>
     )
   }
 

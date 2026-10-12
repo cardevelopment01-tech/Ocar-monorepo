@@ -1,3 +1,4 @@
+import { useIsFocused } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { AppState } from 'react-native'
 import { create } from 'zustand'
@@ -200,11 +201,14 @@ export function useFreshness(): Freshness {
     return freshnessOf({ permission, fix, timedOut, now: Date.now() })
   }
   const [freshness, setFreshness] = useState<Freshness>(compute)
+  // Home stays mounted under booking/ride screens; its ticker has no reason to run there.
+  const focused = useIsFocused()
   useEffect(() => {
     setFreshness(compute())
+    if (!focused) return
     const id = setInterval(() => setFreshness(compute()), 15_000) // age buckets flip with time, not only with state
     return () => clearInterval(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- compute closes over exactly these values
-  }, [permission, lat, lng, fixedAt, source, timedOut])
+  }, [permission, lat, lng, fixedAt, source, timedOut, focused])
   return freshness
 }

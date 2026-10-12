@@ -5,14 +5,18 @@ import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-sh
 
 // Direct port of the web Earnings page's bar chart -- same spring-in-from-zero
 // bar animation, same "empty bars go flat gray" rule (val > 0 gets the accent).
+const MIN_SCALE = 0.04
+
 function Bar({ value, maxValue, label }: { value: number; maxValue: number; label: string }) {
-  const heightPct = useSharedValue(0)
+  const scale = useSharedValue(0)
 
   useEffect(() => {
-    heightPct.value = withSpring((value / maxValue) * 100, { stiffness: 380, damping: 30 })
-  }, [value, maxValue, heightPct])
+    scale.set(withSpring(value / maxValue, { stiffness: 380, damping: 30 }))
+  }, [value, maxValue, scale])
 
-  const style = useAnimatedStyle(() => ({ height: `${heightPct.value}%` }))
+  // Full-height bar scaled from its bottom edge instead of animating `height`; the floor keeps
+  // an empty day visible as a thin flat bar (the old minHeight: 4).
+  const style = useAnimatedStyle(() => ({ transform: [{ scaleY: Math.max(scale.get(), MIN_SCALE) }] }))
 
   return (
     <View style={styles.barCol}>
@@ -44,6 +48,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.xs, height: 112 },
   barCol: { flex: 1, alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' },
   barTrack: { width: '100%', flex: 1, justifyContent: 'flex-end' },
-  bar: { width: '100%', minHeight: 4, borderRadius: 4 },
+  bar: { width: '100%', height: '100%', transformOrigin: 'bottom', borderRadius: 4 },
   barLabel: { ...typography.caption, color: colors.ink400, fontSize: 10 },
 })

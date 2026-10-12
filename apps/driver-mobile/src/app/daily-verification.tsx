@@ -65,7 +65,7 @@ export default function DailyVerificationScreen() {
       // asset.fileSize is unreliable after a quality re-encode -- see
       // DocSlot.tsx's pickFrom for why this must read the real file size.
       const info = await getInfoAsync(shot.uri)
-      const photo: PickedPhoto = { uri: shot.uri, mimeType: 'image/jpeg', fileSize: info.exists ? (info.size ?? 0) : 0 }
+      const photo: PickedPhoto = { uri: shot.uri, mimeType: 'image/jpeg', fileSize: info.exists ? (info.size ?? 0) : 0, width: shot.width, height: shot.height }
       if (step === 'selfie') setSelfie(photo)
       else setPlate(photo)
       setStage('preview')

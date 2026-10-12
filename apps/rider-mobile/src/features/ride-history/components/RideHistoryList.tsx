@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useNavClearance } from '@/features/home/FloatingTabBar'
@@ -43,7 +43,7 @@ export function RideHistoryList() {
     refresh,
   } = useRideHistory()
 
-  const openRide = (id: string) => router.push(`/ride/${id}`)
+  const openRide = useCallback((id: string) => router.push(`/ride/${id}`), [router])
   const bookRide = () => router.push('/(tabs)/home')
 
   const filtered = useMemo(() => filterRidesByTab(rides, tab), [rides, tab])

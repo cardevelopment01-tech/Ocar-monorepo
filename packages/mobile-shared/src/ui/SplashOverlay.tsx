@@ -31,7 +31,7 @@ const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1)
 // Every animated value here drives only `transform`/`opacity` (rotation, scale,
 // translateX, opacity) -- no layout properties, no blur -- so this stays GPU
 // composited and cheap enough for a low-end Android device, not just a flagship.
-export function SplashOverlay({ logoSource, onDone, durationMs = 1450 }: SplashOverlayProps) {
+export function SplashOverlay({ logoSource, onDone, durationMs = 1100 }: SplashOverlayProps) {
   const overlayOpacity = useSharedValue(1)
   const glowOpacity = useSharedValue(0)
   const glowScale = useSharedValue(0.8)
@@ -65,7 +65,7 @@ export function SplashOverlay({ logoSource, onDone, durationMs = 1450 }: SplashO
     sweepX.value = withDelay(650, withTiming(1, { duration: 550, easing: Easing.inOut(Easing.ease) }))
 
     const timer = setTimeout(() => {
-      overlayOpacity.value = withTiming(0, { duration: 450 }, (finished) => {
+      overlayOpacity.value = withTiming(0, { duration: 300 }, (finished) => {
         if (finished) runOnJS(onDone)()
       })
     }, durationMs)

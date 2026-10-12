@@ -32,14 +32,16 @@ export default function MapPickerScreen() {
   const setPickup = useBookingDraftStore((s) => s.setPickup)
   const setDrop = useBookingDraftStore((s) => s.setDrop)
   const addRecent = useRecentSearchesStore((s) => s.addRecent)
-  const location = useLocationStore()
+  const locLat = useLocationStore((s) => s.lat)
+  const locLng = useLocationStore((s) => s.lng)
+  const locAddress = useLocationStore((s) => s.address)
 
   const existing = isPickup ? pickup : drop
   // The other end of the trip, already confirmed -- shown as a static marker
   // alongside the drag pin so the rider can see both source and destination
   // while positioning this one, instead of just the one point being edited.
   const otherPlace = isPickup ? drop : pickup
-  const fallback = pickup ?? (location.lat !== null ? { address: location.address, lat: location.lat, lng: location.lng! } : null)
+  const fallback = pickup ?? (locLat !== null ? { address: locAddress, lat: locLat, lng: locLng! } : null)
   const initial = existing ?? fallback
   const centerLat = initial?.lat ?? 20.2961
   const centerLng = initial?.lng ?? 85.8245
@@ -48,6 +50,9 @@ export default function MapPickerScreen() {
   const [resolving, setResolving] = useState(false)
   const [coords, setCoords] = useState({ lat: centerLat, lng: centerLng })
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // A slow earlier lookup must not overwrite the address of a newer pin position.
+  const geocodeSeq = useRef(0)
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
   const mapRef = useRef<MapView>(null)
 
   // Frame both points on first open so the other, already-set location is
@@ -65,11 +70,12 @@ export default function MapPickerScreen() {
     setCoords({ lat: region.latitude, lng: region.longitude })
     setResolving(true)
     if (debounceRef.current) clearTimeout(debounceRef.current)
+    const seq = ++geocodeSeq.current
     debounceRef.current = setTimeout(() => {
       fetchReverseGeocode(region.latitude, region.longitude)
-        .then((d) => setAddress(d.address))
-        .catch(() => setAddress('Unknown location'))
-        .finally(() => setResolving(false))
+        .then((d) => { if (seq === geocodeSeq.current) setAddress(d.address) })
+        .catch(() => { if (seq === geocodeSeq.current) setAddress('Unknown location') })
+        .finally(() => { if (seq === geocodeSeq.current) setResolving(false) })
     }, 500)
   }, [])
 

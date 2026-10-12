@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { AppState, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { ReactNode } from 'react'
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated'
@@ -101,8 +101,10 @@ export default function PendingReviewScreen() {
   }
 
   useEffect(() => {
-    const id = setInterval(() => void checkStatus(), 30_000)
-    return () => clearInterval(id)
+    // No polling while backgrounded (Android freezes the process mid-timer anyway); check once on return.
+    const id = setInterval(() => { if (AppState.currentState === 'active') void checkStatus() }, 30_000)
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') void checkStatus() })
+    return () => { clearInterval(id); sub.remove() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

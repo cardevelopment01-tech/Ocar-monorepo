@@ -129,9 +129,21 @@ export async function fetchClassifyTrip(
 // max_passengers, is_active} -- packages/mobile-shared's VehicleCategory now
 // matches that shape exactly (fixed after this file first flagged the drift),
 // so a plain camelize is correct here.
-export async function fetchVehicleCategories(): Promise<VehicleCategory[]> {
-  const res = await api.get<unknown[]>('/api/v1/vehicles/categories')
-  return camelizeKeys<VehicleCategory[]>(res.data)
+// Home's fleet strip, the fare screen and the rental screen all ask for this on every open; the
+// list changes at admin-edit frequency, so share one in-flight/short-lived request between them.
+// A failed request is dropped from the cache so the next caller retries.
+const CATEGORIES_TTL_MS = 5 * 60_000
+let categoriesCache: { at: number; promise: Promise<VehicleCategory[]> } | null = null
+
+export function fetchVehicleCategories(): Promise<VehicleCategory[]> {
+  if (categoriesCache && Date.now() - categoriesCache.at < CATEGORIES_TTL_MS) return categoriesCache.promise
+  const promise = api
+    .get<unknown[]>('/api/v1/vehicles/categories')
+    .then((res) => camelizeKeys<VehicleCategory[]>(res.data))
+  const entry = { at: Date.now(), promise }
+  categoriesCache = entry
+  promise.catch(() => { if (categoriesCache === entry) categoriesCache = null })
+  return promise
 }
 
 export type RideType = 'one_way' | 'round_trip' | 'rental'

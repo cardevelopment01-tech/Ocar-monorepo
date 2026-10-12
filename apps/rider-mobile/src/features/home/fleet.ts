@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import type { ImageSourcePropType } from 'react-native'
 import { fetchVehicleCategories } from '@/features/booking/api'
-import autoImg from '../../../assets/home/fleet-auto.png'
-import hatchbackImg from '../../../assets/home/fleet-hatchback.png'
-import sedanImg from '../../../assets/home/fleet-sedan.png'
-import luxuryImg from '../../../assets/home/fleet-luxury.png'
-import suvImg from '../../../assets/home/fleet-suv.png'
-import vanImg from '../../../assets/home/fleet-van.png'
+import autoImg from '../../../assets/home/fleet-auto.webp'
+import hatchbackImg from '../../../assets/home/fleet-hatchback.webp'
+import sedanImg from '../../../assets/home/fleet-sedan.webp'
+import luxuryImg from '../../../assets/home/fleet-luxury.webp'
+import suvImg from '../../../assets/home/fleet-suv.webp'
+import vanImg from '../../../assets/home/fleet-van.webp'
 
 export type FleetItem = { key: string; slug: string; name: string; seats: number; desc: string; image: ImageSourcePropType | null }
 
