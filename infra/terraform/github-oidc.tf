@@ -302,13 +302,15 @@ resource "aws_iam_role_policy" "github_actions_plan_read" {
         Resource = "*"
       },
       {
-        # Bucket-config reads only (no object reads) so `terraform plan`
-        # can refresh s3-logs-archive.tf's bucket after the first apply.
-        Effect = "Allow"
-        Action = [
-          "s3:GetBucket*", "s3:GetLifecycleConfiguration",
-          "s3:GetEncryptionConfiguration", "s3:ListBucket",
-        ]
+        # Bucket-level reads only so `terraform plan` can refresh
+        # s3-logs-archive.tf's bucket. The provider reads many separate
+        # configuration APIs per bucket (accelerate, replication, request
+        # payment, ...) and several are not named s3:GetBucket* -- an explicit
+        # list failed CI one action at a time (s3:GetAccelerateConfiguration).
+        # The resource is the bucket ARN without /*, so s3:Get* cannot read
+        # any object; same pattern as the state bucket statement above.
+        Effect   = "Allow"
+        Action   = ["s3:Get*", "s3:List*"]
         Resource = "arn:aws:s3:::${var.project_name}-${var.environment}-logs-archive"
       }
     ]
