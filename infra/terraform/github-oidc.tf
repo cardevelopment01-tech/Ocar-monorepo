@@ -454,7 +454,16 @@ resource "aws_iam_role_policy" "github_actions_staging" {
         # s3-logs-archive.tf: staging log bucket (+ objects, for the
         # force_destroy teardown), scoped to that bucket only.
         Effect = "Allow"
-        Action = ["s3:*"]
+        # Explicit verbs rather than s3:* (Trivy AWS-0345): bucket lifecycle/config management plus object
+        # read/write/delete for the force_destroy teardown. Still scoped to this one bucket.
+        Action = [
+          "s3:CreateBucket", "s3:DeleteBucket", "s3:ListBucket", "s3:ListBucketVersions",
+          "s3:GetBucket*", "s3:PutBucket*", "s3:DeleteBucket*",
+          "s3:GetLifecycleConfiguration", "s3:PutLifecycleConfiguration",
+          "s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration",
+          "s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion",
+          "s3:ListMultipartUploadParts", "s3:AbortMultipartUpload",
+        ]
         Resource = [
           "arn:aws:s3:::${var.project_name}-staging-logs-archive",
           "arn:aws:s3:::${var.project_name}-staging-logs-archive/*",
