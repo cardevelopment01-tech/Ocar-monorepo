@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
-import { DRIVER_DOC_GROUPS, VEHICLE_DOC_GROUPS } from '../constants'
+import { DRIVER_DOC_GROUPS, VEHICLE_DOC_GROUPS, PROFILE_PHOTO_KEY } from '../constants'
 import { Field, FieldError, TextField } from './FormPrimitives'
 import { DateField } from './DateField'
 import { DocSlot } from './DocSlot'
@@ -9,9 +9,26 @@ import type { DocumentsForm } from '../useDocumentsForm'
 
 /** Identity numbers + every driver/vehicle document slot, the shared body of the onboarding wizard's
  *  Documents step and the standalone Documents screen (Profile / Home banner / push notification). */
-export function DocumentsFields({ form }: { form: DocumentsForm }) {
+export function DocumentsFields({ form, showProfilePhoto }: { form: DocumentsForm; showProfilePhoto?: boolean }) {
+  const photo = form.slotState[PROFILE_PHOTO_KEY]
   return (
     <>
+      {showProfilePhoto ? (
+        <View style={styles.groupCard}>
+          <Text style={styles.groupLabel}>Profile photo</Text>
+          <DocSlot
+            label="Selfie"
+            selfie
+            state={photo?.state ?? 'idle'}
+            thumbnailUrl={photo?.url ?? null}
+            docStatus={photo?.docStatus}
+            rejectionNote={photo?.rejectionNote}
+            error={photo?.error}
+            onPick={(file) => void form.handlePick(PROFILE_PHOTO_KEY, PROFILE_PHOTO_KEY, false, file)}
+          />
+        </View>
+      ) : null}
+
       <View style={styles.identityCard}>
         <View style={styles.cardHeader}>
           <Feather name="shield" size={15} color={colors.primary} />

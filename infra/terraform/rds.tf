@@ -80,9 +80,9 @@ resource "aws_db_instance" "main" {
   # work at all -- must be set before CREATE PUBLICATION is attempted.
   parameter_group_name = aws_db_parameter_group.main.name
 
-  # Real backups on the actual DB now (Neon handles this today) -- 7 days is
+  # Real backups on the actual DB now (Neon handles this today) -- 14 days is
   # a starting point, not a tuned retention policy.
-  backup_retention_period   = 7
+  backup_retention_period   = 14
   skip_final_snapshot       = var.environment == "prod" ? false : true
   final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-${var.environment}-db-final" : null
   deletion_protection       = var.environment == "prod"

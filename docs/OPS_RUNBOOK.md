@@ -201,6 +201,36 @@ aren't cheaply reversible the way an app deploy is).
 - The `Color` tag (`blue`/`green`) on every ASG/instance/target-group lets
   Grafana dashboards split metrics by color during a deploy.
 
+## Archived logs (S3 + Athena, 6-month retention)
+
+The `ocar_api` container's Pino lines are copied by Alloy to
+`s3://ocar-prod-logs-archive/logs/year=…/month=…/day=…/hour=…/` (UTC, gzip,
+5-minute batches, deleted after 190 days). Loki stays the live-debugging path.
+Prod **metrics** are not archived to S3 — they live in Grafana Cloud only
+(13 months on Pro; query via its Prometheus API).
+
+- **Query:** Athena console → workgroup `ocar-prod-logs`, database
+  `ocar_prod_logs`, table `app_logs` (one `line` column = raw JSON). Saved
+  queries `app-logs-errors-today` / `app-logs-by-request-id`. **Always filter
+  `year`/`month`/`day`**; the workgroup cancels queries scanning >10 GB.
+  Access: attach the `logs_archive_reader_policy_arn` Terraform output to the
+  person's IAM user/role.
+- **Roll out a config change:** `terraform apply` updates the IAM role and the
+  SSM `alloy-config`/`docker-compose-prod` copies, but running instances only
+  read them at boot. Infra-only merges don't trigger a deploy, so after the
+  apply run **Actions → Deploy → Run workflow** to roll a fresh color.
+- **Verify after a deploy:** objects appear in the bucket within ~10 min;
+  `docker logs ocar_alloy` shows no awss3/`stability` errors; the Athena
+  "errors today" query returns rows.
+- **If it breaks:** archiving failure never affects Loki or the API. A scrape
+  over its `sample_limit` shows as `up == 0` for that job.
+- **Alloy health:** the `ocar_alloy` container has a healthcheck on `/-/ready`
+  (`docker ps` shows `healthy`). `deploy.yml` blocks cutover and rolls the
+  idle color back if it isn't healthy. Grafana alerts (folder "Ocar Alerts",
+  group `ocar-alloy-pipeline`): heartbeat lost, config load failed, unhealthy
+  components, S3 archive failing, remote_write failing. Those alerts need
+  `terraform apply` in `infra/terraform/observability/` (separate state).
+
 ## Reports: digest did not arrive / Reports slow
 
 Alert: **Admin daily digest not sent** (Grafana, `admin_digest_runs_total{result="sent"}`). The digest runs

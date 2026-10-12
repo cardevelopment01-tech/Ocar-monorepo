@@ -10,6 +10,7 @@ import {
 import type { DriverDetail } from '@/lib/admin-api'
 import StatusPill from './StatusPill'
 import { cn } from '@/lib/utils'
+import { extractErrorMessage } from '@/lib/http-errors'
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -150,15 +151,52 @@ function SidebarDoc({ doc, selected, idx, total, onClick }: {
 
 // ─── Inline reason form ───────────────────────────────────────────────────────
 
-function ReasonForm({ title, placeholder, confirmLabel, danger, loading, error, onSubmit, onCancel }: {
+// One-tap reasons that pre-fill the note with a plain-language, driver-facing instruction (still
+// editable). The note is what the driver sees in the app, push and SMS, so presets are written to
+// tell them exactly what to fix.
+type ReasonPreset = { label: string; text: string }
+
+export const PHOTO_PRESETS: ReasonPreset[] = [
+  { label: 'Blurry / dark', text: 'Your photo is blurry or too dark. Retake it facing the light, holding the phone steady.' },
+  { label: 'Face not clear', text: 'Your face is not fully visible. Look straight at the camera with your whole face inside the oval.' },
+  { label: 'Cap / glasses', text: 'Please remove your cap, sunglasses or mask and retake the photo so riders can recognise you.' },
+  { label: 'Not you / group', text: 'The photo must show only you. Retake a selfie with no other person or picture in the frame.' },
+  { label: "Doesn't match ID", text: 'Your photo does not match the face on your ID. Retake a clear, recent selfie of yourself.' },
+]
+
+export const DOC_PRESETS: ReasonPreset[] = [
+  { label: 'Blurry / unreadable', text: 'The document is blurry or unreadable. Retake it in good light so all text is sharp.' },
+  { label: 'Cut off', text: 'Part of the document is cut off. Make sure all four corners are visible in the photo.' },
+  { label: 'Expired', text: 'This document has expired. Please upload a valid, in-date document.' },
+  { label: 'Wrong document', text: 'This is not the document we asked for. Please upload the correct one.' },
+]
+
+export function ReasonForm({ title, placeholder, confirmLabel, danger, loading, error, presets, onSubmit, onCancel }: {
   title: string; placeholder: string; confirmLabel: string; danger?: boolean
-  loading: boolean; error?: string | null; onSubmit: (r: string) => void; onCancel: () => void
+  loading: boolean; error?: string | null; presets?: ReasonPreset[]; onSubmit: (r: string) => void; onCancel: () => void
 }) {
   const [value, setValue] = useState('')
   const valid = value.trim().length >= 10
   return (
     <div className="space-y-3">
       <p className="text-sm font-semibold text-text-primary">{title}</p>
+      {presets && (
+        <div className="flex flex-wrap gap-1.5">
+          {presets.map(p => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => setValue(p.text)}
+              className={cn(
+                'px-2.5 py-1 text-xs font-medium rounded-full border transition-colors',
+                value === p.text ? 'border-primary bg-primary/10 text-primary' : 'border-border text-text-secondary hover:bg-surface-2'
+              )}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
       <textarea
         value={value}
         onChange={e => setValue(e.target.value)}
@@ -265,9 +303,9 @@ function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onC
           <p className="text-xs text-text-muted mt-1.5">
             Driver claims: {claimedDate ? claimedDate : 'not provided'}
           </p>
-          {error && <p className="text-xs text-danger mt-1.5">{error}</p>}
         </div>
       )}
+      {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex items-center gap-2.5">
         <button
           onClick={() => onSubmit(noExpiry ? '' : value)}
@@ -499,8 +537,7 @@ export default function DocReviewModal({
       await onDriverAction(type, reason)
       onClose()
     } catch (err) {
-      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      setDriverActionError(message ?? 'Action failed. Please try again.')
+      setDriverActionError(extractErrorMessage(err, 'Action failed. Please try again.'))
     } finally { setDriverLoading(false) }
   }
 
@@ -896,6 +933,7 @@ export default function DocReviewModal({
                       placeholder="Explain what needs to be fixed and resubmitted…"
                       confirmLabel="Reject Document"
                       danger
+                      presets={doc.docType === 'profile_photo' ? PHOTO_PRESETS : DOC_PRESETS}
                       loading={docLoading}
                       error={approveError}
                       onSubmit={reason => void doDocReject(reason)}

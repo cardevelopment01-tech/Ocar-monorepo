@@ -2,12 +2,18 @@ import { RequestHandler } from 'express'
 import { verifyAccessToken } from '@/lib/jwt'
 import { AppErrors } from '@/constants/errors'
 import { PrincipalRole, AdminRole } from '@/constants/enums'
-import { getJSON, setWithTTL } from '@/db/redis'
+import { getJSON, setWithTTL, client as redis } from '@/db/redis'
+import { withTimeout } from '@/lib/with-timeout'
+import { logger } from '@/lib/logger'
 import {
   findUserById,
   findDriverById,
   findAdminById,
 } from '@/modules/auth/auth.repository'
+
+// The principal cache is an optimisation. A failed write (Redis slow/down) must never turn into a 401, or every
+// authenticated request logs its user out the moment Redis hiccups.
+const cacheWriteFailed = (err: unknown) => logger.warn({ err }, 'auth principal cache write failed')
 
 const MANDATORY_TOTP_ROLES = new Set(['super_admin', 'finance_admin'])
 
@@ -24,6 +30,17 @@ type CachedAdmin = {
   role: AdminRole
   is_active: boolean
   totp_enabled: boolean
+}
+
+// Legacy tokens (no sid) and a missing Redis key both pass: fail open on infra loss.
+export async function isDriverSessionReplaced(driverId: string, sid: string | undefined): Promise<boolean> {
+  if (!sid) return false
+  try {
+    const current = await withTimeout(redis.get(`auth:driver-sid:${driverId}`))
+    return current !== null && current !== sid
+  } catch {
+    return false
+  }
 }
 
 export function authenticate(): RequestHandler {
@@ -55,7 +72,7 @@ export function authenticate(): RequestHandler {
             return
           }
           user = { id: dbUser.id, code: dbUser.code, status: dbUser.status }
-          await setWithTTL(cacheKey, JSON.stringify(user), PRINCIPAL_CACHE_TTL_SEC)
+          await setWithTTL(cacheKey, JSON.stringify(user), PRINCIPAL_CACHE_TTL_SEC).catch(cacheWriteFailed)
         }
         if (user.status === 'deleted') {
           res.status(401).json({
@@ -66,6 +83,13 @@ export function authenticate(): RequestHandler {
         }
         req.user = { id: BigInt(user.id), code: user.code, role: 'user', status: user.status }
       } else if (payload.role === PrincipalRole.DRIVER) {
+        if (await isDriverSessionReplaced(payload.sub, payload.sid)) {
+          res.status(401).json({
+            error: AppErrors.AUTH_SESSION_REPLACED.message,
+            code: AppErrors.AUTH_SESSION_REPLACED.code,
+          })
+          return
+        }
         const cacheKey = `auth:driver:${id}`
         let driver = await getJSON<CachedDriver>(cacheKey)
         if (!driver) {
@@ -78,7 +102,7 @@ export function authenticate(): RequestHandler {
             return
           }
           driver = { id: dbDriver.id, code: dbDriver.code, status: dbDriver.status }
-          await setWithTTL(cacheKey, JSON.stringify(driver), PRINCIPAL_CACHE_TTL_SEC)
+          await setWithTTL(cacheKey, JSON.stringify(driver), PRINCIPAL_CACHE_TTL_SEC).catch(cacheWriteFailed)
         }
         if (driver.status === 'banned') {
           res.status(401).json({
@@ -107,7 +131,7 @@ export function authenticate(): RequestHandler {
             is_active: dbAdmin.is_active,
             totp_enabled: dbAdmin.totp_enabled,
           }
-          await setWithTTL(cacheKey, JSON.stringify(admin), PRINCIPAL_CACHE_TTL_SEC)
+          await setWithTTL(cacheKey, JSON.stringify(admin), PRINCIPAL_CACHE_TTL_SEC).catch(cacheWriteFailed)
         }
         if (!admin.is_active) {
           res.status(401).json({

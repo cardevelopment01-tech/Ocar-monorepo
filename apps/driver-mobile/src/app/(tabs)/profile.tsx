@@ -1,16 +1,19 @@
-import { useEffect, useState } from 'react'
-import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
+import { useCallback, useEffect, useState } from 'react'
+import { ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, fonts, useNavClearance, card, sectionLabel, Text } from '@ocar/mobile-shared'
+import Animated, { FadeInDown, FadeIn, useAnimatedStyle } from 'react-native-reanimated'
+import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, fonts, useKeyboardOffset, mapSaveError, useNavClearance, card, sectionLabel, Text } from '@ocar/mobile-shared'
+import Constants from 'expo-constants'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { teardownPushNotifications } from '@/services/notifications'
 import { fetchDriverStats, updateDriverProfile, type DriverStats } from '@/features/profile/api'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
+import { onboardingApi, type PickedFile } from '@/features/onboarding/api'
+import { SelfieCapture } from '@/components/camera/SelfieCapture'
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   active: { bg: colors.successLight, text: colors.success },
@@ -30,11 +33,10 @@ const STATUS_LABELS: Record<string, string> = {
   banned: 'Banned',
 }
 
-// Vehicle/Documents/Personal-info detail screens don't exist on mobile yet (web's
-// /profile/vehicle, /profile/documents, /profile/personal have no mobile counterpart
-// built this pass) -- rows stay visual-parity placeholders, same "known gap, not a
-// stub" treatment as the driver-mobile Home screen's omitted Wallet row.
-const PLACEHOLDER_MENU = [{ icon: 'truck' as const, label: 'Vehicle Details', sub: 'Registered vehicle' }]
+
+const SUPPORT_EMAIL = 'grievance@ocarindia.com'
+const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=Ocar%20driver%20support`
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0'
 
 function normalizePhone(raw: string | null | undefined): string {
   if (!raw) return '-'
@@ -51,6 +53,9 @@ export default function ProfileScreen() {
   const updateDriver = useAuthStore((s) => s.updateDriver)
   const isOnline = useDriverSessionStore((s) => s.isOnline)
 
+  // edge-to-edge breaks KeyboardAvoidingView on Android -- see useKeyboardOffset
+  const kbOffset = useKeyboardOffset()
+  const kbStyle = useAnimatedStyle(() => ({ paddingBottom: kbOffset.value }))
   const [stats, setStats] = useState<DriverStats | null>(null)
   const [missingDocs, setMissingDocs] = useState(0)
   const [editing, setEditing] = useState(false)
@@ -60,14 +65,47 @@ export default function ProfileScreen() {
   const [saveErr, setSaveErr] = useState('')
   const [showSignOut, setShowSignOut] = useState(false)
 
-  useEffect(() => {
+  const [statsFailed, setStatsFailed] = useState(false)
+
+  const loadStats = useCallback(() => {
+    setStatsFailed(false)
     fetchDriverStats()
       .then(({ stats: s, onboarding }) => {
         setStats(s)
         setMissingDocs(onboarding.missing_documents.length)
       })
-      .catch(() => {})
+      .catch(() => setStatsFailed(true))
   }, [])
+
+  useEffect(() => { loadStats() }, [loadStats])
+
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const [photoRejected, setPhotoRejected] = useState(false)
+  const [photoOpen, setPhotoOpen] = useState(false)
+  const [photoBusy, setPhotoBusy] = useState(false)
+
+  useEffect(() => {
+    onboardingApi.getDocumentStatus()
+      .then((s) => {
+        setPhotoUrl(s.photos['profile_photo']?.url ?? null)
+        setPhotoRejected(s.photos['profile_photo']?.status === 'rejected')
+      })
+      .catch(() => {}) // avatar falls back to the initial
+  }, [])
+
+  async function replacePhoto(file: PickedFile) {
+    setPhotoOpen(false)
+    setPhotoBusy(true)
+    try {
+      const res = await onboardingApi.uploadDriverDoc(file, 'profile_photo')
+      setPhotoUrl(res.file_url)
+      setPhotoRejected(false)
+    } catch (err) {
+      Alert.alert("Couldn't update photo", mapSaveError(err))
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
 
   const displayName = driver?.full_name ?? driver?.code ?? 'Driver'
   const displayPhone = normalizePhone(driver?.phone)
@@ -86,13 +124,15 @@ export default function ProfileScreen() {
     setSaving(true)
     setSaveErr('')
     try {
-      const body: { full_name: string; email?: string } = { full_name: editName.trim() }
+      const hadEmail = !!driver?.email
+      const body: { full_name: string; email?: string | null } = { full_name: editName.trim() }
       if (editEmail.trim()) body.email = editEmail.trim()
+      else if (hadEmail) body.email = null // field cleared -> remove the saved email
       const updated = await updateDriverProfile(body)
       updateDriver({ full_name: updated.full_name, email: updated.email })
       setEditing(false)
-    } catch {
-      setSaveErr('Could not save. Please try again.')
+    } catch (err) {
+      setSaveErr(mapSaveError(err))
     } finally {
       setSaving(false)
     }
@@ -108,9 +148,15 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md, paddingBottom: clearance }]}>
         <Animated.View entering={FadeIn.duration(420)} style={styles.headerCard}>
           <View style={styles.headerRow}>
-            <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
-              <Text style={styles.avatarText}>{initial}</Text>
-            </LinearGradient>
+            <Pressable onPress={() => setPhotoOpen(true)} disabled={photoBusy} accessibilityRole="button" accessibilityLabel="Change profile photo">
+              <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
+                {photoUrl ? <Image source={{ uri: photoUrl }} style={styles.avatarImg} /> : <Text style={styles.avatarText}>{initial}</Text>}
+                {photoBusy ? <ActivityIndicator style={StyleSheet.absoluteFill} color={colors.inkInverse} /> : null}
+              </LinearGradient>
+              <View style={[styles.avatarBadge, photoRejected ? styles.avatarBadgeRejected : null]}>
+                <Feather name={photoRejected ? 'alert-circle' : 'camera'} size={11} color={photoRejected ? colors.error : colors.ink600} />
+              </View>
+            </Pressable>
             <View style={styles.headerInfo}>
               <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
               <Text style={styles.phone}>+91 {displayPhone}</Text>
@@ -130,6 +176,12 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           </View>
+
+          {statsFailed ? (
+            <Pressable onPress={loadStats} accessibilityRole="button">
+              <Text style={styles.statsRetry}>Couldn't load your stats. Tap to retry.</Text>
+            </Pressable>
+          ) : null}
 
           {stats && stats.top_tags.length > 0 ? (
             <View style={styles.tagsRow}>
@@ -151,7 +203,7 @@ export default function ProfileScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.menuLabel}>Documents</Text>
-                <Text style={styles.menuSub}>{documentGate.hasRejected ? 'Action needed' : 'Verified documents'}</Text>
+                <Text style={styles.menuSub}>{documentGate.hasRejected ? 'Action needed' : missingDocs > 0 ? 'Upload to get verified' : 'Verified documents'}</Text>
               </View>
               {documentGate.hasRejected ? (
                 <View style={styles.alertBadge}>
@@ -164,21 +216,16 @@ export default function ProfileScreen() {
               ) : null}
               <Feather name="chevron-right" size={14} color={colors.ink400} />
             </Pressable>
-            {/* Not built yet, plain rows, no chevron, so they don't invite a tap that goes nowhere. */}
-            {PLACEHOLDER_MENU.map((item, i) => (
-              <View key={item.label} style={[styles.menuRow, i < PLACEHOLDER_MENU.length - 1 ? styles.menuRowBorder : null]}>
-                <View style={styles.menuIcon}>
-                  <Feather name={item.icon} size={15} color={colors.ink400} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.menuLabel}>{item.label}</Text>
-                  <Text style={styles.menuSub}>{item.sub}</Text>
-                </View>
-                <View style={styles.soonBadge}>
-                  <Text style={styles.soonBadgeText}>Soon</Text>
-                </View>
+            <Pressable onPress={() => router.push('/onboarding/vehicle?edit=1')} style={styles.menuRow} accessibilityRole="button">
+              <View style={styles.menuIcon}>
+                <Feather name="truck" size={15} color={colors.primary} />
               </View>
-            ))}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuLabel}>Vehicle Details</Text>
+                <Text style={styles.menuSub}>Registered vehicle</Text>
+              </View>
+              <Feather name="chevron-right" size={14} color={colors.ink400} />
+            </Pressable>
           </View>
         </Animated.View>
 
@@ -195,21 +242,37 @@ export default function ProfileScreen() {
               </View>
               <Feather name="chevron-right" size={14} color={colors.ink400} />
             </Pressable>
-            <View style={[styles.menuRow, styles.menuRowBorder]}>
+            <Pressable onPress={() => router.push('/notifications')} style={[styles.menuRow, styles.menuRowBorder]} accessibilityRole="button">
               <View style={styles.menuIcon}>
-                <Feather name="user" size={15} color={colors.ink400} />
+                <Feather name="bell" size={15} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuLabel}>Notifications</Text>
+                <Text style={styles.menuSub}>Ride, document & wallet alerts</Text>
+              </View>
+              <Feather name="chevron-right" size={14} color={colors.ink400} />
+            </Pressable>
+            <Pressable onPress={() => router.push('/onboarding/personal?edit=1')} style={[styles.menuRow, styles.menuRowBorder]} accessibilityRole="button">
+              <View style={styles.menuIcon}>
+                <Feather name="user" size={15} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.menuLabel}>Personal & Emergency Info</Text>
                 <Text style={styles.menuSub}>Address, ID & emergency contact</Text>
               </View>
-              <View style={styles.soonBadge}>
-                <Text style={styles.soonBadgeText}>Soon</Text>
+              <Feather name="chevron-right" size={14} color={colors.ink400} />
+            </Pressable>
+            <Pressable onPress={() => void Linking.openURL(SUPPORT_MAILTO).catch(() => Alert.alert('Email us', SUPPORT_EMAIL))} style={[styles.menuRow, styles.menuRowBorder]} accessibilityRole="button">
+              <View style={styles.menuIcon}>
+                <Feather name="help-circle" size={15} color={colors.primary} />
               </View>
-            </View>
-            {/* The only functional row in this section -- deep-links to apps/user's
-                hosted /legal/terms (which itself cross-links to /legal/privacy)
-                rather than duplicating the legal text natively. */}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuLabel}>Help & Support</Text>
+                <Text style={styles.menuSub}>Email our support team</Text>
+              </View>
+              <Feather name="chevron-right" size={14} color={colors.ink400} />
+            </Pressable>
+            {/* Deep-links to apps/user's hosted /legal/terms (cross-links to /legal/privacy) instead of duplicating legal text. */}
             <Pressable style={styles.menuRow} onPress={() => void Linking.openURL(TERMS_URL)}>
               <View style={styles.menuIcon}>
                 <Feather name="file-text" size={15} color={colors.primary} />
@@ -228,8 +291,11 @@ export default function ProfileScreen() {
             <Feather name="log-out" size={15} color={colors.error} />
             <Text style={styles.signOutText}>Sign Out</Text>
           </Pressable>
+          <Text style={styles.version}>Ocar Driver v{APP_VERSION}</Text>
         </Animated.View>
       </ScrollView>
+
+      <SelfieCapture visible={photoOpen} onCancel={() => setPhotoOpen(false)} onConfirm={(f) => void replacePhoto(f)} />
 
       <Modal visible={showSignOut} transparent animationType="fade" onRequestClose={() => setShowSignOut(false)}>
         <View style={styles.backdrop}>
@@ -253,7 +319,7 @@ export default function ProfileScreen() {
       </Modal>
 
       <Modal visible={editing} transparent animationType="fade" onRequestClose={() => setEditing(false)}>
-        <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Animated.View style={[styles.backdrop, kbStyle]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => !saving && setEditing(false)} />
           <View style={styles.sheet}>
             <View style={styles.handle} />
@@ -294,7 +360,7 @@ export default function ProfileScreen() {
               <Text style={styles.saveText}>{saving ? 'Saving…' : 'Save changes'}</Text>
             </Pressable>
           </View>
-        </KeyboardAvoidingView>
+        </Animated.View>
       </Modal>
     </View>
   )
@@ -306,6 +372,9 @@ const styles = StyleSheet.create({
   headerCard: { ...card, padding: spacing.lg },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   avatar: { width: 60, height: 60, borderRadius: radii.xl, alignItems: 'center', justifyContent: 'center' },
+  avatarImg: { width: 60, height: 60, borderRadius: radii.xl },
+  avatarBadge: { position: 'absolute', right: -4, bottom: -4, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  avatarBadgeRejected: { borderColor: colors.error },
   avatarText: { fontSize: 24, fontFamily: fonts.bold, color: colors.inkInverse },
   headerInfo: { flex: 1, gap: 2 },
   name: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
@@ -317,6 +386,7 @@ const styles = StyleSheet.create({
   statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radii.full },
   statusPillText: { fontSize: 11, fontFamily: fonts.bold },
   editBtn: { width: 32, height: 32, borderRadius: radii.lg, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  statsRetry: { ...typography.caption, color: colors.primary, fontFamily: fonts.bold, marginTop: spacing.md },
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   tag: { paddingHorizontal: spacing.sm + 2, paddingVertical: 4, borderRadius: radii.full, backgroundColor: colors.surface2 },
   tagText: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
@@ -330,11 +400,10 @@ const styles = StyleSheet.create({
   menuIconAlert: { backgroundColor: colors.errorLight },
   alertBadge: { paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.full, backgroundColor: colors.errorLight, marginRight: spacing.xs },
   alertBadgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.error },
-  soonBadge: { paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.full, backgroundColor: colors.surface2 },
-  soonBadgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.ink400 },
   pendingBadge: { paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.full, backgroundColor: colors.warningLight, marginRight: spacing.xs },
   pendingBadgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.warning },
   signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: spacing.sm + 6, marginTop: spacing.md },
+  version: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginTop: spacing.md },
   signOutText: { ...typography.body, color: colors.error, fontFamily: fonts.bold },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, paddingBottom: spacing.xl },

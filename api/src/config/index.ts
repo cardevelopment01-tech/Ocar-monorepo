@@ -126,6 +126,11 @@ const envSchemaChecked = envSchema.superRefine((env, ctx) => {
   if (env.DB_AUTH_MODE === 'secrets-manager' && (!env.DB_HOST || !env.DB_NAME || !env.DB_USER || !env.DB_SECRET_ARN)) {
     ctx.addIssue({ code: 'custom', path: ['DB_SECRET_ARN'], message: 'DB_HOST, DB_NAME, DB_USER, DB_SECRET_ARN all required when DB_AUTH_MODE=secrets-manager' })
   }
+  // Empty SMS credentials switch sendSms() into a dev mode that logs the message (the OTP) and reports success,
+  // so a missing secret in production would silently ship every login code to the log pipeline instead of the user.
+  if (env.NODE_ENV === 'production' && (!env.BULKSMSPLANS_API_ID || !env.BULKSMSPLANS_API_PASSWORD)) {
+    ctx.addIssue({ code: 'custom', path: ['BULKSMSPLANS_API_ID'], message: 'BULKSMSPLANS_API_ID and BULKSMSPLANS_API_PASSWORD required in production (empty values enable the dev SMS bypass)' })
+  }
 })
 
 function loadConfig() {

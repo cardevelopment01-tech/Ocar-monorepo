@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg'
 import { httpError, createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { client as redis } from '@/db/redis'
+import { withTimeout } from '@/lib/with-timeout'
 import { startOtpKey, endOtpKey, activeRideByDriverKey, rideAckKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
 import { getConfigValue } from '@/lib/system-config'
@@ -13,7 +14,7 @@ import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.servi
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES, gpsFlushQueue } from '@/jobs/queues'
 import { socketEvents } from '@/websocket/socket.server'
-import { generateOtp, hashOtp, checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
+import { generateOtp, hashOtp, deriveRideEndOtp, checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
 import {
   RIDE_OTP_LENGTH,
   ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES,
@@ -42,7 +43,6 @@ import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
 import { calculateFare, isHourlyRoundTrip, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
 import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
-import { getStopCharge } from '@/modules/pricing/pricing.repository'
 import {
   MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
   RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
@@ -326,14 +326,15 @@ export async function updateLocation(driverId: bigint, data: {
   // to ACTIVE_RIDE_CACHE_TTL_SEC to be reflected, which just delays/extends
   // live tracking emission by that long, never breaks correctness elsewhere.
   const activeRideCacheKey = activeRideByDriverKey(driverId.toString())
-  let rideId = await redis.get(activeRideCacheKey)
+  // Cache only: a slow/down Redis falls through to the DB query instead of failing the GPS ping.
+  let rideId = await withTimeout(redis.get(activeRideCacheKey)).catch(() => null)
   if (rideId === null) {
     const activeRideRes = await pool.query<{ id: string }>(
       `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress','returning') LIMIT 1`,
       [driverId]
     )
     rideId = activeRideRes.rows[0]?.id ?? ''
-    await redis.set(activeRideCacheKey, rideId, 'EX', ACTIVE_RIDE_CACHE_TTL_SEC)
+    await withTimeout(redis.set(activeRideCacheKey, rideId, 'EX', ACTIVE_RIDE_CACHE_TTL_SEC)).catch(() => undefined)
   }
   if (rideId) {
     const current = { lat: data.lat, lng: data.lng }
@@ -383,13 +384,17 @@ export function maskRideContacts<T extends {
   commission_amount?: string | null
   driver_earning?: string | null
 }>(ride: T, viewer: 'user' | 'driver' | 'admin'): T {
-  if (viewer === 'admin') return ride
+  // Ride OTP hashes are 4-digit SHA-256: whoever holds one recovers the code instantly, which would let a
+  // driver start/end a trip without the rider. They never leave the API, for any viewer.
+  const { start_otp_hash: _s, end_otp_hash: _e, ...rest } = ride as T & { start_otp_hash?: unknown; end_otp_hash?: unknown }
+  const base = rest as unknown as T
+  if (viewer === 'admin') return base
   if (viewer === 'user') {
     // Commission/earning are the driver's business, not the rider's — strip
     // them here rather than gating in every route handler that calls this.
-    return { ...ride, driver_phone: null, commission_percent: null, commission_amount: null, driver_earning: null }
+    return { ...base, driver_phone: null, commission_percent: null, commission_amount: null, driver_earning: null }
   }
-  return { ...ride, user_phone: null, rider_phone: null }
+  return { ...base, user_phone: null, rider_phone: null }
 }
 
 // ── Ride booking ──────────────────────────────────────────────
@@ -469,11 +474,11 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   // Derived server-side so the persisted count and ride_stops rows can never
   // diverge — client-supplied stopCount is accepted-but-ignored (see BookingRequest).
   const stopCount = data.stops?.length ?? 0
-  // Only round trips levy the flat per-stop charge. Rental stops are a free
-  // itinerary (§2.2); one-way stops are priced through the detour distance the
-  // client routes through the waypoints (§5.2 v2 trigger) — the flat fee would
-  // double-charge on a per-km ride type, so both pass 0 here.
-  const fareStopCount = data.rideType === 'round_trip' ? stopCount : 0
+  // Every ride type passes its stop count; what a stop costs is the rate card's stop_charge
+  // (0 = free, the default). Round trips carry a flat fee. One-way is also priced through the
+  // detour distance the client routes through the waypoints, so an admin who sets a one-way
+  // stop_charge adds a flat fee on top of that — their call, off by default.
+  const fareStopCount = stopCount
 
   // Enforce minimum 4h for round trips — must match pricing.service clamp so
   // fare_snapshots.trip_hours records the same value used to compute the fare.
@@ -561,10 +566,20 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     rideInput.scheduledFor = data.scheduledFor
     rideInput.status = 'scheduled'
   }
-  const ride = await repo.createRide(rideInput)
+  let ride
+  try {
+    ride = await repo.createRide(rideInput)
+  } catch (err) {
+    // rides_one_live_per_user_idx: a concurrent double-tap that slipped past the check above.
+    if ((err as { code?: string }).code === '23505') {
+      throw httpError(409, 'You already have an active ride', 'RIDE_ALREADY_ACTIVE')
+    }
+    throw err
+  }
 
   if (data.stops && data.stops.length > 0) {
-    const chargePerStop = data.rideType === 'round_trip' ? await getStopCharge(data.categoryId) : 0
+    // Same rate card the fare above was quoted on, so each stop row and stop_fare agree.
+    const chargePerStop = fareEstimate.charge_per_stop
     await repo.insertRideStops(
       BigInt(ride.id),
       data.stops.map(stop => ({ ...stop, chargeApplied: chargePerStop }))
@@ -825,10 +840,13 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
   const otp  = generateOtp(RIDE_OTP_LENGTH)
   const hash = hashOtp(otp)
 
-  await repo.updateRideStatus(rideId, 'driver_arrived', {
+  // Compare-and-swap: only an accepted ride can become driver_arrived. An unconditional write here let
+  // POST /arrived re-open completed/cancelled rides and mint a fresh start OTP on a trip already under way.
+  const arrived = await repo.updateRideStatusCAS(rideId, 'accepted', 'driver_arrived', {
     driver_arrived_at: new Date().toISOString(),
     start_otp_hash:    hash,
   })
+  if (!arrived) throw httpError(409, 'Ride is not awaiting the driver', 'RIDE_NOT_ACCEPTED')
 
   await repo.logStatusHistory({
     rideId,
@@ -838,7 +856,7 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
     actorId:    driverId,
   })
 
-  await redis.set(startOtpKey(rideId.toString()), otp, 'EX', 7200)
+  await withTimeout(redis.set(startOtpKey(rideId.toString()), otp, 'EX', 7200))
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status: 'driver_arrived',
@@ -912,13 +930,13 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
 
   await clearRideOtpAttempts(rideId, 'start')
 
-  const endOtp  = generateOtp(RIDE_OTP_LENGTH)
-  const endHash = hashOtp(endOtp)
+  const endHash = hashOtp(deriveRideEndOtp(rideId))
 
-  await repo.updateRideStatus(rideId, 'in_progress', {
+  const started = await repo.updateRideStatusCAS(rideId, 'driver_arrived', 'in_progress', {
     started_at:   new Date().toISOString(),
     end_otp_hash: endHash,
   })
+  if (!started) throw httpError(409, 'Ride is not awaiting start', 'RIDE_NOT_ARRIVED')
 
   if (ride.dest_lat != null && ride.dest_lng != null) {
     void logEtaSnapshot(
@@ -936,8 +954,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     actorId:    driverId,
   })
 
-  await redis.del(startOtpKey(rideId.toString()))
-  await redis.set(endOtpKey(rideId.toString()), endOtp, 'EX', 43200)
+  await withTimeout(redis.del(startOtpKey(rideId.toString())))
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status:    'in_progress',
@@ -951,6 +968,22 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
   socketEvents.sendUserUpdate(ride.user_id.toString(), { status: 'in_progress' })
 
   return { success: true }
+}
+
+// The end PIN is derived from the ride id + a server secret, so it is always recomputable and the rider and
+// driver can never disagree. Rides started before that change have a random PIN known only to Redis; if Redis
+// still has it, use it, otherwise swap the stored hash to the derived PIN (idempotent, so no race).
+// ponytail: legacy branch can go once rides started before the derived-PIN deploy have all completed.
+export async function getEndOtp(rideId: bigint): Promise<string> {
+  const derived = deriveRideEndOtp(rideId)
+  const { rows } = await pool.query<{ end_otp_hash: string | null }>('SELECT end_otp_hash FROM rides WHERE id = $1', [rideId])
+  const stored = rows[0]?.end_otp_hash ?? null
+  if (stored === hashOtp(derived)) return derived
+  const legacy = await withTimeout(redis.get(endOtpKey(rideId.toString())))
+  if (legacy && stored === hashOtp(legacy)) return legacy
+  await pool.query('UPDATE rides SET end_otp_hash = $2, updated_at = now() WHERE id = $1', [rideId, hashOtp(derived)])
+  logger.warn({ rideId: rideId.toString() }, 'end OTP unrecoverable, reset to derived PIN')
+  return derived
 }
 
 // Driver reached the drop (or, for a round trip, the return point). Idempotent. Reveals the end PIN to
@@ -975,7 +1008,7 @@ export async function markArrivedAtDrop(driverId: bigint, rideId: bigint) {
     'UPDATE rides SET drop_arrived_at = COALESCE(drop_arrived_at, now()), updated_at = now() WHERE id = $1',
     [rideId],
   )
-  const endOtp = await redis.get(endOtpKey(rideId.toString()))
+  const endOtp = await getEndOtp(rideId)
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: ride.status, dropArrived: true })
   // Rider-only channel: the OTP must never reach the driver's socket.
   socketEvents.sendUserUpdate(ride.user_id.toString(), {
@@ -1079,7 +1112,84 @@ export async function markStopStatus(
   return { success: true, stop }
 }
 
-const STOP_ADDABLE_STATUSES = new Set(['accepted', 'driver_arrived', 'in_progress'])
+// Driver can't get to a pending stop (closed road, unsafe spot). They cannot skip it
+// themselves, so this asks the rider to — the rider's skipRideStop is the only thing
+// that resolves it. Pushes the rider (they may not have the app open) and flags the
+// stop over the ride room so both screens update live; the flag also rides on every
+// stop read, so a rider who opens the app later still sees the prompt.
+export async function reportStopUnreachable(driverId: bigint, rideId: bigint, sequence: number) {
+  const ride = await assertRideStopAccess(driverId, rideId)
+
+  const before = (await repo.getRideStops(rideId)).find(s => s.sequence === sequence)
+  const stop = await repo.markStopUnreachable(rideId, sequence)
+  if (!stop) {
+    throw Object.assign(new Error('Stop not found or already resolved'), { httpStatus: 409 })
+  }
+
+  socketEvents.sendStopUpdated(rideId.toString(), {
+    rideId: rideId.toString(),
+    sequence: stop.sequence,
+    status: stop.status,
+    reachedAt: stop.reached_at,
+    unreachableRequestedAt: stop.unreachable_requested_at,
+  })
+
+  // Only the first request notifies; a repeat tap is a no-op for the rider.
+  if (!before?.unreachable_requested_at) {
+    try {
+      await notifyOwner({
+        ownerType: 'user',
+        ownerId: BigInt(ride.user_id),
+        type: 'stop_unreachable',
+        title: "Your driver can't reach a stop",
+        body: `${stop.address ?? `Stop ${stop.sequence}`} — open the trip to skip it or keep it.`,
+        rideId,
+        tag: `stop-unreachable:${rideId}:${stop.sequence}`,
+      })
+    } catch (err) {
+      log.error({ err, rideId }, 'stop-unreachable notification failed')
+    }
+  }
+
+  return { success: true, stop }
+}
+
+// Stops can be added (and skipped) while the ride is on the way. 'returning' is a round trip's
+// return leg: the rider may add a stop on the way back, and a pending one must stay skippable,
+// or the end-code's pending-stops block could strand the trip.
+const STOP_ADDABLE_STATUSES = new Set(['accepted', 'driver_arrived', 'in_progress', 'returning'])
+
+// The rider decides to drop a pending stop. The driver can no longer skip (see
+// markStopStatus callers), so this is the only path to 'skipped' besides forced
+// completion. The stop's flat charge is NOT reversed here — that is a pricing
+// decision (new pricing_version), not something to change silently.
+export async function skipRideStop(userId: bigint, rideId: bigint, sequence: number) {
+  const ride = await repo.getRideCoreById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (BigInt(ride.user_id) !== userId) {
+    throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  }
+  if (!STOP_ADDABLE_STATUSES.has(ride.status)) {
+    throw Object.assign(new Error('Stops can only be skipped while the ride is on the way'), { httpStatus: 409 })
+  }
+  if (ride.drop_arrived_at) {
+    throw Object.assign(new Error('The driver has already reached the drop'), { httpStatus: 409, code: 'DROP_ALREADY_REACHED' })
+  }
+
+  const stop = await repo.markStopStatus(rideId, sequence, 'skipped')
+  if (!stop) {
+    throw Object.assign(new Error('Stop not found or already resolved'), { httpStatus: 409 })
+  }
+
+  socketEvents.sendStopUpdated(rideId.toString(), {
+    rideId: rideId.toString(),
+    sequence: stop.sequence,
+    status: stop.status,
+    reachedAt: stop.reached_at,
+  })
+
+  return { success: true, stop }
+}
 
 // Visiting order for pending stops: nearest-next, so a stop added late doesn't
 // zig-zag the driver. Once the trip is under way the first pending stop is the
@@ -1169,9 +1279,9 @@ export async function addRideStop(
     }
   }
 
-  const chargeApplied = ride.ride_type === 'round_trip'
-    ? await getStopCharge(Number(ride.category_id))
-    : 0
+  // The rate card this ride was quoted on (its fare snapshot), so an admin editing the card mid-trip
+  // doesn't make later stops cost differently from the fare the rider accepted. 0 = free.
+  const chargeApplied = await repo.getRideStopCharge(rideId)
 
   let newStop
   const MAX_ATTEMPTS = 3
@@ -1200,7 +1310,7 @@ export async function addRideStop(
   const moves = planStopOrder(
     allStops,
     { lat: ride.origin_lat, lng: ride.origin_lng },
-    ride.status === 'in_progress'
+    ride.status === 'in_progress' || ride.status === 'returning'
   )
   if (moves.length > 0) {
     try {
@@ -1247,7 +1357,7 @@ export async function addRideStop(
 // Uber/Ola/Rapido's own pattern: the rider can nudge the pickup point after
 // booking, bounded to a small radius so it reads as a GPS correction, not a
 // new pickup choice — no fare recompute needed (the delta never crosses a
-// rate bucket). Same statuses as STOP_ADDABLE_STATUSES minus in_progress:
+// rate bucket). Only before the driver has arrived:
 // once the driver has arrived, "where do I pick you up" no longer applies.
 const PICKUP_EDITABLE_STATUSES = ['requested', 'accepted']
 
@@ -1516,8 +1626,8 @@ export async function cancelRide(
   // (a genuine repeat cancel must always succeed).
   try {
     const key = `cancel:daily:user:${userId}`
-    const count = await redis.incr(key)
-    if (count === 1) await redis.expire(key, 86400)
+    const count = await withTimeout(redis.incr(key))
+    if (count === 1) await withTimeout(redis.expire(key, 86400))
     if (count > 5) {
       // ponytail: a structured warn log IS the flag (queryable in Loki). Promote to a
       // dedicated table / higher-fee tier only if ops needs richer reporting.
@@ -1938,7 +2048,7 @@ export async function adminAssignDriver(
   const timeoutSeconds = MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS
   const expiresAt = new Date(Date.now() + timeoutSeconds * 1000)
   await repo.createRideAssignment({ rideId, driverId, sessionId, expiresAt, broadcastRound: 0 })
-  await redis.set(rideAckKey(rideId.toString(), driverId.toString()), '1', 'EX', timeoutSeconds + 30)
+  await withTimeout(redis.set(rideAckKey(rideId.toString(), driverId.toString()), '1', 'EX', timeoutSeconds + 30))
 
   socketEvents.sendRideRequest(driverId.toString(), {
     rideId: rideId.toString(),
@@ -2048,7 +2158,9 @@ export async function forceAssignGraceCheck(rideId: bigint, driverId: bigint): P
 // ── Orphaned-ride sweep (cleanup worker) ────────────────────────
 
 export async function expireStaleRequestedRide(rideId: bigint) {
-  await repo.updateRideStatus(rideId, 'no_drivers')
+  // Only a ride that is still 'requested' may expire; one a driver accepted a moment ago must be left alone.
+  const expired = await repo.updateRideStatusCAS(rideId, 'requested', 'no_drivers')
+  if (!expired) return
   await repo.logStatusHistory({
     rideId,
     fromStatus: 'requested',
@@ -2187,7 +2299,7 @@ export async function verifyEndOTP(
   if (!valid) throw httpError(422, 'Invalid OTP', 'INVALID_OTP')
 
   await clearRideOtpAttempts(rideId, 'end')
-  await redis.del(endOtpKey(rideId.toString()))
+  await withTimeout(redis.del(endOtpKey(rideId.toString())))
 
   const completedAt = new Date().toISOString()
 
@@ -2201,13 +2313,17 @@ export async function verifyEndOTP(
     ? (new Date(completedAt).getTime() - new Date(ride.started_at).getTime()) / 60000
     : null
 
-  await repo.updateRideStatus(rideId, 'completed', {
+  // Single winner: two concurrent end-OTP submits both pass the status read above, but only one can flip the
+  // row out of in_progress/returning. The loser stops here, before any fare, session or settlement work, so a
+  // double tap can no longer complete (and settle) the same ride twice.
+  const completed = await repo.updateRideStatusCAS(rideId, ['in_progress', 'returning'], 'completed', {
     completed_at:        completedAt,
     actual_distance_km:  actualDistanceKm  ?? null,
     actual_duration_min: actualDurationMin ?? null,
     review_flagged_at:   null,
     review_reason:       null,
   })
+  if (!completed) throw httpError(409, 'Ride is not in progress', 'RIDE_NOT_IN_PROGRESS')
 
   await repo.logStatusHistory({
     rideId,

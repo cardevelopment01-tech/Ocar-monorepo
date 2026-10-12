@@ -11,9 +11,11 @@ resource "aws_ssm_parameter" "docker_compose_prod" {
   # crossed that threshold once the cadvisor service + api resource limits
   # were added (same failure mode alloy_config hit below). Advanced tier
   # costs $0.05/parameter/month, negligible at this scale.
-  tier  = "Advanced"
-  type  = "String"
-  value = file("${path.module}/../../docker-compose.prod.yml")
+  tier = "Advanced"
+  type = "String"
+  # Whole-line `#` comments stripped from the SSM copy (8 KB cap; the file had
+  # 71 bytes of headroom). Safe: the compose file has no YAML block scalars.
+  value = join("\n", [for l in split("\n", file("${path.module}/../../docker-compose.prod.yml")) : l if !startswith(trimspace(l), "#")])
 }
 
 resource "aws_ssm_parameter" "alloy_config" {
@@ -21,9 +23,12 @@ resource "aws_ssm_parameter" "alloy_config" {
   # Standard tier caps out at 4096 characters -- config.alloy crossed that
   # threshold once the postgres_exporter scrape block was added. Advanced
   # tier costs $0.05/parameter/month, negligible at this scale.
-  tier  = "Advanced"
-  type  = "String"
-  value = file("${path.module}/../../infra/alloy/config.alloy")
+  tier = "Advanced"
+  type = "String"
+  # Whole-line `//` comments are stripped from the SSM copy only (the repo file
+  # keeps them) -- the 8 KB Advanced-tier cap is on the value, and comments
+  # were what kept using it up. Inline comments after code are left alone.
+  value = join("\n", [for l in split("\n", file("${path.module}/../../infra/alloy/config.alloy")) : l if !startswith(trimspace(l), "//")])
 }
 
 resource "aws_ssm_parameter" "refresh_pg_exporter_secret_script" {

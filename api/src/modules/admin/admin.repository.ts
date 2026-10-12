@@ -1844,7 +1844,7 @@ export async function listAdminRateCards() {
     `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type,
             rc.city_id::int AS city_id, rc.rate_per_km, rc.rate_per_min, rc.min_fare,
             rc.return_rate_per_km, rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day,
-            rc.cancellation_fee, rc.effective_from, rc.effective_to, rc.notes,
+            rc.cancellation_fee, rc.stop_charge, rc.effective_from, rc.effective_to, rc.notes,
             rc.created_by::int AS created_by, rc.created_at,
             vc.display_name AS category_name,
             vc.slug AS category_slug,
@@ -1862,6 +1862,7 @@ export async function listAdminRateCardHistory() {
   const res = await pool.query(
     `SELECT rch.id::int AS id, rch.rate_card_id::int AS rate_card_id,
             rch.rate_per_km, rch.rate_per_min, rch.min_fare, rch.return_rate_per_km, rch.hour_rate,
+            rch.stop_charge,
             rch.changed_by::int AS changed_by, rch.change_reason, rch.created_at,
             rch.city_id::int AS city_id,
             vc.display_name AS category_name,
@@ -2415,6 +2416,8 @@ export async function createAdminRateCard(data: {
   hourRate?: number | null;
   kmPerDay?: number | null;
   driverAllowancePerDay?: number | null;
+  /** Flat fee per added stop. Omitted = carry the previous version's value forward (0 for a brand-new card). */
+  stopCharge?: number;
   cityId?: number | null;
   notes?: string | null;
   adminId: bigint;
@@ -2439,8 +2442,8 @@ export async function createAdminRateCard(data: {
         `INSERT INTO rate_card_history
            (rate_card_id, rate_per_km, rate_per_min, min_fare,
             return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-            city_id, changed_by, change_reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            city_id, changed_by, change_reason, stop_charge)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           old.id,
           old.rate_per_km,
@@ -2453,6 +2456,7 @@ export async function createAdminRateCard(data: {
           old.city_id,
           data.adminId,
           data.notes ?? null,
+          old.stop_charge,
         ],
       );
     }
@@ -2461,8 +2465,8 @@ export async function createAdminRateCard(data: {
       `INSERT INTO rate_cards
          (category_id, ride_type, rate_per_km, rate_per_min,
           min_fare, return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-          city_id, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+          city_id, notes, created_by, stop_charge, cancellation_fee)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING *`,
       [
         data.categoryId,
@@ -2477,6 +2481,11 @@ export async function createAdminRateCard(data: {
         data.cityId ?? null,
         data.notes ?? null,
         data.adminId,
+        // A new version must not silently reset the stop price an admin set earlier.
+        data.stopCharge ?? Number(expired.rows[0]?.stop_charge ?? 0),
+        // Not editable in the admin form yet: carry the previous version's cancellation fee forward
+        // (NULL = no fee) instead of dropping it to NULL on every rate edit.
+        expired.rows[0]?.cancellation_fee ?? null,
       ],
     );
 

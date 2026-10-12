@@ -15,6 +15,8 @@ export type OnboardingShellProps = {
   children: ReactNode
   footer: ReactNode
   onBack?: () => void
+  // Profile edit mode: the wizard chrome (step counter + progress bars) doesn't apply
+  hideProgress?: boolean
 }
 
 // Direct port of the web onboarding wizard's shell (apps/driver/src/components/
@@ -23,7 +25,7 @@ export type OnboardingShellProps = {
 //
 // Header and footer are solid app-canvas layers over the scrolling content (the old BlurView was a no-op on
 // Android and logged a runtime warning); content cards stay white on the canvas like the rest of the app.
-export function OnboardingShell({ stepIndex, title, subtitle = 'Progress is saved automatically', children, footer, onBack }: OnboardingShellProps) {
+export function OnboardingShell({ stepIndex, title, subtitle = 'Progress is saved automatically', children, footer, onBack, hideProgress = false }: OnboardingShellProps) {
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const activeIdx = Math.min(Math.max(stepIndex, 0), STEPS.length - 1)
@@ -64,13 +66,13 @@ export function OnboardingShell({ stepIndex, title, subtitle = 'Progress is save
               <Feather name="arrow-left" size={20} color={colors.ink600} />
             </Pressable>
             <View style={{ flex: 1 }}>
-              <Text style={styles.stepLabel}>Step {activeIdx + 1} of {STEPS.length}</Text>
+              {hideProgress ? null : <Text style={styles.stepLabel}>Step {activeIdx + 1} of {STEPS.length}</Text>}
               <Text style={styles.title}>{title}</Text>
               {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
             </View>
           </View>
 
-          <View style={styles.barsRow}>
+          {hideProgress ? null : <View style={styles.barsRow}>
             {STEPS.map((_, i) => (
               <Animated.View
                 key={i}
@@ -78,7 +80,7 @@ export function OnboardingShell({ stepIndex, title, subtitle = 'Progress is save
                 style={[styles.bar, i <= activeIdx ? styles.barActive : null]}
               />
             ))}
-          </View>
+          </View>}
         </View>
       </View>
 

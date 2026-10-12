@@ -8,7 +8,7 @@ import DocGroupCard from '@/components/documents/DocGroupCard'
 import DocPreviewModal from '@/components/documents/DocPreviewModal'
 import { onboardingApi, type DocumentStatus } from '@/lib/onboarding-api'
 import type { SlotDef, SlotState } from '@/components/documents/types'
-import { DRIVER_GROUPS, VEHICLE_GROUPS, initSlotState, SLOT_LABELS } from '@/components/documents/groups'
+import { DRIVER_GROUPS, VEHICLE_GROUPS, PROFILE_PHOTO_GROUP, initSlotState, SLOT_LABELS } from '@/components/documents/groups'
 import FieldError, { ShakeWrap, useShake } from '@/components/ui/FieldError'
 import { useAuthStore } from '@/store/useAuthStore'
 
@@ -223,6 +223,16 @@ export default function DriverDocuments() {
                 )}
               </div>
             </div>
+
+            <DocGroupCard
+              group={PROFILE_PHOTO_GROUP}
+              slotState={slotState}
+              validUntil=""
+              fileRefs={fileRefs}
+              onFileSelect={(slot, file) => void handleFileSelect(slot, PROFILE_PHOTO_GROUP.groupKey, file)}
+              onValidUntilChange={() => {}}
+              onPreview={(url, label) => setPreview({ url, label })}
+            />
 
             {/* Driver Documents */}
             <SectionHeader icon="driver" label="Driver Documents" done={driverSectionDone} />

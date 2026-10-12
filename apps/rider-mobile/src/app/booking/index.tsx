@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts, pillTextFor } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, pillTextFor, getApiErrorMessage } from '@ocar/mobile-shared'
 import { PlaceRow } from '@/features/booking/components/PlaceRow'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { fetchClassifyTrip, fetchNearestCityId, fetchPlaceDetail, fetchRoute, fetchSavedPlaces, type SavedPlace } from '@/features/booking/api'
@@ -242,8 +242,8 @@ export default function BookingPickersScreen() {
       router.push(
         rideType === 'round_trip' ? '/booking/round-trip' : rideType === 'rental' ? '/booking/rental' : '/booking/fare'
       )
-    } catch {
-      setContinueError("Couldn't work out that route. Please try again.")
+    } catch (err) {
+      setContinueError(getApiErrorMessage(err, "Couldn't work out that route. Please try again."))
       setContinuing(false)
     }
   }

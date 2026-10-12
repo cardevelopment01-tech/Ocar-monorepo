@@ -91,6 +91,7 @@ describe('verifyEndOTP, round trip quoted under pricing_version 2', () => {
     vi.useFakeTimers({ toFake: ['Date'] }) // flush() relies on the real setTimeout
     vi.setSystemTime(NOW)
     vi.mocked(repo.updateRideStatus).mockResolvedValue(undefined as never)
+    vi.mocked(repo.updateRideStatusCAS).mockResolvedValue({ id: 1n } as never)
     vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
     vi.mocked(repo.getRideForDriverAction).mockImplementation(
       ((id: bigint) => vi.mocked(repo.getRideById)(id)) as never)

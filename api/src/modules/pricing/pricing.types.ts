@@ -84,6 +84,8 @@ export interface FareEstimateResponse {
   rate_card_id: number
   surge_event_id: number | null
   surge_multiplier: number
+  /** Flat fee per stop on the rate card this quote used (0 = free). Stops added at booking are stamped with it. */
+  charge_per_stop: number
   breakdown: {
     base_fare: number
     distance_fare: number

@@ -215,3 +215,14 @@ export async function revokeRefreshTokenFamily(tokenHash: string): Promise<void>
     [token.family_id, tokenHash]
   )
 }
+
+// Single-device driver login: kill every other live refresh family and the old
+// device's push tokens so ride requests stop reaching it.
+export async function revokeOtherDriverSessions(driverId: bigint, keepFamilyId: string): Promise<void> {
+  await query(
+    `UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, now())
+     WHERE principal_role = 'driver' AND principal_id = $1 AND family_id <> $2 AND revoked_at IS NULL`,
+    [driverId.toString(), keepFamilyId]
+  )
+  await query(`DELETE FROM device_tokens WHERE owner_type = 'driver' AND owner_id = $1`, [driverId.toString()])
+}

@@ -726,12 +726,17 @@ export async function handleWebhookEvent(
   )
   if (existing.rows.length) return
 
-  await pool.query(
+  // razorpay_event_id is UNIQUE, so two concurrent deliveries of the same event
+  // can both pass the SELECT above; ON CONFLICT makes the loser a clean no-op
+  // (rowCount 0) instead of a unique-violation 500 that makes the gateway retry.
+  const logged = await pool.query(
     `INSERT INTO payment_gateway_events
        (event_type, razorpay_event_id, payload, processed, processed_at)
-     VALUES ($1,$2,$3,true,now())`,
+     VALUES ($1,$2,$3,true,now())
+     ON CONFLICT (razorpay_event_id) DO NOTHING`,
     [eventType, eventId, JSON.stringify(payload)]
   )
+  if (logged.rowCount === 0) return
 
   if (isPayoutEvent) {
     // settlementId already extracted + format-validated above.

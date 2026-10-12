@@ -131,7 +131,7 @@ const SECTIONS: LegalSection[] = [
     ),
   },
   {
-    heading: '10. Grievance Officer &amp; contact',
+    heading: '10. Grievance Officer & contact',
     body: (
       <>
         <p>

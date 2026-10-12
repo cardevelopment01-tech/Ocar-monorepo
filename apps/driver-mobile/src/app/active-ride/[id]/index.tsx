@@ -232,6 +232,7 @@ export default function ActiveRideScreen() {
         sequence={pendingStop.sequence}
         meterWait={ride.rideType === 'one_way'}
         arrivedAt={pendingStop.arrivedAt}
+        unreachableRequestedAt={pendingStop.unreachableRequestedAt ?? null}
         onResolved={refresh}
       />
     )

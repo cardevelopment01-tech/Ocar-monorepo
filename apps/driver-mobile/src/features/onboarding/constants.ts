@@ -46,4 +46,8 @@ export const VEHICLE_DOC_GROUPS = [
 
 export const REQUIRED_VEHICLE_DOC_KEYS = VEHICLE_DOC_GROUPS.filter((g) => g.required).flatMap((g) => g.slots.map((s) => s.key))
 export const REQUIRED_DRIVER_DOC_KEYS = DRIVER_DOC_GROUPS.flatMap((g) => g.slots.map((s) => s.key))
-export const ALL_DOC_KEYS = [...REQUIRED_DRIVER_DOC_KEYS, ...VEHICLE_DOC_GROUPS.flatMap((g) => g.slots.map((s) => s.key))]
+// Collected by the onboarding selfie step, so it is NOT in DRIVER_DOC_GROUPS (the onboarding Documents
+// step would otherwise demand it before the selfie step). The standalone Documents screen shows it so a
+// rejected photo can be replaced.
+export const PROFILE_PHOTO_KEY = 'profile_photo'
+export const ALL_DOC_KEYS = [PROFILE_PHOTO_KEY, ...REQUIRED_DRIVER_DOC_KEYS,...VEHICLE_DOC_GROUPS.flatMap((g) => g.slots.map((s) => s.key))]

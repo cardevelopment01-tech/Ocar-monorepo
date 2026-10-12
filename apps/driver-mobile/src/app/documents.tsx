@@ -56,7 +56,7 @@ export default function DocumentsScreen() {
             </View>
           ) : null}
 
-          <DocumentsFields form={form} />
+          <DocumentsFields form={form} showProfilePhoto />
         </ScrollView>
       )}
     </View>

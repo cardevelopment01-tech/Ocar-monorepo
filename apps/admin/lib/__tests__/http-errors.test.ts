@@ -17,8 +17,8 @@ describe('extractErrorMessage', () => {
     expect(extractErrorMessage(axiosFailure({}), 'fallback')).toBe('fallback')
   })
 
-  it('falls back on a network error with no response', () => {
-    expect(extractErrorMessage(new AxiosError('Network Error'), 'fallback')).toBe('fallback')
+  it('says the server is unreachable on a network error with no response', () => {
+    expect(extractErrorMessage(new AxiosError('Network Error'), 'fallback')).toMatch(/Can't reach the server/)
   })
 
   it.each([[new Error('boom')], ['a string'], [null], [undefined], [{ response: { data: { error: 'spoofed' } } }]])(

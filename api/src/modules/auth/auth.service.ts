@@ -9,7 +9,12 @@ import { signAccessToken, generateRefreshToken, hashRefreshToken, signPendingTot
 import { comparePassword } from '@/lib/hash'
 import type { AccessTokenPayload } from '@/lib/jwt'
 import * as repo from './auth.repository'
+import { setWithTTL } from '@/db/redis'
+import { getIO } from '@/websocket/socket.server'
+import * as ridesRepo from '@/modules/rides/rides.repository'
+import { goOffline } from '@/modules/rides/rides.service'
 import { notificationsQueue } from '@/jobs/queues'
+import { logger } from '@/lib/logger'
 import { verifyLoginCode } from '@/modules/admin-totp/admin-totp.service'
 import type {
   AuthTokens,
@@ -52,6 +57,7 @@ async function issueTokenPair(
     status: (principal as UserRecord | DriverRecord).status ?? 'active',
   }
   if (adminRole) payload.adminRole = adminRole as import('@/constants/enums').AdminRole
+  if (role === PrincipalRole.DRIVER) payload.sid = familyId
 
   const accessToken = signAccessToken(payload)
   const refreshToken = generateRefreshToken()
@@ -68,7 +74,34 @@ async function issueTokenPair(
     expiresAt,
   })
 
+  if (role === PrincipalRole.DRIVER) await replaceDriverSession(BigInt(principal.id), familyId, refreshExpiresIn)
+
   return { accessToken, refreshToken, expiresIn: accessExpiresIn, refreshExpiresIn }
+}
+
+export const driverSidKey = (driverId: bigint | string) => `auth:driver-sid:${driverId}`
+
+// One device per driver: the newest login wins. An active ride is NOT blocked —
+// the new device takes it over (its socket re-joins the ride room on connect).
+async function replaceDriverSession(driverId: bigint, sid: string, ttlSec: number): Promise<void> {
+  await setWithTTL(driverSidKey(driverId), sid, ttlSec)
+  await repo.revokeOtherDriverSessions(driverId, sid)
+  // The session switch above is the commit point. Everything below is cleanup of the old device and must
+  // never fail the login: a retry would just repeat it, and the new device would be locked out meanwhile.
+  try {
+    // Online (not on_trip) session belongs to the old device; end it. An on_trip one stays.
+    const active = await ridesRepo.getActiveSession(driverId)
+    if (active?.status === 'online') await goOffline(driverId, 'session_replaced')
+  } catch (err) {
+    logger.error({ err, driverId: driverId.toString() }, 'driver session replace: go-offline cleanup failed')
+  }
+  try {
+    const io = getIO()
+    const room = `driver:${driverId}`
+    // Emit before the new device connects, so only the old sockets hear it.
+    io.to(room).emit('session:replaced', { code: 'AUTH_SESSION_REPLACED' })
+    io.in(room).disconnectSockets(true)
+  } catch { /* socket server not up (tests/workers) */ }
 }
 
 // ── Public service functions ──────────────────────────────────────────────────
@@ -100,7 +133,7 @@ export async function requestOtp(
   await notificationsQueue.add(
     'otp_sms',
     { phone, otp, type: 'auth' },
-    { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+    { attempts: 3, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: true, removeOnFail: 50 }
   )
 
   return { otp }
@@ -221,6 +254,19 @@ export async function refreshTokens(refreshToken: string): Promise<{ tokens: Aut
 
   if (!principal) throw createHttpError(AppErrors.AUTH_TOKEN_INVALID)
 
+  // A refresh token outlives the account's standing: without this a suspended/banned/deactivated principal keeps
+  // minting fresh access tokens for the whole refresh lifetime (30 days for riders and drivers).
+  const standing = (principal as { status?: string }).status
+  if (role === PrincipalRole.USER && (standing === 'suspended' || standing === 'deleted')) {
+    throw createHttpError(AppErrors.AUTH_FORBIDDEN)
+  }
+  if (role === PrincipalRole.DRIVER && (standing === 'suspended' || standing === 'banned')) {
+    throw createHttpError(AppErrors.DRIVER_SUSPENDED)
+  }
+  if (role === PrincipalRole.ADMIN && (principal as AdminRecord).is_active === false) {
+    throw createHttpError(AppErrors.AUTH_TOKEN_INVALID)
+  }
+
   const expiry = role === PrincipalRole.ADMIN ? config.JWT_REFRESH_EXPIRY_ADMIN : config.JWT_REFRESH_EXPIRY_USER
   const adminRole = role === PrincipalRole.ADMIN ? (principal as AdminRecord).role : undefined
   const payload: AccessTokenPayload = {
@@ -230,6 +276,7 @@ export async function refreshTokens(refreshToken: string): Promise<{ tokens: Aut
     status: (principal as UserRecord | DriverRecord).status ?? 'active',
   }
   if (adminRole) payload.adminRole = adminRole as import('@/constants/enums').AdminRole
+  if (role === PrincipalRole.DRIVER) payload.sid = stored.family_id
 
   const newRefreshToken = generateRefreshToken()
   const newTokenHash = hashRefreshToken(newRefreshToken)

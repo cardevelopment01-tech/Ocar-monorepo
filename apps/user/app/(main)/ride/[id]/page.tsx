@@ -10,7 +10,7 @@ import { rideApi, type RideDetail, type RideStop } from '@/lib/ride-api'
 import RouteTimeline from '@/components/route/RouteTimeline'
 import { safetyApi } from '@/lib/safety-api'
 import { formatReturnAt } from '@/lib/utils'
-import { formatEta, statusShowsEta } from '@ocar/shared'
+import { formatEta, statusShowsEta, getApiErrorMessage } from '@ocar/shared'
 import { DriverCard as DriverCardView, MeetAtRow, PinBand, driverViewFromRide } from '@/components/ride/DriverIdentity'
 import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
@@ -146,7 +146,8 @@ function DriverCard({ ride, rideId, router, unreadChatCount, rideStatus }: { rid
   // hasDriver (this row's render gate, in the parent) also covers cancelled/no_drivers/
   // completed during the brief window before their auto-redirect fires — narrower here
   // to the actual states where a driver is assigned and reachable by phone.
-  const canCall = rideStatus === 'accepted' || rideStatus === 'driver_arrived' || rideStatus === 'in_progress'
+  // 'returning' = a round trip's return leg; the masked call stays available on it.
+  const canCall = rideStatus === 'accepted' || rideStatus === 'driver_arrived' || rideStatus === 'in_progress' || rideStatus === 'returning'
 
   const handleCall = async () => {
     if (calling || !canCall) return
@@ -155,8 +156,7 @@ function DriverCard({ ride, rideId, router, unreadChatCount, rideStatus }: { rid
     try {
       await rideApi.triggerMaskedCall(rideId)
     } catch (err) {
-      const msg = (axios.isAxiosError(err) && (err.response?.data as { error?: string } | undefined)?.error) || 'Could not connect the call'
-      setCallError(msg)
+      setCallError(getApiErrorMessage(err, 'Could not connect the call'))
       setTimeout(() => setCallError(null), 4000)
     } finally {
       setCalling(false)
@@ -279,6 +279,9 @@ export default function RidePage() {
   const [routeOverride, setRouteOverride] = useState<[number, number][] | undefined>(undefined)
   // Tap a stop row ↔ its map pin: shared selection (0-based index into ride.stops).
   const [selectedStop, setSelectedStop] = useState<number | null>(null)
+  const [skippingStop, setSkippingStop] = useState<number | null>(null)
+  // Stops whose "driver can't reach this" prompt the rider chose to keep; the per-stop Skip still works.
+  const [keptStops, setKeptStops] = useState<number[]>([])
   const routePoints = useMemo(
     () => routeOverride ?? (encodedPolyline ? decodePolyline(encodedPolyline) : undefined),
     [routeOverride, encodedPolyline],
@@ -354,14 +357,27 @@ export default function RidePage() {
       setRide(prev => prev ? { ...prev, stops: [...prev.stops, newStop] } : prev)
       setAddStopError(null)
     } catch (err) {
-      const status = axios.isAxiosError(err) ? err.response?.status : undefined
-      const serverMessage = axios.isAxiosError(err) ? (err.response?.data as { error?: string } | undefined)?.error : undefined
-      setAddStopError(
-        (status === 409 || status === 422) && serverMessage
-          ? serverMessage
-          : "Couldn't add that stop. Please try again.",
-      )
+      setAddStopError(getApiErrorMessage(err, "Couldn't add that stop. Please try again."))
       setTimeout(() => setAddStopError(null), 5000)
+    }
+  }
+
+  // Rider skips a pending stop — either their own choice or the answer to "driver can't reach this".
+  // The stop:updated socket event (and the next poll) flips it to skipped; failure keeps it pending.
+  async function handleSkipStop(sequence: number) {
+    if (skippingStop !== null) return
+    setSkippingStop(sequence)
+    try {
+      await rideApi.skipStop(rideId, sequence)
+      setRide(prev => prev ? {
+        ...prev,
+        stops: prev.stops.map(s => s.sequence === sequence ? { ...s, status: 'skipped' as const } : s),
+      } : prev)
+    } catch (err) {
+      setAddStopError(getApiErrorMessage(err, "Couldn't skip that stop. Please try again."))
+      setTimeout(() => setAddStopError(null), 5000)
+    } finally {
+      setSkippingStop(null)
     }
   }
 
@@ -380,13 +396,7 @@ export default function RidePage() {
       setPickupToast(true)
       setTimeout(() => setPickupToast(false), 2600)
     } catch (err) {
-      const status = axios.isAxiosError(err) ? err.response?.status : undefined
-      const serverMessage = axios.isAxiosError(err) ? (err.response?.data as { error?: string } | undefined)?.error : undefined
-      setPickupError(
-        (status === 409 || status === 422) && serverMessage
-          ? serverMessage
-          : "Couldn't update pickup. Please try again."
-      )
+      setPickupError(getApiErrorMessage(err, "Couldn't update pickup. Please try again."))
     } finally {
       setPickupUpdating(false)
     }
@@ -508,11 +518,19 @@ export default function RidePage() {
         review_reason:      data.reason ?? prev.review_reason,
       } : prev)
     }
-    const onStopUpdated = (data: { sequence: number; status: 'reached' | 'skipped'; reachedAt: string | null }) => {
+    const onStopUpdated = (data: {
+      sequence: number; status: 'pending' | 'reached' | 'skipped'; reachedAt: string | null
+      unreachableRequestedAt?: string | null
+    }) => {
       setRide(prev => prev ? {
         ...prev,
         stops: prev.stops.map(s => s.sequence === data.sequence
-          ? { ...s, status: data.status, reached_at: data.reachedAt }
+          ? {
+              ...s,
+              status: data.status,
+              reached_at: data.reachedAt,
+              ...(data.unreachableRequestedAt !== undefined ? { unreachable_requested_at: data.unreachableRequestedAt } : {}),
+            }
           : s),
       } : prev)
     }
@@ -694,6 +712,21 @@ export default function RidePage() {
     return () => clearInterval(id)
   }, [liveEta, liveEtaAt])
 
+  // Mirrors api skipRideStop: the driver can't skip, so the rider owns it until the drop is reached.
+  const canSkipStops = ['accepted', 'driver_arrived', 'in_progress', 'returning'].includes(rideStatus) && !dropArrived
+
+  // Next pending stop, surfaced next to the collapsed "Trip details" toggle so Skip is never hidden.
+  const nextPendingStop = canSkipStops ? ride?.stops.find(s => s.status === 'pending') : undefined
+  const nextStopAsked = !!nextPendingStop?.unreachable_requested_at && !keptStops.includes(nextPendingStop.sequence)
+
+  // The "driver can't reach a stop" prompt lives in the collapsed Trip details sheet — open it so it can't be missed.
+  const askedStopSeq = canSkipStops
+    ? ride?.stops.find(s => s.status === 'pending' && s.unreachable_requested_at && !keptStops.includes(s.sequence))?.sequence
+    : undefined
+  useEffect(() => {
+    if (askedStopSeq !== undefined) setSheetExpanded(true)
+  }, [askedStopSeq])
+
   // Driver waiting at a one-way stop — same fact the driver app's meter shows,
   // surfaced live instead of only appearing after the fact on the receipt.
   const waitingStop = rideStatus === 'in_progress'
@@ -775,7 +808,8 @@ export default function RidePage() {
           </div>
         )}
 
-        {(rideStatus === 'accepted' || rideStatus === 'driver_arrived' || rideStatus === 'in_progress') && (
+        {/* Add stop stays available on a round trip's return leg ('returning') too. */}
+        {(rideStatus === 'accepted' || rideStatus === 'driver_arrived' || rideStatus === 'in_progress' || rideStatus === 'returning') && (
           <div className="absolute top-20 right-4 z-20 flex flex-col items-end gap-1.5" style={{ marginTop: 'env(safe-area-inset-top)' }}>
             {PICKUP_EDITABLE_STATUSES.has(rideStatus) && (
               <button
@@ -1077,6 +1111,35 @@ export default function RidePage() {
                 </div>
               )}
 
+              {/* Skip without opening Trip details. Hidden once expanded (the timeline row has it) and
+                  while a "driver can't reach" prompt is showing (that card has its own Skip). */}
+              {ride && nextPendingStop && !sheetExpanded && !nextStopAsked && (
+                <div className="flex items-center justify-between gap-2 px-3 py-2 mb-1 rounded-2xl bg-surface-2">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                      Next stop · {ride.stops.findIndex(s => s.id === nextPendingStop.id) + 1} of {ride.stops.length}
+                    </p>
+                    <p className="text-[13px] font-semibold truncate text-text-primary">
+                      {nextPendingStop.address ?? `Stop ${nextPendingStop.sequence}`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (skippingStop !== null) return
+                      if (window.confirm(`Skip ${nextPendingStop.address ?? `Stop ${nextPendingStop.sequence}`}? Any stop charge already added to your fare stays.`)) {
+                        void handleSkipStop(nextPendingStop.sequence)
+                      }
+                    }}
+                    disabled={skippingStop !== null}
+                    aria-label={`Skip stop ${nextPendingStop.sequence}`}
+                    className="px-2 h-8 rounded-full text-[12px] font-semibold text-red-600 flex-shrink-0 active:opacity-60 disabled:opacity-50"
+                  >
+                    {skippingStop === nextPendingStop.sequence ? 'Skipping…' : 'Skip'}
+                  </button>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={() => setSheetExpanded(v => !v)}
@@ -1124,8 +1187,52 @@ export default function RidePage() {
                               key: stop.id,
                               address: stop.address ?? `Stop ${i + 1}`,
                               state: stop.status,
+                              ...(canSkipStops && stop.status === 'pending' ? {
+                                skipBusy: skippingStop === stop.sequence,
+                                onSkip: () => {
+                                  if (skippingStop !== null) return
+                                  if (window.confirm(`Skip ${stop.address ?? `Stop ${i + 1}`}? Any stop charge already added to your fare stays.`)) {
+                                    void handleSkipStop(stop.sequence)
+                                  }
+                                },
+                              } : {}),
                             }))}
                           />
+
+                          {/* "Driver can't reach this stop" — the rider's answer is the only thing that resolves it.
+                              A plain skip lives on the timeline row itself (onSkip above). */}
+                          {canSkipStops && ride.stops.map((stop, i) => {
+                            if (stop.status !== 'pending' || !stop.unreachable_requested_at || keptStops.includes(stop.sequence)) return null
+                            const busy = skippingStop === stop.sequence
+                            return (
+                              <div
+                                key={stop.id}
+                                role="alert"
+                                className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2"
+                              >
+                                <p className="text-[13px] font-semibold text-text-primary">Your driver can&apos;t reach a stop</p>
+                                <p className="text-[12px] text-text-secondary">
+                                  {stop.address ?? `Stop ${i + 1}`}. Skip it, or keep it and your driver will continue to it.
+                                </p>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => void handleSkipStop(stop.sequence)}
+                                    disabled={skippingStop !== null}
+                                    className="flex-1 py-2 rounded-xl text-sm font-semibold bg-primary text-white disabled:opacity-50"
+                                  >
+                                    {busy ? 'Skipping…' : 'Skip stop'}
+                                  </button>
+                                  <button
+                                    onClick={() => setKeptStops(k => [...k, stop.sequence])}
+                                    disabled={skippingStop !== null}
+                                    className="flex-1 py-2 rounded-xl text-sm font-semibold text-text-primary border border-border disabled:opacity-50"
+                                  >
+                                    Keep stop
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
 

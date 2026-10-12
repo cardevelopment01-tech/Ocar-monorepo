@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import axios from 'axios'
+import { getApiErrorMessage } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { connectSocket, disconnectSocket } from '@/services/socket'
 import { stopBackgroundTracking } from '@/services/location/backgroundTask'
@@ -15,7 +17,7 @@ export type GoOnlineFlowState = {
   error: string | null
   canGoOnline: boolean
   retrySessionCheck: () => void
-  requestGoOnline: () => Promise<'/daily-verification' | '/go-online/mode'>
+  requestGoOnline: () => Promise<'/daily-verification' | '/go-online/mode' | null>
   goOffline: () => Promise<void>
 }
 
@@ -41,7 +43,7 @@ export function useGoOnlineFlow(): GoOnlineFlowState {
   useEffect(() => {
     fetchMyVehicle()
       .then(setVehicle)
-      .catch(() => setError('Could not load vehicle info'))
+      .catch((err) => setError(getApiErrorMessage(err, 'Could not load vehicle info')))
       .finally(() => setVehicleLoading(false))
   }, [])
 
@@ -63,16 +65,23 @@ export function useGoOnlineFlow(): GoOnlineFlowState {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount only
   }, [])
 
-  const requestGoOnline = useCallback(async (): Promise<'/daily-verification' | '/go-online/mode'> => {
+  const requestGoOnline = useCallback(async (): Promise<'/daily-verification' | '/go-online/mode' | null> => {
     setError(null)
     if (checkingVerification) return '/go-online/mode' // ignore a stray double-tap
     setCheckingVerification(true)
     try {
       const status = await fetchVerificationStatus()
       return status.complete ? '/go-online/mode' : '/daily-verification'
-    } catch {
-      // Status check failed -- don't block going online on a network hiccup;
-      // the confirm screen's own goOnline() call still enforces server-side.
+    } catch (err) {
+      // The server refused (e.g. account not approved, suspended): say why and
+      // stay put instead of walking the driver into a screen that will fail too.
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined
+      if (status !== undefined && status < 500) {
+        setError(getApiErrorMessage(err))
+        return null
+      }
+      // Network hiccup / 5xx -- don't block going online; the confirm screen's
+      // own goOnline() call still enforces server-side.
       return '/go-online/mode'
     } finally {
       setCheckingVerification(false)

@@ -17,7 +17,7 @@ Turborepo + pnpm workspaces monorepo. Build is module-by-module (M01–M12).
 | Payments | Razorpay + driver/user wallet ledger (M08 done) |
 | Storage | AWS S3 (`@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`) |
 | OTP | SHA-256 hash of numeric OTP stored in DB/Redis (6-digit login OTP, 4-digit ride start/end OTP) |
-| Observability | Pino (JSON logs) + OTel tracing + prom-client metrics, shipped by one Grafana Alloy agent per host to Grafana Cloud (Loki/Mimir/Tempo) — see `docs/superpowers/specs/2026-08-08-observability-stack-design.md`. Every log line and metric series carries a `color` label (`blue`/`green`, from `ALLOY_COLOR`) since the 2026-08-30 blue/green migration. `node_exporter` is filtered to ~15 metric families (`config.alloy`'s `prometheus.relabel "node"`) after unfiltered per-host cardinality (~500-700 series/host) tipped Grafana Cloud's 15,000 active-series cap during that migration's repeated instance churn — see `docs/OPS_RUNBOOK.md`'s "Diagnose a failed blue/green deploy" section if `up`/live-instance queries ever come back empty despite a healthy fleet. |
+| Observability | Pino (JSON logs) + OTel tracing + prom-client metrics, shipped by one Grafana Alloy agent per host to Grafana Cloud (Loki/Mimir/Tempo) — see `docs/superpowers/specs/2026-08-08-observability-stack-design.md`. Every log line and metric series carries a `color` label (`blue`/`green`, from `ALLOY_COLOR`) since the 2026-08-30 blue/green migration. `node_exporter` is filtered to ~15 metric families (`config.alloy`'s `prometheus.relabel "node"`) after unfiltered per-host cardinality (~500-700 series/host) tipped Grafana Cloud's 15,000 active-series cap during that migration's repeated instance churn — see `docs/OPS_RUNBOOK.md`'s "Diagnose a failed blue/green deploy" section if `up`/live-instance queries ever come back empty despite a healthy fleet. The api container's logs are also archived to S3 (`infra/terraform/s3-logs-archive.tf`, prod + staging, 190-day expiry) via Alloy's experimental `otelcol.exporter.awss3`, queryable in Athena (`app_logs` table, Glue/partition projection, named queries); The SSM copy of `config.alloy` has whole-line `//` comments stripped by Terraform (`ssm-observability.tf`) to stay under SSM Advanced's 8 KB cap (~5.8 KB stripped now). Alloy has a docker healthcheck on `/-/ready`, `deploy.yml` gates cutover on it (step "Verify Alloy…"), and `infra/terraform/observability/alerts-alloy.tf` alerts on a dead/failing pipeline. |
 | User portal | Next.js 16.2.7, React 19, Tailwind v3, App Router |
 | Driver portal | Vite 5, React 19, React Router v6, Zustand persist, Tailwind v3 |
 | Admin portal | Next.js 16.2.7, React 19, Tailwind v3, App Router |
@@ -82,6 +82,15 @@ Rate cards are city-scoped as of migration 078: `city_id IS NULL` = global defau
 `WHERE effective_to IS NULL AND (city_id = $cityId OR city_id IS NULL) ORDER BY city_id NULLS LAST LIMIT 1`.
 Uniqueness for "current row" is per `(COALESCE(city_id, 0), category_id, ride_type)`,
 not just `(category_id, ride_type)` — a city override and the global row can coexist.
+
+### Per-stop charge lives on the rate card
+`rate_cards.stop_charge` (migration 106; `NOT NULL DEFAULT 0`, 0 = stops are free) is the flat fee per added stop, for
+**any** ride type, versioned and city-scoped like every other rate. The old `stop_charges` table is deprecated and no
+longer read. The quote returns it as `charge_per_stop`; booking stamps it on each `ride_stops.stop_charge_applied`;
+`addRideStop` uses the rate card the ride was quoted on (`fare_snapshots.rate_card_id`), so an admin edit mid-trip never
+reprices a ride. A new rate-card version that omits `stop_charge` **carries the previous value forward**; send
+`stop_charge: 0` to make stops free. Both create paths (`pricing.repository.createRateCard`,
+`admin.repository.createAdminRateCard`) must keep doing this.
 
 ### Round-trip pricing versions
 `fare_snapshots.pricing_version` records which formula a ride was quoted under, so settlement bills it the same way
@@ -233,6 +242,12 @@ Server initialised in `api/src/websocket/socket.server.ts`.
                                           bumps version), PATCH /:id/active (toggle)
 /api/v1/rides/:id/messages             — POST (send, rate-limited), GET (list), PATCH /read
                                           (mark read) — in-ride chat between rider and driver
+/api/v1/rides/:id/stops                — POST (rider adds a stop; allowed accepted→returning, i.e. also on a
+                                          round trip's return leg, until the driver reaches the drop)
+/api/v1/rides/:id/stops/:seq/skip      — POST, rider only: the only user action that skips a stop (the driver's
+                                          PATCH accepts just arrived|reached; force-completion also skips leftovers). Any stop charge already added stays.
+/api/v1/rides/:id/stops/:seq/unreachable — POST, driver only: "can't reach this stop" asks the rider to skip
+                                          (sets ride_stops.unreachable_requested_at, pushes the rider); never resolves it
 ```
 
 ---

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapBookingErrorCode, mapOtpErrorCode } from './errorMessages'
+import { getApiErrorMessage, mapBookingErrorCode, mapOtpErrorCode } from './errorMessages'
 
 describe('mapOtpErrorCode', () => {
   it('maps each known AUTH_OTP_* code to specific copy', () => {
@@ -24,5 +24,25 @@ describe('mapBookingErrorCode', () => {
 
   it('falls back to a generic message for an unknown code', () => {
     expect(mapBookingErrorCode('SOME_FUTURE_CODE')).toBe('Something went wrong, please try again')
+  })
+})
+
+describe('getApiErrorMessage', () => {
+  const axiosErr = (status: number, data: object) => ({ isAxiosError: true, response: { status, data } })
+
+  it('uses specific copy for a known code', () => {
+    expect(getApiErrorMessage(axiosErr(403, { code: 'DRIVER_NOT_APPROVED', error: 'x' }))).toMatch(/under review/)
+  })
+  it('falls back to the server message for an unknown 4xx code', () => {
+    expect(getApiErrorMessage(axiosErr(409, { code: 'NEW_CODE', error: 'Plate already used' }))).toBe('Plate already used')
+  })
+  it('hides 5xx detail', () => {
+    expect(getApiErrorMessage(axiosErr(500, { error: 'boom' }))).toMatch(/having trouble/)
+  })
+  it('reports no response as a connection problem', () => {
+    expect(getApiErrorMessage({ isAxiosError: true })).toMatch(/internet connection/)
+  })
+  it('uses the fallback for non-axios errors', () => {
+    expect(getApiErrorMessage(new Error('Request failed with status code 403'), 'Nope')).toBe('Nope')
   })
 })

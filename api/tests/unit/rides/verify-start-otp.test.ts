@@ -4,6 +4,7 @@ vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 vi.mock('@/db/redis', () => ({ client: { set: vi.fn(), del: vi.fn() } }))
 vi.mock('@/lib/otp', () => ({
   generateOtp: vi.fn(() => '5678'),
+  deriveRideEndOtp: vi.fn(() => '5678'),
   hashOtp: vi.fn((v: string) => (v === '1234' ? 'HASH' : 'WRONG')),
   checkRideOtpAttempts: vi.fn().mockResolvedValue(1),
   clearRideOtpAttempts: vi.fn().mockResolvedValue(undefined),
@@ -20,6 +21,7 @@ vi.mock('@/jobs/queues', () => ({
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideCoreForDriverAction: vi.fn(),
   updateRideStatus:       vi.fn().mockResolvedValue(undefined),
+  updateRideStatusCAS: vi.fn().mockResolvedValue({ id: 1n }),
   logStatusHistory:       vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/modules/payments/payments.service', () => ({
@@ -54,7 +56,7 @@ describe('verifyStartOTP — ownership', () => {
   it('throws 404 when the owner-scoped fetch returns null (not this driver)', async () => {
     vi.mocked(repo.getRideCoreForDriverAction).mockResolvedValue(null)
     await expect(verifyStartOTP(BigInt(9), BigInt(303), '1234')).rejects.toMatchObject({ httpStatus: 404 })
-    expect(repo.updateRideStatus).not.toHaveBeenCalled()
+    expect(repo.updateRideStatusCAS).not.toHaveBeenCalled()
   })
 
   it('throws 403 (defense-in-depth) if a mismatched-driver row is returned', async () => {
@@ -66,7 +68,7 @@ describe('verifyStartOTP — ownership', () => {
     vi.mocked(repo.getRideCoreForDriverAction).mockResolvedValue(baseRide() as never)
     const res = await verifyStartOTP(BigInt(9), BigInt(303), '1234')
     expect(res).toEqual({ success: true })
-    expect(repo.updateRideStatus).toHaveBeenCalledWith(BigInt(303), 'in_progress', expect.anything())
+    expect(repo.updateRideStatusCAS).toHaveBeenCalledWith(BigInt(303), 'driver_arrived', 'in_progress', expect.anything())
   })
 
   it('locks out with 429 when the attempt limiter throws (over the cap)', async () => {
@@ -78,7 +80,7 @@ describe('verifyStartOTP — ownership', () => {
     )
     await expect(verifyStartOTP(BigInt(9), BigInt(303), '1234')).rejects.toMatchObject({ httpStatus: 429 })
     // hash comparison / status flip must not happen once locked out
-    expect(repo.updateRideStatus).not.toHaveBeenCalled()
+    expect(repo.updateRideStatusCAS).not.toHaveBeenCalled()
   })
 
   it('records the real attempt_number (from the limiter) in ride_otp_events, not a hardcoded 1', async () => {

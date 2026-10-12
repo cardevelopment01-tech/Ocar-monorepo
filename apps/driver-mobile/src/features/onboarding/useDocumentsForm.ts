@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { onboardingApi, type DocumentStatus, type PickedFile } from './api'
-import { DRIVER_DOC_GROUPS, VEHICLE_DOC_GROUPS, ALL_DOC_KEYS } from './constants'
+import { DRIVER_DOC_GROUPS, VEHICLE_DOC_GROUPS, ALL_DOC_KEYS, PROFILE_PHOTO_KEY } from './constants'
+import { getApiErrorMessage } from '@ocar/mobile-shared'
 
 export type SlotState = { state: 'idle' | 'uploading' | 'done' | 'error'; url: string | null; docStatus: string | null; rejectionNote: string | null; rejectionCount: number; error: string | null }
 
@@ -9,9 +10,12 @@ function initSlotState(): Record<string, SlotState> {
 }
 
 const VEHICLE_DOC_KEYS = new Set(VEHICLE_DOC_GROUPS.flatMap((g) => g.slots.map((s) => s.key)))
-const ALL_LABELS: Record<string, string> = Object.fromEntries(
-  [...DRIVER_DOC_GROUPS, ...VEHICLE_DOC_GROUPS].flatMap((g) => g.slots.map((s) => [s.key, s.slotLabel ? `${g.label} (${s.slotLabel})` : g.label]))
-)
+const ALL_LABELS: Record<string, string> = {
+  [PROFILE_PHOTO_KEY]: 'Profile photo',
+  ...Object.fromEntries(
+    [...DRIVER_DOC_GROUPS, ...VEHICLE_DOC_GROUPS].flatMap((g) => g.slots.map((s) => [s.key, s.slotLabel ? `${g.label} (${s.slotLabel})` : g.label]))
+  ),
+}
 
 export type RejectedDoc = { key: string; label: string; note: string | null; count: number }
 
@@ -79,8 +83,8 @@ export function useDocumentsForm() {
     try {
       await onboardingApi.saveIdentityNumbers({ license_number: licenseNumber.trim().toUpperCase(), aadhaar_number: aadhaarNumber })
       setIdentitySaved(true)
-    } catch {
-      setIdentityError("Couldn't save. Check your details.")
+    } catch (err) {
+      setIdentityError(getApiErrorMessage(err, "Couldn't save. Check your details."))
     }
   }
 
@@ -100,8 +104,8 @@ export function useDocumentsForm() {
       await onboardingApi.saveIdentityNumbers({ license_number: licenseNumber.trim().toUpperCase(), aadhaar_number: aadhaarNumber })
       setIdentitySaved(true)
       return true
-    } catch {
-      setIdentityError("Couldn't save. Check your details.")
+    } catch (err) {
+      setIdentityError(getApiErrorMessage(err, "Couldn't save. Check your details."))
       return false
     } finally {
       setIsSaving(false)

@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import InlineSelect from '@/components/ui/InlineSelect'
 import OnboardingShell from '@/components/onboarding/OnboardingShell'
 import FieldError, { ShakeWrap, useShake } from '@/components/ui/FieldError'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 const TODAY_ISO = new Date().toISOString().slice(0, 10)
 const MIN_MODEL_YEAR = 1990
@@ -150,7 +151,7 @@ export default function VehicleRegistration() {
         if (apiErr.fields?.number_plate) setPlateError(apiErr.fields.number_plate[0] ?? 'Invalid plate')
         else setError('Please check your vehicle details.')
       } else {
-        setError('Something went wrong. Please try again.')
+        setError(getApiErrorMessage(err))
       }
     } finally {
       setIsLoading(false)

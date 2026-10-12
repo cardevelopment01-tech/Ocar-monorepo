@@ -6,6 +6,7 @@ import type { TriggerSosInput } from './safety.types'
 import { logger } from '@/lib/logger'
 import { assertRideParticipant } from './safety.guards'
 import { client as redis } from '@/db/redis'
+import { withTimeout } from '@/lib/with-timeout'
 import { httpError } from '@/lib/errors'
 
 const log = logger.child({ module: 'sos-service' })
@@ -45,8 +46,8 @@ export async function triggerSos(input: TriggerSosInput) {
   // per-ride dedup alone can't. Five genuine SOS events/hour from one person is
   // already extreme and worth a human follow-up, not a real emergency we'd suppress.
   const rlKey = `sos:hourly:${principal.role}:${principal.id}`
-  const count = await redis.incr(rlKey)
-  if (count === 1) await redis.expire(rlKey, SOS_HOURLY_WINDOW_SECONDS)
+  const count = await withTimeout(redis.incr(rlKey))
+  if (count === 1) await withTimeout(redis.expire(rlKey, SOS_HOURLY_WINDOW_SECONDS))
   if (count > SOS_HOURLY_CAP) {
     throw httpError(429, 'Too many safety alerts. Contact support directly if this is urgent.', 'SOS_RATE_LIMITED')
   }
@@ -79,6 +80,7 @@ export async function triggerSos(input: TriggerSosInput) {
       rideId:      String(input.rideId),
       userId:      String(triggeredUserId ?? ''),
       userPhone,
+      triggeredByRole: principal.role,
       lat:         input.lat  ?? 0,
       lng:         input.lng  ?? 0,
       triggeredAt: new Date().toISOString(),

@@ -40,7 +40,7 @@ export async function createInvite(params: {
       rawToken,
       expiresAt: expiresAt.toISOString(),
     },
-    { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+    { attempts: 3, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: true, removeOnFail: 50 }
   )
 
   return invite

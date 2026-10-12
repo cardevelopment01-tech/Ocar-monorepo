@@ -24,6 +24,7 @@ import { useVoiceGuidance } from '@/lib/useVoiceGuidance'
 import { useWakeLock } from '@/lib/useWakeLock'
 import { haversineMetres, remainingRoutePath } from '@/lib/geo'
 import RoundTripBanner from '@/components/ui/RoundTripBanner'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 const DriverMapView     = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap       = lazy(() => import('@/components/map/RecenterMap'))
@@ -265,8 +266,8 @@ export default function NavigateToPickup() {
       updateRideStatus('driver_arrived')
       setArrived(true)
       setTimeout(() => navigate('/ride/otp', { replace: true }), reduceMotion ? 0 : 500)
-    } catch {
-      setError('Failed to mark arrival. Please try again.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to mark arrival. Please try again.'))
       setArriving(false)
     }
   }

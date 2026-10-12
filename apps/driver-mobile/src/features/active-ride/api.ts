@@ -77,7 +77,7 @@ export async function submitEndOtp(rideId: string, otp: string): Promise<void> {
 // pending), so a driver who got a stop added was permanently stuck unable to
 // end the trip, with only a generic "Could not confirm" error and no
 // indication why.
-export async function markStopStatus(rideId: string, sequence: number, status: 'reached' | 'skipped'): Promise<void> {
+export async function markStopStatus(rideId: string, sequence: number, status: 'reached'): Promise<void> {
   await api.patch(`/api/v1/rides/${rideId}/stops/${sequence}`, { status })
 }
 
@@ -85,6 +85,12 @@ export async function markStopStatus(rideId: string, sequence: number, status: '
 // free window; the clock is server time, never client-supplied).
 export async function markStopArrived(rideId: string, sequence: number): Promise<void> {
   await api.patch(`/api/v1/rides/${rideId}/stops/${sequence}`, { status: 'arrived' })
+}
+
+// The driver cannot skip a stop themselves; this asks the rider to (they get a push and a
+// prompt). Idempotent server-side, so a re-tap doesn't re-notify.
+export async function reportStopUnreachable(rideId: string, sequence: number): Promise<void> {
+  await api.post(`/api/v1/rides/${rideId}/stops/${sequence}/unreachable`)
 }
 
 // Web driver's counterpart: apps/driver/src/lib/ride-api.ts's cancelRideAsDriver,

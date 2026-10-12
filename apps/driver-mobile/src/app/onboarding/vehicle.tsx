@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
-import { Button, colors, radii, spacing, typography, fonts, Text, VehicleIcon } from '@ocar/mobile-shared'
+import axios from 'axios'
+import { Button, colors, radii, spacing, typography, fonts, Text, VehicleIcon, getApiErrorMessage } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type VehicleBrand, type VehicleCategory, type VehicleInfoPayload, type VehicleModel } from '@/features/onboarding/api'
 import { FUEL_TYPES, VEHICLE_COLORS } from '@/features/onboarding/constants'
@@ -19,6 +20,8 @@ function isValidYear(y: string) { return y.length === 4 && Number(y) >= MIN_MODE
 
 export default function VehicleRegistrationScreen() {
   const router = useRouter()
+  // ?edit=1 -> opened from Profile by an onboarded driver: save and go back instead of advancing the wizard
+  const isEdit = useLocalSearchParams<{ edit?: string }>().edit === '1'
   const updateDriver = useAuthStore((s) => s.updateDriver)
 
   const [categories, setCategories] = useState<VehicleCategory[]>([])
@@ -61,7 +64,7 @@ export default function VehicleRegistrationScreen() {
         if (v.model_id) setModelId(Number(v.model_id))
         if (v.model_year) setModelYear(String(v.model_year))
         if (v.registration_date) setRegistrationDate(String(v.registration_date).slice(0, 10))
-        if (v.number_plate) setPlate(v.number_plate)
+        if (v.number_plate) setPlate(v.number_plate.replace(/[^A-Z0-9]/gi, '').toUpperCase())
         if (v.color) setColor(v.color)
         if (v.fuel_type) setFuelType(v.fuel_type)
         if (v.seating_capacity) setSeating(v.seating_capacity)
@@ -113,10 +116,17 @@ export default function VehicleRegistrationScreen() {
       }
       if (registrationDate) payload.registration_date = registrationDate
       const result = await onboardingApi.saveVehicleInfo(payload)
-      updateDriver({ onboarding_step: result.next_step })
-      router.push('/onboarding/documents')
-    } catch {
-      setError('Something went wrong. Please try again.')
+      if (isEdit) {
+        router.back()
+      } else {
+        updateDriver({ onboarding_step: result.next_step })
+        router.push('/onboarding/documents')
+      }
+    } catch (err) {
+      const data = axios.isAxiosError(err) ? (err.response?.data as { code?: string; fields?: Record<string, string[]> } | undefined) : undefined
+      if (data?.code === 'DUPLICATE_ENTRY') setError('This number plate is already registered. Contact support if this is your vehicle.')
+      else if (data?.code === 'VALIDATION_ERROR') setError(data.fields?.['number_plate']?.[0] ?? 'Please check your vehicle details.')
+      else setError(getApiErrorMessage(err))
     } finally {
       setIsLoading(false)
     }
@@ -154,12 +164,12 @@ export default function VehicleRegistrationScreen() {
         </Text>
       ) : null}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      <Button label="Continue" onPress={handleContinue} loading={isLoading} disabled={!isValid} />
+      <Button label={isEdit ? 'Save changes' : 'Continue'} onPress={handleContinue} loading={isLoading} disabled={!isValid} />
     </>
   )
 
   return (
-    <OnboardingShell stepIndex={1} title="Vehicle Details" footer={footer}>
+    <OnboardingShell stepIndex={1} title="Vehicle Details" subtitle={isEdit ? 'Update your vehicle' : 'Progress is saved automatically'} hideProgress={isEdit} footer={footer}>
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Feather name="truck" size={15} color={colors.primary} />

@@ -36,7 +36,6 @@ vi.mock('@/lib/otp', () => ({ generateOtp: vi.fn(() => '1234'), hashOtp: vi.fn((
 vi.mock('@/modules/payments/payments.service', () => ({
   createPaymentRecord: vi.fn(), deductCommission: vi.fn(), creditCashback: vi.fn(),
 }))
-vi.mock('@/modules/pricing/pricing.repository', () => ({ getStopCharge: vi.fn(() => 0) }))
 
 import * as repo    from '@/modules/rides/rides.repository'
 import * as pricing from '@/modules/pricing/pricing.service'

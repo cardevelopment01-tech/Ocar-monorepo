@@ -18,6 +18,7 @@ import AnimatedNumber from '@/components/ui/AnimatedNumber'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
 import RedirectToast from '@/components/ui/RedirectToast'
+import { getApiErrorMessage } from '@ocar/shared'
 
 const SelectRideMapScene = dynamic(() => import('@/components/map/SelectRideMapScene'), { ssr: false })
 
@@ -313,9 +314,7 @@ function SelectRideContent() {
       const result = await rideApi.createBooking(bookingParams)
       router.push(scheduledFor ? '/history?scheduled=1' : `/ride/${result.rideId}`)
     } catch (err) {
-      const status = isAxiosError(err) ? err.response?.status : undefined
-      const serverMessage = isAxiosError(err) ? (err.response?.data as { error?: string } | undefined)?.error : undefined
-      setBookError(status === 422 && serverMessage ? serverMessage : 'Booking failed. Please try again.')
+      setBookError(getApiErrorMessage(err, 'Booking failed. Please try again.'))
     } finally {
       setIsBooking(false)
     }

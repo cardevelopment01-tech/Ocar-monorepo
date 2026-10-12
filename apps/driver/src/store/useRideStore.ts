@@ -12,6 +12,8 @@ export interface RideStop {
   reached_at: string | null
   stop_charge_applied: string | null
   wait_charge: string | null
+  // Set once the driver has asked the rider to skip this stop (they can't reach it).
+  unreachable_requested_at?: string | null
 }
 
 export interface ActiveRide {
@@ -75,7 +77,7 @@ interface RideState {
   setBookedWindow:   (ride: { bookedUntil?: string | null; overtimeRate?: number | null; overtimeGraceMin?: number | null }) => void
   updatePickup:      (lat: number, lng: number, address: string | null) => void
   arriveStop:        (sequence: number, arrivedAt: string | null, waitCharge?: string | null) => void
-  updateStop:        (sequence: number, status: 'reached' | 'skipped', reachedAt: string | null, waitCharge?: string | null) => void
+  updateStop:        (sequence: number, status: 'pending' | 'reached' | 'skipped', reachedAt: string | null, waitCharge?: string | null, unreachableRequestedAt?: string | null) => void
   addStop:           (stop: RideStop) => void
   setStops:          (stops: RideStop[]) => void
   clearRide:         () => void
@@ -147,13 +149,13 @@ export const useRideStore = create<RideState>()(
           } : null,
         })),
 
-      updateStop: (sequence, status, reachedAt, waitCharge) =>
+      updateStop: (sequence, status, reachedAt, waitCharge, unreachableRequestedAt) =>
         set((s) => ({
           activeRide: s.activeRide ? {
             ...s.activeRide,
             stops: (s.activeRide.stops ?? []).map(stop =>
               stop.sequence === sequence
-                ? { ...stop, status, reached_at: reachedAt, ...(waitCharge !== undefined ? { wait_charge: waitCharge } : {}) }
+                ? { ...stop, status, reached_at: reachedAt, ...(waitCharge !== undefined ? { wait_charge: waitCharge } : {}), ...(unreachableRequestedAt !== undefined ? { unreachable_requested_at: unreachableRequestedAt } : {}) }
                 : stop
             ),
           } : null,

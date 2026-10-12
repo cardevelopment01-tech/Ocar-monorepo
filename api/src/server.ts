@@ -27,6 +27,17 @@ function exitAfterFlush(code: number): void {
   logger.flush(() => process.exit(code))
 }
 
+// A stray rejection (e.g. a fire-and-forget `void promise` that throws) must be visible but not fatal;
+// a genuinely uncaught exception leaves the process in an unknown state, so log, flush and exit and let
+// the orchestrator restart it instead of dying silently mid-write.
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'unhandled promise rejection')
+})
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'uncaught exception')
+  exitAfterFlush(1)
+})
+
 async function start(): Promise<void> {
   const dbOk = await testConnection()
   if (!dbOk) {

@@ -59,6 +59,11 @@ aws ssm get-parameter --region "$REGION" --name "${api_env_parameter_name}" --wi
   echo "ALLOY_HOSTNAME=$INSTANCE_ID"
   echo "ALLOY_ENV=${environment}"
   echo "ALLOY_COLOR=${color}"
+  # config.alloy's S3 log archive (s3-logs-archive.tf). Own names, not
+  # AWS_REGION -- this file is also the api container's env, and the app's
+  # own AWS_REGION must not be shadowed by this.
+  echo "LOGS_ARCHIVE_BUCKET=${logs_archive_bucket}"
+  echo "LOGS_ARCHIVE_REGION=${region}"
 } >> .env.prod
 
 # DB_HOST/DB_PORT/DB_SECRET_ARN are derived fresh from RDS here, NOT copied

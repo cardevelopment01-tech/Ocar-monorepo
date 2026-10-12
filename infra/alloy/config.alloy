@@ -47,8 +47,50 @@ discovery.relabel "containers" {
 loki.source.docker "containers" {
   host          = "unix:///var/run/docker.sock"
   targets       = discovery.relabel.containers.output
-  forward_to    = [loki.write.grafana_cloud.receiver]
+  forward_to    = [loki.write.grafana_cloud.receiver, loki.process.s3_archive.receiver]
   relabel_rules = discovery.relabel.containers.rules
+}
+
+// S3 log archive (s3-logs-archive.tf): api container only, `body` marshaler
+// = raw Pino lines, batched 5 min. Experimental component, needs
+// --stability.level=experimental (docker-compose.prod.yml).
+loki.process "s3_archive" {
+  forward_to = [otelcol.receiver.loki.s3_archive.receiver]
+
+  stage.match {
+    selector = "{service=\"ocar\", container!=\"ocar_api\"}"
+    action   = "drop"
+  }
+}
+
+otelcol.receiver.loki "s3_archive" {
+  output {
+    logs = [otelcol.processor.batch.s3_archive.input]
+  }
+}
+
+otelcol.processor.batch "s3_archive" {
+  timeout         = "5m"
+  send_batch_size = 8192
+
+  output {
+    logs = [otelcol.exporter.awss3.logs.input]
+  }
+}
+
+otelcol.exporter.awss3 "logs" {
+  s3_uploader {
+    region                = sys.env("LOGS_ARCHIVE_REGION")
+    s3_bucket             = sys.env("LOGS_ARCHIVE_BUCKET")
+    s3_prefix             = "logs"
+    s3_partition_format   = "year=%Y/month=%m/day=%d/hour=%H"
+    s3_partition_timezone = "UTC"
+    compression           = "gzip"
+  }
+
+  marshaler {
+    type = "body"
+  }
 }
 
 loki.write "grafana_cloud" {
@@ -63,9 +105,11 @@ loki.write "grafana_cloud" {
 }
 
 // --- Metrics pipeline ---------------------------------------------------
-// Scrapes the API's /metrics endpoint and node_exporter, ships both to
-// Grafana Cloud Prometheus (remote_write).
-
+// Scrapes api, node_exporter, postgres, cadvisor -> Grafana Cloud (remote_write).
+// sample_limit = circuit breaker: over it the whole scrape fails (up=0)
+// instead of a cardinality blowup reaching Grafana. Generous on purpose;
+// tune to ~3x max by (job, host) (scrape_samples_scraped).
+//
 // host label matches what the logs pipeline already tags each line with --
 // without it, every instance's series arrive under the same identity and
 // can't be told apart in a query or dashboard (see docs/superpowers/specs/
@@ -74,19 +118,18 @@ loki.write "grafana_cloud" {
 prometheus.scrape "api" {
   targets       = [{"__address__" = "api:4000", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   metrics_path  = "/metrics"
+  sample_limit  = 20000
   forward_to    = [prometheus.remote_write.grafana_cloud.receiver]
 }
 
 prometheus.scrape "node" {
-  targets    = [{"__address__" = "node_exporter:9100", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
-  forward_to = [prometheus.relabel.node.receiver]
+  targets      = [{"__address__" = "node_exporter:9100", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
+  sample_limit = 20000
+  forward_to   = [prometheus.relabel.node.receiver]
 }
 
-// node_exporter ships ~500-700 series/host unfiltered -- tipped the 15k
-// active-series cap during 2026-08-30's blue/green rollout. Keep-list is
-// for incident/audit value, not just ocar-overview.json's current queries
-// (adds swap, inodes, disk I/O, network errors). device-exclude above
-// bounds node_network_*; this is the 2nd layer, same as cadvisor below.
+// node_exporter ships ~500-700 series/host unfiltered -- tipped the 15k cap
+// in the 2026-08-30 rollout. Keep-list covers incident/audit metrics too.
 prometheus.relabel "node" {
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 
@@ -97,13 +140,13 @@ prometheus.relabel "node" {
   }
 }
 
-// pg_stat_statements is staging's biggest active-series driver (per-query
-// x every instance, unfiltered). Dropped from remote_write there via the
-// relabel rule below; archived to S3 instead (s3-metrics-archive.tf). Prod
-// unaffected.
+// pg_stat_statements drove staging's series count; staging drops postgres
+// metrics below and archives to S3 (s3-metrics-archive.tf). Prod: capped by
+// the exporter's stat_statements.limit (docker-compose.prod.yml).
 prometheus.scrape "postgres" {
-  targets    = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR"), "alloy_env" = sys.env("ALLOY_ENV")}]
-  forward_to = [prometheus.relabel.postgres.receiver]
+  targets      = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR"), "alloy_env" = sys.env("ALLOY_ENV")}]
+  sample_limit = 20000
+  forward_to   = [prometheus.relabel.postgres.receiver]
 }
 
 prometheus.relabel "postgres" {
@@ -125,15 +168,13 @@ prometheus.relabel "postgres" {
 // Per-container CPU/memory -- node_exporter above is host-wide only, this is
 // what lets the dashboard tell api's usage apart from alloy's/postgres_exporter's.
 prometheus.scrape "cadvisor" {
-  targets    = [{"__address__" = "cadvisor:8080", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
-  forward_to = [prometheus.relabel.cadvisor.receiver]
+  targets      = [{"__address__" = "cadvisor:8080", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
+  sample_limit = 30000
+  forward_to   = [prometheus.relabel.cadvisor.receiver]
 }
 
-// Keep only the cadvisor families the dashboards actually query; drop the rest of
-// cadvisor's ~100 metric families so a rolling ASG replace duplicates far fewer
-// active series into Mimir during the deploy window (this is what tipped the
-// tenant active-series cap during a 2026-08-18 rolling deploy). Keep-list grepped
-// from infra/grafana/dashboards/ocar-overview.json.
+// Keep only the cadvisor families the dashboards query (tipped the series cap
+// in the 2026-08-18 rolling deploy). Grepped from ocar-overview.json.
 prometheus.relabel "cadvisor" {
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 
@@ -143,24 +184,35 @@ prometheus.relabel "cadvisor" {
     action        = "keep"
   }
 
-  // Only the compose-managed services matter (matches ocar-overview.json's
-  // own {name=~"ocar_.*"} queries) -- drops any stray/ad-hoc container on
-  // the host, e.g. the CI migration's `docker run --name db_migrate`
-  // (deploy.yml), permanently and with no allowlist to maintain.
+  // Compose services only -- drops ad-hoc containers (e.g. db_migrate).
   rule {
     source_labels = ["name"]
     regex         = "ocar_.*"
     action        = "keep"
   }
 
-  // Allowlist beats denylist: kills id/image churn (a new value every
-  // deploy -- id on every container recreate, image on every ocar_api
-  // deploy since its tag changes) *and* any current/future
-  // container_label_* noise (cadvisor's --store_container_labels
-  // defaults to true) in one rule, instead of maintaining a drop-list.
+  // Allowlist kills id/image churn and container_label_* noise in one rule.
   rule {
     regex  = "__name__|name|host|color"
     action = "labelkeep"
+  }
+}
+
+// Alloy self-metrics for infra/terraform/observability/alerts-alloy.tf.
+// Allowlist only: unfiltered this is ~220 series/host.
+prometheus.scrape "alloy" {
+  targets      = [{"__address__" = "127.0.0.1:12345", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
+  sample_limit = 5000
+  forward_to   = [prometheus.relabel.alloy.receiver]
+}
+
+prometheus.relabel "alloy" {
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  rule {
+    source_labels = ["__name__"]
+    regex         = "alloy_config_last_load_successful|alloy_component_controller_running_components|otelcol_exporter_(send_failed|sent)_log_records_total|prometheus_remote_storage_samples_failed_total|loki_write_dropped_bytes_total"
+    action        = "keep"
   }
 }
 
@@ -192,13 +244,8 @@ otelcol.receiver.otlp "default" {
 }
 
 otelcol.auth.basic "grafana_cloud" {
-  // client_auth{} is docs.grafana.com/alloy/latest's documented replacement
-  // for these top-level args, but it produced "no credential source
-  // provided" against the actually-deployed v1.18.1 (verified live against
-  // production Alloy logs, 2026-08-08) — the docs describe a newer version
-  // than what's pinned in docker-compose.prod.yml. Revert to the
-  // deprecated-but-functional form; revisit client_auth{} if/when the
-  // pinned image is upgraded past v1.18.1.
+  // client_auth{} failed on v1.18.1 ("no credential source provided",
+  // verified live 2026-08-08); keep these deprecated args until upgrade.
   username = sys.env("GRAFANA_CLOUD_TEMPO_USER")
   password = sys.env("GRAFANA_CLOUD_API_KEY")
 }

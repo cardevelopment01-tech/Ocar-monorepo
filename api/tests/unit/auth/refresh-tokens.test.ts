@@ -83,4 +83,33 @@ describe('refreshTokens', () => {
       appCode: 'AUTH_TOKEN_INVALID',
     })
   })
+
+  describe('account standing is re-checked on refresh', () => {
+    const liveToken = (role: string) => ({
+      id: '1', principal_role: role, principal_id: '7', family_id: 'f',
+      used_at: null, revoked_at: null, expires_at: new Date('2099-01-01'),
+    })
+
+    it.each([
+      ['user', 'suspended', 'AUTH_FORBIDDEN'],
+      ['user', 'deleted', 'AUTH_FORBIDDEN'],
+      ['driver', 'suspended', 'DRIVER_SUSPENDED'],
+      ['driver', 'banned', 'DRIVER_SUSPENDED'],
+    ])('refuses a %s who is %s and does not rotate the token', async (role, status, code) => {
+      vi.mocked(repo.findRefreshToken).mockResolvedValue(liveToken(role) as never)
+      const principal = { id: '7', code: 'X', status } as never
+      vi.mocked(role === 'user' ? repo.findUserById : repo.findDriverById).mockResolvedValue(principal)
+
+      await expect(refreshTokens('tok')).rejects.toMatchObject({ appCode: code })
+      expect(repo.rotateRefreshToken).not.toHaveBeenCalled()
+    })
+
+    it('refuses a deactivated admin', async () => {
+      vi.mocked(repo.findRefreshToken).mockResolvedValue(liveToken('admin') as never)
+      vi.mocked(repo.findAdminById).mockResolvedValue({ id: '7', code: 'A', role: 'ops_admin', is_active: false } as never)
+
+      await expect(refreshTokens('tok')).rejects.toMatchObject({ appCode: 'AUTH_TOKEN_INVALID' })
+      expect(repo.rotateRefreshToken).not.toHaveBeenCalled()
+    })
+  })
 })

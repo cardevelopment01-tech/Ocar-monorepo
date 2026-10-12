@@ -1,12 +1,13 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { colors, spacing, typography, fonts } from '@ocar/mobile-shared'
 import type { RideStop } from '@ocar/mobile-shared'
 
-export type StopTimelineProps = { stops: RideStop[] }
+// `onSkip` set = rider may drop a pending stop (live trip only; the trip summary omits it).
+export type StopTimelineProps = { stops: RideStop[]; onSkip?: (stop: RideStop) => void }
 
 // Compact vertical stop list -- mirrors the web's RouteTimeline for stop rows: a
 // dot per stop (color reflects reached/pending/skipped), connected by a line.
-export function StopTimeline({ stops }: StopTimelineProps) {
+export function StopTimeline({ stops, onSkip }: StopTimelineProps) {
   return (
     <View style={styles.container}>
       {stops.map((stop, i) => {
@@ -21,9 +22,20 @@ export function StopTimeline({ stops }: StopTimelineProps) {
               <Text style={styles.label}>Stop {stop.sequence}</Text>
               <Text style={styles.address} numberOfLines={1}>{stop.address ?? `Stop ${i + 1}`}</Text>
             </View>
-            <Text style={[styles.status, { color: dotColor }]}>
-              {stop.status === 'reached' ? 'Reached' : stop.status === 'skipped' ? 'Skipped' : 'Pending'}
-            </Text>
+            {stop.status === 'pending' && onSkip ? (
+              <Pressable
+                onPress={() => onSkip(stop)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Skip stop ${stop.sequence}`}
+              >
+                <Text style={[styles.status, { color: colors.error }]}>Skip</Text>
+              </Pressable>
+            ) : (
+              <Text style={[styles.status, { color: dotColor }]}>
+                {stop.status === 'reached' ? 'Reached' : stop.status === 'skipped' ? 'Skipped' : 'Pending'}
+              </Text>
+            )}
           </View>
         )
       })}

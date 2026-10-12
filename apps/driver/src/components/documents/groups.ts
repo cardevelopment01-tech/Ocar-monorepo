@@ -72,8 +72,20 @@ export const VEHICLE_GROUPS: DocGroupDef[] = [
   },
 ]
 
+// Collected by the onboarding selfie step, so it is NOT in ALL_GROUPS (the onboarding Documents step
+// would otherwise demand it before the selfie step). The settings Documents screen renders it so a
+// rejected profile photo can be replaced.
+export const PROFILE_PHOTO_GROUP: DocGroupDef = {
+  groupKey: 'profile_photo',
+  label: 'Profile Photo',
+  required: true,
+  slots: [{ key: 'profile_photo', slotLabel: '', accept: 'image/*', isVehicle: false }],
+  hasExpiry: false,
+  expiryRequired: false,
+}
+
 export const ALL_GROUPS = [...DRIVER_GROUPS, ...VEHICLE_GROUPS]
-export const ALL_KEYS   = ALL_GROUPS.flatMap(g => g.slots.map(s => s.key))
+export const ALL_KEYS   = [PROFILE_PHOTO_GROUP, ...ALL_GROUPS].flatMap(g => g.slots.map(s => s.key))
 
 export function initSlotState(): Record<string, SlotState> {
   return Object.fromEntries(
@@ -84,5 +96,5 @@ export function initSlotState(): Record<string, SlotState> {
 // key -> "Group Label" or "Group Label (Slot)" for a two-slot group, built from the same
 // group data the wizard and settings screen already render, so it can't drift from either.
 export const SLOT_LABELS: Record<string, string> = Object.fromEntries(
-  ALL_GROUPS.flatMap(g => g.slots.map(s => [s.key, s.slotLabel ? `${g.label} (${s.slotLabel})` : g.label]))
+  [PROFILE_PHOTO_GROUP, ...ALL_GROUPS].flatMap(g => g.slots.map(s => [s.key, s.slotLabel ? `${g.label} (${s.slotLabel})` : g.label]))
 )

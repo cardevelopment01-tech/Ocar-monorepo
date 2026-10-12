@@ -2,7 +2,7 @@ import { Router, IRouter, RequestHandler } from 'express'
 import { AppErrors } from '@/constants/errors'
 import { authenticate } from '@/middleware/auth.middleware'
 import { client as redis } from '@/db/redis'
-import { startOtpKey, endOtpKey } from '@/constants/redis-keys'
+import { startOtpKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
 import { withTripWindow } from '@/lib/trip-window'
 import * as service from './rides.service'
@@ -19,6 +19,20 @@ const onlyDriver: RequestHandler = (req, res, next) => {
 const onlyUser: RequestHandler = (req, res, next) => {
   if (req.user) { next(); return }
   res.status(403).json({ error: AppErrors.AUTH_FORBIDDEN.message, code: AppErrors.AUTH_FORBIDDEN.code })
+}
+
+// Actions that START new work. A suspended rider cannot book and a driver who is not 'active' (suspended,
+// docs rejected, still pending approval) cannot go online, resume or take an offer. Deliberately NOT applied to
+// routes that finish or inspect an existing ride (arrive/start/end/cancel/location/history): suspending someone
+// must not strand a passenger mid-trip.
+const canBook: RequestHandler = (req, res, next) => {
+  if (req.user && req.user.status !== 'suspended' && req.user.status !== 'deleted') { next(); return }
+  res.status(403).json({ error: AppErrors.AUTH_FORBIDDEN.message, code: AppErrors.AUTH_FORBIDDEN.code })
+}
+const canTakeWork: RequestHandler = (req, res, next) => {
+  if (req.driver && req.driver.status === 'active') { next(); return }
+  const err = req.driver?.status === 'suspended' ? AppErrors.DRIVER_SUSPENDED : AppErrors.DRIVER_NOT_APPROVED
+  res.status(403).json({ error: err.message, code: err.code })
 }
 
 const router: IRouter = Router()
@@ -101,7 +115,7 @@ router.get('/me/active', authenticate(), onlyDriver, async (req, res, next) => {
 
 // ── Driver session ────────────────────────────────────────────
 
-router.post('/sessions/online', authenticate(), onlyDriver, async (req, res, next) => {
+router.post('/sessions/online', authenticate(), onlyDriver, canTakeWork, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const session = await service.goOnline(driverId, req.body as Parameters<typeof service.goOnline>[1])
@@ -132,7 +146,7 @@ router.post('/sessions/pause', authenticate(), onlyDriver, async (req, res, next
   } catch (err) { next(err) }
 })
 
-router.post('/sessions/resume', authenticate(), onlyDriver, async (req, res, next) => {
+router.post('/sessions/resume', authenticate(), onlyDriver, canTakeWork, async (req, res, next) => {
   try {
     await service.resumeAvailability(req.driver!.id)
     res.json({ success: true })
@@ -149,7 +163,7 @@ router.get('/sessions/current', authenticate(), onlyDriver, async (req, res, nex
 
 // ── Ride booking (user) ───────────────────────────────────────
 
-router.post('/', authenticate(), onlyUser, async (req, res, next) => {
+router.post('/', authenticate(), onlyUser, canBook, async (req, res, next) => {
   try {
     const userId = req.user!.id
     const result = await service.createBooking(userId, req.body as import('./rides.types').BookingRequest)
@@ -206,7 +220,9 @@ router.get('/:id', authenticate(), async (req, res, next) => {
     const [startOtp, endOtp, stops] = await Promise.all([
       isRider ? redis.get(startOtpKey(rideIdStr)) : Promise.resolve(null),
       // The end PIN stays hidden until the driver taps "Arrived at drop".
-      isRider && ride.drop_arrived_at ? redis.get(endOtpKey(rideIdStr)) : Promise.resolve(null),
+      isRider && ride.drop_arrived_at && ['in_progress', 'returning'].includes(ride.status)
+        ? service.getEndOtp(BigInt(rideIdStr))
+        : Promise.resolve(null),
       repo.getRideStops(BigInt(rideIdStr)),
     ])
 
@@ -262,7 +278,7 @@ router.post('/:id/end-early', authenticate(), onlyDriver, async (req, res, next)
 
 // ── Driver ride actions ───────────────────────────────────────
 
-router.post('/:id/accept', authenticate(), onlyDriver, async (req, res, next) => {
+router.post('/:id/accept', authenticate(), onlyDriver, canTakeWork, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const result = await service.acceptRide(driverId, BigInt(req.params['id']!))
@@ -389,6 +405,24 @@ router.post('/:id/stops', authenticate(), onlyUser, async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+router.post('/:id/stops/:sequence/unreachable', authenticate(), onlyDriver, async (req, res, next) => {
+  try {
+    const sequence = parseInt(req.params['sequence']!, 10)
+    if (isNaN(sequence)) { res.status(400).json({ error: 'sequence required' }); return }
+    const result = await service.reportStopUnreachable(req.driver!.id, BigInt(req.params['id']!), sequence)
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
+router.post('/:id/stops/:sequence/skip', authenticate(), onlyUser, async (req, res, next) => {
+  try {
+    const sequence = parseInt(req.params['sequence']!, 10)
+    if (isNaN(sequence)) { res.status(400).json({ error: 'sequence required' }); return }
+    const result = await service.skipRideStop(req.user!.id, BigInt(req.params['id']!), sequence)
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
 // ── Pickup pin edit (rider, bounded-radius correction) ────────
 
 router.patch('/:id/pickup', authenticate(), onlyUser, async (req, res, next) => {
@@ -410,9 +444,10 @@ router.patch('/:id/stops/:sequence', authenticate(), onlyDriver, async (req, res
   try {
     const driverId = req.driver!.id
     const sequence = parseInt(req.params['sequence']!, 10)
-    const { status } = req.body as { status: 'arrived' | 'reached' | 'skipped' }
-    if (isNaN(sequence) || (status !== 'arrived' && status !== 'reached' && status !== 'skipped')) {
-      res.status(400).json({ error: 'sequence and status (arrived|reached|skipped) required' }); return
+    const { status } = req.body as { status: 'arrived' | 'reached' }
+    // Skipping is rider-only: POST /:id/stops/:sequence/skip.
+    if (isNaN(sequence) || (status !== 'arrived' && status !== 'reached')) {
+      res.status(400).json({ error: 'sequence and status (arrived|reached) required' }); return
     }
     const rideId = BigInt(req.params['id']!)
     const result = status === 'arrived'

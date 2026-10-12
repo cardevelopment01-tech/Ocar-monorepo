@@ -5,6 +5,8 @@ export type SocketConfig = {
   getToken: () => string | null
   refreshToken: () => Promise<string>
   onRefreshFailure: () => void
+  /** Server says this account signed in elsewhere. Falls back to onRefreshFailure. */
+  onSessionReplaced?: () => void
 }
 
 export type SocketHandle = {
@@ -20,6 +22,7 @@ export type SocketHandle = {
 export function createSocket(config: SocketConfig): SocketHandle {
   const { baseURL, getToken, refreshToken, onRefreshFailure } = config
   let refreshInProgress = false
+  const onSessionReplaced = config.onSessionReplaced ?? onRefreshFailure
 
   const socket: Socket = io(baseURL, {
     auth: { token: getToken() },
@@ -29,7 +32,10 @@ export function createSocket(config: SocketConfig): SocketHandle {
     autoConnect: false,
   })
 
+  socket.on('session:replaced', onSessionReplaced)
+
   socket.on('connect_error', (err) => {
+    if (err.message === 'AUTH_SESSION_REPLACED') return onSessionReplaced()
     const isAuthError = err.message === 'Invalid token' || err.message === 'Authentication required'
     if (!isAuthError || refreshInProgress) return
 

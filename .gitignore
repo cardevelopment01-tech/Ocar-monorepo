@@ -47,3 +47,15 @@ infra/terraform/*.tfstate.backup
 infra/terraform/*tfplan
 infra/terraform/*-api-env.txt
 infra/terraform/**/*.tfvars
+
+# Local scratch that must never be committed (load-test JWTs, env backups, debug builds)
+load-tests/tokens.json
+*.env.local.bak
+.env*.bak
+*.apk
+
+# Local scratch that must never be committed (load-test JWTs, env backups, debug builds)
+load-tests/tokens.json
+*.env.local.bak
+.env*.bak
+*.apk

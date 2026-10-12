@@ -117,7 +117,9 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
 
   if (!drivers.length) {
     if (data.broadcastRound >= 3) {
-      await repo.updateRideStatus(rideId, 'no_drivers')
+      // CAS: a driver may have accepted between the status read at the top and now.
+      const closed = await repo.updateRideStatusCAS(rideId, 'requested', 'no_drivers')
+      if (!closed) return
       await repo.logStatusHistory({
         rideId,
         fromStatus: 'requested',

@@ -2,7 +2,8 @@
 /**
  * load-tests/verify/reconcile.js
  *
- * Run this AFTER a k6 session (main.js, accept-race.js, or both). k6's own
+ * Run this AFTER a k6 session (main.js, accept-race.js, lifecycle.js, safety-writes.js, or any mix).
+ * Checks: the original 6 below plus ./lifecycle-checks.js (money + state for lifecycle rides). k6's own
  * check()/threshold output only tells you what HTTP responses looked like —
  * it can't tell you whether the DATA a load test leaves behind is actually
  * correct. This queries staging directly for the failure modes that matter
@@ -30,6 +31,7 @@ function arg(name, fallback) {
 }
 
 const SINCE_HOURS = parseInt(arg('since-hours', '24'), 10)
+const LIFECYCLE_CHECKS = require('./lifecycle-checks')
 
 const SYNTHETIC_USERS = `(SELECT id FROM users WHERE phone LIKE '99999%')`
 
@@ -114,15 +116,32 @@ async function main() {
   const client = new Client(getStagingDbConfig())
   await client.connect()
 
+  // Context first: what this window contains, so a PASS on an empty window
+  // isn't mistaken for a pass on a real run.
+  const mix = await client.query(
+    `SELECT ride_type::text AS ride_type, status::text AS status, count(*)::int AS n FROM rides
+     WHERE user_id IN ${SYNTHETIC_USERS} AND requested_at > now() - ($1 || ' hours')::interval
+     GROUP BY 1, 2 ORDER BY 1, 2`,
+    [SINCE_HOURS]
+  )
+  console.log(`Synthetic rides in the last ${SINCE_HOURS}h:`)
+  if (mix.rows.length === 0) console.log('  (none -- every check below passes vacuously)')
+  mix.rows.forEach((r) => console.log(`  ${r.ride_type.padEnd(10)} ${r.status.padEnd(15)} ${r.n}`))
+
   let anyFailed = false
-  for (const check of CHECKS) {
-    const res = await client.query(check.sql, check.params || [])
+  let anyWarned = false
+  // lifecycle-checks.js: money + state correctness for k6/lifecycle.js rides.
+  // Checks that use the window set params: 'since'.
+  for (const check of [...CHECKS, ...LIFECYCLE_CHECKS]) {
+    const params = check.params === 'since' ? [SINCE_HOURS] : (check.params || [])
+    const res = await client.query(check.sql, params)
     const rows = res.rows
     const violationCount = check.isCount ? rows[0].n : rows.length
     const failed = violationCount > 0
-    anyFailed = anyFailed || failed
+    const warnOnly = check.severity === 'warn'
+    if (failed) { if (warnOnly) anyWarned = true; else anyFailed = true }
 
-    console.log(`\n${failed ? 'FAIL' : 'PASS'} — ${check.name}`)
+    console.log(`\n${failed ? (warnOnly ? 'WARN' : 'FAIL') : 'PASS'} — ${check.name}`)
     if (failed) {
       if (check.isCount) {
         console.log(`  ${check.describe(rows[0])}`)
@@ -133,7 +152,7 @@ async function main() {
     }
   }
 
-  console.log(`\n${anyFailed ? 'RECONCILIATION FAILED — see FAIL sections above.' : 'All checks passed.'}`)
+  console.log(`\n${anyFailed ? 'RECONCILIATION FAILED — see FAIL sections above.' : 'All checks passed.'}${anyWarned ? ' (with WARN items to review)' : ''}`)
   await client.end()
   process.exit(anyFailed ? 1 : 0)
 }

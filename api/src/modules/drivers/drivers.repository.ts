@@ -41,7 +41,7 @@ export async function countCompletedRides(driverId: bigint): Promise<number> {
 
 export async function updateProfile(
   id: bigint,
-  data: { full_name: string; email?: string }
+  data: { full_name: string; email?: string | null }
 ): Promise<Driver> {
   const params: unknown[] = [data.full_name, id.toString()]
   let sql = 'UPDATE drivers SET full_name = $1, updated_at = now()'

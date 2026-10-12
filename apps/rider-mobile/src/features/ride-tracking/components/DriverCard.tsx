@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather, FontAwesome } from '@expo/vector-icons'
-import { colors, fonts, spacing, typography } from '@ocar/mobile-shared'
+import { colors, fonts, spacing, typography, getApiErrorMessage } from '@ocar/mobile-shared'
 import { card } from '@/theme/homeTokens'
 import { triggerMaskedCall } from '../api'
 import type { RideDetailExtra } from '../types'
@@ -39,8 +39,8 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
       // that happens -- each extra tap re-dials both parties and burns the ride's call cap.
       setCallError('Your phone will ring shortly')
       timers.current.push(setTimeout(() => { setCallError(null); setCalling(false) }, 20000))
-    } catch {
-      setCallError('Could not connect the call')
+    } catch (err) {
+      setCallError(getApiErrorMessage(err, 'Could not connect the call'))
       timers.current.push(setTimeout(() => setCallError(null), 4000))
       setCalling(false)
     }

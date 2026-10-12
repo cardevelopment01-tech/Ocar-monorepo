@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import { client as redis } from '@/db/redis'
+import { withTimeout } from '@/lib/with-timeout'
 import {
   OTP_LENGTH,
   OTP_TTL_SECONDS,
@@ -9,7 +10,9 @@ import {
   OTP_RATE_LIMIT_MAX_REQUESTS,
   RIDE_OTP_MAX_ATTEMPTS,
   RIDE_OTP_LOCKOUT_SECONDS,
+  RIDE_OTP_LENGTH,
 } from '@/constants/limits'
+import { config } from '@/config'
 import { sha256 } from '@/lib/hash'
 import { httpError } from '@/lib/errors'
 import type { OtpPurpose, PrincipalRole } from '@/constants/enums'
@@ -23,6 +26,13 @@ interface OtpState {
 
 export function generateOtp(length: number = OTP_LENGTH): string {
   return String(crypto.randomInt(0, 10 ** length)).padStart(length, '0')
+}
+
+// Ride end PIN, recomputable from the ride id + a server secret so it can never be "lost" (Redis eviction,
+// TTL, restart). Still only the SHA-256 hash is stored in rides.end_otp_hash; unpredictable without the secret.
+export function deriveRideEndOtp(rideId: bigint, length: number = RIDE_OTP_LENGTH): string {
+  const mac = crypto.createHmac('sha256', config.JWT_REFRESH_SECRET).update(`ride-end-otp:${rideId}`).digest()
+  return String(mac.readUInt32BE(0) % 10 ** length).padStart(length, '0')
 }
 
 export function hashOtp(otp: string): string {
@@ -49,7 +59,7 @@ export async function storeOtp(
     lockedUntil: null,
     expiresAt: new Date(Date.now() + OTP_TTL_SECONDS * 1000).toISOString(),
   }
-  await redis.set(otpRedisKey(phone, purpose, role), JSON.stringify(state), 'EX', OTP_TTL_SECONDS)
+  await withTimeout(redis.set(otpRedisKey(phone, purpose, role), JSON.stringify(state), 'EX', OTP_TTL_SECONDS))
 }
 
 export async function consumeOtp(
@@ -59,7 +69,7 @@ export async function consumeOtp(
   otp: string
 ): Promise<{ success: boolean; expired?: boolean; locked?: boolean; attemptsLeft?: number }> {
   const key = otpRedisKey(phone, purpose, role)
-  const raw = await redis.get(key)
+  const raw = await withTimeout(redis.get(key))
 
   if (!raw) return { success: false, expired: true }
 
@@ -71,7 +81,7 @@ export async function consumeOtp(
   }
 
   if (new Date(state.expiresAt).getTime() <= now) {
-    await redis.del(key)
+    await withTimeout(redis.del(key))
     return { success: false, expired: true }
   }
 
@@ -80,15 +90,15 @@ export async function consumeOtp(
     if (newAttempts >= OTP_MAX_ATTEMPTS) {
       const lockUntil = new Date(now + OTP_LOCK_DURATION_MINUTES * 60 * 1000).toISOString()
       const locked: OtpState = { ...state, attempts: newAttempts, lockedUntil: lockUntil }
-      await redis.set(key, JSON.stringify(locked), 'EX', OTP_LOCK_DURATION_MINUTES * 60)
+      await withTimeout(redis.set(key, JSON.stringify(locked), 'EX', OTP_LOCK_DURATION_MINUTES * 60))
       return { success: false, locked: true, attemptsLeft: 0 }
     }
     const remaining = Math.max(1, Math.ceil((new Date(state.expiresAt).getTime() - now) / 1000))
-    await redis.set(key, JSON.stringify({ ...state, attempts: newAttempts }), 'EX', remaining)
+    await withTimeout(redis.set(key, JSON.stringify({ ...state, attempts: newAttempts }), 'EX', remaining))
     return { success: false, attemptsLeft: OTP_MAX_ATTEMPTS - newAttempts }
   }
 
-  await redis.del(key)
+  await withTimeout(redis.del(key))
   return { success: true }
 }
 
@@ -98,7 +108,7 @@ export async function isVerifyLocked(
   role: PrincipalRole
 ): Promise<boolean> {
   const key = otpRedisKey(phone, purpose, role)
-  const raw = await redis.get(key)
+  const raw = await withTimeout(redis.get(key))
   if (!raw) return false
   const state = JSON.parse(raw) as OtpState
   return !!(state.lockedUntil && new Date(state.lockedUntil).getTime() > Date.now())
@@ -110,9 +120,9 @@ export async function checkRateLimit(
   role: PrincipalRole
 ): Promise<{ allowed: boolean; remaining: number }> {
   const key = rateLimitRedisKey(phone, purpose, role)
-  const count = await redis.incr(key)
+  const count = await withTimeout(redis.incr(key))
   if (count === 1) {
-    await redis.expire(key, OTP_RATE_LIMIT_WINDOW_MINUTES * 60)
+    await withTimeout(redis.expire(key, OTP_RATE_LIMIT_WINDOW_MINUTES * 60))
   }
   return {
     allowed: count <= OTP_RATE_LIMIT_MAX_REQUESTS,
@@ -131,8 +141,8 @@ export async function checkRideOtpAttempts(
   otpType: 'start' | 'end'
 ): Promise<number> {
   const key = `ride:otp:attempts:${rideId}:${otpType}`
-  const attempts = await redis.incr(key)
-  if (attempts === 1) await redis.expire(key, RIDE_OTP_LOCKOUT_SECONDS)
+  const attempts = await withTimeout(redis.incr(key))
+  if (attempts === 1) await withTimeout(redis.expire(key, RIDE_OTP_LOCKOUT_SECONDS))
   if (attempts > RIDE_OTP_MAX_ATTEMPTS) {
     throw httpError(429, 'Too many incorrect attempts. Try again later.', 'RIDE_OTP_LOCKED')
   }
@@ -143,5 +153,5 @@ export async function clearRideOtpAttempts(
   rideId: bigint,
   otpType: 'start' | 'end'
 ): Promise<void> {
-  await redis.del(`ride:otp:attempts:${rideId}:${otpType}`)
+  await withTimeout(redis.del(`ride:otp:attempts:${rideId}:${otpType}`))
 }

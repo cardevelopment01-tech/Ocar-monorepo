@@ -2,7 +2,8 @@ import { config } from '@/config'
 
 export async function sendSms(phone: string, message: string, templateId?: string): Promise<void> {
   if (!config.BULKSMSPLANS_API_ID || !config.BULKSMSPLANS_API_PASSWORD) {
-    console.log('[SMS DEV]', phone, message)
+    // Message body is deliberately not logged: it carries OTPs.
+    console.log('[SMS DEV] not sent (no provider credentials):', phone)
     return
   }
 

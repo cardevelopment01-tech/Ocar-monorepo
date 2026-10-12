@@ -400,8 +400,8 @@ export default function App() {
       socket.emit('join:ride', activeRide.id)
       void resyncRideStatus()
     }
-    const onStopUpdated = (data: { sequence: number; status: 'reached' | 'skipped'; reachedAt: string | null }) => {
-      updateStop(data.sequence, data.status, data.reachedAt)
+    const onStopUpdated = (data: { sequence: number; status: 'pending' | 'reached' | 'skipped'; reachedAt: string | null; unreachableRequestedAt?: string | null }) => {
+      updateStop(data.sequence, data.status, data.reachedAt, undefined, data.unreachableRequestedAt)
     }
     const onStopAdded = (data: { stop: RideStop; stops?: RideStop[] }) => {
       // `stops` is the server's full, re-ordered list (nearest-next); prefer it

@@ -9,6 +9,7 @@ import api from '@/lib/api'
 import { registerPush } from '@/lib/push'
 import { useAuthStore, type DriverProfile } from '@/store/useAuthStore'
 import { TERMS_URL, PRIVACY_URL } from '@/lib/constants'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 type Step = 'phone' | 'otp'
 
@@ -47,7 +48,13 @@ export default function Login() {
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => {
+    try {
+      if (sessionStorage.getItem('ocar_session_replaced') === null) return ''
+      sessionStorage.removeItem('ocar_session_replaced')
+    } catch { return '' }
+    return 'You were logged out because your account was signed in on another device.'
+  })
   const [countdown, setCountdown] = useState(0)
   const [devOtp, setDevOtp] = useState('')
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -119,7 +126,7 @@ export default function Login() {
       if (code === 'AUTH_OTP_INVALID')    setError('Incorrect code. Please try again.')
       else if (code === 'AUTH_OTP_EXPIRED') { setError('Code has expired. Request a new one.'); setStep('phone') }
       else if (code === 'AUTH_OTP_LOCKED')  setError('Too many attempts. Please wait 15 minutes.')
-      else setError('Verification failed. Please try again.')
+      else setError(getApiErrorMessage(err, 'Verification failed. Please try again.'))
     } finally { otpVerifyInFlightRef.current = false; setLoading(false) }
   }
 

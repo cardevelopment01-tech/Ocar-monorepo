@@ -167,7 +167,7 @@ export async function findNearbyDrivers(params: {
        ) AS distance_metres
      FROM driver_location_snapshots dls
      JOIN driver_sessions ds ON ds.id = dls.session_id
-     JOIN drivers d ON d.id = ds.driver_id
+     JOIN drivers d ON d.id = ds.driver_id AND d.status = 'active'
      -- INNER join: a driver with no assigned operating city (or an inactive
      -- one) can't have gone online (see goOnline's city gate), so they're
      -- correctly excluded from matching here too — no GPS-based fallback.
@@ -254,7 +254,7 @@ export async function findReturnCabDrivers(params: {
      FROM return_cab_routes rcr
      JOIN driver_sessions ds ON ds.id = rcr.session_id
      JOIN driver_location_snapshots dls ON dls.driver_id = rcr.driver_id
-     JOIN drivers d ON d.id = rcr.driver_id
+     JOIN drivers d ON d.id = rcr.driver_id AND d.status = 'active'
      -- INNER join: see findNearbyDrivers above — no assigned active city means
      -- the driver couldn't have gone online, so they're excluded here too.
      JOIN cities dc ON dc.id = d.city_id AND dc.status = 'active'
@@ -388,7 +388,7 @@ export async function insertRideStops(
          )
          RETURNING id, ride_id, sequence,
            ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-           address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
+           address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at`,
         [rideId, i + 1, stop.lat, stop.lng, stop.address ?? null, stop.chargeApplied]
       )
       rows.push(res.rows[0]!)
@@ -407,7 +407,7 @@ export async function getRideStops(rideId: bigint): Promise<RideStop[]> {
   const res = await pool.query<RideStop>(
     `SELECT id, ride_id, sequence,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at
      FROM ride_stops
      WHERE ride_id = $1
      ORDER BY sequence ASC`,
@@ -434,7 +434,7 @@ export async function appendRideStop(
      )
      RETURNING id, ride_id, sequence,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at`,
     [rideId, stop.lat, stop.lng, stop.address ?? null, stop.chargeApplied]
   )
   return res.rows[0]!
@@ -475,6 +475,20 @@ export async function resequenceStops(
 // Stamp arrival at a stop so wait time can be measured server-side. Idempotent
 // (COALESCE) so a re-tap doesn't reset the clock. One-way only in practice —
 // the driver app only sends 'arrived' for one-way rides.
+// Per-stop price of the rate card a ride was quoted on (fare_snapshots.rate_card_id). 0 when the
+// snapshot or card is missing, which is the safe side: never invent a charge.
+export async function getRideStopCharge(rideId: bigint): Promise<number> {
+  const res = await pool.query<{ stop_charge: string | null }>(
+    `SELECT rc.stop_charge::text AS stop_charge
+       FROM fare_snapshots fs
+       JOIN rate_cards rc ON rc.id = fs.rate_card_id
+      WHERE fs.ride_id = $1`,
+    [rideId]
+  )
+  const n = parseFloat(res.rows[0]?.stop_charge ?? '0')
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
 export async function markStopArrived(
   rideId: bigint,
   sequence: number
@@ -485,7 +499,25 @@ export async function markStopArrived(
      WHERE ride_id = $1 AND sequence = $2 AND status = 'pending'
      RETURNING id, ride_id, sequence,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at`,
+    [rideId, sequence]
+  )
+  return res.rows[0] ?? null
+}
+
+// Driver can't reach a pending stop. Idempotent (COALESCE) so a re-tap neither
+// resets the timestamp nor re-notifies; null = stop not found or already resolved.
+export async function markStopUnreachable(
+  rideId: bigint,
+  sequence: number
+): Promise<RideStop | null> {
+  const res = await pool.query<RideStop>(
+    `UPDATE ride_stops
+     SET unreachable_requested_at = COALESCE(unreachable_requested_at, now()), updated_at = now()
+     WHERE ride_id = $1 AND sequence = $2 AND status = 'pending'
+     RETURNING id, ride_id, sequence,
+       ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at`,
     [rideId, sequence]
   )
   return res.rows[0] ?? null
@@ -513,7 +545,7 @@ export async function markStopStatus(
      WHERE ride_id = $1 AND sequence = $2 AND status = 'pending'
      RETURNING id, ride_id, sequence,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
-       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge`,
+       address, status, arrived_at, reached_at, stop_charge_applied, wait_charge, unreachable_requested_at`,
     [rideId, sequence, status, freeMinutes, ratePerMin]
   )
   return res.rows[0] ?? null
@@ -834,14 +866,14 @@ export async function logStatusHistory(data: {
 // callers must treat null as "lost the race, no-op" rather than an error.
 export async function updateRideStatusCAS(
   rideId: bigint,
-  expectedStatus: string,
+  expectedStatus: string | string[],
   newStatus: string,
   // Keys must be trusted internal column names — never from user input
   additionalFields?: Record<string, unknown>
 ): Promise<Ride | null> {
   const fields = additionalFields ?? {}
   const setClauses = ['status = $3', 'updated_at = now()']
-  const params: unknown[] = [rideId, expectedStatus, newStatus]
+  const params: unknown[] = [rideId, Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus], newStatus]
   let p = 4
   for (const [key, val] of Object.entries(fields)) {
     setClauses.push(`${key} = $${p++}`)
@@ -849,7 +881,7 @@ export async function updateRideStatusCAS(
   }
   const res = await pool.query<Ride>(
     `UPDATE rides SET ${setClauses.join(', ')}
-     WHERE id = $1 AND status = $2
+     WHERE id = $1 AND status::text = ANY($2::text[])
      RETURNING *`,
     params
   )
@@ -970,7 +1002,11 @@ export async function setDriverAvailability(driverId: bigint, isAvailable: boole
 }
 
 // Idle (status = 'online', never 'on_trip' — that's the separate in-progress-ride
-// sweep above) drivers whose GPS has gone stale. Same staleSeconds param is reused
+// sweep above) drivers whose GPS has gone stale. Staleness runs from the later of the
+// last GPS fix and the session's last change (ds.updated_at, trigger-maintained): the
+// snapshot is not refreshed during a trip, so without the session term a driver coming
+// off a >10 min ride was forced offline the moment they became 'online' again.
+// Same staleSeconds param is reused
 // for both the short pause-from-pool tier and the longer force-offline tier —
 // see cleanup.worker.ts.
 export async function findStaleOnlineDrivers(staleSeconds: number): Promise<{ driver_id: string }[]> {
@@ -979,7 +1015,7 @@ export async function findStaleOnlineDrivers(staleSeconds: number): Promise<{ dr
      FROM driver_sessions ds
      JOIN driver_location_snapshots dls ON dls.driver_id = ds.driver_id
      WHERE ds.status = 'online'
-       AND now() - dls.recorded_at > ($1 || ' seconds')::interval`,
+       AND now() - GREATEST(dls.recorded_at, ds.updated_at) > ($1 || ' seconds')::interval`,
     [staleSeconds]
   )
   return res.rows
@@ -1064,7 +1100,14 @@ export async function createRideAssignment(data: {
        (ride_id, driver_id, session_id, expires_at,
         broadcast_round, driver_lat, driver_lng)
      VALUES ($1,$2,$3,$4,$5,$6,$7)
-     ON CONFLICT (ride_id, driver_id) DO NOTHING`,
+     ON CONFLICT (ride_id, driver_id) DO UPDATE
+       SET status = 'offered', expires_at = EXCLUDED.expires_at,
+           session_id = EXCLUDED.session_id, broadcast_round = EXCLUDED.broadcast_round,
+           responded_at = NULL
+       -- Re-offer in a later broadcast round: reopen a declined/expired row, else
+       -- acceptAssignment (needs status = 'offered') rejects the fresh card with
+       -- "Ride no longer available". Accepted/cancelled rows stay untouched.
+       WHERE ride_assignments.status IN ('offered', 'declined', 'expired')`,
     [
       data.rideId, data.driverId, data.sessionId,
       data.expiresAt, data.broadcastRound,
@@ -1090,14 +1133,19 @@ export async function acceptAssignment(
            billing_mode_snapshot = $3
        WHERE id = $1 AND status = 'requested'
          AND EXISTS (
-           -- Driver must have an outstanding offer for this ride. Not scoped
-           -- to expires_at: admin force-assign (rides.service.ts's
-           -- assignRideToDriver) creates its own 'offered' row with
-           -- expiresAt = now() (it doesn't wait on a driver ack window) and
-           -- accepts it immediately after — an expiry check here would
-           -- reject that legitimate path.
+           -- Driver must have an outstanding, unexpired offer for this ride. Admin force-assign creates its
+           -- own 'offered' row with expiresAt = now() and accepts it immediately, so a few seconds of grace
+           -- (which also absorbs client latency) keeps that path working while an offer the driver sat on
+           -- for minutes can no longer be accepted.
            SELECT 1 FROM ride_assignments
            WHERE ride_id = $1 AND driver_id = $2 AND status = 'offered'
+             AND expires_at > now() - interval '5 seconds'
+         )
+         -- A driver already on a live ride cannot take another one off an older, still-open offer.
+         AND NOT EXISTS (
+           SELECT 1 FROM rides live
+           WHERE live.driver_id = $2 AND live.id <> $1
+             AND live.status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
          )
        RETURNING id`,
       [rideId, driverId, billingMode]
@@ -1123,6 +1171,14 @@ export async function acceptAssignment(
       [rideId, driverId]
     )
     const cancelledDriverIds = cancelRes.rows.map(r => r.driver_id)
+
+    // The accepting driver's own other open offers are dead now: they are busy.
+    await client.query(
+      `UPDATE ride_assignments
+       SET status = 'cancelled', cancelled_at = now()
+       WHERE driver_id = $1 AND ride_id <> $2 AND status = 'offered'`,
+      [driverId, rideId]
+    )
 
     await client.query(
       `UPDATE ride_assignments

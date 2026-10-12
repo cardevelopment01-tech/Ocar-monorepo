@@ -50,6 +50,17 @@ describe('handleWebhookEvent — payment.captured', () => {
     expect(confirmingUpdateWasIssued()).toBe(false)
   })
 
+  it('concurrent duplicate (insert loses the unique race) → no confirm, no throw', async () => {
+    vi.mocked(pool.query).mockImplementation(async (text: unknown) => {
+      const sql = text as string
+      if (sql.includes('SELECT id FROM payment_gateway_events')) return { rows: [], rowCount: 0 } as never
+      if (sql.includes('INSERT INTO payment_gateway_events')) return { rows: [], rowCount: 0 } as never // ON CONFLICT DO NOTHING
+      return { rows: [{ ride_id: 101 }], rowCount: 1 } as never
+    })
+    await expect(svc.handleWebhookEvent(capturedPayload('pay_1', 'order_1'))).resolves.toBeUndefined()
+    expect(confirmingUpdateWasIssued()).toBe(false)
+  })
+
   it('new captured event with a pending payment → confirms that ride', async () => {
     vi.mocked(pool.query).mockImplementation(async (text: unknown) => {
       const sql = text as string

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, X, RotateCcw, Flag, CheckCircle2, Navigation, Locate, Check, LocateOff, AlertTriangle, Phone, MessageCircle } from 'lucide-react'
+import { Clock, X, RotateCcw, Flag, CheckCircle2, Navigation, Locate, Check, LocateOff, AlertTriangle, Phone, MessageCircle, MoreHorizontal } from 'lucide-react'
 import {
   motion, AnimatePresence, useReducedMotion,
   useMotionValue, useTransform, useMotionValueEvent, animate,
@@ -30,6 +30,7 @@ import { classifyLimit, HIGHWAY_SPEED_LIMIT_KMPH, type SpeedLimitCity } from '@/
 import api from '@/lib/api'
 import { useWakeLock } from '@/lib/useWakeLock'
 import { haversineMetres, remainingRoutePath } from '@/lib/geo'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 const DriverMapView     = lazy(() => import('@/components/map/DriverMapView'))
 const RecenterMap       = lazy(() => import('@/components/map/RecenterMap'))
@@ -206,7 +207,7 @@ export default function TripInProgress() {
     ? [currentStop.lat, currentStop.lng]
     : [activeRide?.dropLat ?? DEFAULT_LAT, activeRide?.dropLng ?? DEFAULT_LNG]
 
-  async function handleStopAction(sequence: number, status: 'reached' | 'skipped') {
+  async function handleStopAction(sequence: number, status: 'reached') {
     if (!activeRide || stopActionPending !== null) return
     setStopActionPending(sequence)
     try {
@@ -224,6 +225,21 @@ export default function TripInProgress() {
   const waitingStop = isOneWay
     ? stops.find(s => s.status === 'pending' && s.arrived_at != null) ?? null
     : null
+
+  // Tucked behind the stop row's overflow button on purpose: a rare escape hatch (closed road,
+  // unsafe spot), and a prominent one is how drivers used to reject rider-added stops. It only
+  // asks the rider; they decide. The server push + socket event flips the row for both sides.
+  async function handleStopUnreachable(sequence: number) {
+    if (!activeRide || stopActionPending !== null) return
+    if (!window.confirm("Can't reach this stop? We'll ask the rider to skip it, and you'll wait for their answer.")) return
+    setStopActionPending(sequence)
+    try {
+      const res = await driverRideApi.reportStopUnreachable(activeRide.id, sequence)
+      updateStop(sequence, res.stop.status, res.stop.reached_at, undefined, res.stop.unreachable_requested_at ?? null)
+    } catch { /* stays as is, driver can retry */ } finally {
+      setStopActionPending(null)
+    }
+  }
 
   async function handleStopArrived(sequence: number) {
     if (!activeRide || stopActionPending !== null) return
@@ -464,8 +480,8 @@ export default function TripInProgress() {
       if (result.finalFare !== undefined) setFare(result.finalFare)
       updateRideStatus('completed')
       navigate(activeRide.paymentChannel === 'cash' ? '/ride/collect-cash' : '/ride/end', { replace: true })
-    } catch {
-      setEndEarlyError('Could not end the trip. Check your connection and try again.')
+    } catch (err) {
+      setEndEarlyError(getApiErrorMessage(err, 'Could not end the trip. Check your connection and try again.'))
       setEndingEarly(false)
     }
   }
@@ -875,8 +891,23 @@ export default function TripInProgress() {
                         ) : isCurrent ? (
                           // Current stop's confirm is the primary swipe at the top of the sheet.
                           // Skip removed — drivers were using it to reject rider-added stops
-                          // outright, leaving them permanently pending server-side.
-                          null
+                          // outright. "Can't reach" only asks the rider, and sits behind a small
+                          // overflow button.
+                          stop.unreachable_requested_at ? (
+                            <span className="text-[11px] font-semibold flex-shrink-0" style={{ color: '#D97706' }}>
+                              Asked rider to skip
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => void handleStopUnreachable(stop.sequence)}
+                              disabled={isPending}
+                              aria-label="Can't reach this stop"
+                              title="Can't reach this stop"
+                              className="p-1.5 rounded-full text-text-muted active:opacity-70 disabled:opacity-50 flex-shrink-0"
+                            >
+                              <MoreHorizontal size={16} />
+                            </button>
+                          )
                         ) : (
                           <button
                             onClick={() => handleStopAction(stop.sequence, 'reached')}

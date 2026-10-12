@@ -15,7 +15,7 @@ export type StopState = 'pending' | 'reached' | 'skipped'
 
 export type TimelineNode =
   | { kind: 'origin';      label?: string; address: string }
-  | { kind: 'stop';        key?: string; address: string; state?: StopState; onRemove?: () => void; onSwap?: () => void }
+  | { kind: 'stop';        key?: string; address: string; state?: StopState; onRemove?: () => void; onSwap?: () => void; onSkip?: () => void; skipBusy?: boolean }
   | { kind: 'destination'; label?: string; address?: string | null; placeholder?: string; onTap?: () => void }
   | { kind: 'add';         label?: string; hint?: string; onTap: () => void }
 
@@ -184,8 +184,21 @@ export default function RouteTimeline({
                 )}
               </span>
 
-              {node.kind === 'stop' && (node.onSwap || node.onRemove) && node.state !== 'reached' && node.state !== 'skipped' && (
+              {node.kind === 'stop' && (node.onSwap || node.onRemove || node.onSkip) && node.state !== 'reached' && node.state !== 'skipped' && (
                 <span className="flex items-center gap-0.5 flex-shrink-0">
+                  {/* Live trip: the rider (only) can drop a pending stop. Text, not an icon, so it can't be mistaken for "close". */}
+                  {node.onSkip && (
+                    <motion.button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); node.onSkip!() }}
+                      disabled={node.skipBusy}
+                      aria-label={`Skip stop ${n}`}
+                      whileTap={{ scale: 0.95 }}
+                      className="px-2 h-8 rounded-full text-[12px] font-semibold text-red-600 transition-opacity active:opacity-60 disabled:opacity-50"
+                    >
+                      {node.skipBusy ? 'Skipping…' : 'Skip'}
+                    </motion.button>
+                  )}
                   {node.onSwap && (
                     <motion.button
                       type="button"
