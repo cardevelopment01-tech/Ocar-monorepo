@@ -93,6 +93,14 @@ describe('socket handlers survive hostile payloads', () => {
     expect(updateLocation).toHaveBeenCalledWith(9n, expect.objectContaining({ sessionId: 5n, recordedAt: '2001-01-01T00:00:00Z' }))
   })
 
+  it('location:update with an oversized timestamp string is replaced by server time, never forwarded', () => {
+    const { handlers } = connect('driver')
+    handlers.get('location:update')!({ sessionId: '5', lat: 20.3, lng: 85.8, recordedAt: 'x'.repeat(5000) })
+    const sent = vi.mocked(updateLocation).mock.calls[0]![1].recordedAt
+    expect(sent.length).toBeLessThan(40)
+    expect(Math.abs(Date.parse(sent) - Date.now())).toBeLessThan(5_000)
+  })
+
   it('location:update with no timestamp at all is stamped with server time', () => {
     const { handlers } = connect('driver')
     handlers.get('location:update')!({ sessionId: '5', lat: 20.3, lng: 85.8 })

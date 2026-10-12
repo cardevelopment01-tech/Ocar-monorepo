@@ -70,6 +70,12 @@ describe('updateLocation', () => {
     expect(Math.abs(Date.parse(crumb.recorded_at) - Date.now())).toBeLessThan(5_000)
   })
 
+  it('an unparseable device timestamp is replaced by server time', async () => {
+    await updateLocation(DRIVER, ping({ recordedAt: 'not-a-date' }))
+    const used = vi.mocked(repo.upsertDriverLocation).mock.calls[0]![0].recordedAt
+    expect(Math.abs(Date.parse(used) - Date.now())).toBeLessThan(5_000)
+  })
+
   it('buffers breadcrumbs instead of queueing a job per ping', async () => {
     await updateLocation(DRIVER, ping())
     expect(enqueueBreadcrumb).toHaveBeenCalledTimes(1)

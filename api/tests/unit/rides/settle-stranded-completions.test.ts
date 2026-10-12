@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 const { redisMock } = vi.hoisted(() => ({
-  redisMock: { del: vi.fn(), exists: vi.fn(), set: vi.fn() },
+  redisMock: { del: vi.fn(), mget: vi.fn(), set: vi.fn() },
 }))
 vi.mock('@/db/redis', () => ({ client: redisMock }))
 vi.mock('@/websocket/socket.server', () => ({
@@ -33,7 +33,7 @@ import { settleStrandedRideCompletions } from '@/modules/rides/rides.service'
 describe('settleStrandedRideCompletions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    redisMock.exists.mockResolvedValue(0)
+    redisMock.mget.mockImplementation(async (...keys: string[]) => keys.map(() => null))
     redisMock.set.mockResolvedValue('OK')
   })
 
@@ -67,7 +67,7 @@ describe('settleStrandedRideCompletions', () => {
     vi.mocked(pool.query).mockResolvedValueOnce({
       rows: [{ id: '11', driver_id: '9' }, { id: '12', driver_id: '9' }], rowCount: 2,
     } as never)
-    redisMock.exists.mockImplementation(async (k: string) => (k.endsWith(':11') ? 1 : 0))
+    redisMock.mget.mockImplementation(async (...keys: string[]) => keys.map(k => (k.endsWith(':11') ? '1' : null)))
     vi.mocked(repo.getRideCoreById).mockResolvedValue({ id: 12n, payment_channel: 'wallet', user_id: 42 } as never)
     vi.mocked(pool.query).mockResolvedValue({ rows: [{ amount: '0' }], rowCount: 1 } as never)
 
@@ -76,6 +76,31 @@ describe('settleStrandedRideCompletions', () => {
     expect(settled).toBe(1)
     expect(createPaymentRecord).toHaveBeenCalledTimes(1)
     expect(createPaymentRecord).toHaveBeenCalledWith(12n, 'platform_wallet', { status: 'pending' })
+  })
+
+  it('reads every cooldown flag in ONE Redis round trip, not one call per candidate', async () => {
+    const rows = Array.from({ length: 40 }, (_, i) => ({ id: String(200 + i), driver_id: '9' }))
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows, rowCount: 40 } as never)
+    vi.mocked(repo.getRideCoreById).mockRejectedValue(new Error('boom'))
+    await settleStrandedRideCompletions()
+    expect(redisMock.mget).toHaveBeenCalledTimes(1)
+    expect(redisMock.mget.mock.calls[0]).toHaveLength(40)
+  })
+
+  it('cools down a ride whose settlement returns WITHOUT throwing (it would otherwise be re-run every tick)', async () => {
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [{ id: '31', driver_id: '9' }], rowCount: 1 } as never)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({ id: 31n, payment_channel: 'wallet', user_id: null } as never) // no user -> returns early, no payment row
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ amount: '0' }], rowCount: 1 } as never)
+    await settleStrandedRideCompletions()
+    expect(redisMock.set).toHaveBeenCalledWith('stranded-settle:cooldown:31', '1', 'EX', 30 * 60)
+  })
+
+  it('a Redis outage on the cooldown read does not stop the sweep (nothing is treated as cooling)', async () => {
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [{ id: '41', driver_id: '9' }], rowCount: 1 } as never)
+    redisMock.mget.mockRejectedValueOnce(new Error('redis down'))
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({ id: 41n, payment_channel: 'wallet', user_id: 42 } as never)
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ amount: '0' }], rowCount: 1 } as never)
+    expect(await settleStrandedRideCompletions()).toBe(1)
   })
 
   it('attempts at most 25 rides per tick even when more candidates come back', async () => {

@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
-vi.mock('@/db/redis', () => ({ client: { set: vi.fn(), del: vi.fn() } }))
-vi.mock('@/lib/otp', () => ({ generateOtp: vi.fn(() => '1234'), hashOtp: vi.fn(() => 'HASH') }))
+vi.mock('@/db/redis', () => ({ client: { get: vi.fn(), set: vi.fn(), del: vi.fn() } }))
+vi.mock('@/lib/otp', () => ({
+  generateOtp: vi.fn(() => '1234'), hashOtp: vi.fn(() => 'HASH'),
+  clearRideOtpAttempts: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('@/websocket/socket.server', () => ({
   socketEvents: { sendRideStatusUpdate: vi.fn(), sendUserUpdate: vi.fn() },
   getIO: vi.fn(() => ({ to: vi.fn(() => ({ emit: vi.fn() })) })),
@@ -31,6 +34,7 @@ vi.mock('@/modules/notifications/notifications.service', () => ({
 import * as repo from '@/modules/rides/rides.repository'
 import { markArrived } from '@/modules/rides/rides.service'
 import { client as redis } from '@/db/redis'
+import { clearRideOtpAttempts } from '@/lib/otp'
 import { socketEvents } from '@/websocket/socket.server'
 
 describe('markArrived — ownership', () => {
@@ -55,20 +59,45 @@ describe('markArrived — ownership', () => {
     expect(repo.updateRideStatusCAS).toHaveBeenCalledWith(BigInt(101), 'accepted', 'driver_arrived', expect.anything())
   })
 
-  it('RETRY after a half-finished arrive: ride already driver_arrived -> re-issues a fresh PIN instead of 409', async () => {
-    // First attempt flipped the status but the PIN never reached Redis/the rider. The retry loses the CAS...
+  function loseTheCasOnADriverArrivedRide() {
     vi.mocked(repo.getRideCoreForDriverAction)
       .mockResolvedValueOnce({ id: BigInt(101), driver_id: 9, user_id: 42, status: 'accepted' } as never)      // initial read
       .mockResolvedValueOnce({ id: BigInt(101), driver_id: 9, user_id: 42, status: 'driver_arrived' } as never) // re-read after losing the CAS
     vi.mocked(repo.updateRideStatusCAS).mockResolvedValueOnce(null as never)
+  }
+
+  it('RETRY (double tap) while the PIN is still in Redis: RE-SENDS that same PIN, does not invalidate the rider\'s', async () => {
+    loseTheCasOnADriverArrivedRide()
+    vi.mocked(redis.get).mockResolvedValueOnce('4321') // the PIN the rider is already looking at
+
+    const res = await markArrived(BigInt(9), BigInt(101))
+
+    expect(res).toEqual({ success: true })
+    expect(repo.reissueStartOtpHash).not.toHaveBeenCalled() // the stored hash is untouched
+    expect(clearRideOtpAttempts).not.toHaveBeenCalled()
+    expect(socketEvents.sendUserUpdate).toHaveBeenCalledWith('42', { status: 'driver_arrived', startOtp: '4321' })
+    expect(redis.set).toHaveBeenCalledWith(expect.stringContaining('101'), '4321', 'EX', 7200)
+    expect(repo.logStatusHistory).not.toHaveBeenCalled() // it is not a second transition
+  })
+
+  it('RETRY after the PIN was lost (Redis key gone): mints a fresh PIN, replaces the hash and clears the attempt counter', async () => {
+    loseTheCasOnADriverArrivedRide()
+    vi.mocked(redis.get).mockResolvedValueOnce(null)
 
     const res = await markArrived(BigInt(9), BigInt(101))
 
     expect(res).toEqual({ success: true })
     expect(repo.reissueStartOtpHash).toHaveBeenCalledWith(BigInt(101), 'HASH')
+    expect(clearRideOtpAttempts).toHaveBeenCalledWith(BigInt(101), 'start')
     expect(redis.set).toHaveBeenCalledWith(expect.stringContaining('101'), '1234', 'EX', 7200)
     expect(socketEvents.sendUserUpdate).toHaveBeenCalledWith('42', { status: 'driver_arrived', startOtp: '1234' })
-    expect(repo.logStatusHistory).not.toHaveBeenCalled() // it is not a second transition
+  })
+
+  it('RETRY while Redis is unreachable behaves like a missing PIN (re-issues) rather than failing the tap', async () => {
+    loseTheCasOnADriverArrivedRide()
+    vi.mocked(redis.get).mockRejectedValueOnce(new Error('redis down'))
+    await expect(markArrived(BigInt(9), BigInt(101))).resolves.toEqual({ success: true })
+    expect(repo.reissueStartOtpHash).toHaveBeenCalled()
   })
 
   it('a retry does NOT re-issue for a ride that has moved on (in_progress/completed/cancelled) - still 409, no PIN written', async () => {

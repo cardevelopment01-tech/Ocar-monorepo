@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // incr()/ttl() are queued on a MULTI and answered together by exec(): one round trip for the counter.
 const { multiState, client } = vi.hoisted(() => {
-  const multiState = { count: 1, ttl: 900, queued: [] as string[] }
+  const multiState = { count: 1 as unknown, ttl: 900, queued: [] as string[], raw: undefined as unknown }
   const chain = {
     incr: vi.fn((k: string) => { multiState.queued.push('incr:' + k); return chain }),
     ttl: vi.fn((k: string) => { multiState.queued.push('ttl:' + k); return chain }),
-    exec: vi.fn(async () => [[null, multiState.count], [null, multiState.ttl]]),
+    exec: vi.fn(async () => (multiState.raw !== undefined ? multiState.raw : [[null, multiState.count], [null, multiState.ttl]])),
   }
   return {
     multiState,
@@ -19,7 +19,23 @@ import { client as redis } from '@/db/redis'
 import { checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
 
 describe('checkRideOtpAttempts', () => {
-  beforeEach(() => { vi.clearAllMocks(); multiState.count = 1; multiState.ttl = 900; multiState.queued = [] })
+  beforeEach(() => { vi.clearAllMocks(); multiState.count = 1; multiState.ttl = 900; multiState.queued = []; multiState.raw = undefined })
+
+  // These counters are brute-force protection: a broken Redis answer must reject, never read as "0 attempts".
+  it('FAILS CLOSED when the MULTI was discarded (exec resolves null)', async () => {
+    multiState.raw = null
+    await expect(checkRideOtpAttempts(BigInt(303), 'start')).rejects.toThrow(/discarded/)
+  })
+
+  it('FAILS CLOSED when a queued command errored (exec resolves [Error, null] tuples)', async () => {
+    multiState.raw = [[new Error('WRONGTYPE Operation against a key'), null], [null, 900]]
+    await expect(checkRideOtpAttempts(BigInt(303), 'start')).rejects.toThrow(/WRONGTYPE/)
+  })
+
+  it('FAILS CLOSED on a non-numeric count', async () => {
+    multiState.raw = [[null, 'oops'], [null, 900]]
+    await expect(checkRideOtpAttempts(BigInt(303), 'start')).rejects.toThrow(/non-numeric/)
+  })
 
   it('counts and reads the TTL in a single MULTI (one round trip), not three serial commands', async () => {
     const n = await checkRideOtpAttempts(BigInt(303), 'start')

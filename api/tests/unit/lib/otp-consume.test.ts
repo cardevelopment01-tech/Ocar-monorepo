@@ -80,6 +80,15 @@ describe('consumeOtp — atomic guess accounting', () => {
     expect(await consumeOtp(PHONE, P, R, '000001')).toMatchObject({ success: false, locked: true })
   })
 
+  it('a Redis error while counting rejects the verification instead of granting a free guess', async () => {
+    await storeOtp(PHONE, P, R, '123456')
+    fake.multi.mockImplementationOnce((() => {
+      const chain = { incr: () => chain, ttl: () => chain, exec: async () => [[new Error('READONLY'), null], [null, 100]] }
+      return chain
+    }) as never)
+    await expect(consumeOtp(PHONE, P, R, '000000')).rejects.toThrow(/READONLY/)
+  })
+
   it('reports remaining attempts on an ordinary wrong guess', async () => {
     await storeOtp(PHONE, P, R, '123456')
     expect(await consumeOtp(PHONE, P, R, '000000')).toEqual({ success: false, attemptsLeft: OTP_MAX_ATTEMPTS - 1 })

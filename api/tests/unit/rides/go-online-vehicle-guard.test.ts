@@ -61,10 +61,10 @@ describe('goOnline - the vehicle must be the driver\'s own', () => {
     expect(repo.createSession).toHaveBeenCalledWith(expect.objectContaining({ categoryId: BigInt(1) }))
   })
 
-  it('a vehicle with NO category (the column is nullable) keeps the client category instead of crashing', async () => {
+  it('a vehicle with NO category (the column is nullable) is rejected - it must not be allowed to claim any class', async () => {
     scriptQueries([{ category_id: null }])
-    await expect(goOnline(BigInt(42), PARAMS())).resolves.toBeDefined()
-    expect(repo.createSession).toHaveBeenCalledWith(expect.objectContaining({ categoryId: BigInt(2) }))
+    await expect(goOnline(BigInt(42), PARAMS())).rejects.toMatchObject({ httpStatus: 422, appCode: 'VEHICLE_NOT_ELIGIBLE' })
+    expect(repo.createSession).not.toHaveBeenCalled()
   })
 
   it('the ownership lookup is scoped by BOTH vehicle id and driver id', async () => {

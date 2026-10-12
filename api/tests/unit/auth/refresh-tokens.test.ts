@@ -19,7 +19,13 @@ import * as repo from '@/modules/auth/auth.repository'
 import { refreshTokens } from '@/modules/auth/auth.service'
 
 describe('refreshTokens', () => {
-  beforeEach(() => vi.clearAllMocks())
+  // clearAllMocks keeps implementations, so a hasLiveRide(true) set by one test would leak into the next:
+  // reset it to the safe default (no live ride) every time.
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(repo.hasLiveRide).mockReset()
+    vi.mocked(repo.hasLiveRide).mockResolvedValue(false)
+  })
 
   it('throws AUTH_TOKEN_INVALID for a token that does not exist', async () => {
     vi.mocked(repo.findRefreshToken).mockResolvedValue(null)
@@ -129,6 +135,7 @@ describe('refreshTokens', () => {
 
       await expect(refreshTokens('tok')).rejects.toBeDefined()
       expect(repo.rotateRefreshToken).not.toHaveBeenCalled()
+      expect(repo.hasLiveRide).not.toHaveBeenCalled() // refused outright - the live-ride grace is never consulted
     })
 
     it('refuses a deactivated admin', async () => {

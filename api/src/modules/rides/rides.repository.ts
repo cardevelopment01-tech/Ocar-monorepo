@@ -874,9 +874,6 @@ export async function logStatusHistory(data: {
 
 // ── Advance booking ───────────────────────────────────────────
 
-// CAS transition — only succeeds if the row is still in `expectedStatus`.
-// Returns null (no rows touched) if another caller already moved it on —
-// callers must treat null as "lost the race, no-op" rather than an error.
 // Replaces the start-OTP hash of a ride that is already driver_arrived (a retried "arrived" re-issuing the PIN).
 // Guarded on the status so it can never touch a ride that has moved on.
 export async function reissueStartOtpHash(rideId: bigint, hash: string): Promise<boolean> {
@@ -887,6 +884,9 @@ export async function reissueStartOtpHash(rideId: bigint, hash: string): Promise
   return (res.rowCount ?? 0) > 0
 }
 
+// CAS transition — only succeeds if the row is still in `expectedStatus`.
+// Returns null (no rows touched) if another caller already moved it on —
+// callers must treat null as "lost the race, no-op" rather than an error.
 export async function updateRideStatusCAS(
   rideId: bigint,
   expectedStatus: string | string[],
@@ -1126,13 +1126,16 @@ export async function createRideAssignment(data: {
      ON CONFLICT (ride_id, driver_id) DO UPDATE
        SET status = 'offered', expires_at = EXCLUDED.expires_at,
            session_id = EXCLUDED.session_id, broadcast_round = EXCLUDED.broadcast_round,
-           responded_at = NULL
+           responded_at = NULL, cancelled_at = NULL
        -- Re-offer in a later broadcast round: reopen a declined/expired/cancelled row, else
        -- acceptAssignment (needs status = 'offered') rejects the fresh card with
        -- "Ride no longer available". 'cancelled' matters for admin assignment: cancelAllAssignments()
        -- cancels every open offer first, including the chosen driver's own, and the row must come back.
-       -- Only an accepted row stays untouched.
-       WHERE ride_assignments.status IN ('offered', 'declined', 'expired', 'cancelled')`,
+       -- Only an accepted row stays untouched, and nothing is reopened for a ride that is no longer
+       -- 'requested': a slow in-flight broadcast job would otherwise resurrect an offer for a ride another
+       -- driver has already taken (a "ghost" request card).
+       WHERE ride_assignments.status IN ('offered', 'declined', 'expired', 'cancelled')
+         AND EXISTS (SELECT 1 FROM rides r WHERE r.id = ride_assignments.ride_id AND r.status = 'requested')`,
     [
       data.rideId, data.driverId, data.sessionId,
       data.expiresAt, data.broadcastRound,

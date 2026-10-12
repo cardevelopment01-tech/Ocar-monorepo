@@ -151,7 +151,10 @@ export function initSocketServer(httpServer: HttpServer): Server {
           sessionId,
           lat,
           lng,
-          recordedAt: typeof data?.recordedAt === 'string' ? data.recordedAt : new Date().toISOString(),
+          // Length-capped: it is only ever parsed, but an oversized string has no business reaching the service.
+          recordedAt: typeof data?.recordedAt === 'string' && data.recordedAt.length <= 40
+            ? data.recordedAt
+            : new Date().toISOString(),
         }
         const heading = finiteNum(data?.heading, 0, 360)
         const speed   = finiteNum(data?.speed, 0, 400)

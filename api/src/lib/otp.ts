@@ -52,8 +52,14 @@ export function rateLimitRedisKey(phone: string, purpose: OtpPurpose, role: Prin
 // counter can never become permanent: if the process dies between the two steps, the very next hit repairs it.
 async function incrWithTtl(key: string, ttlSeconds: number): Promise<number> {
   const replies = await withTimeout(redis.multi().incr(key).ttl(key).exec())
-  const count = Number(replies?.[0]?.[1] ?? 0)
-  const ttl = Number(replies?.[1]?.[1] ?? -1)
+  // These counters gate brute-force protection, so anything but a clean answer must THROW. exec() resolves with
+  // null when the transaction was discarded and with [Error, null] tuples when a queued command failed; reading
+  // those as "0 attempts" made every limiter fail open (the old direct INCR threw on error).
+  if (!replies) throw new Error('redis counter transaction was discarded')
+  for (const [err] of replies) if (err) throw err
+  const count = Number(replies[0]?.[1])
+  if (!Number.isFinite(count)) throw new Error('redis counter returned a non-numeric count')
+  const ttl = Number(replies[1]?.[1] ?? -1)
   if (ttl < 0) await withTimeout(redis.expire(key, ttlSeconds))
   return count
 }

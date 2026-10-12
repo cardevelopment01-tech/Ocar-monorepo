@@ -16,8 +16,10 @@ const row = (over: Record<string, unknown> = {}) => ({
 describe('flushGpsTracks - ownership and plausibility', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The ride was accepted 6 hours ago, so late-flushed breadcrumbs from the last few hours belong to it.
+    const acceptedAt = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
     poolQuery.mockImplementation(async (sql: string) =>
-      sql.includes('FROM rides') ? { rows: [{ id: '11' }] } : { rows: [{ id: '22' }] })
+      sql.includes('FROM rides') ? { rows: [{ id: '11', accepted_at: acceptedAt }] } : { rows: [{ id: '22' }] })
   })
 
   it('writes rows for the drivers own live ride and session, stamping the driver id from the token', async () => {
@@ -63,10 +65,17 @@ describe('flushGpsTracks - ownership and plausibility', () => {
     expect((await flushGpsTracks(BigInt(9), [row({ recorded_at: nextHour })])).written).toBe(0)
   })
 
-  it('the ride lookup also accepts a ride completed in the last few hours (the final flush lands after completion)', async () => {
+  it('only LIVE rides are accepted: nothing can be written onto a completed ride (billing already ran at completion)', async () => {
     await flushGpsTracks(BigInt(9), [row()])
     const rideSql = poolQuery.mock.calls.map(c => c[0] as string).find(s => s.includes('FROM rides'))!
-    expect(rideSql).toMatch(/status = 'completed'\s+AND completed_at > now\(\) - interval '3 hours'/)
+    expect(rideSql).toContain("status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')")
+    expect(rideSql).not.toContain('completed')
+  })
+
+  it('rejects a breadcrumb older than the ride itself (it cannot belong to it)', async () => {
+    const sevenHoursAgo = new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString() // ride accepted 6h ago
+    const res = await flushGpsTracks(BigInt(9), [row({ recorded_at: sevenHoursAgo })])
+    expect(res).toEqual({ written: 0, rejected: 1 })
   })
 
   it('keeps the good rows when only some are bad', async () => {

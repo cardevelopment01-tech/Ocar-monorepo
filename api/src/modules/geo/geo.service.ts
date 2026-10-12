@@ -30,6 +30,7 @@ export async function findNearestCity(lat: number, lng: number) {
 // timestamps stay tightly bounded; the past is bounded generously (the default partition catches anything unusual).
 const MAX_TRACK_FUTURE_MS = 10 * 60 * 1000
 const MAX_TRACK_AGE_MS = 24 * 60 * 60 * 1000
+const RIDE_START_SLACK_MS = 5 * 60 * 1000
 const ID_RE = /^\d{1,18}$/
 
 // The batch endpoint is driver-authenticated but every row carried its own ride_id/session_id, so a driver could
@@ -56,12 +57,12 @@ export async function flushGpsTracks(
   const rideIds = [...new Set(plausible.map(t => String(t.ride_id)))]
   const sessionIds = [...new Set(plausible.map(t => String(t.session_id)))]
   const [rides, sessions] = await Promise.all([
-    pool.query<{ id: string }>(
-      `SELECT id::text FROM rides
+    // Live rides only. Distance is billed from the breadcrumbs at the moment the ride completes, so rows arriving
+    // afterwards could never change a fare — accepting them would only let a driver write onto finished rides.
+    pool.query<{ id: string; accepted_at: string | null }>(
+      `SELECT id::text, accepted_at FROM rides
         WHERE id = ANY($1::bigint[]) AND driver_id = $2
-          AND (status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
-               -- the app's final flush usually lands just AFTER the ride completed, and billing reads the tail
-               OR (status = 'completed' AND completed_at > now() - interval '3 hours'))`,
+          AND status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')`,
       [rideIds, driverId]
     ),
     pool.query<{ id: string }>(
@@ -69,10 +70,16 @@ export async function flushGpsTracks(
       [sessionIds, driverId]
     ),
   ])
+  // A breadcrumb older than the ride itself (minus a little slack) cannot belong to it.
+  const acceptedAtMs = new Map(rides.rows.map(r => [r.id, r.accepted_at ? Date.parse(r.accepted_at) : null]))
   const okRides = new Set(rides.rows.map(r => r.id))
   const okSessions = new Set(sessions.rows.map(r => r.id))
   const accepted = plausible
     .filter(t => okRides.has(String(t.ride_id)) && okSessions.has(String(t.session_id)))
+    .filter(t => {
+      const floor = acceptedAtMs.get(String(t.ride_id))
+      return floor == null || Date.parse(t.recorded_at) >= floor - RIDE_START_SLACK_MS
+    })
     .map(t => ({ ...t, driver_id: driverId.toString() }))
 
   if (accepted.length) await repo.insertGpsTracks(accepted)

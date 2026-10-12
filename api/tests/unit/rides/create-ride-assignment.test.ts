@@ -27,6 +27,17 @@ describe('createRideAssignment - re-offering to a driver who already has a row',
     for (const status of ['offered', 'declined', 'expired']) expect(where).toContain(`'${status}'`)
   })
 
+  it('never resurrects an offer for a ride that is no longer requested (stale broadcast after another driver won)', async () => {
+    const where = await whereClause()
+    expect(where).toMatch(/EXISTS \(SELECT 1 FROM rides r WHERE r\.id = ride_assignments\.ride_id AND r\.status = 'requested'\)/)
+  })
+
+  it('clears cancelled_at when it reopens a row', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 1 } as never)
+    await createRideAssignment({ rideId: 1n, driverId: 2n, sessionId: 3n, expiresAt: new Date(), broadcastRound: 1 })
+    expect(vi.mocked(pool.query).mock.calls[0]![0] as string).toMatch(/cancelled_at = NULL/)
+  })
+
   it('never reopens an ACCEPTED row', async () => {
     expect(await whereClause()).not.toContain("'accepted'")
   })

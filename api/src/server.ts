@@ -8,6 +8,7 @@ import { testConnection, pool } from './db/client'
 import { testConnection as testRedis, client as redisClient } from './db/redis'
 import { initSocketServer, getIO } from './websocket/socket.server'
 import { flushBreadcrumbs } from './lib/gps-buffer'
+import { isSmsBypassActive } from './providers/sms.provider'
 import { notificationsWorker } from './jobs/workers/notifications.worker'
 import { dispatchWorker } from './jobs/workers/dispatch.worker'
 import { gpsFlushWorker } from './jobs/workers/gps-flush.worker'
@@ -53,6 +54,13 @@ async function start(): Promise<void> {
     logger.error('could not connect to redis, exiting')
     exitAfterFlush(1)
     return
+  }
+
+  if (config.NODE_ENV === 'production' && isSmsBypassActive()) {
+    logger.warn(
+      { allowDevSms: config.ALLOW_DEV_SMS },
+      'SMS bypass is ACTIVE in a production-mode process: no login codes or ride SMS will actually be sent'
+    )
   }
 
   const app = createApp()

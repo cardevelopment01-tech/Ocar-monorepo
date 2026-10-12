@@ -197,9 +197,12 @@ export async function goOnline(driverId: bigint, data: {
   if (!vehicle) {
     throw httpError(422, 'That vehicle is not available on your account', 'VEHICLE_NOT_ELIGIBLE')
   }
-  // driver_vehicles.category_id is nullable: a vehicle without one keeps the previous behaviour (client category)
-  // rather than crashing on BigInt(null).
-  if (vehicle.category_id !== null && vehicle.category_id !== data.categoryId.toString()) {
+  // driver_vehicles.category_id is nullable. A vehicle with no category cannot be trusted to pick one: falling back
+  // to the client's categoryId would let it claim any class (e.g. premium) — the exact hole this check closes.
+  if (vehicle.category_id === null) {
+    throw httpError(422, 'Your vehicle has no category assigned yet. Contact support.', 'VEHICLE_NOT_ELIGIBLE')
+  }
+  if (vehicle.category_id !== data.categoryId.toString()) {
     log.warn({ driverId, vehicleId: data.vehicleId, claimed: data.categoryId, actual: vehicle.category_id },
       'goOnline category differs from the vehicle category — using the vehicle category')
     data.categoryId = BigInt(vehicle.category_id)
@@ -956,7 +959,7 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
   }
 
-  const otp  = generateOtp(RIDE_OTP_LENGTH)
+  let otp  = generateOtp(RIDE_OTP_LENGTH)
   const hash = hashOtp(otp)
 
   // Compare-and-swap: only an accepted ride can become driver_arrived. An unconditional write here let
@@ -974,16 +977,23 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
       actorId:    driverId,
     })
   } else {
-    // Lost the CAS. If the ride is already driver_arrived this is a RETRY of a call whose first attempt flipped the
-    // status but never delivered the PIN (the Redis write timed out, or the response was lost). Returning 409 here
-    // left the rider with no start PIN and the driver unable to start. Mint a fresh PIN instead: the hash is
-    // replaced and the same Redis write + rider push below runs again. Any other state is a real 409.
+    // Lost the CAS. If the ride is already driver_arrived this is a RETRY (double tap, or a first attempt whose
+    // Redis write / response never landed). A plain 409 would strand a ride whose PIN was never delivered, but
+    // blindly minting a new PIN would invalidate the one the rider is already looking at. So: if the PIN is still
+    // in Redis, re-send THAT one; only when it is gone mint a fresh one (new hash, attempt counter cleared).
+    // Any other state is a real 409.
     const current = await repo.getRideCoreForDriverAction(rideId, driverId)
     if (current?.status !== 'driver_arrived') {
       throw httpError(409, 'Ride is not awaiting the driver', 'RIDE_NOT_ACCEPTED')
     }
-    if (!(await repo.reissueStartOtpHash(rideId, hash))) {
-      throw httpError(409, 'Ride is not awaiting the driver', 'RIDE_NOT_ACCEPTED')
+    const existingPin = await withTimeout(redis.get(startOtpKey(rideId.toString()))).catch(() => null)
+    if (existingPin) {
+      otp = existingPin
+    } else {
+      if (!(await repo.reissueStartOtpHash(rideId, hash))) {
+        throw httpError(409, 'Ride is not awaiting the driver', 'RIDE_NOT_ACCEPTED')
+      }
+      await clearRideOtpAttempts(rideId, 'start').catch(() => undefined)
     }
   }
 
@@ -2870,20 +2880,26 @@ export async function settleStrandedRideCompletions(): Promise<number> {
   // Oldest-first with a small LIMIT meant rides that fail for a durable reason (missing fare snapshot...) stayed the
   // 25 oldest matches forever and starved every newer stranded ride. Random order plus a cooldown after a failure
   // lets the sweep reach all of them without hammering the broken ones.
+  if (res.rows.length === 0) return 0
+  // ONE round trip for all cooldown flags (a per-row EXISTS meant up to 100 serial Redis calls per tick, each able
+  // to take its full timeout when Redis is degraded). If Redis is unavailable, nothing is treated as cooling.
+  const cooldownKey = (id: string) => `stranded-settle:cooldown:${id}`
+  const flags = await withTimeout(redis.mget(...res.rows.map(r => cooldownKey(r.id)))).catch(() => [] as Array<string | null>)
   let settled = 0
   let attempted = 0
-  for (const row of res.rows) {
+  for (const [i, row] of res.rows.entries()) {
     if (attempted >= 25) break
-    const cooldownKey = `stranded-settle:cooldown:${row.id}`
-    if (await withTimeout(redis.exists(cooldownKey)).catch(() => 0)) continue
+    if (flags[i]) continue
     attempted++
     try {
       await settleRideCompletionPayment(BigInt(row.id), BigInt(row.driver_id))
       settled++
     } catch (err) {
       log.error({ err, rideId: row.id }, 'stranded ride settlement failed')
-      await withTimeout(redis.set(cooldownKey, '1', 'EX', STRANDED_SETTLE_COOLDOWN_SEC)).catch(() => undefined)
     }
+    // Cool down EVERY attempted ride, not just ones that threw: a ride whose settlement returns without creating
+    // a payment row (zero fare, unsupported channel) would otherwise be re-picked and re-run on every tick.
+    await withTimeout(redis.set(cooldownKey(row.id), '1', 'EX', STRANDED_SETTLE_COOLDOWN_SEC)).catch(() => undefined)
   }
   if (settled > 0) log.warn({ settled }, 'settled completed rides that had no payment row')
   return settled
