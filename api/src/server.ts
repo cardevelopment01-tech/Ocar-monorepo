@@ -7,6 +7,7 @@ import { createApp } from './app'
 import { testConnection, pool } from './db/client'
 import { testConnection as testRedis, client as redisClient } from './db/redis'
 import { initSocketServer, getIO } from './websocket/socket.server'
+import { flushBreadcrumbs } from './lib/gps-buffer'
 import { notificationsWorker } from './jobs/workers/notifications.worker'
 import { dispatchWorker } from './jobs/workers/dispatch.worker'
 import { gpsFlushWorker } from './jobs/workers/gps-flush.worker'
@@ -135,6 +136,12 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '0 4 * * *' }, removeOnComplete: true, removeOnFail: true } // daily at 4 AM
   )
+  // refresh_tokens / otp_requests grew forever; expired and long-revoked rows are purged daily.
+  await partitionMaintenanceQueue.add(
+    'purge_auth_tables',
+    {},
+    { repeat: { pattern: '30 4 * * *' }, removeOnComplete: true, removeOnFail: true }
+  )
 
   void paymentReconcileWorker
   logger.info('payment reconciliation worker started')
@@ -211,6 +218,7 @@ async function start(): Promise<void> {
         settlementsWorker.close(),
         callMaskingWorker.close(),
       ])
+      await flushBreadcrumbs() // buffered GPS breadcrumbs must reach the DB before the pools close
       await pool.end()
       redisClient.disconnect()
       await shutdownTracing()

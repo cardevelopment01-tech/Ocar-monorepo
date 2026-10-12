@@ -38,7 +38,7 @@ function safeHandler<A extends unknown[]>(
   }
 }
 
-const ID_RE = /^d{1,18}$/
+const ID_RE = /^\d{1,18}$/
 function parseId(v: unknown): bigint | null {
   const str = typeof v === 'number' && Number.isSafeInteger(v) ? String(v) : v
   return typeof str === 'string' && ID_RE.test(str) ? BigInt(str) : null

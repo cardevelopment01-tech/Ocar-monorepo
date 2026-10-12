@@ -1,10 +1,11 @@
 import { Router, IRouter } from 'express'
+import { authenticate } from '@/middleware/auth.middleware'
 import * as controller from './pricing.controller'
 
 const router: IRouter = Router()
 
-// Public: fare estimate
-router.post('/estimate', controller.estimateFare)
+// Fare estimate: three DB reads per call and previously open to the internet. Every client calls it after sign-in.
+router.post('/estimate', authenticate(), controller.estimateFare)
 
 // Public: current rate cards
 router.get('/rate-cards', controller.getRateCards)

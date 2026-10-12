@@ -113,25 +113,34 @@ export async function upsertDriverLocation(data: {
   speed?: number
   recordedAt: string
   isAvailable: boolean
-}) {
-  await pool.query(
-    `INSERT INTO driver_location_snapshots
-       (driver_id, session_id, location,
-        heading, speed_kmph, recorded_at, is_available)
-     VALUES (
-       $1, $2,
-       ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography,
-       $5, $6, $7, $8
+}): Promise<boolean> {
+  // The session id comes from the client, so it is only honoured when that session really belongs to this
+  // driver: the INSERT reads from driver_sessions filtered by (id, driver_id). Without that, a driver could point
+  // their location snapshot at ANOTHER driver's session (category, wallet join) and be matched as them.
+  // Returns false when the session isn't theirs; an out-of-order (stale) ping is not an error and returns true.
+  const res = await pool.query<{ owned: string }>(
+    `WITH owned AS (
+       SELECT id FROM driver_sessions WHERE id = $2 AND driver_id = $1
+     ), upsert AS (
+       INSERT INTO driver_location_snapshots
+         (driver_id, session_id, location,
+          heading, speed_kmph, recorded_at, is_available)
+       SELECT $1, owned.id,
+              ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography,
+              $5, $6, $7, $8
+         FROM owned
+       ON CONFLICT (driver_id) DO UPDATE SET
+         session_id   = EXCLUDED.session_id,
+         location     = EXCLUDED.location,
+         heading      = EXCLUDED.heading,
+         speed_kmph   = EXCLUDED.speed_kmph,
+         recorded_at  = EXCLUDED.recorded_at,
+         is_available = EXCLUDED.is_available,
+         updated_at   = now()
+       WHERE driver_location_snapshots.recorded_at < EXCLUDED.recorded_at
+       RETURNING 1
      )
-     ON CONFLICT (driver_id) DO UPDATE SET
-       session_id   = EXCLUDED.session_id,
-       location     = EXCLUDED.location,
-       heading      = EXCLUDED.heading,
-       speed_kmph   = EXCLUDED.speed_kmph,
-       recorded_at  = EXCLUDED.recorded_at,
-       is_available = EXCLUDED.is_available,
-       updated_at   = now()
-     WHERE driver_location_snapshots.recorded_at < EXCLUDED.recorded_at`,
+     SELECT (SELECT count(*) FROM owned)::text AS owned`,
     [
       data.driverId, data.sessionId,
       data.lat, data.lng,
@@ -141,6 +150,7 @@ export async function upsertDriverLocation(data: {
       data.isAvailable,
     ]
   )
+  return Number(res.rows[0]?.owned ?? 0) > 0
 }
 
 export async function findNearbyDrivers(params: {
@@ -219,6 +229,7 @@ export async function findAllNearbyDrivers(params: {
        ds.category_id::int AS category_id
      FROM driver_location_snapshots dls
      JOIN driver_sessions ds ON ds.id = dls.session_id
+     JOIN drivers d ON d.id = dls.driver_id AND d.status = 'active'
      WHERE dls.is_available = true
        AND ds.status = 'online'
        AND ST_DWithin(
@@ -226,6 +237,8 @@ export async function findAllNearbyDrivers(params: {
          ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography,
          $3
        )
+     -- Nearest first: without ORDER BY the LIMIT returned an arbitrary 20, not the closest 20.
+     ORDER BY ST_Distance(dls.location, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography)
      LIMIT 20`,
     [params.lat, params.lng, radius]
   )

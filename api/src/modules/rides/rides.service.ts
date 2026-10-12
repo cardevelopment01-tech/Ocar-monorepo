@@ -6,13 +6,16 @@ import { client as redis } from '@/db/redis'
 import { withTimeout } from '@/lib/with-timeout'
 import { startOtpKey, endOtpKey, activeRideByDriverKey, rideAckKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
+import crypto from 'crypto'
+import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
 import * as repo from './rides.repository'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
-import { queues, QUEUE_NAMES, gpsFlushQueue } from '@/jobs/queues'
+import { queues, QUEUE_NAMES } from '@/jobs/queues'
+import { enqueueBreadcrumb } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
 import { generateOtp, hashOtp, deriveRideEndOtp, checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
 import {
@@ -182,6 +185,24 @@ export async function goOnline(driverId: bigint, data: {
   // package-mode: no gate here — a zero/negative package balance only blocks
   // new ride offers (see findNearbyDrivers/findReturnCabDrivers), not going online.
 
+  // vehicleId/categoryId come straight from the client. A session's category decides which rides the driver is
+  // offered and at what fare class, so the vehicle must be the driver's own and the category is taken from IT —
+  // otherwise a driver in a basic car could go online as a premium category (or use someone else's vehicle).
+  const vehicleRes = await pool.query<{ category_id: string }>(
+    `SELECT category_id::text FROM driver_vehicles
+      WHERE id = $1 AND driver_id = $2 AND status <> 'blacklisted'`,
+    [data.vehicleId, driverId]
+  )
+  const vehicle = vehicleRes.rows[0]
+  if (!vehicle) {
+    throw httpError(422, 'That vehicle is not available on your account', 'VEHICLE_NOT_ELIGIBLE')
+  }
+  if (vehicle.category_id !== data.categoryId.toString()) {
+    log.warn({ driverId, vehicleId: data.vehicleId, claimed: data.categoryId, actual: vehicle.category_id },
+      'goOnline category differs from the vehicle category — using the vehicle category')
+    data.categoryId = BigInt(vehicle.category_id)
+  }
+
   const existing = await repo.getActiveSession(driverId)
   if (existing) {
     if (existing.status === 'on_trip') {
@@ -284,13 +305,23 @@ export async function resumeAvailability(driverId: bigint): Promise<void> {
   await repo.setDriverAvailability(driverId, true)
 }
 
-// Last raw ping per driver, so each new ping can be road-snapped together with
-// its predecessor (the exact hop where a straight chord would cut through a
-// building/lake, or across a turn) — keyed by driverId (a small, slowly-growing
-// set), not rideId, so it never leaks memory across completed rides.
-const lastRawPingByDriver = new Map<string, { lat: number; lng: number }>()
+// Per-driver state for the live trail. Keyed by driverId (a small, slowly-growing set) and cleared the moment a
+// driver has no active ride, so it never accumulates across completed rides.
+interface TrailState { rideId: string; points: Array<{ lat: number; lng: number }>; lastSnapAt: number; snapping: boolean }
+const trailByDriver = new Map<string, TrailState>()
+const lastAdminBroadcastAt = new Map<string, number>()
 
 const ACTIVE_RIDE_CACHE_TTL_SEC = 10
+// Road-snapping is the one paid per-call step in the ping path (Google Roads is billed per request). Pings used to
+// snap every hop (~1,200 calls per ride-hour); they are now collected and snapped in one request per interval, and
+// the live marker uses the raw fix so the rider's map is never waiting on a paid API call.
+const TRAIL_SNAP_INTERVAL_MS = 20_000
+const TRAIL_MAX_POINTS = 40 // well under the Roads API's 100-point limit
+// The admin live map doesn't need every 3 s ping: one update per driver per interval keeps it smooth while
+// cutting the fan-out to every connected admin socket.
+const ADMIN_BROADCAST_MIN_INTERVAL_MS = 5_000
+// recorded_at is the gps_tracks partition key and the snapshot ordering key, and comes from the device clock.
+const MAX_PING_CLOCK_SKEW_MS = 10 * 60 * 1000
 
 export async function updateLocation(driverId: bigint, data: {
   sessionId: bigint
@@ -300,32 +331,56 @@ export async function updateLocation(driverId: bigint, data: {
   speed?: number
   recordedAt: string
 }) {
+  const inRange = (v: unknown, min: number, max: number): v is number =>
+    typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max
+  if (!inRange(data.lat, -90, 90) || !inRange(data.lng, -180, 180)) {
+    throw httpError(422, 'Invalid coordinates', 'VALIDATION_ERROR')
+  }
+  const heading = inRange(data.heading, 0, 360) ? data.heading : undefined
+  const speed   = inRange(data.speed, 0, 400) ? data.speed : undefined
+  // A wildly wrong device clock would otherwise fail the partition insert (or pin the snapshot in the future so
+  // every later ping looks "stale"): trust it only within a window, else stamp server time.
+  const reportedMs = Date.parse(data.recordedAt)
+  const recordedAt = Number.isFinite(reportedMs) && Math.abs(reportedMs - Date.now()) <= MAX_PING_CLOCK_SKEW_MS
+    ? new Date(reportedMs).toISOString()
+    : new Date().toISOString()
+
   const locationInput: Parameters<typeof repo.upsertDriverLocation>[0] = {
     driverId,
     sessionId:   data.sessionId,
     lat:         data.lat,
     lng:         data.lng,
-    recordedAt:  data.recordedAt,
+    recordedAt,
     isAvailable: true,
   }
-  if (data.heading !== undefined) locationInput.heading = data.heading
-  if (data.speed   !== undefined) locationInput.speed   = data.speed
-  await repo.upsertDriverLocation(locationInput)
+  if (heading !== undefined) locationInput.heading = heading
+  if (speed   !== undefined) locationInput.speed   = speed
+  if (!(await repo.upsertDriverLocation(locationInput))) {
+    throw httpError(403, 'That session does not belong to this driver', 'SESSION_MISMATCH')
+  }
 
-  socketEvents.sendAdminDriverUpdate({
-    driverId: driverId.toString(),
-    lat:      data.lat,
-    lng:      data.lng,
-    heading:  data.heading ?? 0,
-    speed:    data.speed   ?? 0,
-  })
+  const driverKey = driverId.toString()
+  const now = Date.now()
+  if (now - (lastAdminBroadcastAt.get(driverKey) ?? 0) >= ADMIN_BROADCAST_MIN_INTERVAL_MS) {
+    lastAdminBroadcastAt.set(driverKey, now)
+    if (lastAdminBroadcastAt.size > 10_000) {
+      for (const [k, t] of lastAdminBroadcastAt) if (now - t > 60_000) lastAdminBroadcastAt.delete(k)
+    }
+    socketEvents.sendAdminDriverUpdate({
+      driverId: driverKey,
+      lat:      data.lat,
+      lng:      data.lng,
+      heading:  heading ?? 0,
+      speed:    speed   ?? 0,
+    })
+  }
 
   // Emit live location to the user's tracking page. This query runs on every
   // GPS ping (every ~3s per online driver), so the result is cached with a
   // short TTL — worst case a status change (accept/complete/cancel) takes up
   // to ACTIVE_RIDE_CACHE_TTL_SEC to be reflected, which just delays/extends
   // live tracking emission by that long, never breaks correctness elsewhere.
-  const activeRideCacheKey = activeRideByDriverKey(driverId.toString())
+  const activeRideCacheKey = activeRideByDriverKey(driverKey)
   // Cache only: a slow/down Redis falls through to the DB query instead of failing the GPS ping.
   let rideId = await withTimeout(redis.get(activeRideCacheKey)).catch(() => null)
   if (rideId === null) {
@@ -336,46 +391,65 @@ export async function updateLocation(driverId: bigint, data: {
     rideId = activeRideRes.rows[0]?.id ?? ''
     await withTimeout(redis.set(activeRideCacheKey, rideId, 'EX', ACTIVE_RIDE_CACHE_TTL_SEC)).catch(() => undefined)
   }
-  if (rideId) {
-    const current = { lat: data.lat, lng: data.lng }
-    const prevPing = lastRawPingByDriver.get(driverId.toString())
-    lastRawPingByDriver.set(driverId.toString(), current)
 
-    // Road-snap this hop (previous raw ping -> this one) so both the live driver
-    // marker and the rider's trail line follow real roads instead of a straight
-    // GPS chord — this is the exact segment that cuts through a building/lake or
-    // clips a turn. Fire-and-forget: a slow/failed Roads API call must never
-    // delay this response or the driver's location-update loop.
-    void (async () => {
-      const points = prevPing ? await snapTrailToRoads([prevPing, current]) : [current]
-      const marker = points[points.length - 1] ?? current
-      socketEvents.sendDriverLocation(rideId, {
-        lat:        marker.lat,
-        lng:        marker.lng,
-        heading:    data.heading ?? 0,
-        speed_kmph: data.speed ?? 0,
-      })
-      socketEvents.sendTrailSegment(rideId, points)
-    })().catch(() => {})
-
-    // Async GPS track write — best-effort, does not block the response
-    gpsFlushQueue.add('gps_track', {
-      rideId,
-      driverId:  driverId.toString(),
-      sessionId: data.sessionId.toString(),
-      lat:       data.lat,
-      lng:       data.lng,
-      heading:   data.heading,
-      speed:     data.speed,
-      recordedAt: data.recordedAt,
-    }, { removeOnComplete: 200, removeOnFail: 50 }).catch(() => {})
+  if (!rideId) {
+    trailByDriver.delete(driverKey)
+    return
   }
+
+  const current = { lat: data.lat, lng: data.lng }
+  socketEvents.sendDriverLocation(rideId, {
+    lat:        current.lat,
+    lng:        current.lng,
+    heading:    heading ?? 0,
+    speed_kmph: speed ?? 0,
+  })
+
+  let trail = trailByDriver.get(driverKey)
+  if (!trail || trail.rideId !== rideId) {
+    trail = { rideId, points: [current], lastSnapAt: now, snapping: false }
+    trailByDriver.set(driverKey, trail)
+  } else {
+    trail.points.push(current)
+    if (trail.points.length > TRAIL_MAX_POINTS) trail.points.splice(0, trail.points.length - TRAIL_MAX_POINTS)
+  }
+  if (!trail.snapping && trail.points.length >= 2 && now - trail.lastSnapAt >= TRAIL_SNAP_INTERVAL_MS) {
+    const batch = trail.points
+    trail.points = [current] // next segment starts where this one ends, so the line stays continuous
+    trail.lastSnapAt = now
+    trail.snapping = true
+    const state = trail
+    // Fire-and-forget: a slow/failed Roads call must never delay this response or the driver's ping loop.
+    void snapTrailToRoads(batch)
+      .then(snapped => socketEvents.sendTrailSegment(state.rideId, snapped))
+      .catch(() => undefined)
+      .finally(() => { state.snapping = false })
+  }
+
+  // Buffered, batched write — see lib/gps-buffer.ts.
+  const breadcrumb: import('@/modules/geo/geo.types').GpsTrackPayload = {
+    ride_id:     rideId,
+    session_id:  data.sessionId.toString(),
+    driver_id:   driverKey,
+    latitude:    data.lat,
+    longitude:   data.lng,
+    recorded_at: recordedAt,
+  }
+  if (heading !== undefined) breadcrumb.heading = heading
+  if (speed   !== undefined) breadcrumb.speed_kmph = speed
+  enqueueBreadcrumb(breadcrumb)
 }
 
 // Strips the *other* party's raw phone number before a ride row leaves the
 // API — the rider must never see the driver's number and vice versa (admin
 // ops views are exempt). Applied at the route boundary, not the repository,
 // so the numbers are still available server-side for SMS/notification jobs.
+// Stable per-driver reference that is safe to show to riders: derived with a server secret, so it can't be
+// reversed or enumerated into real driver ids.
+export function publicDriverRef(driverId: string): string {
+  return crypto.createHmac('sha256', config.JWT_REFRESH_SECRET).update(`nearby-driver:${driverId}`).digest('hex').slice(0, 12)
+}
+
 export function maskRideContacts<T extends {
   user_phone?: string | null
   rider_phone?: string | null

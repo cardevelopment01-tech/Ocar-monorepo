@@ -1,3 +1,4 @@
+import { pool } from '@/db/client'
 import * as repo from './geo.repository'
 import * as google from './providers/google.provider'
 import type { RouteOptions } from './providers/google.provider'
@@ -25,15 +26,52 @@ export async function findNearestCity(lat: number, lng: number) {
   return repo.findNearestCity(lat, lng)
 }
 
+const MAX_TRACK_CLOCK_SKEW_MS = 10 * 60 * 1000
+const ID_RE = /^\d{1,18}$/
+
+// The batch endpoint is driver-authenticated but every row carried its own ride_id/session_id, so a driver could
+// write breadcrumbs onto ANY ride — and rental/round-trip billing reads breadcrumbs. Rows are now accepted only
+// for rides assigned to this driver that are still live, and sessions that are theirs; coordinates and timestamps
+// are range-checked (an out-of-window recorded_at fails the partition insert for the entire batch).
 export async function flushGpsTracks(
-  tracks: GpsTrackPayload[]
-): Promise<{ written: number }> {
-  const filtered = tracks.filter(
-    t => t.accuracy_metres == null || t.accuracy_metres <= 50
-  )
-  if (!filtered.length) return { written: 0 }
-  await repo.insertGpsTracks(filtered)
-  return { written: filtered.length }
+  driverId: bigint,
+  tracks: Array<Omit<GpsTrackPayload, 'driver_id'>>
+): Promise<{ written: number; rejected: number }> {
+  const now = Date.now()
+  const plausible = tracks.filter(t => {
+    const ms = Date.parse(t.recorded_at)
+    return (
+      ID_RE.test(String(t.ride_id)) && ID_RE.test(String(t.session_id)) &&
+      Number.isFinite(t.latitude) && Math.abs(t.latitude) <= 90 &&
+      Number.isFinite(t.longitude) && Math.abs(t.longitude) <= 180 &&
+      Number.isFinite(ms) && Math.abs(ms - now) <= MAX_TRACK_CLOCK_SKEW_MS &&
+      (t.accuracy_metres == null || t.accuracy_metres <= 50)
+    )
+  })
+  if (!plausible.length) return { written: 0, rejected: tracks.length }
+
+  const rideIds = [...new Set(plausible.map(t => String(t.ride_id)))]
+  const sessionIds = [...new Set(plausible.map(t => String(t.session_id)))]
+  const [rides, sessions] = await Promise.all([
+    pool.query<{ id: string }>(
+      `SELECT id::text FROM rides
+        WHERE id = ANY($1::bigint[]) AND driver_id = $2
+          AND status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')`,
+      [rideIds, driverId]
+    ),
+    pool.query<{ id: string }>(
+      `SELECT id::text FROM driver_sessions WHERE id = ANY($1::bigint[]) AND driver_id = $2`,
+      [sessionIds, driverId]
+    ),
+  ])
+  const okRides = new Set(rides.rows.map(r => r.id))
+  const okSessions = new Set(sessions.rows.map(r => r.id))
+  const accepted = plausible
+    .filter(t => okRides.has(String(t.ride_id)) && okSessions.has(String(t.session_id)))
+    .map(t => ({ ...t, driver_id: driverId.toString() }))
+
+  if (accepted.length) await repo.insertGpsTracks(accepted)
+  return { written: accepted.length, rejected: tracks.length - accepted.length }
 }
 
 export async function autocomplete(

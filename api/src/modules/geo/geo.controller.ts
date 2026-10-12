@@ -21,7 +21,7 @@ export async function getNearestCity(req: Request, res: Response, next: NextFunc
 
 export async function getAutocomplete(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const q = (req.query['q'] as string ?? '').trim()
+    const q = (req.query['q'] as string ?? '').trim().slice(0, 120)
     if (!q || q.length < 2) { res.json([]); return }
     const lat = parseFloat(req.query['lat'] as string)
     const lng = parseFloat(req.query['lng'] as string)
@@ -63,7 +63,9 @@ export async function getRoute(req: Request, res: Response, next: NextFunction):
       res.status(422).json({ error: 'originLat, originLng, destLat, destLng required', code: 'VALIDATION_ERROR' })
       return
     }
-    const language = req.query['language'] as string | undefined
+    // Part of the Redis cache key, so it must come from a closed set (arbitrary values minted unbounded keys).
+    const rawLang = req.query['language']
+    const language = typeof rawLang === 'string' && /^[a-z]{2}(-[A-Za-z]{2,4})?$/.test(rawLang) ? rawLang : undefined
     const opts: Parameters<typeof service.getRoute>[4] = {
       withSteps: req.query['withSteps'] === 'true',
       trafficAware: req.query['trafficAware'] === 'true',
@@ -106,8 +108,21 @@ export async function flushTracks(req: Request, res: Response, next: NextFunctio
       res.status(422).json({ error: 'tracks array required', code: 'VALIDATION_ERROR' })
       return
     }
-    const driverId = Number(req.driver!.id)
-    const capped = tracks.slice(0, 100).map(t => ({ ...t, driver_id: driverId }))
-    res.json(await service.flushGpsTracks(capped))
+    if (!req.driver) {
+      res.status(403).json({ error: 'Driver token required', code: 'AUTH_FORBIDDEN' })
+      return
+    }
+    // ride_id/session_id/lat/lng/recorded_at are validated and ownership-checked inside the service.
+    const capped = tracks.slice(0, 100).map(t => ({
+      ride_id: t.ride_id,
+      session_id: t.session_id,
+      latitude: Number(t.latitude),
+      longitude: Number(t.longitude),
+      ...(t.heading !== undefined ? { heading: Number(t.heading) } : {}),
+      ...(t.speed_kmph !== undefined ? { speed_kmph: Number(t.speed_kmph) } : {}),
+      ...(t.accuracy_metres !== undefined ? { accuracy_metres: Number(t.accuracy_metres) } : {}),
+      recorded_at: String(t.recorded_at),
+    }))
+    res.json(await service.flushGpsTracks(req.driver.id, capped))
   } catch (err) { next(err) }
 }

@@ -171,31 +171,41 @@ router.post('/', authenticate(), onlyUser, canBook, async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.get('/return-cab-available', async (req, res, next) => {
+// Both lookups below used to be public and returned internal driver ids with exact positions, i.e. a free live
+// map of the fleet for anyone. They now need a signed-in principal; the response carries only what the apps use.
+router.get('/return-cab-available', authenticate(), async (req, res, next) => {
   try {
     const pickupLat = parseFloat(req.query['pickupLat'] as string)
     const pickupLng = parseFloat(req.query['pickupLng'] as string)
     const dropLat   = parseFloat(req.query['dropLat']   as string)
     const dropLng   = parseFloat(req.query['dropLng']   as string)
-    const categoryId = BigInt(req.query['categoryId'] as string)
+    const rawCategory = req.query['categoryId']
+    if (typeof rawCategory !== 'string' || !/^\d{1,18}$/.test(rawCategory)) {
+      res.status(400).json({ error: 'categoryId required' }); return
+    }
+    const categoryId = BigInt(rawCategory)
     if ([pickupLat, pickupLng, dropLat, dropLng].some(isNaN)) {
       res.status(400).json({ error: 'pickupLat, pickupLng, dropLat, dropLng required' }); return
     }
     const minWalletBalance = await paymentsService.getMinWalletBalance()
     const categoryIds = await repo.getEligibleDriverCategoryIds(categoryId)
     const drivers = await repo.findReturnCabDrivers({ pickupLat, pickupLng, dropLat, dropLng, categoryIds, minWalletBalance })
-    res.json({ drivers, count: drivers.length })
+    res.json({ count: drivers.length })
   } catch (err) { next(err) }
 })
 
-router.get('/nearby-drivers', async (req, res, next) => {
+router.get('/nearby-drivers', authenticate(), async (req, res, next) => {
   try {
     const lat = parseFloat(req.query['lat'] as string)
     const lng = parseFloat(req.query['lng'] as string)
-    if (isNaN(lat) || isNaN(lng)) { res.status(400).json({ error: 'lat and lng required' }); return }
-    const radius = Math.min(parseFloat((req.query['radius'] as string) ?? '8000'), 20000)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      res.status(400).json({ error: 'lat and lng required' }); return
+    }
+    const requested = parseFloat((req.query['radius'] as string) ?? '8000')
+    const radius = Number.isFinite(requested) ? Math.min(Math.max(requested, 200), 20000) : 8000
     const drivers = await repo.findAllNearbyDrivers({ lat, lng, radiusMetres: radius })
-    res.json({ drivers })
+    // Opaque, stable-per-driver reference (clients key map markers on it) instead of the real driver id.
+    res.json({ drivers: drivers.map(d => ({ ...d, driver_id: service.publicDriverRef(d.driver_id) })) })
   } catch (err) { next(err) }
 })
 

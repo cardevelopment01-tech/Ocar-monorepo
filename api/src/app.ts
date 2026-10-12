@@ -158,19 +158,26 @@ export function createApp(): Application {
   app.use(express.urlencoded({ extended: true, limit: '100kb' }))
 
   // 5. Health check
-  app.get('/health', async (_req, res) => {
+  // Requests that came in through the load balancer carry X-Forwarded-For; the container's own healthcheck and
+  // the local Alloy scrape do not. /metrics is therefore unreachable from the internet. /health stays as it was
+  // for the deploy smoke test (it asserts db + redis through the ALB) but no longer names the environment.
+  const viaLoadBalancer = (req: import('express').Request) => Boolean(req.headers['x-forwarded-for'])
+
+  app.get('/health', async (req, res) => {
     const [dbOk, redisOk] = await Promise.all([testConnection(), testRedis()])
-    res.status(200).json({
+    const body: Record<string, unknown> = {
       status: 'ok',
       db: dbOk ? 'ok' : 'error',
       redis: redisOk ? 'ok' : 'error',
       timestamp: new Date().toISOString(),
-      environment: config.NODE_ENV,
-    })
+    }
+    if (!viaLoadBalancer(req)) body['environment'] = config.NODE_ENV
+    res.status(200).json(body)
   })
 
   // 5b. Metrics
-  app.get('/metrics', async (_req, res) => {
+  app.get('/metrics', async (req, res) => {
+    if (viaLoadBalancer(req)) { res.status(404).json({ error: 'Not Found', code: 'NOT_FOUND' }); return }
     res.set('Content-Type', register.contentType)
     res.send(await register.metrics())
   })
