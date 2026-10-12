@@ -10,7 +10,7 @@ vi.mock('@/modules/payments/payments.service', () => ({
   creditCashback: vi.fn(), confirmRidePayment: vi.fn(), payFromUserWallet: vi.fn(), createRidePaymentOrder: vi.fn(),
 }))
 vi.mock('@/websocket/socket.server', () => ({
-  socketEvents: { sendAdminDriverUpdate: vi.fn(), sendRideStatusUpdate: vi.fn(), sendNotification: vi.fn() },
+  socketEvents: { sendAdminDriverUpdate: vi.fn(), sendRideStatusUpdate: vi.fn(), sendNotification: vi.fn(), sendDriverLocation: vi.fn() },
   getIO: vi.fn(() => ({ to: vi.fn(() => ({ emit: vi.fn() })) })),
 }))
 vi.mock('@/jobs/queues', () => ({
@@ -23,6 +23,7 @@ vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 
 import * as repo from '@/modules/rides/rides.repository'
 import { socketEvents } from '@/websocket/socket.server'
+import { client as redis } from '@/db/redis'
 import { updateLocation, notifySessionEnded } from '@/modules/rides/rides.service'
 
 const PING = { sessionId: BigInt(738), lat: 20.2536, lng: 85.7584, recordedAt: new Date().toISOString() }
@@ -72,5 +73,20 @@ describe('notifySessionEnded throttle', () => {
     expect(notifySessionEnded(BigInt(9101), t0 + 1_000)).toBe(true)
     expect(notifySessionEnded(BigInt(9100), t0 + 61_000)).toBe(true)
     expect(socketEvents.sendNotification).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('updateLocation - ended session but a ride is in progress', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('keeps tracking the ride and does not tell the driver they are offline', async () => {
+    // goOffline has no active-ride guard, so a session can be ended while a ride is under way. The rider must
+    // keep seeing the car move, and the driver must not be bounced to Offline mid-trip.
+    vi.mocked(repo.upsertDriverLocation).mockResolvedValue({ owned: true, ended: true })
+    vi.mocked(redis.get).mockResolvedValue('77' as never) // active-ride cache hit
+    await expect(updateLocation(BigInt(9200), PING)).resolves.not.toThrow()
+    expect(socketEvents.sendDriverLocation).toHaveBeenCalledWith('77', expect.objectContaining({ lat: PING.lat, lng: PING.lng }))
+    expect(socketEvents.sendNotification).not.toHaveBeenCalled()
+    vi.mocked(redis.get).mockReset()
   })
 })

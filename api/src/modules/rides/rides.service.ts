@@ -388,16 +388,32 @@ export async function updateLocation(driverId: bigint, data: {
   if (!upserted.owned) {
     throw httpError(403, 'That session does not belong to this driver', 'SESSION_MISMATCH')
   }
-  if (upserted.ended) {
+  const driverKey = driverId.toString()
+  const now = Date.now()
+
+  // Whether the driver has a ride in progress. Resolved before the ended-session check because a ride must keep
+  // being tracked even if its session was ended (goOffline has no active-ride guard), and cached because this
+  // runs on every GPS ping (~3 s per online driver): worst case a status change (accept/complete/cancel) takes up
+  // to ACTIVE_RIDE_CACHE_TTL_SEC to be reflected, which only delays/extends live tracking by that long.
+  const activeRideCacheKey = activeRideByDriverKey(driverKey)
+  // Cache only: a slow/down Redis falls through to the DB query instead of failing the GPS ping.
+  let rideId = await withTimeout(redis.get(activeRideCacheKey)).catch(() => null)
+  if (rideId === null) {
+    const activeRideRes = await pool.query<{ id: string }>(
+      `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress','returning') LIMIT 1`,
+      [driverId]
+    )
+    rideId = activeRideRes.rows[0]?.id ?? ''
+    await withTimeout(redis.set(activeRideCacheKey, rideId, 'EX', ACTIVE_RIDE_CACHE_TTL_SEC)).catch(() => undefined)
+  }
+
+  if (upserted.ended && !rideId) {
     // The server already ended this session (stale-heartbeat sweep) but the phone is still pinging it and showing
     // "Online" -- it was backgrounded and missed both the push and the socket event. Tell it again so it resets;
     // the apps already handle this event. Rejecting also keeps the ping from being treated as a heartbeat.
     notifySessionEnded(driverId)
     throw httpError(409, 'Your online session has ended. Go online again to receive requests.', 'SESSION_ENDED')
   }
-
-  const driverKey = driverId.toString()
-  const now = Date.now()
   if (now - (lastAdminBroadcastAt.get(driverKey) ?? 0) >= ADMIN_BROADCAST_MIN_INTERVAL_MS) {
     lastAdminBroadcastAt.set(driverKey, now)
     if (lastAdminBroadcastAt.size > 10_000) {
@@ -412,23 +428,7 @@ export async function updateLocation(driverId: bigint, data: {
     })
   }
 
-  // Emit live location to the user's tracking page. This query runs on every
-  // GPS ping (every ~3s per online driver), so the result is cached with a
-  // short TTL — worst case a status change (accept/complete/cancel) takes up
-  // to ACTIVE_RIDE_CACHE_TTL_SEC to be reflected, which just delays/extends
-  // live tracking emission by that long, never breaks correctness elsewhere.
-  const activeRideCacheKey = activeRideByDriverKey(driverKey)
-  // Cache only: a slow/down Redis falls through to the DB query instead of failing the GPS ping.
-  let rideId = await withTimeout(redis.get(activeRideCacheKey)).catch(() => null)
-  if (rideId === null) {
-    const activeRideRes = await pool.query<{ id: string }>(
-      `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress','returning') LIMIT 1`,
-      [driverId]
-    )
-    rideId = activeRideRes.rows[0]?.id ?? ''
-    await withTimeout(redis.set(activeRideCacheKey, rideId, 'EX', ACTIVE_RIDE_CACHE_TTL_SEC)).catch(() => undefined)
-  }
-
+  // Emit live location to the user's tracking page (rideId resolved above).
   if (!rideId) {
     trailByDriver.delete(driverKey)
     return
