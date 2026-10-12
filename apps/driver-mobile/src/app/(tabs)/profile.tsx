@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -12,6 +12,8 @@ import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { teardownPushNotifications } from '@/services/notifications'
 import { fetchDriverStats, updateDriverProfile, type DriverStats } from '@/features/profile/api'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
+import { onboardingApi, type PickedFile } from '@/features/onboarding/api'
+import { SelfieCapture } from '@/components/camera/SelfieCapture'
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   active: { bg: colors.successLight, text: colors.success },
@@ -77,6 +79,34 @@ export default function ProfileScreen() {
 
   useEffect(() => { loadStats() }, [loadStats])
 
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const [photoRejected, setPhotoRejected] = useState(false)
+  const [photoOpen, setPhotoOpen] = useState(false)
+  const [photoBusy, setPhotoBusy] = useState(false)
+
+  useEffect(() => {
+    onboardingApi.getDocumentStatus()
+      .then((s) => {
+        setPhotoUrl(s.photos['profile_photo']?.url ?? null)
+        setPhotoRejected(s.photos['profile_photo']?.status === 'rejected')
+      })
+      .catch(() => {}) // avatar falls back to the initial
+  }, [])
+
+  async function replacePhoto(file: PickedFile) {
+    setPhotoOpen(false)
+    setPhotoBusy(true)
+    try {
+      const res = await onboardingApi.uploadDriverDoc(file, 'profile_photo')
+      setPhotoUrl(res.file_url)
+      setPhotoRejected(false)
+    } catch (err) {
+      Alert.alert("Couldn't update photo", mapSaveError(err))
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
   const displayName = driver?.full_name ?? driver?.code ?? 'Driver'
   const displayPhone = normalizePhone(driver?.phone)
   const initial = displayName.charAt(0).toUpperCase()
@@ -118,9 +148,15 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md, paddingBottom: clearance }]}>
         <Animated.View entering={FadeIn.duration(420)} style={styles.headerCard}>
           <View style={styles.headerRow}>
-            <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
-              <Text style={styles.avatarText}>{initial}</Text>
-            </LinearGradient>
+            <Pressable onPress={() => setPhotoOpen(true)} disabled={photoBusy} accessibilityRole="button" accessibilityLabel="Change profile photo">
+              <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
+                {photoUrl ? <Image source={{ uri: photoUrl }} style={styles.avatarImg} /> : <Text style={styles.avatarText}>{initial}</Text>}
+                {photoBusy ? <ActivityIndicator style={StyleSheet.absoluteFill} color={colors.inkInverse} /> : null}
+              </LinearGradient>
+              <View style={[styles.avatarBadge, photoRejected ? styles.avatarBadgeRejected : null]}>
+                <Feather name={photoRejected ? 'alert-circle' : 'camera'} size={11} color={photoRejected ? colors.error : colors.ink600} />
+              </View>
+            </Pressable>
             <View style={styles.headerInfo}>
               <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
               <Text style={styles.phone}>+91 {displayPhone}</Text>
@@ -259,6 +295,8 @@ export default function ProfileScreen() {
         </Animated.View>
       </ScrollView>
 
+      <SelfieCapture visible={photoOpen} onCancel={() => setPhotoOpen(false)} onConfirm={(f) => void replacePhoto(f)} />
+
       <Modal visible={showSignOut} transparent animationType="fade" onRequestClose={() => setShowSignOut(false)}>
         <View style={styles.backdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowSignOut(false)} />
@@ -334,6 +372,9 @@ const styles = StyleSheet.create({
   headerCard: { ...card, padding: spacing.lg },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   avatar: { width: 60, height: 60, borderRadius: radii.xl, alignItems: 'center', justifyContent: 'center' },
+  avatarImg: { width: 60, height: 60, borderRadius: radii.xl },
+  avatarBadge: { position: 'absolute', right: -4, bottom: -4, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  avatarBadgeRejected: { borderColor: colors.error },
   avatarText: { fontSize: 24, fontFamily: fonts.bold, color: colors.inkInverse },
   headerInfo: { flex: 1, gap: 2 },
   name: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },

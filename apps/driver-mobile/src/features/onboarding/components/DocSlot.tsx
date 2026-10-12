@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { getInfoAsync } from 'expo-file-system/legacy'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { SelfieCapture } from '@/components/camera/SelfieCapture'
 import type { PickedFile } from '../api'
 
 export type DocSlotState = 'idle' | 'uploading' | 'done' | 'error'
@@ -16,6 +17,8 @@ export type DocSlotProps = {
   rejectionNote?: string | null
   error?: string | null
   onPick: (file: PickedFile) => void
+  /** Live front-camera selfie only (profile photo): opens SelfieCapture instead of the camera/gallery alert. */
+  selfie?: boolean
 }
 
 // Phone-camera photos are commonly 4-12MB. `quality` only re-encodes (it never
@@ -43,10 +46,12 @@ async function pickFrom(source: 'camera' | 'library'): Promise<PickedFile | null
   return { uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg', fileSize: info.exists ? (info.size ?? 0) : (asset.fileSize ?? 0) }
 }
 
-export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, error, onPick }: DocSlotProps) {
+export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, error, onPick, selfie }: DocSlotProps) {
   const [busy, setBusy] = useState(false)
+  const [selfieOpen, setSelfieOpen] = useState(false)
 
   function handlePress() {
+    if (selfie) { setSelfieOpen(true); return }
     Alert.alert(label, 'Choose a photo source', [
       { text: 'Take Photo', onPress: () => void handlePick('camera') },
       { text: 'Choose from Gallery', onPress: () => void handlePick('library') },
@@ -68,6 +73,14 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
   const uploading = state === 'uploading' || busy
 
   return (
+    <>
+    {selfie ? (
+      <SelfieCapture
+        visible={selfieOpen}
+        onCancel={() => setSelfieOpen(false)}
+        onConfirm={(file) => { setSelfieOpen(false); onPick(file) }}
+      />
+    ) : null}
     <Pressable
       onPress={handlePress}
       disabled={uploading}
@@ -103,6 +116,7 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
       </View>
       <Feather name="chevron-right" size={16} color={colors.ink400} />
     </Pressable>
+    </>
   )
 }
 
