@@ -2,11 +2,11 @@ import Svg, { Circle, Defs, Ellipse, LinearGradient, Path, Stop } from 'react-na
 
 export type PinVariant = 'pickup' | 'drop' | 'stop'
 
-// Same teardrop + gradient language as the home hero pin: teal for pickup, ink for drop,
-// gold for stops, replaces the old green / red / amber flat pins.
+// Same teardrop + gradient language as the home hero pin: teal for pickup, pink for drop,
+// gold for stops, replaces the old green / red / amber flat pins. Drop is Ocar brand pink (#DC3E93).
 const GRADS: Record<PinVariant, [string, string, string]> = {
   pickup: ['#CFF3F5', '#14ABBD', '#0A5C66'],
-  drop: ['#8A959A', '#2A3136', '#14171A'],
+  drop: ['#F6B5D6', '#DC3E93', '#A31F6B'],
   stop: ['#F6E3B8', '#D6A552', '#A97A2E'],
 }
 

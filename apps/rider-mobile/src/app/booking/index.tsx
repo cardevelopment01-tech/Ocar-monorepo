@@ -523,7 +523,7 @@ const styles = StyleSheet.create({
   connector: { width: 40, alignItems: 'center', paddingVertical: spacing.md },
   dotPickup: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary, boxShadow: '0 0 0 3px rgba(14,143,163,0.14)' },
   dashedLine: { flex: 1, width: 1, minHeight: 24, borderLeftWidth: 1, borderLeftColor: colors.border, borderStyle: 'dashed', marginVertical: 4 },
-  dotDrop: { width: 10, height: 10, borderRadius: 2, backgroundColor: colors.ink900 },
+  dotDrop: { width: 10, height: 10, borderRadius: 2, backgroundColor: '#DC3E93' },
   fieldsColumn: { flex: 1 },
   fieldRow: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm + 2, borderBottomWidth: 1, borderBottomColor: colors.borderLight, justifyContent: 'center', minHeight: 44 },
   fieldRowLast: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm + 2, justifyContent: 'center', minHeight: 44 },
