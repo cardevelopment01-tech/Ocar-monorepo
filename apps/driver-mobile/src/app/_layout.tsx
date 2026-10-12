@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useRideRequestListener } from '@/features/ride-requests/useRideRequestListener'
 import { RideRequestOverlay } from '@/features/ride-requests/RideRequestOverlay'
 import { useSessionSyncListener } from '@/features/go-online/useSessionSyncListener'
+import { useSessionResync } from '@/features/go-online/useSessionResync'
 import { usePushNotificationRouting } from '@/features/notifications/usePushNotificationRouting'
 // Registers the background-location TaskManager task at module scope -- must run
 // unconditionally at app startup, since Android can invoke the task in a headless
@@ -29,6 +30,7 @@ export default function RootLayout() {
   // never per-screen.
   useRideRequestListener()
   useSessionSyncListener()
+  useSessionResync()
   usePushNotificationRouting()
 
   useEffect(() => {

@@ -41,13 +41,13 @@ describe('updateLocation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers({ toFake: ['Date'] })
-    vi.mocked(repo.upsertDriverLocation).mockResolvedValue(true)
+    vi.mocked(repo.upsertDriverLocation).mockResolvedValue({ owned: true, ended: false })
     vi.mocked(redis.get).mockResolvedValue('777') // driver is on ride 777
   })
   afterEach(() => vi.useRealTimers())
 
   it('rejects a session id that is not the drivers own (403) and does nothing else', async () => {
-    vi.mocked(repo.upsertDriverLocation).mockResolvedValue(false)
+    vi.mocked(repo.upsertDriverLocation).mockResolvedValue({ owned: false, ended: false })
     await expect(updateLocation(DRIVER, ping())).rejects.toMatchObject({ httpStatus: 403, appCode: 'SESSION_MISMATCH' })
     expect(enqueueBreadcrumb).not.toHaveBeenCalled()
     expect(socketEvents.sendDriverLocation).not.toHaveBeenCalled()

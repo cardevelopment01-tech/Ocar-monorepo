@@ -113,22 +113,26 @@ export async function upsertDriverLocation(data: {
   speed?: number
   recordedAt: string
   isAvailable: boolean
-}): Promise<boolean> {
+}): Promise<{ owned: boolean; ended: boolean }> {
   // The session id comes from the client, so it is only honoured when that session really belongs to this
   // driver: the INSERT reads from driver_sessions filtered by (id, driver_id). Without that, a driver could point
   // their location snapshot at ANOTHER driver's session (category, wallet join) and be matched as them.
-  // Returns false when the session isn't theirs; an out-of-order (stale) ping is not an error and returns true.
-  const res = await pool.query<{ owned: string }>(
-    `WITH owned AS (
-       SELECT id FROM driver_sessions WHERE id = $2 AND driver_id = $1
+  // owned=false when the session isn't theirs; an out-of-order (stale) ping is not an error and is still owned.
+  // ended=true when it is theirs but the server already ended it (e.g. the stale-heartbeat sweep). Nothing is
+  // written for an ended session: it would only repoint the driver's snapshot at a dead session, which hides
+  // them from matching if they have since gone online again.
+  const res = await pool.query<{ owned: string; ended: boolean }>(
+    `WITH mine AS (
+       SELECT id, status::text AS status FROM driver_sessions WHERE id = $2 AND driver_id = $1
      ), upsert AS (
        INSERT INTO driver_location_snapshots
          (driver_id, session_id, location,
           heading, speed_kmph, recorded_at, is_available)
-       SELECT $1, owned.id,
+       SELECT $1, mine.id,
               ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography,
               $5, $6, $7, $8
-         FROM owned
+         FROM mine
+        WHERE mine.status <> 'offline'
        ON CONFLICT (driver_id) DO UPDATE SET
          session_id   = EXCLUDED.session_id,
          location     = EXCLUDED.location,
@@ -140,7 +144,8 @@ export async function upsertDriverLocation(data: {
        WHERE driver_location_snapshots.recorded_at < EXCLUDED.recorded_at
        RETURNING 1
      )
-     SELECT (SELECT count(*) FROM owned)::text AS owned`,
+     SELECT (SELECT count(*) FROM mine)::text AS owned,
+            COALESCE((SELECT bool_or(status = 'offline') FROM mine), false) AS ended`,
     [
       data.driverId, data.sessionId,
       data.lat, data.lng,
@@ -150,7 +155,8 @@ export async function upsertDriverLocation(data: {
       data.isAvailable,
     ]
   )
-  return Number(res.rows[0]?.owned ?? 0) > 0
+  const row = res.rows[0]
+  return { owned: Number(row?.owned ?? 0) > 0, ended: row?.ended === true }
 }
 
 export async function findNearbyDrivers(params: {

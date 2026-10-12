@@ -161,6 +161,8 @@ export function initSocketServer(httpServer: HttpServer): Server {
         if (heading !== null) input.heading = heading
         if (speed   !== null) input.speed   = speed
         updateLocation(BigInt(user.sub), input).catch((err: unknown) => {
+          // Expected: the driver's session was ended server-side and updateLocation has just told them so.
+          if ((err as { appCode?: string } | null)?.appCode === 'SESSION_ENDED') return
           log.error({ err, sessionId: String(sessionId) }, 'location:update failed')
         })
       }))
