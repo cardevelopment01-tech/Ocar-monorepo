@@ -14,6 +14,7 @@ import { fetchDriverStats, updateDriverProfile, type DriverStats } from '@/featu
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
 import { onboardingApi, type PickedFile } from '@/features/onboarding/api'
 import { SelfieCapture } from '@/components/camera/SelfieCapture'
+import { PHOTO_CHANGE_WARNING, shouldWarnBeforePhotoChange } from '@/features/onboarding/photoChange'
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   active: { bg: colors.successLight, text: colors.success },
@@ -80,7 +81,8 @@ export default function ProfileScreen() {
   useEffect(() => { loadStats() }, [loadStats])
 
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
-  const [photoRejected, setPhotoRejected] = useState(false)
+  const [photoStatus, setPhotoStatus] = useState<string | null>(null)
+  const photoRejected = photoStatus === 'rejected'
   const [photoOpen, setPhotoOpen] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
 
@@ -88,10 +90,18 @@ export default function ProfileScreen() {
     onboardingApi.getDocumentStatus()
       .then((s) => {
         setPhotoUrl(s.photos['profile_photo']?.url ?? null)
-        setPhotoRejected(s.photos['profile_photo']?.status === 'rejected')
+        setPhotoStatus(s.photos['profile_photo']?.status ?? null)
       })
       .catch(() => {}) // avatar falls back to the initial
   }, [])
+
+  function openPhotoCamera() {
+    if (!shouldWarnBeforePhotoChange(photoStatus)) { setPhotoOpen(true); return }
+    Alert.alert(PHOTO_CHANGE_WARNING.title, PHOTO_CHANGE_WARNING.body, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Continue', onPress: () => setPhotoOpen(true) },
+    ])
+  }
 
   async function replacePhoto(file: PickedFile) {
     setPhotoOpen(false)
@@ -99,7 +109,7 @@ export default function ProfileScreen() {
     try {
       const res = await onboardingApi.uploadDriverDoc(file, 'profile_photo')
       setPhotoUrl(res.file_url)
-      setPhotoRejected(false)
+      setPhotoStatus('pending') // replaced: now awaiting review
     } catch (err) {
       Alert.alert("Couldn't update photo", mapSaveError(err))
     } finally {
@@ -148,7 +158,7 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md, paddingBottom: clearance }]}>
         <Animated.View entering={FadeIn.duration(420)} style={styles.headerCard}>
           <View style={styles.headerRow}>
-            <Pressable onPress={() => setPhotoOpen(true)} disabled={photoBusy} accessibilityRole="button" accessibilityLabel="Change profile photo">
+            <Pressable onPress={openPhotoCamera} disabled={photoBusy} accessibilityRole="button" accessibilityLabel="Change profile photo">
               <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
                 {photoUrl ? <Image source={{ uri: photoUrl }} style={styles.avatarImg} /> : <Text style={styles.avatarText}>{initial}</Text>}
                 {photoBusy ? <ActivityIndicator style={StyleSheet.absoluteFill} color={colors.inkInverse} /> : null}
