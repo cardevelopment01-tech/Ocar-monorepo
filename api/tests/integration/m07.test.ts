@@ -5,7 +5,7 @@ import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import { processBroadcast } from '@/jobs/processors/broadcast.processor'
 import {
-  loginUser, loginDriver, setupOnlineDriver, cleanupRideAndDriverData, DEFAULT_BOOKING,
+  loginUser, loginDriver, setupOnlineDriver, driveRideToInProgress, cleanupRideAndDriverData, DEFAULT_BOOKING,
 } from '../helpers/fixtures/rides.fixture'
 
 vi.mock('@/lib/storage', () => ({
@@ -132,6 +132,16 @@ describe('M07 — Ride Lifecycle', () => {
       expect(bookRes.status, JSON.stringify(bookRes.body)).toBe(201)
       const rideId = bookRes.body.rideId as string
 
+      // A driver can only flush breadcrumbs for a ride that is theirs and live: take the ride first.
+      const notYours = await request(app)
+        .post('/api/v1/geo/tracks/flush')
+        .set('Authorization', `Bearer ${driver.accessToken}`)
+        .send({ tracks: [{ ride_id: Number(rideId), session_id: Number(driver.sessionId), latitude: 20.29, longitude: 85.82, recorded_at: new Date().toISOString() }] })
+      expect(notYours.status, JSON.stringify(notYours.body)).toBe(200)
+      expect(notYours.body.written).toBe(0) // still just 'requested': not assigned to this driver
+
+      await driveRideToInProgress(app, rideId, driver, userToken)
+
       const flushRes = await request(app)
         .post('/api/v1/geo/tracks/flush')
         .set('Authorization', `Bearer ${driver.accessToken}`)
@@ -165,12 +175,13 @@ describe('M07 — Ride Lifecycle', () => {
       // within match_radius_metres=2000m default). Drop near Cuttack's seeded
       // centroid (85.8830, 20.4686) so the nearest-active-city-to-dropoff
       // lookup resolves to cuttackCityId, matching the route's destination.
-      const res = await request(app).get(
-        `/api/v1/rides/return-cab-available?pickupLat=20.29&pickupLng=85.82&dropLat=20.4686&dropLng=85.8830&categoryId=${driver.categoryId}`
-      )
+      const url = `/api/v1/rides/return-cab-available?pickupLat=20.29&pickupLng=85.82&dropLat=20.4686&dropLng=85.8830&categoryId=${driver.categoryId}`
+      expect((await request(app).get(url)).status).toBe(401)
+      const res = await request(app).get(url).set('Authorization', `Bearer ${driver.accessToken}`)
       expect(res.status, JSON.stringify(res.body)).toBe(200)
-      const ids = (res.body.drivers as Array<{ driver_id: string }>).map((d) => String(d.driver_id))
-      expect(ids).toContain(String(driver.driverId))
+      // The endpoint now reports only a count (it used to list every matching driver's id and position).
+      expect(res.body.count).toBeGreaterThanOrEqual(1)
+      expect(res.body.drivers).toBeUndefined()
     })
   })
 

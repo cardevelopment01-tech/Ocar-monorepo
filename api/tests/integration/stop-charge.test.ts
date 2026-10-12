@@ -28,6 +28,7 @@ let originalCard: { rate_per_km: string; rate_per_min: string; min_fare: string;
 
 const estimate = (stopCount: number) =>
   request(app).post('/api/v1/pricing/estimate')
+    .set('Authorization', `Bearer ${adminToken}`)
     .send({ category_id: categoryId, ride_type: 'one_way', distance_km: 20, duration_min: 30, stop_count: stopCount })
 
 const setCard = (extra: Record<string, unknown> = {}) =>

@@ -294,12 +294,11 @@ describe('M08 — Payments', () => {
 
       // Same event, sent again — must be a no-op, not a double-credit. The dedup
       // guard (handleWebhookEvent in payments.service.ts) keys off razorpay_event_id,
-      // which is populated from payload.payment.entity.id (the Razorpay payment id,
-      // NOT a separate "event id" field — Razorpay webhook payloads for payment
-      // events don't carry one, so the code reuses the payment entity id as the
-      // dedup key). A second delivery of the same payload is therefore rejected by
-      // `SELECT id FROM payment_gateway_events WHERE razorpay_event_id = $1` before
-      // confirmRidePayment ever runs again.
+      // which is "<payment entity id>:<event name>" — the entity id alone is not enough, because one
+      // payment/payout id legitimately produces several different events (payment.authorized then
+      // payment.captured; payout.processed then payout.reversed). The row is written unprocessed and
+      // flipped to processed only after the handler succeeds. A second delivery of the same payload
+      // hits the unique key and is a no-op.
       const secondRes = await request(app)
         .post('/api/v1/payments/webhook/razorpay')
         .set('x-razorpay-signature', signature)
@@ -307,11 +306,12 @@ describe('M08 — Payments', () => {
         .send(body)
       expect(secondRes.status, JSON.stringify(secondRes.body)).toBe(200)
 
-      const { rows: dedupRows } = await pool.query<{ n: number }>(
-        `SELECT count(*)::int AS n FROM payment_gateway_events WHERE razorpay_event_id = $1`,
-        [`pay_test_${rideId}`]
+      const { rows: dedupRows } = await pool.query<{ n: number; processed: boolean }>(
+        `SELECT count(*)::int AS n, bool_and(processed) AS processed FROM payment_gateway_events WHERE razorpay_event_id = $1`,
+        [`pay_test_${rideId}:payment.captured`]
       )
       expect(dedupRows[0]?.n).toBe(1)
+      expect(dedupRows[0]?.processed).toBe(true) // marked done only after the handler succeeded
 
       const { rows: afterSecond } = await pool.query<{ status: string; commission_amount: string }>(
         'SELECT status, commission_amount FROM payments WHERE id = $1', [payment.id]
