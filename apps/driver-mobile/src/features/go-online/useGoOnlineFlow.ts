@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import { getApiErrorMessage } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
-import { connectSocket, disconnectSocket } from '@/services/socket'
+import { disconnectSocket } from '@/services/socket'
 import { stopBackgroundTracking } from '@/services/location/backgroundTask'
 import { fetchVerificationStatus } from '@/features/verification/api'
-import { fetchCurrentSession, fetchMyVehicle, goOffline as apiGoOffline } from './api'
+import { fetchMyVehicle, goOffline as apiGoOffline } from './api'
+import { resyncSessionFromServer } from './useSessionResync'
 import { canTapGoOnline, type SessionCheckState } from './sessionRestoreGuard'
 import type { VehicleInfo } from './types'
 
@@ -31,7 +32,6 @@ export type GoOnlineFlowState = {
 // StandardConfirm/ReturnCabSetup.
 export function useGoOnlineFlow(): GoOnlineFlowState {
   const isOnline = useDriverSessionStore((s) => s.isOnline)
-  const setOnline = useDriverSessionStore((s) => s.setOnline)
   const setOffline = useDriverSessionStore((s) => s.setOffline)
 
   const [sessionCheck, setSessionCheck] = useState<SessionCheckState>('checking')
@@ -47,18 +47,14 @@ export function useGoOnlineFlow(): GoOnlineFlowState {
       .finally(() => setVehicleLoading(false))
   }, [])
 
+  // Adopts the server's view in BOTH directions. This used to only ever set "online" when the server had a
+  // session, so a session the server had already ended (stale-heartbeat sweep) left the toggle on "Online".
   const checkSession = useCallback(() => {
     setSessionCheck('checking')
-    fetchCurrentSession()
-      .then((session) => {
-        if (session) {
-          setOnline({ id: session.id, vehicleId: session.vehicleId, categoryId: session.categoryId, mode: session.mode })
-          connectSocket()
-        }
-        setSessionCheck('ready')
-      })
+    resyncSessionFromServer()
+      .then(() => setSessionCheck('ready'))
       .catch(() => setSessionCheck('failed'))
-  }, [setOnline])
+  }, [])
 
   useEffect(() => {
     checkSession()

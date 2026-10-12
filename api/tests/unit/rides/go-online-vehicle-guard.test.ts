@@ -46,7 +46,7 @@ describe('goOnline - the vehicle must be the driver\'s own', () => {
     vi.mocked(getDriverWallet).mockResolvedValue({ balance: '900.00' } as never)
     vi.mocked(repo.getActiveSession).mockResolvedValue(null)
     vi.mocked(repo.createSession).mockResolvedValue({ id: 9 } as never)
-    vi.mocked(repo.upsertDriverLocation).mockResolvedValue(true)
+    vi.mocked(repo.upsertDriverLocation).mockResolvedValue({ owned: true, ended: false })
   })
 
   it('refuses a vehicle that is not on the account (or is blacklisted) with 422 and creates no session', async () => {
