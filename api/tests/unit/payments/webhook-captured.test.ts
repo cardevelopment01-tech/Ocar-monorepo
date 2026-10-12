@@ -45,7 +45,12 @@ describe('handleWebhookEvent — payment.captured', () => {
   }
 
   it('duplicate event (already logged) → no confirm', async () => {
-    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 } as never) // dedupe hit
+    vi.mocked(pool.query).mockImplementation(async (text: unknown) => {
+      const sql = text as string
+      if (sql.includes('INSERT INTO payment_gateway_events')) return { rows: [], rowCount: 0 } as never // already logged
+      if (sql.includes('SELECT processed')) return { rows: [{ processed: true }], rowCount: 1 } as never
+      return { rows: [], rowCount: 0 } as never
+    })
     await svc.handleWebhookEvent(capturedPayload('pay_1', 'order_1'))
     expect(confirmingUpdateWasIssued()).toBe(false)
   })

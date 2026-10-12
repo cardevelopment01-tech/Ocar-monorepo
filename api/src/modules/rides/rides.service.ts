@@ -37,7 +37,7 @@ import {
   getDriverWallet,
   getMinWalletBalance,
 } from '@/modules/payments/payments.service'
-import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner } from '@/modules/notifications/notifications.service'
+import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
@@ -399,6 +399,82 @@ export function maskRideContacts<T extends {
 
 // ── Ride booking ──────────────────────────────────────────────
 
+// Upper bounds on what a booking may claim. Generous for an Odisha intercity product; they exist so a
+// tampered request cannot feed absurd numbers into the fare engine (which has no guards of its own).
+const MAX_BOOKING_KM = 2000
+const MAX_BOOKING_MINUTES = 60 * 72
+const MAX_BOOKING_TRIP_HOURS = 24 * 30
+const DISTANCE_TOLERANCE = 0.15
+// Same factor google.provider's straight-line fallback uses to turn crow-flies into a road estimate.
+const ROAD_FACTOR = 1.3
+
+// The client-supplied distance/duration ARE the bill for one-way and rental (total_final = total_estimated at
+// completion), so they must never be trusted as sent. This validates them, then re-derives the distance from the
+// pickup -> stops -> drop path on the server and corrects the request when the client is outside a 15% band.
+//
+// It used to run only for stop-less bookings and only when Google answered, so adding one free stop (or any
+// routing hiccup) let a modified client book a long trip at near the minimum fare. Now every leg of the path is
+// routed (legs are cached and single-flighted by getRoute); if Google is unavailable the straight-line length of
+// the path is a hard physical floor — a road can never be shorter than that — so the request is raised to it
+// instead of being believed. Correct-don't-reject for staleness/rounding; reject only impossible numbers.
+export async function boundBookingDistance(data: BookingRequest, userId: bigint): Promise<void> {
+  const isFiniteIn = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max
+  const needsPositive = data.rideType !== 'rental'
+  if (
+    !isFiniteIn(data.distanceKm, needsPositive ? 0.1 : 0, MAX_BOOKING_KM) ||
+    !isFiniteIn(data.durationMin, needsPositive ? 1 : 0, MAX_BOOKING_MINUTES) ||
+    (data.tripHours !== undefined && !isFiniteIn(data.tripHours, 0, MAX_BOOKING_TRIP_HOURS))
+  ) {
+    throw httpError(422, 'Trip distance, duration or hours are out of range', 'VALIDATION_ERROR')
+  }
+
+  if (data.destinationLat === undefined || data.destinationLng === undefined) return
+
+  const path = [
+    { lat: data.originLat, lng: data.originLng },
+    ...(data.stops ?? []).map(s => ({ lat: s.lat, lng: s.lng })),
+    { lat: data.destinationLat, lng: data.destinationLng },
+  ]
+  const legs = path.slice(1).map((to, i) => ({ from: path[i]!, to }))
+  const straightKm = legs.reduce((sum, l) => sum + distanceMetres(l.from.lat, l.from.lng, l.to.lat, l.to.lng) / 1000, 0)
+
+  let routed: { km: number; min: number } | null = null
+  try {
+    const results = await Promise.all(legs.map(l => getRoute(l.from.lat, l.from.lng, l.to.lat, l.to.lng)))
+    // Any degraded leg makes the sum no better than a straight-line guess: don't treat it as authoritative.
+    if (results.every(r => r.source !== 'fallback')) {
+      routed = { km: results.reduce((a, r) => a + r.distanceKm, 0), min: results.reduce((a, r) => a + r.durationMin, 0) }
+    }
+  } catch (err) {
+    log.warn({ err, userId }, 'server route lookup failed during booking; using straight-line floor')
+  }
+
+  if (routed) {
+    const hi = routed.km * (1 + DISTANCE_TOLERANCE)
+    const lo = routed.km * (1 - DISTANCE_TOLERANCE)
+    if (data.distanceKm > hi || data.distanceKm < lo) {
+      log.warn(
+        { userId, clientDistanceKm: data.distanceKm, serverDistanceKm: routed.km, stops: data.stops?.length ?? 0 },
+        'Booking distance outside server tolerance — using server value'
+      )
+      data.distanceKm  = routed.km
+      data.durationMin = routed.min
+    }
+    return
+  }
+
+  if (data.distanceKm < straightKm) {
+    log.warn(
+      { userId, clientDistanceKm: data.distanceKm, straightKm, stops: data.stops?.length ?? 0 },
+      'Booking distance below the straight-line floor and routing unavailable — raising to a road estimate'
+    )
+    const estimateKm = Math.round(straightKm * ROAD_FACTOR * 10) / 10
+    // Keep duration consistent with the corrected distance (same 0.5 km/min the fallback route assumes).
+    data.durationMin = Math.max(data.durationMin, Math.round(estimateKm / 0.5))
+    data.distanceKm  = estimateKm
+  }
+}
+
 export async function createBooking(userId: bigint, data: BookingRequest) {
   // Only immediate bookings conflict with an existing active ride — a
   // scheduled-for-later booking (data.scheduledFor set) is fine to stack on
@@ -484,44 +560,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   // fare_snapshots.trip_hours records the same value used to compute the fare.
   const effectiveTripHours = clampTripHours(data.rideType, data.tripHours)
 
-  // Server-side distance bound. For one-way/rental, the client-supplied distanceKm
-  // IS the bill (total_final = total_estimated at completion), so a tampered client
-  // could low-ball the fare. Re-derive the route server-side and clamp the client
-  // value to a 15% tolerance band. Correct-don't-reject: minor client rounding or
-  // staleness is normal, so we overwrite with the server number rather than failing
-  // the booking. Skipped when stops exist (getRoute is point-to-point and can't
-  // cheaply bound a multi-stop detour) or when Google was unreachable (a 'fallback'
-  // route is itself a straight-line guess, no more trustworthy than the client).
-  // ponytail: point-to-point bound only; add a waypoint-aware getRoute overload
-  // here if multi-stop fare abuse ever shows up in the data.
-  if (
-    data.destinationLat !== undefined &&
-    data.destinationLng !== undefined &&
-    (data.stops?.length ?? 0) === 0
-  ) {
-    try {
-      const serverRoute = await getRoute(
-        data.originLat, data.originLng, data.destinationLat, data.destinationLng
-      )
-      if (serverRoute.source !== 'fallback') {
-        const tolerance = 0.15
-        const hi = serverRoute.distanceKm * (1 + tolerance)
-        const lo = serverRoute.distanceKm * (1 - tolerance)
-        if (data.distanceKm > hi || data.distanceKm < lo) {
-          log.warn(
-            { userId, clientDistanceKm: data.distanceKm, serverDistanceKm: serverRoute.distanceKm },
-            'Booking distance outside server tolerance — using server value'
-          )
-          data.distanceKm  = serverRoute.distanceKm
-          data.durationMin = serverRoute.durationMin
-        }
-      }
-    } catch (err) {
-      // A routing outage must never block a booking — fall back to the client value,
-      // same posture as the 'fallback' source above.
-      log.warn({ err, userId }, 'server route lookup failed during booking; using client distance')
-    }
-  }
+  await boundBookingDistance(data, userId)
 
   // originCityId is client-supplied and unverified (URL params are tamperable) — the
   // pickup coordinates are what the client actually can't fake without lying about GPS,
@@ -2715,6 +2754,38 @@ export async function settleRideCompletionPayment(
   await creditCashback(rideId, BigInt(rideData.user_id), fareAmount)
 }
 
+// Safety net for the fire-and-forget settlement kicked off by verifyEndOTP. If the process died (or the
+// handler threw) between marking a ride completed and creating its payment row, an online/wallet ride was never
+// charged and nothing else would ever notice: the payment reconcile only scans rows that already exist. Cash
+// rides are excluded on purpose (their payment row appears when the driver confirms collection).
+// settleRideCompletionPayment is safe to re-run: the payment insert is ON CONFLICT DO NOTHING and the wallet
+// debit dedupes on its ledger row.
+export async function settleStrandedRideCompletions(): Promise<number> {
+  const res = await pool.query<{ id: string; driver_id: string }>(
+    `SELECT r.id::text, r.driver_id::text
+       FROM rides r
+      WHERE r.status = 'completed'
+        AND r.payment_channel IN ('online', 'wallet')
+        AND r.driver_id IS NOT NULL
+        AND r.completed_at < now() - interval '3 minutes'
+        AND r.completed_at > now() - interval '3 days'
+        AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.ride_id = r.id)
+      ORDER BY r.completed_at
+      LIMIT 25`
+  )
+  let settled = 0
+  for (const row of res.rows) {
+    try {
+      await settleRideCompletionPayment(BigInt(row.id), BigInt(row.driver_id))
+      settled++
+    } catch (err) {
+      log.error({ err, rideId: row.id }, 'stranded ride settlement failed')
+    }
+  }
+  if (settled > 0) log.warn({ settled }, 'settled completed rides that had no payment row')
+  return settled
+}
+
 // Explicit driver confirmation that cash was collected. Idempotent (cash_collected_at
 // guard + createPaymentRecord's ON CONFLICT(ride_id)). Commission always accrues on the
 // *fare* (driver owes on what they earned) so short/no collection still owes the platform;
@@ -2745,32 +2816,54 @@ export async function collectCash(
   // network retry) — the read-time early-exit above is just a fast-path, this is the
   // real guard. deductCommission/creditCashback are NOT idempotent, so a loser must not
   // reach them.
-  const claim = await pool.query(
-    `UPDATE rides
-       SET cash_collected_amount = $2, cash_collected_at = now(),
-           cash_discrepancy = $3, cash_collection_note = $4
-     WHERE id = $1 AND cash_collected_at IS NULL`,
-    [rideId, collected, discrepancy, input.note ?? null]
-  )
-  if (claim.rowCount === 0) {
-    const fresh = await repo.getRideCoreById(rideId)
-    return {
-      collected:   parseFloat(fresh?.cash_collected_amount ?? '0'),
-      discrepancy: fresh?.cash_discrepancy ?? false,
+  //
+  // The claim and the settlement run in ONE transaction. Previously the claim committed first and the
+  // commission/payment/cashback steps ran afterwards, so any failure in between left cash_collected_at set
+  // with nothing settled, and every retry then took the early-return above: commission was never taken. Now a
+  // failure rolls the claim back too and the driver's retry settles from scratch.
+  // Settle: commission on the fare (not the collected amount) so short/no collection still owes the platform.
+  const client = await pool.connect()
+  let crossedBelowMin: { newBalance: number } | null = null
+  try {
+    await client.query('BEGIN')
+    const claim = await client.query(
+      `UPDATE rides
+         SET cash_collected_amount = $2, cash_collected_at = now(),
+             cash_discrepancy = $3, cash_collection_note = $4
+       WHERE id = $1 AND cash_collected_at IS NULL`,
+      [rideId, collected, discrepancy, input.note ?? null]
+    )
+    if (claim.rowCount === 0) {
+      await client.query('ROLLBACK')
+      const fresh = await repo.getRideCoreById(rideId)
+      return {
+        collected:   parseFloat(fresh?.cash_collected_amount ?? '0'),
+        discrepancy: fresh?.cash_discrepancy ?? false,
+      }
     }
+
+    await createPaymentRecord(rideId, 'cash_direct', {}, client)
+    if (ride.billing_mode_snapshot === 'package') {
+      await consumePackageBalance(rideId, driverId, fare, client)
+    } else {
+      crossedBelowMin = await deductCommission(rideId, driverId, client)
+    }
+    if (ride.user_id != null && fare > 0) await creditCashback(rideId, BigInt(ride.user_id), fare, client)
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw err
+  } finally {
+    client.release()
   }
 
-  // Settle: commission on the fare (not the collected amount) so short/no collection
-  // still owes the platform. createPaymentRecord is ON CONFLICT DO NOTHING = idempotent.
-  // ponytail: settlement helpers aren't in one txn; a mid-settlement crash won't auto-retry
-  // (matches legacy settleRideCompletionPayment). Reconciliation is future work.
-  await createPaymentRecord(rideId, 'cash_direct')
-  if (ride.billing_mode_snapshot === 'package') {
-    await consumePackageBalance(rideId, driverId, fare)
-  } else {
-    await deductCommission(rideId, driverId)
+  if (crossedBelowMin) {
+    try {
+      await notifyDriverLowWalletBalance(driverId, crossedBelowMin.newBalance, await getMinWalletBalance())
+    } catch (err) {
+      log.error({ err, rideId }, 'low-balance notify failed')
+    }
   }
-  if (ride.user_id != null && fare > 0) await creditCashback(rideId, BigInt(ride.user_id), fare)
 
   if (discrepancy) {
     // Best-effort ops alert; the cash_discrepancy flag on the ride is the source of truth.

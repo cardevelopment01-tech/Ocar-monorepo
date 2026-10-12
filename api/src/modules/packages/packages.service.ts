@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg'
 import { pool } from '@/db/client'
 import { config } from '@/config'
 import * as repo from './packages.repository'
@@ -42,13 +43,17 @@ async function writeLedgerEntry(
 export async function consumePackageBalance(
   rideId: bigint,
   driverId: bigint,
-  fareAmount: number
+  fareAmount: number,
+  sharedClient?: PoolClient
 ): Promise<void> {
   if (fareAmount <= 0) return
 
-  const client = await pool.connect()
+  // With a sharedClient the caller owns BEGIN/COMMIT/ROLLBACK, so the debit commits or rolls back together
+  // with whatever else that transaction settles (payment flip, cash claim) instead of standing alone.
+  const client = sharedClient ?? await pool.connect()
+  const owns = !sharedClient
   try {
-    await client.query('BEGIN')
+    if (owns) await client.query('BEGIN')
 
     await client.query(
       `INSERT INTO driver_package_wallets (driver_id, balance)
@@ -67,7 +72,7 @@ export async function consumePackageBalance(
     // ride that's already assigned would just create an unpaid ride with no consumption record.
     const wallet = walletRes.rows[0] as { id: number; balance: string; is_frozen: boolean } | undefined
     if (!wallet) {
-      await client.query('ROLLBACK')
+      if (owns) await client.query('ROLLBACK')
       return
     }
 
@@ -87,12 +92,12 @@ export async function consumePackageBalance(
       rideId, note: `Ride #${rideId} fare ₹${fareAmount}`,
     })
 
-    await client.query('COMMIT')
+    if (owns) await client.query('COMMIT')
   } catch (err) {
-    await client.query('ROLLBACK')
+    if (owns) await client.query('ROLLBACK')
     throw err
   } finally {
-    client.release()
+    if (owns) client.release()
   }
 }
 

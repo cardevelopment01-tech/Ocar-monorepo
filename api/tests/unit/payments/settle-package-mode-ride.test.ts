@@ -34,7 +34,8 @@ describe('confirmRidePayment — package-mode branch', () => {
     const result = await confirmRidePayment(BigInt(1))
 
     expect(result).toBe(true)
-    expect(consumePackageBalance).toHaveBeenCalledWith(BigInt(1), BigInt(42), 80)
+    // 4th arg: the shared transaction client, so the debit commits/rolls back with the status flip.
+    expect(consumePackageBalance).toHaveBeenCalledWith(BigInt(1), BigInt(42), 80, fakeClient)
     const sqls = fakeClient.query.mock.calls.map(c => c[0] as string)
     expect(sqls.some(s => s.includes('driver_wallet_ledger'))).toBe(false)
     expect(sqls.filter(s => s.includes('COMMIT')).length).toBe(1)
@@ -45,6 +46,7 @@ describe('confirmRidePayment — package-mode branch', () => {
     fakeClient.query.mockImplementation((sql: string) => {
       if (/UPDATE payments/.test(sql)) return Promise.resolve({ rows: [{ driver_id: '42', user_id: '7', amount: '80.00' }], rowCount: 1 })
       if (/billing_mode_snapshot/.test(sql)) return Promise.resolve({ rows: [{ billing_mode_snapshot: null }], rowCount: 1 })
+      if (/SELECT commission_amount FROM payments/.test(sql)) return Promise.resolve({ rows: [{ commission_amount: '12.00' }], rowCount: 1 })
       if (/SELECT id, balance, is_frozen/.test(sql)) return Promise.resolve({ rows: [{ id: 1, balance: '1000', is_frozen: false }], rowCount: 1 })
       if (/SELECT id, balance FROM user_wallets/.test(sql)) return Promise.resolve({ rows: [{ id: 2, balance: '0' }], rowCount: 1 })
       return Promise.resolve({ rows: [], rowCount: 1 })

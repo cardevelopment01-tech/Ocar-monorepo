@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import { reconcilePendingRidePayments, reconcilePendingPayuPurchases } from '@/modules/payments/payments.service'
+import { settleStrandedRideCompletions } from '@/modules/rides/rides.service'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
 const log = createWorkerLogger('payment-reconcile')
@@ -16,6 +17,11 @@ export async function runPaymentReconcile(): Promise<void> {
     await reconcilePendingPayuPurchases()
   } catch (err) {
     log.error({ err }, 'PayU purchase/top-up reconcile failed')
+  }
+  try {
+    await settleStrandedRideCompletions()
+  } catch (err) {
+    log.error({ err }, 'stranded ride settlement sweep failed')
   }
 }
 
