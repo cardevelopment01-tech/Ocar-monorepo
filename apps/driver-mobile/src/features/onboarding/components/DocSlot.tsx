@@ -5,6 +5,7 @@ import { getInfoAsync } from 'expo-file-system/legacy'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { SelfieCapture } from '@/components/camera/SelfieCapture'
+import { PHOTO_CHANGE_WARNING, shouldWarnBeforePhotoChange } from '../photoChange'
 import type { PickedFile } from '../api'
 
 export type DocSlotState = 'idle' | 'uploading' | 'done' | 'error'
@@ -51,7 +52,14 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
   const [selfieOpen, setSelfieOpen] = useState(false)
 
   function handlePress() {
-    if (selfie) { setSelfieOpen(true); return }
+    if (selfie) {
+      if (!shouldWarnBeforePhotoChange(docStatus)) { setSelfieOpen(true); return }
+      Alert.alert(PHOTO_CHANGE_WARNING.title, PHOTO_CHANGE_WARNING.body, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Continue', onPress: () => setSelfieOpen(true) },
+      ])
+      return
+    }
     Alert.alert(label, 'Choose a photo source', [
       { text: 'Take Photo', onPress: () => void handlePick('camera') },
       { text: 'Choose from Gallery', onPress: () => void handlePick('library') },
