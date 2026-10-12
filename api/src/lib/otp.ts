@@ -47,13 +47,14 @@ export function rateLimitRedisKey(phone: string, purpose: OtpPurpose, role: Prin
   return `otp_rate:${role}:${phone}:${purpose}`
 }
 
-// Atomic fixed-window counter: the key is created WITH its TTL in one command (SET .. EX .. NX), then INCR'd.
-// The old pattern was INCR followed by a separate EXPIRE-on-first-hit; a crash between the two left a counter with
-// no TTL, which locked that phone/ride out permanently. A TTL repair covers keys left like that by the old code.
+// Fixed-window counter in ONE round trip: INCR and TTL run in a single MULTI. A key with no TTL (just created by
+// this INCR, or left behind by the old INCR-then-EXPIRE code after a crash) gets its expiry set right away, so a
+// counter can never become permanent: if the process dies between the two steps, the very next hit repairs it.
 async function incrWithTtl(key: string, ttlSeconds: number): Promise<number> {
-  await withTimeout(redis.set(key, '0', 'EX', ttlSeconds, 'NX'))
-  const count = await withTimeout(redis.incr(key))
-  if ((await withTimeout(redis.ttl(key))) === -1) await withTimeout(redis.expire(key, ttlSeconds))
+  const replies = await withTimeout(redis.multi().incr(key).ttl(key).exec())
+  const count = Number(replies?.[0]?.[1] ?? 0)
+  const ttl = Number(replies?.[1]?.[1] ?? -1)
+  if (ttl < 0) await withTimeout(redis.expire(key, ttlSeconds))
   return count
 }
 

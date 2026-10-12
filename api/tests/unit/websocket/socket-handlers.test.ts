@@ -87,10 +87,22 @@ describe('socket handlers survive hostile payloads', () => {
     expect(updateLocation).toHaveBeenCalledWith(9n, { sessionId: 5n, lat: 20.3, lng: 85.8, heading: 90, speed: 40, recordedAt })
   })
 
+  it('location:update with a wrong device clock is FORWARDED (updateLocation substitutes server time), not silently dropped', () => {
+    const { handlers } = connect('driver')
+    handlers.get('location:update')!({ sessionId: '5', lat: 20.3, lng: 85.8, recordedAt: '2001-01-01T00:00:00Z' })
+    expect(updateLocation).toHaveBeenCalledWith(9n, expect.objectContaining({ sessionId: 5n, recordedAt: '2001-01-01T00:00:00Z' }))
+  })
+
+  it('location:update with no timestamp at all is stamped with server time', () => {
+    const { handlers } = connect('driver')
+    handlers.get('location:update')!({ sessionId: '5', lat: 20.3, lng: 85.8 })
+    const sent = vi.mocked(updateLocation).mock.calls[0]![1].recordedAt
+    expect(Math.abs(Date.parse(sent) - Date.now())).toBeLessThan(5_000)
+  })
+
   it.each([
     ['latitude out of range', { lat: 123 }],
     ['non-numeric longitude', { lng: '85.8' }],
-    ['stale timestamp', { recordedAt: '2001-01-01T00:00:00Z' }],
     ['bad session id', { sessionId: 'abc' }],
   ])('location:update with %s is dropped before updateLocation', (_n, patch) => {
     const { handlers } = connect('driver')

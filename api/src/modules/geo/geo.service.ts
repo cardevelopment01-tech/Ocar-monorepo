@@ -26,7 +26,10 @@ export async function findNearestCity(lat: number, lng: number) {
   return repo.findNearestCity(lat, lng)
 }
 
-const MAX_TRACK_CLOCK_SKEW_MS = 10 * 60 * 1000
+// A batch is the driver app's offline/periodic queue, so unlike a live ping it can legitimately be hours old. Future
+// timestamps stay tightly bounded; the past is bounded generously (the default partition catches anything unusual).
+const MAX_TRACK_FUTURE_MS = 10 * 60 * 1000
+const MAX_TRACK_AGE_MS = 24 * 60 * 60 * 1000
 const ID_RE = /^\d{1,18}$/
 
 // The batch endpoint is driver-authenticated but every row carried its own ride_id/session_id, so a driver could
@@ -44,7 +47,7 @@ export async function flushGpsTracks(
       ID_RE.test(String(t.ride_id)) && ID_RE.test(String(t.session_id)) &&
       Number.isFinite(t.latitude) && Math.abs(t.latitude) <= 90 &&
       Number.isFinite(t.longitude) && Math.abs(t.longitude) <= 180 &&
-      Number.isFinite(ms) && Math.abs(ms - now) <= MAX_TRACK_CLOCK_SKEW_MS &&
+      Number.isFinite(ms) && ms - now <= MAX_TRACK_FUTURE_MS && now - ms <= MAX_TRACK_AGE_MS &&
       (t.accuracy_metres == null || t.accuracy_metres <= 50)
     )
   })
@@ -56,7 +59,9 @@ export async function flushGpsTracks(
     pool.query<{ id: string }>(
       `SELECT id::text FROM rides
         WHERE id = ANY($1::bigint[]) AND driver_id = $2
-          AND status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')`,
+          AND (status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
+               -- the app's final flush usually lands just AFTER the ride completed, and billing reads the tail
+               OR (status = 'completed' AND completed_at > now() - interval '3 hours'))`,
       [rideIds, driverId]
     ),
     pool.query<{ id: string }>(

@@ -877,6 +877,16 @@ export async function logStatusHistory(data: {
 // CAS transition — only succeeds if the row is still in `expectedStatus`.
 // Returns null (no rows touched) if another caller already moved it on —
 // callers must treat null as "lost the race, no-op" rather than an error.
+// Replaces the start-OTP hash of a ride that is already driver_arrived (a retried "arrived" re-issuing the PIN).
+// Guarded on the status so it can never touch a ride that has moved on.
+export async function reissueStartOtpHash(rideId: bigint, hash: string): Promise<boolean> {
+  const res = await pool.query(
+    `UPDATE rides SET start_otp_hash = $2, updated_at = now() WHERE id = $1 AND status = 'driver_arrived'`,
+    [rideId, hash]
+  )
+  return (res.rowCount ?? 0) > 0
+}
+
 export async function updateRideStatusCAS(
   rideId: bigint,
   expectedStatus: string | string[],
@@ -1117,10 +1127,12 @@ export async function createRideAssignment(data: {
        SET status = 'offered', expires_at = EXCLUDED.expires_at,
            session_id = EXCLUDED.session_id, broadcast_round = EXCLUDED.broadcast_round,
            responded_at = NULL
-       -- Re-offer in a later broadcast round: reopen a declined/expired row, else
+       -- Re-offer in a later broadcast round: reopen a declined/expired/cancelled row, else
        -- acceptAssignment (needs status = 'offered') rejects the fresh card with
-       -- "Ride no longer available". Accepted/cancelled rows stay untouched.
-       WHERE ride_assignments.status IN ('offered', 'declined', 'expired')`,
+       -- "Ride no longer available". 'cancelled' matters for admin assignment: cancelAllAssignments()
+       -- cancels every open offer first, including the chosen driver's own, and the row must come back.
+       -- Only an accepted row stays untouched.
+       WHERE ride_assignments.status IN ('offered', 'declined', 'expired', 'cancelled')`,
     [
       data.rideId, data.driverId, data.sessionId,
       data.expiresAt, data.broadcastRound,

@@ -256,12 +256,15 @@ export async function refreshTokens(refreshToken: string): Promise<{ tokens: Aut
 
   // A refresh token outlives the account's standing: without this a suspended/banned/deactivated principal keeps
   // minting fresh access tokens for the whole refresh lifetime (30 days for riders and drivers).
+  // A SUSPENDED rider/driver may keep refreshing while a ride is under way, so suspending someone mid-trip does
+  // not log them out of the app when the 15-minute access token expires (the ride routes deliberately stay open
+  // for them; only new work is blocked). Deleted and banned accounts get no such grace.
   const standing = (principal as { status?: string }).status
   if (role === PrincipalRole.USER && (standing === 'suspended' || standing === 'deleted')) {
-    throw createHttpError(AppErrors.AUTH_FORBIDDEN)
+    if (standing === 'deleted' || !(await repo.hasLiveRide(role, principalId))) throw createHttpError(AppErrors.AUTH_FORBIDDEN)
   }
   if (role === PrincipalRole.DRIVER && (standing === 'suspended' || standing === 'banned')) {
-    throw createHttpError(AppErrors.DRIVER_SUSPENDED)
+    if (standing === 'banned' || !(await repo.hasLiveRide(role, principalId))) throw createHttpError(AppErrors.DRIVER_SUSPENDED)
   }
   if (role === PrincipalRole.ADMIN && (principal as AdminRecord).is_active === false) {
     throw createHttpError(AppErrors.AUTH_TOKEN_INVALID)

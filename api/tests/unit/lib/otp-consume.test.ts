@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Minimal in-memory Redis: enough of get/set(EX,NX)/incr/ttl/expire/del/exists for lib/otp.ts. Every command is
 // async, so Promise.all genuinely interleaves them the way parallel HTTP requests would.
-const { store, fake } = vi.hoisted(() => {
+const { store, fake, ttls } = vi.hoisted(() => {
 const store = new Map<string, string>()
+const ttls = new Set<string>() // keys that have an expiry
 const fake = {
   get: vi.fn(async (k: string) => store.get(k) ?? null),
   set: vi.fn(async (k: string, v: string, ...opts: unknown[]) => {
@@ -13,11 +14,20 @@ const fake = {
   }),
   incr: vi.fn(async (k: string) => { const n = Number(store.get(k) ?? 0) + 1; store.set(k, String(n)); return n }),
   ttl: vi.fn(async () => 100),
-  expire: vi.fn(async () => 1),
+  expire: vi.fn(async (k: string) => { ttls.add(k); return 1 }),
   del: vi.fn(async (k: string) => (store.delete(k) ? 1 : 0)),
   exists: vi.fn(async (k: string) => (store.has(k) ? 1 : 0)),
+  multi: vi.fn(() => {
+    const steps: Array<() => Promise<unknown>> = []
+    const chain = {
+      incr: (k: string) => { steps.push(async () => { const n = Number(store.get(k) ?? 0) + 1; store.set(k, String(n)); return n }); return chain },
+      ttl: (k: string) => { steps.push(async () => (ttls.has(k) ? 100 : -1)); return chain },
+      exec: async () => { const out: unknown[] = []; for (const s of steps) out.push([null, await s()]); return out },
+    }
+    return chain
+  }),
 }
-return { store, fake }
+return { store, fake, ttls }
 })
 vi.mock('@/db/redis', () => ({ client: fake }))
 vi.mock('@/config', () => ({ config: { JWT_REFRESH_SECRET: 'x' } }))
@@ -31,7 +41,7 @@ const P = OtpPurpose.LOGIN
 const R = PrincipalRole.USER
 
 describe('consumeOtp — atomic guess accounting', () => {
-  beforeEach(() => { store.clear() })
+  beforeEach(() => { store.clear(); ttls.clear() })
 
   it('a correct code succeeds once and is then gone', async () => {
     await storeOtp(PHONE, P, R, '123456')

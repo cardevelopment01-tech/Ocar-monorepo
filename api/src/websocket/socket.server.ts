@@ -144,14 +144,14 @@ export function initSocketServer(httpServer: HttpServer): Server {
         const lat = finiteNum(data?.lat, -90, 90)
         const lng = finiteNum(data?.lng, -180, 180)
         if (sessionId === null || lat === null || lng === null) return
-        // recordedAt feeds the gps_tracks partition key: reject anything that isn't a plausible timestamp.
-        const recordedMs = typeof data?.recordedAt === 'string' ? Date.parse(data.recordedAt) : NaN
-        if (!Number.isFinite(recordedMs) || Math.abs(recordedMs - Date.now()) > 10 * 60 * 1000) return
+        // The device clock is not trusted, but a wrong one must not silence the driver either: updateLocation
+        // replaces an implausible recordedAt with server time (this used to drop the ping, so a phone with a
+        // bad clock never updated its location and was swept offline). Anything that isn't a string is stamped now.
         const input: Parameters<typeof updateLocation>[1] = {
           sessionId,
           lat,
           lng,
-          recordedAt: new Date(recordedMs).toISOString(),
+          recordedAt: typeof data?.recordedAt === 'string' ? data.recordedAt : new Date().toISOString(),
         }
         const heading = finiteNum(data?.heading, 0, 360)
         const speed   = finiteNum(data?.speed, 0, 400)

@@ -120,6 +120,17 @@ describe('createBooking — server-side distance bound', () => {
     expect(fareCall.duration_min).toBe(90)
   })
 
+  it('a ROUND-TRIP booking is bound on the direct pickup->drop path only (its stops are a flat fee, so the quote ignores the detour)', async () => {
+    vi.mocked(geo.getRoute).mockResolvedValue({ distanceKm: 65, durationMin: 90, polyline: '', source: 'google' } as never)
+    await createBooking(USER_ID, {
+      ...BASE, rideType: 'round_trip', distanceKm: 65, durationMin: 90, tripHours: 6,
+      stops: [{ lat: 20.05, lng: 85.83, address: 'Stop A' }] as never,
+    })
+    expect(geo.getRoute).toHaveBeenCalledTimes(1) // not origin->stop + stop->drop
+    const fareCall = vi.mocked(pricing.getFareEstimate).mock.calls[0]![0]
+    expect(fareCall.distance_km).toBe(65) // the rider's quoted distance survives
+  })
+
   it.each([
     ['NaN distance', { distanceKm: NaN }],
     ['negative distance', { distanceKm: -10 }],

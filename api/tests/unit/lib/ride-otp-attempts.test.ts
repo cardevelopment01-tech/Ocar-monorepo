@@ -1,39 +1,57 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/db/redis', () => ({
-  client: { set: vi.fn().mockResolvedValue('OK'), incr: vi.fn(), ttl: vi.fn().mockResolvedValue(900), expire: vi.fn(), del: vi.fn() },
-}))
+// incr()/ttl() are queued on a MULTI and answered together by exec(): one round trip for the counter.
+const { multiState, client } = vi.hoisted(() => {
+  const multiState = { count: 1, ttl: 900, queued: [] as string[] }
+  const chain = {
+    incr: vi.fn((k: string) => { multiState.queued.push('incr:' + k); return chain }),
+    ttl: vi.fn((k: string) => { multiState.queued.push('ttl:' + k); return chain }),
+    exec: vi.fn(async () => [[null, multiState.count], [null, multiState.ttl]]),
+  }
+  return {
+    multiState,
+    client: { multi: vi.fn(() => chain), set: vi.fn(), expire: vi.fn(), del: vi.fn() },
+  }
+})
+vi.mock('@/db/redis', () => ({ client }))
 
 import { client as redis } from '@/db/redis'
 import { checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
 
 describe('checkRideOtpAttempts', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks(); multiState.count = 1; multiState.ttl = 900; multiState.queued = [] })
 
-  it('creates the counter WITH its 15-minute TTL in one atomic command, then increments', async () => {
-    vi.mocked(redis.incr).mockResolvedValue(1)
+  it('counts and reads the TTL in a single MULTI (one round trip), not three serial commands', async () => {
     const n = await checkRideOtpAttempts(BigInt(303), 'start')
     expect(n).toBe(1)
-    expect(redis.set).toHaveBeenCalledWith('ride:otp:attempts:303:start', '0', 'EX', 15 * 60, 'NX')
-    expect(redis.incr).toHaveBeenCalledWith('ride:otp:attempts:303:start')
+    expect(client.multi).toHaveBeenCalledTimes(1)
+    expect(multiState.queued).toEqual(['incr:ride:otp:attempts:303:start', 'ttl:ride:otp:attempts:303:start'])
+    expect(client.set).not.toHaveBeenCalled()
+  })
+
+  it('sets the 15-minute expiry on a brand-new counter (INCR creates it with no TTL)', async () => {
+    multiState.count = 1
+    multiState.ttl = -1
+    await checkRideOtpAttempts(BigInt(303), 'start')
+    expect(client.expire).toHaveBeenCalledWith('ride:otp:attempts:303:start', 15 * 60)
   })
 
   it('does not touch the TTL of a healthy counter on later attempts', async () => {
-    vi.mocked(redis.incr).mockResolvedValue(3)
+    multiState.count = 3
     const n = await checkRideOtpAttempts(BigInt(303), 'end')
     expect(n).toBe(3)
-    expect(redis.expire).not.toHaveBeenCalled()
+    expect(client.expire).not.toHaveBeenCalled()
   })
 
   it('repairs a counter left with no TTL by the old INCR-then-EXPIRE code (it would lock the ride forever)', async () => {
-    vi.mocked(redis.incr).mockResolvedValue(2)
-    vi.mocked(redis.ttl).mockResolvedValueOnce(-1)
+    multiState.count = 2
+    multiState.ttl = -1
     await checkRideOtpAttempts(BigInt(303), 'end')
-    expect(redis.expire).toHaveBeenCalledWith('ride:otp:attempts:303:end', 15 * 60)
+    expect(client.expire).toHaveBeenCalledWith('ride:otp:attempts:303:end', 15 * 60)
   })
 
   it('throws a 429 RIDE_OTP_LOCKED once the count exceeds the max (5)', async () => {
-    vi.mocked(redis.incr).mockResolvedValue(6)
+    multiState.count = 6
     await expect(checkRideOtpAttempts(BigInt(303), 'start')).rejects.toMatchObject({
       httpStatus: 429,
       appCode: 'RIDE_OTP_LOCKED',
@@ -41,7 +59,7 @@ describe('checkRideOtpAttempts', () => {
   })
 
   it('allows exactly the max attempts (5) without throwing', async () => {
-    vi.mocked(redis.incr).mockResolvedValue(5)
+    multiState.count = 5
     await expect(checkRideOtpAttempts(BigInt(303), 'start')).resolves.toBe(5)
   })
 })

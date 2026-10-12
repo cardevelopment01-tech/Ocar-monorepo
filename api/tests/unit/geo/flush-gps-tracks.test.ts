@@ -50,6 +50,25 @@ describe('flushGpsTracks - ownership and plausibility', () => {
     expect(poolQuery).not.toHaveBeenCalled()
   })
 
+  it('accepts a late flush: a batch that is a few hours old (offline queue) is kept', async () => {
+    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
+    const res = await flushGpsTracks(BigInt(9), [row({ recorded_at: threeHoursAgo })])
+    expect(res).toEqual({ written: 1, rejected: 0 })
+  })
+
+  it('still rejects anything older than a day, and timestamps from the future', async () => {
+    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
+    const nextHour = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+    expect((await flushGpsTracks(BigInt(9), [row({ recorded_at: twoDaysAgo })])).written).toBe(0)
+    expect((await flushGpsTracks(BigInt(9), [row({ recorded_at: nextHour })])).written).toBe(0)
+  })
+
+  it('the ride lookup also accepts a ride completed in the last few hours (the final flush lands after completion)', async () => {
+    await flushGpsTracks(BigInt(9), [row()])
+    const rideSql = poolQuery.mock.calls.map(c => c[0] as string).find(s => s.includes('FROM rides'))!
+    expect(rideSql).toMatch(/status = 'completed'\s+AND completed_at > now\(\) - interval '3 hours'/)
+  })
+
   it('keeps the good rows when only some are bad', async () => {
     const res = await flushGpsTracks(BigInt(9), [row(), row({ latitude: 500 })])
     expect(res).toEqual({ written: 1, rejected: 1 })

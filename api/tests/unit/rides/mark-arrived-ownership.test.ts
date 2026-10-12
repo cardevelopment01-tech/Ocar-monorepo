@@ -16,6 +16,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   getRideCoreForDriverAction: vi.fn(),
   updateRideStatus:       vi.fn().mockResolvedValue(undefined),
   updateRideStatusCAS: vi.fn().mockResolvedValue({ id: 1n }),
+  reissueStartOtpHash:    vi.fn().mockResolvedValue(true),
   logStatusHistory:       vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/modules/payments/payments.service', () => ({
@@ -29,6 +30,8 @@ vi.mock('@/modules/notifications/notifications.service', () => ({
 
 import * as repo from '@/modules/rides/rides.repository'
 import { markArrived } from '@/modules/rides/rides.service'
+import { client as redis } from '@/db/redis'
+import { socketEvents } from '@/websocket/socket.server'
 
 describe('markArrived — ownership', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -50,6 +53,33 @@ describe('markArrived — ownership', () => {
     const res = await markArrived(BigInt(9), BigInt(101))
     expect(res).toEqual({ success: true })
     expect(repo.updateRideStatusCAS).toHaveBeenCalledWith(BigInt(101), 'accepted', 'driver_arrived', expect.anything())
+  })
+
+  it('RETRY after a half-finished arrive: ride already driver_arrived -> re-issues a fresh PIN instead of 409', async () => {
+    // First attempt flipped the status but the PIN never reached Redis/the rider. The retry loses the CAS...
+    vi.mocked(repo.getRideCoreForDriverAction)
+      .mockResolvedValueOnce({ id: BigInt(101), driver_id: 9, user_id: 42, status: 'accepted' } as never)      // initial read
+      .mockResolvedValueOnce({ id: BigInt(101), driver_id: 9, user_id: 42, status: 'driver_arrived' } as never) // re-read after losing the CAS
+    vi.mocked(repo.updateRideStatusCAS).mockResolvedValueOnce(null as never)
+
+    const res = await markArrived(BigInt(9), BigInt(101))
+
+    expect(res).toEqual({ success: true })
+    expect(repo.reissueStartOtpHash).toHaveBeenCalledWith(BigInt(101), 'HASH')
+    expect(redis.set).toHaveBeenCalledWith(expect.stringContaining('101'), '1234', 'EX', 7200)
+    expect(socketEvents.sendUserUpdate).toHaveBeenCalledWith('42', { status: 'driver_arrived', startOtp: '1234' })
+    expect(repo.logStatusHistory).not.toHaveBeenCalled() // it is not a second transition
+  })
+
+  it('a retry does NOT re-issue for a ride that has moved on (in_progress/completed/cancelled) - still 409, no PIN written', async () => {
+    vi.mocked(repo.getRideCoreForDriverAction)
+      .mockResolvedValueOnce({ id: BigInt(101), driver_id: 9, user_id: 42, status: 'accepted' } as never)
+      .mockResolvedValueOnce({ id: BigInt(101), driver_id: 9, user_id: 42, status: 'in_progress' } as never)
+    vi.mocked(repo.updateRideStatusCAS).mockResolvedValueOnce(null as never)
+
+    await expect(markArrived(BigInt(9), BigInt(101))).rejects.toMatchObject({ httpStatus: 409 })
+    expect(repo.reissueStartOtpHash).not.toHaveBeenCalled()
+    expect(redis.set).not.toHaveBeenCalled()
   })
 
   it('throws 409 and sends nothing when the ride is no longer accepted (completed/cancelled/started)', async () => {

@@ -188,7 +188,7 @@ export async function goOnline(driverId: bigint, data: {
   // vehicleId/categoryId come straight from the client. A session's category decides which rides the driver is
   // offered and at what fare class, so the vehicle must be the driver's own and the category is taken from IT —
   // otherwise a driver in a basic car could go online as a premium category (or use someone else's vehicle).
-  const vehicleRes = await pool.query<{ category_id: string }>(
+  const vehicleRes = await pool.query<{ category_id: string | null }>(
     `SELECT category_id::text FROM driver_vehicles
       WHERE id = $1 AND driver_id = $2 AND status <> 'blacklisted'`,
     [data.vehicleId, driverId]
@@ -197,7 +197,9 @@ export async function goOnline(driverId: bigint, data: {
   if (!vehicle) {
     throw httpError(422, 'That vehicle is not available on your account', 'VEHICLE_NOT_ELIGIBLE')
   }
-  if (vehicle.category_id !== data.categoryId.toString()) {
+  // driver_vehicles.category_id is nullable: a vehicle without one keeps the previous behaviour (client category)
+  // rather than crashing on BigInt(null).
+  if (vehicle.category_id !== null && vehicle.category_id !== data.categoryId.toString()) {
     log.warn({ driverId, vehicleId: data.vehicleId, claimed: data.categoryId, actual: vehicle.category_id },
       'goOnline category differs from the vehicle category — using the vehicle category')
     data.categoryId = BigInt(vehicle.category_id)
@@ -504,9 +506,13 @@ export async function boundBookingDistance(data: BookingRequest, userId: bigint)
 
   if (data.destinationLat === undefined || data.destinationLng === undefined) return
 
+  // Only a one-way fare is priced on the detour through its stops (per km). Round-trip and rental stops are a flat
+  // fee, and their quote (/pricing/estimate) is built on the direct pickup -> drop distance, so bounding them
+  // through the stops would re-price the booking above the fare the rider was shown.
+  const routeThroughStops = data.rideType === 'one_way'
   const path = [
     { lat: data.originLat, lng: data.originLng },
-    ...(data.stops ?? []).map(s => ({ lat: s.lat, lng: s.lng })),
+    ...(routeThroughStops ? (data.stops ?? []) : []).map(s => ({ lat: s.lat, lng: s.lng })),
     { lat: data.destinationLat, lng: data.destinationLng },
   ]
   const legs = path.slice(1).map((to, i) => ({ from: path[i]!, to }))
@@ -959,15 +965,27 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
     driver_arrived_at: new Date().toISOString(),
     start_otp_hash:    hash,
   })
-  if (!arrived) throw httpError(409, 'Ride is not awaiting the driver', 'RIDE_NOT_ACCEPTED')
-
-  await repo.logStatusHistory({
-    rideId,
-    fromStatus: 'accepted',
-    toStatus:   'driver_arrived',
-    actor:      'driver',
-    actorId:    driverId,
-  })
+  if (arrived) {
+    await repo.logStatusHistory({
+      rideId,
+      fromStatus: 'accepted',
+      toStatus:   'driver_arrived',
+      actor:      'driver',
+      actorId:    driverId,
+    })
+  } else {
+    // Lost the CAS. If the ride is already driver_arrived this is a RETRY of a call whose first attempt flipped the
+    // status but never delivered the PIN (the Redis write timed out, or the response was lost). Returning 409 here
+    // left the rider with no start PIN and the driver unable to start. Mint a fresh PIN instead: the hash is
+    // replaced and the same Redis write + rider push below runs again. Any other state is a real 409.
+    const current = await repo.getRideCoreForDriverAction(rideId, driverId)
+    if (current?.status !== 'driver_arrived') {
+      throw httpError(409, 'Ride is not awaiting the driver', 'RIDE_NOT_ACCEPTED')
+    }
+    if (!(await repo.reissueStartOtpHash(rideId, hash))) {
+      throw httpError(409, 'Ride is not awaiting the driver', 'RIDE_NOT_ACCEPTED')
+    }
+  }
 
   await withTimeout(redis.set(startOtpKey(rideId.toString()), otp, 'EX', 7200))
 
@@ -2834,6 +2852,8 @@ export async function settleRideCompletionPayment(
 // rides are excluded on purpose (their payment row appears when the driver confirms collection).
 // settleRideCompletionPayment is safe to re-run: the payment insert is ON CONFLICT DO NOTHING and the wallet
 // debit dedupes on its ledger row.
+const STRANDED_SETTLE_COOLDOWN_SEC = 30 * 60
+
 export async function settleStrandedRideCompletions(): Promise<number> {
   const res = await pool.query<{ id: string; driver_id: string }>(
     `SELECT r.id::text, r.driver_id::text
@@ -2844,16 +2864,25 @@ export async function settleStrandedRideCompletions(): Promise<number> {
         AND r.completed_at < now() - interval '3 minutes'
         AND r.completed_at > now() - interval '3 days'
         AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.ride_id = r.id)
-      ORDER BY r.completed_at
-      LIMIT 25`
+      ORDER BY random()
+      LIMIT 100`
   )
+  // Oldest-first with a small LIMIT meant rides that fail for a durable reason (missing fare snapshot...) stayed the
+  // 25 oldest matches forever and starved every newer stranded ride. Random order plus a cooldown after a failure
+  // lets the sweep reach all of them without hammering the broken ones.
   let settled = 0
+  let attempted = 0
   for (const row of res.rows) {
+    if (attempted >= 25) break
+    const cooldownKey = `stranded-settle:cooldown:${row.id}`
+    if (await withTimeout(redis.exists(cooldownKey)).catch(() => 0)) continue
+    attempted++
     try {
       await settleRideCompletionPayment(BigInt(row.id), BigInt(row.driver_id))
       settled++
     } catch (err) {
       log.error({ err, rideId: row.id }, 'stranded ride settlement failed')
+      await withTimeout(redis.set(cooldownKey, '1', 'EX', STRANDED_SETTLE_COOLDOWN_SEC)).catch(() => undefined)
     }
   }
   if (settled > 0) log.warn({ settled }, 'settled completed rides that had no payment row')

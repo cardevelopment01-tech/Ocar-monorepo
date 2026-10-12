@@ -7,6 +7,7 @@ vi.mock('@/modules/auth/auth.repository', () => ({
   findDriverById: vi.fn(),
   findAdminById: vi.fn(),
   rotateRefreshToken: vi.fn(),
+  hasLiveRide: vi.fn().mockResolvedValue(false),
 }))
 vi.mock('@/lib/jwt', () => ({
   signAccessToken: vi.fn(() => 'new-access-token'),
@@ -101,6 +102,32 @@ describe('refreshTokens', () => {
       vi.mocked(role === 'user' ? repo.findUserById : repo.findDriverById).mockResolvedValue(principal)
 
       await expect(refreshTokens('tok')).rejects.toMatchObject({ appCode: code })
+      expect(repo.rotateRefreshToken).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['user', 'suspended'],
+      ['driver', 'suspended'],
+    ])('a %s who is %s KEEPS refreshing while a ride is under way (so suspension does not log them out mid-trip)', async (role, status) => {
+      vi.mocked(repo.findRefreshToken).mockResolvedValue(liveToken(role) as never)
+      vi.mocked(role === 'user' ? repo.findUserById : repo.findDriverById).mockResolvedValue({ id: '7', code: 'X', status } as never)
+      vi.mocked(repo.hasLiveRide).mockResolvedValueOnce(true)
+      vi.mocked(repo.rotateRefreshToken).mockResolvedValue({ id: 'n' } as never)
+
+      const { tokens } = await refreshTokens('tok')
+      expect(tokens.refreshToken).toBe('new-refresh-token')
+      expect(repo.hasLiveRide).toHaveBeenCalledWith(role, 7n)
+    })
+
+    it.each([
+      ['user', 'deleted'],
+      ['driver', 'banned'],
+    ])('a %s who is %s gets NO grace even with a live ride', async (role, status) => {
+      vi.mocked(repo.findRefreshToken).mockResolvedValue(liveToken(role) as never)
+      vi.mocked(role === 'user' ? repo.findUserById : repo.findDriverById).mockResolvedValue({ id: '7', code: 'X', status } as never)
+      vi.mocked(repo.hasLiveRide).mockResolvedValue(true)
+
+      await expect(refreshTokens('tok')).rejects.toBeDefined()
       expect(repo.rotateRefreshToken).not.toHaveBeenCalled()
     })
 

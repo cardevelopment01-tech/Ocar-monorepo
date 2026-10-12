@@ -8,7 +8,29 @@ const urls = {
   USER_APP_URL: 'https://app.example.com',
   DRIVER_APP_URL: 'https://driver.example.com',
 }
-const prod = { ...base, NODE_ENV: 'production', PAYU_KEY: 'k', PAYU_SALT: 's', ...urls }
+const sms = { BULKSMSPLANS_API_ID: 'id', BULKSMSPLANS_API_PASSWORD: 'pw' }
+const prod = { ...base, NODE_ENV: 'production', PAYU_KEY: 'k', PAYU_SALT: 's', ...urls, ...sms }
+
+describe('SMS prod boot guard', () => {
+  it('refuses production without SMS credentials (the dev bypass would log every login OTP)', () => {
+    expect(envSchemaChecked.safeParse({ ...prod, BULKSMSPLANS_API_ID: '', BULKSMSPLANS_API_PASSWORD: '' }).success).toBe(false)
+    expect(envSchemaChecked.safeParse({ ...prod, BULKSMSPLANS_API_PASSWORD: '' }).success).toBe(false)
+  })
+  it('allows production with SMS credentials', () => {
+    expect(envSchemaChecked.safeParse(prod).success).toBe(true)
+  })
+  it('ALLOW_DEV_SMS=true lets a non-production environment that runs NODE_ENV=production boot without them', () => {
+    const r = envSchemaChecked.safeParse({ ...prod, BULKSMSPLANS_API_ID: '', BULKSMSPLANS_API_PASSWORD: '', ALLOW_DEV_SMS: 'true' })
+    expect(r.success).toBe(true)
+  })
+  it('ALLOW_DEV_SMS defaults to off', () => {
+    expect(envSchemaChecked.safeParse(prod).data?.ALLOW_DEV_SMS).toBe('false')
+  })
+  it('development never needs SMS credentials', () => {
+    const r = envSchemaChecked.safeParse({ ...base, NODE_ENV: 'development', BULKSMSPLANS_API_ID: '', BULKSMSPLANS_API_PASSWORD: '' })
+    expect(r.success).toBe(true)
+  })
+})
 
 describe('PayU prod boot guard', () => {
   it('refuses production without PayU keys', () => {
