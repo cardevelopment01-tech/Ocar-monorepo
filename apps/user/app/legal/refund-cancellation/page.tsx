@@ -114,8 +114,7 @@ const SECTIONS: LegalSection[] = [
     heading: '6. Still not resolved?',
     body: (
       <p>
-        If you are unhappy with the outcome, write to our Grievance Officer using the details in our{' '}
-        <Link href="/legal/privacy">Privacy Policy</Link>, or reach us any time on the{' '}
+        If you are unhappy with the outcome, write to us through our{' '}
         <Link href="/contact">Contact page</Link>. Your bank or card issuer&apos;s own dispute process remains
         available to you as well.
       </p>

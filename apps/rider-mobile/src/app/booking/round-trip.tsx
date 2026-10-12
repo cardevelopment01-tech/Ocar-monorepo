@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
+import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
@@ -61,7 +62,7 @@ export default function RoundTripScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => goBack(router)}
           style={({ pressed }) => [styles.backButton, pressed ? styles.pressedScale : null]}
           hitSlop={8}
           accessibilityRole="button"

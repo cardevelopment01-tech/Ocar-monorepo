@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
-import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
-import { EmptyState, ErrorState, Skeleton, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import * as WebBrowser from 'expo-web-browser'
+import { Button, ErrorState, Skeleton, colors, radii, spacing, typography, fonts, useNavClearance, Text } from '@ocar/mobile-shared'
 import { fetchBillingMode, fetchDriverWallet, type DriverWallet, type LedgerEntry } from '@/features/wallet/api'
+import { usePayment } from '@/features/payments/usePayment'
+import { createTopupOrder, createPackageOrder } from '@/features/payments/api'
+import { PaymentStatus } from '@/features/payments/PaymentStatus'
+import { AddMoneyCard } from '@/features/payments/AddMoneyCard'
+import { PackageCard } from '@/features/payments/PackageCard'
 
 // Same "temporarily disabled" gate as the web Wallet.tsx -- MIN_BALANCE is a
 // ponytail: client requested the recharge gate off for driver testing (see
@@ -13,6 +18,10 @@ import { fetchBillingMode, fetchDriverWallet, type DriverWallet, type LedgerEntr
 // only, not an enforcement gate -- useWalletGate.ts's own MIN_BALANCE (which
 // DOES gate Go Online) is a separate constant, already mirrored to -999999.
 const MIN_BALANCE = 0
+
+// Fallback when the in-app payment is unavailable (kill switch off, SDK failed to start):
+// the web portal's wallet/package page in a Custom Tab -- never an embedded WebView.
+const DRIVER_WEB_URL = process.env['EXPO_PUBLIC_DRIVER_WEB_URL'] ?? ''
 
 function entryLabel(e: LedgerEntry): string {
   switch (e.entry_type) {
@@ -34,15 +43,16 @@ function formatMoney(amount: number): string {
 }
 
 export default function WalletScreen() {
-  const router = useRouter()
+  const clearance = useNavClearance()
   const insets = useSafeAreaInsets()
   const [wallet, setWallet] = useState<DriverWallet | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [packageMode, setPackageMode] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // `silent` refreshes in place (after a payment) without swapping the screen for a skeleton.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     setError(false)
     try {
       // Package-mode drivers (billing_mode='package') get a prepaid ride-credit
@@ -55,6 +65,7 @@ export default function WalletScreen() {
         setLoading(false)
         return
       }
+      setPackageMode(false)
       setWallet(await fetchDriverWallet())
     } catch {
       setError(true)
@@ -65,6 +76,8 @@ export default function WalletScreen() {
 
   useEffect(() => { void load() }, [load])
 
+  const payment = usePayment(() => { void load(true) })
+
   const balance = wallet ? parseFloat(wallet.balance) : 0
   const isLow = !packageMode && balance < MIN_BALANCE
   const ledger = wallet?.recent_ledger ?? []
@@ -72,12 +85,9 @@ export default function WalletScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => { if (router.canGoBack()) router.back() }} style={styles.backBtn} accessibilityLabel="Go back" hitSlop={8}>
-          <Feather name="arrow-left" size={20} color={colors.ink600} />
-        </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Wallet</Text>
-          <Text style={styles.subtitle}>Compliance deposit</Text>
+          <Text style={styles.subtitle}>{packageMode ? 'Ride package' : 'Compliance deposit'}</Text>
         </View>
         {!loading ? (
           <Pressable onPress={() => void load()} style={styles.refreshBtn} accessibilityLabel="Refresh wallet">
@@ -86,9 +96,17 @@ export default function WalletScreen() {
         ) : null}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: clearance }]}>
+        <PaymentStatus state={payment.state} onDismiss={payment.reset} />
+        {payment.state.phase === 'failed' && payment.state.reason === 'unavailable' && DRIVER_WEB_URL ? (
+          <Button
+            label="Pay on the web instead"
+            variant="secondary"
+            onPress={() => { void WebBrowser.openBrowserAsync(`${DRIVER_WEB_URL}${packageMode ? '/recharge-package' : '/wallet'}`) }}
+          />
+        ) : null}
         {packageMode ? (
-          <EmptyState title="Package billing" description="Your account uses prepaid ride packages, not a deposit wallet. Contact support for package details." />
+          <PackageCard busy={payment.busy} onBuy={(tierId) => payment.start('package', () => createPackageOrder(tierId))} />
         ) : loading ? (
           <Skeleton height={144} borderRadius={24} />
         ) : (
@@ -119,10 +137,12 @@ export default function WalletScreen() {
               </View>
             ) : null}
 
+            <AddMoneyCard busy={payment.busy} balance={balance} onPay={(amount, mode) => payment.start('topup', () => createTopupOrder(amount), mode)} />
+
             <View style={styles.ledgerCard}>
               <Text style={styles.ledgerTitle}>Recent Transactions</Text>
               {error ? (
-                <ErrorState message="Failed to load transactions" onRetry={load} />
+                <ErrorState message="Failed to load transactions" onRetry={() => void load()} />
               ) : ledger.length === 0 ? (
                 <Text style={styles.emptyText}>No transactions yet</Text>
               ) : (
@@ -156,7 +176,6 @@ export default function WalletScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
-  backBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   title: { ...typography.headline, color: colors.ink900, fontFamily: fonts.bold },
   subtitle: { ...typography.caption, color: colors.ink400 },
   refreshBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },

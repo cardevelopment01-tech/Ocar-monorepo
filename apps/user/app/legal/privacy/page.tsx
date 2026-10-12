@@ -131,19 +131,16 @@ const SECTIONS: LegalSection[] = [
     ),
   },
   {
-    heading: '10. Grievance Officer & contact',
+    heading: '10. Contact',
     body: (
       <>
         <p>
-          In accordance with the Information Technology Act, 2000 and the rules made thereunder, the Grievance
-          Officer for Ocar can be reached at:
+          For any question or complaint about this policy or your personal data, you can reach Ocar at:
         </p>
         <p>
-          <span className="font-semibold text-text-primary">{COMPANY.grievanceOfficer.name}</span>
-          <br />
           {COMPANY.legalName}, {formatAddress()}
           <br />
-          Email: <a href={`mailto:${COMPANY.grievanceOfficer.email}`}>{COMPANY.grievanceOfficer.email}</a>
+          Email: <a href={`mailto:${COMPANY.supportEmail}`}>{COMPANY.supportEmail}</a>
         </p>
         <p>We acknowledge complaints within 48 hours and aim to resolve them within 15 days.</p>
       </>

@@ -44,6 +44,26 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
 
+  # The API deploy runs migrations before flipping traffic and never undoes them, so a rollback
+  # leaves the OLD release on the NEW schema. Migrations must be backward compatible
+  # (expand/contract): see docs/OPS_RUNBOOK.md "Releases and rollbacks". Pull requests only.
+  migration-check:
+    name: Migration safety
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: ci-migration-check-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Unit tests for the CI scripts
+        run: python3 -m unittest discover -s .github/scripts -p "test_*.py"
+      - name: Check migrations added or changed by this PR
+        run: python3 .github/scripts/migration_check.py --base "origin/${{ github.base_ref }}"
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -153,12 +173,22 @@ jobs:
           S3_REGION: ap-south-1
           S3_ACCESS_KEY: test-access-key
           S3_SECRET_KEY: test-secret-key
-          # M08's webhook tests need real (non-empty) Razorpay keys, not just the
-          # webhook secret — payments.service.ts branches to a dev-mode auto-confirm
-          # shortcut (bypassing the order-creation/webhook path entirely) whenever
-          # RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET are empty, which would silently
-          # defeat the webhook idempotency tests in CI. The 'razorpay' SDK itself is
-          # mocked (vi.mock in m08.test.ts), so these values never hit the network.
+          # Online collections (ride fares, wallet top-ups, packages) go through
+          # PayU: payments.service.ts branches to a dev-mode auto-confirm shortcut
+          # (bypassing the return/webhook path entirely) whenever PAYU_KEY/PAYU_SALT
+          # are empty, which would silently defeat M08's PayU return/webhook tests.
+          # Dummy values — m08.test.ts mocks fetchPayuStatus, nothing hits PayU.
+          # The URLs are https + non-localhost so they would also pass the
+          # production boot guard (NODE_ENV is 'test' here, so it does not run).
+          PAYU_KEY: test-payu-key
+          PAYU_SALT: test-payu-salt
+          PAYU_ENV: test
+          API_BASE_URL: https://api.example.test
+          USER_APP_URL: https://app.example.test
+          DRIVER_APP_URL: https://driver.example.test
+          # Razorpay remains for driver payouts and pre-cutover in-flight payments
+          # (M08's legacy /webhook/razorpay idempotency test, payout tests). Dummy
+          # values; never hit the network.
           RAZORPAY_KEY_ID: rzp_test_dummy_key_id
           RAZORPAY_KEY_SECRET: test-razorpay-key-secret
           RAZORPAY_WEBHOOK_SECRET: test_webhook_secret_123
@@ -230,3 +260,4 @@ jobs:
       - run: pnpm --filter @ocar/mobile-shared exec vitest run
       - run: pnpm --filter @ocar/rider-mobile exec tsc --noEmit
       - run: pnpm --filter @ocar/driver-mobile exec tsc --noEmit
+      - run: pnpm --filter @ocar/driver-mobile exec vitest run

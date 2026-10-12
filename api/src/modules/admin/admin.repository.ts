@@ -699,6 +699,10 @@ export async function deleteDriver(
       "DELETE FROM package_purchase_orders WHERE driver_id = $1",
       [driverId],
     );
+    await client.query(
+      "DELETE FROM wallet_topup_orders WHERE driver_id = $1",
+      [driverId],
+    );
     await client.query("DELETE FROM driver_payout_holds WHERE driver_id = $1", [
       driverId,
     ]);

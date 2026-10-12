@@ -3,7 +3,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const client = { query: vi.fn(), release: vi.fn() }
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn(() => Promise.resolve(client)) } }))
 
-import { topUpDriverWallet } from '@/modules/payments/payments.service'
+vi.mock('@/db/redis', () => ({ client: { set: vi.fn(), get: vi.fn(), del: vi.fn() } }))
+vi.mock('@/config', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@/config')>()
+  return {
+    ...orig,
+    config: { ...orig.config, PAYU_KEY: 'testkey', PAYU_SALT: 'testsalt', PAYU_ENV: 'test', API_BASE_URL: 'https://api.example' },
+  }
+})
+
+import { pool } from '@/db/client'
+import { client as redis } from '@/db/redis'
+import { topUpDriverWallet, createDriverTopupOrder } from '@/modules/payments/payments.service'
 
 function scriptTopup(balance: string, existingDupe: boolean) {
   client.query.mockReset()
@@ -51,8 +62,7 @@ describe('topUpDriverWallet', () => {
     expect(params[3]).toBe(300)
     // note documents the debt-first split: ₹200 cleared, ₹300 spendable
     const note = params[5] as string
-    expect(note).toContain('200')
-    expect(note).toContain('300')
+    expect(note).toBe('Wallet top-up ₹500 (₹200 cleared dues, ₹300 spendable)') // gateway-neutral
 
     const updateCall = client.query.mock.calls.find(c => (c[0] as string).includes('UPDATE driver_wallets'))
     expect((updateCall![1] as unknown[])[1]).toBe(300)
@@ -65,6 +75,57 @@ describe('topUpDriverWallet', () => {
     const ledgerCall = client.query.mock.calls.find(c => (c[0] as string).includes('INSERT INTO driver_wallet_ledger'))
     const params = ledgerCall![1] as unknown[]
     expect(params[3]).toBe(600) // 100 + 500
-    expect(params[5] as string).toBe('Wallet top-up via Razorpay')
+    expect(params[5] as string).toBe('Wallet top-up')
+  })
+})
+
+describe('createDriverTopupOrder', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ name: 'Ravi', email: null, phone: '8888888888' }], rowCount: 1 } as never)
+  })
+
+  it('binds txnid → driver + paise in Redis for 24h and returns the signed form', async () => {
+    const out = await createDriverTopupOrder(7n, 500)
+    const txnId = out.payu.fields['txnid']!
+    expect(txnId).toMatch(/^W7x/)
+    expect(out.payu.fields['amount']).toBe('500.00')
+    expect(vi.mocked(redis.set)).toHaveBeenCalledWith(
+      `wallet:topup_order:${txnId}`, JSON.stringify({ driverId: '7', amountPaise: 50000 }), 'EX', 86400,
+    )
+  })
+
+  it('persists a durable wallet_topup_orders row (driver, txnid, rupees) alongside the Redis binding', async () => {
+    const out = await createDriverTopupOrder(7n, 500)
+    const txnId = out.payu.fields['txnid']!
+    const ins = vi.mocked(pool.query).mock.calls.find(c => (c[0] as string).includes('INSERT INTO wallet_topup_orders'))
+    expect(ins).toBeTruthy()
+    expect(ins![0]).toContain('(driver_id, gateway_txn_id, amount)')
+    expect(ins![1]).toEqual([7n, txnId, 500])
+    expect(vi.mocked(redis.set)).toHaveBeenCalledTimes(1)
+  })
+
+  it('throws (no form returned) when the durable row cannot be inserted', async () => {
+    vi.mocked(pool.query).mockImplementation((async (q: string) => {
+      if (q.includes('INSERT INTO wallet_topup_orders')) throw new Error('connection reset')
+      return { rows: [{ name: 'Ravi', email: null, phone: '8888888888' }], rowCount: 1 }
+    }) as never)
+    await expect(createDriverTopupOrder(7n, 500)).rejects.toThrow('connection reset')
+  })
+
+  it('rejects non-numeric or sub-minimum amounts (a string must not reach toFixed)', async () => {
+    await expect(createDriverTopupOrder(7n, 99)).rejects.toMatchObject({ httpStatus: 400 })
+    await expect(createDriverTopupOrder(7n, '500' as unknown as number)).rejects.toMatchObject({ httpStatus: 400 })
+    await expect(createDriverTopupOrder(7n, NaN)).rejects.toMatchObject({ httpStatus: 400 })
+  })
+
+  it('rejects a top-up above the maximum (no order row, no form)', async () => {
+    await expect(createDriverTopupOrder(7n, 50_001)).rejects.toMatchObject({ httpStatus: 400 })
+    await expect(createDriverTopupOrder(7n, 50_000)).resolves.toBeDefined()
+  })
+
+  it('rounds to whole paise', async () => {
+    const out = await createDriverTopupOrder(7n, 100.005)
+    expect(out.payu.fields['amount']).toMatch(/^100\.0[01]$/)
   })
 })

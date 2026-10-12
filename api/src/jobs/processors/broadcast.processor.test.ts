@@ -8,7 +8,7 @@ const mockGetEligibleDriverCategoryIds = vi.fn()
 const mockGetCategoryDisplayName = vi.fn()
 const mockGetCategorySlug = vi.fn()
 const mockCreateRideAssignment = vi.fn()
-const mockUpdateRideStatus = vi.fn()
+const mockUpdateRideStatus = vi.fn().mockResolvedValue({ id: 1n })
 const mockLogStatusHistory = vi.fn()
 
 vi.mock('@/modules/rides/rides.repository', () => ({
@@ -20,7 +20,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   getCategoryDisplayName: (...a: unknown[]) => mockGetCategoryDisplayName(...a),
   getCategorySlug: (...a: unknown[]) => mockGetCategorySlug(...a),
   createRideAssignment: (...a: unknown[]) => mockCreateRideAssignment(...a),
-  updateRideStatus: (...a: unknown[]) => mockUpdateRideStatus(...a),
+  updateRideStatusCAS: (...a: unknown[]) => mockUpdateRideStatus(...a),
   logStatusHistory: (...a: unknown[]) => mockLogStatusHistory(...a),
 }))
 vi.mock('@/modules/payments/payments.service', () => ({
@@ -65,11 +65,12 @@ describe('processBroadcast category eligibility per round', () => {
   })
 
   it.each([
-    ['one_way',    'sedan',         undefined, 3, 10_000],
-    ['round_trip', 'sedan',         undefined, 3, 10_000],
+    ['one_way',    'sedan',         undefined, 3, 12_000],
+    ['round_trip', 'sedan',         undefined, 3, 12_000],
     ['rental',     'sedan',         2,         1, 2_500],
-    ['rental',     'auto_rickshaw', 2,         3, 2_000],
-    ['rental',     'sedan',         4,         3, 4_000],
+    ['rental',     'sedan',         2,         3, 4_500],
+    ['rental',     'auto_rickshaw', 2,         3, 4_000],
+    ['rental',     'sedan',         4,         3, 6_000],
   ])('%s/%s/%sh round %s caps radius at %s m', async (rideType, slug, tripHours, round, expected) => {
     mockGetCategorySlug.mockResolvedValue(slug)
     await processBroadcast({
@@ -208,7 +209,7 @@ describe('processBroadcast return-cab pickup-distance cap', () => {
     ])
     await processBroadcast({ ...base, rideType: 'one_way' })
     // no return-cab driver survived, so the standard search may fill all 5 slots
-    expect(mockFindNearbyDrivers).toHaveBeenCalledWith(expect.objectContaining({ maxDrivers: 5, radiusMetres: 5_000 }))
+    expect(mockFindNearbyDrivers).toHaveBeenCalledWith(expect.objectContaining({ maxDrivers: 5, radiusMetres: 10_000 }))
     expect(assignedIds()).toEqual([30n])
   })
 
@@ -223,7 +224,7 @@ describe('processBroadcast return-cab pickup-distance cap', () => {
     await processBroadcast({ ...base, rideType: 'one_way', broadcastRound: 2 })
     expect(mockUpdateRideStatus).not.toHaveBeenCalled()
     await processBroadcast({ ...base, rideType: 'one_way', broadcastRound: 3 })
-    expect(mockUpdateRideStatus).toHaveBeenCalledWith(1n, 'no_drivers')
+    expect(mockUpdateRideStatus).toHaveBeenCalledWith(1n, 'requested', 'no_drivers')
     expect(mockCreateRideAssignment).not.toHaveBeenCalled()
   })
 

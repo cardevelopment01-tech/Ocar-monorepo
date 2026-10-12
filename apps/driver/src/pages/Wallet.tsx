@@ -6,6 +6,7 @@ import StatusBar from '@/components/ui/StatusBar'
 import { useSessionStore } from '@/store/useSessionStore'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { payMessage, submitPayuForm, type PayuForm } from '@/lib/payu-checkout'
 
 // ponytail: temporarily 0 — client requested the recharge gate disabled for
 // driver testing. Restore to 500 to re-enable the low-balance banner.
@@ -83,11 +84,19 @@ export default function Wallet() {
 
   useEffect(() => { void load() }, [])
 
+  useEffect(() => {
+    const pay = new URLSearchParams(window.location.search).get('pay')
+    const m = payMessage(pay, 'wallet')
+    if (m === null) return
+    setTopupMsg(m)
+    if (pay === 'success' || pay === 'pending') void load()
+  }, [])
+
   const handleAddMoney = async () => {
     setTopupLoading(true)
     setTopupMsg(null)
     try {
-      const res = await api.post<{ dev?: boolean; credited?: number; orderId?: string; amount?: number; key?: string }>(
+      const res = await api.post<{ dev?: boolean; credited?: number; payu?: PayuForm }>(
         '/api/v1/payments/wallet/driver/topup/order',
         { amount: selectedAmount }
       )
@@ -96,35 +105,8 @@ export default function Wallet() {
         void load()
         return
       }
-      // Razorpay checkout
-      await new Promise<void>((resolve, reject) => {
-        if (document.getElementById('rzp-script')) { resolve(); return }
-        const s = document.createElement('script')
-        s.id = 'rzp-script'
-        s.src = 'https://checkout.razorpay.com/v1/checkout.js'
-        s.onload = () => resolve()
-        s.onerror = reject
-        document.body.appendChild(s)
-      })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rzp = new (window as any).Razorpay({
-        key: res.data.key,
-        order_id: res.data.orderId,
-        amount: (res.data.amount ?? 0) * 100,
-        currency: 'INR',
-        name: 'Ocar',
-        description: 'Wallet Top-up',
-        handler: async (response: { razorpay_payment_id: string; razorpay_signature: string }) => {
-          await api.post('/api/v1/payments/wallet/driver/topup/verify', {
-            orderId: res.data.orderId,
-            paymentId: response.razorpay_payment_id,
-            signature: response.razorpay_signature,
-          })
-          setTopupMsg(`₹${selectedAmount.toLocaleString('en-IN')} added successfully!`)
-          void load()
-        },
-      })
-      rzp.open()
+      if (!res.data.payu) throw new Error('missing payu form')
+      submitPayuForm(res.data.payu)
     } catch {
       setTopupMsg('Payment failed. Please try again.')
     } finally {
@@ -249,7 +231,7 @@ export default function Wallet() {
         </div>
         {topupMsg && (
           <p className={cn('text-sm text-center mb-3 font-semibold',
-            topupMsg.includes('success') ? 'text-accent-green' : 'text-accent-red'
+            topupMsg.includes('failed') ? 'text-accent-red' : 'text-accent-green'
           )}>{topupMsg}</p>
         )}
         <button
@@ -258,7 +240,7 @@ export default function Wallet() {
           className="btn-go w-full"
           style={{ minHeight: 52 }}
         >
-          {topupLoading ? 'Processing…' : `Add ₹${selectedAmount.toLocaleString('en-IN')} via UPI`}
+          {topupLoading ? 'Processing…' : `Add ₹${selectedAmount.toLocaleString('en-IN')}`}
         </button>
       </div>
 

@@ -444,15 +444,20 @@ router.patch('/:id/stops/:sequence', authenticate(), onlyDriver, async (req, res
   try {
     const driverId = req.driver!.id
     const sequence = parseInt(req.params['sequence']!, 10)
-    const { status } = req.body as { status: 'arrived' | 'reached' }
-    // Skipping is rider-only: POST /:id/stops/:sequence/skip.
-    if (isNaN(sequence) || (status !== 'arrived' && status !== 'reached')) {
-      res.status(400).json({ error: 'sequence and status (arrived|reached) required' }); return
+    const { status } = req.body as { status: 'arrived' | 'reached' | 'skipped' }
+    if (isNaN(sequence) || (status !== 'arrived' && status !== 'reached' && status !== 'skipped')) {
+      res.status(400).json({ error: 'sequence and status (arrived|reached|skipped) required' }); return
     }
     const rideId = BigInt(req.params['id']!)
+    // Skipping is rider-only now (POST /:id/stops/:sequence/skip). Driver builds from before that
+    // still send 'skipped' from their Skip button, so treat it as the new "can't reach this stop"
+    // request, which asks the rider, instead of failing it with a 400 mid-trip.
+    // ponytail: remove the 'skipped' branch once those driver builds are retired.
     const result = status === 'arrived'
       ? await service.markStopArrived(driverId, rideId, sequence)
-      : await service.markStopStatus(driverId, rideId, sequence, status)
+      : status === 'skipped'
+        ? await service.reportStopUnreachable(driverId, rideId, sequence)
+        : await service.markStopStatus(driverId, rideId, sequence, status)
     res.json(result)
   } catch (err) { next(err) }
 })

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
 import { useRouter } from 'expo-router'
+import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { Button, ErrorState, colors, radii, shadows, spacing, typography, fonts } from '@ocar/mobile-shared'
@@ -179,7 +180,7 @@ export default function BookingFareScreen() {
         ) : null}
         <View style={[styles.headerRow, { top: insets.top + spacing.sm }]}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => goBack(router)}
             style={({ pressed }) => [styles.backButton, pressed ? styles.pressedScale : null]}
             hitSlop={8}
             accessibilityRole="button"
@@ -189,11 +190,11 @@ export default function BookingFareScreen() {
           </Pressable>
           {pickup && drop ? (
             <View style={styles.breadcrumb}>
-              <Pressable onPress={() => router.back()} style={styles.breadcrumbHalf}>
+              <Pressable onPress={() => goBack(router)} style={styles.breadcrumbHalf}>
                 <Text style={styles.breadcrumbOrigin} numberOfLines={1}>{pickup.address}</Text>
               </Pressable>
               <Feather name="chevron-right" size={12} color={colors.ink400} />
-              <Pressable onPress={() => router.back()} style={styles.breadcrumbHalf}>
+              <Pressable onPress={() => goBack(router)} style={styles.breadcrumbHalf}>
                 <Text style={styles.breadcrumbDest} numberOfLines={1}>{drop.address}</Text>
               </Pressable>
             </View>

@@ -7,7 +7,7 @@ import { getPaymentChannel, setPaymentChannel, type PaymentChannel } from '@/lib
 
 const OPTIONS: Array<{ id: PaymentChannel; Icon: typeof Banknote; label: string; sub: string }> = [
   { id: 'cash',   Icon: Banknote,   label: 'Cash',        sub: 'Pay directly to driver' },
-  { id: 'online', Icon: CreditCard, label: 'UPI / Cards', sub: 'Pay online via Razorpay' },
+  { id: 'online', Icon: CreditCard, label: 'UPI / Cards', sub: 'Pay online (UPI, cards, netbanking)' },
   { id: 'wallet', Icon: Wallet,     label: 'Ocar Wallet', sub: 'Use your wallet balance' },
 ]
 

@@ -6,6 +6,7 @@ import StatusBar from '@/components/ui/StatusBar'
 import { useSessionStore } from '@/store/useSessionStore'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { payMessage, submitPayuForm, type PayuForm } from '@/lib/payu-checkout'
 import { getApiErrorMessage } from '@/lib/api-error'
 
 interface PackageTier {
@@ -80,6 +81,14 @@ export default function RechargePackage() {
 
   useEffect(() => { void load() }, [])
 
+  useEffect(() => {
+    const pay = new URLSearchParams(window.location.search).get('pay')
+    const m = payMessage(pay, 'package')
+    if (m === null) return
+    setMsg(m)
+    if (pay === 'success' || pay === 'pending') void load()
+  }, [])
+
   const selectedTier = tiers.find(t => t.id === selectedId) ?? null
 
   const handleBuy = async () => {
@@ -87,7 +96,7 @@ export default function RechargePackage() {
     setBuying(true)
     setMsg(null)
     try {
-      const res = await api.post<{ dev?: boolean; credited?: number; orderId?: string; amount?: number; key?: string }>(
+      const res = await api.post<{ dev?: boolean; credited?: number; payu?: PayuForm }>(
         '/api/v1/payments/packages/purchase/order',
         { tierId: selectedTier.id }
       )
@@ -96,34 +105,8 @@ export default function RechargePackage() {
         void load()
         return
       }
-      // Razorpay checkout
-      await new Promise<void>((resolve, reject) => {
-        if (document.getElementById('rzp-script')) { resolve(); return }
-        const s = document.createElement('script')
-        s.id = 'rzp-script'
-        s.src = 'https://checkout.razorpay.com/v1/checkout.js'
-        s.onload = () => resolve()
-        s.onerror = reject
-        document.body.appendChild(s)
-      })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rzp = new (window as any).Razorpay({
-        key: res.data.key,
-        order_id: res.data.orderId,
-        amount: (res.data.amount ?? 0) * 100,
-        currency: 'INR',
-        name: 'Ocar',
-        description: `Package: ${selectedTier.label}`,
-        // Crediting happens server-side off the Razorpay webhook, not here —
-        // there's no /packages/purchase/verify endpoint. Refetch after a
-        // short delay to give the webhook time to land, but don't claim
-        // the balance is credited yet.
-        handler: () => {
-          setMsg('Payment received — your ride credit will appear shortly.')
-          setTimeout(() => void load(), 3000)
-        },
-      })
-      rzp.open()
+      if (!res.data.payu) throw new Error('missing payu form')
+      submitPayuForm(res.data.payu)
     } catch (err) {
       setMsg(getApiErrorMessage(err, 'Payment failed. Please try again.'))
     } finally {

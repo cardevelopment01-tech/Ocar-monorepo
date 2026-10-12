@@ -92,7 +92,8 @@
                                      }
                                  ],
                                  "expo-audio",
-                                 "./plugins/withNavigationSdkAndroid"
+                                 "./plugins/withNavigationSdkAndroid",
+                                 "./plugins/withPayuSdk"
                              ]
              }
 }

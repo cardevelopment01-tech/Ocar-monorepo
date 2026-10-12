@@ -252,6 +252,58 @@ Deploy-day note: Overview "revenue today" and completed count moved from `paymen
 ride `completed_at` clock (shared definitions in `api/src/modules/analytics/kpi-definitions.ts`), so rides that cross
 midnight IST land on their completion day; expect a one-time shift versus yesterday's numbers.
 
+## Releases and rollbacks (API + web + mobile)
+
+**Order of a release:** push to `main` -> CI -> `Deploy` (API: migrations, blue/green, 10-minute
+bake, automatic flip-back) -> `Deploy Web (Vercel)`. The web workflow runs only if CI passed and
+the API deploy neither failed nor rolled back (`gate` job, `.github/scripts/web_release.py gate`),
+so a site never ships against a backend that was rolled back. PRs get preview deployments only.
+Manual run (Actions > Deploy Web (Vercel) > Run workflow, on `main`) deploys production without
+the gate: use it only when you know the API is healthy.
+
+**What rolls back automatically**
+- API: failed health/smoke test (nothing user-facing changed) or 5xx during the bake -> traffic flips back to the old color.
+- Web: after a production deploy the workflow promotes it, waits until it is the live production
+  deployment, then checks the live domain (pages load, no baked `[SENSITIVE]` placeholder, prod API
+  address present, `/health` ok). On failure it runs `vercel rollback <previous deployment>` (Pro
+  plan: any earlier production deployment) and the job fails. After a rollback Vercel stops
+  auto-assigning domains to new deployments; the next production deploy runs `vercel promote`, which
+  re-enables it. Manual rollback: Vercel dashboard > project > Deployments > Instant Rollback.
+- Mobile apps: nothing rolls back (installed builds stay in use). The API must therefore stay
+  compatible with old app versions; `mobile_payments_enabled` is the kill switch for in-app payments.
+
+**What does NOT roll back: the database.** Migrations run before the traffic flip and are never
+undone, so after a flip-back the old API runs against the new schema. Rules (expand/contract):
+1. Ship additive changes first (new nullable column / new table / new index / new endpoint). Old code must keep working with them.
+2. Never drop, rename or change the type of something the previous release still reads or writes in the same release as the code change. Remove it in a later release, after the bake window and after old app versions are retired.
+3. Backfills run as separate jobs, not inside the release migration.
+4. New endpoints and response fields are additive; do not change or remove existing ones while old web/mobile builds exist.
+
+**Enforced in CI.** The `Migration safety` job (pull requests, `.github/scripts/migration_check.py`)
+fails a PR that edits, renames or deletes an existing migration (the runner skips files it already ran,
+so such an edit never reaches existing databases), reuses a migration number, or adds a statement that
+breaks the previous release: DROP TABLE/COLUMN/TYPE, RENAME, ALTER COLUMN TYPE, SET NOT NULL, ADD COLUMN
+NOT NULL without DEFAULT, TRUNCATE, DELETE/UPDATE without WHERE, UPDATE cities.boundary, UPDATE rate_cards.
+A reviewed exception goes in the file, with a reason on the same line:
+`-- migration-check: allow drop-column no reader since release 2026-09, backfill done in 104`.
+
+**API smoke test before the traffic flip** (`.github/scripts/api_smoke.py`, run by the Deploy workflow
+against the idle color): health (db + redis), a public read, request validation, auth middleware on
+wallet/rides/admin, and the PayU money routes (SDK signer + confirm, return redirect, webhook ack). Ten
+harmless calls; any failure rolls the idle color back with nothing user-facing changed. Add a check there
+when you add a route whose absence would be a silent outage.
+
+## Web deploys (Vercel, admin / driver / user): setup
+
+The three web apps deploy from GitHub Actions (`.github/workflows/deploy-web.yml`), not from
+Vercel's Git integration: Vercel blocks every deployment it builds itself when the commit author is
+not a seat on the team (single-seat plan, pushes come from another account), so each app's
+`vercel.json` sets `git.deploymentEnabled: false` and the workflow builds on the runner and uploads
+the result (`--prebuilt`, which is not subject to that check).
+
+- **Secrets** (repo Actions secrets): `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_ADMIN`, `VERCEL_PROJECT_ID_DRIVER`, `VERCEL_PROJECT_ID_USER`, and `WEB_ENV_ADMIN` / `WEB_ENV_DRIVER` / `WEB_ENV_USER` (each app's public `NEXT_PUBLIC_*` / `VITE_*` settings as a dotenv block). The Vercel projects keep those settings as Sensitive, which `vercel pull` cannot read (it returns the text `[SENSITIVE]`), so the workflow overrides them from these secrets; a guard fails the job if the placeholder is still in the build. To change a public setting, update the matching `WEB_ENV_*` secret (and Vercel, for consistency) and re-run the workflow.
+- **Rotate the token:** create a new one at vercel.com/account/tokens (scope = the team), update `VERCEL_TOKEN`, delete the old one.
+
 ## Rotate a secret (DB URL, JWT secret, Razorpay keys, etc.)
 
 All of it lives in one SSM `SecureString` parameter, `/ocar/prod/api-env` —
@@ -278,6 +330,137 @@ aws autoscaling start-instance-refresh \
   --auto-scaling-group-name "$ACTIVE_ASG" \
   --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'
 ```
+
+## PayU collections
+
+PayU collects ride fares, driver wallet top-ups and package purchases
+(design: `docs/superpowers/specs/2026-10-06-payu-collections-migration-design.md`).
+Razorpay/RazorpayX stays for driver payouts — keep its keys.
+
+**Required env** (in the `api-env` SSM blob, `/ocar/{prod,staging}/api-env`):
+
+| Key | Value |
+|---|---|
+| `PAYU_KEY`, `PAYU_SALT` | from the PayU dashboard; test and live are different pairs |
+| `PAYU_ENV` | `prod` for live keys, `test` for sandbox keys (selects the PayU endpoints) |
+| `API_BASE_URL` | public https API origin — PayU posts the browser back to `<API_BASE_URL>/api/v1/payments/payu/return` (verify it; it used to be unused in prod) |
+| `USER_APP_URL` | public https rider portal origin (ride receipt redirect) |
+| `DRIVER_APP_URL` | public https driver portal origin (wallet / package redirect) |
+
+**The API refuses to boot in production** if `PAYU_KEY`/`PAYU_SALT` is empty
+or any of the three URLs is not `https://` or points at localhost. So secrets
+go in **before** the image: a deploy without them fails the idle color's
+health check and never takes traffic (safe, but the deploy fails).
+
+1. Pull, edit, push the whole blob (same as "Rotate a secret" above; staging:
+   `/ocar/staging/api-env`):
+   ```bash
+   aws ssm get-parameter --name /ocar/prod/api-env --with-decryption \
+     --query 'Parameter.Value' --output text > api-env.txt
+   # add PAYU_KEY, PAYU_SALT, PAYU_ENV, USER_APP_URL, DRIVER_APP_URL; verify API_BASE_URL
+   aws ssm put-parameter --name /ocar/prod/api-env --type SecureString \
+     --value "$(cat api-env.txt)" --overwrite
+   rm api-env.txt
+   ```
+2. Then deploy the image tag (normal merge-to-`main` deploy, or the `Deploy`
+   workflow for staging). New instances read SSM at boot.
+3. PayU dashboard → Developers → Webhooks → Create Webhook → URL
+   `https://<api>/api/v1/payments/webhook/payu`, events **Successful**,
+   **Failed**, **Refund**, **Dispute** (refund/dispute are acknowledged and
+   logged only, never acted on). Do it in test mode first for staging.
+
+**Razorpay drain window.** Riders who opened a Razorpay checkout just before
+the cutover can still pay it afterwards. The 30-minute Redis order binding
+only limits `/payment/verify`; `/webhook/razorpay` and the Razorpay branch of
+the reconcile sweep still confirm a late capture with no time limit. So keep
+the Razorpay keys and Razorpay webhook in place, and don't treat the cutover
+as done (or remove anything Razorpay-side), until this drain query returns no
+rows:
+```sql
+SELECT ride_id, status, updated_at FROM payments
+WHERE status = 'pending'
+  AND razorpay_order_id IS NOT NULL
+  AND gateway IS DISTINCT FROM 'payu'
+ORDER BY updated_at;
+```
+
+### Missed PayU webhooks (reconcile sweep)
+
+Every payment-reconcile worker run also sweeps pending PayU package purchases
+(`package_purchase_orders`) and wallet top-ups (`wallet_topup_orders`, a
+durable row written when the order is created) aged 10 minutes to 3 days, and
+re-runs each through `verify_payment`: captured → credited once (same
+idempotent path as the webhook); pending/failed/unknown → row left as is. Rows
+older than 3 days are not polled and never auto-failed. Find stuck ones and
+check each txnid in the PayU dashboard:
+```sql
+SELECT * FROM wallet_topup_orders
+WHERE status = 'pending' AND created_at < now() - interval '3 days';
+SELECT * FROM package_purchase_orders
+WHERE gateway = 'payu' AND status = 'pending' AND created_at < now() - interval '3 days';
+```
+
+### Driver app in-app payments (PayU native SDK)
+
+The driver app pays through PayU's native sheet. Server pieces: `client: 'sdk'` on
+`POST /payments/wallet/driver/topup/order` and `/payments/packages/purchase/order`,
+`POST /payments/payu/sdk-hash` (validating signer) and `POST /payments/payu/confirm`.
+
+**Kill switch** (default OFF; both order creation and hash signing refuse with 403 while off; `confirm` keeps
+working so in-flight payments always resolve). There is no admin UI yet; flip it in SQL:
+
+```sql
+INSERT INTO system_config (key, value, description)
+VALUES ('mobile_payments_enabled', 'true', 'Driver app native PayU payments')
+ON CONFLICT (key) DO UPDATE SET value = 'true';   -- set 'false' to switch off
+```
+
+Config reads are cached for a few minutes (`CONFIG_CACHE_TTL_SECONDS`); expect the change to apply within that window.
+
+**Rollout order:** ship the app with the flag off → enable for internal drivers on **test keys** (`PAYU_ENV=test`, EAS
+`preview`/`development` builds) → switch to live keys + `PAYU_ENV=prod` and use a **production** EAS build (it is
+built with `EXPO_PUBLIC_PAYU_ENV=prod`; a build and server on different environments refuse to open the sheet) → one
+small live ₹ UPI payment on a real phone (UPI intent cannot be tested in PayU test mode) → enable for everyone → only
+then restore `driver_minimum_balance` to 500.
+
+**Support:** a driver who paid but sees no credit: the app resumes unresolved payments on next launch, the webhook
+and the 5-minute sweep credit them anyway. Check `wallet_topup_orders` / `package_purchase_orders` by `gateway_txn_id`
+and `payment_gateway_events`. Signer rejections show up as 400s on `/payu/sdk-hash`; an SDK that asks for a hash name
+we do not allow-list (new SDK version) fails payments — see `payu-sdk.ts` before widening the allow-list.
+
+### Unattributed PayU captures
+
+Money PayU captured that the API did not credit increments
+`payu_unattributed_captures_total{reason}`:
+
+| `reason` | Meaning |
+|---|---|
+| `unknown_txn` | capture for a txnid we can't map (e.g. a superseded ride retry txn) |
+| `amount_mismatch` | captured amount differs from what we stored — not confirmed |
+| `duplicate_capture` | ride payment already settled by a different payment (rider paid twice) |
+| `confirm_lost_race` | ride payment re-failed between revive and confirm |
+
+Note: an `amount_mismatch` row stays `pending`, so the reconcile sweep
+re-increments the counter for it on every run until someone resolves it by hand.
+That includes wallet top-up and package purchase mismatches: they are
+re-checked every 5-minute sweep for up to 3 days, so the
+`increase(...[10m]) > 0` alert below keeps firing until the row is resolved.
+
+**Alert:** create by hand in Grafana Cloud (not in Terraform):
+`increase(payu_unattributed_captures_total[10m]) > 0`.
+
+Each one also leaves an unprocessed audit row (txnid, mihpayid, amount — no
+card data):
+```sql
+SELECT id, event_type, gateway_event_id, payload, created_at
+FROM payment_gateway_events
+WHERE processed = false AND gateway_event_id IS NOT NULL
+ORDER BY created_at DESC;
+```
+Action: look up the `mihpayid` in the PayU dashboard. Refund it there
+manually (duplicate / unknown / wrong amount), or, if it clearly belongs to a
+pending payment, attribute it by hand and record what you did. The API never
+guesses an owner.
 
 ## Updating an observability secret (Grafana Cloud alerting/SLO/synthetics)
 

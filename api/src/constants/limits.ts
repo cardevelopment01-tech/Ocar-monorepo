@@ -20,9 +20,14 @@ export const BCRYPT_ROUNDS = 12
 export const BROADCAST_WINDOW_SECONDS = 20
 export const BROADCAST_MAX_DRIVERS = 5
 export const BROADCAST_ROUND_MAX = 3
-// Hard cap on driver-to-pickup distance for ride requests. Client spec; TBC Monday.
+// Driver-to-pickup radius for ride requests. Client spec; TBC Monday.
 // City = rental. Outstation = one_way + round_trip.
-export function maxPickupRadiusMetres(rideType: string, categorySlug: string | null, tripHours?: number): number {
+// Round 1 uses the base value; each later broadcast round adds BROADCAST_ROUND_STEP_METRES.
+export const BROADCAST_ROUND_STEP_METRES = 1_000
+export function maxPickupRadiusMetres(rideType: string, categorySlug: string | null, tripHours?: number, round = 1): number {
+  return baseRadiusMetres(rideType, categorySlug, tripHours) + (Math.max(round, 1) - 1) * BROADCAST_ROUND_STEP_METRES
+}
+function baseRadiusMetres(rideType: string, categorySlug: string | null, tripHours?: number): number {
   if (rideType !== 'rental') return 10_000
   if (tripHours !== undefined && tripHours > 2) return 4_000
   return categorySlug === 'auto_rickshaw' ? 2_000 : 2_500

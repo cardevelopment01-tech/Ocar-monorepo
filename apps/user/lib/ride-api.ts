@@ -1,5 +1,6 @@
 import api from './api'
 import type { PaymentChannel } from './payment-channel'
+import type { PayuForm } from './payu-checkout'
 
 export type StopInput = { address: string; lat: number; lng: number }
 
@@ -153,7 +154,7 @@ export type RentalPackage = {
 }
 
 export type RetryPaymentResult =
-  | { channel: 'online'; order: { orderId: string; key: string; amount: number } | null }
+  | { channel: 'online'; order: { payu: PayuForm; amount: number } | null }
   | { channel: 'wallet'; paid: boolean }
 
 export interface ChatMessage {

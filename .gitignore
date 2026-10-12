@@ -54,8 +54,6 @@ load-tests/tokens.json
 .env*.bak
 *.apk
 
-# Local scratch that must never be committed (load-test JWTs, env backups, debug builds)
-load-tests/tokens.json
-*.env.local.bak
-.env*.bak
-*.apk
+# Python bytecode (CI helper scripts)
+__pycache__/
+*.pyc

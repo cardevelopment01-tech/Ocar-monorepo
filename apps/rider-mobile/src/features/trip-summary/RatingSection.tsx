@@ -58,7 +58,7 @@ export function RatingSection({ rideId, driverName, existing, onRated }: {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>How was your ride with {driverName}?</Text>
+      <Text style={styles.title}>How was your ride?</Text>
       <Stars value={score} onSelect={setScore} />
       <Text style={styles.word}>{score > 0 ? WORDS[score] : 'Tap a star to rate'}</Text>
 

@@ -235,12 +235,11 @@ describe('M07 — Ride Lifecycle', () => {
       ;({ rows } = await pool.query('SELECT status FROM rides WHERE id = $1', [rideId]))
       expect(rows[0]?.status).toBe('in_progress')
 
-      // TC-M07-006: verify end OTP (revealed to the rider only after the driver arrives at drop)
-      const atDropRes = await request(app)
+      // TC-M07-006: verify end OTP (the rider only sees it once the driver has arrived at the drop)
+      const dropRes = await request(app)
         .post(`/api/v1/rides/${rideId}/arrived-at-drop`)
         .set('Authorization', `Bearer ${driver.accessToken}`)
-      expect(atDropRes.status, JSON.stringify(atDropRes.body)).toBe(200)
-
+      expect(dropRes.status, JSON.stringify(dropRes.body)).toBe(200)
       const rideAsUser2 = await request(app)
         .get(`/api/v1/rides/${rideId}`)
         .set('Authorization', `Bearer ${userToken}`)

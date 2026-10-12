@@ -17,7 +17,7 @@ vi.mock('razorpay', () => ({
 // dev-mode config value is fixed at module-mock time — see confirm-ride-payment.test.ts
 // for why spying on same-module calls (confirmRidePayment) doesn't work under this
 // Vitest/ESM setup; we assert on the UPDATE it issues instead.
-vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '' } }))
+vi.mock('@/config', () => ({ config: { PAYU_KEY: '', PAYU_SALT: '' } }))
 
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
@@ -44,7 +44,7 @@ describe('createRidePaymentOrder (keys not configured — dev mode)', () => {
     expect(ordersCreate).not.toHaveBeenCalled()
     expect(redis.set).not.toHaveBeenCalled()
     const orderUpdate = vi.mocked(pool.query).mock.calls.find(
-      (c) => (c[0] as string).includes('razorpay_order_id')
+      (c) => (c[0] as string).includes('gateway_txn_id')
     )
     expect(orderUpdate, 'a gateway order UPDATE ran even though keys are unset').toBeFalsy()
 

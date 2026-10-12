@@ -2,32 +2,37 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 vi.mock('@/db/redis', () => ({ client: { set: vi.fn(), get: vi.fn(), del: vi.fn() } }))
-
-const ordersCreate = vi.fn()
-vi.mock('razorpay', () => ({
-  default: class { orders = { create: ordersCreate }; payments = { fetch: vi.fn() } },
+vi.mock('@/config', () => ({
+  config: {
+    PAYU_KEY: 'testkey', PAYU_SALT: 'testsalt', PAYU_ENV: 'test',
+    API_BASE_URL: 'https://api.example',
+  },
 }))
 
-// config is read live; override per test via vi.doMock is heavy — instead mock the module.
-vi.mock('@/config', () => ({ config: { RAZORPAY_KEY_ID: 'rzp_test', RAZORPAY_KEY_SECRET: 'secret' } }))
-
 import { pool } from '@/db/client'
-import { client as redis } from '@/db/redis'
 import { createRidePaymentOrder } from '@/modules/payments/payments.service'
 
-describe('createRidePaymentOrder (keys configured)', () => {
+describe('createRidePaymentOrder (PayU configured)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ordersCreate.mockResolvedValue({ id: 'order_XYZ' })
-    vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 1 } as never)
+    vi.mocked(pool.query).mockImplementation(async (sql: unknown) => {
+      if ((sql as string).includes('FROM users')) return { rows: [{ name: 'Asha', email: null, phone: '9999999999' }], rowCount: 1 } as never
+      return { rows: [], rowCount: 1 } as never
+    })
   })
 
-  it('creates an order for the fare, persists order id, binds order→user', async () => {
-    const result = await createRidePaymentOrder(BigInt(101), BigInt(42), 500)
-    expect(ordersCreate).toHaveBeenCalledWith(expect.objectContaining({ amount: 50000, currency: 'INR' }))
-    expect(result).toEqual({ orderId: 'order_XYZ', key: 'rzp_test', amount: 500 })
-    const update = vi.mocked(pool.query).mock.calls.find(c => (c[0] as string).includes('razorpay_order_id'))
+  it('returns a signed PayU form for the fare and stores the txn on the payment row', async () => {
+    const order = await createRidePaymentOrder(101n, 42n, 500)
+    expect(order).not.toBeNull()
+    expect(order!.amount).toBe(500)
+    expect(order!.payu.action).toBe('https://test.payu.in/_payment')
+    expect(order!.payu.fields['amount']).toBe('500.00')
+    expect(order!.payu.fields['txnid']).toMatch(/^R101x[a-z0-9]+$/)
+    expect(order!.payu.fields['surl']).toBe('https://api.example/api/v1/payments/payu/return')
+    expect(order!.payu.fields['email']).toBe('user42@ocarindia.com')
+
+    const update = vi.mocked(pool.query).mock.calls.find(c => (c[0] as string).includes('gateway_txn_id'))
     expect(update).toBeTruthy()
-    expect(vi.mocked(redis.set)).toHaveBeenCalledWith('ride:payment_order:order_XYZ', '42', 'EX', 1800)
+    expect(update![1]).toEqual([101n, order!.payu.fields['txnid']])
   })
 })

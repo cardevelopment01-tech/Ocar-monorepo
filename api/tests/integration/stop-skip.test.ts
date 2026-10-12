@@ -69,11 +69,22 @@ describe('Stops — rider owns skipping, driver can only ask', () => {
     return rows[0]!
   }
 
-  it('driver can no longer skip a stop through the status endpoint', async () => {
+  it("an old driver build's 'skipped' no longer skips: it becomes a request to the rider", async () => {
+    const res = await request(app)
+      .patch(`/api/v1/rides/${rideId}/stops/2`)
+      .set('Authorization', `Bearer ${driverToken}`)
+      .send({ status: 'skipped' })
+    expect(res.status, JSON.stringify(res.body)).toBe(200)
+    const row = await stopRow(2)
+    expect(row.status).toBe('pending')
+    expect(row.unreachable_requested_at).not.toBeNull()
+  })
+
+  it('an unknown driver stop status is still rejected', async () => {
     const res = await request(app)
       .patch(`/api/v1/rides/${rideId}/stops/1`)
       .set('Authorization', `Bearer ${driverToken}`)
-      .send({ status: 'skipped' })
+      .send({ status: 'teleported' })
     expect(res.status).toBe(400)
     expect((await stopRow(1)).status).toBe('pending')
   })
@@ -87,6 +98,9 @@ describe('Stops — rider owns skipping, driver can only ask', () => {
   })
 
   it('driver "can\'t reach" flags the stop and notifies the rider, without resolving it', async () => {
+    const countNotes = async () => (await pool.query(
+      `SELECT 1 FROM notification_logs WHERE type = 'stop_unreachable' AND ride_id = $1`, [rideId])).rows.length
+    const notesBefore = await countNotes()
     const res = await request(app)
       .post(`/api/v1/rides/${rideId}/stops/1/unreachable`)
       .set('Authorization', `Bearer ${driverToken}`)
@@ -95,10 +109,7 @@ describe('Stops — rider owns skipping, driver can only ask', () => {
     expect(row.status).toBe('pending')
     expect(row.unreachable_requested_at).not.toBeNull()
 
-    const { rows: notes } = await pool.query(
-      `SELECT 1 FROM notification_logs WHERE type = 'stop_unreachable' AND ride_id = $1`, [rideId],
-    )
-    expect(notes.length).toBe(1)
+    expect(await countNotes()).toBe(notesBefore + 1)
 
     // A repeat tap keeps the original timestamp and does not notify again.
     const again = await request(app)
@@ -106,10 +117,7 @@ describe('Stops — rider owns skipping, driver can only ask', () => {
       .set('Authorization', `Bearer ${driverToken}`)
     expect(again.status).toBe(200)
     expect((await stopRow(1)).unreachable_requested_at).toEqual(row.unreachable_requested_at)
-    const { rows: notes2 } = await pool.query(
-      `SELECT 1 FROM notification_logs WHERE type = 'stop_unreachable' AND ride_id = $1`, [rideId],
-    )
-    expect(notes2.length).toBe(1)
+    expect(await countNotes()).toBe(notesBefore + 1) // a repeat tap does not notify again
   })
 
   it('the rider sees the request on the ride detail read', async () => {

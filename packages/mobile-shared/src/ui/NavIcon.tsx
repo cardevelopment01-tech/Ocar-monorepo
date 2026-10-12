@@ -4,7 +4,7 @@ import { h } from '../theme/brand'
 const I = h.ivory
 
 // ---------- bottom-nav icons: outline (inactive) / filled (active) ----------
-export type NavName = 'home' | 'fleet' | 'trips' | 'account' | 'earnings' | 'map'
+export type NavName = 'home' | 'fleet' | 'trips' | 'account' | 'earnings' | 'map' | 'wallet'
 
 export function NavIcon({ name, active }: { name: NavName; active: boolean }) {
   const o = { stroke: I, strokeWidth: 1.4 }
@@ -72,6 +72,18 @@ export function NavIcon({ name, active }: { name: NavName; active: boolean }) {
         <G>
           <Circle cx={10} cy={10} r={7} fill={T} />
           <Path d="M7.6 7.3H12.4M7.6 9.6H12.4M8.4 7.3C11.6 7.3 11.6 12 8.4 12L11.8 14.4" stroke="#FFFFFF" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
+        </G>
+      )}
+      {name === 'wallet' && !active && (
+        <G>
+          <Path d="M3.5 6.6C3.5 5.5 4.4 4.6 5.5 4.6H14.5C15.6 4.6 16.5 5.5 16.5 6.6V14C16.5 15.1 15.6 16 14.5 16H5.5C4.4 16 3.5 15.1 3.5 14V6.6Z" {...o} strokeLinejoin="round" />
+          <Path d="M12.4 9.9H16.5V12.7H12.4C11.7 12.7 11.1 12.1 11.1 11.3C11.1 10.5 11.7 9.9 12.4 9.9Z" {...o} strokeLinejoin="round" />
+        </G>
+      )}
+      {name === 'wallet' && active && (
+        <G>
+          <Path d="M3.3 6.6C3.3 5.4 4.3 4.4 5.5 4.4H14.5C15.7 4.4 16.7 5.4 16.7 6.6V14C16.7 15.2 15.7 16.2 14.5 16.2H5.5C4.3 16.2 3.3 15.2 3.3 14V6.6Z" fill={T} />
+          <Path d="M12.4 9.9H16.7V12.7H12.4C11.7 12.7 11.1 12.1 11.1 11.3C11.1 10.5 11.7 9.9 12.4 9.9Z" fill="#FFFFFF" />
         </G>
       )}
       {name === 'map' && !active && (
