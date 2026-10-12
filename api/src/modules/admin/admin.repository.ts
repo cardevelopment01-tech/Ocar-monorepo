@@ -804,7 +804,7 @@ export async function syncDriverStatusAfterDocChange(
       afterStatus = "active";
       await client.query(
         `UPDATE drivers SET status = 'active', approved_by = $2, approved_at = now(), updated_at = now() WHERE id = $1`,
-        [driverId],
+        [driverId, adminId],
       );
       await client.query(
         `INSERT INTO driver_status_history (driver_id, from_status, to_status, reason, changed_by)
