@@ -31,6 +31,7 @@ describe('goOnline — package-mode city skips wallet-balance gate', () => {
 
   it('allows a zero-balance driver online when nearest city is package-mode', async () => {
     poolQuery.mockResolvedValueOnce({ rows: [{ billing_mode: 'package' }] }) // nearest-city lookup
+    poolQuery.mockResolvedValueOnce({ rows: [{ category_id: '1' }] }) // driver's own vehicle
 
     await expect(goOnline(BigInt(1), {
       mode: 'standard', vehicleId: BigInt(1), categoryId: BigInt(1), lat: 20.29, lng: 85.82,

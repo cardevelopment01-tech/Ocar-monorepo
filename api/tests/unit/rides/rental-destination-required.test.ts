@@ -87,6 +87,8 @@ describe('createBooking — rental destination required', () => {
     await createBooking(USER_ID, {
       ...RENTAL_REQUEST,
       rideType: 'one_way',
+      distanceKm: 20, // a one-way fare needs a real distance now (0 is rejected as out of range)
+      durationMin: 30,
       destinationLat: undefined,
       destinationLng: undefined,
     })

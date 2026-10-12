@@ -264,12 +264,136 @@ rides whose final status has no matching `ride_status_history` row, payment ledg
 active ride, orphaned `gps_tracks` rows, and — the same hijack check as above, but from real DB
 state instead of an HTTP status code — rides accepted by a driver with no `ride_assignments` row.
 
+`verify/lifecycle-checks.js` (loaded automatically) adds 21 checks (incl. 2 SOS/dispute safety checks) for the rides `k6/lifecycle.js`
+creates: completed rides without a payment, a final fare snapshot, a matching `driver_earnings`
+row or verified start/end OTP events; payment amount vs fare `total_final`; commission and
+driver-earning arithmetic; cash payments not marked completed; double commission debits; driver
+wallet balance vs its latest ledger row and a ledger-chain check (catches lost updates);
+completed rides with pending stops or out-of-order timestamps; money moving on cancelled rides;
+cancelled rides without a `ride_cancellations` row; a driver or rider holding two active rides; and
+duplicate or misplaced ratings. Two are `WARN` only (commission-mode ride with no wallet debit,
+which can be legitimate on an empty wallet; scheduled rides left uncancelled). It also prints the
+ride mix in the window first, so a PASS on zero rides is not mistaken for a real pass. The SQL was
+executed read-only against the local test DB to catch bad column/enum names; it has not yet been
+run against lifecycle data.
+
 ```bash
 node verify/reconcile.js --since-hours 24
 ```
 
 Exits 1 if any check finds violations, so it can gate a "this session passed" decision rather
 than being eyeballed.
+
+---
+
+## 8b. Full ride lifecycle and payment webhook (written, not yet run)
+
+### `k6/lifecycle.js` — everything after matching
+One VU = one rider + one driver, driven estimate -> book -> admin assign -> accept -> arrived -> start OTP -> (stop) -> (return leg) -> end OTP -> collect-cash -> chat -> ratings. Mix of one_way / round_trip / rental, plus scheduled bookings (book+cancel) and mid-flow cancellations. Pairing is via `POST /admin/rides/:id/assign` (mode `request`), so `ADMIN_TOKEN` (super_admin/ops_admin) is required. Broadcast contention stays in `main.js`/`accept-race.js`.
+
+```bash
+# dry run first, alone
+BASE_URL=... CITY_ID=<real> ADMIN_TOKEN=<jwt> k6 run --vus 1 --iterations 1 lifecycle.js
+# ramp (VUS must be <= drivers in CITY_ID and <= users in tokens.json)
+BASE_URL=... CITY_ID=<real> ADMIN_TOKEN=<jwt> VUS=10 DURATION=10m k6 run lifecycle.js   # then 25, 50, 100
+```
+Knobs: `PCT_ROUND_TRIP`, `PCT_RENTAL`, `PCT_SCHEDULED`, `PCT_RIDER_CANCEL`, `PCT_DRIVER_CANCEL`, `PCT_MID_STOP`, `THINK_S`, `OVERRIDE_ELIGIBILITY`. Run alongside `main.js` (different terminal, smaller `MAX_*`) for the realistic overlap of GPS/sockets with ride completions. Afterwards run `verify/reconcile.js`.
+
+Caveats: time is compressed (seconds between steps, not minutes); every one-way/round-trip booking makes a server-side Google Directions call (quota/cost); scheduled rides are cancelled, never dispatched.
+
+### `k6/payments-webhook.js` — webhook ingest and idempotency
+Synthetic HMAC-signed `payment.captured` events (70% unique, 20% one shared id, 10% bad signature). Needs `WEBHOOK_SECRET` = staging `RAZORPAY_WEBHOOK_SECRET`. No real payments are confirmed (unknown order ids). Clean up with `DELETE FROM payment_gateway_events WHERE razorpay_event_id LIKE 'pay_loadtest_%';`.
+
+**Expected to fail the first time:** `payment_gateway_events.razorpay_event_id` is `UNIQUE`, and `handleWebhookEvent` does SELECT-then-INSERT with no `ON CONFLICT`, so concurrent deliveries of the same event id can raise a unique violation (500). Real gateways retry, so treat a failure of the `duplicate 200` check as a real bug, not a test problem.
+
+### `k6/reads.js`, `k6/admin-ops.js`, `k6/auth.js` (written, not yet run)
+- **`reads.js`** — rider and driver home/earnings/wallet/notification reads, one principal per VU. `RIDER_VUS`, `DRIVER_VUS`, `CATEGORY_ID`. Reads only.
+- **`admin-ops.js`** — the ops dashboard: lists, SOS/disputes, and the heavy analytics aggregates, plus finance endpoints if `FINANCE_TOKEN` is set. Pass several admin tokens via `ADMIN_TOKENS=a,b,c`.
+- **`auth.js`** — OTP request/verify/refresh/logout storm on synthetic `+919999` phones. Only works end to end where `NODE_ENV != production` (the OTP is echoed only then) and SMS is stubbed; never run against prod.
+
+**Rate limits shape all of these** (`api/src/middleware/rateLimit.middleware.ts`): `generalLimiter` is 600 req/min per principal (per IP when unauthenticated), `authLimiter` is 10 req/min per IP on `/auth/*`, chat is 5/s per ride, masked calls 3/min. One generator IP therefore tops out at 10 unauthenticated req/s and 10 auth req/min. Authenticated scripts get a bucket per VU; admin scripts share one bucket per admin token. Count 429s as a finding about the limiter, not about the API.
+
+**Production note from this review:** the Razorpay webhook is mounted behind `generalLimiter`, keyed by source IP. A burst of webhook deliveries from Razorpay's few IPs can exceed 600/min and get 429s; Razorpay retries, so payments should still land late rather than be lost, but consider exempting the webhook route from the limiter (signature verification already gates it).
+
+### Seed prerequisites checklist (before `lifecycle.js`)
+- [ ] `k6/tokens.json` regenerated (old file expired 2026-09-09) with `--drivers` >= planned `VUS`
+- [ ] >= `VUS` active drivers with `cityId = CITY_ID` (today ~118 in city 1; the rest are spread over 5 cities)
+- [ ] Current rate cards exist for `CITY_ID` (or global) for every driver category, for `one_way`, `round_trip` and `rental`
+- [ ] At least one active rental package per driver category (`GET /pricing/rental-packages/:categoryId?city_id=`)
+- [ ] Driver `daily_verification` rows for today (generate-test-tokens does this)
+- [ ] Driver wallets exist; leave `OVERRIDE_ELIGIBILITY=true` unless funded
+- [ ] City `CITY_ID` is `active` with a boundary that contains the Bhubaneswar/Cuttack test coordinates
+- [ ] Staging Google Maps key present and its quota/budget acknowledged
+- [ ] SMS/FCM are stubbed or sandboxed on staging (lifecycle triggers notifications at every step)
+
+---
+
+## 8c. Realtime, workers, driver verification, safety writes, PayU (written, not yet run)
+
+All NOT RUN. Dry-run each at 1 VU first (the header of each script has the exact command).
+
+| Script | What it covers | Needs |
+|---|---|---|
+| `k6/realtime.js` | GPS fan-out latency: driver `location:update` -> rider socket (`ride:{id}`) and -> admin sockets (`admin:ops`). Probe driver stamps send time in `heading`; receivers decode it (same k6 clock, no skew). Reports `driver_to_rider_ms`, `driver_to_admin_ms`, delivery ratio (`rt_rider_received / rt_pings_sent`) and admin fan-out volume | `ADMIN_TOKEN`, fresh tokens, `PAIRS` <= drivers/users in `CITY_ID`. Run beside `main.js` for a busy room. Server-side Google Roads snap sits inside the rider latency |
+| `k6/queue-monitor.js` | Background-worker lag: samples `/metrics` for `bullmq_queue_job_counts` (waiting/active/delayed/failed per queue), `pg_pool_connections`, event-loop lag. Thresholds on max waiting, new failed jobs, pool waiters | `/metrics` reachable from the generator (may be VPC-only). One instance's pool/loop values, global queue counts |
+| `k6/daily-verification.js` | Morning driver spike: status -> 2x upload-init -> 2x real S3 PUT -> submit -> status. Writes real S3 objects + 2 `driver_verifications` rows per driver | S3 reachable, active drivers with a vehicle. Idempotent per driver per day |
+| `k6/safety-writes.js` | Profile PATCH, saved places CRUD, emergency contacts, SOS (+ dedup check), driver SOS, ride to completion, dispute. Masked call behind `CALLS=true` (real phone call, 3/min) | `ADMIN_TOKEN` unless `RIDES=false`. SOS hourly cap = 5/principal (429 counted as by design) |
+| `k6/payu-collections.js` | `main`'s PayU collections: wallet top-up + package purchase order creation, and the webhook/return funnel (no-hash ack, bad-hash 400/303, valid-hash fake-txn which calls PayU's verify API) | `PAYU_KEY`/`PAYU_SALT` for the valid-hash mode. A real captured payment needs a browser at PayU and is checked by hand |
+
+`k6/lib/pair.js` is the shared "book + admin-assign + driver accept" helper used by `safety-writes.js`.
+
+**Which branch is staging on?** `main` now collects online payments through PayU (merged 2026-10-08); the Razorpay webhook remains for driver payouts. `payments-webhook.js` still targets that Razorpay route. Confirm what staging runs before reading any payment result.
+
+---
+
+## 8d. Single-user evidence run (request, response, time, DB + cache writes)
+
+For the client's "1 user, 1 iteration" ask. One command snapshots the DB and Redis, runs `lifecycle.js` at 1 VU / 1 iteration with request/response capture, waits for workers, snapshots again and writes `evidence/out/<timestamp>/report.md`.
+
+```bash
+cd load-tests/evidence
+BASE_URL=https://... CITY_ID=1 ADMIN_TOKEN=<jwt> DATABASE_URL=postgres://...  REDIS_URL=redis://... node run.js --type one_way            # or round_trip | rental ; --settle 15 (seconds)
+```
+- Needs `k6` on PATH, a fresh `k6/tokens.json`, and `ioredis` resolvable (`npm i ioredis` here, or it is borrowed from `../api/node_modules`). `DATABASE_URL` unset uses the staging RDS lookup (tunnel needed); `REDIS_URL` unset skips the Redis section.
+- Report sections: (1) per-call table with status and response time plus collapsible request/response bodies, (2) DB rows inserted / updated / deleted per table, (3) Redis keys created / changed / removed per key pattern, split into application cache vs BullMQ vs rate limiter.
+- Pieces: `k6/lib/evidence.js` (the `EVIDENCE=1` recorder used by `lifecycle.js`), `evidence/snapshot.js` (before/after), `evidence/report.js` (Markdown). Each can be run alone; see their headers.
+- Caveats: counts include anyone else's writes on a shared environment; update counts rely on `updated_at`; `evidence.log` holds phone numbers and ride OTPs, keep it out of git (`evidence/out/` is ignored). Run `verify/reconcile.js` after as well.
+- Tested: `snapshot.js` and `report.js` against local test Postgres/Redis and a hand-made log. The k6 side and `run.js` end to end have not been run.
+
+### Production run (one real rider, one real driver)
+Uses `--prod` mode: real accounts logged in with real OTPs, normal dispatch (no admin token), cash payment only, and **ID-scoped** DB/Redis deltas so other users' traffic is excluded.
+```bash
+cd load-tests/evidence
+BASE_URL=https://api... node login.js --rider +91XXXXXXXXXX --driver +91YYYYYYYYYY   # types the two SMS codes; writes k6/prod-tokens.json
+BASE_URL=https://api... DATABASE_URL=<read-only> REDIS_URL=<redis> \
+PICKUP_LAT=.. PICKUP_LNG=.. DROP_LAT=.. DROP_LNG=.. DISTANCE_KM=.. DURATION_MIN=.. \
+node run.js --prod --confirm-prod --type one_way
+```
+**Safety net and rollback (do this first; these are AWS actions in production, so you run them, not the tooling):**
+```bash
+# 1. Confirm automated backups / point-in-time recovery are on (retention > 0)
+aws rds describe-db-instances --region ap-south-1 --query "DBInstances[].[DBInstanceIdentifier,BackupRetentionPeriod,LatestRestorableTime]" --output table
+# 2. Manual snapshot right before the run
+aws rds create-db-snapshot --region ap-south-1 --db-instance-identifier <prod-db-instance-id> --db-snapshot-identifier ocar-pre-evidence-$(date +%Y%m%d-%H%M)
+aws rds wait db-snapshot-available --region ap-south-1 --db-snapshot-identifier <same-id>
+```
+- The snapshot is a disaster net only. Restoring it would create a separate instance and lose every real write made after it, so it is **not** the way to undo one test ride.
+- The tooling's own rollback is `preflight.js` (refuses to start on an unsafe state, captures a baseline of the rider, driver, wallets and session) and `cleanup.js` (API-only: cancels a not-yet-started ride as the rider, takes the driver offline, confirms the final state). `run.js --prod` calls `cleanup.js` automatically if k6 fails or is interrupted. A ride already `in_progress` is deliberately NOT auto-ended: ops finishes it in the apps or with admin `force-resolve`.
+- A **completed** ride cannot be cleanly undone: payment, commission debit, driver earnings and ledger rows are append-only. Agree with finance beforehand to leave it flagged as a test ride (rider and driver ids are in the report) or reverse the commission with their normal wallet adjustment. Do not delete rows by hand.
+- Redis is cache and queues: no snapshot or restore is needed, and restoring it would drop live queue jobs.
+
+Before you run it:
+- [ ] RDS snapshot taken and `available` (above)
+- [ ] `node preflight.js ...` passes (`run.js --prod` runs it for you and stops on any FAIL; WARNs need a human decision)
+- [ ] Test driver: active, approved docs, **today's selfie + plate verification done**, wallet at or above the minimum (commission cities), no active ride; logging in here signs the driver out of their phone
+- [ ] Driver's operating city is active and the pickup/drop lie inside its boundary; set `DISTANCE_KM`/`DURATION_MIN` to match the real route
+- [ ] Nobody else is online near the pickup (the booking is broadcast to every eligible nearby driver); use a quiet hour
+- [ ] Rider has no active ride; payment channel is cash, so no PayU involvement
+- [ ] A read-only DB role and Redis reachable (tunnel). Queries run in `BEGIN READ ONLY` with a 15 s statement timeout; `NOISE=1` adds a scan per table and is off by default
+- [ ] Tell finance/support: this creates one real completed ride, a cash payment row, a commission debit and a few SMS/push notifications
+- After the run: delete `k6/prod-tokens.json` and `evidence/out/*/evidence.log` (phones, OTPs, live tokens)
+
+How the scoped numbers work: DB rows count when a column links them to the rider, driver or ride id (and were created / updated after the before-timestamp); Redis keys count when an id appears as a `:`-separated segment of the key name. BullMQ queue job keys carry no user id, so queue writes are listed as "other activity", not as the test's. Tables with no linking column (reference data, config) are not counted. The scoped detection logic has run clean against an empty test DB and a local Redis, but not against real data yet.
 
 ---
 
@@ -292,7 +416,21 @@ load-tests/
     ├── smoke.js                    — 1-VU sanity check, run before every live session
     ├── main.js                     — the real test: booking_flow + live_tracking + rider_watch + admin_dashboard
     ├── spike.js                    — instant 0->N spike + recovery test (Task 1)
-    └── accept-race.js              — concurrency-correctness test for the ride-accept race (§8)
+    ├── accept-race.js              — concurrency-correctness test for the ride-accept race (§8)
+    ├── lifecycle.js                — full ride lifecycle, all ride types (§8b)
+    ├── payments-webhook.js         — signed Razorpay webhook burst + idempotency (§8b)
+    ├── reads.js                    — rider/driver home, earnings, wallet, notification reads (§8b)
+    ├── admin-ops.js                — ops dashboard + analytics + finance reads (§8b)
+    ├── auth.js                     — OTP login/refresh/logout storm, non-prod only (§8b)
+    ├── realtime.js                 — GPS fan-out latency to rider + admin sockets (§8c)
+    ├── queue-monitor.js            — BullMQ queue depth / pg pool / event-loop sampler (§8c)
+    ├── daily-verification.js       — driver daily selfie + plate upload spike (§8c)
+    ├── safety-writes.js            — profile, saved places, contacts, SOS, disputes (§8c)
+    ├── payu-collections.js         — PayU order creation + webhook/return funnel (§8c)
+    ├── lib/pair.js                 — shared book + assign + accept helper (§8c)
+    └── lib/evidence.js             — EVIDENCE=1 request/response recorder (§8d)
+
+evidence/                            — single-user evidence tooling (§8d): run.js, snapshot.js, report.js
 ```
 
 ---

@@ -18,6 +18,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   getRideStops:     vi.fn(),
   getStopWaitTotal: vi.fn().mockResolvedValue(0),
   updateRideStatus: vi.fn().mockResolvedValue(undefined),
+  updateRideStatusCAS: vi.fn().mockResolvedValue({ id: 1n }),
   logStatusHistory: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/modules/payments/payments.service', () => ({
@@ -80,7 +81,7 @@ describe('verifyEndOTP — pending stops guard', () => {
 
     await expect(verifyEndOTP(BigInt(9), BigInt(303), '1234'))
       .rejects.toMatchObject({ httpStatus: 409 })
-    expect(repo.updateRideStatus).not.toHaveBeenCalled()
+    expect(repo.updateRideStatusCAS).not.toHaveBeenCalled()
   })
 
   it('allows completion when every stop is reached or skipped', async () => {
@@ -92,7 +93,16 @@ describe('verifyEndOTP — pending stops guard', () => {
 
     const result = await verifyEndOTP(BigInt(9), BigInt(303), '1234')
     expect(result.success).toBe(true)
-    expect(repo.updateRideStatus).toHaveBeenCalledWith(BigInt(303), 'completed', expect.anything())
+    expect(repo.updateRideStatusCAS).toHaveBeenCalledWith(BigInt(303), ['in_progress', 'returning'], 'completed', expect.anything())
+  })
+
+  it('loses cleanly (409) when another request already completed the ride, and settles nothing', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(baseRide() as never)
+    vi.mocked(repo.getRideStops).mockResolvedValue([] as never)
+    vi.mocked(repo.updateRideStatusCAS).mockResolvedValueOnce(null as never)
+
+    await expect(verifyEndOTP(BigInt(9), BigInt(303), '1234')).rejects.toMatchObject({ httpStatus: 409 })
+    expect(repo.logStatusHistory).not.toHaveBeenCalled()
   })
 
   it('allows completion when the ride has no stops at all', async () => {
@@ -124,6 +134,6 @@ describe('verifyEndOTP — pending stops guard', () => {
       Object.assign(new Error('locked'), { httpStatus: 429, appCode: 'RIDE_OTP_LOCKED' })
     )
     await expect(verifyEndOTP(BigInt(9), BigInt(303), '1234')).rejects.toMatchObject({ httpStatus: 429 })
-    expect(repo.updateRideStatus).not.toHaveBeenCalled()
+    expect(repo.updateRideStatusCAS).not.toHaveBeenCalled()
   })
 })

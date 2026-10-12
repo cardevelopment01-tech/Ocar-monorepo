@@ -16,8 +16,7 @@ describe('handleWebhookEvent — payout events', () => {
 
   it('payout.processed: marks settlement completed and its earnings lines paid', async () => {
     poolQuery
-      .mockResolvedValueOnce({ rows: [] }) // dedup check (no existing gateway event)
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // insert gateway event log
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // insert gateway event log (RETURNING)
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE settlements
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE driver_earnings
 
@@ -33,7 +32,6 @@ describe('handleWebhookEvent — payout events', () => {
 
   it('payout.failed: reverts earnings lines to cleared', async () => {
     poolQuery
-      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE settlements failed
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE driver_earnings cleared
@@ -50,8 +48,7 @@ describe('handleWebhookEvent — payout events', () => {
 
   it('payout.processed: UPDATE settlements binds the gateway payout id alongside settlement id', async () => {
     poolQuery
-      .mockResolvedValueOnce({ rows: [] }) // dedup check
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // insert gateway event log
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // insert gateway event log (RETURNING)
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE settlements
       .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE driver_earnings
 
@@ -70,8 +67,7 @@ describe('handleWebhookEvent — payout events', () => {
 
   it('payout.processed: settlement id parses fine but does not match razorpay_payout_id — driver_earnings must NOT be touched', async () => {
     poolQuery
-      .mockResolvedValueOnce({ rows: [] }) // dedup check
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // insert gateway event log
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // insert gateway event log (RETURNING)
       .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE settlements — WHERE clause matched nothing
 
     await handleWebhookEvent({
@@ -86,8 +82,7 @@ describe('handleWebhookEvent — payout events', () => {
 
   it('payout.failed: settlement id parses fine but does not match razorpay_payout_id — driver_earnings must NOT be touched', async () => {
     poolQuery
-      .mockResolvedValueOnce({ rows: [] }) // dedup check
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // insert gateway event log
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // insert gateway event log (RETURNING)
       .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE settlements — WHERE clause matched nothing
 
     await handleWebhookEvent({
@@ -98,6 +93,68 @@ describe('handleWebhookEvent — payout events', () => {
     const calls = poolQuery.mock.calls.map(c => c[0] as string)
     expect(calls.some(s => s.includes('UPDATE driver_earnings'))).toBe(false)
     expect(poolQuery).toHaveBeenCalledTimes(3)
+  })
+
+  it('dedups per (entity id, event): payout.processed then payout.reversed for one payout are BOTH applied', async () => {
+    const keys: string[] = []
+    poolQuery.mockImplementation(async (sql: unknown, params?: unknown[]) => {
+      if ((sql as string).includes('INSERT INTO payment_gateway_events')) {
+        const key = (params as string[])[1]!
+        keys.push(key)
+        return { rows: [{ id: keys.length }], rowCount: 1 }
+      }
+      return { rows: [], rowCount: 1 }
+    })
+
+    await handleWebhookEvent({
+      event: 'payout.processed',
+      payload: { payout: { entity: { id: 'pout_9', reference_id: '905:42', utr: 'UTR9' } } },
+    })
+    await handleWebhookEvent({
+      event: 'payout.reversed',
+      payload: { payout: { entity: { id: 'pout_9', reference_id: '905:42', failure_reason: 'reversed' } } },
+    })
+
+    expect(keys).toEqual(['pout_9:payout.processed', 'pout_9:payout.reversed'])
+    const calls = poolQuery.mock.calls.map(c => c[0] as string)
+    expect(calls.some(s => s.includes('UPDATE settlements') && s.includes("'failed'"))).toBe(true)
+  })
+
+  it('a handler that throws leaves the event UNPROCESSED so the gateway retry runs it again', async () => {
+    let inserted = false
+    poolQuery.mockImplementation(async (sql: unknown) => {
+      const q = sql as string
+      if (q.includes('INSERT INTO payment_gateway_events')) {
+        if (inserted) return { rows: [], rowCount: 0 } // second delivery hits the unique key
+        inserted = true
+        return { rows: [{ id: 1 }], rowCount: 1 }
+      }
+      if (q.includes('SELECT processed')) return { rows: [{ processed: false }], rowCount: 1 }
+      if (q.includes('UPDATE settlements') && inserted && !q.includes('retried')) {
+        throw new Error('db blip')
+      }
+      return { rows: [], rowCount: 1 }
+    })
+    const evt = { event: 'payout.processed', payload: { payout: { entity: { id: 'pout_7', reference_id: '907:42', utr: 'U' } } } }
+
+    await expect(handleWebhookEvent(evt)).rejects.toThrow('db blip')
+    const markedProcessed = poolQuery.mock.calls.some(c => (c[0] as string).includes('SET processed = true'))
+    expect(markedProcessed).toBe(false)
+  })
+
+  it('a duplicate delivery of an already-PROCESSED event does nothing', async () => {
+    poolQuery.mockImplementation(async (sql: unknown) => {
+      const q = sql as string
+      if (q.includes('INSERT INTO payment_gateway_events')) return { rows: [], rowCount: 0 }
+      if (q.includes('SELECT processed')) return { rows: [{ processed: true }], rowCount: 1 }
+      return { rows: [], rowCount: 1 }
+    })
+    await handleWebhookEvent({
+      event: 'payout.processed',
+      payload: { payout: { entity: { id: 'pout_8', reference_id: '908:42', utr: 'U' } } },
+    })
+    const calls = poolQuery.mock.calls.map(c => c[0] as string)
+    expect(calls.some(s => s.includes('UPDATE settlements'))).toBe(false)
   })
 
   it('malformed reference_id on payout.processed: returns early without touching the dedup/insert/update sequence', async () => {

@@ -1,8 +1,9 @@
-import { describe, it, expect, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
+import { makeUserToken } from '../helpers/auth.helper'
 
 // T3 (see docs/superpowers/specs/2026-09-25-admin-city-boundary-editor-plan.md,
 // decisions R2 and R7): findContainingCity gained a deterministic ORDER BY
@@ -13,19 +14,35 @@ import { client as redis } from '@/db/redis'
 
 const app = createApp()
 
+// classify-trip proxies Google-backed routing, so it needs a signed-in principal.
+const PHONE = '+919700000071'
+let token: string
+
+beforeAll(async () => {
+  const { rows } = await pool.query<{ id: string }>(
+    `INSERT INTO users (phone) VALUES ($1) ON CONFLICT (phone) DO UPDATE SET updated_at = now() RETURNING id`, [PHONE])
+  token = makeUserToken(rows[0]!.id)
+})
+
 afterAll(async () => {
+  await pool.query('DELETE FROM users WHERE phone = $1', [PHONE])
   await pool.end()
   redis.disconnect()
 })
 
 describe('GET /api/v1/geo/classify-trip — findContainingCity ordering (T3)', () => {
+  it('requires a signed-in principal', async () => {
+    const res = await request(app).get('/api/v1/geo/classify-trip?originLat=20.2961&originLng=85.8245&destLat=20.30&destLng=85.82')
+    expect(res.status).toBe(401)
+  })
+
   it('R2: with two identical boundaries (Bhubaneswar/Cuttack), the trip is always labeled by the city with the nearest centroid', async () => {
     // A point at (or effectively at) Bhubaneswar's seeded centroid
     // (85.8245, 20.2961) — both cities' boundary is the same box, both
     // contain this point, so only the centroid-distance tie-break decides.
     const res = await request(app).get(
       '/api/v1/geo/classify-trip?originLat=20.2961&originLng=85.8245&destLat=20.30&destLng=85.82'
-    )
+    ).set('Authorization', `Bearer ${token}`)
     expect(res.status, JSON.stringify(res.body)).toBe(200)
     expect(res.body.scope).toBe('in_city')
     expect(res.body.cityName).toBe('Bhubaneswar')
@@ -35,7 +52,7 @@ describe('GET /api/v1/geo/classify-trip — findContainingCity ordering (T3)', (
     // origin, not an arbitrary row Postgres happens to return first.
     const res2 = await request(app).get(
       '/api/v1/geo/classify-trip?originLat=20.4686&originLng=85.883&destLat=20.46&destLng=85.88'
-    )
+    ).set('Authorization', `Bearer ${token}`)
     expect(res2.status, JSON.stringify(res2.body)).toBe(200)
     expect(res2.body.scope).toBe('in_city')
     expect(res2.body.cityName).toBe('Cuttack')
@@ -46,7 +63,7 @@ describe('GET /api/v1/geo/classify-trip — findContainingCity ordering (T3)', (
     // Two points solidly inside its bbox (85.8064-85.8708, 19.7893-19.8256).
     const res = await request(app).get(
       '/api/v1/geo/classify-trip?originLat=19.810&originLng=85.830&destLat=19.815&destLng=85.835'
-    )
+    ).set('Authorization', `Bearer ${token}`)
     expect(res.status, JSON.stringify(res.body)).toBe(200)
     expect(res.body.scope).toBe('outstation')
     expect(res.body.cityId).toBeNull()
@@ -58,7 +75,7 @@ describe('GET /api/v1/geo/classify-trip — findContainingCity ordering (T3)', (
     // status filter didn't break the unambiguous case.
     const res = await request(app).get(
       '/api/v1/geo/classify-trip?originLat=22.25&originLng=84.85&destLat=22.26&destLng=84.86'
-    )
+    ).set('Authorization', `Bearer ${token}`)
     expect(res.status, JSON.stringify(res.body)).toBe(200)
     expect(res.body.scope).toBe('in_city')
     expect(res.body.cityName).toBe('Rourkela')

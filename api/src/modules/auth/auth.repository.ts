@@ -67,6 +67,18 @@ export async function upsertDriver(phone: string): Promise<DriverRecord> {
   return rows[0]!
 }
 
+// True when the principal is a participant in a ride that is under way. Column name is one of two hardcoded literals.
+export async function hasLiveRide(role: PrincipalRole, id: bigint): Promise<boolean> {
+  const column = role === 'driver' ? 'driver_id' : 'user_id'
+  const rows = await query<{ one: number }>(
+    `SELECT 1 AS one FROM rides
+      WHERE ${column} = $1 AND status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
+      LIMIT 1`,
+    [id.toString()]
+  )
+  return rows.length > 0
+}
+
 // ── Admins ────────────────────────────────────────────────────────────────────
 
 export async function findAdminByEmail(email: string): Promise<AdminDbRow | null> {

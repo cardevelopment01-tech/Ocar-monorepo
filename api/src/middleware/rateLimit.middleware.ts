@@ -97,6 +97,22 @@ const authStore = redisStore('rl:auth:')
 if (authStore !== undefined) authLimiterOptions.store = authStore
 export const authLimiter = rateLimit(authLimiterOptions)
 
+// Google-backed geo endpoints (autocomplete, place, reverse, route): each call can cost real money, so they are
+// throttled per principal well below the general 600/min. Autocomplete fires per keystroke, hence not tiny.
+const geoLimiterOptions: Parameters<typeof rateLimit>[0] = {
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: skipInTest,
+  passOnStoreError: true,
+  keyGenerator: (req) => `geo:${principalKey(req)}`,
+  message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
+}
+const geoStore = redisStore('rl:geo:')
+if (geoStore !== undefined) geoLimiterOptions.store = geoStore
+export const geoLimiter = rateLimit(geoLimiterOptions)
+
 // Per (principal, ride) chat-send throttle. express-rate-limit is a fixed-window
 // counter, so this caps ~5 sends/second/ride rather than a true "burst 5 then
 // 1/sec" token bucket — close enough, and it reuses the existing middleware

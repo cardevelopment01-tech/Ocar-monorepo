@@ -12,9 +12,28 @@ export function clampTripHours(rideType: string, tripHours: number | undefined):
   return tripHours ?? 0
 }
 
+// The fare engine has no guards of its own, so absurd inputs (NaN, negatives, 1e9 hours) either produced
+// nonsense quotes or overflowed a NUMERIC column. Ranges are generous for an intercity product; they only exist
+// to refuse impossible numbers.
+function assertFareInputsInRange(req: FareEstimateRequest): void {
+  // A field that is absent is left to the existing handling (rental quotes may omit distance); one that is
+  // present must be a sane finite number.
+  const bad = (v: unknown, max: number) => v !== undefined && !(typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max)
+  if (
+    bad(req.distance_km, 2000) ||
+    bad(req.duration_min, 60 * 72) ||
+    bad(req.stop_count, 10) || (req.stop_count !== undefined && !Number.isInteger(req.stop_count)) ||
+    bad(req.trip_hours, 24 * 30)
+  ) {
+    throw Object.assign(new Error('Trip distance, duration, stops or hours are out of range'), { httpStatus: 422, appCode: 'VALIDATION_ERROR' })
+  }
+}
+
 export async function getFareEstimate(
   req: FareEstimateRequest
 ): Promise<FareEstimateResponse> {
+  assertFareInputsInRange(req)
+
   // These lookups are independent of each other — run them concurrently
   // instead of paying sequential round trips.
   const [rateCard, surgeEvent, pkg] = await Promise.all([

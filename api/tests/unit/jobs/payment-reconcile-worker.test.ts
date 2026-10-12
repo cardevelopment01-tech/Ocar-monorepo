@@ -8,8 +8,10 @@ vi.mock('@/modules/payments/payments.service', () => ({
   reconcilePendingRidePayments: vi.fn(),
   reconcilePendingPayuPurchases: vi.fn(),
 }))
+vi.mock('@/modules/rides/rides.service', () => ({ settleStrandedRideCompletions: vi.fn().mockResolvedValue(0) }))
 
 import * as svc from '@/modules/payments/payments.service'
+import * as rides from '@/modules/rides/rides.service'
 import { runPaymentReconcile } from '@/jobs/workers/payment-reconcile.worker'
 
 describe('payment-reconcile worker', () => {
@@ -19,7 +21,16 @@ describe('payment-reconcile worker', () => {
     await runPaymentReconcile()
     expect(svc.reconcilePendingRidePayments).toHaveBeenCalledTimes(1)
     expect(svc.reconcilePendingPayuPurchases).toHaveBeenCalledTimes(1)
+    expect(rides.settleStrandedRideCompletions).toHaveBeenCalledTimes(1)
     expect(error).not.toHaveBeenCalled()
+  })
+
+  it('a failing stranded-ride sweep is logged, not thrown, and the other sweeps still ran', async () => {
+    vi.mocked(rides.settleStrandedRideCompletions).mockRejectedValueOnce(new Error('db down'))
+    await expect(runPaymentReconcile()).resolves.toBeUndefined()
+    expect(svc.reconcilePendingRidePayments).toHaveBeenCalledTimes(1)
+    expect(svc.reconcilePendingPayuPurchases).toHaveBeenCalledTimes(1)
+    expect(error).toHaveBeenCalledTimes(1)
   })
 
   it('a failing ride sweep does not skip the purchase sweep', async () => {

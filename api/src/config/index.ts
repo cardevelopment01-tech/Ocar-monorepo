@@ -119,6 +119,11 @@ const envSchema = z.object({
   // Demo — set DEMO_MODE=true on staging/demo VPS to unlock demo-force endpoints
   DEMO_MODE: z.enum(['true', 'false']).default('false'),
 
+  // Staging / load-test / smoke environments run NODE_ENV=production but may deliberately have no SMS vendor
+  // credentials. Setting this to 'true' lets them boot with the dev SMS bypass (messages are not sent, OTPs are not
+  // logged). Real production must leave it unset.
+  ALLOW_DEV_SMS: z.enum(['true', 'false']).default('false'),
+
   // Logging — 'info' in prod keeps GPS-ping-path debug logs compiled out;
   // bump to 'debug' locally when tracing socket/queue correlation.
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
@@ -133,6 +138,15 @@ export const envSchemaChecked = envSchema.superRefine((env, ctx) => {
   }
   if (env.DB_AUTH_MODE === 'secrets-manager' && (!env.DB_HOST || !env.DB_NAME || !env.DB_USER || !env.DB_SECRET_ARN)) {
     ctx.addIssue({ code: 'custom', path: ['DB_SECRET_ARN'], message: 'DB_HOST, DB_NAME, DB_USER, DB_SECRET_ARN all required when DB_AUTH_MODE=secrets-manager' })
+  }
+  // Empty SMS credentials switch sendSms() into a dev mode that logs the message (the OTP) and reports success,
+  // so a missing secret in production would silently ship every login code to the log pipeline instead of the user.
+  if (
+    env.NODE_ENV === 'production' &&
+    env.ALLOW_DEV_SMS !== 'true' &&
+    (!env.BULKSMSPLANS_API_ID || !env.BULKSMSPLANS_API_PASSWORD)
+  ) {
+    ctx.addIssue({ code: 'custom', path: ['BULKSMSPLANS_API_ID'], message: 'BULKSMSPLANS_API_ID and BULKSMSPLANS_API_PASSWORD required in production (empty values enable the dev SMS bypass; set ALLOW_DEV_SMS=true only for a non-production environment)' })
   }
   if (env.NODE_ENV === 'production') {
     if (!env.PAYU_KEY || !env.PAYU_SALT) {

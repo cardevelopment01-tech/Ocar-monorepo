@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
+// The claim + settlement now run on ONE transaction client (so a mid-settlement failure rolls the claim back).
+const fakeClient = { query: vi.fn(), release: vi.fn() }
+vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn(() => Promise.resolve(fakeClient)) } }))
 vi.mock('@/db/redis', () => ({ client: { del: vi.fn() } }))
 vi.mock('@/lib/otp', () => ({ generateOtp: vi.fn(() => '1234'), hashOtp: vi.fn(() => 'h') }))
 vi.mock('@/websocket/socket.server', () => ({
@@ -27,6 +29,7 @@ vi.mock('@/lib/system-config', () => ({ getConfigValue: vi.fn().mockResolvedValu
 vi.mock('@/modules/notifications/notifications.service', () => ({
   notifyRidePaymentFailed: vi.fn().mockResolvedValue(undefined),
   notifyAllAdmins:         vi.fn().mockResolvedValue(undefined),
+  notifyDriverLowWalletBalance: vi.fn().mockResolvedValue(undefined),
 }))
 
 import * as repo from '@/modules/rides/rides.repository'
@@ -48,12 +51,10 @@ function baseRide(over: Record<string, unknown> = {}) {
 describe('collectCash', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // fare_snapshots lookup → 480; UPDATE rides (claim) → rowCount 1 (claim won)
-    vi.mocked(pool.query).mockImplementation((sql: unknown) =>
-      /UPDATE rides/.test(sql as string)
-        ? ({ rows: [], rowCount: 1 } as never)
-        : ({ rows: [{ amount: '480.00' }], rowCount: 1 } as never),
-    )
+    // pool.query: fare_snapshots lookup → 480. The transaction client: BEGIN/COMMIT ok, claim UPDATE → rowCount 1.
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ amount: '480.00' }], rowCount: 1 } as never)
+    fakeClient.query.mockReset()
+    fakeClient.query.mockResolvedValue({ rows: [], rowCount: 1 })
     vi.mocked(getConfigValue).mockResolvedValue('1')
   })
 
@@ -63,14 +64,18 @@ describe('collectCash', () => {
 
     expect(res).toEqual({ collected: 480, discrepancy: false })
 
-    // UPDATE rides sets amount 480 + discrepancy false
-    const upd = vi.mocked(pool.query).mock.calls.find(c => /UPDATE rides/.test(c[0] as string))
+    // UPDATE rides sets amount 480 + discrepancy false, on the transaction client
+    const upd = fakeClient.query.mock.calls.find(c => /UPDATE rides/.test(c[0] as string))
     expect(upd).toBeTruthy()
     expect(upd![1]).toEqual([BigInt(101), 480, false, null])
 
-    expect(pay.createPaymentRecord).toHaveBeenCalledWith(BigInt(101), 'cash_direct')
-    expect(pay.deductCommission).toHaveBeenCalledWith(BigInt(101), BigInt(9))
-    expect(pay.creditCashback).toHaveBeenCalledWith(BigInt(101), BigInt(42), 480)
+    // Settlement shares the claim's transaction (last arg = the client), then commits once.
+    expect(pay.createPaymentRecord).toHaveBeenCalledWith(BigInt(101), 'cash_direct', {}, fakeClient)
+    expect(pay.deductCommission).toHaveBeenCalledWith(BigInt(101), BigInt(9), fakeClient)
+    expect(pay.creditCashback).toHaveBeenCalledWith(BigInt(101), BigInt(42), 480, fakeClient)
+    const sqls = fakeClient.query.mock.calls.map(c => c[0] as string)
+    expect(sqls.filter(s => s === 'COMMIT').length).toBe(1)
+    expect(sqls).not.toContain('ROLLBACK')
     expect(notifyAllAdmins).not.toHaveBeenCalled()
   })
 
@@ -80,13 +85,13 @@ describe('collectCash', () => {
 
     expect(res).toEqual({ collected: 300, discrepancy: true })
 
-    const upd = vi.mocked(pool.query).mock.calls.find(c => /UPDATE rides/.test(c[0] as string))
+    const upd = fakeClient.query.mock.calls.find(c => /UPDATE rides/.test(c[0] as string))
     expect(upd![1]).toEqual([BigInt(101), 300, true, 'rider short'])
 
     // commission is fare-based regardless of shortfall
-    expect(pay.createPaymentRecord).toHaveBeenCalledWith(BigInt(101), 'cash_direct')
-    expect(pay.deductCommission).toHaveBeenCalledWith(BigInt(101), BigInt(9))
-    expect(pay.creditCashback).toHaveBeenCalledWith(BigInt(101), BigInt(42), 480)
+    expect(pay.createPaymentRecord).toHaveBeenCalledWith(BigInt(101), 'cash_direct', {}, fakeClient)
+    expect(pay.deductCommission).toHaveBeenCalledWith(BigInt(101), BigInt(9), fakeClient)
+    expect(pay.creditCashback).toHaveBeenCalledWith(BigInt(101), BigInt(42), 480, fakeClient)
     expect(notifyAllAdmins).toHaveBeenCalled()
   })
 
@@ -95,9 +100,9 @@ describe('collectCash', () => {
     const res = await collectCash(BigInt(9), BigInt(101), { notCollected: true, note: 'no cash' })
 
     expect(res).toEqual({ collected: 0, discrepancy: true })
-    const upd = vi.mocked(pool.query).mock.calls.find(c => /UPDATE rides/.test(c[0] as string))
+    const upd = fakeClient.query.mock.calls.find(c => /UPDATE rides/.test(c[0] as string))
     expect(upd![1]).toEqual([BigInt(101), 0, true, 'no cash'])
-    expect(pay.deductCommission).toHaveBeenCalledWith(BigInt(101), BigInt(9))
+    expect(pay.deductCommission).toHaveBeenCalledWith(BigInt(101), BigInt(9), fakeClient)
     expect(notifyAllAdmins).toHaveBeenCalled()
   })
 
@@ -117,17 +122,28 @@ describe('collectCash', () => {
     vi.mocked(repo.getRideCoreById)
       .mockResolvedValueOnce(baseRide() as never) // first read: unsettled
       .mockResolvedValueOnce(baseRide({ cash_collected_amount: '480.00', cash_discrepancy: false, cash_collected_at: 'x' }) as never) // fresh read after lost claim
-    vi.mocked(pool.query).mockImplementation((sql: unknown) =>
-      /UPDATE rides/.test(sql as string)
-        ? ({ rows: [], rowCount: 0 } as never)   // claim lost
-        : ({ rows: [{ amount: '480.00' }], rowCount: 1 } as never),
+    fakeClient.query.mockImplementation((sql: unknown) =>
+      Promise.resolve(/UPDATE rides/.test(sql as string) ? { rows: [], rowCount: 0 } : { rows: [], rowCount: 1 }), // claim lost
     )
 
     const res = await collectCash(BigInt(9), BigInt(101), { collectedAmount: 480 })
     expect(res).toEqual({ collected: 480, discrepancy: false })
+    expect(fakeClient.query.mock.calls.map(c => c[0])).toContain('ROLLBACK')
     expect(pay.createPaymentRecord).not.toHaveBeenCalled()
     expect(pay.deductCommission).not.toHaveBeenCalled()
     expect(pay.creditCashback).not.toHaveBeenCalled()
+  })
+
+  it('a settlement failure ROLLS BACK the claim, so the driver can retry (commission is never skipped)', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(baseRide() as never)
+    vi.mocked(pay.deductCommission).mockRejectedValueOnce(new Error('db blip'))
+
+    await expect(collectCash(BigInt(9), BigInt(101), { collectedAmount: 480 })).rejects.toThrow('db blip')
+
+    const sqls = fakeClient.query.mock.calls.map(c => c[0] as string)
+    expect(sqls).toContain('ROLLBACK')
+    expect(sqls).not.toContain('COMMIT') // cash_collected_at was never committed
+    expect(fakeClient.release).toHaveBeenCalled()
   })
 
   it('rejects non-owner driver with 403', async () => {

@@ -417,6 +417,35 @@ jobs:
           done
           echo "result=failed" >> "$GITHUB_OUTPUT"
 
+      - name: Verify Alloy (telemetry agent) is healthy on the idle color
+        id: alloy
+        if: steps.wait.outputs.result == 'success'
+        run: |
+          set +e
+          # Telemetry must be working before this color takes traffic -- a bad
+          # alloy-config would otherwise cut over with logs/metrics silently
+          # dark. /-/ready (docker healthcheck) only needs the config to load,
+          # not Grafana to be reachable, so a Grafana outage can't block deploys.
+          ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:aws:autoscaling:groupName,Values=${{ steps.colors.outputs.idle_asg }}" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          if [ -z "$ID" ] || [ "$ID" = "None" ]; then echo "result=failed" >> "$GITHUB_OUTPUT"; exit 0; fi
+          cat > /tmp/alloy-check.json <<'EOF2'
+          {"commands": ["docker inspect --format '{{.State.Health.Status}}' ocar_alloy"]}
+          EOF2
+          for i in $(seq 1 12); do
+            CMD_ID=$(aws ssm send-command --instance-ids "$ID" --document-name AWS-RunShellScript \
+              --comment "alloy health gate" --parameters file:///tmp/alloy-check.json \
+              --query 'Command.CommandId' --output text)
+            sleep 8
+            OUT=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$ID" \
+              --query 'StandardOutputContent' --output text 2>/dev/null | tr -d '[:space:]')
+            echo "alloy health on $ID: ${OUT:-unknown}"
+            if [ "$OUT" = "healthy" ]; then echo "result=success" >> "$GITHUB_OUTPUT"; exit 0; fi
+            sleep 7
+          done
+          echo "result=failed" >> "$GITHUB_OUTPUT"
+
       # 10 harmless checks (.github/scripts/api_smoke.py): health (db + redis), a public read,
       # request validation, auth middleware on wallet/rides/admin, and the PayU money routes
       # (SDK signer + confirm, return redirect, webhook ack). This replaces a single cities
@@ -424,7 +453,7 @@ jobs:
       # color only; a failure rolls the idle color back with nothing user-facing changed.
       - name: Smoke-test the idle color directly through the ALB (preview header)
         id: smoke
-        if: steps.wait.outputs.result == 'success'
+        if: steps.alloy.outputs.result == 'success'
         run: |
           set +e
           if python3 .github/scripts/api_smoke.py "$ALB_DNS_NAME" "$SMOKE_TEST_HOST" "${{ steps.colors.outputs.idle }}"; then
@@ -434,7 +463,7 @@ jobs:
           fi
 
       - name: Roll back idle color on failed health-check/smoke-test (nothing user-facing ever changed)
-        if: steps.wait.outputs.result != 'success' || steps.smoke.outputs.result != 'success'
+        if: steps.wait.outputs.result != 'success' || steps.alloy.outputs.result != 'success' || steps.smoke.outputs.result != 'success'
         run: |
           echo "Idle color (${{ steps.colors.outputs.idle }}) failed to come up cleanly -- scaling it back down, active color was never touched." >&2
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 0

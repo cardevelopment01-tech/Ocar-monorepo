@@ -67,6 +67,7 @@ describe('verifyEndOTP — payment channel branch', () => {
     // fare_snapshots amount lookup + any other pool.query → generic amount row
     vi.mocked(pool.query).mockResolvedValue({ rows: [{ amount: '500.00' }], rowCount: 1 } as never)
     vi.mocked(repo.updateRideStatus).mockResolvedValue(undefined as never)
+    vi.mocked(repo.updateRideStatusCAS).mockResolvedValue({ id: 1n } as never)
     vi.mocked(repo.logStatusHistory).mockResolvedValue(undefined as never)
     vi.mocked(getConfigValue).mockResolvedValue('true')
     // verifyEndOTP now fetches via getRideForDriverAction; mirror whatever each

@@ -3,15 +3,19 @@ import type { PoolClient } from 'pg'
 import { httpError, createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { client as redis } from '@/db/redis'
+import { withTimeout } from '@/lib/with-timeout'
 import { startOtpKey, endOtpKey, activeRideByDriverKey, rideAckKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
+import crypto from 'crypto'
+import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
 import * as repo from './rides.repository'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
-import { queues, QUEUE_NAMES, gpsFlushQueue } from '@/jobs/queues'
+import { queues, QUEUE_NAMES } from '@/jobs/queues'
+import { enqueueBreadcrumb } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
 import { generateOtp, hashOtp, deriveRideEndOtp, checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
 import {
@@ -36,7 +40,7 @@ import {
   getDriverWallet,
   getMinWalletBalance,
 } from '@/modules/payments/payments.service'
-import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner } from '@/modules/notifications/notifications.service'
+import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
@@ -181,6 +185,29 @@ export async function goOnline(driverId: bigint, data: {
   // package-mode: no gate here — a zero/negative package balance only blocks
   // new ride offers (see findNearbyDrivers/findReturnCabDrivers), not going online.
 
+  // vehicleId/categoryId come straight from the client. A session's category decides which rides the driver is
+  // offered and at what fare class, so the vehicle must be the driver's own and the category is taken from IT —
+  // otherwise a driver in a basic car could go online as a premium category (or use someone else's vehicle).
+  const vehicleRes = await pool.query<{ category_id: string | null }>(
+    `SELECT category_id::text FROM driver_vehicles
+      WHERE id = $1 AND driver_id = $2 AND status <> 'blacklisted'`,
+    [data.vehicleId, driverId]
+  )
+  const vehicle = vehicleRes.rows[0]
+  if (!vehicle) {
+    throw httpError(422, 'That vehicle is not available on your account', 'VEHICLE_NOT_ELIGIBLE')
+  }
+  // driver_vehicles.category_id is nullable. A vehicle with no category cannot be trusted to pick one: falling back
+  // to the client's categoryId would let it claim any class (e.g. premium) — the exact hole this check closes.
+  if (vehicle.category_id === null) {
+    throw httpError(422, 'Your vehicle has no category assigned yet. Contact support.', 'VEHICLE_NOT_ELIGIBLE')
+  }
+  if (vehicle.category_id !== data.categoryId.toString()) {
+    log.warn({ driverId, vehicleId: data.vehicleId, claimed: data.categoryId, actual: vehicle.category_id },
+      'goOnline category differs from the vehicle category — using the vehicle category')
+    data.categoryId = BigInt(vehicle.category_id)
+  }
+
   const existing = await repo.getActiveSession(driverId)
   if (existing) {
     if (existing.status === 'on_trip') {
@@ -283,13 +310,23 @@ export async function resumeAvailability(driverId: bigint): Promise<void> {
   await repo.setDriverAvailability(driverId, true)
 }
 
-// Last raw ping per driver, so each new ping can be road-snapped together with
-// its predecessor (the exact hop where a straight chord would cut through a
-// building/lake, or across a turn) — keyed by driverId (a small, slowly-growing
-// set), not rideId, so it never leaks memory across completed rides.
-const lastRawPingByDriver = new Map<string, { lat: number; lng: number }>()
+// Per-driver state for the live trail. Keyed by driverId (a small, slowly-growing set) and cleared the moment a
+// driver has no active ride, so it never accumulates across completed rides.
+interface TrailState { rideId: string; points: Array<{ lat: number; lng: number }>; lastSnapAt: number; snapping: boolean }
+const trailByDriver = new Map<string, TrailState>()
+const lastAdminBroadcastAt = new Map<string, number>()
 
 const ACTIVE_RIDE_CACHE_TTL_SEC = 10
+// Road-snapping is the one paid per-call step in the ping path (Google Roads is billed per request). Pings used to
+// snap every hop (~1,200 calls per ride-hour); they are now collected and snapped in one request per interval, and
+// the live marker uses the raw fix so the rider's map is never waiting on a paid API call.
+const TRAIL_SNAP_INTERVAL_MS = 20_000
+const TRAIL_MAX_POINTS = 40 // well under the Roads API's 100-point limit
+// The admin live map doesn't need every 3 s ping: one update per driver per interval keeps it smooth while
+// cutting the fan-out to every connected admin socket.
+const ADMIN_BROADCAST_MIN_INTERVAL_MS = 5_000
+// recorded_at is the gps_tracks partition key and the snapshot ordering key, and comes from the device clock.
+const MAX_PING_CLOCK_SKEW_MS = 10 * 60 * 1000
 
 export async function updateLocation(driverId: bigint, data: {
   sessionId: bigint
@@ -299,81 +336,125 @@ export async function updateLocation(driverId: bigint, data: {
   speed?: number
   recordedAt: string
 }) {
+  const inRange = (v: unknown, min: number, max: number): v is number =>
+    typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max
+  if (!inRange(data.lat, -90, 90) || !inRange(data.lng, -180, 180)) {
+    throw httpError(422, 'Invalid coordinates', 'VALIDATION_ERROR')
+  }
+  const heading = inRange(data.heading, 0, 360) ? data.heading : undefined
+  const speed   = inRange(data.speed, 0, 400) ? data.speed : undefined
+  // A wildly wrong device clock would otherwise fail the partition insert (or pin the snapshot in the future so
+  // every later ping looks "stale"): trust it only within a window, else stamp server time.
+  const reportedMs = Date.parse(data.recordedAt)
+  const recordedAt = Number.isFinite(reportedMs) && Math.abs(reportedMs - Date.now()) <= MAX_PING_CLOCK_SKEW_MS
+    ? new Date(reportedMs).toISOString()
+    : new Date().toISOString()
+
   const locationInput: Parameters<typeof repo.upsertDriverLocation>[0] = {
     driverId,
     sessionId:   data.sessionId,
     lat:         data.lat,
     lng:         data.lng,
-    recordedAt:  data.recordedAt,
+    recordedAt,
     isAvailable: true,
   }
-  if (data.heading !== undefined) locationInput.heading = data.heading
-  if (data.speed   !== undefined) locationInput.speed   = data.speed
-  await repo.upsertDriverLocation(locationInput)
+  if (heading !== undefined) locationInput.heading = heading
+  if (speed   !== undefined) locationInput.speed   = speed
+  if (!(await repo.upsertDriverLocation(locationInput))) {
+    throw httpError(403, 'That session does not belong to this driver', 'SESSION_MISMATCH')
+  }
 
-  socketEvents.sendAdminDriverUpdate({
-    driverId: driverId.toString(),
-    lat:      data.lat,
-    lng:      data.lng,
-    heading:  data.heading ?? 0,
-    speed:    data.speed   ?? 0,
-  })
+  const driverKey = driverId.toString()
+  const now = Date.now()
+  if (now - (lastAdminBroadcastAt.get(driverKey) ?? 0) >= ADMIN_BROADCAST_MIN_INTERVAL_MS) {
+    lastAdminBroadcastAt.set(driverKey, now)
+    if (lastAdminBroadcastAt.size > 10_000) {
+      for (const [k, t] of lastAdminBroadcastAt) if (now - t > 60_000) lastAdminBroadcastAt.delete(k)
+    }
+    socketEvents.sendAdminDriverUpdate({
+      driverId: driverKey,
+      lat:      data.lat,
+      lng:      data.lng,
+      heading:  heading ?? 0,
+      speed:    speed   ?? 0,
+    })
+  }
 
   // Emit live location to the user's tracking page. This query runs on every
   // GPS ping (every ~3s per online driver), so the result is cached with a
   // short TTL — worst case a status change (accept/complete/cancel) takes up
   // to ACTIVE_RIDE_CACHE_TTL_SEC to be reflected, which just delays/extends
   // live tracking emission by that long, never breaks correctness elsewhere.
-  const activeRideCacheKey = activeRideByDriverKey(driverId.toString())
-  let rideId = await redis.get(activeRideCacheKey)
+  const activeRideCacheKey = activeRideByDriverKey(driverKey)
+  // Cache only: a slow/down Redis falls through to the DB query instead of failing the GPS ping.
+  let rideId = await withTimeout(redis.get(activeRideCacheKey)).catch(() => null)
   if (rideId === null) {
     const activeRideRes = await pool.query<{ id: string }>(
       `SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress','returning') LIMIT 1`,
       [driverId]
     )
     rideId = activeRideRes.rows[0]?.id ?? ''
-    await redis.set(activeRideCacheKey, rideId, 'EX', ACTIVE_RIDE_CACHE_TTL_SEC)
+    await withTimeout(redis.set(activeRideCacheKey, rideId, 'EX', ACTIVE_RIDE_CACHE_TTL_SEC)).catch(() => undefined)
   }
-  if (rideId) {
-    const current = { lat: data.lat, lng: data.lng }
-    const prevPing = lastRawPingByDriver.get(driverId.toString())
-    lastRawPingByDriver.set(driverId.toString(), current)
 
-    // Road-snap this hop (previous raw ping -> this one) so both the live driver
-    // marker and the rider's trail line follow real roads instead of a straight
-    // GPS chord — this is the exact segment that cuts through a building/lake or
-    // clips a turn. Fire-and-forget: a slow/failed Roads API call must never
-    // delay this response or the driver's location-update loop.
-    void (async () => {
-      const points = prevPing ? await snapTrailToRoads([prevPing, current]) : [current]
-      const marker = points[points.length - 1] ?? current
-      socketEvents.sendDriverLocation(rideId, {
-        lat:        marker.lat,
-        lng:        marker.lng,
-        heading:    data.heading ?? 0,
-        speed_kmph: data.speed ?? 0,
-      })
-      socketEvents.sendTrailSegment(rideId, points)
-    })().catch(() => {})
-
-    // Async GPS track write — best-effort, does not block the response
-    gpsFlushQueue.add('gps_track', {
-      rideId,
-      driverId:  driverId.toString(),
-      sessionId: data.sessionId.toString(),
-      lat:       data.lat,
-      lng:       data.lng,
-      heading:   data.heading,
-      speed:     data.speed,
-      recordedAt: data.recordedAt,
-    }, { removeOnComplete: 200, removeOnFail: 50 }).catch(() => {})
+  if (!rideId) {
+    trailByDriver.delete(driverKey)
+    return
   }
+
+  const current = { lat: data.lat, lng: data.lng }
+  socketEvents.sendDriverLocation(rideId, {
+    lat:        current.lat,
+    lng:        current.lng,
+    heading:    heading ?? 0,
+    speed_kmph: speed ?? 0,
+  })
+
+  let trail = trailByDriver.get(driverKey)
+  if (!trail || trail.rideId !== rideId) {
+    trail = { rideId, points: [current], lastSnapAt: now, snapping: false }
+    trailByDriver.set(driverKey, trail)
+  } else {
+    trail.points.push(current)
+    if (trail.points.length > TRAIL_MAX_POINTS) trail.points.splice(0, trail.points.length - TRAIL_MAX_POINTS)
+  }
+  if (!trail.snapping && trail.points.length >= 2 && now - trail.lastSnapAt >= TRAIL_SNAP_INTERVAL_MS) {
+    const batch = trail.points
+    trail.points = [current] // next segment starts where this one ends, so the line stays continuous
+    trail.lastSnapAt = now
+    trail.snapping = true
+    const state = trail
+    // Fire-and-forget: a slow/failed Roads call must never delay this response or the driver's ping loop.
+    void snapTrailToRoads(batch)
+      .then(snapped => socketEvents.sendTrailSegment(state.rideId, snapped))
+      .catch(() => undefined)
+      .finally(() => { state.snapping = false })
+  }
+
+  // Buffered, batched write — see lib/gps-buffer.ts.
+  const breadcrumb: import('@/modules/geo/geo.types').GpsTrackPayload = {
+    ride_id:     rideId,
+    session_id:  data.sessionId.toString(),
+    driver_id:   driverKey,
+    latitude:    data.lat,
+    longitude:   data.lng,
+    recorded_at: recordedAt,
+  }
+  if (heading !== undefined) breadcrumb.heading = heading
+  if (speed   !== undefined) breadcrumb.speed_kmph = speed
+  enqueueBreadcrumb(breadcrumb)
 }
 
 // Strips the *other* party's raw phone number before a ride row leaves the
 // API — the rider must never see the driver's number and vice versa (admin
 // ops views are exempt). Applied at the route boundary, not the repository,
 // so the numbers are still available server-side for SMS/notification jobs.
+// Stable per-driver reference that is safe to show to riders: derived with a server secret, so it can't be
+// reversed or enumerated into real driver ids.
+export function publicDriverRef(driverId: string): string {
+  return crypto.createHmac('sha256', config.JWT_REFRESH_SECRET).update(`nearby-driver:${driverId}`).digest('hex').slice(0, 12)
+}
+
 export function maskRideContacts<T extends {
   user_phone?: string | null
   rider_phone?: string | null
@@ -382,16 +463,100 @@ export function maskRideContacts<T extends {
   commission_amount?: string | null
   driver_earning?: string | null
 }>(ride: T, viewer: 'user' | 'driver' | 'admin'): T {
-  if (viewer === 'admin') return ride
+  // Ride OTP hashes are 4-digit SHA-256: whoever holds one recovers the code instantly, which would let a
+  // driver start/end a trip without the rider. They never leave the API, for any viewer.
+  const { start_otp_hash: _s, end_otp_hash: _e, ...rest } = ride as T & { start_otp_hash?: unknown; end_otp_hash?: unknown }
+  const base = rest as unknown as T
+  if (viewer === 'admin') return base
   if (viewer === 'user') {
     // Commission/earning are the driver's business, not the rider's — strip
     // them here rather than gating in every route handler that calls this.
-    return { ...ride, driver_phone: null, commission_percent: null, commission_amount: null, driver_earning: null }
+    return { ...base, driver_phone: null, commission_percent: null, commission_amount: null, driver_earning: null }
   }
-  return { ...ride, user_phone: null, rider_phone: null }
+  return { ...base, user_phone: null, rider_phone: null }
 }
 
 // ── Ride booking ──────────────────────────────────────────────
+
+// Upper bounds on what a booking may claim. Generous for an Odisha intercity product; they exist so a
+// tampered request cannot feed absurd numbers into the fare engine (which has no guards of its own).
+const MAX_BOOKING_KM = 2000
+const MAX_BOOKING_MINUTES = 60 * 72
+const MAX_BOOKING_TRIP_HOURS = 24 * 30
+const DISTANCE_TOLERANCE = 0.15
+// Same factor google.provider's straight-line fallback uses to turn crow-flies into a road estimate.
+const ROAD_FACTOR = 1.3
+
+// The client-supplied distance/duration ARE the bill for one-way and rental (total_final = total_estimated at
+// completion), so they must never be trusted as sent. This validates them, then re-derives the distance from the
+// pickup -> stops -> drop path on the server and corrects the request when the client is outside a 15% band.
+//
+// It used to run only for stop-less bookings and only when Google answered, so adding one free stop (or any
+// routing hiccup) let a modified client book a long trip at near the minimum fare. Now every leg of the path is
+// routed (legs are cached and single-flighted by getRoute); if Google is unavailable the straight-line length of
+// the path is a hard physical floor — a road can never be shorter than that — so the request is raised to it
+// instead of being believed. Correct-don't-reject for staleness/rounding; reject only impossible numbers.
+export async function boundBookingDistance(data: BookingRequest, userId: bigint): Promise<void> {
+  const isFiniteIn = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max
+  const needsPositive = data.rideType !== 'rental'
+  if (
+    !isFiniteIn(data.distanceKm, needsPositive ? 0.1 : 0, MAX_BOOKING_KM) ||
+    !isFiniteIn(data.durationMin, needsPositive ? 1 : 0, MAX_BOOKING_MINUTES) ||
+    (data.tripHours !== undefined && !isFiniteIn(data.tripHours, 0, MAX_BOOKING_TRIP_HOURS))
+  ) {
+    throw httpError(422, 'Trip distance, duration or hours are out of range', 'VALIDATION_ERROR')
+  }
+
+  if (data.destinationLat === undefined || data.destinationLng === undefined) return
+
+  // Only a one-way fare is priced on the detour through its stops (per km). Round-trip and rental stops are a flat
+  // fee, and their quote (/pricing/estimate) is built on the direct pickup -> drop distance, so bounding them
+  // through the stops would re-price the booking above the fare the rider was shown.
+  const routeThroughStops = data.rideType === 'one_way'
+  const path = [
+    { lat: data.originLat, lng: data.originLng },
+    ...(routeThroughStops ? (data.stops ?? []) : []).map(s => ({ lat: s.lat, lng: s.lng })),
+    { lat: data.destinationLat, lng: data.destinationLng },
+  ]
+  const legs = path.slice(1).map((to, i) => ({ from: path[i]!, to }))
+  const straightKm = legs.reduce((sum, l) => sum + distanceMetres(l.from.lat, l.from.lng, l.to.lat, l.to.lng) / 1000, 0)
+
+  let routed: { km: number; min: number } | null = null
+  try {
+    const results = await Promise.all(legs.map(l => getRoute(l.from.lat, l.from.lng, l.to.lat, l.to.lng)))
+    // Any degraded leg makes the sum no better than a straight-line guess: don't treat it as authoritative.
+    if (results.every(r => r.source !== 'fallback')) {
+      routed = { km: results.reduce((a, r) => a + r.distanceKm, 0), min: results.reduce((a, r) => a + r.durationMin, 0) }
+    }
+  } catch (err) {
+    log.warn({ err, userId }, 'server route lookup failed during booking; using straight-line floor')
+  }
+
+  if (routed) {
+    const hi = routed.km * (1 + DISTANCE_TOLERANCE)
+    const lo = routed.km * (1 - DISTANCE_TOLERANCE)
+    if (data.distanceKm > hi || data.distanceKm < lo) {
+      log.warn(
+        { userId, clientDistanceKm: data.distanceKm, serverDistanceKm: routed.km, stops: data.stops?.length ?? 0 },
+        'Booking distance outside server tolerance — using server value'
+      )
+      data.distanceKm  = routed.km
+      data.durationMin = routed.min
+    }
+    return
+  }
+
+  if (data.distanceKm < straightKm) {
+    log.warn(
+      { userId, clientDistanceKm: data.distanceKm, straightKm, stops: data.stops?.length ?? 0 },
+      'Booking distance below the straight-line floor and routing unavailable — raising to a road estimate'
+    )
+    const estimateKm = Math.round(straightKm * ROAD_FACTOR * 10) / 10
+    // Keep duration consistent with the corrected distance (same 0.5 km/min the fallback route assumes).
+    data.durationMin = Math.max(data.durationMin, Math.round(estimateKm / 0.5))
+    data.distanceKm  = estimateKm
+  }
+}
 
 export async function createBooking(userId: bigint, data: BookingRequest) {
   // Only immediate bookings conflict with an existing active ride — a
@@ -478,44 +643,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   // fare_snapshots.trip_hours records the same value used to compute the fare.
   const effectiveTripHours = clampTripHours(data.rideType, data.tripHours)
 
-  // Server-side distance bound. For one-way/rental, the client-supplied distanceKm
-  // IS the bill (total_final = total_estimated at completion), so a tampered client
-  // could low-ball the fare. Re-derive the route server-side and clamp the client
-  // value to a 15% tolerance band. Correct-don't-reject: minor client rounding or
-  // staleness is normal, so we overwrite with the server number rather than failing
-  // the booking. Skipped when stops exist (getRoute is point-to-point and can't
-  // cheaply bound a multi-stop detour) or when Google was unreachable (a 'fallback'
-  // route is itself a straight-line guess, no more trustworthy than the client).
-  // ponytail: point-to-point bound only; add a waypoint-aware getRoute overload
-  // here if multi-stop fare abuse ever shows up in the data.
-  if (
-    data.destinationLat !== undefined &&
-    data.destinationLng !== undefined &&
-    (data.stops?.length ?? 0) === 0
-  ) {
-    try {
-      const serverRoute = await getRoute(
-        data.originLat, data.originLng, data.destinationLat, data.destinationLng
-      )
-      if (serverRoute.source !== 'fallback') {
-        const tolerance = 0.15
-        const hi = serverRoute.distanceKm * (1 + tolerance)
-        const lo = serverRoute.distanceKm * (1 - tolerance)
-        if (data.distanceKm > hi || data.distanceKm < lo) {
-          log.warn(
-            { userId, clientDistanceKm: data.distanceKm, serverDistanceKm: serverRoute.distanceKm },
-            'Booking distance outside server tolerance — using server value'
-          )
-          data.distanceKm  = serverRoute.distanceKm
-          data.durationMin = serverRoute.durationMin
-        }
-      }
-    } catch (err) {
-      // A routing outage must never block a booking — fall back to the client value,
-      // same posture as the 'fallback' source above.
-      log.warn({ err, userId }, 'server route lookup failed during booking; using client distance')
-    }
-  }
+  await boundBookingDistance(data, userId)
 
   // originCityId is client-supplied and unverified (URL params are tamperable) — the
   // pickup coordinates are what the client actually can't fake without lying about GPS,
@@ -560,7 +688,16 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     rideInput.scheduledFor = data.scheduledFor
     rideInput.status = 'scheduled'
   }
-  const ride = await repo.createRide(rideInput)
+  let ride
+  try {
+    ride = await repo.createRide(rideInput)
+  } catch (err) {
+    // rides_one_live_per_user_idx: a concurrent double-tap that slipped past the check above.
+    if ((err as { code?: string }).code === '23505') {
+      throw httpError(409, 'You already have an active ride', 'RIDE_ALREADY_ACTIVE')
+    }
+    throw err
+  }
 
   if (data.stops && data.stops.length > 0) {
     // Same rate card the fare above was quoted on, so each stop row and stop_fare agree.
@@ -822,23 +959,45 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
     throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
   }
 
-  const otp  = generateOtp(RIDE_OTP_LENGTH)
+  let otp  = generateOtp(RIDE_OTP_LENGTH)
   const hash = hashOtp(otp)
 
-  await repo.updateRideStatus(rideId, 'driver_arrived', {
+  // Compare-and-swap: only an accepted ride can become driver_arrived. An unconditional write here let
+  // POST /arrived re-open completed/cancelled rides and mint a fresh start OTP on a trip already under way.
+  const arrived = await repo.updateRideStatusCAS(rideId, 'accepted', 'driver_arrived', {
     driver_arrived_at: new Date().toISOString(),
     start_otp_hash:    hash,
   })
+  if (arrived) {
+    await repo.logStatusHistory({
+      rideId,
+      fromStatus: 'accepted',
+      toStatus:   'driver_arrived',
+      actor:      'driver',
+      actorId:    driverId,
+    })
+  } else {
+    // Lost the CAS. If the ride is already driver_arrived this is a RETRY (double tap, or a first attempt whose
+    // Redis write / response never landed). A plain 409 would strand a ride whose PIN was never delivered, but
+    // blindly minting a new PIN would invalidate the one the rider is already looking at. So: if the PIN is still
+    // in Redis, re-send THAT one; only when it is gone mint a fresh one (new hash, attempt counter cleared).
+    // Any other state is a real 409.
+    const current = await repo.getRideCoreForDriverAction(rideId, driverId)
+    if (current?.status !== 'driver_arrived') {
+      throw httpError(409, 'Ride is not awaiting the driver', 'RIDE_NOT_ACCEPTED')
+    }
+    const existingPin = await withTimeout(redis.get(startOtpKey(rideId.toString()))).catch(() => null)
+    if (existingPin) {
+      otp = existingPin
+    } else {
+      if (!(await repo.reissueStartOtpHash(rideId, hash))) {
+        throw httpError(409, 'Ride is not awaiting the driver', 'RIDE_NOT_ACCEPTED')
+      }
+      await clearRideOtpAttempts(rideId, 'start').catch(() => undefined)
+    }
+  }
 
-  await repo.logStatusHistory({
-    rideId,
-    fromStatus: 'accepted',
-    toStatus:   'driver_arrived',
-    actor:      'driver',
-    actorId:    driverId,
-  })
-
-  await redis.set(startOtpKey(rideId.toString()), otp, 'EX', 7200)
+  await withTimeout(redis.set(startOtpKey(rideId.toString()), otp, 'EX', 7200))
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status: 'driver_arrived',
@@ -914,10 +1073,11 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
 
   const endHash = hashOtp(deriveRideEndOtp(rideId))
 
-  await repo.updateRideStatus(rideId, 'in_progress', {
+  const started = await repo.updateRideStatusCAS(rideId, 'driver_arrived', 'in_progress', {
     started_at:   new Date().toISOString(),
     end_otp_hash: endHash,
   })
+  if (!started) throw httpError(409, 'Ride is not awaiting start', 'RIDE_NOT_ARRIVED')
 
   if (ride.dest_lat != null && ride.dest_lng != null) {
     void logEtaSnapshot(
@@ -935,7 +1095,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     actorId:    driverId,
   })
 
-  await redis.del(startOtpKey(rideId.toString()))
+  await withTimeout(redis.del(startOtpKey(rideId.toString())))
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status:    'in_progress',
@@ -960,7 +1120,7 @@ export async function getEndOtp(rideId: bigint): Promise<string> {
   const { rows } = await pool.query<{ end_otp_hash: string | null }>('SELECT end_otp_hash FROM rides WHERE id = $1', [rideId])
   const stored = rows[0]?.end_otp_hash ?? null
   if (stored === hashOtp(derived)) return derived
-  const legacy = await redis.get(endOtpKey(rideId.toString()))
+  const legacy = await withTimeout(redis.get(endOtpKey(rideId.toString())))
   if (legacy && stored === hashOtp(legacy)) return legacy
   await pool.query('UPDATE rides SET end_otp_hash = $2, updated_at = now() WHERE id = $1', [rideId, hashOtp(derived)])
   logger.warn({ rideId: rideId.toString() }, 'end OTP unrecoverable, reset to derived PIN')
@@ -1607,8 +1767,8 @@ export async function cancelRide(
   // (a genuine repeat cancel must always succeed).
   try {
     const key = `cancel:daily:user:${userId}`
-    const count = await redis.incr(key)
-    if (count === 1) await redis.expire(key, 86400)
+    const count = await withTimeout(redis.incr(key))
+    if (count === 1) await withTimeout(redis.expire(key, 86400))
     if (count > 5) {
       // ponytail: a structured warn log IS the flag (queryable in Loki). Promote to a
       // dedicated table / higher-fee tier only if ops needs richer reporting.
@@ -2029,7 +2189,7 @@ export async function adminAssignDriver(
   const timeoutSeconds = MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS
   const expiresAt = new Date(Date.now() + timeoutSeconds * 1000)
   await repo.createRideAssignment({ rideId, driverId, sessionId, expiresAt, broadcastRound: 0 })
-  await redis.set(rideAckKey(rideId.toString(), driverId.toString()), '1', 'EX', timeoutSeconds + 30)
+  await withTimeout(redis.set(rideAckKey(rideId.toString(), driverId.toString()), '1', 'EX', timeoutSeconds + 30))
 
   socketEvents.sendRideRequest(driverId.toString(), {
     rideId: rideId.toString(),
@@ -2139,7 +2299,9 @@ export async function forceAssignGraceCheck(rideId: bigint, driverId: bigint): P
 // ── Orphaned-ride sweep (cleanup worker) ────────────────────────
 
 export async function expireStaleRequestedRide(rideId: bigint) {
-  await repo.updateRideStatus(rideId, 'no_drivers')
+  // Only a ride that is still 'requested' may expire; one a driver accepted a moment ago must be left alone.
+  const expired = await repo.updateRideStatusCAS(rideId, 'requested', 'no_drivers')
+  if (!expired) return
   await repo.logStatusHistory({
     rideId,
     fromStatus: 'requested',
@@ -2278,7 +2440,7 @@ export async function verifyEndOTP(
   if (!valid) throw httpError(422, 'Invalid OTP', 'INVALID_OTP')
 
   await clearRideOtpAttempts(rideId, 'end')
-  await redis.del(endOtpKey(rideId.toString()))
+  await withTimeout(redis.del(endOtpKey(rideId.toString())))
 
   const completedAt = new Date().toISOString()
 
@@ -2292,13 +2454,17 @@ export async function verifyEndOTP(
     ? (new Date(completedAt).getTime() - new Date(ride.started_at).getTime()) / 60000
     : null
 
-  await repo.updateRideStatus(rideId, 'completed', {
+  // Single winner: two concurrent end-OTP submits both pass the status read above, but only one can flip the
+  // row out of in_progress/returning. The loser stops here, before any fare, session or settlement work, so a
+  // double tap can no longer complete (and settle) the same ride twice.
+  const completed = await repo.updateRideStatusCAS(rideId, ['in_progress', 'returning'], 'completed', {
     completed_at:        completedAt,
     actual_distance_km:  actualDistanceKm  ?? null,
     actual_duration_min: actualDurationMin ?? null,
     review_flagged_at:   null,
     review_reason:       null,
   })
+  if (!completed) throw httpError(409, 'Ride is not in progress', 'RIDE_NOT_IN_PROGRESS')
 
   await repo.logStatusHistory({
     rideId,
@@ -2690,6 +2856,55 @@ export async function settleRideCompletionPayment(
   await creditCashback(rideId, BigInt(rideData.user_id), fareAmount)
 }
 
+// Safety net for the fire-and-forget settlement kicked off by verifyEndOTP. If the process died (or the
+// handler threw) between marking a ride completed and creating its payment row, an online/wallet ride was never
+// charged and nothing else would ever notice: the payment reconcile only scans rows that already exist. Cash
+// rides are excluded on purpose (their payment row appears when the driver confirms collection).
+// settleRideCompletionPayment is safe to re-run: the payment insert is ON CONFLICT DO NOTHING and the wallet
+// debit dedupes on its ledger row.
+const STRANDED_SETTLE_COOLDOWN_SEC = 30 * 60
+
+export async function settleStrandedRideCompletions(): Promise<number> {
+  const res = await pool.query<{ id: string; driver_id: string }>(
+    `SELECT r.id::text, r.driver_id::text
+       FROM rides r
+      WHERE r.status = 'completed'
+        AND r.payment_channel IN ('online', 'wallet')
+        AND r.driver_id IS NOT NULL
+        AND r.completed_at < now() - interval '3 minutes'
+        AND r.completed_at > now() - interval '3 days'
+        AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.ride_id = r.id)
+      ORDER BY random()
+      LIMIT 100`
+  )
+  // Oldest-first with a small LIMIT meant rides that fail for a durable reason (missing fare snapshot...) stayed the
+  // 25 oldest matches forever and starved every newer stranded ride. Random order plus a cooldown after a failure
+  // lets the sweep reach all of them without hammering the broken ones.
+  if (res.rows.length === 0) return 0
+  // ONE round trip for all cooldown flags (a per-row EXISTS meant up to 100 serial Redis calls per tick, each able
+  // to take its full timeout when Redis is degraded). If Redis is unavailable, nothing is treated as cooling.
+  const cooldownKey = (id: string) => `stranded-settle:cooldown:${id}`
+  const flags = await withTimeout(redis.mget(...res.rows.map(r => cooldownKey(r.id)))).catch(() => [] as Array<string | null>)
+  let settled = 0
+  let attempted = 0
+  for (const [i, row] of res.rows.entries()) {
+    if (attempted >= 25) break
+    if (flags[i]) continue
+    attempted++
+    try {
+      await settleRideCompletionPayment(BigInt(row.id), BigInt(row.driver_id))
+      settled++
+    } catch (err) {
+      log.error({ err, rideId: row.id }, 'stranded ride settlement failed')
+    }
+    // Cool down EVERY attempted ride, not just ones that threw: a ride whose settlement returns without creating
+    // a payment row (zero fare, unsupported channel) would otherwise be re-picked and re-run on every tick.
+    await withTimeout(redis.set(cooldownKey(row.id), '1', 'EX', STRANDED_SETTLE_COOLDOWN_SEC)).catch(() => undefined)
+  }
+  if (settled > 0) log.warn({ settled }, 'settled completed rides that had no payment row')
+  return settled
+}
+
 // Explicit driver confirmation that cash was collected. Idempotent (cash_collected_at
 // guard + createPaymentRecord's ON CONFLICT(ride_id)). Commission always accrues on the
 // *fare* (driver owes on what they earned) so short/no collection still owes the platform;
@@ -2720,32 +2935,54 @@ export async function collectCash(
   // network retry) — the read-time early-exit above is just a fast-path, this is the
   // real guard. deductCommission/creditCashback are NOT idempotent, so a loser must not
   // reach them.
-  const claim = await pool.query(
-    `UPDATE rides
-       SET cash_collected_amount = $2, cash_collected_at = now(),
-           cash_discrepancy = $3, cash_collection_note = $4
-     WHERE id = $1 AND cash_collected_at IS NULL`,
-    [rideId, collected, discrepancy, input.note ?? null]
-  )
-  if (claim.rowCount === 0) {
-    const fresh = await repo.getRideCoreById(rideId)
-    return {
-      collected:   parseFloat(fresh?.cash_collected_amount ?? '0'),
-      discrepancy: fresh?.cash_discrepancy ?? false,
+  //
+  // The claim and the settlement run in ONE transaction. Previously the claim committed first and the
+  // commission/payment/cashback steps ran afterwards, so any failure in between left cash_collected_at set
+  // with nothing settled, and every retry then took the early-return above: commission was never taken. Now a
+  // failure rolls the claim back too and the driver's retry settles from scratch.
+  // Settle: commission on the fare (not the collected amount) so short/no collection still owes the platform.
+  const client = await pool.connect()
+  let crossedBelowMin: { newBalance: number } | null = null
+  try {
+    await client.query('BEGIN')
+    const claim = await client.query(
+      `UPDATE rides
+         SET cash_collected_amount = $2, cash_collected_at = now(),
+             cash_discrepancy = $3, cash_collection_note = $4
+       WHERE id = $1 AND cash_collected_at IS NULL`,
+      [rideId, collected, discrepancy, input.note ?? null]
+    )
+    if (claim.rowCount === 0) {
+      await client.query('ROLLBACK')
+      const fresh = await repo.getRideCoreById(rideId)
+      return {
+        collected:   parseFloat(fresh?.cash_collected_amount ?? '0'),
+        discrepancy: fresh?.cash_discrepancy ?? false,
+      }
     }
+
+    await createPaymentRecord(rideId, 'cash_direct', {}, client)
+    if (ride.billing_mode_snapshot === 'package') {
+      await consumePackageBalance(rideId, driverId, fare, client)
+    } else {
+      crossedBelowMin = await deductCommission(rideId, driverId, client)
+    }
+    if (ride.user_id != null && fare > 0) await creditCashback(rideId, BigInt(ride.user_id), fare, client)
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw err
+  } finally {
+    client.release()
   }
 
-  // Settle: commission on the fare (not the collected amount) so short/no collection
-  // still owes the platform. createPaymentRecord is ON CONFLICT DO NOTHING = idempotent.
-  // ponytail: settlement helpers aren't in one txn; a mid-settlement crash won't auto-retry
-  // (matches legacy settleRideCompletionPayment). Reconciliation is future work.
-  await createPaymentRecord(rideId, 'cash_direct')
-  if (ride.billing_mode_snapshot === 'package') {
-    await consumePackageBalance(rideId, driverId, fare)
-  } else {
-    await deductCommission(rideId, driverId)
+  if (crossedBelowMin) {
+    try {
+      await notifyDriverLowWalletBalance(driverId, crossedBelowMin.newBalance, await getMinWalletBalance())
+    } catch (err) {
+      log.error({ err, rideId }, 'low-balance notify failed')
+    }
   }
-  if (ride.user_id != null && fare > 0) await creditCashback(rideId, BigInt(ride.user_id), fare)
 
   if (discrepancy) {
     // Best-effort ops alert; the cash_discrepancy flag on the ride is the source of truth.

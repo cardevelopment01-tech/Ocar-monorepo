@@ -69,6 +69,7 @@ resource "aws_launch_template" "api" {
     db_master_username                               = var.db_master_username
     archive_metrics_to_s3_script_parameter_name      = var.environment == "staging" ? aws_ssm_parameter.archive_metrics_to_s3_script[0].name : ""
     metrics_archive_bucket                           = var.environment == "staging" ? aws_s3_bucket.metrics_archive[0].bucket : ""
+    logs_archive_bucket                              = aws_s3_bucket.logs_archive.bucket
   }))
 
   tag_specifications {

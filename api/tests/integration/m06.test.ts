@@ -9,6 +9,7 @@ const app = createApp()
 
 let categoryId: number
 let cityId: number
+let adminToken: string
 
 const ADMIN_EMAIL = 'm06-pricing-admin@ocar.app'
 const ADMIN_PASSWORD = 'Admin@1234'
@@ -19,6 +20,7 @@ beforeAll(async () => {
   const { rows: cities } = await pool.query<{ id: string }>("SELECT id FROM cities WHERE slug = 'bhubaneswar' LIMIT 1")
   cityId = Number(cities[0]!.id)
   await seedAdmin(pool, ADMIN_EMAIL, 'super_admin', ADMIN_PASSWORD)
+  adminToken = (await loginAdmin(app, ADMIN_EMAIL, ADMIN_PASSWORD)).accessToken
 })
 
 afterAll(async () => {
@@ -28,9 +30,27 @@ afterAll(async () => {
 
 describe('M06 — Pricing', () => {
   describe('Fare estimate', () => {
+    it('requires a signed-in principal (it used to be open to the whole internet)', async () => {
+      const res = await request(app)
+        .post('/api/v1/pricing/estimate')
+        .send({ category_id: categoryId, ride_type: 'one_way', distance_km: 10, duration_min: 20 })
+      expect(res.status).toBe(401)
+    })
+
+    it('rejects impossible inputs with 422 instead of quoting nonsense', async () => {
+      for (const bad of [{ distance_km: -5 }, { distance_km: 1e9 }, { duration_min: 1e9 }, { stop_count: 500 }]) {
+        const res = await request(app)
+          .post('/api/v1/pricing/estimate')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ category_id: categoryId, ride_type: 'one_way', distance_km: 10, duration_min: 20, ...bad })
+        expect(res.status, JSON.stringify(bad)).toBe(422)
+      }
+    })
+
     it('TC-M06-001 + TC-M06-004: one-way estimate reflects distance and per-minute rate', async () => {
       const res = await request(app)
         .post('/api/v1/pricing/estimate')
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ category_id: categoryId, ride_type: 'one_way', distance_km: 10, duration_min: 20 })
       expect(res.status, JSON.stringify(res.body)).toBe(200)
       expect(res.body.breakdown.total).toBeGreaterThan(0)
@@ -67,6 +87,7 @@ describe('M06 — Pricing', () => {
 
         const res = await request(app)
           .post('/api/v1/pricing/estimate')
+        .set('Authorization', `Bearer ${adminToken}`)
           .send({ category_id: categoryId, ride_type: 'one_way', distance_km: 10, duration_min: 20, city_id: cityId })
         expect(res.status, JSON.stringify(res.body)).toBe(200)
         expect(res.body.surge_multiplier).toBe(1.5)
@@ -84,6 +105,7 @@ describe('M06 — Pricing', () => {
     it('TC-M06-005: round-trip estimate doubles distance and applies the round_trip rate card', async () => {
       const res = await request(app)
         .post('/api/v1/pricing/estimate')
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ category_id: categoryId, ride_type: 'round_trip', distance_km: 15, duration_min: 30, trip_hours: 36 })
       expect(res.status, JSON.stringify(res.body)).toBe(200)
       expect(res.body.breakdown.total).toBeGreaterThan(0)
@@ -107,6 +129,7 @@ describe('M06 — Pricing', () => {
 
       const res = await request(app)
         .post('/api/v1/pricing/estimate')
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ category_id: categoryId, ride_type: 'rental', distance_km: 10, duration_min: 60, rental_package_id: Number(pkgRows[0].id) })
       expect(res.status, JSON.stringify(res.body)).toBe(200)
       expect(res.body.rental_hours).toBe(Math.round(pkgRows[0].duration_minutes / 60))
@@ -118,6 +141,7 @@ describe('M06 — Pricing', () => {
       // pricing.service.ts's 422 when getCurrentRateCard finds nothing.
       const res = await request(app)
         .post('/api/v1/pricing/estimate')
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({ category_id: 999999, ride_type: 'one_way', distance_km: 10, duration_min: 20 })
       expect(res.status, JSON.stringify(res.body)).toBe(422)
     })
@@ -153,6 +177,7 @@ describe('M06 — Pricing', () => {
       try {
         const beforeRes = await request(app)
           .post('/api/v1/pricing/estimate')
+        .set('Authorization', `Bearer ${adminToken}`)
           .send({ category_id: categoryId, ride_type: 'one_way', distance_km: 50, duration_min: 60 })
         expect(beforeRes.status, JSON.stringify(beforeRes.body)).toBe(200)
         const beforeTotal = beforeRes.body.breakdown.total as number
@@ -165,6 +190,7 @@ describe('M06 — Pricing', () => {
 
         const afterRes = await request(app)
           .post('/api/v1/pricing/estimate')
+        .set('Authorization', `Bearer ${adminToken}`)
           .send({ category_id: categoryId, ride_type: 'one_way', distance_km: 50, duration_min: 60 })
         expect(afterRes.status, JSON.stringify(afterRes.body)).toBe(200)
         expect(afterRes.body.breakdown.total).toBeGreaterThan(beforeTotal)

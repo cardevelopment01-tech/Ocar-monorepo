@@ -113,25 +113,34 @@ export async function upsertDriverLocation(data: {
   speed?: number
   recordedAt: string
   isAvailable: boolean
-}) {
-  await pool.query(
-    `INSERT INTO driver_location_snapshots
-       (driver_id, session_id, location,
-        heading, speed_kmph, recorded_at, is_available)
-     VALUES (
-       $1, $2,
-       ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography,
-       $5, $6, $7, $8
+}): Promise<boolean> {
+  // The session id comes from the client, so it is only honoured when that session really belongs to this
+  // driver: the INSERT reads from driver_sessions filtered by (id, driver_id). Without that, a driver could point
+  // their location snapshot at ANOTHER driver's session (category, wallet join) and be matched as them.
+  // Returns false when the session isn't theirs; an out-of-order (stale) ping is not an error and returns true.
+  const res = await pool.query<{ owned: string }>(
+    `WITH owned AS (
+       SELECT id FROM driver_sessions WHERE id = $2 AND driver_id = $1
+     ), upsert AS (
+       INSERT INTO driver_location_snapshots
+         (driver_id, session_id, location,
+          heading, speed_kmph, recorded_at, is_available)
+       SELECT $1, owned.id,
+              ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography,
+              $5, $6, $7, $8
+         FROM owned
+       ON CONFLICT (driver_id) DO UPDATE SET
+         session_id   = EXCLUDED.session_id,
+         location     = EXCLUDED.location,
+         heading      = EXCLUDED.heading,
+         speed_kmph   = EXCLUDED.speed_kmph,
+         recorded_at  = EXCLUDED.recorded_at,
+         is_available = EXCLUDED.is_available,
+         updated_at   = now()
+       WHERE driver_location_snapshots.recorded_at < EXCLUDED.recorded_at
+       RETURNING 1
      )
-     ON CONFLICT (driver_id) DO UPDATE SET
-       session_id   = EXCLUDED.session_id,
-       location     = EXCLUDED.location,
-       heading      = EXCLUDED.heading,
-       speed_kmph   = EXCLUDED.speed_kmph,
-       recorded_at  = EXCLUDED.recorded_at,
-       is_available = EXCLUDED.is_available,
-       updated_at   = now()
-     WHERE driver_location_snapshots.recorded_at < EXCLUDED.recorded_at`,
+     SELECT (SELECT count(*) FROM owned)::text AS owned`,
     [
       data.driverId, data.sessionId,
       data.lat, data.lng,
@@ -141,6 +150,7 @@ export async function upsertDriverLocation(data: {
       data.isAvailable,
     ]
   )
+  return Number(res.rows[0]?.owned ?? 0) > 0
 }
 
 export async function findNearbyDrivers(params: {
@@ -167,7 +177,7 @@ export async function findNearbyDrivers(params: {
        ) AS distance_metres
      FROM driver_location_snapshots dls
      JOIN driver_sessions ds ON ds.id = dls.session_id
-     JOIN drivers d ON d.id = ds.driver_id
+     JOIN drivers d ON d.id = ds.driver_id AND d.status = 'active'
      -- INNER join: a driver with no assigned operating city (or an inactive
      -- one) can't have gone online (see goOnline's city gate), so they're
      -- correctly excluded from matching here too — no GPS-based fallback.
@@ -219,6 +229,7 @@ export async function findAllNearbyDrivers(params: {
        ds.category_id::int AS category_id
      FROM driver_location_snapshots dls
      JOIN driver_sessions ds ON ds.id = dls.session_id
+     JOIN drivers d ON d.id = dls.driver_id AND d.status = 'active'
      WHERE dls.is_available = true
        AND ds.status = 'online'
        AND ST_DWithin(
@@ -226,6 +237,8 @@ export async function findAllNearbyDrivers(params: {
          ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography,
          $3
        )
+     -- Nearest first: without ORDER BY the LIMIT returned an arbitrary 20, not the closest 20.
+     ORDER BY ST_Distance(dls.location, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography)
      LIMIT 20`,
     [params.lat, params.lng, radius]
   )
@@ -254,7 +267,7 @@ export async function findReturnCabDrivers(params: {
      FROM return_cab_routes rcr
      JOIN driver_sessions ds ON ds.id = rcr.session_id
      JOIN driver_location_snapshots dls ON dls.driver_id = rcr.driver_id
-     JOIN drivers d ON d.id = rcr.driver_id
+     JOIN drivers d ON d.id = rcr.driver_id AND d.status = 'active'
      -- INNER join: see findNearbyDrivers above — no assigned active city means
      -- the driver couldn't have gone online, so they're excluded here too.
      JOIN cities dc ON dc.id = d.city_id AND dc.status = 'active'
@@ -861,19 +874,29 @@ export async function logStatusHistory(data: {
 
 // ── Advance booking ───────────────────────────────────────────
 
+// Replaces the start-OTP hash of a ride that is already driver_arrived (a retried "arrived" re-issuing the PIN).
+// Guarded on the status so it can never touch a ride that has moved on.
+export async function reissueStartOtpHash(rideId: bigint, hash: string): Promise<boolean> {
+  const res = await pool.query(
+    `UPDATE rides SET start_otp_hash = $2, updated_at = now() WHERE id = $1 AND status = 'driver_arrived'`,
+    [rideId, hash]
+  )
+  return (res.rowCount ?? 0) > 0
+}
+
 // CAS transition — only succeeds if the row is still in `expectedStatus`.
 // Returns null (no rows touched) if another caller already moved it on —
 // callers must treat null as "lost the race, no-op" rather than an error.
 export async function updateRideStatusCAS(
   rideId: bigint,
-  expectedStatus: string,
+  expectedStatus: string | string[],
   newStatus: string,
   // Keys must be trusted internal column names — never from user input
   additionalFields?: Record<string, unknown>
 ): Promise<Ride | null> {
   const fields = additionalFields ?? {}
   const setClauses = ['status = $3', 'updated_at = now()']
-  const params: unknown[] = [rideId, expectedStatus, newStatus]
+  const params: unknown[] = [rideId, Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus], newStatus]
   let p = 4
   for (const [key, val] of Object.entries(fields)) {
     setClauses.push(`${key} = $${p++}`)
@@ -881,7 +904,7 @@ export async function updateRideStatusCAS(
   }
   const res = await pool.query<Ride>(
     `UPDATE rides SET ${setClauses.join(', ')}
-     WHERE id = $1 AND status = $2
+     WHERE id = $1 AND status::text = ANY($2::text[])
      RETURNING *`,
     params
   )
@@ -1103,11 +1126,16 @@ export async function createRideAssignment(data: {
      ON CONFLICT (ride_id, driver_id) DO UPDATE
        SET status = 'offered', expires_at = EXCLUDED.expires_at,
            session_id = EXCLUDED.session_id, broadcast_round = EXCLUDED.broadcast_round,
-           responded_at = NULL
-       -- Re-offer in a later broadcast round: reopen a declined/expired row, else
+           responded_at = NULL, cancelled_at = NULL
+       -- Re-offer in a later broadcast round: reopen a declined/expired/cancelled row, else
        -- acceptAssignment (needs status = 'offered') rejects the fresh card with
-       -- "Ride no longer available". Accepted/cancelled rows stay untouched.
-       WHERE ride_assignments.status IN ('offered', 'declined', 'expired')`,
+       -- "Ride no longer available". 'cancelled' matters for admin assignment: cancelAllAssignments()
+       -- cancels every open offer first, including the chosen driver's own, and the row must come back.
+       -- Only an accepted row stays untouched, and nothing is reopened for a ride that is no longer
+       -- 'requested': a slow in-flight broadcast job would otherwise resurrect an offer for a ride another
+       -- driver has already taken (a "ghost" request card).
+       WHERE ride_assignments.status IN ('offered', 'declined', 'expired', 'cancelled')
+         AND EXISTS (SELECT 1 FROM rides r WHERE r.id = ride_assignments.ride_id AND r.status = 'requested')`,
     [
       data.rideId, data.driverId, data.sessionId,
       data.expiresAt, data.broadcastRound,
@@ -1133,14 +1161,19 @@ export async function acceptAssignment(
            billing_mode_snapshot = $3
        WHERE id = $1 AND status = 'requested'
          AND EXISTS (
-           -- Driver must have an outstanding offer for this ride. Not scoped
-           -- to expires_at: admin force-assign (rides.service.ts's
-           -- assignRideToDriver) creates its own 'offered' row with
-           -- expiresAt = now() (it doesn't wait on a driver ack window) and
-           -- accepts it immediately after — an expiry check here would
-           -- reject that legitimate path.
+           -- Driver must have an outstanding, unexpired offer for this ride. Admin force-assign creates its
+           -- own 'offered' row with expiresAt = now() and accepts it immediately, so a few seconds of grace
+           -- (which also absorbs client latency) keeps that path working while an offer the driver sat on
+           -- for minutes can no longer be accepted.
            SELECT 1 FROM ride_assignments
            WHERE ride_id = $1 AND driver_id = $2 AND status = 'offered'
+             AND expires_at > now() - interval '5 seconds'
+         )
+         -- A driver already on a live ride cannot take another one off an older, still-open offer.
+         AND NOT EXISTS (
+           SELECT 1 FROM rides live
+           WHERE live.driver_id = $2 AND live.id <> $1
+             AND live.status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
          )
        RETURNING id`,
       [rideId, driverId, billingMode]
@@ -1166,6 +1199,14 @@ export async function acceptAssignment(
       [rideId, driverId]
     )
     const cancelledDriverIds = cancelRes.rows.map(r => r.driver_id)
+
+    // The accepting driver's own other open offers are dead now: they are busy.
+    await client.query(
+      `UPDATE ride_assignments
+       SET status = 'cancelled', cancelled_at = now()
+       WHERE driver_id = $1 AND ride_id <> $2 AND status = 'offered'`,
+      [driverId, rideId]
+    )
 
     await client.query(
       `UPDATE ride_assignments

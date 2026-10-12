@@ -21,6 +21,7 @@ vi.mock('@/jobs/queues', () => ({
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideCoreForDriverAction: vi.fn(),
   updateRideStatus:   vi.fn().mockResolvedValue(undefined),
+  updateRideStatusCAS: vi.fn().mockResolvedValue({ id: 1n }),
   logStatusHistory:   vi.fn().mockResolvedValue(undefined),
   getTripWindowInputs: vi.fn(),
 }))

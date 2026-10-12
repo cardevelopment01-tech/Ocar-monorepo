@@ -21,6 +21,20 @@ const onlyUser: RequestHandler = (req, res, next) => {
   res.status(403).json({ error: AppErrors.AUTH_FORBIDDEN.message, code: AppErrors.AUTH_FORBIDDEN.code })
 }
 
+// Actions that START new work. A suspended rider cannot book and a driver who is not 'active' (suspended,
+// docs rejected, still pending approval) cannot go online, resume or take an offer. Deliberately NOT applied to
+// routes that finish or inspect an existing ride (arrive/start/end/cancel/location/history): suspending someone
+// must not strand a passenger mid-trip.
+const canBook: RequestHandler = (req, res, next) => {
+  if (req.user && req.user.status !== 'suspended' && req.user.status !== 'deleted') { next(); return }
+  res.status(403).json({ error: AppErrors.AUTH_FORBIDDEN.message, code: AppErrors.AUTH_FORBIDDEN.code })
+}
+const canTakeWork: RequestHandler = (req, res, next) => {
+  if (req.driver && req.driver.status === 'active') { next(); return }
+  const err = req.driver?.status === 'suspended' ? AppErrors.DRIVER_SUSPENDED : AppErrors.DRIVER_NOT_APPROVED
+  res.status(403).json({ error: err.message, code: err.code })
+}
+
 const router: IRouter = Router()
 
 // ── User ride history ─────────────────────────────────────────
@@ -101,7 +115,7 @@ router.get('/me/active', authenticate(), onlyDriver, async (req, res, next) => {
 
 // ── Driver session ────────────────────────────────────────────
 
-router.post('/sessions/online', authenticate(), onlyDriver, async (req, res, next) => {
+router.post('/sessions/online', authenticate(), onlyDriver, canTakeWork, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const session = await service.goOnline(driverId, req.body as Parameters<typeof service.goOnline>[1])
@@ -132,7 +146,7 @@ router.post('/sessions/pause', authenticate(), onlyDriver, async (req, res, next
   } catch (err) { next(err) }
 })
 
-router.post('/sessions/resume', authenticate(), onlyDriver, async (req, res, next) => {
+router.post('/sessions/resume', authenticate(), onlyDriver, canTakeWork, async (req, res, next) => {
   try {
     await service.resumeAvailability(req.driver!.id)
     res.json({ success: true })
@@ -149,7 +163,7 @@ router.get('/sessions/current', authenticate(), onlyDriver, async (req, res, nex
 
 // ── Ride booking (user) ───────────────────────────────────────
 
-router.post('/', authenticate(), onlyUser, async (req, res, next) => {
+router.post('/', authenticate(), onlyUser, canBook, async (req, res, next) => {
   try {
     const userId = req.user!.id
     const result = await service.createBooking(userId, req.body as import('./rides.types').BookingRequest)
@@ -157,31 +171,41 @@ router.post('/', authenticate(), onlyUser, async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
-router.get('/return-cab-available', async (req, res, next) => {
+// Both lookups below used to be public and returned internal driver ids with exact positions, i.e. a free live
+// map of the fleet for anyone. They now need a signed-in principal; the response carries only what the apps use.
+router.get('/return-cab-available', authenticate(), async (req, res, next) => {
   try {
     const pickupLat = parseFloat(req.query['pickupLat'] as string)
     const pickupLng = parseFloat(req.query['pickupLng'] as string)
     const dropLat   = parseFloat(req.query['dropLat']   as string)
     const dropLng   = parseFloat(req.query['dropLng']   as string)
-    const categoryId = BigInt(req.query['categoryId'] as string)
+    const rawCategory = req.query['categoryId']
+    if (typeof rawCategory !== 'string' || !/^\d{1,18}$/.test(rawCategory)) {
+      res.status(400).json({ error: 'categoryId required' }); return
+    }
+    const categoryId = BigInt(rawCategory)
     if ([pickupLat, pickupLng, dropLat, dropLng].some(isNaN)) {
       res.status(400).json({ error: 'pickupLat, pickupLng, dropLat, dropLng required' }); return
     }
     const minWalletBalance = await paymentsService.getMinWalletBalance()
     const categoryIds = await repo.getEligibleDriverCategoryIds(categoryId)
     const drivers = await repo.findReturnCabDrivers({ pickupLat, pickupLng, dropLat, dropLng, categoryIds, minWalletBalance })
-    res.json({ drivers, count: drivers.length })
+    res.json({ count: drivers.length })
   } catch (err) { next(err) }
 })
 
-router.get('/nearby-drivers', async (req, res, next) => {
+router.get('/nearby-drivers', authenticate(), async (req, res, next) => {
   try {
     const lat = parseFloat(req.query['lat'] as string)
     const lng = parseFloat(req.query['lng'] as string)
-    if (isNaN(lat) || isNaN(lng)) { res.status(400).json({ error: 'lat and lng required' }); return }
-    const radius = Math.min(parseFloat((req.query['radius'] as string) ?? '8000'), 20000)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      res.status(400).json({ error: 'lat and lng required' }); return
+    }
+    const requested = parseFloat((req.query['radius'] as string) ?? '8000')
+    const radius = Number.isFinite(requested) ? Math.min(Math.max(requested, 200), 20000) : 8000
     const drivers = await repo.findAllNearbyDrivers({ lat, lng, radiusMetres: radius })
-    res.json({ drivers })
+    // Opaque, stable-per-driver reference (clients key map markers on it) instead of the real driver id.
+    res.json({ drivers: drivers.map(d => ({ ...d, driver_id: service.publicDriverRef(d.driver_id) })) })
   } catch (err) { next(err) }
 })
 
@@ -264,7 +288,7 @@ router.post('/:id/end-early', authenticate(), onlyDriver, async (req, res, next)
 
 // ── Driver ride actions ───────────────────────────────────────
 
-router.post('/:id/accept', authenticate(), onlyDriver, async (req, res, next) => {
+router.post('/:id/accept', authenticate(), onlyDriver, canTakeWork, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const result = await service.acceptRide(driverId, BigInt(req.params['id']!))

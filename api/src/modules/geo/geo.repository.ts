@@ -101,42 +101,38 @@ export async function findContainingCity(
   return res.rows[0] ?? null
 }
 
-export async function insertGpsTracks(tracks: GpsTrackPayload[]): Promise<void> {
+// One round trip for the whole batch (was one INSERT per row inside a transaction). Column arrays are unnested
+// server-side; heading/speed/accuracy are clamped to what their NUMERIC columns can hold so a single odd value
+// can't fail the batch. `executor` lets the background flusher use the worker pool instead of the request pool.
+export async function insertGpsTracks(
+  tracks: GpsTrackPayload[],
+  executor: { query: (text: string, params: unknown[]) => Promise<unknown> } = pool
+): Promise<void> {
   if (!tracks.length) return
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-    for (const t of tracks) {
-      await client.query(
-        `INSERT INTO gps_tracks
-           (ride_id, session_id, driver_id, location,
-            heading, speed_kmph, accuracy_metres, recorded_at)
-         VALUES (
-           $1, $2, $3,
-           ST_SetSRID(ST_MakePoint($5::float8, $4::float8), 4326)::geography,
-           $6, $7, $8, $9
-         )
-         ON CONFLICT DO NOTHING`,
-        [
-          t.ride_id,
-          t.session_id,
-          t.driver_id,
-          t.latitude,
-          t.longitude,
-          t.heading ?? null,
-          t.speed_kmph ?? null,
-          t.accuracy_metres ?? null,
-          t.recorded_at,
-        ]
-      )
-    }
-    await client.query('COMMIT')
-  } catch (err) {
-    await client.query('ROLLBACK')
-    throw err
-  } finally {
-    client.release()
-  }
+  const clamp = (v: number | undefined, max: number): number | null =>
+    v === undefined || !Number.isFinite(v) ? null : Math.min(Math.max(v, 0), max)
+  await executor.query(
+    `INSERT INTO gps_tracks
+       (ride_id, session_id, driver_id, location, heading, speed_kmph, accuracy_metres, recorded_at)
+     SELECT u.ride_id, u.session_id, u.driver_id,
+            ST_SetSRID(ST_MakePoint(u.lng, u.lat), 4326)::geography,
+            u.heading, u.speed, u.accuracy, u.recorded_at
+       FROM unnest($1::bigint[], $2::bigint[], $3::bigint[], $4::float8[], $5::float8[],
+                   $6::numeric[], $7::numeric[], $8::numeric[], $9::timestamptz[])
+         AS u(ride_id, session_id, driver_id, lat, lng, heading, speed, accuracy, recorded_at)
+     ON CONFLICT DO NOTHING`,
+    [
+      tracks.map(t => t.ride_id),
+      tracks.map(t => t.session_id),
+      tracks.map(t => t.driver_id),
+      tracks.map(t => t.latitude),
+      tracks.map(t => t.longitude),
+      tracks.map(t => clamp(t.heading, 360)),
+      tracks.map(t => clamp(t.speed_kmph, 999)),
+      tracks.map(t => clamp(t.accuracy_metres, 99999)),
+      tracks.map(t => t.recorded_at),
+    ]
+  )
 }
 
 export async function lookupGeoCache(

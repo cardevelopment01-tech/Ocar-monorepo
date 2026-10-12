@@ -79,9 +79,13 @@ export async function createDriverTopupOrder(
 export async function createPaymentRecord(
   rideId: bigint,
   channel: string = 'cash_direct',
-  opts: { status?: 'pending' | 'completed' } = {}
+  opts: { status?: 'pending' | 'completed' } = {},
+  sharedClient?: PoolClient
 ): Promise<void> {
-  const fareRes = await pool.query(
+  // Runs on the caller's transaction when given one (cash settlement), so the payment row it inserts is visible
+  // to the commission deduction that follows on the same connection.
+  const q = sharedClient ?? pool
+  const fareRes = await q.query(
     `SELECT fs.id AS fare_snapshot_id,
             fs.total_final, fs.total_estimated,
             r.user_id, r.driver_id
@@ -103,7 +107,7 @@ export async function createPaymentRecord(
   // Only a captured (completed) payment has a capture timestamp.
   const capturedAt = status === 'completed' ? new Date() : null
 
-  await pool.query(
+  await q.query(
     `INSERT INTO payments (
        ride_id, user_id, driver_id, fare_snapshot_id,
        amount, channel, status,
@@ -126,7 +130,7 @@ export async function deductCommission(
   driverId: bigint,
   sharedClient?: PoolClient
 ): Promise<{ newBalance: number } | null> {
-  const payRes = await pool.query(
+  const payRes = await (sharedClient ?? pool).query(
     `SELECT commission_amount FROM payments WHERE ride_id = $1`,
     [rideId]
   )
@@ -157,10 +161,13 @@ export async function deductCommission(
     )
 
     const wallet = walletRes.rows[0]
-    if (!wallet || wallet.is_frozen) {
+    if (!wallet) {
       if (owns) await client.query('ROLLBACK')
       return null
     }
+    // A frozen wallet (admin hold) still owes commission on rides it completes: skipping the debit here used to
+    // waive the platform's fee outright. The balance may go negative; the freeze only blocks the driver's
+    // withdrawals/going online, it does not erase what the ride earned the platform.
 
     const currentBalance = parseFloat(wallet.balance)
     // Signed balance: negative = driver owes the platform (cash dues). The goOnline
@@ -337,13 +344,9 @@ export async function confirmRidePayment(
 
     let crossedBelowMin: { newBalance: number } | null = null
     if (billingMode === 'package') {
-      // ponytail: consumePackageBalance lives in the packages module (out of this
-      // plan's scope) and manages its own connection, so it can't join this txn.
-      // It runs before COMMIT so a consume failure still rolls back the status
-      // flip and the ride re-enters settlement on retry. Follow-up: thread a
-      // shared client through consumePackageBalance to make package mode fully
-      // atomic too — commission mode (the else branch) is already fully atomic.
-      await packagesService.consumePackageBalance(rideId, BigInt(row.driver_id), parseFloat(row.amount))
+      // Joins this transaction (shared client): a consume failure rolls the status flip back too, so the
+      // ride re-enters settlement on retry, same as the commission branch below.
+      await packagesService.consumePackageBalance(rideId, BigInt(row.driver_id), parseFloat(row.amount), client)
     } else {
       crossedBelowMin = await deductCommission(rideId, BigInt(row.driver_id), client)
     }
@@ -786,18 +789,53 @@ export async function handleWebhookEvent(
     if (!settlementId || !/^\d+$/.test(settlementId)) return
   }
 
-  const existing = await pool.query(
-    `SELECT id FROM payment_gateway_events WHERE razorpay_event_id = $1`,
-    [eventId]
-  )
-  if (existing.rows.length) return
-
-  await pool.query(
+  // Dedup key is (entity id, event name), not the entity id alone: one payout/payment id legitimately
+  // produces several events (payout.processed then payout.reversed; payment.authorized then payment.captured)
+  // and keying on the id swallowed every one after the first. The row is written UNPROCESSED and only
+  // flipped once the work below succeeded, so a handler that throws is retried by the gateway instead of
+  // being recorded as done. Column is VARCHAR(80); gateway ids are ~20 chars, so this fits.
+  const dedupKey = `${eventId}:${event}`.slice(0, 80)
+  const logged = await pool.query(
     `INSERT INTO payment_gateway_events
-       (event_type, razorpay_event_id, payload, processed, processed_at)
-     VALUES ($1,$2,$3,true,now())`,
-    [eventType, eventId, JSON.stringify(payload)]
+       (event_type, razorpay_event_id, payload, processed)
+     VALUES ($1,$2,$3,false)
+     ON CONFLICT (razorpay_event_id) DO NOTHING
+     RETURNING id`,
+    [eventType, dedupKey, JSON.stringify(payload)]
   )
+  if (logged.rowCount === 0) {
+    const prior = await pool.query(
+      `SELECT processed FROM payment_gateway_events WHERE razorpay_event_id = $1`,
+      [dedupKey]
+    )
+    // Already handled, or another delivery is handling it right now: nothing to do. An unprocessed row with
+    // no one working on it is the retry case — fall through and run the handler again (it is idempotent).
+    if (prior.rows[0]?.processed !== false) return
+  }
+
+  try {
+    await applyRazorpayEvent(event!, eventId, payload, entity, isPayoutEvent, settlementId)
+  } catch (err) {
+    await pool.query(
+      `UPDATE payment_gateway_events SET error = $2 WHERE razorpay_event_id = $1`,
+      [dedupKey, String((err as Error)?.message ?? err).slice(0, 500)]
+    ).catch(() => undefined)
+    throw err
+  }
+  await pool.query(
+    `UPDATE payment_gateway_events SET processed = true, processed_at = now(), error = NULL WHERE razorpay_event_id = $1`,
+    [dedupKey]
+  )
+}
+
+async function applyRazorpayEvent(
+  event: string,
+  eventId: string,
+  _payload: Record<string, unknown>,
+  entity: { order_id?: string; utr?: string; failure_reason?: string } | undefined,
+  isPayoutEvent: boolean,
+  settlementId: string | undefined
+): Promise<void> {
 
   if (isPayoutEvent) {
     // settlementId already extracted + format-validated above.

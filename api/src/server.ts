@@ -7,6 +7,8 @@ import { createApp } from './app'
 import { testConnection, pool } from './db/client'
 import { testConnection as testRedis, client as redisClient } from './db/redis'
 import { initSocketServer, getIO } from './websocket/socket.server'
+import { flushBreadcrumbs } from './lib/gps-buffer'
+import { isSmsBypassActive } from './providers/sms.provider'
 import { notificationsWorker } from './jobs/workers/notifications.worker'
 import { dispatchWorker } from './jobs/workers/dispatch.worker'
 import { gpsFlushWorker } from './jobs/workers/gps-flush.worker'
@@ -27,6 +29,17 @@ function exitAfterFlush(code: number): void {
   logger.flush(() => process.exit(code))
 }
 
+// A stray rejection (e.g. a fire-and-forget `void promise` that throws) must be visible but not fatal;
+// a genuinely uncaught exception leaves the process in an unknown state, so log, flush and exit and let
+// the orchestrator restart it instead of dying silently mid-write.
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'unhandled promise rejection')
+})
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'uncaught exception')
+  exitAfterFlush(1)
+})
+
 async function start(): Promise<void> {
   const dbOk = await testConnection()
   if (!dbOk) {
@@ -41,6 +54,13 @@ async function start(): Promise<void> {
     logger.error('could not connect to redis, exiting')
     exitAfterFlush(1)
     return
+  }
+
+  if (config.NODE_ENV === 'production' && isSmsBypassActive()) {
+    logger.warn(
+      { allowDevSms: config.ALLOW_DEV_SMS },
+      'SMS bypass is ACTIVE in a production-mode process: no login codes or ride SMS will actually be sent'
+    )
   }
 
   const app = createApp()
@@ -124,6 +144,12 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '0 4 * * *' }, removeOnComplete: true, removeOnFail: true } // daily at 4 AM
   )
+  // refresh_tokens / otp_requests grew forever; expired and long-revoked rows are purged daily.
+  await partitionMaintenanceQueue.add(
+    'purge_auth_tables',
+    {},
+    { repeat: { pattern: '30 4 * * *' }, removeOnComplete: true, removeOnFail: true }
+  )
 
   void paymentReconcileWorker
   logger.info('payment reconciliation worker started')
@@ -200,6 +226,7 @@ async function start(): Promise<void> {
         settlementsWorker.close(),
         callMaskingWorker.close(),
       ])
+      await flushBreadcrumbs() // buffered GPS breadcrumbs must reach the DB before the pools close
       await pool.end()
       redisClient.disconnect()
       await shutdownTracing()

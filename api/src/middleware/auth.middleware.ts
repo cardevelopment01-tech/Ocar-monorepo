@@ -3,11 +3,17 @@ import { verifyAccessToken } from '@/lib/jwt'
 import { AppErrors } from '@/constants/errors'
 import { PrincipalRole, AdminRole } from '@/constants/enums'
 import { getJSON, setWithTTL, client as redis } from '@/db/redis'
+import { withTimeout } from '@/lib/with-timeout'
+import { logger } from '@/lib/logger'
 import {
   findUserById,
   findDriverById,
   findAdminById,
 } from '@/modules/auth/auth.repository'
+
+// The principal cache is an optimisation. A failed write (Redis slow/down) must never turn into a 401, or every
+// authenticated request logs its user out the moment Redis hiccups.
+const cacheWriteFailed = (err: unknown) => logger.warn({ err }, 'auth principal cache write failed')
 
 const MANDATORY_TOTP_ROLES = new Set(['super_admin', 'finance_admin'])
 
@@ -30,7 +36,7 @@ type CachedAdmin = {
 export async function isDriverSessionReplaced(driverId: string, sid: string | undefined): Promise<boolean> {
   if (!sid) return false
   try {
-    const current = await redis.get(`auth:driver-sid:${driverId}`)
+    const current = await withTimeout(redis.get(`auth:driver-sid:${driverId}`))
     return current !== null && current !== sid
   } catch {
     return false
@@ -66,7 +72,7 @@ export function authenticate(): RequestHandler {
             return
           }
           user = { id: dbUser.id, code: dbUser.code, status: dbUser.status }
-          await setWithTTL(cacheKey, JSON.stringify(user), PRINCIPAL_CACHE_TTL_SEC)
+          await setWithTTL(cacheKey, JSON.stringify(user), PRINCIPAL_CACHE_TTL_SEC).catch(cacheWriteFailed)
         }
         if (user.status === 'deleted') {
           res.status(401).json({
@@ -96,7 +102,7 @@ export function authenticate(): RequestHandler {
             return
           }
           driver = { id: dbDriver.id, code: dbDriver.code, status: dbDriver.status }
-          await setWithTTL(cacheKey, JSON.stringify(driver), PRINCIPAL_CACHE_TTL_SEC)
+          await setWithTTL(cacheKey, JSON.stringify(driver), PRINCIPAL_CACHE_TTL_SEC).catch(cacheWriteFailed)
         }
         if (driver.status === 'banned') {
           res.status(401).json({
@@ -125,7 +131,7 @@ export function authenticate(): RequestHandler {
             is_active: dbAdmin.is_active,
             totp_enabled: dbAdmin.totp_enabled,
           }
-          await setWithTTL(cacheKey, JSON.stringify(admin), PRINCIPAL_CACHE_TTL_SEC)
+          await setWithTTL(cacheKey, JSON.stringify(admin), PRINCIPAL_CACHE_TTL_SEC).catch(cacheWriteFailed)
         }
         if (!admin.is_active) {
           res.status(401).json({

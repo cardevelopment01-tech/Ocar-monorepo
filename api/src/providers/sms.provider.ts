@@ -1,8 +1,15 @@
 import { config } from '@/config'
 
+// True when messages are NOT really sent (no vendor credentials). In production this only happens when
+// ALLOW_DEV_SMS=true was set deliberately, and server.ts logs a warning at boot so it can't go unnoticed.
+export function isSmsBypassActive(): boolean {
+  return !config.BULKSMSPLANS_API_ID || !config.BULKSMSPLANS_API_PASSWORD
+}
+
 export async function sendSms(phone: string, message: string, templateId?: string): Promise<void> {
-  if (!config.BULKSMSPLANS_API_ID || !config.BULKSMSPLANS_API_PASSWORD) {
-    console.log('[SMS DEV]', phone, message)
+  if (isSmsBypassActive()) {
+    // Message body is deliberately not logged: it carries OTPs.
+    console.log('[SMS DEV] not sent (no provider credentials):', phone)
     return
   }
 

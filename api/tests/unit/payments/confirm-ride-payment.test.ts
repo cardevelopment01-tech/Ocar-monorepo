@@ -32,6 +32,10 @@ function scriptClientHappyPath() {
     if (/billing_mode_snapshot/.test(sql)) {
       return Promise.resolve({ rows: [{ billing_mode_snapshot: null }], rowCount: 1 })
     }
+    // deductCommission reads the payment row on the shared transaction client.
+    if (/SELECT commission_amount FROM payments/.test(sql)) {
+      return Promise.resolve({ rows: [{ commission_amount: '50.00' }], rowCount: 1 })
+    }
     if (/SELECT id, balance, is_frozen/.test(sql)) {
       return Promise.resolve({ rows: [{ id: 1, balance: '1000', is_frozen: false }], rowCount: 1 })
     }

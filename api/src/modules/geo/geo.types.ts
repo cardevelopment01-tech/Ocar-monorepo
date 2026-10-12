@@ -13,9 +13,9 @@ export interface City {
 }
 
 export interface GpsTrackPayload {
-  ride_id: number
-  session_id: number
-  driver_id: number
+  ride_id: number | string
+  session_id: number | string
+  driver_id: number | string
   latitude: number
   longitude: number
   heading?: number

@@ -32,3 +32,11 @@ describe('maskRideContacts — commission visibility', () => {
     expect(masked.commission_amount).toBe('72.00')
   })
 })
+
+describe('maskRideContacts — OTP hashes never leave the API', () => {
+  it.each(['user', 'driver', 'admin'] as const)('strips start/end OTP hashes for the %s viewer', (viewer) => {
+    const masked = maskRideContacts({ ...baseRide(), start_otp_hash: 'a', end_otp_hash: 'b' }, viewer)
+    expect(masked).not.toHaveProperty('start_otp_hash')
+    expect(masked).not.toHaveProperty('end_otp_hash')
+  })
+})

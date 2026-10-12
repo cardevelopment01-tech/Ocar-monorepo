@@ -1,6 +1,7 @@
 import Redis, { type RedisOptions } from 'ioredis'
 import { config } from '@/config'
 import { logger } from '@/lib/logger'
+import { withTimeout } from '@/lib/with-timeout'
 
 function makeRedisOptions(): RedisOptions {
   const url = new URL(config.REDIS_URL)
@@ -36,15 +37,7 @@ export const client = new Redis(makeRedisOptions())
 // the rate-limit store's sendCommand) that never showed up on a long-running
 // instance. 1000ms keeps the fail-fast intent while giving a cold TLS
 // handshake enough room to complete.
-const CACHE_COMMAND_TIMEOUT_MS = 1000
-
-export function withTimeout<T>(promise: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('redis command timeout')), CACHE_COMMAND_TIMEOUT_MS)
-  })
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
-}
+export { withTimeout }
 
 client.on('error', (err) => {
   logger.error({ err }, 'redis error')

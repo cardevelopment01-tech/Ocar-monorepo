@@ -67,7 +67,7 @@ describe('goOnline — wallet balance gate', () => {
     vi.mocked(repo.createSession).mockResolvedValue({ id: 9 } as never)
     vi.mocked(repo.upsertDriverLocation).mockResolvedValue(undefined as never)
     // nearest-city billing-mode lookup — these tests assert commission-mode gate behavior
-    vi.mocked(pool.query).mockResolvedValue({ rows: [{ billing_mode: 'commission' }] } as never)
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ billing_mode: 'commission', category_id: '2' }] } as never) // city lookup + owned-vehicle lookup
   })
 
   it('balance below minimum → throws LOW_WALLET_BALANCE (402), no session created', async () => {

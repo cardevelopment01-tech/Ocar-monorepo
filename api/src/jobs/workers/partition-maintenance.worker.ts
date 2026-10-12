@@ -3,6 +3,7 @@ import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import { processCreateNextPartition } from '@/jobs/processors/partition-creator.processor'
 import { processPurgeOldPartitions } from '@/jobs/processors/partition-purge.processor'
 import { processPurgeOldNotifications } from '@/jobs/processors/notification-purge.processor'
+import { processPurgeAuthTables } from '@/jobs/processors/auth-tables-purge.processor'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
 const log = createWorkerLogger('partition-maintenance')
@@ -25,6 +26,10 @@ export const partitionMaintenanceWorker = new Worker(
     }
     if (job.name === 'purge_old_notifications') {
       await processPurgeOldNotifications()
+      return
+    }
+    if (job.name === 'purge_auth_tables') {
+      await processPurgeAuthTables()
     }
   },
   { connection: redisConnection }

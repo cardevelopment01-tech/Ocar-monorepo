@@ -293,8 +293,23 @@ resource "aws_iam_role_policy" "github_actions_plan_read" {
           "kms:List*",
           "kms:Get*",
           "sts:GetCallerIdentity",
+          # s3-logs-archive.tf: Glue/Athena resources have no useful ARN
+          # scoping for these read calls, so they sit in the wildcard block.
+          "glue:GetDatabase", "glue:GetTable", "glue:GetTags",
+          "athena:GetWorkGroup", "athena:GetNamedQuery",
+          "athena:ListTagsForResource",
         ]
         Resource = "*"
+      },
+      {
+        # Bucket-config reads only (no object reads) so `terraform plan`
+        # can refresh s3-logs-archive.tf's bucket after the first apply.
+        Effect = "Allow"
+        Action = [
+          "s3:GetBucket*", "s3:GetLifecycleConfiguration",
+          "s3:GetEncryptionConfiguration", "s3:ListBucket",
+        ]
+        Resource = "arn:aws:s3:::${var.project_name}-${var.environment}-logs-archive"
       }
     ]
   })
@@ -434,6 +449,49 @@ resource "aws_iam_role_policy" "github_actions_staging" {
         Effect   = "Allow"
         Action   = ["ssm:*Parameter*"]
         Resource = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/staging/*"
+      },
+      {
+        # s3-logs-archive.tf: staging log bucket (+ objects, for the
+        # force_destroy teardown), scoped to that bucket only.
+        Effect = "Allow"
+        # Explicit verbs rather than s3:* (Trivy AWS-0345): bucket lifecycle/config management plus object
+        # read/write/delete for the force_destroy teardown. Still scoped to this one bucket.
+        Action = [
+          "s3:CreateBucket", "s3:DeleteBucket", "s3:ListBucket", "s3:ListBucketVersions",
+          "s3:GetBucket*", "s3:PutBucket*", "s3:DeleteBucket*",
+          "s3:GetLifecycleConfiguration", "s3:PutLifecycleConfiguration",
+          "s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration",
+          "s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion",
+          "s3:ListMultipartUploadParts", "s3:AbortMultipartUpload",
+        ]
+        Resource = [
+          "arn:aws:s3:::${var.project_name}-staging-logs-archive",
+          "arn:aws:s3:::${var.project_name}-staging-logs-archive/*",
+        ]
+      },
+      {
+        # Glue database/table, scoped to the staging logs database.
+        Effect = "Allow"
+        Action = ["glue:*"]
+        Resource = [
+          "arn:aws:glue:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:database/${replace(var.project_name, "-", "_")}_staging_logs",
+          "arn:aws:glue:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:table/${replace(var.project_name, "-", "_")}_staging_logs/*",
+        ]
+      },
+      {
+        # Athena workgroup + named queries (named-query actions don't support
+        # resource-level scoping), and the KMS key/alias the log bucket
+        # needs (kms:CreateKey can't be scoped before the key exists).
+        Effect = "Allow"
+        Action = [
+          "athena:*",
+          "kms:CreateKey", "kms:CreateAlias", "kms:DeleteAlias", "kms:DescribeKey",
+          "kms:EnableKeyRotation", "kms:GetKeyPolicy", "kms:GetKeyRotationStatus",
+          "kms:ListAliases", "kms:ListResourceTags", "kms:PutKeyPolicy",
+          "kms:ScheduleKeyDeletion", "kms:TagResource",
+        ]
+        Resource = "*"
       },
       {
         # IAM role management, also ARN-scopeable even before the role

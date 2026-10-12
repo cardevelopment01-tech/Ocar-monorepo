@@ -70,6 +70,7 @@ describe('goOnline — return_cab destination_city_id persistence', () => {
     vi.mocked(repo.upsertDriverLocation).mockResolvedValue(undefined as never)
     vi.mocked(pool.query)
       .mockResolvedValueOnce({ rows: [{ billing_mode: 'commission' }] } as never) // nearest-city billing lookup
+      .mockResolvedValueOnce({ rows: [{ category_id: String(RETURN_CAB_PARAMS.categoryId) }] } as never) // driver's own vehicle
       .mockResolvedValueOnce({ rows: [{ dest_lat: 19.81, dest_lng: 85.83 }] } as never) // destination centroid lookup
   })
 

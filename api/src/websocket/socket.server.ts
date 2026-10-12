@@ -18,6 +18,35 @@ import { isDriverSessionReplaced } from '@/middleware/auth.middleware'
 
 let io: Server
 
+// Socket.IO does not wrap listeners: a synchronous throw (e.g. BigInt('x'), destructuring undefined) from a
+// client-supplied payload becomes an uncaught exception and kills the whole API process. Every client event
+// goes through this wrapper, and ids are parsed with parseId() rather than raw BigInt().
+function safeHandler<A extends unknown[]>(
+  log: { warn: (o: object, m: string) => void },
+  event: string,
+  fn: (...args: A) => void | Promise<void>,
+): (...args: A) => void {
+  return (...args: A) => {
+    try {
+      const out = fn(...args)
+      if (out && typeof (out as Promise<void>).catch === 'function') {
+        ;(out as Promise<void>).catch((err: unknown) => log.warn({ err, event }, 'socket handler rejected'))
+      }
+    } catch (err) {
+      log.warn({ err, event }, 'socket handler threw on bad payload')
+    }
+  }
+}
+
+const ID_RE = /^\d{1,18}$/
+function parseId(v: unknown): bigint | null {
+  const str = typeof v === 'number' && Number.isSafeInteger(v) ? String(v) : v
+  return typeof str === 'string' && ID_RE.test(str) ? BigInt(str) : null
+}
+function finiteNum(v: unknown, min: number, max: number): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : null
+}
+
 export function initSocketServer(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
     cors: {
@@ -95,32 +124,46 @@ export function initSocketServer(httpServer: HttpServer): Server {
       }).catch(() => {})
 
       // Clear ACK key when driver confirms receipt of a ride request
-      socket.on('ride:request:ack', ({ rideId }: { rideId: string }) => {
-        void redis.del(rideAckKey(rideId, user.sub))
-      })
+      socket.on('ride:request:ack', safeHandler(log, 'ride:request:ack', (payload?: { rideId?: unknown }) => {
+        const rideId = parseId(payload?.rideId)
+        if (rideId === null) return
+        void redis.del(rideAckKey(rideId.toString(), user.sub)).catch(() => {})
+      }))
 
       // GPS ping over the already-open connection instead of a fresh HTTP
       // request every ~3s — same handler the POST /sessions/location route uses.
-      socket.on('location:update', (data: {
-        sessionId: string
-        lat: number
-        lng: number
-        heading?: number
-        speed?: number
-        recordedAt: string
+      socket.on('location:update', safeHandler(log, 'location:update', (data?: {
+        sessionId?: unknown
+        lat?: unknown
+        lng?: unknown
+        heading?: unknown
+        speed?: unknown
+        recordedAt?: unknown
       }) => {
+        const sessionId = parseId(data?.sessionId)
+        const lat = finiteNum(data?.lat, -90, 90)
+        const lng = finiteNum(data?.lng, -180, 180)
+        if (sessionId === null || lat === null || lng === null) return
+        // The device clock is not trusted, but a wrong one must not silence the driver either: updateLocation
+        // replaces an implausible recordedAt with server time (this used to drop the ping, so a phone with a
+        // bad clock never updated its location and was swept offline). Anything that isn't a string is stamped now.
         const input: Parameters<typeof updateLocation>[1] = {
-          sessionId:  BigInt(data.sessionId),
-          lat:        data.lat,
-          lng:        data.lng,
-          recordedAt: data.recordedAt,
+          sessionId,
+          lat,
+          lng,
+          // Length-capped: it is only ever parsed, but an oversized string has no business reaching the service.
+          recordedAt: typeof data?.recordedAt === 'string' && data.recordedAt.length <= 40
+            ? data.recordedAt
+            : new Date().toISOString(),
         }
-        if (data.heading !== undefined) input.heading = data.heading
-        if (data.speed   !== undefined) input.speed   = data.speed
+        const heading = finiteNum(data?.heading, 0, 360)
+        const speed   = finiteNum(data?.speed, 0, 400)
+        if (heading !== null) input.heading = heading
+        if (speed   !== null) input.speed   = speed
         updateLocation(BigInt(user.sub), input).catch((err: unknown) => {
-          log.error({ err, sessionId: data.sessionId }, 'location:update failed')
+          log.error({ err, sessionId: String(sessionId) }, 'location:update failed')
         })
-      })
+      }))
 
       // On reconnect, immediately re-deliver any assignments the driver may have
       // missed while their socket was down (messages are not buffered by Socket.io).
@@ -169,16 +212,18 @@ export function initSocketServer(httpServer: HttpServer): Server {
       void socket.join('admin:ops')
     }
 
-    socket.on('join:ride', (rideId: string) => {
+    socket.on('join:ride', safeHandler(log, 'join:ride', (rawRideId?: unknown) => {
       const callerSub = user?.sub
-      if (!callerSub || !rideId) return
+      const rideBig = parseId(rawRideId)
+      if (!callerSub || rideBig === null) return
+      const rideId = rideBig.toString()
       // Join immediately so an event fired the instant this arrives isn't missed
       // while the authorization check below is still in flight (Socket.io doesn't
       // buffer per-room events for late joiners); revoke membership if the check fails.
       void socket.join(`ride:${rideId}`)
       void pool.query<{ user_id: string; driver_id: string | null }>(
         `SELECT user_id::text, driver_id::text FROM rides WHERE id = $1`,
-        [BigInt(rideId)]
+        [rideBig]
       ).then((result) => {
         const ride = result.rows[0]
         const isParticipant = !!ride && (
@@ -188,23 +233,25 @@ export function initSocketServer(httpServer: HttpServer): Server {
         )
         if (!isParticipant) void socket.leave(`ride:${rideId}`)
       }).catch(() => { void socket.leave(`ride:${rideId}`) })
-    })
+    }))
 
-    socket.on('leave:ride', (rideId: string) => {
-      void socket.leave(`ride:${rideId}`)
-    })
+    socket.on('leave:ride', safeHandler(log, 'leave:ride', (rawRideId?: unknown) => {
+      const rideId = parseId(rawRideId)
+      if (rideId !== null) void socket.leave(`ride:${rideId}`)
+    }))
 
     // Chat-screen presence: the chat page emits open/close as it mounts/unmounts.
     // sendMessage() checks this before pushing/feeding a notification for a new
     // message — no point notifying someone already watching the message arrive
     // live over the socket. Stored on socket.data so it's per-connection and
     // vanishes automatically on disconnect (no explicit cleanup needed).
-    socket.on('chat:open', ({ rideId }: { rideId: string }) => {
-      socket.data.openChatRideId = rideId
-    })
-    socket.on('chat:close', () => {
+    socket.on('chat:open', safeHandler(log, 'chat:open', (payload?: { rideId?: unknown }) => {
+      const rideId = parseId(payload?.rideId)
+      if (rideId !== null) socket.data.openChatRideId = rideId.toString()
+    }))
+    socket.on('chat:close', safeHandler(log, 'chat:close', () => {
       socket.data.openChatRideId = undefined
-    })
+    }))
 
     socket.on('disconnect', () => {
       log.info('socket disconnected')

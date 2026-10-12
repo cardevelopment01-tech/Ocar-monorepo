@@ -69,7 +69,18 @@ services:
       - ./infra/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - alloy_data:/var/lib/alloy/data
-    command: run --storage.path=/var/lib/alloy/data --server.http.listen-addr=127.0.0.1:12345 /etc/alloy/config.alloy
+    # --stability.level=experimental: config.alloy's otelcol.exporter.awss3
+    # (S3 log archive) is an experimental component and won't load otherwise.
+    command: run --stability.level=experimental --storage.path=/var/lib/alloy/data --server.http.listen-addr=127.0.0.1:12345 /etc/alloy/config.alloy
+    # /-/ready = initial config loaded (503 until then). Not /-/healthy: Grafana
+    # documents that as unsuitable for liveness. The image has no wget/curl, so
+    # probe with bash's /dev/tcp. deploy.yml gates cutover on this status.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/12345 && printf 'GET /-/ready HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     networks:
       - ocar_net
     logging:
@@ -109,6 +120,12 @@ services:
   # -- harmless duplication (dashboard queries use max() not sum()), simpler
   # than standing up a dedicated instance just to avoid it.
   #
+  # stat_statements.limit=25 caps the collector at the top 25 statements by
+  # total time (upstream default is 100). Every statement is ~9 series x
+  # every instance x both colors during a deploy, so this is the knob that
+  # bounds the active-series bill from this exporter -- pg_stat_statements is
+  # the one metric source whose cardinality is driven by the data, not by us.
+  #
   # Password comes from a file refreshed by refresh-postgres-exporter-secret.sh
   # (run once at boot, then on a systemd timer), not from .env.prod's DB_* vars
   # directly -- RDS's master password auto-rotates via Secrets Manager, and a
@@ -132,7 +149,7 @@ services:
     # after writing it, matching the container's actual runtime user.
     volumes:
       - ./secrets/pg_exporter_password:/run/secrets/pg_exporter_password:ro
-    entrypoint: ["sh", "-c", "DATA_SOURCE_URI=\"$$DB_HOST:$$DB_PORT/$$DB_NAME?sslmode=require\" DATA_SOURCE_USER=\"$$DB_USER\" DATA_SOURCE_PASS_FILE=/run/secrets/pg_exporter_password exec /bin/postgres_exporter --collector.stat_statements --collector.stat_statements.include_query"]
+    entrypoint: ["sh", "-c", "DATA_SOURCE_URI=\"$$DB_HOST:$$DB_PORT/$$DB_NAME?sslmode=require\" DATA_SOURCE_USER=\"$$DB_USER\" DATA_SOURCE_PASS_FILE=/run/secrets/pg_exporter_password exec /bin/postgres_exporter --collector.stat_statements --collector.stat_statements.include_query --collector.stat_statements.limit=25"]
     networks:
       - ocar_net
     logging:

@@ -4,6 +4,7 @@ import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import { setupOnlineDriver, cleanupRideAndDriverData } from '../helpers/fixtures/rides.fixture'
+import { makeUserToken } from '../helpers/auth.helper'
 
 const TEST_PLACE_ID = 'ChIJTestPlaceId12345'
 
@@ -14,7 +15,16 @@ const PHONES = {
 } as const
 const ALL_PHONES = Object.values(PHONES)
 
+// The Google-backed geo endpoints need a signed-in principal.
+const GEO_USER_PHONE = '+919700000109'
+async function geoUserToken(): Promise<string> {
+  const { rows } = await pool.query<{ id: string }>(
+    `INSERT INTO users (phone) VALUES ($1) ON CONFLICT (phone) DO UPDATE SET updated_at = now() RETURNING id`, [GEO_USER_PHONE])
+  return makeUserToken(rows[0]!.id)
+}
+
 afterAll(async () => {
+  await pool.query('DELETE FROM users WHERE phone = $1', [GEO_USER_PHONE])
   // Runs regardless of test outcome — a failed assertion mid-test must not
   // leak this row and permanently wedge the next run's cache-miss assumption.
   await pool.query('DELETE FROM place_geocode_cache WHERE normalized_address = $1', [`place:${TEST_PLACE_ID}`])
@@ -76,7 +86,12 @@ describe('M05 — Geo & Spatial', () => {
 
       const google = await import('@/modules/geo/providers/google.provider')
 
-      const firstRes = await request(app).get(`/api/v1/geo/place/${placeId}`)
+      const userToken = await geoUserToken()
+      const unauth = await request(app).get(`/api/v1/geo/place/${placeId}`)
+      expect(unauth.status).toBe(401) // no longer an open Google proxy
+      expect(google.placeDetails).not.toHaveBeenCalled()
+
+      const firstRes = await request(app).get(`/api/v1/geo/place/${placeId}`).set('Authorization', `Bearer ${userToken}`)
       expect(firstRes.status, JSON.stringify(firstRes.body)).toBe(200)
       expect(google.placeDetails).toHaveBeenCalledTimes(1)
 
@@ -85,7 +100,7 @@ describe('M05 — Geo & Spatial', () => {
       )
       expect(cacheRows).toHaveLength(1)
 
-      const secondRes = await request(app).get(`/api/v1/geo/place/${placeId}`)
+      const secondRes = await request(app).get(`/api/v1/geo/place/${placeId}`).set('Authorization', `Bearer ${userToken}`)
       expect(secondRes.status, JSON.stringify(secondRes.body)).toBe(200)
       // Still called exactly once — the second request must be served from cache.
       expect(google.placeDetails).toHaveBeenCalledTimes(1)
@@ -129,11 +144,17 @@ describe('M05 — Geo & Spatial', () => {
 
       // No categoryId param — rides.routes.ts's nearby-drivers handler only
       // reads lat/lng/radius, it doesn't filter by category at all.
-      const res = await request(app).get('/api/v1/rides/nearby-drivers?lat=20.29&lng=85.82')
+      const unauth = await request(app).get('/api/v1/rides/nearby-drivers?lat=20.29&lng=85.82')
+      expect(unauth.status).toBe(401) // no longer a free live map of the fleet
+
+      const res = await request(app).get('/api/v1/rides/nearby-drivers?lat=20.29&lng=85.82').set('Authorization', `Bearer ${nearDriver.accessToken}`)
       expect(res.status, JSON.stringify(res.body)).toBe(200)
-      const ids = (res.body.drivers as Array<{ driver_id: string }>).map((d) => String(d.driver_id))
-      expect(ids).toContain(String(nearDriver.driverId))
-      expect(ids).not.toContain(String(farDriver.driverId))
+      // Drivers are returned under an opaque, stable reference - never their real ids.
+      const { publicDriverRef } = await import('@/modules/rides/rides.service')
+      const refs = (res.body.drivers as Array<{ driver_id: string }>).map((d) => String(d.driver_id))
+      expect(refs).toContain(publicDriverRef(String(nearDriver.driverId)))
+      expect(refs).not.toContain(publicDriverRef(String(farDriver.driverId)))
+      expect(refs).not.toContain(String(nearDriver.driverId))
     })
   })
 })

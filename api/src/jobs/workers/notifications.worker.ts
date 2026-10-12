@@ -92,7 +92,9 @@ export const notificationsWorker = new Worker(
         otp: string
         type: 'auth' | 'trip_start' | 'trip_end'
       }
-      const lp: LogParams = { jobName: job.name, payload: data as Record<string, unknown> }
+      // The OTP itself is never persisted: notification_logs is long-lived and readable by anyone with DB access.
+      const { otp: _otp, ...loggable } = data
+      const lp: LogParams = { jobName: job.name, payload: loggable as Record<string, unknown> }
       if (data.phone) lp.recipientPhone = data.phone
       const logId = await notifService.logNotification(lp)
       try {
