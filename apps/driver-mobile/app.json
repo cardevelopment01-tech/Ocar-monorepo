@@ -60,7 +60,7 @@
       "enableMinifyInReleaseBuilds": true,
       "enableShrinkResourcesInReleaseBuilds": true,
       "buildArchs": ["arm64-v8a", "armeabi-v7a"],
-      "extraProguardRules": "-keep class io.invertase.firebase.** { *; }\n-keep class com.payu.** { *; }\n-keep class com.google.android.libraries.navigation.** { *; }\n-dontwarn com.google.android.gms.auth.api.credentials.**\n-dontwarn com.payu.**"
+      "extraProguardRules": "-keep class io.invertase.firebase.** { *; }\n-keep class com.payu.** { *; }\n-keep class com.google.android.libraries.navigation.** { *; }\n-dontwarn com.google.android.gms.auth.api.credentials.**\n-dontwarn com.payu.**\n-keep class expo.modules.adapters.react.apploader.** { *; }"
     }
   }
 ],
