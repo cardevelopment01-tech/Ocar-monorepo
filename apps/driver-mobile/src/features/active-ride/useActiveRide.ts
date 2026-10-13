@@ -35,6 +35,8 @@ export type RideDetailSettled = RideDetail & {
   commissionAmount?: string | null
   driverEarning?: string | null
   paymentChannel?: string | null
+  cashCollectedAt?: string | null
+  cashCollectedAmount?: string | null
 }
 
 export function useActiveRide(rideId: string) {

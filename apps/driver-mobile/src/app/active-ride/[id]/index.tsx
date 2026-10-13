@@ -27,6 +27,7 @@ import { triggerSos } from '@/features/active-ride/safety-api'
 import { useDriverPositionStore } from '@/services/location/driverPositionStore'
 import { useSpeedAlert } from '@/features/active-ride/useSpeedAlert'
 import { useTripWindow } from '@/features/active-ride/useTripWindow'
+import { settledCash } from '@/features/active-ride/settledCash'
 
 // SOSButton's circle diameter, to centre it in the guided-nav control strip.
 const SOS_SIZE = 56
@@ -141,6 +142,9 @@ export default function ActiveRideScreen() {
   // The settled fare wins once it exists: the server expects cash against total_final (overtime, extra km,
   // rental overage all land there), so collecting against the quote records a false shortfall.
   const expectedFare = parseFloat(ride.totalFinal ?? ride.totalEstimated ?? '0')
+
+  // Cash already collected (here or earlier) or not a cash ride: show the summary, not the collection card.
+  const settled = settledCash(ride, cashResult)
 
   // Resolves false on failure so the cash slider springs back instead of sticking on "Confirmed".
   async function handleConfirmCashFull(): Promise<boolean> {
@@ -331,12 +335,12 @@ export default function ActiveRideScreen() {
           button (bottom-left) -- the ride-status sheet would otherwise dock over
           that exact corner and make it unreachable (code-review finding: driver
           gets stuck in guided nav with no way back to the DIY view/rider actions). */}
-      {navView !== 'diy' ? null : status === 'completed' && cashResult ? (
+      {navView !== 'diy' ? null : status === 'completed' && settled ? (
         <>
           <RideSheet>
             <TripCompletionCard
               ride={ride}
-              collectedCash={cashResult.collected}
+              collectedCash={settled.collected}
               driverRating={driverRating}
               onBackToOnline={handleBackToOnline}
             />
