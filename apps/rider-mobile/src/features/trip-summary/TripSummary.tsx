@@ -71,7 +71,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
   const timeline = buildTimeline(ride)
   const dropLabel = ride.rideType === 'round_trip' ? 'Drop and return' : ride.rideType === 'rental' ? 'Route' : 'Drop'
   const dropValue = ride.rideType === 'rental'
-    ? (ride.tripHours ? `${ride.tripHours}h rental, flexible` : 'Hourly rental, flexible')
+    ? (ride.tripHours ? `${ride.tripHours}h city ride, flexible` : 'Hourly city ride, flexible')
     : (ride.destinationAddress ?? 'Destination')
   const driverView = driverViewFromRide(ride)
   const hasDriver = completed && ride.driverId != null
