@@ -25,6 +25,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   '/config/rate-cards':     { title: 'Rate Cards',     subtitle: 'Fare configuration' },
   '/config/system-config':  { title: 'System Config',  subtitle: 'Fees, payouts, switches' },
   '/config/feature-flags':  { title: 'Feature Flags',  subtitle: 'Toggle platform features' },
+  '/broadcasts':            { title: 'Broadcasts',     subtitle: 'Send a notice or offer to drivers or riders' },
   '/config/notification-templates': { title: 'Notification Templates', subtitle: 'SMS & push message copy' },
   '/admins':                { title: 'Admins',         subtitle: 'Admin accounts & invitations' },
   '/audit-log':             { title: 'Audit Log',      subtitle: 'Every admin action, who did it, and when' },

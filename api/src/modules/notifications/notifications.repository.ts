@@ -51,6 +51,25 @@ export async function recordPushResult(
   )
 }
 
+export async function getPreferences(ownerType: 'user' | 'driver', ownerId: bigint): Promise<{ announcements: boolean; offers: boolean }> {
+  const res = await pool.query<{ category: string; push_enabled: boolean }>(
+    'SELECT category, push_enabled FROM notification_preferences WHERE owner_type = $1 AND owner_id = $2',
+    [ownerType, ownerId.toString()],
+  )
+  const prefs = { announcements: true, offers: true }
+  for (const r of res.rows) if (r.category === 'announcements' || r.category === 'offers') prefs[r.category] = r.push_enabled
+  return prefs
+}
+
+export async function setPreference(ownerType: 'user' | 'driver', ownerId: bigint, category: string, enabled: boolean): Promise<void> {
+  await pool.query(
+    `INSERT INTO notification_preferences (owner_type, owner_id, category, push_enabled)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (owner_type, owner_id, category) DO UPDATE SET push_enabled = EXCLUDED.push_enabled, updated_at = now()`,
+    [ownerType, ownerId.toString(), category, enabled],
+  )
+}
+
 export async function markFailed(id: bigint, errorMessage: string): Promise<void> {
   await pool.query(
     `UPDATE notification_logs

@@ -33,6 +33,8 @@ export async function setupPushNotifications(opts: { prompt?: boolean } = {}): P
       // Heads-up (sound + banner) channel for ride lifecycle events (driver arrived, cancelled, ...).
       // Android locks a channel's importance at creation, so this is HIGH from the start.
       { channelId: 'ride_updates_v1', name: 'Ride updates', description: 'Driver on the way, arrived, trip started and completed, cancellations, payment problems', importance: Notifications.AndroidImportance.HIGH },
+      { channelId: 'announcements_v1', name: 'Announcements', description: 'Notices from Ocar', importance: Notifications.AndroidImportance.DEFAULT },
+      { channelId: 'offers_v1', name: 'Offers', description: 'Discounts and promotions', importance: Notifications.AndroidImportance.LOW },
       { channelId: 'chat_v1', name: 'Messages', description: 'Messages from your driver', importance: Notifications.AndroidImportance.HIGH },
     ],
   })

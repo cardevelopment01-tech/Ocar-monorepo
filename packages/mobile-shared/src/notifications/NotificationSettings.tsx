@@ -1,4 +1,4 @@
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, fonts, radii, spacing, typography } from '../theme/tokens'
@@ -10,9 +10,11 @@ export type NotificationSettingsProps = {
   permission: { state: PushPermissionState | null; canAskAgain: boolean }
   onEnablePush: () => void
   onBack: () => void
+  /** Optional categories the user can switch off. Omit until the preferences have loaded. */
+  switches?: { label: string; description: string; value: boolean; onChange: (value: boolean) => void }[]
 }
 
-export function NotificationSettings({ topics, permission, onEnablePush, onBack }: NotificationSettingsProps) {
+export function NotificationSettings({ topics, permission, onEnablePush, onBack, switches }: NotificationSettingsProps) {
   const insets = useSafeAreaInsets()
   const granted = permission.state === 'granted'
 
@@ -53,6 +55,23 @@ export function NotificationSettings({ topics, permission, onEnablePush, onBack 
           ))}
         </View>
 
+        {switches && switches.length > 0 ? (
+          <>
+            <Text style={styles.sectionTitle}>You can switch off</Text>
+            <View style={styles.card2}>
+              {switches.map((s, i) => (
+                <View key={s.label} style={[styles.switchRow, i > 0 ? styles.topicBorder : null]}>
+                  <View style={styles.cardBody}>
+                    <Text style={styles.topicName}>{s.label}</Text>
+                    <Text style={styles.topicText}>{s.description}</Text>
+                  </View>
+                  <Switch value={s.value} onValueChange={s.onChange} trackColor={{ true: colors.primary }} accessibilityLabel={s.label} />
+                </View>
+              ))}
+            </View>
+          </>
+        ) : null}
+
         <Pressable onPress={() => { void Linking.openSettings() }} style={styles.systemRow} accessibilityRole="button">
           <View style={styles.cardBody}>
             <Text style={styles.cardTitle}>Sound, pop-up and vibration</Text>
@@ -82,6 +101,7 @@ const styles = StyleSheet.create({
   ctaText: { ...typography.caption, color: colors.inkInverse, fontFamily: fonts.bold },
   sectionTitle: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: spacing.sm },
   topic: { padding: spacing.md, gap: 2 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md },
   topicBorder: { borderTopWidth: 1, borderTopColor: colors.borderLight },
   topicName: { ...typography.body, lineHeight: 20, color: colors.ink900, fontFamily: fonts.semibold },
   topicText: { ...typography.caption, color: colors.ink600 },

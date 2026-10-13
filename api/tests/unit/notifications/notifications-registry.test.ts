@@ -4,7 +4,7 @@ import { NOTIFICATION_TYPES, pushDefaults, CHAT_PUSH, type NotificationType } fr
 // Channel ids the apps create at startup (apps/*-mobile/src/services/notifications/index.ts).
 // Keep in sync: a push to a channel the app never created falls back to FCM's own default channel
 // (no heads-up, no custom sound).
-const APP_CHANNELS = new Set(['default_v2', 'ride_requests_v2', 'ride_updates_v1', 'chat_v1', 'account_alerts_v1'])
+const APP_CHANNELS = new Set(['default_v2', 'ride_requests_v2', 'ride_updates_v1', 'chat_v1', 'account_alerts_v1', 'announcements_v1', 'offers_v1'])
 
 describe('notification registry', () => {
   it('only targets channels the apps create', () => {

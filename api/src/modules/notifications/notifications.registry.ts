@@ -51,6 +51,9 @@ export const NOTIFICATION_TYPES = {
   driver_warning:    { channelId: 'account_alerts_v1', ttlSeconds: 7 * DAY, collapse: 'none' },
   wallet_low_balance: { channelId: 'account_alerts_v1', ttlSeconds: DAY, collapse: 'type' },
   session_ended_stale: { ttlSeconds: HOUR, collapse: 'type' },
+  // ── Admin broadcasts (optional categories; see notification_preferences) ──
+  announcement:      { channelId: 'announcements_v1', ttlSeconds: DAY, collapse: 'none' },
+  offer:             { channelId: 'offers_v1', ttlSeconds: DAY, collapse: 'none' },
 } as const satisfies Record<string, NotificationTypeConfig>
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPES

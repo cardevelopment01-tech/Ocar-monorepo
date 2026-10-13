@@ -7,7 +7,7 @@ import { DEMO_MODE } from '@/lib/demo'
 import {
   LayoutDashboard, Map, Car, Truck, Users, User, AlertTriangle, Shield,
   CreditCard, Wallet, RotateCcw, Tag, Settings, ToggleLeft, Package,
-  BarChart2, LogOut, MapPin, MessageSquare, UserCog, ScrollText, ShieldCheck,
+  BarChart2, LogOut, MapPin, MessageSquare, Send, UserCog, ScrollText, ShieldCheck,
   Wrench,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -66,6 +66,7 @@ const NAV: NavGroup[] = [
       { href: '/config/system-config', label: 'System Config', icon: Settings,   roles: ['super_admin'] },
       { href: '/config/feature-flags', label: 'Feature Flags', icon: ToggleLeft, roles: ['super_admin'], demo: true },
       { href: '/config/maintenance',   label: 'Maintenance',   icon: Wrench,     roles: ['super_admin'] },
+      { href: '/broadcasts', label: 'Broadcasts', icon: Send, roles: ['super_admin','ops_admin'] },
       { href: '/config/notification-templates', label: 'Notification Templates', icon: MessageSquare, roles: ['super_admin'] },
       { href: '/admins', label: 'Admins', icon: UserCog, roles: ['super_admin'] },
       { href: '/audit-log', label: 'Audit Log', icon: ScrollText, roles: ['super_admin'] },
