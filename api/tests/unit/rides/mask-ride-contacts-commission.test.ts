@@ -9,6 +9,7 @@ function baseRide() {
     commission_percent: '15.00',
     commission_amount: '72.00',
     driver_earning: '408.00',
+    driver_rating_given: 5,
   }
 }
 
@@ -30,6 +31,14 @@ describe('maskRideContacts — commission visibility', () => {
   it('keeps commission fields for the admin viewer', () => {
     const masked = maskRideContacts(baseRide(), 'admin')
     expect(masked.commission_amount).toBe('72.00')
+  })
+})
+
+describe('maskRideContacts — the driver rating of the rider', () => {
+  it('is hidden from the rider and kept for the driver and admin', () => {
+    expect(maskRideContacts(baseRide(), 'user').driver_rating_given).toBeNull()
+    expect(maskRideContacts(baseRide(), 'driver').driver_rating_given).toBe(5)
+    expect(maskRideContacts(baseRide(), 'admin').driver_rating_given).toBe(5)
   })
 })
 

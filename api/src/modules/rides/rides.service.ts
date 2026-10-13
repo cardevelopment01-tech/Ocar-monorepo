@@ -494,6 +494,7 @@ export function maskRideContacts<T extends {
   commission_percent?: string | null
   commission_amount?: string | null
   driver_earning?: string | null
+  driver_rating_given?: number | null
 }>(ride: T, viewer: 'user' | 'driver' | 'admin'): T {
   // Ride OTP hashes are 4-digit SHA-256: whoever holds one recovers the code instantly, which would let a
   // driver start/end a trip without the rider. They never leave the API, for any viewer.
@@ -503,7 +504,8 @@ export function maskRideContacts<T extends {
   if (viewer === 'user') {
     // Commission/earning are the driver's business, not the rider's — strip
     // them here rather than gating in every route handler that calls this.
-    return { ...base, driver_phone: null, commission_percent: null, commission_amount: null, driver_earning: null }
+    // (How the driver rated the rider is the driver's, too.)
+    return { ...base, driver_phone: null, commission_percent: null, commission_amount: null, driver_earning: null, driver_rating_given: null }
   }
   return { ...base, user_phone: null, rider_phone: null }
 }

@@ -346,7 +346,7 @@ export default function ActiveRideScreen() {
             />
           </RideSheet>
           <RateRiderSheet
-            visible={rateSheetOpen}
+            visible={rateSheetOpen && ride.driverRatingGiven == null}
             rideId={rideId}
             riderName={ride.riderName}
             onClose={() => setRateSheetOpen(false)}

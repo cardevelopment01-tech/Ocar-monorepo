@@ -37,6 +37,8 @@ export type RideDetailSettled = RideDetail & {
   paymentChannel?: string | null
   cashCollectedAt?: string | null
   cashCollectedAmount?: string | null
+  /** The score this driver already gave the rider, or null if they have not rated yet. */
+  driverRatingGiven?: number | null
 }
 
 export function useActiveRide(rideId: string) {
