@@ -54,7 +54,19 @@ const DOC_LABELS: Record<string, string> = {
 }
 const label = (k: string) => DOC_LABELS[k] ?? k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
-const REQUIRED_DRIVER  = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
+// The order verifiers go through the documents in (set by the client): profile picture, Aadhaar, licence,
+// then the vehicle papers. Used by the review list and the driver page so both index the same way.
+export const DOC_ORDER = [
+  'profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license', 'driving_license_front', 'driving_license_back',
+  'vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit', 'fitness_cert', 'pollution_cert',
+]
+/** Position in DOC_ORDER; a type we do not know sorts after the known ones. */
+export const docRank = (type: string): number => {
+  const i = DOC_ORDER.indexOf(type)
+  return i === -1 ? DOC_ORDER.length : i
+}
+
+const REQUIRED_DRIVER  = ['profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license_front', 'driving_license_back']
 const REQUIRED_VEHICLE = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
 
 function nextActionableIdx(docs: FlatDoc[], from: number): number | null {
@@ -65,7 +77,7 @@ function nextActionableIdx(docs: FlatDoc[], from: number): number | null {
   return null
 }
 
-function buildDocs(d: DriverDetail): FlatDoc[] {
+export function buildDocs(d: DriverDetail): FlatDoc[] {
   const list: FlatDoc[] = []
   const addedD = new Set<string>()
   const addedV = new Set<string>()
@@ -73,7 +85,7 @@ function buildDocs(d: DriverDetail): FlatDoc[] {
   for (const x of d.vehicle_documents) { list.push({ kind: 'vehicle', docType: x.doc_type, fileUrl: x.file_url, status: x.status, rejectionNote: x.rejection_note, claimedValidUntil: x.claimed_valid_until, updatedAt: x.updated_at, id: x.id }); addedV.add(x.doc_type) }
   for (const k of REQUIRED_DRIVER)  if (!addedD.has(k)) list.push({ kind: 'driver',  docType: k, fileUrl: '', status: 'missing', rejectionNote: null, claimedValidUntil: null, updatedAt: null })
   for (const k of REQUIRED_VEHICLE) if (!addedV.has(k)) list.push({ kind: 'vehicle', docType: k, fileUrl: '', status: 'missing', rejectionNote: null, claimedValidUntil: null, updatedAt: null })
-  return list
+  return list.sort((a, b) => docRank(a.docType) - docRank(b.docType))
 }
 
 // ─── Sidebar doc item ─────────────────────────────────────────────────────────
