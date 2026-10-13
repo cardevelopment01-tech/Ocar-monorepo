@@ -50,7 +50,7 @@ function isPersonalInfoComplete(d: Driver): boolean {
 }
 
 const REQUIRED_IDENTITY_DOCS = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
-const REQUIRED_VEHICLE_DOCS  = ['vehicle_rc', 'insurance', 'permit']
+const REQUIRED_VEHICLE_DOCS  = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
 
 async function checkDocuments(driverId: bigint): Promise<{ complete: boolean; missing: string[] }> {
   const driver = await repo.findDriverById(driverId)
@@ -322,7 +322,7 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
     }
   }
 
-  const vehicleDocTypes = ['vehicle_rc', 'insurance', 'permit', 'pollution_cert', 'fitness_cert']
+  const vehicleDocTypes = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit', 'pollution_cert', 'fitness_cert']
   const vehicleDocs: Record<string, DocumentStatusEntry> = {}
   const vehicle = await repo.findVehicleByDriverId(driverId)
   const vehicleDocList = vehicle ? await repo.findVehicleDocuments(vehicle.id) : []
@@ -336,6 +336,14 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
       rejection_note: doc?.rejection_note ?? null,
       rejection_count: doc?.rejection_count ?? 0,
     }
+  }
+
+  // Drivers onboarded before the RC was split have a front but no back. Surface that as a
+  // rejected slot so the apps' existing "document rejected, re-upload" prompts fire (the same
+  // condition docIssueExistsSql uses to keep them off the road until the back is uploaded).
+  if (vehicle && vehicleDocs['vehicle_rc_front']?.uploaded && !vehicleDocs['vehicle_rc_back']?.uploaded) {
+    vehicleDocs['vehicle_rc_back']!.status = 'rejected'
+    vehicleDocs['vehicle_rc_back']!.rejection_note = 'Please upload the back of your RC book'
   }
 
   const { complete } = await checkDocuments(driverId)

@@ -37,7 +37,7 @@ export const DRIVER_DOC_GROUPS = [
 ] as const
 
 export const VEHICLE_DOC_GROUPS = [
-  { groupKey: 'vehicle_rc', label: 'Registration Certificate (RC)', hasExpiry: false, expiryRequired: false, required: true, slots: [{ key: 'vehicle_rc', slotLabel: '' }] },
+  { groupKey: 'vehicle_rc', label: 'Registration Certificate (RC)', hasExpiry: false, expiryRequired: false, required: true, slots: [{ key: 'vehicle_rc_front', slotLabel: 'Front' }, { key: 'vehicle_rc_back', slotLabel: 'Back' }] },
   { groupKey: 'insurance', label: 'Insurance', hasExpiry: true, expiryRequired: true, required: true, slots: [{ key: 'insurance', slotLabel: '' }] },
   { groupKey: 'permit', label: 'Commercial Permit', hasExpiry: true, expiryRequired: true, required: true, slots: [{ key: 'permit', slotLabel: '' }] },
   { groupKey: 'pollution_cert', label: 'PUC Certificate', hasExpiry: true, expiryRequired: false, required: false, slots: [{ key: 'pollution_cert', slotLabel: '' }] },

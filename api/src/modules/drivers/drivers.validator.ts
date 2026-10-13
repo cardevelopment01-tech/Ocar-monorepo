@@ -80,7 +80,7 @@ export const identityDocumentSchema = z.object({
 export const ALLOWED_UPLOAD_MIME = ['image/jpeg', 'image/png', 'application/pdf'] as const
 
 const IDENTITY_DOC_TYPES = ['profile_photo', 'driving_license', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back'] as const
-const VEHICLE_DOC_TYPES  = ['vehicle_rc', 'insurance', 'permit', 'pollution_cert', 'fitness_cert'] as const
+const VEHICLE_DOC_TYPES  = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit', 'pollution_cert', 'fitness_cert'] as const
 
 export const identityUploadInitSchema = z.object({
   doc_type: z.enum(IDENTITY_DOC_TYPES),

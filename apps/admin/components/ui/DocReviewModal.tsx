@@ -45,7 +45,8 @@ const DOC_LABELS: Record<string, string> = {
   driving_license_back:  'Driving Licence (Back)',
   aadhaar_front:         'Aadhaar (Front)',
   aadhaar_back:          'Aadhaar (Back)',
-  vehicle_rc:            'RC Book',
+  vehicle_rc_front:      'RC Book (Front)',
+  vehicle_rc_back:       'RC Book (Back)',
   insurance:             'Insurance',
   permit:                'Commercial Permit',
   pollution_cert:        'Pollution Certificate (PUC)',
@@ -54,7 +55,7 @@ const DOC_LABELS: Record<string, string> = {
 const label = (k: string) => DOC_LABELS[k] ?? k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
 const REQUIRED_DRIVER  = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
-const REQUIRED_VEHICLE = ['vehicle_rc', 'insurance', 'permit']
+const REQUIRED_VEHICLE = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
 
 function nextActionableIdx(docs: FlatDoc[], from: number): number | null {
   for (let i = from + 1; i < docs.length; i++) {
@@ -259,7 +260,7 @@ function minExpiryIso() {
 
 // These have no validity period — asking for one just invites an admin to pick
 // "today" (the easiest date in the picker). The backend ignores any date for them.
-const NO_EXPIRY_DOC_TYPES = new Set(['profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license_back', 'vehicle_rc'])
+const NO_EXPIRY_DOC_TYPES = new Set(['profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license_back', 'vehicle_rc_front', 'vehicle_rc_back'])
 
 function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onCancel }: {
   docType: string; claimedValidUntil: string | null; loading: boolean; error: string | null

@@ -115,7 +115,7 @@ describe('M04 — Vehicle Management', () => {
       const driver = await setupOnlineDriver(app, pool, redis, PHONES.docApprovalDriver, { categorySlug: 'sedan' })
       const { rows: docRows } = await pool.query<{ id: string; updated_at: string }>(
         `INSERT INTO driver_vehicle_documents (vehicle_id, doc_type, file_url, status)
-         VALUES ($1, 'vehicle_rc', 'https://storage.test/rc.jpg', 'pending')
+         VALUES ($1, 'vehicle_rc_front', 'https://storage.test/rc.jpg', 'pending')
          RETURNING id, updated_at`,
         [driver.vehicleId]
       )
@@ -154,7 +154,7 @@ describe('M04 — Vehicle Management', () => {
       const driver = await setupOnlineDriver(app, pool, redis, PHONES.docApprovalDriver2, { categorySlug: 'sedan' })
       const { rows: docRows } = await pool.query<{ id: string; updated_at: string }>(
         `INSERT INTO driver_vehicle_documents (vehicle_id, doc_type, file_url, status)
-         VALUES ($1, 'vehicle_rc', 'https://storage.test/rc.jpg', 'pending')
+         VALUES ($1, 'vehicle_rc_front', 'https://storage.test/rc.jpg', 'pending')
          RETURNING id, updated_at`,
         [driver.vehicleId]
       )
@@ -204,7 +204,7 @@ describe('M04 — Vehicle Management', () => {
           [realDriverId, docType]
         )
       }
-      for (const docType of ['vehicle_rc', 'insurance', 'permit']) {
+      for (const docType of ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']) {
         await pool.query(
           `INSERT INTO driver_vehicle_documents (vehicle_id, doc_type, file_url, status, verified_valid_until)
            VALUES ($1, $2, 'https://example.com/doc.jpg', 'approved', '2030-01-01')`,

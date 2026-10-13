@@ -338,7 +338,7 @@ export async function findVehicleDocuments(vehicleId: string): Promise<DriverVeh
 }
 
 const REQUIRED_IDENTITY_DOCS = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
-const REQUIRED_VEHICLE_DOCS  = ['vehicle_rc', 'insurance', 'permit']
+const REQUIRED_VEHICLE_DOCS  = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
 // Hardcoded constants only (never user input) — safe to inline into SQL.
 const sqlList = (types: string[]) => types.map((t) => `'${t}'`).join(', ')
 
@@ -364,6 +364,10 @@ export function docIssueExistsSql(driverIdExpr: string): string {
        WHERE dv.driver_id = ${driverIdExpr} AND dv.is_primary = true
          AND (dvd.status = 'rejected' OR (dvd.status = 'approved' AND dvd.verified_valid_until < CURRENT_DATE)
               OR (dvd.status = 'pending' AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)})))
+       UNION ALL
+       SELECT 1 FROM driver_vehicles dv
+       WHERE dv.driver_id = ${driverIdExpr} AND dv.is_primary = true
+         AND NOT EXISTS (SELECT 1 FROM driver_vehicle_documents d WHERE d.vehicle_id = dv.id AND d.doc_type = 'vehicle_rc_back')
      )`
 }
 
