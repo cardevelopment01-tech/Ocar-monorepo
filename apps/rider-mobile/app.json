@@ -22,6 +22,8 @@
         "ACCESS_COARSE_LOCATION",
         "POST_NOTIFICATIONS"
       ],
+      "blockedPermissions": ["android.permission.SYSTEM_ALERT_WINDOW", "android.permission.RECORD_AUDIO"],
+      "allowBackup": false,
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyAAVGxzN9sRx8fOBOQxwITVIk8lPC6sGtM"
@@ -41,6 +43,7 @@
     },
     "plugins": [
       "expo-router",
+    "../../packages/mobile-shared/plugins/withReleaseSigning.js",
 [
   "expo-build-properties",
   {
