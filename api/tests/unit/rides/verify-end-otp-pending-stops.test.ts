@@ -31,7 +31,7 @@ vi.mock('@/modules/payments/payments.service', () => ({
 }))
 vi.mock('@/lib/system-config', () => ({ getConfigValue: vi.fn().mockResolvedValue('true') }))
 vi.mock('@/modules/notifications/notifications.service', () => ({
-  notifyRidePaymentFailed: vi.fn().mockResolvedValue(undefined),
+  notifyRideEvent: vi.fn(), notifyRidePaymentFailed: vi.fn().mockResolvedValue(undefined),
   notifyAllAdmins:         vi.fn().mockResolvedValue(undefined),
   notifyOwner:             vi.fn().mockResolvedValue(undefined),
 }))

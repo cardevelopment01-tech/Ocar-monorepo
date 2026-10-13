@@ -30,7 +30,7 @@ vi.mock('@/modules/payments/payments.service', () => ({
 }))
 vi.mock('@/lib/system-config', () => ({ getConfigValue: vi.fn().mockResolvedValue('1') }))
 vi.mock('@/modules/notifications/notifications.service', () => ({
-  notifyRidePaymentFailed: vi.fn(), notifyAllAdmins: vi.fn(), notifyOwner: vi.fn(),
+  notifyRideEvent: vi.fn(), notifyRidePaymentFailed: vi.fn(), notifyAllAdmins: vi.fn(), notifyOwner: vi.fn(),
 }))
 
 import * as repo from '@/modules/rides/rides.repository'

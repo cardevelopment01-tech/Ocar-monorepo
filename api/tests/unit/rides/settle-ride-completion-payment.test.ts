@@ -21,7 +21,7 @@ vi.mock('@/modules/payments/payments.service', () => ({
   deductCommission: vi.fn(),
   creditCashback: vi.fn(),
 }))
-vi.mock('@/modules/notifications/notifications.service', () => ({ notifyRidePaymentFailed: vi.fn() }))
+vi.mock('@/modules/notifications/notifications.service', () => ({ notifyRideEvent: vi.fn(), notifyRidePaymentFailed: vi.fn() }))
 
 import { settleRideCompletionPayment } from '@/modules/rides/rides.service'
 import * as repo from '@/modules/rides/rides.repository'

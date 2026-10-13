@@ -40,7 +40,7 @@ import {
   getDriverWallet,
   getMinWalletBalance,
 } from '@/modules/payments/payments.service'
-import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowWalletBalance } from '@/modules/notifications/notifications.service'
+import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowWalletBalance, notifyRideEvent } from '@/modules/notifications/notifications.service'
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
@@ -1034,6 +1034,7 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status: 'driver_arrived',
   })
+  void notifyRideEvent('driver_arrived', BigInt(ride.user_id), rideId)
 
   // Rider-only channel: the OTP must never reach the driver's socket.
   socketEvents.sendUserUpdate(ride.user_id.toString(), {
@@ -1133,6 +1134,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     status:    'in_progress',
     startedAt: new Date().toISOString(),
   })
+  void notifyRideEvent('ride_started', BigInt(ride.user_id), rideId)
 
   await scheduleTripWindowNudges(rideId)
 
@@ -1776,6 +1778,7 @@ export async function cancelRide(
     log.error({ err, rideId }, 'call-masking release failed')
   })
 
+  if (ride.driver_id) void notifyRideEvent('ride_cancelled_by_rider', BigInt(ride.driver_id), rideId)
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status: 'cancelled',
     cancelledBy: 'user',
@@ -1878,6 +1881,7 @@ export async function cancelRideAsDriver(
     log.error({ err, rideId }, 'call-masking release failed')
   })
 
+  void notifyRideEvent('ride_cancelled_by_driver', BigInt(ride.user_id), rideId)
   socketEvents.sendRideStatusUpdate(rideId.toString(), {
     status: 'cancelled',
     cancelledBy: 'driver',
@@ -2342,6 +2346,8 @@ export async function expireStaleRequestedRide(rideId: bigint) {
     note:       'auto-expired: no broadcast resolution',
   })
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'no_drivers' })
+  const noDriversRide = await repo.getRideCoreById(rideId)
+  if (noDriversRide) void notifyRideEvent('ride_no_drivers', BigInt(noDriversRide.user_id), rideId)
 }
 
 export async function expireStaleAcceptedOrArrivedRide(
@@ -2399,6 +2405,9 @@ export async function expireStaleAcceptedOrArrivedRide(
   })
 
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'cancelled', cancelledBy: 'system' })
+  void notifyRideEvent('ride_cancelled_timeout', driverId, rideId)
+  const timedOutRide = await repo.getRideCoreById(rideId)
+  if (timedOutRide) void notifyRideEvent('ride_cancelled_by_system', BigInt(timedOutRide.user_id), rideId)
 }
 
 // Row used to settle a round trip at end-of-trip. Numeric columns arrive as strings from pg.

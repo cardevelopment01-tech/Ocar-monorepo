@@ -35,6 +35,10 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
     case 'pickup_updated':
       return rideId ? `/active-ride/${rideId}` : null
 
+    // The ride is over; nothing to open on it. Home shows the driver's current state.
+    case 'ride_cancelled':
+      return '/(tabs)/home'
+
     case 'ride_chat_message':
       return rideId ? `/active-ride/${rideId}/chat` : null
 
@@ -70,4 +74,13 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
     default:
       return null
   }
+}
+
+// What a push/notification TAP should do: the type's own screen, else the notification
+// center for any type we have no screen for (so a tap is never a dead end). Ride offers
+// are the one deliberate exception -- the live overlay owns them (see resolvePushRoute).
+export function resolveTapRoute(data: Record<string, string> | undefined): string | null {
+  const type = data?.['type']
+  if (type === 'ride_request' || type === 'ride_manual_request') return null
+  return resolvePushRoute(data) ?? (type ? '/notifications' : null)
 }

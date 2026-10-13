@@ -1,3 +1,4 @@
+import { Platform } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import type { AxiosInstance } from 'axios'
 
@@ -42,9 +43,14 @@ export async function registerPushNotifications(
   if (status !== 'granted') return { granted: false }
 
   const token = await config.getFcmToken()
-  if (token) await apiClient.post('/api/v1/notifications/devices', { token, platform: 'android' })
+  if (token) await registerDeviceToken(apiClient, token)
 
   return { granted: true }
+}
+
+// Also called when FCM rotates the token, otherwise the server keeps pushing to a dead one.
+export async function registerDeviceToken(apiClient: AxiosInstance, token: string): Promise<void> {
+  await apiClient.post('/api/v1/notifications/devices', { token, platform: Platform.OS === 'ios' ? 'ios' : 'android' })
 }
 
 export async function unregisterPushNotifications(apiClient: AxiosInstance, token: string | null): Promise<void> {

@@ -5,7 +5,7 @@ import type { NotifOwnerType } from './notifications.repository'
 import { renderTemplate } from './templates.service'
 import { logger } from '@/lib/logger'
 import { client as redis } from '@/db/redis'
-import { ridePushSentKey } from '@/constants/redis-keys'
+import { ridePushSentKey, rideEventPushKey } from '@/constants/redis-keys'
 
 const log = logger.child({ module: 'notifications-service' })
 
@@ -77,6 +77,9 @@ export async function notifyOwner(params: {
   // (webpush tag/renotify — see push.provider.ts) instead of stacking one per
   // event. Optional: most callers are one-shot events that don't need it.
   tag?: string
+  // How long FCM may hold the push for an offline device, and the Android channel to post it on.
+  ttlSeconds?: number
+  channelId?: string
 }): Promise<void> {
   const item = await repo.createInAppNotification(params)
 
@@ -93,6 +96,8 @@ export async function notifyOwner(params: {
         ...(params.payload as Record<string, string> | undefined),
       },
       ...(params.tag !== undefined ? { tag: params.tag } : {}),
+      ...(params.ttlSeconds !== undefined ? { ttlSeconds: params.ttlSeconds } : {}),
+      ...(params.channelId !== undefined ? { channelId: params.channelId } : {}),
     })
   } catch (err) {
     log.error({ err }, 'notify push leg failed')
@@ -146,6 +151,54 @@ export async function notifyAllAdmins(params: {
     })
   } catch (err) {
     log.error({ err }, 'notify admin socket leg failed')
+  }
+}
+
+// Ride lifecycle events that used to reach the app only over the socket, so a backgrounded
+// app never heard them. `slug` is the notification_templates row (editable in admin); the
+// title/body here are the fallback if that row is missing or inactive.
+const RIDE_EVENTS = {
+  driver_arrived: { ownerType: 'user', type: 'driver_arrived', title: 'Your driver has arrived', body: 'Your driver is at the pickup point. Share your OTP to start the trip.', ttlSeconds: 600 },
+  ride_started: { ownerType: 'user', type: 'ride_started', title: 'Trip started', body: 'Your trip is under way. Have a safe ride.', ttlSeconds: 600 },
+  ride_cancelled_by_driver: { ownerType: 'user', type: 'ride_cancelled', title: 'Ride cancelled', body: 'Your driver cancelled the ride. You can book another cab.', ttlSeconds: 3600 },
+  ride_cancelled_by_system: { ownerType: 'user', type: 'ride_cancelled', title: 'Ride cancelled', body: "Your driver didn't arrive in time, so the ride was cancelled. Please book again.", ttlSeconds: 3600 },
+  ride_no_drivers: { ownerType: 'user', type: 'ride_no_drivers', title: 'No drivers found', body: 'We could not find a driver nearby. Please try again.', ttlSeconds: 1800 },
+  ride_cancelled_by_rider: { ownerType: 'driver', type: 'ride_cancelled', title: 'Ride cancelled', body: 'The rider cancelled this ride.', ttlSeconds: 1800 },
+  ride_cancelled_timeout: { ownerType: 'driver', type: 'ride_cancelled', title: 'Ride cancelled', body: 'This ride was cancelled because you did not arrive in time.', ttlSeconds: 1800 },
+} as const
+export type RideEventSlug = keyof typeof RIDE_EVENTS
+
+// Fire-and-forget by design: never throws, so a notification problem can't fail the ride
+// transition that triggered it. At most one push per ride + recipient + event (a retried
+// status call, e.g. a double-tapped "arrived", must not notify twice).
+export async function notifyRideEvent(slug: RideEventSlug, ownerId: bigint, rideId: bigint): Promise<void> {
+  try {
+    const event = RIDE_EVENTS[slug]
+    const first = await redis.set(rideEventPushKey(rideId.toString(), slug, ownerId.toString()), '1', 'EX', 86_400, 'NX')
+    if (first !== 'OK') return
+
+    let title: string = event.title
+    let body: string = event.body
+    try {
+      const rendered = await renderTemplate(slug, 'push', {})
+      title = rendered.subject ?? title
+      body = rendered.body
+    } catch {
+      // template missing/inactive -- fall back to the built-in copy above
+    }
+    await notifyOwner({
+      ownerType: event.ownerType,
+      ownerId,
+      type: event.type,
+      title,
+      body,
+      rideId,
+      tag: `ride-${rideId}-status`,
+      ttlSeconds: event.ttlSeconds,
+      channelId: 'ride_updates_v1',
+    })
+  } catch (err) {
+    log.error({ err, slug, rideId: rideId.toString() }, 'notifyRideEvent failed')
   }
 }
 
