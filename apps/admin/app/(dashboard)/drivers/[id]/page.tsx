@@ -7,7 +7,7 @@ import { ArrowLeft, Pencil, Layers, AlertCircle, AlertTriangle, Trash2 } from 'l
 import StatusPill from '@/components/ui/StatusPill'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import ReasonDialog from '@/components/ui/ReasonDialog'
-import DocReviewModal from '@/components/ui/DocReviewModal'
+import DocReviewModal, { buildDocs, docRank } from '@/components/ui/DocReviewModal'
 import {
   adminDriverApi, type DriverDetail, type DriverPaymentRow, type DriverAuditLogEntry,
 } from '@/lib/admin-api'
@@ -479,10 +479,11 @@ export default function DriverDetailPage() {
     REQUIRED_VEHICLE_DOCS.filter(k => d.vehicle_documents.find(x => x.doc_type === k)?.status !== 'approved').length
   const canActivate = requiredUnapprovedCount === 0
   const unacknowledgedWarnings = d.warnings.filter(w => !w.acknowledged_at).length
-  const allDocs = [...d.documents.map(x => ({ ...x, kind: 'driver' as const })), ...d.vehicle_documents.map(x => ({ ...x, kind: 'vehicle' as const }))]
+  // The same ordered list the review modal builds, so a position here opens the same document there.
+  const allDocs = buildDocs(d)
   const selfie = d.documents.find(x => x.doc_type === 'profile_photo')
   function docIdx(docType: string) {
-    const idx = allDocs.findIndex(x => x.doc_type === docType)
+    const idx = allDocs.findIndex(x => x.docType === docType)
     return idx >= 0 ? idx : 0
   }
 
@@ -768,11 +769,11 @@ export default function DriverDetailPage() {
                 </div>
               )}
 
-              {d.documents.filter(x => x.doc_type !== 'profile_photo').length > 0 && (
+              {d.documents.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-text-secondary mb-2">Identity Documents</p>
                   <div className="space-y-1.5">
-                    {d.documents.filter(x => x.doc_type !== 'profile_photo').map(doc => (
+                    {[...d.documents].sort((a, b) => docRank(a.doc_type) - docRank(b.doc_type)).map(doc => (
                       <DocCheckItem key={doc.doc_type} docType={doc.doc_type} fileUrl={doc.file_url} status={doc.status} rejectionNote={doc.rejection_note} onClick={() => openReview(docIdx(doc.doc_type))} />
                     ))}
                   </div>
@@ -783,11 +784,13 @@ export default function DriverDetailPage() {
                 <div>
                   <p className="text-xs font-semibold text-text-secondary mb-2">Vehicle Documents</p>
                   <div className="space-y-1.5">
-                    {d.vehicle_documents.map(doc => (
-                      <DocCheckItem key={doc.doc_type} docType={doc.doc_type} fileUrl={doc.file_url} status={doc.status} rejectionNote={doc.rejection_note} onClick={() => openReview(docIdx(doc.doc_type))} />
-                    ))}
-                    {missingVehicle.map(key => (
-                      <DocCheckItem key={key} docType={key} fileUrl={null} status="missing" onClick={() => {}} />
+                    {[
+                      ...d.vehicle_documents.map(doc => ({ type: doc.doc_type, doc })),
+                      ...missingVehicle.map(key => ({ type: key, doc: null })),
+                    ].sort((a, b) => docRank(a.type) - docRank(b.type)).map(({ type, doc }) => (
+                      doc
+                        ? <DocCheckItem key={type} docType={type} fileUrl={doc.file_url} status={doc.status} rejectionNote={doc.rejection_note} onClick={() => openReview(docIdx(type))} />
+                        : <DocCheckItem key={type} docType={type} fileUrl={null} status="missing" onClick={() => {}} />
                     ))}
                   </div>
                 </div>
