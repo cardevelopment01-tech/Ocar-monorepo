@@ -104,7 +104,7 @@ export function authenticate(): RequestHandler {
           driver = { id: dbDriver.id, code: dbDriver.code, status: dbDriver.status }
           await setWithTTL(cacheKey, JSON.stringify(driver), PRINCIPAL_CACHE_TTL_SEC).catch(cacheWriteFailed)
         }
-        if (driver.status === 'banned') {
+        if (driver.status === 'banned' || driver.status === 'deleted') {
           res.status(401).json({
             error: AppErrors.AUTH_TOKEN_INVALID.message,
             code: AppErrors.AUTH_TOKEN_INVALID.code,

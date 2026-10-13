@@ -9,7 +9,8 @@ import { card, geo, sectionLabel } from '@/theme/homeTokens'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn, useAnimatedStyle } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, fonts, useKeyboardOffset, mapSaveError } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, fonts, useKeyboardOffset, mapSaveError } from '@ocar/mobile-shared'
+import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { teardownPushNotifications } from '@/services/notifications'
 import { fetchProfile, updateProfile, type ProfileStats } from '@/features/profile/api'
@@ -96,6 +97,25 @@ export default function ProfileScreen() {
     clearAuth()
   }
 
+  function confirmDeleteAccount() {
+    Alert.alert('Delete your account?', DELETE_ACCOUNT_WARNING, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => void deleteAccountNow() },
+    ])
+  }
+
+  async function deleteAccountNow() {
+    try {
+      await requestAccountDeletion(api)
+    } catch (err) {
+      Alert.alert('Could not delete your account', getApiErrorMessage(err, 'Please try again, or contact support.'))
+      return
+    }
+    // The server already removed this device's push token; this clears the local FCM registration too.
+    await teardownPushNotifications().catch(() => undefined)
+    clearAuth()
+  }
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md, paddingBottom: clearance }]}>
@@ -176,6 +196,9 @@ export default function ProfileScreen() {
           <Pressable onPress={() => setShowSignOut(true)} style={({ pressed }) => [styles.signOutBtn, pressed ? styles.pressedScale : null]}>
             <Feather name="log-out" size={15} color={colors.error} />
             <Text style={styles.signOutText}>Sign out</Text>
+          </Pressable>
+          <Pressable onPress={confirmDeleteAccount} style={styles.deleteBtn} accessibilityRole="button">
+            <Text style={styles.deleteText}>Delete account</Text>
           </Pressable>
           <Text style={styles.version}>Ocar v{APP_VERSION}</Text>
         </Animated.View>
@@ -289,6 +312,8 @@ const styles = StyleSheet.create({
   soonBadge: { paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.full, backgroundColor: colors.surface2 },
   soonBadgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.ink400 },
   signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: spacing.sm + 6, marginTop: spacing.md },
+  deleteBtn: { alignItems: 'center', paddingVertical: spacing.sm, marginTop: spacing.xs },
+  deleteText: { ...typography.caption, color: colors.ink400, textDecorationLine: 'underline' },
   signOutText: { ...typography.body, color: colors.error, fontFamily: fonts.bold },
   version: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginTop: spacing.md },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },

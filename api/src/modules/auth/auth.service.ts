@@ -169,7 +169,7 @@ export async function verifyOtp(
     isNew = !existing
     principal = await repo.upsertDriver(phone)
     const { status } = principal as DriverRecord
-    if (status === 'suspended' || status === 'banned') {
+    if (status === 'suspended' || status === 'banned' || status === 'deleted') {
       throw createHttpError(AppErrors.DRIVER_SUSPENDED)
     }
   }
@@ -263,8 +263,8 @@ export async function refreshTokens(refreshToken: string): Promise<{ tokens: Aut
   if (role === PrincipalRole.USER && (standing === 'suspended' || standing === 'deleted')) {
     if (standing === 'deleted' || !(await repo.hasLiveRide(role, principalId))) throw createHttpError(AppErrors.AUTH_FORBIDDEN)
   }
-  if (role === PrincipalRole.DRIVER && (standing === 'suspended' || standing === 'banned')) {
-    if (standing === 'banned' || !(await repo.hasLiveRide(role, principalId))) throw createHttpError(AppErrors.DRIVER_SUSPENDED)
+  if (role === PrincipalRole.DRIVER && (standing === 'suspended' || standing === 'banned' || standing === 'deleted')) {
+    if (standing === 'banned' || standing === 'deleted' || !(await repo.hasLiveRide(role, principalId))) throw createHttpError(AppErrors.DRIVER_SUSPENDED)
   }
   if (role === PrincipalRole.ADMIN && (principal as AdminRecord).is_active === false) {
     throw createHttpError(AppErrors.AUTH_TOKEN_INVALID)

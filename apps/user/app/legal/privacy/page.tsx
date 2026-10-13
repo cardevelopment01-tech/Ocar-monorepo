@@ -106,7 +106,7 @@ const SECTIONS: LegalSection[] = [
         personal data we hold about you, request correction of inaccurate data, request erasure of your data
         (subject to our legal retention obligations above), withdraw consent where processing is based on
         consent, and nominate another individual to exercise these rights on your behalf in the event of your
-        death or incapacity. To exercise any of these rights, contact us using the details in Section 10 below.
+        death or incapacity. You can delete your account yourself from the Profile tab of the app, or follow the steps at ocarindia.com/legal/delete-account. To exercise any of these rights, contact us using the details in Section 10 below.
       </p>
     ),
   },
