@@ -21,11 +21,13 @@ export const TONES: Record<NotificationTone, { bg: string; fg: string }> = {
 }
 
 /** Rounded-square glyph tile; the same shape in the feed, the settings list and the empty state. */
-export function ToneTile({ icon, tone, size = 44 }: { icon: string; tone: NotificationTone; size?: number }) {
+export function ToneTile({ icon, tone, size = 44, unread = false }: { icon: string; tone: NotificationTone; size?: number; unread?: boolean }) {
   const t = TONES[tone]
   return (
     <View style={{ width: size, height: size, borderRadius: Math.round(size * 0.32), backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center' }}>
       <Feather name={icon as FeatherName} size={Math.round(size * 0.45)} color={t.fg} />
+      {/* Unread badge on the tile's corner: it belongs to the icon, not floating in the row's margin. */}
+      {unread ? <View style={styles.badge} /> : null}
     </View>
   )
 }
@@ -57,6 +59,7 @@ export function HeaderIconButton({ icon, label, onPress }: { icon: FeatherName; 
 
 export const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
+  badge: { position: 'absolute', top: -3, right: -3, width: 12, height: 12, borderRadius: 6, backgroundColor: colors.primary, borderWidth: 2, borderColor: colors.surface },
   circleBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(20,23,26,0.08)', alignItems: 'center', justifyContent: 'center' },
   titles: { flex: 1 },
   title: { ...typography.headline, fontSize: 20, color: colors.ink900, fontFamily: fonts.bold },

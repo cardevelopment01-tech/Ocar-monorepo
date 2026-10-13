@@ -260,8 +260,7 @@ function Row({ item, first, last, onPress }: { item: NotificationFeedItem; first
       accessibilityLabel={`${unread ? 'Unread. ' : ''}${item.title ?? ''}. ${item.body}`}
     >
       {!first ? <View style={styles.divider} /> : null}
-      {unread ? <View style={styles.dot} /> : null}
-      <ToneTile icon={notificationIcon(item.type)} tone={notificationTone(item.type)} />
+      <ToneTile icon={notificationIcon(item.type)} tone={notificationTone(item.type)} unread={unread} />
       <View style={styles.body}>
         <View style={styles.titleRow}>
           <Text style={[styles.rowTitle, unread ? styles.rowTitleUnread : null]} numberOfLines={1}>{item.title ?? item.body}</Text>
@@ -310,8 +309,6 @@ const styles = StyleSheet.create({
   rowUnread: { backgroundColor: 'rgba(14,143,163,0.035)' },
   rowPressed: { backgroundColor: colors.surface3 },
   divider: { position: 'absolute', top: 0, left: DIVIDER_INSET, right: ROW_PAD, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-  // Sits in the row's left gutter, level with the middle of the tile.
-  dot: { position: 'absolute', left: 4, top: ROW_PAD - 2 + TILE / 2 - 4, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
   titleRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
   rowTitle: { flex: 1, fontSize: 15, lineHeight: 20, color: colors.ink900, fontFamily: fonts.medium },
   rowTitleUnread: { fontFamily: fonts.bold },

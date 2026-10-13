@@ -9,7 +9,7 @@
 // Full inventory of driver-owned push types, verified against every
 // notifyOwner/notifyAllAdmins/pushToTokens call site in api/src (2026-09-28):
 // ride_request, ride_manual_request, ride_force_assigned, stop_added,
-// pickup_updated, ride_chat_message, document_rejected, document_expiring,
+// pickup_updated, trip_window_ending, trip_window_ended, ride_chat_message, document_rejected, document_expiring,
 // document_expired, profile_corrected, vehicle_corrected, account_suspended,
 // driver_warning, session_ended_stale, wallet_low_balance.
 export function resolvePushRoute(data: Record<string, string> | undefined): string | null {
@@ -33,6 +33,9 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
     case 'ride_force_assigned':
     case 'stop_added':
     case 'pickup_updated':
+    // Booked-time nudges go to the driver as well as the rider; the trip clock lives on this screen.
+    case 'trip_window_ending':
+    case 'trip_window_ended':
       return rideId ? `/active-ride/${rideId}` : null
 
     // The ride is over; nothing to open on it. Home shows the driver's current state.
