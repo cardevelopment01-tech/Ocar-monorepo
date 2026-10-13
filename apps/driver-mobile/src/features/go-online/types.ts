@@ -13,6 +13,8 @@ export type WalletInfo = {
 export type DocumentGateStatus = {
   hasRejected: boolean
   rejectionReason: string | null
+  /** The flagged document was never uploaded (e.g. an RC back owed by a legacy driver), not rejected by review. */
+  isMissingUpload: boolean
 }
 
 export type DriverSession = {
