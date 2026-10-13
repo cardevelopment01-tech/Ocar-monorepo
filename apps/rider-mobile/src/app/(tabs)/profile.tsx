@@ -9,7 +9,7 @@ import { card, geo, sectionLabel } from '@/theme/homeTokens'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn, useAnimatedStyle } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, fonts, useKeyboardOffset, useUnreadCount, mapSaveError } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, fonts, useKeyboardOffset, mapSaveError } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { teardownPushNotifications } from '@/services/notifications'
@@ -19,13 +19,13 @@ import { fetchProfile, updateProfile, type ProfileStats } from '@/features/profi
 type Go = 'notifications' | 'places' | 'safety' | 'support'
 type MenuItem = { icon: React.ComponentProps<typeof Feather>['name']; label: string; sub: string; go?: Go; badge?: string }
 const MENU: MenuItem[] = [
-  { icon: 'bell', label: 'Notifications', sub: 'Trip updates & alerts', go: 'notifications' },
+  { icon: 'bell', label: 'Notifications', sub: 'Alerts & preferences', go: 'notifications' },
   { icon: 'map-pin', label: 'Saved places', sub: 'Home, Work & more', go: 'places' },
   { icon: 'shield', label: 'Safety', sub: 'Emergency contacts', go: 'safety' },
   { icon: 'credit-card', label: 'Payment', sub: 'Pay your driver in cash', badge: 'Cash' },
   { icon: 'help-circle', label: 'Help & Support', sub: 'Email our support team', go: 'support' },
 ]
-const ROUTES: Record<Exclude<Go, 'support'>, string> = { notifications: '/notifications', places: '/saved-places', safety: '/safety' }
+const ROUTES: Record<Exclude<Go, 'support'>, string> = { notifications: '/notification-settings', places: '/saved-places', safety: '/safety' }
 const SUPPORT_EMAIL = 'grievance@ocarindia.com'
 const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=Ocar%20rider%20support`
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0'
@@ -38,7 +38,6 @@ function normalizePhone(raw: string | null | undefined): string {
 
 export default function ProfileScreen() {
   const router = useRouter()
-  const unread = useUnreadCount()
   const insets = useSafeAreaInsets()
   const clearance = useNavClearance()
   const user = useAuthStore((s) => s.user)
@@ -168,14 +167,7 @@ export default function ProfileScreen() {
                     <Text style={styles.menuSub}>{item.sub}</Text>
                   </View>
                   {live ? (
-                    <>
-                      {item.go === 'notifications' && unread > 0 ? (
-                        <View style={styles.unreadPill}>
-                          <Text style={styles.unreadPillText}>{unread > 99 ? '99+' : unread}</Text>
-                        </View>
-                      ) : null}
-                      <Feather name="chevron-right" size={14} color={colors.ink400} />
-                    </>
+                    <Feather name="chevron-right" size={14} color={colors.ink400} />
                   ) : (
                     <View style={styles.soonBadge}>
                       <Text style={styles.soonBadgeText}>{item.badge ?? 'Soon'}</Text>
@@ -317,8 +309,6 @@ const styles = StyleSheet.create({
   menuIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   menuLabel: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
   menuSub: { ...typography.caption, color: colors.ink400, marginTop: 1 },
-  unreadPill: { minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginRight: spacing.xs },
-  unreadPillText: { ...typography.caption, fontSize: 11, lineHeight: 14, color: colors.inkInverse, fontFamily: fonts.bold },
   soonBadge: { paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.full, backgroundColor: colors.surface2 },
   soonBadgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.ink400 },
   signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: spacing.sm + 6, marginTop: spacing.md },

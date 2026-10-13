@@ -41,8 +41,9 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
   }
 }
 
-// What a push/notification TAP should do: the type's own screen, else the notification
-// center for any type we have no screen for (so a tap is never a dead end).
+// What a push/notification TAP should do: the type's own screen. There is no in-app notification
+// list in the rider app (ride updates live on the ride and Trips screens), so a type with no screen
+// (offers, announcements) just opens the app.
 export function resolveTapRoute(data: Record<string, string> | undefined): string | null {
-  return resolvePushRoute(data) ?? (data?.['type'] ? '/notifications' : null)
+  return resolvePushRoute(data)
 }
