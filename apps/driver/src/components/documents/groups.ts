@@ -34,7 +34,10 @@ export const VEHICLE_GROUPS: DocGroupDef[] = [
     groupKey: 'vehicle_rc',
     label: 'Registration Certificate (RC)',
     required: true,
-    slots: [{ key: 'vehicle_rc', slotLabel: '', accept: 'image/*,application/pdf', isVehicle: true }],
+    slots: [
+      { key: 'vehicle_rc_front', slotLabel: 'Front', accept: 'image/*,application/pdf', isVehicle: true },
+      { key: 'vehicle_rc_back',  slotLabel: 'Back',  accept: 'image/*,application/pdf', isVehicle: true },
+    ],
     hasExpiry: false,
     expiryRequired: false,
   },

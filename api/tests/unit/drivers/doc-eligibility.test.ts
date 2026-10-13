@@ -25,9 +25,17 @@ describe('docIssueExistsSql', () => {
     expect(sql).toContain("dd.status = 'pending'")
     expect(sql).toContain("'aadhaar_front'")
     expect(sql).toContain("dvd.status = 'pending'")
-    expect(sql).toContain("'vehicle_rc'")
+    expect(sql).toContain("'vehicle_rc_front'")
     expect(sql).not.toContain('pollution_cert')
     expect(sql).not.toContain('fitness_cert')
+  })
+
+  it('flags a primary vehicle that has no RC back yet (drivers onboarded before the split)', () => {
+    const sql = docIssueExistsSql('$1')
+    expect(sql).toContain("d.doc_type = 'vehicle_rc_back'")
+    // only a vehicle that already has a front: a vehicle with no RC rows at all is not newly blocked
+    expect(sql).toContain("d.doc_type = 'vehicle_rc_front'")
+    expect(sql).toContain('dv.is_primary = true')
   })
 
   it('accepts a bound-parameter expression for the single-driver rollup', () => {

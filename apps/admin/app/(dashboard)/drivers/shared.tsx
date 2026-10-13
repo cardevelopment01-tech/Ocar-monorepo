@@ -21,7 +21,7 @@ const DOC_LABELS: Record<string, string> = {
   profile_photo: 'Profile Photo', driving_license: 'Driving Licence',
   driving_license_front: 'Driving Licence (Front)', driving_license_back: 'Driving Licence (Back)',
   aadhaar_front: 'Aadhaar (Front)', aadhaar_back: 'Aadhaar (Back)',
-  vehicle_rc: 'RC Book', insurance: 'Insurance Certificate', permit: 'Commercial Permit',
+  vehicle_rc_front: 'RC Book (Front)', vehicle_rc_back: 'RC Book (Back)', insurance: 'Insurance Certificate', permit: 'Commercial Permit',
   pollution_cert: 'Pollution Certificate (PUC)', fitness_cert: 'Fitness Certificate',
 }
 export function docLabel(key: string) {
@@ -29,7 +29,7 @@ export function docLabel(key: string) {
 }
 
 export const REQUIRED_DRIVER_DOCS  = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
-export const REQUIRED_VEHICLE_DOCS = ['vehicle_rc', 'insurance', 'permit']
+export const REQUIRED_VEHICLE_DOCS = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
 
 export function DocCheckItem({
   docType, fileUrl, status, rejectionNote, onClick,

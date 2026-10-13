@@ -112,8 +112,8 @@ describe('no-expiry doc types', () => {
     },
   )
 
-  it('approves vehicle_rc without a date', async () => {
-    vi.mocked(repo.getDocType).mockResolvedValue('vehicle_rc')
+  it('approves vehicle_rc_front without a date', async () => {
+    vi.mocked(repo.getDocType).mockResolvedValue('vehicle_rc_front')
     vi.mocked(repo.approveVehicleDoc).mockResolvedValue({ driver_id: '42' })
     await approveVehicleDoc(DOC_ID, ADMIN_ID, '', SEEN, null)
     expect(repo.approveVehicleDoc).toHaveBeenCalledWith(DOC_ID, ADMIN_ID, null, SEEN)

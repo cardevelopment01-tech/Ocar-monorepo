@@ -88,7 +88,8 @@ export const VehicleState = {
 export type VehicleState = (typeof VehicleState)[keyof typeof VehicleState]
 
 export const DriverVehicleDocType = {
-  VEHICLE_RC: 'vehicle_rc',
+  VEHICLE_RC_FRONT: 'vehicle_rc_front',
+  VEHICLE_RC_BACK: 'vehicle_rc_back',
   INSURANCE: 'insurance',
   PERMIT: 'permit',
   POLLUTION_CERT: 'pollution_cert',

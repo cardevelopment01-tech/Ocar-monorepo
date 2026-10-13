@@ -364,7 +364,7 @@ export async function listPendingVehicleDocs() { return repo.listPendingVehicleD
 
 // Doc types with no validity period — no expiry is asked for or stored (NULL reads
 // as "never expires" in the goOnline gate). Any date sent for these is ignored.
-const NO_EXPIRY_DOC_TYPES = new Set(['profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license_back', 'vehicle_rc'])
+const NO_EXPIRY_DOC_TYPES = new Set(['profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license_back', 'vehicle_rc_front', 'vehicle_rc_back'])
 
 function validateVerifiedExpiry(docType: string, verifiedValidUntil: string): string | null {
   if (NO_EXPIRY_DOC_TYPES.has(docType)) return null

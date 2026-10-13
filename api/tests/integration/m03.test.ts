@@ -300,7 +300,7 @@ describe('M03 — Driver Onboarding', () => {
       }
 
       // Step 4b: required vehicle doc uploads
-      const vehicleDocTypes = ['vehicle_rc', 'insurance', 'permit']
+      const vehicleDocTypes = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
       for (const dt of vehicleDocTypes) {
         await uploadVehicleDoc(accessToken, dt)
       }
