@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bumpUnreadCount, getUnreadCount, isUrgentNotification, notificationGroup, setUnreadCount, subscribeUnreadCount } from './feedModel'
+import { bumpUnreadCount, getUnreadCount, isUrgentNotification, notificationGroup, notificationIcon, notificationTone, setUnreadCount, subscribeUnreadCount } from './feedModel'
 
 describe('notificationGroup', () => {
   it('groups ride lifecycle, payment and account types', () => {
@@ -18,6 +18,24 @@ describe('notificationGroup', () => {
     expect(isUrgentNotification('document_rejected')).toBe(true)
     expect(isUrgentNotification('ride_cancelled')).toBe(true)
     expect(isUrgentNotification('ride_started')).toBe(false)
+  })
+})
+
+describe('row look', () => {
+  it('gives each type its own glyph and falls back to a bell for a new server type', () => {
+    expect(notificationIcon('driver_arrived')).toBe('map-pin')
+    expect(notificationIcon('offer')).toBe('gift')
+    expect(notificationIcon('something_new')).toBe('bell')
+  })
+
+  it('tints by kind of news, with urgent winning over the group', () => {
+    expect(notificationTone('ride_started')).toBe('ride')
+    expect(notificationTone('ride_cancelled')).toBe('urgent')
+    expect(notificationTone('wallet_low_balance')).toBe('money')
+    expect(notificationTone('payment_failed')).toBe('urgent')
+    expect(notificationTone('document_expiring')).toBe('account')
+    expect(notificationTone('announcement')).toBe('promo')
+    expect(notificationTone('something_new')).toBe('account')
   })
 })
 

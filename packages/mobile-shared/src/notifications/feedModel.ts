@@ -41,6 +41,31 @@ export function isUrgentNotification(type: string): boolean {
   return URGENT_TYPES.has(type)
 }
 
+// How a row looks: one Feather glyph per type and a tint per kind of news (urgent wins over the group tint).
+export type NotificationTone = 'ride' | 'money' | 'account' | 'promo' | 'urgent'
+
+const TYPE_ICON: Record<string, string> = {
+  ride_accepted: 'check-circle', driver_arrived: 'map-pin', ride_started: 'navigation', ride_completed: 'flag',
+  ride_cancelled: 'x-circle', ride_no_drivers: 'search', ride_force_assigned: 'user-check', ride_manual_request: 'bell',
+  stop_added: 'plus-circle', stop_unreachable: 'alert-triangle', pickup_updated: 'map-pin',
+  trip_window_ending: 'clock', trip_window_ended: 'clock',
+  payment_failed: 'credit-card', wallet_low_balance: 'credit-card',
+  document_rejected: 'file-text', document_expiring: 'file-text', document_expired: 'file-text',
+  profile_corrected: 'user', vehicle_corrected: 'truck', account_suspended: 'shield-off', driver_warning: 'alert-triangle',
+  session_ended_stale: 'power', announcement: 'volume-2', offer: 'gift',
+}
+
+export function notificationIcon(type: string): string {
+  return TYPE_ICON[type] ?? 'bell'
+}
+
+export function notificationTone(type: string): NotificationTone {
+  if (isUrgentNotification(type)) return 'urgent'
+  if (type === 'announcement' || type === 'offer') return 'promo'
+  const group = notificationGroup(type)
+  return group === 'rides' ? 'ride' : group === 'payments' ? 'money' : 'account'
+}
+
 // ── Unread count (one store per app, read by every bell/badge) ──
 
 let unread = 0
