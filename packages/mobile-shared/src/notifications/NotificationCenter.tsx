@@ -147,7 +147,7 @@ export function NotificationCenter({ api, socket, resolveRoute, onNavigate, onBa
   }
 
   const showBanner = permission.state !== null && permission.state !== 'granted'
-  const subtitle = loading ? undefined : unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'
+  const subtitle = loading || (failed && items.length === 0) ? undefined : unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'
 
   return (
     <View style={styles.container}>
