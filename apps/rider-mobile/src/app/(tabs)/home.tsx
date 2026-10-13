@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native'
+import { PushPrimerSheet } from '@ocar/mobile-shared'
+import { useNotificationPrimer } from '@/features/notifications/usePushSetup'
 import Animated, {
   scrollTo,
   useAnimatedProps,
@@ -70,6 +72,7 @@ function splitAddress(a: string): { title: string; sub: string } {
 
 export default function HomeScreen() {
   const router = useRouter()
+  const primer = useNotificationPrimer()
   const insets = useSafeAreaInsets()
   const { height: winH } = useWindowDimensions()
   const expanded = Math.round(winH * EXPANDED_SHARE)
@@ -306,6 +309,7 @@ export default function HomeScreen() {
             freshness={freshness}
             locationEnabled={locationEnabled}
             onPillPress={() => router.push({ pathname: '/booking/map-picker', params: { field: 'pickup' } })}
+            onNotificationsPress={() => router.push('/notifications')}
             onPickupMove={onPickupMove}
           />
 
@@ -352,6 +356,15 @@ export default function HomeScreen() {
         </Animated.View>
         <View style={[styles.statusCover, { height: insets.top }]} pointerEvents="none" />
         <Toast visible={toast} bottom={navBottom + 72} onClose={hideToast} />
+        <PushPrimerSheet
+          visible={primer.visible}
+          title="Stay updated on your ride"
+          message="Turn on notifications so Ocar can reach you when the app is closed."
+          bullets={['Driver on the way and arrived', 'Trip start, end and cancellations', 'Messages from your driver']}
+          enabling={primer.enabling}
+          onEnable={() => { void primer.onEnable() }}
+          onLater={primer.onLater}
+        />
       </RevealContext.Provider>
     </View>
   )

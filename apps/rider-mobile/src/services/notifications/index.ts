@@ -22,9 +22,10 @@ async function getFcmToken(): Promise<string | null> {
 
 let stopTokenRefresh: (() => void) | null = null
 
-export async function setupPushNotifications(): Promise<void> {
+export async function setupPushNotifications(opts: { prompt?: boolean } = {}): Promise<void> {
   const { granted } = await registerPushNotifications(api, {
     getFcmToken,
+    prompt: opts.prompt ?? false,
     // _v2 -- forces a fresh channel with sound+vibrate (see driver-mobile's
     // notifications/index.ts comment for why the plain 'default' id is stuck).
     channels: [

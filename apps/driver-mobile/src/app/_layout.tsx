@@ -12,6 +12,7 @@ import { RideRequestOverlay } from '@/features/ride-requests/RideRequestOverlay'
 import { useSessionSyncListener } from '@/features/go-online/useSessionSyncListener'
 import { useSessionResync } from '@/features/go-online/useSessionResync'
 import { usePushNotificationRouting } from '@/features/notifications/usePushNotificationRouting'
+import { usePushRegistration } from '@/features/notifications/usePushSetup'
 // Registers the background-location TaskManager task at module scope -- must run
 // unconditionally at app startup, since Android can invoke the task in a headless
 // JS instance after the app process was killed (see backgroundTask.ts).
@@ -32,6 +33,7 @@ export default function RootLayout() {
   useSessionSyncListener()
   useSessionResync()
   usePushNotificationRouting()
+  usePushRegistration()
 
   useEffect(() => {
     if (hasHydrated && fontsLoaded) SplashScreen.hideAsync().catch(() => {})

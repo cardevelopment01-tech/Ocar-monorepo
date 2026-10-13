@@ -3,6 +3,8 @@ import { router } from 'expo-router'
 import { getApp } from '@react-native-firebase/app'
 import * as Notifications from 'expo-notifications'
 import { getMessaging, getInitialNotification, onMessage, onNotificationOpenedApp } from '@react-native-firebase/messaging'
+import { refreshUnreadCount } from '@ocar/mobile-shared'
+import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { resolveTapRoute } from './pushRouting'
 
@@ -95,7 +97,9 @@ export function usePushNotificationRouting(): void {
     // Re-present it as a local notification (the handler above lets it banner).
     const unsubscribeForeground = onMessage(messaging, async (remoteMessage) => {
       const type = remoteMessage.data?.['type']
-    if (type === 'ride_request' || type === 'ride_manual_request') return
+      if (type === 'ride_request' || type === 'ride_manual_request') return
+      // The socket may be down (rider: disconnects in background), so don't rely on notification:new.
+      void refreshUnreadCount(api)
       const title = remoteMessage.notification?.title
       const body = remoteMessage.notification?.body
       if (!title && !body) return

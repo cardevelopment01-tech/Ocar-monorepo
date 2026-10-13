@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useLocationStore } from '@/store/useLocationStore'
 import { useSocketLifecycle } from '@/services/socket/useSocketLifecycle'
 import { usePushNotificationRouting } from '@/features/notifications/usePushNotificationRouting'
+import { usePushRegistration } from '@/features/notifications/usePushSetup'
 import logoMarkImage from '../../assets/brand/logo-mark.png'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
@@ -31,6 +32,7 @@ export default function RootLayout() {
   const locationReady = locationHydrated || locationCapHit
 
   usePushNotificationRouting()
+  usePushRegistration()
   useSocketLifecycle()
 
   useEffect(() => {
