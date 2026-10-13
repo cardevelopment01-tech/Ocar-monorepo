@@ -23,6 +23,7 @@
                                                      "ACCESS_BACKGROUND_LOCATION",
                                                      "FOREGROUND_SERVICE",
                                                      "FOREGROUND_SERVICE_LOCATION",
+                                                     "FOREGROUND_SERVICE_DATA_SYNC",
                                                      "POST_NOTIFICATIONS"
                                                  ],
                                  "blockedPermissions":  ["android.permission.SYSTEM_ALERT_WINDOW", "android.permission.RECORD_AUDIO"],

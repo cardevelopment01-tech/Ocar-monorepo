@@ -60,7 +60,8 @@ Console path: App content > Foreground service permissions. After the media-play
 **Data sync** (this comes from the PayU payments SDK's transaction-status service, not Ocar code)
 - Description: "When a driver tops up their wallet, the payment SDK checks the transaction status in a foreground service so a completed payment is not lost if the app is minimised."
 - User impact if interrupted: "A payment could be taken without the wallet being credited until the next status check."
-- Video: start a wallet top-up and show the status check notification, if one appears. If you cannot trigger it, tell me and I will add a manifest rule to remove the service instead.
+- The app declares `FOREGROUND_SERVICE_DATA_SYNC` (driver `app.json`) so this service can run on Android 14 and later; without it the system throws a security error when PayU starts the service.
+- Video: with the test PayU keys and `mobile_payments_enabled` on, start a wallet top-up, press Home mid-payment, and show the status-check notification. If you cannot get a notification to appear, tell me and I will add a manifest rule to remove the service instead (then drop this declaration).
 
 The rider app declares no foreground services of its own **(verify in its merged manifest once a release build exists)**.
 
