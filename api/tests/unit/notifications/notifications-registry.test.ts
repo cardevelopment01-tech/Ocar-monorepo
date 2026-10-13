@@ -33,4 +33,8 @@ describe('notification registry', () => {
   it('ride requests the driver must answer expire with the dispatch window', () => {
     expect(NOTIFICATION_TYPES.ride_manual_request.ttlSeconds).toBeLessThanOrEqual(30)
   })
+
+  it('an unregistered type falls back to safe defaults instead of throwing', () => {
+    expect(pushDefaults('not_a_real_type' as NotificationType, 5n)).toEqual({ ttlSeconds: 86_400 })
+  })
 })
