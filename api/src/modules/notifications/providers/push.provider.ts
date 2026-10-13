@@ -24,7 +24,14 @@ export interface PushMessage {
 
 export interface SendPushResult {
   invalidTokens: string[]
+  successCount: number
+  failureCount: number
+  // FCM/network trouble that a later attempt could fix (as opposed to a dead token, which a
+  // retry never will). Only meaningful to a caller that can retry, i.e. the push worker.
+  transientFailure: boolean
 }
+
+const NOTHING_SENT: SendPushResult = { invalidTokens: [], successCount: 0, failureCount: 0, transientFailure: false }
 
 let firebaseApp: App | null = null
 let initAttempted = false
@@ -50,17 +57,17 @@ function getFirebaseApp(): App | null {
 
 export async function sendPush(tokens: string[], msg: PushMessage): Promise<SendPushResult> {
   if (tokens.length === 0) {
-    return { invalidTokens: [] }
+    return NOTHING_SENT
   }
 
   if (!config.FCM_SERVICE_ACCOUNT_KEY) {
     console.log('[PUSH DEV]', { tokens: tokens.length, title: msg.title, body: msg.body })
-    return { invalidTokens: [] }
+    return NOTHING_SENT
   }
 
   const fbApp = getFirebaseApp()
   if (!fbApp) {
-    return { invalidTokens: [] }
+    return NOTHING_SENT
   }
 
   try {
@@ -107,19 +114,22 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
     const response = await getMessaging(fbApp).sendEachForMulticast(message)
 
     const invalidTokens: string[] = []
+    let transientFailure = false
     response.responses.forEach((r, i) => {
       if (!r.success) {
         const code = r.error?.code
         if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-argument') {
           const badToken = tokens[i]
           if (badToken) invalidTokens.push(badToken)
+        } else {
+          transientFailure = true
         }
       }
     })
 
-    return { invalidTokens }
+    return { invalidTokens, successCount: response.successCount ?? 0, failureCount: response.failureCount ?? 0, transientFailure }
   } catch (err) {
     log.error({ err }, 'sendEachForMulticast failed')
-    return { invalidTokens: [] }
+    return { invalidTokens: [], successCount: 0, failureCount: tokens.length, transientFailure: true }
   }
 }

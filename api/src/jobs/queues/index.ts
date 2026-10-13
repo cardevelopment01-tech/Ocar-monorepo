@@ -3,6 +3,7 @@ import { client as connection } from '@/db/redis'
 
 export const QUEUE_NAMES = {
   NOTIFICATIONS: 'notifications',
+  PUSH: 'push',
   DISPATCH: 'dispatch',
   GPS_FLUSH: 'gps-flush',
   SETTLEMENTS: 'settlements',
@@ -25,6 +26,9 @@ export const redisConnection = connection
 const defaultJobOptions = { removeOnComplete: 1000, removeOnFail: 5000 }
 
 export const notificationsQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS, { connection, defaultJobOptions })
+// FCM sends (see push.worker.ts). Own queue so push is neither held back by the SMS worker's
+// 10/s limiter nor able to delay SMS during a burst.
+export const pushQueue = new Queue(QUEUE_NAMES.PUSH, { connection, defaultJobOptions })
 // Ride-matching fan-out (broadcast_ride, broadcast_ride_ack_check) — split out
 // of notificationsQueue so a burst of dispatch jobs never delays SMS sends,
 // which share a rate-limited worker (see notifications.worker.ts).
@@ -41,6 +45,7 @@ export const callMaskingQueue = new Queue(QUEUE_NAMES.CALL_MASKING, { connection
 
 export const queues = {
   [QUEUE_NAMES.NOTIFICATIONS]: notificationsQueue,
+  [QUEUE_NAMES.PUSH]: pushQueue,
   [QUEUE_NAMES.DISPATCH]: dispatchQueue,
   [QUEUE_NAMES.GPS_FLUSH]: gpsFlushQueue,
   [QUEUE_NAMES.SETTLEMENTS]: settlementsQueue,

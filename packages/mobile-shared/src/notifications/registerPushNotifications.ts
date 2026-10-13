@@ -5,6 +5,8 @@ import type { AxiosInstance } from 'axios'
 export interface NotificationChannelConfig {
   channelId: string
   name: string
+  // Shown under the channel name in Android's notification settings.
+  description?: string
   importance?: Notifications.AndroidImportance
   vibrationPattern?: number[]
 }
@@ -32,6 +34,7 @@ export async function registerPushNotifications(
   for (const channel of config.channels) {
     await Notifications.setNotificationChannelAsync(channel.channelId, {
       name: channel.name,
+      ...(channel.description !== undefined ? { description: channel.description } : {}),
       importance: channel.importance ?? Notifications.AndroidImportance.DEFAULT,
       sound: 'default',
       enableVibrate: true,

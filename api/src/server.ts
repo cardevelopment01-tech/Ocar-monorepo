@@ -10,6 +10,7 @@ import { initSocketServer, getIO } from './websocket/socket.server'
 import { flushBreadcrumbs } from './lib/gps-buffer'
 import { isSmsBypassActive } from './providers/sms.provider'
 import { notificationsWorker } from './jobs/workers/notifications.worker'
+import { pushWorker } from './jobs/workers/push.worker'
 import { dispatchWorker } from './jobs/workers/dispatch.worker'
 import { gpsFlushWorker } from './jobs/workers/gps-flush.worker'
 import { cleanupWorker } from './jobs/workers/cleanup.worker'
@@ -69,6 +70,7 @@ async function start(): Promise<void> {
   initSocketServer(httpServer)
 
   void notificationsWorker
+  void pushWorker
   logger.info('notifications worker started')
   void dispatchWorker
   logger.info('dispatch worker started')
@@ -216,6 +218,7 @@ async function start(): Promise<void> {
       clearTimeout(forceExitTimer)
       await Promise.all([
         notificationsWorker.close(),
+        pushWorker.close(),
         dispatchWorker.close(),
         gpsFlushWorker.close(),
         cleanupWorker.close(),

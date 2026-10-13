@@ -1,3 +1,4 @@
+import { CHAT_PUSH } from '@/modules/notifications/notifications.registry'
 import { getRideCoreById } from '@/modules/rides/rides.repository'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { pushToTokens } from '@/modules/notifications/notifications.service'
@@ -83,6 +84,8 @@ export async function sendMessage(
           body,
           data: { type: 'ride_chat_message', rideId: String(rideId) },
           tag: `chat:${rideId}`,
+          channelId: CHAT_PUSH.channelId,
+          ttlSeconds: CHAT_PUSH.ttlSeconds,
         })
       }
     }
