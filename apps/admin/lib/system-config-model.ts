@@ -43,6 +43,7 @@ const LEGACY_HELP = 'Not read by the platform since call masking moved to bulksm
 const META: Record<string, Meta> = {
   commission_percent:       { group: 'payments', title: 'Platform commission', help: 'Share of each fare that Ocar keeps.', suffix: '%', critical: true },
   instant_payout_fee:       { group: 'payments', title: 'Instant cash-out fee', help: 'Flat fee charged when a driver cashes out instantly.', prefix: '₹' },
+  mobile_payments_enabled:  { group: 'payments', kind: 'switch', title: 'Driver app payments (PayU)', help: 'Lets drivers top up their wallet and buy packages inside the app. Off refuses new payments straight away; payments already in flight still finish. Keep off until the PayU keys on the server are the ones you intend.', critical: true },
   razorpay_enabled:         { group: 'payments', title: 'Razorpay payments', help: 'Lets riders pay online through Razorpay.', critical: true },
   tds_rate_with_pan_pct:    { group: 'payments', title: 'TDS rate (PAN verified)', help: 'Section 194-O tax withheld when the driver’s PAN is verified.', suffix: '%', critical: true },
   tds_rate_without_pan_pct: { group: 'payments', title: 'TDS rate (no PAN)', help: 'Section 194-O tax withheld when PAN isn’t verified or on file.', suffix: '%', critical: true },

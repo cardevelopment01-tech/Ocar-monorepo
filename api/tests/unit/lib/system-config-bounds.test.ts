@@ -18,6 +18,10 @@ describe('validateConfigBounds', () => {
   it('treats string-typed booleans as true/false only', () => {
     expect(validateConfigBounds('cash_collection_enabled', 'true')).toBeNull()
     expect(validateConfigBounds('cash_collection_enabled', 'maybe')).toMatch(/one of: true, false/)
+    expect(validateConfigBounds('mobile_payments_enabled', 'true')).toBeNull()
+    expect(validateConfigBounds('mobile_payments_enabled', 'false')).toBeNull()
+    expect(validateConfigBounds('mobile_payments_enabled', 'True')).toMatch(/one of: true, false/)
+    expect(validateConfigBounds('mobile_payments_enabled', 'yes')).toMatch(/one of: true, false/)
   })
   it('leaves unlisted keys unbounded', () => {
     expect(getConfigBounds('some_future_key')).toBeNull()

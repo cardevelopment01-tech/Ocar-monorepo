@@ -407,7 +407,7 @@ The driver app pays through PayU's native sheet. Server pieces: `client: 'sdk'` 
 `POST /payments/payu/sdk-hash` (validating signer) and `POST /payments/payu/confirm`.
 
 **Kill switch** (default OFF; both order creation and hash signing refuse with 403 while off; `confirm` keeps
-working so in-flight payments always resolve). There is no admin UI yet; flip it in SQL:
+working so in-flight payments always resolve). Admin portal: Config > System config > Payments & fees > "Driver app payments (PayU)" (super admin; migration 115 creates the row, off). Or flip it in SQL:
 
 ```sql
 INSERT INTO system_config (key, value, description)
