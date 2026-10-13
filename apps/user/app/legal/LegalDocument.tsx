@@ -11,6 +11,7 @@ export type LegalSection = {
 const POLICY_NAV = [
   { href: '/legal/terms', label: 'Terms and Conditions' },
   { href: '/legal/privacy', label: 'Privacy Policy' },
+  { href: '/legal/delete-account', label: 'Delete your account' },
   { href: '/legal/refund-cancellation', label: 'Refund and Cancellation' },
   { href: '/legal/shipping', label: 'Shipping and Delivery' },
 ]

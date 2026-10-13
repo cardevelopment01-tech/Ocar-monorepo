@@ -28,6 +28,7 @@ import analyticsRouter  from '@/modules/analytics/analytics.routes'
 import notificationsRouter from '@/modules/notifications/notifications.routes'
 import templatesRouter from '@/modules/notifications/templates.routes'
 import broadcastRouter from '@/modules/notifications/broadcast.routes'
+import accountRouter from '@/modules/account/account.routes'
 import systemConfigRouter from '@/modules/admin/system-config.routes'
 import maintenanceRouter from '@/modules/admin/maintenance.routes'
 import adminInvitesRouter from '@/modules/admin-invites/admin-invites.routes'
@@ -208,6 +209,7 @@ apiRouter.use('/payments/settlements', settlementsRouter)
   apiRouter.use('/admin/analytics', analyticsRouter)
   apiRouter.use('/admin/notification-templates', templatesRouter)
   apiRouter.use('/admin/notifications', broadcastRouter)
+  apiRouter.use('/account', accountRouter)
   apiRouter.use('/admin/system-config', systemConfigRouter)
   apiRouter.use('/admin/maintenance', maintenanceRouter)
   apiRouter.use('/admin/payouts', settlementsAdminRouter)
