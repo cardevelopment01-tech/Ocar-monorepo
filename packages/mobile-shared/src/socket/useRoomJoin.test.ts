@@ -37,7 +37,27 @@ describe('attachRoomJoin', () => {
     const cleanup = attachRoomJoin(socket, 'ride-1')
     cleanup()
     socket.fireConnect()
-    expect(socket.emit).toHaveBeenCalledTimes(1) // only the initial join, not after cleanup
+    expect(socket.emit).toHaveBeenCalledTimes(2) // initial join + leave:ride, no re-join after cleanup
+  })
+
+  it('skipInitialRejoin only calls onRejoined on reconnect', () => {
+    const socket = fakeSocket()
+    const onRejoined = vi.fn()
+    attachRoomJoin(socket, 'ride-1', onRejoined, { skipInitialRejoin: true })
+    expect(socket.emit).toHaveBeenCalledWith('join:ride', 'ride-1')
+    expect(onRejoined).not.toHaveBeenCalled()
+    socket.fireConnect()
+    expect(onRejoined).toHaveBeenCalledTimes(1)
+  })
+
+  it('emits leave:ride only when the last watcher of a ride detaches', () => {
+    const socket = fakeSocket()
+    const a = attachRoomJoin(socket, 'ride-1')
+    const b = attachRoomJoin(socket, 'ride-1')
+    a()
+    expect(socket.emit).not.toHaveBeenCalledWith('leave:ride', 'ride-1')
+    b()
+    expect(socket.emit).toHaveBeenCalledWith('leave:ride', 'ride-1')
   })
 
   it('works without an onRejoined callback', () => {

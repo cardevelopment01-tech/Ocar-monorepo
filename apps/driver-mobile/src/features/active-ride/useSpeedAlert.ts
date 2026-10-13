@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useDriverPositionStore } from '@/services/location/driverPositionStore'
+import { useDriverPositionStore, type DriverPosition } from '@/services/location/driverPositionStore'
 import { fetchSpeedLimitCities } from './api'
 import { classifyLimit, HIGHWAY_SPEED_LIMIT_KMPH, stepSpeedAlert, type SpeedAlertState, type SpeedLimitCity } from './speedAlert'
 
@@ -37,29 +37,37 @@ export function useSpeedAlert(enabled: boolean): { alertKey: number; limitKmph: 
   const [limitKmph, setLimitKmph] = useState(HIGHWAY_SPEED_LIMIT_KMPH)
   const stateRef = useRef<SpeedAlertState>({ overSince: null, lastAlertAt: 0 })
   const limitRef = useRef(HIGHWAY_SPEED_LIMIT_KMPH)
-  const position = useDriverPositionStore((s) => s.position)
+  const citiesRef = useRef<SpeedLimitCity[]>([])
+  citiesRef.current = cities
 
   useEffect(() => {
     if (!enabled) return
     getSpeedLimitCities().then(setCities).catch(() => {})
   }, [enabled])
 
+  // Plain store subscription instead of a React-state selector: the hook's host (the whole
+  // ride screen) no longer re-renders on every GPS tick, only when the limit or alert
+  // actually changes. Nothing is subscribed at all while the alert is off.
   useEffect(() => {
-    if (!enabled || !position || position.speed == null) return
-    const limit = cities.length ? classifyLimit([position.lat, position.lng], cities) : HIGHWAY_SPEED_LIMIT_KMPH
-    // Every GPS tick (~3s during a trip) re-runs classifyLimit's haversine scan
-    // regardless, but the setState -- and the re-render it triggers -- only
-    // needs to happen when the classified limit actually changed (code-review
-    // finding, 2026-09-22).
-    if (limit !== limitRef.current) {
-      limitRef.current = limit
-      setLimitKmph(limit)
+    if (!enabled) return
+    function onPosition(position: DriverPosition | null) {
+      if (!position || position.speed == null) return
+      const list = citiesRef.current
+      const limit = list.length ? classifyLimit([position.lat, position.lng], list) : HIGHWAY_SPEED_LIMIT_KMPH
+      if (limit !== limitRef.current) {
+        limitRef.current = limit
+        setLimitKmph(limit)
+      }
+      const speedKmph = position.speed * MPS_TO_KMPH
+      const { state, alert } = stepSpeedAlert(stateRef.current, speedKmph, limit, Date.now())
+      stateRef.current = state
+      if (alert) setAlertKey((k) => k + 1)
     }
-    const speedKmph = position.speed * MPS_TO_KMPH
-    const { state, alert } = stepSpeedAlert(stateRef.current, speedKmph, limit, Date.now())
-    stateRef.current = state
-    if (alert) setAlertKey((k) => k + 1)
-  }, [enabled, position, cities])
+    onPosition(useDriverPositionStore.getState().position)
+    return useDriverPositionStore.subscribe((state, prev) => {
+      if (state.position !== prev.position) onPosition(state.position)
+    })
+  }, [enabled])
 
   return { alertKey, limitKmph }
 }

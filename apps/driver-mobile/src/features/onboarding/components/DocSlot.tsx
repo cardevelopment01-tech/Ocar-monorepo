@@ -44,7 +44,12 @@ async function pickFrom(source: 'camera' | 'library'): Promise<PickedFile | null
   // PUT for the wrong byte count, so S3 rejects the real upload with a
   // signature mismatch. Read the actual re-encoded file's size instead.
   const info = await getInfoAsync(asset.uri)
-  return { uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg', fileSize: info.exists ? (info.size ?? 0) : (asset.fileSize ?? 0) }
+  return {
+    uri: asset.uri,
+    mimeType: asset.mimeType ?? 'image/jpeg',
+    fileSize: info.exists ? (info.size ?? 0) : (asset.fileSize ?? 0),
+    ...(asset.width && asset.height ? { width: asset.width, height: asset.height } : {}),
+  }
 }
 
 export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, error, onPick, selfie }: DocSlotProps) {
@@ -95,7 +100,7 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
       style={({ pressed }) => [styles.slot, rejected ? styles.slotRejected : null, pressed && !uploading ? styles.pressedScale : null]}
     >
       {thumbnailUrl ? (
-        <Image source={{ uri: thumbnailUrl }} style={styles.thumb} />
+        <Image source={{ uri: thumbnailUrl }} style={styles.thumb} resizeMethod="resize" />
       ) : (
         <View style={[styles.thumb, styles.thumbEmpty]}>
           <Feather name="camera" size={18} color={colors.ink400} />

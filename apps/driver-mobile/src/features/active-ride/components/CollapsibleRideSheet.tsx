@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -42,7 +42,8 @@ export function CollapsibleRideSheet({ alwaysVisible, children }: CollapsibleRid
     }
   }
 
-  const pan = Gesture.Pan()
+  // Only shared values inside, so it's built once instead of on every render.
+  const pan = useMemo(() => Gesture.Pan()
     .onChange((e) => {
       if (collapsibleH.get() <= 0) return
       progress.set(Math.min(1, Math.max(0, progress.get() - e.changeY / collapsibleH.get())))
@@ -62,10 +63,16 @@ export function CollapsibleRideSheet({ alwaysVisible, children }: CollapsibleRid
       } else {
         progress.set(withSpring(progress.get() > 0.5 ? 1 : 0, SNAP_SPRING))
       }
-    })
+    }), [progress, collapsibleH])
+
+  // The sheet keeps its full natural height and slides down by the collapsible part instead of
+  // animating `height` (a Yoga layout + Fabric commit per drag frame); the collapsible is
+  // then fully off-screen and only its opacity fades.
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - progress.get()) * collapsibleH.get() }],
+  }))
 
   const collapsibleStyle = useAnimatedStyle(() => ({
-    height: interpolate(progress.get(), [0, 1], [0, collapsibleH.get()], Extrapolation.CLAMP),
     opacity: interpolate(progress.get(), [0, 0.4, 1], [0, 0, 1], Extrapolation.CLAMP),
   }))
 
@@ -74,7 +81,7 @@ export function CollapsibleRideSheet({ alwaysVisible, children }: CollapsibleRid
   }))
 
   return (
-    <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+    <Animated.View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }, sheetStyle]}>
       <GestureDetector gesture={pan}>
         <View style={styles.handleHitArea}>
           <Animated.View style={[styles.handle, handleStyle]} />
@@ -83,7 +90,7 @@ export function CollapsibleRideSheet({ alwaysVisible, children }: CollapsibleRid
 
       {alwaysVisible}
 
-      <Animated.View style={[styles.collapsible, collapsibleStyle]}>
+      <Animated.View style={[styles.collapsible, { height: collapsibleHeight }, collapsibleStyle]}>
         <View
           onLayout={(e) => onCollapsibleLayout(e.nativeEvent.layout.height)}
           style={styles.collapsibleInner}
@@ -92,7 +99,7 @@ export function CollapsibleRideSheet({ alwaysVisible, children }: CollapsibleRid
           {children}
         </View>
       </Animated.View>
-    </View>
+    </Animated.View>
   )
 }
 

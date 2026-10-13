@@ -19,7 +19,9 @@ async function loadManipulator() {
 export const MAX_EDGE = 1600
 export const JPEG_QUALITY = 0.82
 
-type UploadFile = { uri: string; mimeType: string; fileSize: number }
+// width/height are optional: camera and picker results already carry them, and with them the
+// full-resolution decode that used to run just to read the size is skipped.
+type UploadFile = { uri: string; mimeType: string; fileSize: number; width?: number; height?: number }
 
 /** Resize target that fits the longer edge within maxEdge, or null if already small enough. */
 export function fitWithin(width: number, height: number, maxEdge = MAX_EDGE): { width: number | null; height: number | null } | null {
@@ -38,11 +40,15 @@ export async function prepareImageForUpload<T extends UploadFile>(file: T): Prom
     const { ImageManipulator, SaveFormat } = await loadManipulator()
     // Each full-res decode of a 12MP photo is ~48MB of native memory -- release
     // every ref/context as soon as it's done rather than waiting for GC.
-    const probe = ImageManipulator.manipulate(file.uri)
-    const original = await probe.renderAsync()
-    const target = fitWithin(original.width, original.height)
-    original.release()
-    probe.release()
+    let size = file.width && file.height ? { width: file.width, height: file.height } : null
+    if (!size) {
+      const probe = ImageManipulator.manipulate(file.uri)
+      const original = await probe.renderAsync()
+      size = { width: original.width, height: original.height }
+      original.release()
+      probe.release()
+    }
+    const target = fitWithin(size.width, size.height)
 
     const ctx = ImageManipulator.manipulate(file.uri)
     if (target) ctx.resize(target)
@@ -52,7 +58,11 @@ export async function prepareImageForUpload<T extends UploadFile>(file: T): Prom
     ctx.release()
     const info = await getInfoAsync(out.uri)
     if (!info.exists || !info.size) return file
-    return { ...file, uri: out.uri, mimeType: 'image/jpeg', fileSize: info.size }
+    // The input's dimensions no longer describe the re-encoded file.
+    const result: T = { ...file, uri: out.uri, mimeType: 'image/jpeg', fileSize: info.size }
+    delete result.width
+    delete result.height
+    return result
   } catch {
     return file
   }

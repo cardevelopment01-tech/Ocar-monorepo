@@ -1,4 +1,5 @@
 import { api } from '@/services/api'
+import { sharedGet } from '@/services/api/sharedGet'
 import { prepareImageForUpload } from '@/services/uploadImage'
 
 // ── Types (mirrors apps/driver/src/lib/onboarding-api.ts) ──────────────────────
@@ -67,7 +68,7 @@ async function putToS3WithRetry(uploadUrl: string, uri: string, contentType: str
   throw lastErr
 }
 
-export type PickedFile = { uri: string; mimeType: string; fileSize: number }
+export type PickedFile = { uri: string; mimeType: string; fileSize: number; width?: number; height?: number }
 
 // ── API calls ────────────────────────────────────────────────────────────────
 
@@ -93,8 +94,7 @@ export const onboardingApi = {
   },
 
   getDocumentStatus: async () => {
-    const res = await api.get('/api/v1/drivers/onboarding/documents/status')
-    return res.data as DocumentStatus
+    return sharedGet<DocumentStatus>('/api/v1/drivers/onboarding/documents/status')
   },
 
   saveIdentityNumbers: async (data: { license_number: string; aadhaar_number: string }) => {

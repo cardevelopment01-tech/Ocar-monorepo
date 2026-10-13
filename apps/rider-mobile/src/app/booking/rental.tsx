@@ -54,8 +54,12 @@ function PackageTierScroller({
   const arrowOpacity = useSharedValue(0)
   const [canScrollRight, setCanScrollRight] = useState(false)
 
+  const lastCanScroll = useRef<boolean | null>(null)
   const evaluate = useCallback(() => {
     const canScroll = contentWidthRef.current - offsetRef.current - layoutWidthRef.current > 4
+    // Scroll events fire every 16ms; only the boolean flipping needs an animation + a render.
+    if (canScroll === lastCanScroll.current) return
+    lastCanScroll.current = canScroll
     arrowOpacity.value = withTiming(canScroll ? 1 : 0, { duration: 180 })
     setCanScrollRight(canScroll)
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -113,7 +113,7 @@ export function useActiveRide(rideId: string) {
   }, [refresh])
 
   // Live end-of-ride from the other side. Socket.io doesn't replay missed events, so a
-  // disconnect is covered by `load` re-running on rejoin (useRoomJoin below).
+  // disconnect is covered by `refresh` re-running on rejoin (useRoomJoin below).
   useEffect(() => {
     function onStatusUpdate(payload: { status: string } & ExternalEndInfo) {
       const message = externalEndMessage(payload.status, payload)
@@ -135,7 +135,7 @@ export function useActiveRide(rideId: string) {
   // Re-joins ride:{rideId} on mount and on every socket reconnect, per the
   // shared room-join contract -- a bare reconnect doesn't replay whatever
   // changed while disconnected, so onRejoined re-fetches.
-  useRoomJoin(socket, rideId, load)
+  useRoomJoin(socket, rideId, refresh, { skipInitialRejoin: true })
 
   useEffect(() => {
     fetchUnreadChatCount(rideId).then(setUnreadChatCount).catch(() => {})
@@ -254,6 +254,7 @@ export function useActiveRide(rideId: string) {
     }
   }, [rideId, refresh])
 
+  const cashRefreshTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const collectCashAction = useCallback(
     async (input: { collectedAmount?: number; notCollected?: boolean; note?: string }) => {
       setActionError(null)
@@ -264,15 +265,17 @@ export function useActiveRide(rideId: string) {
         // one re-fetch shortly after is enough to usually catch it landing
         // (web's TripEnd.tsx polls up to 5x for the same reason; the
         // completion screen falls back to an estimate if it's still missing).
-        setTimeout(load, 1200)
+        clearTimeout(cashRefreshTimer.current)
+        cashRefreshTimer.current = setTimeout(refresh, 1200)
         return result
       } catch (err) {
         setActionError(getApiErrorMessage(err, 'Could not record cash collection. Try again.'))
         return null
       }
     },
-    [rideId, load]
+    [rideId, refresh]
   )
+  useEffect(() => () => clearTimeout(cashRefreshTimer.current), [])
 
   // Left un-wrapped (throws instead of swallowing into actionError) -- CancelSheet's
   // own onConfirm contract expects a rejected promise to show its built-in

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
@@ -23,7 +23,9 @@ const CLOSED_STATUSES = new Set(['completed', 'cancelled', 'no_drivers'])
 // Local send-lifecycle overlay on top of the server message shape --
 // 'sending'/'failed' are client-only, the server never reports them.
 type LocalStatus = 'sending' | 'sent' | 'failed'
-type LocalMessage = ChatMessage & { localStatus?: LocalStatus }
+// `fresh` = arrived or was sent after the screen opened; only those get the entrance animation
+// (history that loads on open used to spring-animate every visible bubble at once).
+type LocalMessage = ChatMessage & { localStatus?: LocalStatus; fresh?: boolean }
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
@@ -81,9 +83,9 @@ export default function RideChatScreen() {
   const upsertMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.clientMsgId === msg.clientMsgId)
-      if (idx === -1) return [...prev, { ...msg, localStatus: 'sent' }]
+      if (idx === -1) return [...prev, { ...msg, localStatus: 'sent', fresh: true }]
       const next = [...prev]
-      next[idx] = { ...msg, localStatus: 'sent' }
+      next[idx] = { ...msg, localStatus: 'sent', fresh: true }
       return next
     })
     lastSeenIdRef.current = msg.id
@@ -133,7 +135,7 @@ export default function RideChatScreen() {
           if (!mounted || !caughtUp.length) return
           setMessages((prev) => {
             const known = new Set(prev.map((m) => m.clientMsgId))
-            const fresh = caughtUp.filter((m) => !known.has(m.clientMsgId)).map((m) => ({ ...m, localStatus: 'sent' as const }))
+            const fresh = caughtUp.filter((m) => !known.has(m.clientMsgId)).map((m) => ({ ...m, localStatus: 'sent' as const, fresh: true }))
             return fresh.length ? [...prev, ...fresh] : prev
           })
           lastSeenIdRef.current = caughtUp[caughtUp.length - 1]!.id
@@ -170,6 +172,7 @@ export default function RideChatScreen() {
       readAt: null,
       createdAt: new Date().toISOString(),
       localStatus: 'sending',
+      fresh: true,
     }
     setMessages((prev) => [...prev, optimistic])
     setDraft('')
@@ -184,7 +187,7 @@ export default function RideChatScreen() {
     }
   }
 
-  async function retry(msg: LocalMessage) {
+  const retry = useCallback(async (msg: LocalMessage) => {
     setMessages((prev) => prev.map((m) => (m.clientMsgId === msg.clientMsgId ? { ...m, localStatus: 'sending' } : m)))
     try {
       const sent = await sendChatMessage(rideId, msg.body, msg.clientMsgId)
@@ -194,7 +197,10 @@ export default function RideChatScreen() {
       if (!mountedRef.current) return
       setMessages((prev) => prev.map((m) => (m.clientMsgId === msg.clientMsgId ? { ...m, localStatus: 'failed' } : m)))
     }
-  }
+  }, [rideId, upsertMessage])
+
+  // Stable renderItem + memoised Bubble: typing in the input no longer re-renders every visible bubble.
+  const renderItem = useCallback(({ item }: { item: LocalMessage }) => <Bubble msg={item} onRetry={retry} />, [retry])
 
   return (
     // Not KeyboardAvoidingView -- `behavior="padding"` only actually does
@@ -232,7 +238,7 @@ export default function RideChatScreen() {
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           // List shrinks when the keyboard opens -- keep the latest message visible
           onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
-          renderItem={({ item }) => <Bubble msg={item} onRetry={() => retry(item)} />}
+          renderItem={renderItem}
         />
       )}
 
@@ -289,13 +295,13 @@ export default function RideChatScreen() {
   )
 }
 
-function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
+const Bubble = memo(function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: (msg: LocalMessage) => void }) {
   const mine = msg.senderType === 'user'
   const failed = msg.localStatus === 'failed'
 
   return (
     <Animated.View
-      entering={FadeInDown.duration(220).springify().damping(18)}
+      {...(msg.fresh ? { entering: FadeInDown.duration(220).springify().damping(18) } : {})}
       style={[styles.bubbleRow, mine ? styles.bubbleRowMine : null]}
     >
       <View
@@ -319,14 +325,14 @@ function Bubble({ msg, onRetry }: { msg: LocalMessage; onRetry: () => void }) {
           )
         ) : null}
         {mine && failed ? (
-          <Pressable onPress={onRetry}>
+          <Pressable onPress={() => onRetry(msg)}>
             <Text style={styles.metaFailed}>Failed · Tap to retry</Text>
           </Pressable>
         ) : null}
       </View>
     </Animated.View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },

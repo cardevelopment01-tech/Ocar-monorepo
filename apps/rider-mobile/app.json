@@ -3,6 +3,7 @@
     "name": "Ocar Rider",
     "slug": "ocar-rider",
     "scheme": "ocarrider",
+    "experiments": { "reactCompiler": true },
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -39,6 +40,18 @@
     },
     "plugins": [
       "expo-router",
+[
+  "expo-build-properties",
+  {
+    "android": {
+      "enableMinifyInReleaseBuilds": true,
+      "enableShrinkResourcesInReleaseBuilds": true,
+      "buildArchs": ["arm64-v8a", "armeabi-v7a"],
+      "extraProguardRules": "-keep class io.invertase.firebase.** { *; }"
+    }
+  }
+],
+["expo-font", { "fonts": ["./node_modules/@expo-google-fonts/plus-jakarta-sans/400Regular/PlusJakartaSans_400Regular.ttf","./node_modules/@expo-google-fonts/plus-jakarta-sans/500Medium/PlusJakartaSans_500Medium.ttf","./node_modules/@expo-google-fonts/plus-jakarta-sans/600SemiBold/PlusJakartaSans_600SemiBold.ttf","./node_modules/@expo-google-fonts/plus-jakarta-sans/700Bold/PlusJakartaSans_700Bold.ttf","./node_modules/@expo-google-fonts/space-grotesk/500Medium/SpaceGrotesk_500Medium.ttf","./node_modules/@expo-google-fonts/space-grotesk/600SemiBold/SpaceGrotesk_600SemiBold.ttf","./node_modules/@expo-google-fonts/space-grotesk/700Bold/SpaceGrotesk_700Bold.ttf"] }],
       [
         "expo-location",
         {

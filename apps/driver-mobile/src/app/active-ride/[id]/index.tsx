@@ -24,7 +24,7 @@ import { ActiveRideMap } from '@/features/active-ride/components/ActiveRideMap'
 import { GoogleGuidedMap, GUIDED_CONTROLS_HEIGHT } from '@/features/active-ride/components/GoogleGuidedMap'
 import { SpeedAlertToast } from '@/features/active-ride/components/SpeedAlertToast'
 import { triggerSos } from '@/features/active-ride/safety-api'
-import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosition'
+import { useDriverPositionStore } from '@/services/location/driverPositionStore'
 import { useSpeedAlert } from '@/features/active-ride/useSpeedAlert'
 import { useTripWindow } from '@/features/active-ride/useTripWindow'
 
@@ -96,7 +96,7 @@ export default function ActiveRideScreen() {
     setNavView('diy')
     clearActiveRide(null)
     Alert.alert('Ride ended', endedExternally)
-    router.replace('/(tabs)/home')
+    router.dismissTo('/(tabs)/home')
   }, [endedExternally, clearActiveRide, router])
 
   // Trip settled (e.g. server-side end) while guided nav owns the screen: the sheet with the
@@ -112,7 +112,6 @@ export default function ActiveRideScreen() {
   // React throws on ("Rendered more hooks than during the previous render"). That
   // crash hit every app launch once a ride was persisted active, since restoring
   // straight into this screen re-triggers the loading->loaded transition.
-  const live = useDriverLivePosition(true)
   // Trip-in-progress and the return leg -- both are "driving with a rider
   // context active" (start-otp has fired, end-otp hasn't yet), matching the
   // hardening doc's "driver-facing only, during the ride" scope. Off for
@@ -161,7 +160,7 @@ export default function ActiveRideScreen() {
 
   function handleBackToOnline() {
     clearActiveRide(null)
-    router.replace('/(tabs)/home')
+    router.dismissTo('/(tabs)/home')
   }
 
   function handleOpenChat() {
@@ -176,7 +175,7 @@ export default function ActiveRideScreen() {
     await cancelRideAction(reasonCode)
     setShowCancelSheet(false)
     clearActiveRide(null)
-    router.replace('/(tabs)/home')
+    router.dismissTo('/(tabs)/home')
   }
 
   // The map is always the whole screen, not a boxed inset -- every ride
@@ -310,7 +309,10 @@ export default function ActiveRideScreen() {
 
       <SOSButton
         enabled={status !== 'completed'}
-        onTrigger={() => triggerSos(rideId, live?.position[0], live?.position[1])}
+        onTrigger={() => {
+          const p = useDriverPositionStore.getState().position
+          return triggerSos(rideId, p?.lat, p?.lng)
+        }}
         anchor={navView === 'guided' ? 'bottom-right' : 'top-right'}
         {...(navView === 'guided' ? { offset: insets.bottom + (GUIDED_CONTROLS_HEIGHT - SOS_SIZE) / 2 } : {})}
       />

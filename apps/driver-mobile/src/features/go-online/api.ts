@@ -1,10 +1,11 @@
 import { camelizeKeys } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
+import { sharedGet } from '@/services/api/sharedGet'
 import type { City, DocumentGateStatus, DriverSession, VehicleInfo, WalletInfo } from './types'
 
 export async function fetchMyVehicle(): Promise<VehicleInfo | null> {
-  const res = await api.get<{ vehicle: unknown }>('/api/v1/drivers/onboarding/vehicle-info')
-  return res.data.vehicle ? camelizeKeys<VehicleInfo>(res.data.vehicle) : null
+  const data = await sharedGet<{ vehicle: unknown }>('/api/v1/drivers/onboarding/vehicle-info')
+  return data.vehicle ? camelizeKeys<VehicleInfo>(data.vehicle) : null
 }
 
 export async function fetchWalletInfo(): Promise<WalletInfo> {
@@ -22,12 +23,12 @@ type RawDocumentStatus = {
 // Same pattern as apps/driver/src/lib/useDocumentGate.ts -- prefer the specific
 // per-document rejection note over the generic status-transition reason.
 export async function fetchDocumentGateStatus(): Promise<DocumentGateStatus> {
-  const res = await api.get<RawDocumentStatus>('/api/v1/drivers/onboarding/documents/status')
-  const docs = [...Object.values(res.data.photos), ...Object.values(res.data.vehicle_docs)]
+  const data = await sharedGet<RawDocumentStatus>('/api/v1/drivers/onboarding/documents/status')
+  const docs = [...Object.values(data.photos), ...Object.values(data.vehicle_docs)]
   const rejectedDoc = docs.find((doc) => doc.status === 'rejected')
   return {
     hasRejected: !!rejectedDoc,
-    rejectionReason: rejectedDoc?.rejection_note ?? res.data.rejection_reason,
+    rejectionReason: rejectedDoc?.rejection_note ?? data.rejection_reason,
   }
 }
 

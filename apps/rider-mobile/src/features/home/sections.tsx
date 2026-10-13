@@ -1,10 +1,13 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react'
+import { useIsFocused } from 'expo-router'
 import { Image, ScrollView, StyleSheet, View, useWindowDimensions, type ImageSourcePropType, type LayoutChangeEvent } from 'react-native'
 import { FONT_CAP, Text } from './Text'
 import Animated, {
   type SharedValue,
+  cancelAnimation,
   interpolate,
   useAnimatedReaction,
+  useReducedMotion,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -213,9 +216,16 @@ export type Way = { key: string; title: string; sub: string; image: ImageSourceP
 
 function LiveDot() {
   const t = useSharedValue(0)
+  const focused = useIsFocused()
+  const reduceMotion = useReducedMotion()
   useEffect(() => {
+    if (!focused || reduceMotion) {
+      cancelAnimation(t)
+      t.set(0)
+      return
+    }
     t.set(withRepeat(withTiming(1, { duration: 2200, easing: ease.css }), -1))
-  }, [t])
+  }, [t, focused, reduceMotion])
   // liveDot: 0% (0px, .5) -> 70% (7px, 0) -> 100% (0px, 0)
   const ring = useAnimatedStyle(() => {
     const k = Math.min(t.get() / 0.7, 1)
@@ -306,7 +316,14 @@ export function PromoRow({ promos }: { promos: Promo[] }) {
 export function EliteBanner({ onPress }: { onPress: () => void }) {
   const w = useSharedValue(0)
   const t = useSharedValue(0)
+  const focused = useIsFocused()
+  const reduceMotion = useReducedMotion()
   useEffect(() => {
+    if (!focused || reduceMotion) {
+      cancelAnimation(t)
+      t.set(0)
+      return
+    }
     // shimmer: rests at -60% for 55% of 3.6s, then sweeps to 140% (ease-in-out), loops
     t.set(
       withRepeat(
@@ -314,7 +331,7 @@ export function EliteBanner({ onPress }: { onPress: () => void }) {
         -1
       )
     )
-  }, [t])
+  }, [t, focused, reduceMotion])
   const shimmer = useAnimatedStyle(() => ({ transform: [{ translateX: interpolate(t.get(), [0, 1], [-0.6 * w.get(), 1.4 * w.get()]) }] }))
   return (
     <View style={s.eliteWrap}>

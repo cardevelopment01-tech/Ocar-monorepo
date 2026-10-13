@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSharedValue } from 'react-native-reanimated'
-import { simplifyPolyline, useRoomJoin } from '@ocar/mobile-shared'
+import { haversineMetres, simplifyPolyline, useRoomJoin } from '@ocar/mobile-shared'
 import { statusShowsEta } from '@ocar/shared'
 import { socket } from '@/services/socket'
 import { fetchRide, fetchRouteLeg, fetchUnreadChatCount } from './api'
@@ -26,6 +25,9 @@ type StopUpdatedPayload = {
 // `stops` = the server's full re-ordered list (nearest-next); absent on older servers.
 type StopAddedPayload = { stop: RideDetailExtra['stops'][number]; stops?: RideDetailExtra['stops'] }
 type ChatMessagePayload = { senderType: 'user' | 'driver' }
+
+const ROUTE_REFRESH_MS = 60_000
+const ROUTE_REFRESH_MOVED_M = 400
 
 type RouteMode = 'pickup-dest' | 'driver-pickup' | 'driver-dest' | 'returning' | 'recap'
 
@@ -56,15 +58,9 @@ export function useRideTracking(rideId: string) {
   const [fareDrift, setFareDrift] = useState<{ previousFare: number; currentFare: number } | null>(null)
   const [upgradeCategory, setUpgradeCategory] = useState<string | null>(null)
 
-  // Ref-driven shared values -- the driver dot's UI-thread animation (see
-  // components that consume these directly) never triggers a re-render even
-  // though `driverPos` state (for the real map, which must re-render) does.
-  const markerLat = useSharedValue(0)
-  const markerLng = useSharedValue(0)
-  const markerHeading = useSharedValue(0)
   const hasMarkerFix = useRef(false)
   const routeFetchSeq = useRef(0)
-  const lastRouteFetch = useRef<{ mode: RouteMode; stopsKey: string; at: number } | null>(null)
+  const lastRouteFetch = useRef<{ mode: RouteMode; stopsKey: string; at: number; origin: [number, number] } | null>(null)
 
   const loadRide = useCallback(async () => {
     try {
@@ -75,8 +71,6 @@ export function useRideTracking(rideId: string) {
       const fallbackLng = detail.driverCurrentLng ?? detail.originLng
       if (detail.driverCurrentLat != null && detail.driverCurrentLng != null) setDriverLocated(true)
       if (!hasMarkerFix.current && fallbackLat != null && fallbackLng != null) {
-        markerLat.value = fallbackLat
-        markerLng.value = fallbackLng
         setDriverPos([fallbackLat, fallbackLng])
       }
     } catch {
@@ -84,7 +78,7 @@ export function useRideTracking(rideId: string) {
     } finally {
       setLoading(false)
     }
-  }, [rideId, markerLat, markerLng])
+  }, [rideId])
 
   useEffect(() => {
     setLoading(true)
@@ -115,9 +109,6 @@ export function useRideTracking(rideId: string) {
     function onDriverLocation(payload: DriverLocationTick) {
       hasMarkerFix.current = true
       setDriverLocated(true)
-      markerLat.value = payload.lat
-      markerLng.value = payload.lng
-      markerHeading.value = payload.heading ?? 0
       setDriverPos([payload.lat, payload.lng])
       setLastLocationAt(Date.now())
       if (payload.heading != null) {
@@ -184,7 +175,7 @@ export function useRideTracking(rideId: string) {
       socket.off('connect', onConnect)
       socket.off('disconnect', onDisconnect)
     }
-  }, [loadRide, markerLat, markerLng, markerHeading])
+  }, [loadRide])
 
   // Route + live ETA -- same leg selection AND waypoint-detour behavior as
   // the web tracking page's effect (previously scoped down to skip waypoint
@@ -224,11 +215,15 @@ export function useRideTracking(rideId: string) {
 
     const prev = lastRouteFetch.current
     const modeChanged = !prev || prev.mode !== routeMode || prev.stopsKey !== stopsKey
-    const stale = prev ? Date.now() - prev.at > 20_000 : true
-    if (!modeChanged && !stale) return
+    // Each fetch is a paid, traffic-aware Directions call (one per leg with stops). Refresh the line
+    // and ETA once a minute, or sooner only if the driver has actually moved a good way since the
+    // last one (was every 20s: up to 12 calls/min with stops, plus a radio wake-up each).
+    const stale = prev ? Date.now() - prev.at > ROUTE_REFRESH_MS : true
+    const movedFar = prev ? haversineMetres(prev.origin, origin) > ROUTE_REFRESH_MOVED_M : false
+    if (!modeChanged && !stale && !movedFar) return
 
     const seq = ++routeFetchSeq.current
-    lastRouteFetch.current = { mode: routeMode, stopsKey, at: Date.now() }
+    lastRouteFetch.current = { mode: routeMode, stopsKey, at: Date.now(), origin }
     const wantsEta = (routeMode === 'driver-pickup' || routeMode === 'driver-dest' || routeMode === 'returning') && statusShowsEta(ride.status)
 
     // Stops sit between pickup and drop -- never bend the pickup leg or the
@@ -276,9 +271,6 @@ export function useRideTracking(rideId: string) {
     socketConnected,
     driverCancelled,
     lastLocationAt,
-    markerLat,
-    markerLng,
-    markerHeading,
     driverPos,
     driverHeading,
     driverHeadingKnown,

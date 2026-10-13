@@ -68,7 +68,9 @@ export default function BookingPickersScreen() {
   const bookingForOther = riderName !== '' && riderPhone !== ''
   const [riderSheetOpen, setRiderSheetOpen] = useState(false)
 
-  const location = useLocationStore()
+  const locLat = useLocationStore((s) => s.lat)
+  const locLng = useLocationStore((s) => s.lng)
+  const locAddress = useLocationStore((s) => s.address)
   const freshness = useFreshness()
   const recents = useRecentSearchesStore((s) => s.recents)
   const addRecent = useRecentSearchesStore((s) => s.addRecent)
@@ -82,9 +84,9 @@ export default function BookingPickersScreen() {
   // old). The saved location seeds the home map only: it must never become a booking pickup, since a stale
   // spot would be quoted and dispatched. Tapping FROM still lets the rider override it, same as web.
   useEffect(() => {
-    if (pickup || freshness !== 'live' || location.lat === null) return
-    setPickup({ address: location.address || 'Current Location', lat: location.lat, lng: location.lng! })
-  }, [pickup, freshness, location.lat, location.lng, location.address, setPickup])
+    if (pickup || freshness !== 'live' || locLat === null) return
+    setPickup({ address: locAddress || 'Current Location', lat: locLat, lng: locLng! })
+  }, [pickup, freshness, locLat, locLng, locAddress, setPickup])
 
   // Which field is actively showing a TextInput right now -- null means both
   // rows show their confirmed/placeholder text. Distinct from "which field was

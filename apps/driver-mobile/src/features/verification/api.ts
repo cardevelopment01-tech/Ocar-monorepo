@@ -7,7 +7,7 @@ export type DailyVerificationStatus = {
   complete: boolean
 }
 
-export type PickedPhoto = { uri: string; mimeType: string; fileSize: number }
+export type PickedPhoto = { uri: string; mimeType: string; fileSize: number; width?: number; height?: number }
 
 // Same presigned-PUT-from-local-URI approach as onboarding's api.ts -- kept as
 // its own small copy rather than a shared import since these are two

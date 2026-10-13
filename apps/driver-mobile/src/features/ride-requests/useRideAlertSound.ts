@@ -28,7 +28,7 @@ let audioModeSet = false
 function ensureAudioMode() {
   if (audioModeSet) return
   audioModeSet = true
-  setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers' }).catch(() => {})
+  setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers', shouldPlayInBackground: true }).catch(() => {})
 }
 
 /** Plays a repeating alert tone + vibration while `active` is true. Stops immediately when it flips to false. */

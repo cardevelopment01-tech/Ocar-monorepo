@@ -5,6 +5,7 @@ import {
   MAX_ACCURACY_M,
   intervalForRideState,
   isAccurateEnough,
+  trackingProfileForRideState,
 } from './locationPolicy'
 
 describe('isAccurateEnough', () => {
@@ -37,5 +38,14 @@ describe('intervalForRideState', () => {
 
   it('the active-ride interval is strictly tighter than the idle interval', () => {
     expect(ACTIVE_RIDE_INTERVAL_MS).toBeLessThan(IDLE_INTERVAL_MS)
+  })
+})
+
+describe('trackingProfileForRideState', () => {
+  it('uses High accuracy at 3s/5m only while a ride is active', () => {
+    expect(trackingProfileForRideState(true)).toEqual({ intervalMs: 3_000, distanceMeters: 5, highAccuracy: true })
+  })
+  it('uses Balanced at 30s while idle-online', () => {
+    expect(trackingProfileForRideState(false)).toEqual({ intervalMs: 30_000, distanceMeters: 0, highAccuracy: false })
   })
 })

@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications'
 import { getApp } from '@react-native-firebase/app'
-import { getMessaging, getToken, requestPermission, AuthorizationStatus } from '@react-native-firebase/messaging'
+import { getMessaging, getToken, deleteToken, requestPermission, AuthorizationStatus } from '@react-native-firebase/messaging'
 import { registerPushNotifications, unregisterPushNotifications } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -41,6 +41,15 @@ export async function setupPushNotifications(): Promise<void> {
   useAuthStore.getState().setPushPermissionGranted(granted)
 }
 
+// Runs BEFORE clearAuth (the DELETE needs the session token). Without a real token the old call
+// was a no-op, so a logged-out phone kept receiving the previous driver's ride-request and chat pushes.
 export async function teardownPushNotifications(): Promise<void> {
-  await unregisterPushNotifications(api, null)
+  try {
+    const messaging = getMessaging(getApp())
+    const token = await getToken(messaging)
+    await unregisterPushNotifications(api, token)
+    await deleteToken(messaging)
+  } catch {
+    // Best-effort -- logout must not block on FCM.
+  }
 }

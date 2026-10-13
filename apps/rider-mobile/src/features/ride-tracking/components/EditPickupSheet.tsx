@@ -50,7 +50,9 @@ export function EditPickupSheet({
   function handleDrag(e: MarkerDragStartEndEvent) {
     const { latitude, longitude } = e.nativeEvent.coordinate
     const dist = haversineMetres(origin.current, [latitude, longitude])
-    setProximity(Math.min(1, dist / PICKUP_EDIT_RADIUS_METRES))
+    // Quantised to 5% steps: native drag events fire continuously and each setState re-rendered the whole sheet.
+    const next = Math.round(Math.min(1, dist / PICKUP_EDIT_RADIUS_METRES) * 20) / 20
+    setProximity((prev) => (prev === next ? prev : next))
   }
 
   function handleDragEnd(e: MarkerDragStartEndEvent) {

@@ -40,7 +40,7 @@ export function SelfieCapture({ visible, onCancel, onConfirm }: {
       const shot = await cameraRef.current.takePictureAsync({ quality: 0.75 })
       if (!shot) return
       const info = await getInfoAsync(shot.uri)
-      setPhoto({ uri: shot.uri, mimeType: 'image/jpeg', fileSize: info.exists ? (info.size ?? 0) : 0 })
+      setPhoto({ uri: shot.uri, mimeType: 'image/jpeg', fileSize: info.exists ? (info.size ?? 0) : 0, width: shot.width, height: shot.height })
     } finally {
       setCapturing(false)
     }

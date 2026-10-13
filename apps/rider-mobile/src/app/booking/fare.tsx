@@ -29,6 +29,12 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
 // Book button drifted up and down with however many categories loaded.
 const MAP_HEIGHT_RATIO = 0.4
 
+// Module scope: an inline ItemSeparatorComponent is a new component type every render, so React
+// unmounted and remounted every separator whenever the nearby-driver poll re-rendered the screen.
+function Divider() {
+  return <View style={styles.divider} />
+}
+
 export default function BookingFareScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
@@ -70,7 +76,10 @@ export default function BookingFareScreen() {
   // keep showing all cards during the initial load so skeletons still render.
   // Matches web's identical fix (apps/user/app/(main)/select-ride/page.tsx) --
   // without this, a rental-only category shows up here too and 422s on booking.
-  const visibleCategories = categories.filter((cat) => loading || estimates[cat.id] !== undefined)
+  const visibleCategories = useMemo(
+    () => categories.filter((cat) => loading || estimates[cat.id] !== undefined),
+    [categories, loading, estimates],
+  )
 
   // Per-category nearest-driver ETA, mirrors web's driverEta memo
   // (apps/user/app/(main)/select-ride/page.tsx) -- same nearby-drivers poll
@@ -240,7 +249,7 @@ export default function BookingFareScreen() {
               keyExtractor={(item) => String(item.id)}
               contentContainerStyle={styles.list}
               style={styles.listFlex}
-              ItemSeparatorComponent={() => <View style={styles.divider} />}
+              ItemSeparatorComponent={Divider}
               ListHeaderComponent={
                 rideType === 'one_way' && !scheduledFor && returnCabCategories.size > 0 ? (
                   <View style={styles.returnCabSection}>

@@ -8,7 +8,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import { SplashOverlay, useAppFonts } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useLocationStore } from '@/store/useLocationStore'
-import { MapWarmup } from '@/features/map/components/MapWarmup'
+import { useSocketLifecycle } from '@/services/socket/useSocketLifecycle'
 import { usePushNotificationRouting } from '@/features/notifications/usePushNotificationRouting'
 import logoMarkImage from '../../assets/brand/logo-mark.png'
 
@@ -31,6 +31,7 @@ export default function RootLayout() {
   const locationReady = locationHydrated || locationCapHit
 
   usePushNotificationRouting()
+  useSocketLifecycle()
 
   useEffect(() => {
     if (hasHydrated && fontsLoaded && locationReady) SplashScreen.hideAsync().catch(() => {})
@@ -60,8 +61,7 @@ export default function RootLayout() {
             callback instead, which works regardless of window-resize behavior. */}
         <KeyboardProvider>
           <StatusBar style="dark" />
-          <MapWarmup />
-          <Stack screenOptions={{ headerShown: false }} />
+          <Stack screenOptions={{ headerShown: false, freezeOnBlur: true }} />
           {showSplashOverlay ? (
             <SplashOverlay
               logoSource={logoMarkImage}

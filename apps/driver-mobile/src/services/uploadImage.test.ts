@@ -69,6 +69,13 @@ describe('prepareImageForUpload', () => {
     expect(state.released).toBe(4)
   })
 
+  it('skips the probe decode when the capture already carries its size', async () => {
+    const out = await prepareImageForUpload({ ...photo, width: 4000, height: 3000 })
+    expect(state.resizeCalls).toEqual([{ width: 1600, height: null }])
+    expect(state.released).toBe(2) // only the resize context + its rendered image
+    expect(out).toEqual({ uri: 'file:///cache/out.jpg', mimeType: 'image/jpeg', fileSize: 250_000 })
+  })
+
   it('re-encodes but does not resize an already-small photo', async () => {
     state.size = { width: 1200, height: 900 }
     const out = await prepareImageForUpload(photo)

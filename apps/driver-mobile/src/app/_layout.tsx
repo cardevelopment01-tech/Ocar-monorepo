@@ -54,7 +54,7 @@ export default function RootLayout() {
             callback instead, which works regardless of window-resize behavior. */}
         <KeyboardProvider>
           <StatusBar style="dark" />
-          <Stack screenOptions={{ headerShown: false }} />
+          <Stack screenOptions={{ headerShown: false, freezeOnBlur: true }} />
           <RideRequestOverlay />
           {showSplashOverlay ? (
             <SplashOverlay

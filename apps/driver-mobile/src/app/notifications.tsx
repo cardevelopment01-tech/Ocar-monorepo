@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -25,6 +25,7 @@ export default function NotificationsScreen() {
   const [cursor, setCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
+  const loadingMore = useRef(false)
 
   const load = useCallback(async (after?: string) => {
     try {
@@ -79,7 +80,13 @@ export default function NotificationsScreen() {
           data={items}
           keyExtractor={(i) => i.id}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.lg, gap: spacing.sm }}
-          onEndReached={() => { if (cursor) void load(cursor) }}
+          onEndReached={() => {
+            // onEndReached can fire several times before `cursor` updates; without this guard the
+            // same page was appended twice (duplicate keys).
+            if (!cursor || loadingMore.current) return
+            loadingMore.current = true
+            void load(cursor).finally(() => { loadingMore.current = false })
+          }}
           onEndReachedThreshold={0.4}
           ListEmptyComponent={<Text style={styles.empty}>You're all caught up.</Text>}
           renderItem={({ item }) => (

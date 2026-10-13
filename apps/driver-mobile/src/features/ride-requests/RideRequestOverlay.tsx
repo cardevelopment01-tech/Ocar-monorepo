@@ -167,14 +167,17 @@ export function RideRequestOverlay() {
   // the ring itself depletes on the UI thread so it stays smooth).
   useEffect(() => {
     if (!pending || resolved) return
+    // The visible number only changes once a second, so wake exactly at the next whole-second
+    // boundary (a 250ms interval woke the JS thread 4x as often for the same output).
+    let id: ReturnType<typeof setTimeout>
     const tick = () => {
       const remaining = computeRemainingSeconds(pending.timeoutSeconds, pending.receivedAtMs, Date.now())
       setSeconds(Math.ceil(remaining))
-      if (remaining <= 0) setStatus('expired')
+      if (remaining <= 0) { setStatus('expired'); return }
+      id = setTimeout(tick, Math.max(50, (remaining % 1 || 1) * 1000 + 20))
     }
     tick()
-    const id = setInterval(tick, 250)
-    return () => clearInterval(id)
+    return () => clearTimeout(id)
   }, [pending, resolved])
 
   // Autodismiss the terminal messages gracefully.

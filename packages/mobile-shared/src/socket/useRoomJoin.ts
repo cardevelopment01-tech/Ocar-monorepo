@@ -15,20 +15,54 @@ import type { Socket } from 'socket.io-client'
 // Extracted as a plain function (not inline in the hook) so it's unit-testable with a
 // fake socket object, same injected-dependency pattern as createHybridStorage -- no
 // React rendering harness needed.
-export function attachRoomJoin(socket: Socket, rideId: string, onRejoined?: () => void): () => void {
+//
+// Several screens can watch the same ride at once (ride screen + chat pushed on top), so
+// membership is ref-counted per socket+ride: 'leave:ride' goes out only when the LAST
+// watcher unmounts. Without the leave, the server keeps streaming driver:location to a
+// phone that has no listener (and, for old completed trips, forever).
+//
+// skipInitialRejoin: the caller already fetches on mount itself, so only reconnects
+// should call onRejoined (avoids a duplicate GET on screen open).
+const watchers = new WeakMap<Socket, Map<string, number>>()
+
+export function attachRoomJoin(
+  socket: Socket,
+  rideId: string,
+  onRejoined?: () => void,
+  opts: { skipInitialRejoin?: boolean } = {},
+): () => void {
+  const counts = watchers.get(socket) ?? new Map<string, number>()
+  watchers.set(socket, counts)
+  counts.set(rideId, (counts.get(rideId) ?? 0) + 1)
+
   function join(): void {
     socket.emit('join:ride', rideId)
     onRejoined?.()
   }
-  join()
+  socket.emit('join:ride', rideId)
+  if (!opts.skipInitialRejoin) onRejoined?.()
   socket.on('connect', join)
-  return () => socket.off('connect', join)
+  return () => {
+    socket.off('connect', join)
+    const left = (counts.get(rideId) ?? 1) - 1
+    if (left <= 0) {
+      counts.delete(rideId)
+      socket.emit('leave:ride', rideId)
+    } else {
+      counts.set(rideId, left)
+    }
+  }
 }
 
-export function useRoomJoin(socket: Socket, rideId: string | null, onRejoined?: () => void): void {
+export function useRoomJoin(
+  socket: Socket,
+  rideId: string | null,
+  onRejoined?: () => void,
+  opts?: { skipInitialRejoin?: boolean },
+): void {
   useEffect(() => {
     if (!rideId) return
-    return attachRoomJoin(socket, rideId, onRejoined)
+    return attachRoomJoin(socket, rideId, onRejoined, opts)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onRejoined identity churn shouldn't re-join
   }, [socket, rideId])
 }

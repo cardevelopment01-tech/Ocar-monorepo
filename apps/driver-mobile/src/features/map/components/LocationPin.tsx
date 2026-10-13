@@ -1,7 +1,6 @@
-import { memo, useEffect } from 'react'
+import { memo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Marker } from 'react-native-maps'
-import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
 import { PinGlyph } from '@ocar/mobile-shared'
 
 export type PinVariant = 'pickup' | 'drop' | 'stop'
@@ -13,29 +12,19 @@ export type LocationPinProps = {
 
 // Ported from rider-mobile's features/map/components/LocationPin.tsx (itself a
 // pixel-match of web's apps/user/components/map/LocationPin.tsx) -- same
-// teardrop pin + pulsing pickup halo everywhere in the product.
-function PulsingHalo() {
-  const reduced = useReducedMotion()
-  const scale = useSharedValue(1)
-  const opacity = useSharedValue(0.35)
-
-  useEffect(() => {
-    if (reduced) return
-    scale.set(withRepeat(withTiming(2.2, { duration: 1400, easing: Easing.out(Easing.ease) }), -1, false))
-    opacity.set(withRepeat(withTiming(0, { duration: 1400, easing: Easing.out(Easing.ease) }), -1, false))
-  }, [reduced, scale, opacity])
-
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }], opacity: opacity.get() }))
-
-  if (reduced) return null
-  return <Animated.View style={[styles.halo, style]} />
+// teardrop pin + pickup halo everywhere in the product.
+// The halo is static on purpose: a Google marker's children are rasterised to one bitmap
+// (tracksViewChanges={false}), so a looping animation here never showed on Android and
+// only kept a UI-thread frame callback running for the whole leg.
+function Halo() {
+  return <View style={styles.halo} />
 }
 
 function LocationPin({ position, variant }: LocationPinProps) {
   return (
     <Marker coordinate={{ latitude: position[0], longitude: position[1] }} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={false}>
       <View style={styles.wrap}>
-        {variant === 'pickup' ? <PulsingHalo /> : null}
+        {variant === 'pickup' ? <Halo /> : null}
         <PinGlyph variant={variant} />
       </View>
     </Marker>
@@ -44,7 +33,7 @@ function LocationPin({ position, variant }: LocationPinProps) {
 
 const styles = StyleSheet.create({
   wrap: { width: 28, height: 38, alignItems: 'center', justifyContent: 'flex-end' },
-  halo: { position: 'absolute', top: -6, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(14,143,163,0.25)' },
+  halo: { position: 'absolute', top: -6, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(14,143,163,0.18)' },
 })
 
 export default memo(LocationPin, (a, b) =>

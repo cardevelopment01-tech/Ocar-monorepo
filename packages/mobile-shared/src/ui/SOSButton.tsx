@@ -39,7 +39,8 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
   const fill = useSharedValue(0)
   const sending = useRef(false)
   const number = emergencyPhoneNumber || DEFAULT_EMERGENCY_NUMBER
-  const fillStyle = useAnimatedStyle(() => ({ width: `${fill.get() * 100}%` }))
+  // scaleX from the left edge, not `width`: no layout pass per frame during the 1.2s hold.
+  const fillStyle = useAnimatedStyle(() => ({ transform: [{ scaleX: fill.get() }] }))
 
   useEffect(() => {
     if (!open) {
@@ -162,7 +163,7 @@ const styles = StyleSheet.create({
   body: { ...typography.body, color: colors.ink600 },
   error: { ...typography.caption, color: colors.error },
   hold: { height: 60, borderRadius: radii.xl, backgroundColor: colors.error, overflow: 'hidden', justifyContent: 'center', marginTop: spacing.xs },
-  holdFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.28)' },
+  holdFill: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, transformOrigin: 'left', backgroundColor: 'rgba(0,0,0,0.28)' },
   holdRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   holdText: { ...typography.label, fontFamily: fonts.bold, color: colors.inkInverse },
   call: { height: 52, borderRadius: radii.xl, borderWidth: 1.5, borderColor: colors.error, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },

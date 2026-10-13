@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { Skeleton, VehicleIcon, colors, spacing, typography, fonts } from '@ocar/mobile-shared'
@@ -27,7 +28,7 @@ export type CategoryCardProps = {
 // Matches the real web app's select-ride row (apps/user/app/(main)/select-ride/page.tsx):
 // icon square that tints when active, name + seat count + live ETA, fare on the
 // right, a left accent border for the selected state instead of a border+checkmark combo.
-export function CategoryCard({
+function CategoryCardBase({
   category, fareTotal, loading, selected, onPress, eta, disabled = false, variant = 'standard', savingsText,
 }: CategoryCardProps) {
   const noCars = disabled
@@ -143,3 +144,5 @@ const styles = StyleSheet.create({
   fare: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, fontSize: 17 },
   fareUnavailable: { ...typography.body, color: colors.ink400 },
 })
+
+export const CategoryCard = memo(CategoryCardBase)
