@@ -2,6 +2,7 @@ import { Worker } from 'bullmq'
 import { QUEUE_NAMES, redisConnection } from '@/jobs/queues'
 import * as notifService from '@/modules/notifications/notifications.service'
 import * as repo from '@/modules/notifications/notifications.repository'
+import { runBroadcast } from '@/modules/notifications/broadcast.service'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
 const log = createWorkerLogger('push')
@@ -12,6 +13,10 @@ const log = createWorkerLogger('push')
 export const pushWorker = new Worker(
   QUEUE_NAMES.PUSH,
   async (job) => {
+    if (job.name === 'broadcast_send') {
+      await runBroadcast((job.data as { broadcastId: string }).broadcastId)
+      return
+    }
     const data = job.data as notifService.PushJobData
     const ttl = data.msg.ttlSeconds
     if (ttl !== undefined && Date.now() - job.timestamp > ttl * 1000) {

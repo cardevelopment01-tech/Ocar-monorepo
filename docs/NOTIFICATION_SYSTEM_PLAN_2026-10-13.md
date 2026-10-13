@@ -326,7 +326,11 @@ Original scope:
 3. Permission priming and the "notifications are off" banner.
 4. Notification settings screen (read-only list plus link to system settings until Phase 3).
 
-### Phase 3: preferences and admin broadcast
+### Phase 3: preferences and admin broadcast (DONE, branch `feat/notifications-phase3`)
+
+Built as: `notification_preferences` (opt-out rows for `announcements` and `offers` only; migration 113) with GET/PUT `/notifications/preferences` and on/off switches in both apps' settings; admin Broadcasts page (`/broadcasts`, super_admin + ops_admin) with audience (all drivers, all riders, drivers missing the RC back), "Check audience" count before send, and send; `POST /admin/notifications/preview|broadcast`; broadcast history row plus audit-log entry; fan-out runs in the push worker (`attempts: 1` so a retry can't double-notify; recipients re-resolved at run time so late opt-outs are honoured); offers refused outside 10:00-21:00 IST; announcement and offer channels in the apps. The RC back reminder is the "missing RC back" audience, not a script. Deliberately not built: delivery acks (feed `read_at` already records opens), per-user rate cap (only admins can trigger sends), city audience (no city column on drivers/users), scheduled sends, a broadcast history list in the admin UI.
+
+Original scope:
 
 1. `notification_preferences` table and API; settings switches for optional categories.
 2. Quiet hours for promotional sends.

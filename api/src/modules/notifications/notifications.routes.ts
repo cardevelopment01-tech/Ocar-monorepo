@@ -16,6 +16,30 @@ function resolveOwner(req: Request): { ownerType: DeviceOwnerType; ownerId: bigi
   return null
 }
 
+// Optional categories only (announcements, offers); a missing row means on.
+const PREF_CATEGORIES = new Set(['announcements', 'offers'])
+
+router.get('/preferences', authenticate(), async (req, res, next) => {
+  try {
+    const owner = resolveOwner(req)
+    if (!owner || owner.ownerType === 'admin') throw createHttpError(AppErrors.AUTH_FORBIDDEN)
+    res.json(await repo.getPreferences(owner.ownerType, owner.ownerId))
+  } catch (err) { next(err) }
+})
+
+router.put('/preferences', authenticate(), async (req, res, next) => {
+  try {
+    const owner = resolveOwner(req)
+    if (!owner || owner.ownerType === 'admin') throw createHttpError(AppErrors.AUTH_FORBIDDEN)
+    const { category, enabled } = req.body ?? {}
+    if (typeof category !== 'string' || !PREF_CATEGORIES.has(category) || typeof enabled !== 'boolean') {
+      throw httpError(422, 'category must be announcements or offers and enabled a boolean', AppErrors.VALIDATION_ERROR.code)
+    }
+    await repo.setPreference(owner.ownerType, owner.ownerId, category, enabled)
+    res.status(204).send()
+  } catch (err) { next(err) }
+})
+
 router.post('/devices', authenticate(), async (req, res, next) => {
   try {
     const owner = resolveOwner(req)

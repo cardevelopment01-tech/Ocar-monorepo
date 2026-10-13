@@ -37,6 +37,7 @@ export async function setupPushNotifications(opts: { prompt?: boolean } = {}): P
       // importance at creation, so this is HIGH from the start.
       { channelId: 'ride_updates_v1', name: 'Ride updates', description: 'Rides assigned to you, added stops, pickup changes and cancellations', importance: Notifications.AndroidImportance.HIGH },
       { channelId: 'chat_v1', name: 'Messages', description: 'Messages from your rider', importance: Notifications.AndroidImportance.HIGH },
+      { channelId: 'announcements_v1', name: 'Announcements', description: 'Notices from Ocar', importance: Notifications.AndroidImportance.DEFAULT },
       { channelId: 'account_alerts_v1', name: 'Account alerts', description: 'Document reviews and expiry, wallet balance, warnings and suspensions', importance: Notifications.AndroidImportance.HIGH },
       {
         channelId: 'ride_requests_v2',
