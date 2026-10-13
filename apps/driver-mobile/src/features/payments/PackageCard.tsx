@@ -23,7 +23,7 @@ export function PackageCard({ busy, onBuy }: { busy: boolean; onBuy: (tierId: st
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Recharge package</Text>
+      <Text style={styles.title}>Add ride credit</Text>
       {tiers.map((t) => (
         <View key={t.id} style={styles.row}>
           <View style={{ flex: 1 }}>
@@ -31,7 +31,7 @@ export function PackageCard({ busy, onBuy }: { busy: boolean; onBuy: (tierId: st
             <Text style={styles.credit}>{t.label ? `${t.label} · ` : ''}Ride credit ₹{rupees(t.threshold_value)}</Text>
           </View>
           <Button
-            label="Buy"
+            label="Recharge"
             loading={busy && chosen === t.id}
             disabled={busy}
             onPress={() => { setChosen(t.id); onBuy(t.id) }}
