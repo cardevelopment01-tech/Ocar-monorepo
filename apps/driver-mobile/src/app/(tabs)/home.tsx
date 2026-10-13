@@ -107,7 +107,7 @@ export default function HomeScreen() {
   // Actionable, not just informational, tapping goes straight to the screen that fixes it, matching
   // the rule every driver-app rejection writeup agrees on: never leave a driver guessing what to do next.
   const blockedBanner = documentGate.hasRejected
-    ? { title: 'Document rejected', message: documentGate.rejectionReason ?? 'Reupload it to go online again.', actionLabel: 'Fix now', route: '/documents' as const }
+    ? { title: documentGate.isMissingUpload ? 'Action needed' : 'Document rejected', message: documentGate.rejectionReason ?? 'Reupload it to go online again.', actionLabel: 'Fix now', route: '/documents' as const }
     : walletGate.isFrozen
       ? { title: 'Wallet frozen', message: 'Contact support to go online again.', actionLabel: 'View wallet', route: '/wallet' as const }
       : null
