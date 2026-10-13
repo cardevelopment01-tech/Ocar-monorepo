@@ -25,10 +25,13 @@ let audioModeSet = false
 // entirely when the phone's hardware silent switch is on, which defeats the
 // entire point of a "must not miss it" ride-request alarm (outside review's
 // highest-impact flagged risk).
+// shouldPlayInBackground stays false: background playback needs Android's media-playback foreground service,
+// which we no longer ship (Play makes every foreground service type a declared, reviewed item). A request that
+// arrives while the app is backgrounded is announced by the push notification's own channel sound instead.
 function ensureAudioMode() {
   if (audioModeSet) return
   audioModeSet = true
-  setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers', shouldPlayInBackground: true }).catch(() => {})
+  setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers', shouldPlayInBackground: false }).catch(() => {})
 }
 
 /** Plays a repeating alert tone + vibration while `active` is true. Stops immediately when it flips to false. */

@@ -28,7 +28,7 @@ export function LocationDisclosure({ visible, onAccept, onDecline }: LocationDis
           </View>
         </View>
         <Text style={styles.title} accessibilityRole="header">Location while you drive</Text>
-        <Text style={styles.body}>Ocar uses your location in the background to send you ride requests and track your trips.</Text>
+        <Text style={styles.body}>Ocar collects your location even when the app is closed or not in use, so we can send you ride requests and track your trips while you are online.</Text>
 
         <View style={styles.points}>
           {POINTS.map((p, i) => (
