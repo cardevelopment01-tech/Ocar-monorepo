@@ -1,4 +1,4 @@
-import { FloatingTabBar as SharedTabBar, useNavBottom, useNavClearance, type TabDef } from '@ocar/mobile-shared'
+import { FloatingTabBar as SharedTabBar, useNavBottom, useNavClearance, useUnreadCount, type TabDef } from '@ocar/mobile-shared'
 
 export { useNavBottom, useNavClearance }
 
@@ -13,5 +13,8 @@ const TABS: TabDef[] = [
 type BarProps = Parameters<typeof SharedTabBar>[0] extends infer P ? Omit<P & object, 'tabs'> : never
 
 export function FloatingTabBar(props: BarProps) {
-  return <SharedTabBar {...props} tabs={TABS} />
+  // Notifications live under Account (no bell on the map), so unread shows as a dot on that tab.
+  const unread = useUnreadCount() > 0
+  const tabs = unread ? TABS.map((t) => (t.route === 'profile' ? { ...t, badge: true } : t)) : TABS
+  return <SharedTabBar {...props} tabs={tabs} />
 }

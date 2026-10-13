@@ -309,7 +309,6 @@ export default function HomeScreen() {
             freshness={freshness}
             locationEnabled={locationEnabled}
             onPillPress={() => router.push({ pathname: '/booking/map-picker', params: { field: 'pickup' } })}
-            onNotificationsPress={() => router.push('/notifications')}
             onPickupMove={onPickupMove}
           />
 

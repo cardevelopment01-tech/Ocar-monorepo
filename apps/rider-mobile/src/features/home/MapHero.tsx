@@ -20,7 +20,7 @@ import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg'
 import { LinearGradient } from 'expo-linear-gradient'
 import MapView, { Marker, type Region } from 'react-native-maps'
 import { useIsFocused } from 'expo-router'
-import { NotificationBell, PinGlyph, a11yLabelFor, useUnreadCount, cameraMode, haversineMetres, pillTextFor, type Freshness } from '@ocar/mobile-shared'
+import { PinGlyph, a11yLabelFor, cameraMode, haversineMetres, pillTextFor, type Freshness } from '@ocar/mobile-shared'
 import { ease, font, geo, h } from '@/theme/homeTokens'
 import { OCAR_MAP_PROPS } from '@/theme/mapStyle'
 import { Text } from './Text'
@@ -205,7 +205,6 @@ export function MapHero({
   locationEnabled,
   onPillPress,
   onPickupMove,
-  onNotificationsPress,
 }: {
   height: SharedValue<number>
   /** Hero height (dp) when the sheet is dragged fully open. */
@@ -223,12 +222,9 @@ export function MapHero({
   locationEnabled: boolean
   /** The pill is tappable in the timeout/denied states: open the pickup picker. */
   onPillPress: () => void
-  /** The bell in the top corner: open the notification center. */
-  onNotificationsPress: () => void
   /** The rider moved the map: this is the new coordinate under the pin. */
   onPickupMove: (c: LatLng) => void
 }) {
-  const unreadNotifications = useUnreadCount()
   const focused = useIsFocused()
   const { width } = useWindowDimensions()
   const mapRef = useRef<MapView>(null)
@@ -393,10 +389,6 @@ export function MapHero({
           </Animated.View>
         ) : null}
 
-        <View style={styles.bell} pointerEvents="box-none">
-          <NotificationBell count={unreadNotifications} onPress={onNotificationsPress} style={styles.recenterBtn} />
-        </View>
-
         {/* open: the dot has become a pin fixed to the screen while the map moves under it; the pill drops to the sheet's edge */}
         <Animated.View style={[styles.pin, pin]} pointerEvents="none">
           <View style={styles.tagWrap}>
@@ -425,7 +417,6 @@ const styles = StyleSheet.create({
   tagText: { fontFamily: font.b, fontSize: 12, color: '#FFFFFF' }, // sentence case, 12 px: no all-caps tracked labels (DESIGN.md)
   fixedPill: { position: 'absolute', left: 16, right: 16, bottom: PILL_DOWN },
   recenter: { position: 'absolute', right: 16, bottom: PILL_DOWN + PILL_H + 12 },
-  bell: { position: 'absolute', right: 16, top: 12 },
   recenterBtn: {
     width: 40,
     height: 40,
