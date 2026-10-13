@@ -62,7 +62,9 @@ export type NotificationType = keyof typeof NOTIFICATION_TYPES
 export const CHAT_PUSH = { channelId: 'chat_v1', ttlSeconds: HOUR } as const
 
 export function pushDefaults(type: NotificationType, rideId?: bigint): { channelId?: string; ttlSeconds: number; tag?: string } {
-  const cfg: NotificationTypeConfig = NOTIFICATION_TYPES[type]
+  // Compile-time typing covers our own callers; a stale or hand-cast type still must not crash the
+  // push (the feed row is already written). Unregistered = default channel, 1 day, no collapse.
+  const cfg: NotificationTypeConfig = (NOTIFICATION_TYPES as Record<string, NotificationTypeConfig>)[type] ?? { ttlSeconds: DAY, collapse: 'none' }
   let tag: string | undefined
   if (cfg.collapse === 'ride_status' && rideId !== undefined) tag = `ride-${rideId}-status`
   else if (cfg.collapse === 'ride_type' && rideId !== undefined) tag = `ride-${rideId}-${type}`
