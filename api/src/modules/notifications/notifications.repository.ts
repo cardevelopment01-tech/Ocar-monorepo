@@ -35,6 +35,22 @@ export async function markSent(id: bigint, providerResponse?: unknown): Promise<
   )
 }
 
+// FCM outcome of the push that accompanied an in-app row. Last attempt wins.
+export async function recordPushResult(
+  id: string,
+  result: { successCount: number; failureCount: number; invalidTokens: number; failureReason?: string },
+): Promise<void> {
+  await pool.query(
+    `UPDATE notification_logs
+     SET provider = 'fcm',
+         provider_response = $2,
+         failure_reason = $3,
+         failed_at = CASE WHEN $3::text IS NULL THEN NULL ELSE now() END
+     WHERE id = $1`,
+    [id, JSON.stringify({ successCount: result.successCount, failureCount: result.failureCount, invalidTokens: result.invalidTokens }), result.failureReason ?? null],
+  )
+}
+
 export async function markFailed(id: bigint, errorMessage: string): Promise<void> {
   await pool.query(
     `UPDATE notification_logs

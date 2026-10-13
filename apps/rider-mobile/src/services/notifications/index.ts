@@ -31,7 +31,8 @@ export async function setupPushNotifications(): Promise<void> {
       { channelId: 'default_v2', name: 'General' },
       // Heads-up (sound + banner) channel for ride lifecycle events (driver arrived, cancelled, ...).
       // Android locks a channel's importance at creation, so this is HIGH from the start.
-      { channelId: 'ride_updates_v1', name: 'Ride updates', importance: Notifications.AndroidImportance.HIGH },
+      { channelId: 'ride_updates_v1', name: 'Ride updates', description: 'Driver on the way, arrived, trip started and completed, cancellations, payment problems', importance: Notifications.AndroidImportance.HIGH },
+      { channelId: 'chat_v1', name: 'Messages', description: 'Messages from your driver', importance: Notifications.AndroidImportance.HIGH },
     ],
   })
   useAuthStore.getState().setPushPermissionGranted(granted)

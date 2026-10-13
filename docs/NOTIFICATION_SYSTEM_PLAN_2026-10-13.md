@@ -109,7 +109,6 @@ Android 16 adds `Notification.ProgressStyle` "Live Updates" for ongoing activiti
 - No queue: sends are inline in the request or job that triggered them, with no retry and no result recorded. `notification_logs` delivery columns are never populated for push.
 - No preferences table, no promotional vs transactional distinction, no quiet hours.
 - Token lifecycle: `last_seen_at` updates only on explicit registration; no age-based pruning job; the apps do not re-register on token refresh (no `onTokenRefresh` handler found).
-- Feed rows do not return `payload`, so the client can route only on `type` + `rideId`.
 - No admin way to send a notification (confirmed earlier: the Templates page only edits copy).
 
 ### 3.2 Driver app
@@ -165,7 +164,7 @@ registry['driver_arrived'] = {
 
 ### 4.2 Payload contract
 
-Every push carries the same `data` keys (all strings): `type`, `notificationId` (feed row id), `rideId` (optional), `category`, `sentAt`. Apps route on `type` as they do now, and any unknown `type` opens the notification center rather than doing nothing. The feed API also returns `payload` so a feed tap and a push tap resolve identically.
+Every push carries the same `data` keys (all strings): `type`, `notificationId` (feed row id), `rideId` (optional), `category`, `sentAt`. Apps route on `type` as they do now, and any unknown `type` opens the notification center rather than doing nothing. The feed API already returns `payload` (verified), so a feed tap and a push tap can resolve identically.
 
 ### 4.3 Android channels
 
@@ -292,7 +291,7 @@ Evaluate Android 16 Live Updates for the active ride after the rest ships. iOS n
 
 Each phase lands on its own branch and can ship alone.
 
-### Phase 0: fix what is broken (small, do first)
+### Phase 0: fix what is broken (DONE, branch `feat/notifications-phase0`)
 
 1. Android config in `push.provider.ts`: set `android.ttl`, `android.collapseKey`, `android.notification.tag` from the message. Test that a 30 s ride-request push sets a 30 s TTL.
 2. Rider logout unregisters the real token (N-5).
@@ -304,7 +303,11 @@ Each phase lands on its own branch and can ship alone.
 
 Acceptance: pushes from a killed, backgrounded and foreground app all show; a stale ride-request push does not appear after its window; rider logout stops pushes.
 
-### Phase 1: registry, dispatcher, queue, channels
+### Phase 1: registry, dispatcher, queue, channels (DONE, branch `feat/notifications-phase1`)
+
+Built as: `notifications.registry.ts` (typed, compile-time enforced), `notifyOwner` as the dispatcher (queues the push, falls back to inline when Redis is down), a separate `push` BullMQ queue and worker (3 attempts, exponential backoff, TTL-aware, partial successes never retried), FCM outcome recorded on the feed row, payload contract (`type`, `notificationId`, `sentAt`, `rideId`). Channels actually created: driver `ride_requests_v2`, `ride_updates_v1`, `chat_v1`, `account_alerts_v1`; rider `ride_updates_v1`, `chat_v1`. The earnings, announcements, payments, safety and offers channels from section 4.3 are deliberately not created yet: an empty channel still shows up in the user's system settings, so each is added in the phase that first sends on it. Two items are deferred to where they first matter: the per-user rate cap (nothing low-priority sends yet; it belongs with the admin broadcast in Phase 3) and a generic `dedupeKey` on `notifyOwner` (ride events already dedupe inside `notifyRideEvent`).
+
+Original scope:
 
 1. Event registry and `dispatch()`, with a test that every `type` string used at a send site has a registry entry.
 2. BullMQ send worker with retry and per-token result recording; `notifyOwner` becomes a wrapper.

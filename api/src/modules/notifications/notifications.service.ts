@@ -1,5 +1,6 @@
 import * as repo from './notifications.repository'
-import { sendPush, type PushMessage } from './providers/push.provider'
+import { sendPush, type PushMessage, type SendPushResult } from './providers/push.provider'
+import { pushDefaults, type NotificationType } from './notifications.registry'
 import { socketEvents } from '@/websocket/socket.server'
 import type { NotifOwnerType } from './notifications.repository'
 import { renderTemplate } from './templates.service'
@@ -15,15 +16,17 @@ export const logNotification = repo.logNotification
 export const markSent = repo.markSent
 export const markFailed = repo.markFailed
 
-export async function pushToTokens(tokens: string[], msg: PushMessage): Promise<void> {
-  if (tokens.length === 0) return
+export async function pushToTokens(tokens: string[], msg: PushMessage): Promise<SendPushResult | null> {
+  if (tokens.length === 0) return null
   try {
-    const { invalidTokens } = await sendPush(tokens, msg)
-    if (invalidTokens.length > 0) {
-      await repo.deleteDeviceTokens(invalidTokens)
+    const result = await sendPush(tokens, msg)
+    if (result.invalidTokens.length > 0) {
+      await repo.deleteDeviceTokens(result.invalidTokens)
     }
+    return result
   } catch (err) {
     log.error({ err }, 'pushToTokens failed')
+    return null
   }
 }
 
@@ -68,39 +71,55 @@ export async function sendRideRequestPushOnce(
 export async function notifyOwner(params: {
   ownerType: NotifOwnerType
   ownerId: bigint
-  type: string
+  type: NotificationType
   title: string
   body: string
   payload?: Record<string, unknown>
   rideId?: bigint
-  // Collapses repeat pushes sharing the same tag into one OS notification
-  // (webpush tag/renotify — see push.provider.ts) instead of stacking one per
-  // event. Optional: most callers are one-shot events that don't need it.
+  // Channel / TTL / collapse tag default from notifications.registry.ts; pass one only to
+  // override it for this send (e.g. a per-document tag).
   tag?: string
-  // How long FCM may hold the push for an offline device, and the Android channel to post it on.
   ttlSeconds?: number
   channelId?: string
 }): Promise<void> {
   const item = await repo.createInAppNotification(params)
+  const defaults = pushDefaults(params.type, params.rideId)
+  const tag = params.tag ?? defaults.tag
+  const channelId = params.channelId ?? defaults.channelId
 
-  try {
-    const tokens = await repo.getTokensForOwner(params.ownerType, params.ownerId)
-    await pushToTokens(tokens, {
+  const job: PushJobData = {
+    ownerType: params.ownerType,
+    ownerId: params.ownerId.toString(),
+    notificationId: item.id,
+    msg: {
       title: params.title,
       body: params.body,
+      // The payload contract every push carries (FCM data values must all be strings).
       data: {
-        type: params.type,
-        ...(params.rideId !== undefined ? { rideId: params.rideId.toString() } : {}),
-        // FCM data payload values must all be strings — path/route are the only
-        // keys callers put in `payload` today, both already strings.
         ...(params.payload as Record<string, string> | undefined),
+        type: params.type,
+        notificationId: item.id,
+        sentAt: new Date().toISOString(),
+        ...(params.rideId !== undefined ? { rideId: params.rideId.toString() } : {}),
       },
-      ...(params.tag !== undefined ? { tag: params.tag } : {}),
-      ...(params.ttlSeconds !== undefined ? { ttlSeconds: params.ttlSeconds } : {}),
-      ...(params.channelId !== undefined ? { channelId: params.channelId } : {}),
-    })
+      ttlSeconds: params.ttlSeconds ?? defaults.ttlSeconds,
+      ...(tag !== undefined ? { tag } : {}),
+      ...(channelId !== undefined ? { channelId } : {}),
+    },
+  }
+
+  try {
+    // Queued so FCM latency/outages never sit on the request path, and the worker retries.
+    const { pushQueue } = await import('@/jobs/queues')
+    await pushQueue.add('push_send', job, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } })
   } catch (err) {
-    log.error({ err }, 'notify push leg failed')
+    // Queue (Redis) unavailable: send inline rather than lose the push.
+    log.error({ err }, 'push enqueue failed, sending inline')
+    try {
+      await deliverPush(job)
+    } catch (sendErr) {
+      log.error({ err: sendErr }, 'notify push leg failed')
+    }
   }
 
   try {
@@ -108,6 +127,20 @@ export async function notifyOwner(params: {
   } catch (err) {
     log.error({ err }, 'notify socket leg failed')
   }
+}
+
+export interface PushJobData {
+  ownerType: NotifOwnerType
+  ownerId: string
+  notificationId: string
+  msg: PushMessage
+}
+
+// Resolves the owner's tokens at send time (not enqueue time, so a token registered in between
+// still gets it) and sends. Used by the push worker and the inline fallback above.
+export async function deliverPush(job: PushJobData): Promise<SendPushResult | null> {
+  const tokens = await repo.getTokensForOwner(job.ownerType, BigInt(job.ownerId))
+  return pushToTokens(tokens, job.msg)
 }
 
 // Admin notifications go to every admin (ops team), not one owner — persists
@@ -158,13 +191,13 @@ export async function notifyAllAdmins(params: {
 // app never heard them. `slug` is the notification_templates row (editable in admin); the
 // title/body here are the fallback if that row is missing or inactive.
 const RIDE_EVENTS = {
-  driver_arrived: { ownerType: 'user', type: 'driver_arrived', title: 'Your driver has arrived', body: 'Your driver is at the pickup point. Share your OTP to start the trip.', ttlSeconds: 600 },
-  ride_started: { ownerType: 'user', type: 'ride_started', title: 'Trip started', body: 'Your trip is under way. Have a safe ride.', ttlSeconds: 600 },
-  ride_cancelled_by_driver: { ownerType: 'user', type: 'ride_cancelled', title: 'Ride cancelled', body: 'Your driver cancelled the ride. You can book another cab.', ttlSeconds: 3600 },
-  ride_cancelled_by_system: { ownerType: 'user', type: 'ride_cancelled', title: 'Ride cancelled', body: "Your driver didn't arrive in time, so the ride was cancelled. Please book again.", ttlSeconds: 3600 },
-  ride_no_drivers: { ownerType: 'user', type: 'ride_no_drivers', title: 'No drivers found', body: 'We could not find a driver nearby. Please try again.', ttlSeconds: 1800 },
-  ride_cancelled_by_rider: { ownerType: 'driver', type: 'ride_cancelled', title: 'Ride cancelled', body: 'The rider cancelled this ride.', ttlSeconds: 1800 },
-  ride_cancelled_timeout: { ownerType: 'driver', type: 'ride_cancelled', title: 'Ride cancelled', body: 'This ride was cancelled because you did not arrive in time.', ttlSeconds: 1800 },
+  driver_arrived: { ownerType: 'user', type: 'driver_arrived', title: 'Your driver has arrived', body: 'Your driver is at the pickup point. Share your OTP to start the trip.' },
+  ride_started: { ownerType: 'user', type: 'ride_started', title: 'Trip started', body: 'Your trip is under way. Have a safe ride.' },
+  ride_cancelled_by_driver: { ownerType: 'user', type: 'ride_cancelled', title: 'Ride cancelled', body: 'Your driver cancelled the ride. You can book another cab.' },
+  ride_cancelled_by_system: { ownerType: 'user', type: 'ride_cancelled', title: 'Ride cancelled', body: "Your driver didn't arrive in time, so the ride was cancelled. Please book again." },
+  ride_no_drivers: { ownerType: 'user', type: 'ride_no_drivers', title: 'No drivers found', body: 'We could not find a driver nearby. Please try again.' },
+  ride_cancelled_by_rider: { ownerType: 'driver', type: 'ride_cancelled', title: 'Ride cancelled', body: 'The rider cancelled this ride.' },
+  ride_cancelled_timeout: { ownerType: 'driver', type: 'ride_cancelled', title: 'Ride cancelled', body: 'This ride was cancelled because you did not arrive in time.' },
 } as const
 export type RideEventSlug = keyof typeof RIDE_EVENTS
 
@@ -193,9 +226,6 @@ export async function notifyRideEvent(slug: RideEventSlug, ownerId: bigint, ride
       title,
       body,
       rideId,
-      tag: `ride-${rideId}-status`,
-      ttlSeconds: event.ttlSeconds,
-      channelId: 'ride_updates_v1',
     })
   } catch (err) {
     log.error({ err, slug, rideId: rideId.toString() }, 'notifyRideEvent failed')
