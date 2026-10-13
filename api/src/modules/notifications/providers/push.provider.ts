@@ -11,9 +11,9 @@ export interface PushMessage {
   title: string
   body: string
   data?: Record<string, string>
-  // Set together, only by the ride-request fallback push (ack-check.processor.ts) —
-  // `tag` collapses repeat pushes for the same ride into one notification via
-  // the browser's native tag/renotify behavior instead of stacking popups.
+  // `tag` collapses repeat pushes into one notification (Android collapseKey + notification
+  // tag, APNs collapse-id, webpush tag/renotify). `ttlSeconds` is how long FCM may hold the
+  // message for an offline device before dropping it.
   tag?: string
   ttlSeconds?: number
   // Routes the notification to a client-configured Android channel (see
@@ -70,17 +70,29 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
     // client actually configured with sound + vibration (registerPushNotifications.ts),
     // which is why notifications arrived silently despite the client-side channel
     // setup being correct. Set on every push, not just tagged ones.
+    const androidNotification: NonNullable<NonNullable<MulticastMessage['android']>['notification']> = {
+      channelId: msg.channelId ?? 'default_v2',
+      sound: 'default',
+      defaultVibrateTimings: true,
+    }
+    const android: NonNullable<MulticastMessage['android']> = { priority: 'high', notification: androidNotification }
+    // ttl/collapseKey/tag were previously only written to the webpush block, so on Android a
+    // "30 s" ride-request push lived for FCM's default 4 weeks and repeat pushes stacked.
+    // ttl is milliseconds in the Admin SDK.
+    if (msg.ttlSeconds !== undefined) android.ttl = msg.ttlSeconds * 1000
+    if (msg.tag) {
+      android.collapseKey = msg.tag
+      androidNotification.tag = msg.tag
+    }
+    // iOS (planned): same intent via APNs headers; harmless for Android tokens in the same multicast.
+    const apnsHeaders: Record<string, string> = { 'apns-priority': '10' }
+    if (msg.ttlSeconds !== undefined) apnsHeaders['apns-expiration'] = String(Math.floor(Date.now() / 1000) + msg.ttlSeconds)
+    if (msg.tag) apnsHeaders['apns-collapse-id'] = msg.tag.slice(0, 64)
     const message: MulticastMessage = {
       tokens,
       notification: { title: msg.title, body: msg.body },
-      android: {
-        priority: 'high',
-        notification: {
-          channelId: msg.channelId ?? 'default_v2',
-          sound: 'default',
-          defaultVibrateTimings: true,
-        },
-      },
+      android,
+      apns: { headers: apnsHeaders, payload: { aps: { sound: 'default' } } },
     }
     if (msg.data) message.data = msg.data
     if (msg.tag) {

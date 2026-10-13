@@ -13,7 +13,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
 vi.mock('@/modules/notifications/notifications.service', () => ({
   notifyOwner: vi.fn().mockResolvedValue(undefined),
   notifyAllAdmins: vi.fn(),
-  notifyRidePaymentFailed: vi.fn(),
+  notifyRideEvent: vi.fn(), notifyRidePaymentFailed: vi.fn(),
 }))
 
 import * as repo from '@/modules/rides/rides.repository'

@@ -25,7 +25,13 @@ describe('sendPush — tag/renotify/TTL', () => {
     const msg = sendEachForMulticast.mock.calls[0]?.[0] as Record<string, unknown>
     expect(msg.android).toEqual({
       priority: 'high',
-      notification: { channelId: 'default_v2', sound: 'default', defaultVibrateTimings: true },
+      ttl: 25_000,
+      collapseKey: 'ride-101',
+      notification: { channelId: 'default_v2', sound: 'default', defaultVibrateTimings: true, tag: 'ride-101' },
+    })
+    expect((msg.apns as { headers: Record<string, string> }).headers).toMatchObject({
+      'apns-priority': '10',
+      'apns-collapse-id': 'ride-101',
     })
     expect(msg.webpush).toEqual({
       headers: { Urgency: 'high', TTL: '25' },

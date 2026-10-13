@@ -78,3 +78,7 @@ export const routeKey = (
   const o = `${opts?.language ?? 'en'}:${opts?.withSteps ? 1 : 0}:${opts?.trafficAware ? 1 : 0}:${opts?.withTrafficIntervals ? 1 : 0}`
   return `geo:route:${r(originLat)},${r(originLng)}:${r(destLat)},${r(destLng)}:${o}`
 }
+
+// One push per ride + recipient + event, so a retried status transition never double-notifies.
+export const rideEventPushKey = (rideId: string, event: string, ownerId: string): string =>
+  `ride:${rideId}:event-push:${event}:${ownerId}`

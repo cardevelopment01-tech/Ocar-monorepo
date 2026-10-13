@@ -20,7 +20,7 @@ vi.mock('@/modules/notifications/templates.service', () => ({
 
 vi.mock('@/modules/notifications/notifications.service', () => ({
   notifyOwner: vi.fn(),
-  notifyRidePaymentFailed: vi.fn(),
+  notifyRideEvent: vi.fn(), notifyRidePaymentFailed: vi.fn(),
   notifyAllAdmins: vi.fn(),
 }))
 

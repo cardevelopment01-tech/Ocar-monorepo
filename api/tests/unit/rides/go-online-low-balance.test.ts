@@ -30,7 +30,7 @@ vi.mock('@/modules/payments/payments.service', () => ({
 }))
 
 vi.mock('@/modules/notifications/notifications.service', () => ({
-  notifyRidePaymentFailed: vi.fn(),
+  notifyRideEvent: vi.fn(), notifyRidePaymentFailed: vi.fn(),
 }))
 
 vi.mock('@/websocket/socket.server', () => ({

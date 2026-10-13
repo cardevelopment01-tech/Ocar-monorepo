@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolvePushRoute } from './pushRouting'
+import { resolvePushRoute, resolveTapRoute } from './pushRouting'
 
 describe('resolvePushRoute (driver-mobile)', () => {
   it('returns null for pending ride offers -- handled live by the socket overlay', () => {
@@ -48,5 +48,16 @@ describe('resolvePushRoute (driver-mobile)', () => {
 
   it('ignores the backend-provided path/route fields -- those are web paths, not mobile routes', () => {
     expect(resolvePushRoute({ type: 'wallet_low_balance', path: '/wallet-web-only' })).toBe('/wallet')
+  })
+
+  it('sends a cancelled ride back to Home', () => {
+    expect(resolvePushRoute({ type: 'ride_cancelled', rideId: '9' })).toBe('/(tabs)/home')
+  })
+
+  it('a tap falls back to the notification center, except for live ride offers', () => {
+    expect(resolveTapRoute({ type: 'account_suspended' })).toBe('/notifications')
+    expect(resolveTapRoute({ type: 'something_new' })).toBe('/notifications')
+    expect(resolveTapRoute({ type: 'ride_request', rideId: '9' })).toBeNull()
+    expect(resolveTapRoute({})).toBeNull()
   })
 })

@@ -23,7 +23,7 @@ vi.mock('@/modules/payments/payments.service', () => ({
 }))
 vi.mock('@/lib/system-config', () => ({ getConfigValue: vi.fn().mockResolvedValue('true') }))
 vi.mock('@/modules/notifications/notifications.service', () => ({
-  notifyRidePaymentFailed: vi.fn(), notifyAllAdmins: vi.fn(), notifyDriverLowWalletBalance: vi.fn(),
+  notifyRideEvent: vi.fn(), notifyRidePaymentFailed: vi.fn(), notifyAllAdmins: vi.fn(), notifyDriverLowWalletBalance: vi.fn(),
 }))
 
 import { pool } from '@/db/client'

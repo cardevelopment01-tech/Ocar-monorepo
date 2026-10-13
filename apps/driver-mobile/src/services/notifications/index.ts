@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications'
 import { getApp } from '@react-native-firebase/app'
-import { getMessaging, getToken, deleteToken, requestPermission, AuthorizationStatus } from '@react-native-firebase/messaging'
-import { registerPushNotifications, unregisterPushNotifications } from '@ocar/mobile-shared'
+import { getMessaging, getToken, deleteToken, onTokenRefresh, requestPermission, AuthorizationStatus } from '@react-native-firebase/messaging'
+import { registerDeviceToken, registerPushNotifications, unregisterPushNotifications } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
 
@@ -20,6 +20,8 @@ async function getFcmToken(): Promise<string | null> {
   }
 }
 
+let stopTokenRefresh: (() => void) | null = null
+
 export async function setupPushNotifications(): Promise<void> {
   const { granted } = await registerPushNotifications(api, {
     getFcmToken,
@@ -30,6 +32,9 @@ export async function setupPushNotifications(): Promise<void> {
       // 'ride_requests' channels on already-installed devices were created before
       // that config existed).
       { channelId: 'default_v2', name: 'General' },
+      // Heads-up (sound + banner) channel for ride lifecycle events. Android locks a channel's
+      // importance at creation, so this is HIGH from the start.
+      { channelId: 'ride_updates_v1', name: 'Ride updates', importance: Notifications.AndroidImportance.HIGH },
       {
         channelId: 'ride_requests_v2',
         name: 'Ride requests',
@@ -39,11 +44,18 @@ export async function setupPushNotifications(): Promise<void> {
     ],
   })
   useAuthStore.getState().setPushPermissionGranted(granted)
+  if (granted) {
+    // FCM rotates tokens (reinstall, data clear, long idle); without this the server keeps the dead one.
+    stopTokenRefresh?.()
+    stopTokenRefresh = onTokenRefresh(getMessaging(getApp()), (token) => { registerDeviceToken(api, token).catch(() => {}) })
+  }
 }
 
 // Runs BEFORE clearAuth (the DELETE needs the session token). Without a real token the old call
 // was a no-op, so a logged-out phone kept receiving the previous driver's ride-request and chat pushes.
 export async function teardownPushNotifications(): Promise<void> {
+  stopTokenRefresh?.()
+  stopTokenRefresh = null
   try {
     const messaging = getMessaging(getApp())
     const token = await getToken(messaging)
