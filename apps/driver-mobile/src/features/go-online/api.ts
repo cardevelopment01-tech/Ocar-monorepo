@@ -22,7 +22,16 @@ type RawDocumentStatus = {
 
 // Same pattern as apps/driver/src/lib/useDocumentGate.ts -- prefer the specific
 // per-document rejection note over the generic status-transition reason.
-export async function fetchDocumentGateStatus(): Promise<DocumentGateStatus> {
+// Several screens mount useDocumentGate and refetch on focus; callers that ask while a request is
+// already in flight (layout + Home focusing together) share it instead of each sending their own.
+let gateInFlight: Promise<DocumentGateStatus> | null = null
+
+export function fetchDocumentGateStatus(): Promise<DocumentGateStatus> {
+  gateInFlight ??= loadDocumentGateStatus().finally(() => { gateInFlight = null })
+  return gateInFlight
+}
+
+async function loadDocumentGateStatus(): Promise<DocumentGateStatus> {
   const data = await sharedGet<RawDocumentStatus>('/api/v1/drivers/onboarding/documents/status')
   const docs = [...Object.values(data.photos), ...Object.values(data.vehicle_docs)]
   const rejectedDoc = docs.find((doc) => doc.status === 'rejected')
