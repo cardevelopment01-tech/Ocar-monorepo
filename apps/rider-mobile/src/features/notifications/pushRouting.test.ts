@@ -34,8 +34,9 @@ describe('resolvePushRoute (rider-mobile)', () => {
     expect(resolvePushRoute({ type: 'ride_no_drivers', rideId: '9' })).toBe('/(tabs)/home')
   })
 
-  it('a tap on a type with no screen opens the notification center instead of doing nothing', () => {
-    expect(resolveTapRoute({ type: 'something_new' })).toBe('/notifications')
+  it('a tap on a type with no screen (offers, announcements) just opens the app', () => {
+    expect(resolveTapRoute({ type: 'something_new' })).toBeNull()
+    expect(resolveTapRoute({ type: 'offer' })).toBeNull()
     expect(resolveTapRoute({ type: 'driver_arrived', rideId: '9' })).toBe('/ride/9')
     expect(resolveTapRoute({})).toBeNull()
   })
