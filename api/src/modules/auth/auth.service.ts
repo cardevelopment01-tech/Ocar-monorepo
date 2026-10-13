@@ -121,7 +121,10 @@ export async function requestOtp(
     throw createHttpError(AppErrors.AUTH_OTP_LOCKED)
   }
 
-  const otp = otpLib.generateOtp()
+  // Play app-review account: fixed code, no SMS (see REVIEW_PHONE in config). Everything after this line is the
+  // normal flow, so rate limits and the verify lockout still apply to it.
+  const isReviewAccount = config.REVIEW_PHONE !== '' && phone === config.REVIEW_PHONE
+  const otp = isReviewAccount ? config.REVIEW_OTP : otpLib.generateOtp()
   const otpHash = otpLib.hashOtp(otp)
   const expiresAt = new Date(Date.now() + OTP_TTL_SECONDS * 1000)
 
@@ -130,11 +133,13 @@ export async function requestOtp(
     repo.createOtpRequest({ principalRole, phone, purpose: otpPurpose, otpHash, expiresAt }),
   ])
 
-  await notificationsQueue.add(
-    'otp_sms',
-    { phone, otp, type: 'auth' },
-    { attempts: 3, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: true, removeOnFail: 50 }
-  )
+  if (!isReviewAccount) {
+    await notificationsQueue.add(
+      'otp_sms',
+      { phone, otp, type: 'auth' },
+      { attempts: 3, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: true, removeOnFail: 50 }
+    )
+  }
 
   return { otp }
 }

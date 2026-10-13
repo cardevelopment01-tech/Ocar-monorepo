@@ -80,6 +80,12 @@ const envSchema = z.object({
   // DLT-approved template — login OTP only (see notifications.worker.ts otp_sms handler)
   BULKSMSPLANS_OTP_TEMPLATE_ID: z.string().default(''),
   ADMIN_PHONE: z.string().default(''),
+  // Google Play app review: one phone number that always signs in with REVIEW_OTP and is never sent an SMS, so a
+  // reviewer without that SIM can log in (Play Console "App access"). It works for the rider and the driver app.
+  // Leave both empty except while a review is pending, point it at a seeded account with no real data, and rotate
+  // or clear it afterwards. Both must be set together.
+  REVIEW_PHONE: z.string().default(''),
+  REVIEW_OTP: z.string().default(''),
 
   // Push (FCM)
   FCM_SERVICE_ACCOUNT_KEY: z.string().default(''),  // full service-account JSON, single-line
@@ -138,6 +144,15 @@ export const envSchemaChecked = envSchema.superRefine((env, ctx) => {
   }
   if (env.DB_AUTH_MODE === 'secrets-manager' && (!env.DB_HOST || !env.DB_NAME || !env.DB_USER || !env.DB_SECRET_ARN)) {
     ctx.addIssue({ code: 'custom', path: ['DB_SECRET_ARN'], message: 'DB_HOST, DB_NAME, DB_USER, DB_SECRET_ARN all required when DB_AUTH_MODE=secrets-manager' })
+  }
+  if ((env.REVIEW_PHONE === '') !== (env.REVIEW_OTP === '')) {
+    ctx.addIssue({ code: 'custom', path: ['REVIEW_OTP'], message: 'REVIEW_PHONE and REVIEW_OTP must be set together' })
+  }
+  if (env.REVIEW_PHONE !== '' && !/^\+91[6-9]\d{9}$/.test(env.REVIEW_PHONE)) {
+    ctx.addIssue({ code: 'custom', path: ['REVIEW_PHONE'], message: 'REVIEW_PHONE must look like +919999999999' })
+  }
+  if (env.REVIEW_OTP !== '' && !/^\d{6}$/.test(env.REVIEW_OTP)) {
+    ctx.addIssue({ code: 'custom', path: ['REVIEW_OTP'], message: 'REVIEW_OTP must be 6 digits' })
   }
   // Empty SMS credentials switch sendSms() into a dev mode that logs the message (the OTP) and reports success,
   // so a missing secret in production would silently ship every login code to the log pipeline instead of the user.
