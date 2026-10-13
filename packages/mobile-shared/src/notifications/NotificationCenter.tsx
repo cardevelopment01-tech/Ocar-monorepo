@@ -272,8 +272,9 @@ const styles = StyleSheet.create({
   skeletons: { paddingHorizontal: spacing.lg, gap: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.sm },
   rowUnread: { backgroundColor: colors.primarySubtle },
-  icon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  iconUrgent: { backgroundColor: colors.errorLight },
+  // White disc with a border: the unread row is primarySubtle, so a primarySubtle disc vanished into it.
+  icon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
+  iconUrgent: { backgroundColor: colors.errorLight, borderColor: colors.errorLight },
   rowBody: { flex: 1, gap: 2 },
   rowTitle: { ...typography.body, lineHeight: 20, color: colors.ink900, fontFamily: fonts.semibold },
   rowTitleUnread: { fontFamily: fonts.bold },
