@@ -1,37 +1,38 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native'
+import { Pressable, RefreshControl, SectionList, StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { AxiosInstance } from 'axios'
 import type { Socket } from 'socket.io-client'
 import { Skeleton } from '../ui/Skeleton'
+import { Text } from '../ui/Text'
 import { colors, fonts, radii, spacing, typography } from '../theme/tokens'
 import {
   bumpUnreadCount,
   fetchNotificationPage,
-  isUrgentNotification,
   markAllNotificationsRead,
   markNotificationRead,
   notificationGroup,
+  notificationIcon,
+  notificationTone,
   refreshUnreadCount,
   setUnreadCount,
   type NotificationFeedItem,
-  type NotificationGroup,
 } from './feed'
+import { HeaderIconButton, NotificationHeader, ToneTile } from './notificationUi'
 import type { PushPermissionState } from './pushPermission'
 
 type Filter = 'all' | 'rides' | 'account'
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'rides', label: 'Rides' },
-  { key: 'account', label: 'Account & payments' },
+  { key: 'account', label: 'Account' },
 ]
 
-const GROUP_ICON: Record<NotificationGroup, React.ComponentProps<typeof Feather>['name']> = {
-  rides: 'navigation',
-  payments: 'credit-card',
-  account: 'user',
-  other: 'bell',
+const EMPTY_COPY: Record<Filter, { title: string; body: string }> = {
+  all: { title: 'You’re all caught up', body: 'Ride updates, payments and account alerts will show up here.' },
+  rides: { title: 'No ride updates yet', body: 'Updates about your rides will show up here.' },
+  account: { title: 'Nothing here yet', body: 'Payments, documents and account alerts will show up here.' },
 }
 
 export type NotificationCenterProps = {
@@ -63,6 +64,7 @@ function timeLabel(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
   if (ms < 60_000) return 'Just now'
   if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`
   return new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
 }
 
@@ -108,7 +110,7 @@ export function NotificationCenter({ api, socket, resolveRoute, onNavigate, onBa
   // Whatever happened in here, leave the badge in step with the server.
   useEffect(() => () => { void refreshUnreadCount(api) }, [api])
 
-  const unreadInList = useMemo(() => items.some((i) => !i.readAt), [items])
+  const unreadCount = useMemo(() => items.reduce((n, i) => (i.readAt ? n : n + 1), 0), [items])
 
   const sections = useMemo<Section[]>(() => {
     const visible = items.filter((i) => {
@@ -145,67 +147,47 @@ export function NotificationCenter({ api, socket, resolveRoute, onNavigate, onBa
   }
 
   const showBanner = permission.state !== null && permission.state !== 'granted'
+  const subtitle = loading || (failed && items.length === 0) ? undefined : unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
-      <View style={styles.header}>
-        <Pressable onPress={onBack} hitSlop={8} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel="Back">
-          <Feather name="arrow-left" size={18} color={colors.ink900} />
-        </Pressable>
-        <Text style={styles.title}>Notifications</Text>
-        <Pressable onPress={onOpenSettings} hitSlop={8} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel="Notification settings">
-          <Feather name="settings" size={17} color={colors.ink900} />
-        </Pressable>
-      </View>
-
-      {showBanner ? (
-        <View style={styles.banner}>
-          <Feather name="bell-off" size={18} color={colors.warning} />
-          <View style={styles.bannerText}>
-            <Text style={styles.bannerTitle}>Notifications are off</Text>
-            <Text style={styles.bannerBody}>You won&apos;t hear about ride updates or important alerts while the app is closed.</Text>
-          </View>
-          <Pressable onPress={onEnablePush} style={styles.bannerBtn} accessibilityRole="button">
-            <Text style={styles.bannerBtnText}>{permission.canAskAgain ? 'Turn on' : 'Settings'}</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      <View style={styles.filterRow}>
-        <View style={styles.chips}>
-          {FILTERS.map((f) => (
-            <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[styles.chip, filter === f.key ? styles.chipActive : null]} accessibilityRole="button" accessibilityState={{ selected: filter === f.key }}>
-              <Text style={[styles.chipText, filter === f.key ? styles.chipTextActive : null]}>{f.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <Pressable onPress={markAll} hitSlop={8} disabled={!unreadInList}>
-          <Text style={[styles.markAll, !unreadInList ? styles.disabled : null]}>Mark all read</Text>
-        </Pressable>
-      </View>
+    <View style={styles.container}>
+      <NotificationHeader
+        title="Notifications"
+        {...(subtitle ? { subtitle } : {})}
+        onBack={onBack}
+        right={<HeaderIconButton icon="settings" label="Notification settings" onPress={onOpenSettings} />}
+      />
 
       {loading ? (
-        <View style={styles.skeletons}>
-          {[0, 1, 2, 3].map((n) => (
-            <View key={n} style={styles.row}>
-              <Skeleton width={40} height={40} borderRadius={20} />
-              <View style={styles.rowBody}>
-                <Skeleton width="55%" height={14} />
-                <Skeleton width="90%" height={12} />
+        <View style={styles.pad}>
+          <View>
+            {[0, 1, 2, 3].map((n) => (
+              <View key={n} style={[styles.row, n === 0 ? styles.rowFirst : null, n === 3 ? styles.rowLast : null]}>
+                {n > 0 ? <View style={styles.divider} /> : null}
+                <Skeleton width={44} height={44} borderRadius={14} />
+                <View style={styles.body}>
+                  <Skeleton width="50%" height={14} />
+                  <Skeleton width="92%" height={12} />
+                </View>
               </View>
-            </View>
-          ))}
+            ))}
+          </View>
         </View>
       ) : failed && items.length === 0 ? (
-        <Pressable onPress={() => { setLoading(true); void load() }} accessibilityRole="button">
-          <Text style={styles.empty}>Couldn&apos;t load notifications. Tap to retry.</Text>
-        </Pressable>
+        <View style={styles.centered}>
+          <View style={styles.emptyTile}><Feather name="wifi-off" size={26} color={colors.ink400} /></View>
+          <Text style={styles.emptyTitle}>Couldn’t load notifications</Text>
+          <Text style={styles.emptyBody}>Check your connection and try again.</Text>
+          <Pressable onPress={() => { setLoading(true); void load() }} style={styles.pill} accessibilityRole="button">
+            <Text style={styles.pillText}>Try again</Text>
+          </Pressable>
+        </View>
       ) : (
         <SectionList
           sections={sections}
           keyExtractor={(i) => i.id}
           stickySectionHeadersEnabled={false}
-          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: insets.bottom + spacing.lg }}
+          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: insets.bottom + spacing.xl, flexGrow: 1 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load() }} tintColor={colors.primary} colors={[colors.primary]} />}
           onEndReached={() => {
             // onEndReached can fire several times before `cursor` updates; without this guard the
@@ -215,71 +197,126 @@ export function NotificationCenter({ api, socket, resolveRoute, onNavigate, onBa
             void load(cursor).finally(() => { loadingMore.current = false })
           }}
           onEndReachedThreshold={0.4}
+          ListHeaderComponent={
+            <View>
+              {showBanner ? (
+                <View style={styles.banner}>
+                  <ToneTile icon="bell-off" tone="money" size={40} />
+                  <View style={styles.body}>
+                    <Text style={styles.bannerTitle}>Turn on notifications</Text>
+                    <Text style={styles.bannerBody}>Don’t miss ride updates and alerts while the app is closed.</Text>
+                  </View>
+                  <Pressable onPress={onEnablePush} style={styles.pill} accessibilityRole="button">
+                    <Text style={styles.pillText}>{permission.canAskAgain ? 'Turn on' : 'Settings'}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              <View style={styles.controls}>
+                <View style={styles.chips}>
+                  {FILTERS.map((f) => {
+                    const active = filter === f.key
+                    return (
+                      <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[styles.chip, active ? styles.chipActive : null]} accessibilityRole="button" accessibilityState={{ selected: active }}>
+                        <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{f.label}</Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+                <Pressable onPress={markAll} hitSlop={8} disabled={unreadCount === 0} style={[styles.markAll, unreadCount === 0 ? styles.disabled : null]} accessibilityRole="button">
+                  <Feather name="check" size={14} color={colors.primary} />
+                  <Text style={styles.markAllText}>Mark all read</Text>
+                </Pressable>
+              </View>
+            </View>
+          }
           ListEmptyComponent={
-            <Text style={styles.empty}>{filter === 'all' ? "You're all caught up." : 'Nothing here yet.'}</Text>
+            <View style={styles.centered}>
+              <View style={styles.emptyTile}><Feather name="bell" size={26} color={colors.primary} /></View>
+              <Text style={styles.emptyTitle}>{EMPTY_COPY[filter].title}</Text>
+              <Text style={styles.emptyBody}>{EMPTY_COPY[filter].body}</Text>
+              {filter !== 'all' ? (
+                <Pressable onPress={() => setFilter('all')} style={styles.pill} accessibilityRole="button">
+                  <Text style={styles.pillText}>Show all</Text>
+                </Pressable>
+              ) : null}
+            </View>
           }
           renderSectionHeader={({ section }) => <Text style={styles.sectionTitle}>{section.title}</Text>}
-          renderItem={({ item }) => <Row item={item} onPress={open} />}
+          renderSectionFooter={() => <View style={styles.sectionGap} />}
+          renderItem={({ item, index, section }) => <Row item={item} first={index === 0} last={index === section.data.length - 1} onPress={open} />}
         />
       )}
     </View>
   )
 }
 
-function Row({ item, onPress }: { item: NotificationFeedItem; onPress: (i: NotificationFeedItem) => void }) {
-  const urgent = isUrgentNotification(item.type)
+function Row({ item, first, last, onPress }: { item: NotificationFeedItem; first: boolean; last: boolean; onPress: (i: NotificationFeedItem) => void }) {
   const unread = !item.readAt
   return (
     <Pressable
       onPress={() => onPress(item)}
-      style={[styles.row, unread ? styles.rowUnread : null]}
+      style={({ pressed }) => [styles.row, first ? styles.rowFirst : null, last ? styles.rowLast : null, unread ? styles.rowUnread : null, pressed ? styles.rowPressed : null]}
       accessibilityRole="button"
       accessibilityLabel={`${unread ? 'Unread. ' : ''}${item.title ?? ''}. ${item.body}`}
     >
-      <View style={[styles.icon, urgent ? styles.iconUrgent : null]}>
-        <Feather name={urgent ? 'alert-circle' : GROUP_ICON[notificationGroup(item.type)]} size={18} color={urgent ? colors.error : colors.primary} />
+      {!first ? <View style={styles.divider} /> : null}
+      <ToneTile icon={notificationIcon(item.type)} tone={notificationTone(item.type)} unread={unread} />
+      <View style={styles.body}>
+        <View style={styles.titleRow}>
+          <Text style={[styles.rowTitle, unread ? styles.rowTitleUnread : null]} numberOfLines={1}>{item.title ?? item.body}</Text>
+          <Text style={styles.rowTime}>{timeLabel(item.createdAt)}</Text>
+        </View>
+        {item.title ? <Text style={styles.rowText} numberOfLines={3}>{item.body}</Text> : null}
       </View>
-      <View style={styles.rowBody}>
-        {item.title ? <Text style={[styles.rowTitle, unread ? styles.rowTitleUnread : null]} numberOfLines={1}>{item.title}</Text> : null}
-        <Text style={styles.rowText} numberOfLines={3}>{item.body}</Text>
-        <Text style={styles.rowTime}>{timeLabel(item.createdAt)}</Text>
-      </View>
-      {unread ? <View style={styles.dot} /> : null}
     </Pressable>
   )
 }
 
+const TILE = 44
+const ROW_PAD = spacing.md
+// Hairline starts under the text, not under the tile, the way grouped lists do on both platforms.
+const DIVIDER_INSET = ROW_PAD + TILE + spacing.sm + 4
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-  iconBtn: { width: 36, height: 36, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
-  banner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginHorizontal: spacing.lg, marginBottom: spacing.sm, padding: spacing.md, borderRadius: radii.lg, backgroundColor: colors.warningLight },
-  bannerText: { flex: 1, gap: 2 },
-  bannerTitle: { ...typography.body, lineHeight: 20, color: colors.ink900, fontFamily: fonts.semibold },
+  pad: { paddingHorizontal: spacing.lg },
+  body: { flex: 1, gap: 3 },
+
+  banner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, padding: spacing.md, marginBottom: spacing.md, borderRadius: radii['2xl'], backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  bannerTitle: { ...typography.label, fontSize: 14, color: colors.ink900, fontFamily: fonts.semibold },
   bannerBody: { ...typography.caption, color: colors.ink600 },
-  bannerBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, borderRadius: radii.full, backgroundColor: colors.ink900 },
-  bannerBtnText: { ...typography.caption, color: colors.inkInverse, fontFamily: fonts.bold },
-  filterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
-  chips: { flexDirection: 'row', gap: spacing.xs, flexShrink: 1, flexWrap: 'wrap' },
-  chip: { paddingHorizontal: spacing.sm + 2, paddingVertical: 6, borderRadius: radii.full, backgroundColor: colors.surface2 },
-  chipActive: { backgroundColor: colors.primary },
-  chipText: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
+  pill: { paddingHorizontal: spacing.md, height: 34, borderRadius: radii.full, backgroundColor: colors.ink900, alignItems: 'center', justifyContent: 'center' },
+  pillText: { ...typography.label, color: colors.inkInverse, fontFamily: fonts.bold },
+
+  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, paddingBottom: spacing.xs },
+  chips: { flexDirection: 'row', gap: spacing.sm, flexShrink: 1 },
+  chip: { height: 34, paddingHorizontal: spacing.md - 2, borderRadius: radii.full, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
   chipTextActive: { color: colors.inkInverse },
-  markAll: { ...typography.caption, color: colors.primary, fontFamily: fonts.bold },
+  markAll: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 34 },
+  markAllText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
   disabled: { opacity: 0.35 },
-  sectionTitle: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: spacing.md, marginBottom: spacing.xs },
-  skeletons: { paddingHorizontal: spacing.lg, gap: spacing.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.sm },
-  rowUnread: { backgroundColor: colors.primarySubtle },
-  // White disc with a border: the unread row is primarySubtle, so a primarySubtle disc vanished into it.
-  icon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
-  iconUrgent: { backgroundColor: colors.errorLight, borderColor: colors.errorLight },
-  rowBody: { flex: 1, gap: 2 },
-  rowTitle: { ...typography.body, lineHeight: 20, color: colors.ink900, fontFamily: fonts.semibold },
+
+  // Sentence-case, not tracked caps: DESIGN.md's No Eyebrow Rule.
+  sectionTitle: { ...typography.label, fontSize: 14, color: colors.ink600, fontFamily: fonts.semibold, marginTop: spacing.md, marginBottom: spacing.sm },
+  sectionGap: { height: spacing.xs },
+
+  // One grouped card per day: rows are slices of it, so there are no cards inside cards.
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm + 4, paddingHorizontal: ROW_PAD, paddingVertical: ROW_PAD - 2, backgroundColor: colors.surface, borderLeftWidth: 1, borderRightWidth: 1, borderColor: colors.borderLight },
+  rowFirst: { borderTopLeftRadius: radii['2xl'], borderTopRightRadius: radii['2xl'], borderTopWidth: 1 },
+  rowLast: { borderBottomLeftRadius: radii['2xl'], borderBottomRightRadius: radii['2xl'], borderBottomWidth: 1 },
+  rowUnread: { backgroundColor: 'rgba(14,143,163,0.035)' },
+  rowPressed: { backgroundColor: colors.surface3 },
+  divider: { position: 'absolute', top: 0, left: DIVIDER_INSET, right: ROW_PAD, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  titleRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
+  rowTitle: { flex: 1, fontSize: 15, lineHeight: 20, color: colors.ink900, fontFamily: fonts.medium },
   rowTitleUnread: { fontFamily: fonts.bold },
-  rowText: { ...typography.body, lineHeight: 20, color: colors.ink600 },
-  rowTime: { ...typography.caption, color: colors.ink400, marginTop: 2 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
-  empty: { ...typography.body, color: colors.ink400, textAlign: 'center', marginTop: spacing.xl },
+  rowText: { fontSize: 14, lineHeight: 20, color: colors.ink600, fontFamily: fonts.regular },
+  rowTime: { ...typography.caption, color: colors.ink400 },
+
+  centered: { alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.xl, paddingTop: spacing['2xl'] },
+  emptyTile: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs },
+  emptyTitle: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, textAlign: 'center' },
+  emptyBody: { ...typography.label, color: colors.ink600, textAlign: 'center', lineHeight: 20, marginBottom: spacing.sm },
 })

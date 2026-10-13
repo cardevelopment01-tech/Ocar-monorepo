@@ -13,6 +13,12 @@ describe('resolvePushRoute (driver-mobile)', () => {
     expect(resolvePushRoute({ type: 'pickup_updated', rideId: '42' })).toBe('/active-ride/42')
   })
 
+  it('opens the active ride for booked-time nudges, which are sent to the driver too', () => {
+    expect(resolvePushRoute({ type: 'trip_window_ending', rideId: '42' })).toBe('/active-ride/42')
+    expect(resolvePushRoute({ type: 'trip_window_ended', rideId: '42' })).toBe('/active-ride/42')
+    expect(resolveTapRoute({ type: 'trip_window_ended' })).toBe('/notifications')
+  })
+
   it('routes chat notifications into the chat sub-screen', () => {
     expect(resolvePushRoute({ type: 'ride_chat_message', rideId: '42' })).toBe('/active-ride/42/chat')
   })

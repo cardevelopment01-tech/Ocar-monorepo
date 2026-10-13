@@ -1,17 +1,20 @@
-import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
+import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Text } from '../ui/Text'
 import { colors, fonts, radii, spacing, typography } from '../theme/tokens'
+import type { NotificationTone } from './feedModel'
+import { NotificationHeader, ToneTile } from './notificationUi'
 import type { PushPermissionState } from './pushPermission'
 
 export type NotificationSettingsProps = {
   /** What the app sends, in the user's words (one row each). Mirrors the app's Android channels. */
-  topics: { name: string; description: string }[]
+  topics: { name: string; description: string; icon?: string; tone?: NotificationTone }[]
   permission: { state: PushPermissionState | null; canAskAgain: boolean }
   onEnablePush: () => void
   onBack: () => void
   /** Optional categories the user can switch off. Omit until the preferences have loaded. */
-  switches?: { label: string; description: string; value: boolean; onChange: (value: boolean) => void }[]
+  switches?: { label: string; description: string; value: boolean; onChange: (value: boolean) => void; icon?: string; tone?: NotificationTone }[]
 }
 
 export function NotificationSettings({ topics, permission, onEnablePush, onBack, switches }: NotificationSettingsProps) {
@@ -19,38 +22,35 @@ export function NotificationSettings({ topics, permission, onEnablePush, onBack,
   const granted = permission.state === 'granted'
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
-      <View style={styles.header}>
-        <Pressable onPress={onBack} hitSlop={8} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel="Back">
-          <Feather name="arrow-left" size={18} color={colors.ink900} />
-        </Pressable>
-        <Text style={styles.title}>Notification settings</Text>
-      </View>
+    <View style={styles.container}>
+      <NotificationHeader title="Notification settings" onBack={onBack} />
 
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.lg, gap: spacing.md }}>
-        <View style={styles.card}>
-          <View style={[styles.statusIcon, granted ? styles.statusOn : styles.statusOff]}>
-            <Feather name={granted ? 'bell' : 'bell-off'} size={18} color={granted ? colors.primary : colors.warning} />
-          </View>
-          <View style={styles.cardBody}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: insets.bottom + spacing.xl, gap: spacing.md }}>
+        <View style={styles.status}>
+          <ToneTile icon={granted ? 'bell' : 'bell-off'} tone={granted ? 'ride' : 'money'} size={44} />
+          <View style={styles.flex}>
             <Text style={styles.cardTitle}>{permission.state === null ? 'Checking…' : granted ? 'Notifications are on' : 'Notifications are off'}</Text>
             <Text style={styles.cardText}>
               {granted ? 'This phone will alert you even when the app is closed.' : 'Turn them on so you don’t miss anything important.'}
             </Text>
           </View>
           {permission.state !== null && !granted ? (
-            <Pressable onPress={onEnablePush} style={styles.cta} accessibilityRole="button">
-              <Text style={styles.ctaText}>{permission.canAskAgain ? 'Turn on' : 'Settings'}</Text>
+            <Pressable onPress={onEnablePush} style={styles.pill} accessibilityRole="button">
+              <Text style={styles.pillText}>{permission.canAskAgain ? 'Turn on' : 'Settings'}</Text>
             </Pressable>
           ) : null}
         </View>
 
-        <Text style={styles.sectionTitle}>What you&apos;ll get</Text>
-        <View style={styles.card2}>
+        <Text style={styles.sectionTitle}>What you’ll get</Text>
+        <View style={styles.group}>
           {topics.map((t, i) => (
-            <View key={t.name} style={[styles.topic, i > 0 ? styles.topicBorder : null]}>
-              <Text style={styles.topicName}>{t.name}</Text>
-              <Text style={styles.topicText}>{t.description}</Text>
+            <View key={t.name} style={styles.item}>
+              {i > 0 ? <View style={styles.divider} /> : null}
+              <ToneTile icon={t.icon ?? 'bell'} tone={t.tone ?? 'ride'} size={40} />
+              <View style={styles.flex}>
+                <Text style={styles.itemTitle}>{t.name}</Text>
+                <Text style={styles.itemText}>{t.description}</Text>
+              </View>
             </View>
           ))}
         </View>
@@ -58,24 +58,32 @@ export function NotificationSettings({ topics, permission, onEnablePush, onBack,
         {switches && switches.length > 0 ? (
           <>
             <Text style={styles.sectionTitle}>You can switch off</Text>
-            <View style={styles.card2}>
+            <View style={styles.group}>
               {switches.map((s, i) => (
-                <View key={s.label} style={[styles.switchRow, i > 0 ? styles.topicBorder : null]}>
-                  <View style={styles.cardBody}>
-                    <Text style={styles.topicName}>{s.label}</Text>
-                    <Text style={styles.topicText}>{s.description}</Text>
+                <View key={s.label} style={[styles.item, styles.itemSwitch]}>
+                  {i > 0 ? <View style={styles.divider} /> : null}
+                  <ToneTile icon={s.icon ?? 'bell'} tone={s.tone ?? 'promo'} size={40} />
+                  <View style={styles.flex}>
+                    <Text style={styles.itemTitle}>{s.label}</Text>
+                    <Text style={styles.itemText}>{s.description}</Text>
                   </View>
-                  <Switch value={s.value} onValueChange={s.onChange} trackColor={{ true: colors.primary }} accessibilityLabel={s.label} />
+                  <Switch
+                    value={s.value}
+                    onValueChange={s.onChange}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor={colors.surface}
+                    accessibilityLabel={s.label}
+                  />
                 </View>
               ))}
             </View>
           </>
         ) : null}
 
-        <Pressable onPress={() => { void Linking.openSettings() }} style={styles.systemRow} accessibilityRole="button">
-          <View style={styles.cardBody}>
+        <Pressable onPress={() => { void Linking.openSettings() }} style={({ pressed }) => [styles.system, pressed ? styles.pressed : null]} accessibilityRole="button">
+          <View style={styles.flex}>
             <Text style={styles.cardTitle}>Sound, pop-up and vibration</Text>
-            <Text style={styles.cardText}>Change how each type alerts you in your phone&apos;s settings.</Text>
+            <Text style={styles.cardText}>Change how each type alerts you in your phone’s settings.</Text>
           </View>
           <Feather name="external-link" size={17} color={colors.ink400} />
         </Pressable>
@@ -84,26 +92,26 @@ export function NotificationSettings({ topics, permission, onEnablePush, onBack,
   )
 }
 
+const TILE = 40
+const PAD = spacing.md
+const DIVIDER_INSET = PAD + TILE + spacing.sm + 4
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-  iconBtn: { width: 36, height: 36, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
-  card: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
-  card2: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border },
-  statusIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  statusOn: { backgroundColor: colors.primarySubtle },
-  statusOff: { backgroundColor: colors.warningLight },
-  cardBody: { flex: 1, gap: 2 },
-  cardTitle: { ...typography.body, lineHeight: 20, color: colors.ink900, fontFamily: fonts.semibold },
-  cardText: { ...typography.caption, color: colors.ink600 },
-  cta: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, borderRadius: radii.full, backgroundColor: colors.ink900 },
-  ctaText: { ...typography.caption, color: colors.inkInverse, fontFamily: fonts.bold },
-  sectionTitle: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: spacing.sm },
-  topic: { padding: spacing.md, gap: 2 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md },
-  topicBorder: { borderTopWidth: 1, borderTopColor: colors.borderLight },
-  topicName: { ...typography.body, lineHeight: 20, color: colors.ink900, fontFamily: fonts.semibold },
-  topicText: { ...typography.caption, color: colors.ink600 },
-  systemRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
+  flex: { flex: 1, gap: 2 },
+  status: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, backgroundColor: colors.surface, borderRadius: radii['2xl'], borderWidth: 1, borderColor: colors.border, padding: PAD },
+  system: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radii['2xl'], borderWidth: 1, borderColor: colors.border, padding: PAD },
+  pressed: { backgroundColor: colors.surface3 },
+  cardTitle: { ...typography.label, fontSize: 15, lineHeight: 20, color: colors.ink900, fontFamily: fonts.semibold },
+  cardText: { ...typography.caption, lineHeight: 18, color: colors.ink600 },
+  pill: { paddingHorizontal: spacing.md, height: 34, borderRadius: radii.full, backgroundColor: colors.ink900, alignItems: 'center', justifyContent: 'center' },
+  pillText: { ...typography.label, color: colors.inkInverse, fontFamily: fonts.bold },
+  // Sentence-case, not tracked caps: DESIGN.md's No Eyebrow Rule.
+  sectionTitle: { ...typography.label, fontSize: 14, color: colors.ink600, fontFamily: fonts.semibold, marginTop: spacing.xs },
+  group: { backgroundColor: colors.surface, borderRadius: radii['2xl'], borderWidth: 1, borderColor: colors.borderLight, overflow: 'hidden' },
+  item: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm + 4, padding: PAD },
+  itemSwitch: { alignItems: 'center' },
+  divider: { position: 'absolute', top: 0, left: DIVIDER_INSET, right: PAD, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  itemTitle: { fontSize: 15, lineHeight: 20, color: colors.ink900, fontFamily: fonts.semibold },
+  itemText: { fontSize: 13, lineHeight: 19, color: colors.ink600, fontFamily: fonts.regular },
 })
