@@ -18,6 +18,10 @@ export interface PushNotificationsConfig {
   // in a real `() => messaging().getToken()` once the Firebase config file lands;
   // nothing else in this module changes.
   getFcmToken: () => Promise<string | null>
+  // true = show the system permission dialog if the user hasn't decided yet. Left false for the
+  // silent re-registration done on every launch; only an explicit user action (the primer sheet,
+  // a "Turn on" button) should prompt.
+  prompt?: boolean
 }
 
 export async function registerPushNotifications(
@@ -42,8 +46,9 @@ export async function registerPushNotifications(
     })
   }
 
-  const { status } = await Notifications.requestPermissionsAsync()
-  if (status !== 'granted') return { granted: false }
+  let granted = (await Notifications.getPermissionsAsync()).granted
+  if (!granted && config.prompt) granted = (await Notifications.requestPermissionsAsync()).granted
+  if (!granted) return { granted: false }
 
   const token = await config.getFcmToken()
   if (token) await registerDeviceToken(apiClient, token)

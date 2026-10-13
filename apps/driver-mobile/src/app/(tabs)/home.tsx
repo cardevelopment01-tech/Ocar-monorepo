@@ -5,7 +5,7 @@ import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, Card, OCAR_MAP_PROPS, PulseDot, card, colors, geo, h, shadow, useNavBottom, getCurrentOrLastKnownPosition, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, Card, NotificationBell, OCAR_MAP_PROPS, PushPrimerSheet, useUnreadCount, PulseDot, card, colors, geo, h, shadow, useNavBottom, getCurrentOrLastKnownPosition, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { OnlineToggle } from '@/features/go-online/components/OnlineToggle'
@@ -13,6 +13,7 @@ import { BottomSheet } from '@/features/go-online/components/BottomSheet'
 import { useGoOnlineFlow } from '@/features/go-online/useGoOnlineFlow'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
+import { useNotificationPrimer } from '@/features/notifications/usePushSetup'
 import { fetchEarningsSummary } from '@/features/earnings/api'
 import type { EarningsSummary } from '@/features/earnings/types'
 import CarMarker from '@/features/map/components/CarMarker'
@@ -44,6 +45,8 @@ export default function HomeScreen() {
   const flow = useGoOnlineFlow()
   const walletGate = useWalletGate()
   const documentGate = useDocumentGate()
+  const unreadNotifications = useUnreadCount()
+  const primer = useNotificationPrimer()
 
   const mapRef = useRef<MapView>(null)
   const [region, setRegion] = useState(DEFAULT_REGION)
@@ -164,9 +167,7 @@ export default function HomeScreen() {
           <MaterialCommunityIcons name="currency-inr" size={13} color={colors.accent} />
           <Text style={styles.walletPillText}>{walletGate.loading ? '-' : Math.round(walletGate.balance).toLocaleString('en-IN')}</Text>
         </View>
-        <Pressable onPress={() => router.push('/notifications')} style={styles.bellBtn} accessibilityRole="button" accessibilityLabel="Notifications">
-          <Feather name="bell" size={15} color={colors.ink600} />
-        </Pressable>
+        <NotificationBell count={unreadNotifications} onPress={() => router.push('/notifications')} style={styles.bellBtn} />
       </View>
 
       <View style={[styles.sheet, { bottom: sheetBottom }]} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
@@ -295,6 +296,15 @@ export default function HomeScreen() {
           </View>
         </View>
       </BottomSheet>
+      <PushPrimerSheet
+        visible={primer.visible}
+        title="Don't miss a ride"
+        message="Turn on notifications so Ocar can reach you when the app is closed."
+        bullets={['New rides assigned to you', 'Document and wallet alerts', 'Messages from your rider']}
+        enabling={primer.enabling}
+        onEnable={() => { void primer.onEnable() }}
+        onLater={primer.onLater}
+      />
     </View>
   )
 }

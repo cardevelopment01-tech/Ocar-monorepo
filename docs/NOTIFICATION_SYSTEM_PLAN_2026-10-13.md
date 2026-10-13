@@ -315,7 +315,11 @@ Original scope:
 4. Payload contract (section 4.2) and feed API returning `payload`.
 5. Redis dedupe keys and a per-user rate cap for non-critical events.
 
-### Phase 2: in-app experience
+### Phase 2: in-app experience (DONE, branch `feat/notifications-phase2`)
+
+Built as: shared `NotificationCenter` (filter chips, day sections, type icons with an urgent colour, pull-to-refresh, skeleton, live insert from `notification:new`, "notifications are off" banner) and `NotificationSettings` in `mobile-shared`, used by both apps; a bell with an unread badge on the driver Home and on the rider map hero; one app-wide unread store kept right by a root hook (loaded on sign-in, +1 per live event, re-fetched on foreground, socket reconnect and foreground push); an explain-then-ask `PushPrimerSheet` on Home (snoozed 3 days after "Not now") so the system dialog is no longer shown cold at login; `registerPushNotifications` only prompts when asked to. Found and fixed on the way: push registration and the token-refresh listener only ran at login, so after an app restart neither ran; the root hook now re-registers silently on every launch. Not done from the original scope: swipe-to-dismiss (the API has no delete endpoint yet) and per-category switches (Phase 3, they need the preferences table).
+
+Original scope:
 
 1. Shared notification center v2 and a bell with a live unread badge on both Home screens.
 2. Live insertion from `notification:new`.

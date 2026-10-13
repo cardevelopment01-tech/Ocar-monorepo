@@ -22,9 +22,10 @@ async function getFcmToken(): Promise<string | null> {
 
 let stopTokenRefresh: (() => void) | null = null
 
-export async function setupPushNotifications(): Promise<void> {
+export async function setupPushNotifications(opts: { prompt?: boolean } = {}): Promise<void> {
   const { granted } = await registerPushNotifications(api, {
     getFcmToken,
+    prompt: opts.prompt ?? false,
     channels: [
       // _v2 -- forces Android to create a fresh channel with sound+vibrate baked
       // in (channel settings are locked after first creation and `adb install -r`
