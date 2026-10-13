@@ -13,7 +13,7 @@ export async function fetchWalletInfo(): Promise<WalletInfo> {
   return { balance: parseFloat(res.data.balance), isFrozen: res.data.is_frozen }
 }
 
-type RawDocumentEntry = { status: string | null; rejection_note: string | null; uploaded: boolean }
+type RawDocumentEntry = { status: string | null; rejection_note: string | null; uploaded?: boolean }
 type RawDocumentStatus = {
   photos: Record<string, RawDocumentEntry>
   vehicle_docs: Record<string, RawDocumentEntry>
@@ -29,7 +29,7 @@ export async function fetchDocumentGateStatus(): Promise<DocumentGateStatus> {
   return {
     hasRejected: !!rejectedDoc,
     rejectionReason: rejectedDoc?.rejection_note ?? data.rejection_reason,
-    isMissingUpload: !!rejectedDoc && !rejectedDoc.uploaded,
+    isMissingUpload: rejectedDoc?.uploaded === false,
   }
 }
 

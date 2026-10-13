@@ -21,8 +21,11 @@ export function useDocumentGate(): DocumentGate {
   // Refetch on every focus so a fix made on the Documents screen clears the banner on return.
   useFocusEffect(
     useCallback(() => {
+      // A later focus can start a second fetch; drop the earlier one's result if it lands late.
+      let stale = false
       fetchDocumentGateStatus()
         .then((status) => {
+          if (stale) return
           setHasRejected(status.hasRejected)
           setRejectionReason(status.rejectionReason)
           setIsMissingUpload(status.isMissingUpload)
@@ -30,7 +33,8 @@ export function useDocumentGate(): DocumentGate {
         .catch(() => {
           // fail open -- server still enforces the block on goOnline()
         })
-        .finally(() => setLoading(false))
+        .finally(() => { if (!stale) setLoading(false) })
+      return () => { stale = true }
     }, [])
   )
 
