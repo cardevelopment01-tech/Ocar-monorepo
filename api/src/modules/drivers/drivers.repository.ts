@@ -367,6 +367,7 @@ export function docIssueExistsSql(driverIdExpr: string): string {
        UNION ALL
        SELECT 1 FROM driver_vehicles dv
        WHERE dv.driver_id = ${driverIdExpr} AND dv.is_primary = true
+         AND EXISTS (SELECT 1 FROM driver_vehicle_documents d WHERE d.vehicle_id = dv.id AND d.doc_type = 'vehicle_rc_front')
          AND NOT EXISTS (SELECT 1 FROM driver_vehicle_documents d WHERE d.vehicle_id = dv.id AND d.doc_type = 'vehicle_rc_back')
      )`
 }
