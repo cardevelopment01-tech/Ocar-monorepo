@@ -34,6 +34,8 @@ const BOUNDS: Record<string, ConfigBounds> = {
 // Typed `string` in the table but really booleans — free text here would silently break the reader.
 const ALLOWED_VALUES: Record<string, readonly string[]> = {
   cash_collection_enabled: ['true', 'false'],
+  // Anything but exactly 'true' reads as off, so a typo here would silently disable payments.
+  mobile_payments_enabled: ['true', 'false'],
 }
 
 export function getConfigBounds(key: string): ConfigBounds | null {

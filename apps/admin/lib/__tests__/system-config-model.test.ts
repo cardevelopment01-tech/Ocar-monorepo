@@ -18,6 +18,10 @@ describe('resolve', () => {
   it('treats string-typed cash_collection_enabled as a switch (the DB type is misleading)', () => {
     expect(resolve(cfg({ key: 'cash_collection_enabled', valueType: 'string', value: 'true' })).kind).toBe('switch')
   })
+  it('shows the driver-app payments kill switch as a critical switch in Payments & fees', () => {
+    const r = resolve(cfg({ key: 'mobile_payments_enabled', valueType: 'string', value: 'false' }))
+    expect(r).toMatchObject({ title: 'Driver app payments (PayU)', group: 'payments', kind: 'switch', critical: true })
+  })
   it('never hides an unknown key: humanised title, DB description, "Other" group, control from valueType', () => {
     const r = resolve(cfg({ key: 'brand_new_flag', valueType: 'boolean', description: 'Does a new thing' }))
     expect(r).toMatchObject({ title: 'Brand new flag', help: 'Does a new thing', group: 'other', kind: 'switch', critical: false })
