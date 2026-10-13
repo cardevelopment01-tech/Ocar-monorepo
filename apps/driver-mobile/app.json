@@ -10,6 +10,7 @@
                  "icon":  "./assets/brand/app-icon.png",
                  "android":  {
                                  "package":  "com.ocar.driver",
+                                 "versionCode":  1,
                                  "googleServicesFile":  "./google-services.json",
                                  "icon":  "./assets/brand/app-icon.png",
                                  "adaptiveIcon":  {
@@ -89,7 +90,8 @@
                                      }
                                  ],
                                  "@react-native-firebase/app",
-                                 "@react-native-firebase/messaging",
+                                 ["expo-notifications", { "icon": "./assets/brand/notification-icon.png", "color": "#0E8FA3" }],
+    "@react-native-firebase/messaging",
                                  "@react-native-community/datetimepicker",
                                  [
                                      "expo-image-picker",
