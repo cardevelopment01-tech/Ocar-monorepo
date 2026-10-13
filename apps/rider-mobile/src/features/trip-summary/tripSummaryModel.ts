@@ -71,7 +71,7 @@ export function paymentState(
   return { kind: 'paid', text: channel === 'wallet' ? 'Paid via wallet' : 'Paid online' }
 }
 
-const rideTypeLabels: Record<string, string> = { round_trip: 'Round trip', rental: 'Rental' }
+const rideTypeLabels: Record<string, string> = { round_trip: 'Round trip', rental: 'City ride' }
 
 export function formatTripWhen(iso: string | null): string | null {
   if (!iso) return null

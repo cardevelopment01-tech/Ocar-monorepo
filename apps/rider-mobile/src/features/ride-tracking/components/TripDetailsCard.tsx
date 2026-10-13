@@ -16,7 +16,7 @@ export type TripDetailsCardProps = {
 export function TripDetailsCard({ ride, fare }: TripDetailsCardProps) {
   const dropLabel = ride.rideType === 'round_trip' ? 'Drop & return' : ride.rideType === 'rental' ? 'Route' : 'Drop'
   const dropValue = ride.rideType === 'rental'
-    ? (ride.tripHours ? `${ride.tripHours}h rental · flexible` : 'Hourly rental · flexible')
+    ? (ride.tripHours ? `${ride.tripHours}h city ride · flexible` : 'Hourly city ride · flexible')
     : (ride.destinationAddress ?? 'Destination')
 
   return (

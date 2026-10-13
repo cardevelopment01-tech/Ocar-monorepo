@@ -135,7 +135,7 @@ export function RecentsCard({ items }: { items: RecentItem[] }) {
 const TRIPS = [
   { type: 'one_way' as const, title: 'One-way', sub: 'Point A to B', Icon: OneWayIcon },
   { type: 'round_trip' as const, title: 'Round trip', sub: 'There, and back', Icon: RoundTripIcon },
-  { type: 'rental' as const, title: 'Rentals', sub: 'By the hour', Icon: RentalsIcon },
+  { type: 'rental' as const, title: 'City Ride', sub: 'By the hour', Icon: RentalsIcon },
 ]
 
 export function TripTypeCard({ onPick, style }: { onPick: (t: 'one_way' | 'round_trip' | 'rental') => void; style?: object | undefined }) {
