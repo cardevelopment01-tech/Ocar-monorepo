@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -79,7 +79,9 @@ export default function ProfileScreen() {
       .catch(() => setStatsFailed(true))
   }, [])
 
-  useEffect(() => { loadStats() }, [loadStats])
+  // Refetch whenever the tab comes into focus, so stats that failed to load (or were never fetched because the
+  // connection dropped) recover without restarting the app.
+  useFocusEffect(useCallback(() => { loadStats() }, [loadStats]))
 
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [photoStatus, setPhotoStatus] = useState<string | null>(null)
@@ -198,7 +200,7 @@ export default function ProfileScreen() {
                 <Feather name="star" size={12} color={colors.warning} />
                 <Text style={styles.badgeText}>{stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '-'}</Text>
                 <Feather name="truck" size={12} color={colors.ink400} style={{ marginLeft: spacing.xs }} />
-                <Text style={styles.badgeTextMuted}>{stats?.total_rides ?? 0} trips</Text>
+                <Text style={styles.badgeTextMuted}>{stats ? stats.total_rides : '-'} total trips</Text>
               </View>
             </View>
             <View style={styles.headerActions}>

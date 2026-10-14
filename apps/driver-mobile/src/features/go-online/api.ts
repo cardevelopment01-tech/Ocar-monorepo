@@ -9,8 +9,9 @@ export async function fetchMyVehicle(): Promise<VehicleInfo | null> {
 }
 
 export async function fetchWalletInfo(): Promise<WalletInfo> {
-  const res = await api.get<{ balance: string; is_frozen: boolean }>('/api/v1/payments/wallet/driver')
-  return { balance: parseFloat(res.data.balance), isFrozen: res.data.is_frozen }
+  const res = await api.get<{ balance: string; is_frozen: boolean; min_balance?: number }>('/api/v1/payments/wallet/driver')
+  // minBalance null = the server did not say, so the app does not gate on its own guess.
+  return { balance: parseFloat(res.data.balance), isFrozen: res.data.is_frozen, minBalance: typeof res.data.min_balance === 'number' ? res.data.min_balance : null }
 }
 
 type RawDocumentEntry = { status: string | null; rejection_note: string | null; uploaded?: boolean }

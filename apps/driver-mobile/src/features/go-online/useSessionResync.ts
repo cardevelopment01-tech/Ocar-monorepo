@@ -26,7 +26,7 @@ export async function resyncSessionFromServer(): Promise<void> {
     disconnectSocket()
     now.setOffline()
   } else if (action === 'go_online' && server) {
-    now.setOnline({ id: server.id, vehicleId: server.vehicleId, categoryId: server.categoryId, mode: server.mode })
+    now.setOnline({ id: server.id, vehicleId: server.vehicleId, categoryId: server.categoryId, mode: server.mode, destinationCityName: server.destinationCityName ?? null })
     connectSocket()
   }
   // Covers a cold relaunch while online (persisted store or server-restored session): the

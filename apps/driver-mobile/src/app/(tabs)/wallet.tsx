@@ -12,13 +12,6 @@ import { PaymentStatus } from '@/features/payments/PaymentStatus'
 import { AddMoneyCard } from '@/features/payments/AddMoneyCard'
 import { PackageCard } from '@/features/payments/PackageCard'
 
-// Same "temporarily disabled" gate as the web Wallet.tsx -- MIN_BALANCE is a
-// ponytail: client requested the recharge gate off for driver testing (see
-// CLAUDE.md's Pending Ops Actions). This is the cosmetic low-balance banner
-// only, not an enforcement gate -- useWalletGate.ts's own MIN_BALANCE (which
-// DOES gate Go Online) is a separate constant, already mirrored to -999999.
-const MIN_BALANCE = 0
-
 // Fallback when the in-app payment is unavailable (kill switch off, SDK failed to start):
 // the web portal's wallet/package page in a Custom Tab -- never an embedded WebView.
 const DRIVER_WEB_URL = process.env['EXPO_PUBLIC_DRIVER_WEB_URL'] ?? ''
@@ -79,7 +72,10 @@ export default function WalletScreen() {
   const payment = usePayment(() => { void load(true) })
 
   const balance = wallet ? parseFloat(wallet.balance) : 0
-  const isLow = !packageMode && balance < MIN_BALANCE
+  // The minimum comes from the server (min_balance). While the recharge gate is switched off for testing the server
+  // sends a large negative number, so this floor at 0 keeps the warning to drivers who actually owe money.
+  const minBalance = Math.max(wallet?.min_balance ?? 0, 0)
+  const isLow = !packageMode && balance < minBalance
   const ledger = wallet?.recent_ledger ?? []
 
   return (
@@ -109,12 +105,14 @@ export default function WalletScreen() {
           <PackageCard busy={payment.busy} onBuy={(tierId) => payment.start('package', () => createPackageOrder(tierId))} />
         ) : loading ? (
           <Skeleton height={144} borderRadius={24} />
+        ) : error && !wallet ? (
+          <ErrorState message="Couldn't load your wallet. Check your connection and try again." onRetry={() => void load()} />
         ) : (
           <>
             <LinearGradient colors={isLow ? ['#7A5618', '#B98A32'] : ['#0B4A50', '#0E8FA3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.balanceCard}>
               <Text style={styles.balanceLabel}>Compliance deposit</Text>
               <Text style={styles.balanceValue}>₹{formatMoney(balance)}</Text>
-              <Text style={styles.balanceHint}>Minimum required: ₹{MIN_BALANCE.toLocaleString('en-IN')}</Text>
+              <Text style={styles.balanceHint}>Minimum required: ₹{minBalance.toLocaleString('en-IN')}</Text>
             </LinearGradient>
 
             {isLow ? (
@@ -122,7 +120,7 @@ export default function WalletScreen() {
                 <Feather name="alert-triangle" size={18} color={colors.warning} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.warningTitle}>Low Balance</Text>
-                  <Text style={styles.warningBody}>Add ₹{formatMoney(MIN_BALANCE - balance)} to avoid service interruption</Text>
+                  <Text style={styles.warningBody}>Add ₹{formatMoney(minBalance - balance)} to avoid service interruption</Text>
                 </View>
               </View>
             ) : null}

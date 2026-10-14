@@ -12,6 +12,8 @@ import { OnlineToggle } from '@/features/go-online/components/OnlineToggle'
 import { BottomSheet } from '@/features/go-online/components/BottomSheet'
 import { useGoOnlineFlow } from '@/features/go-online/useGoOnlineFlow'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
+import { walletBlockMessage } from '@/features/go-online/walletGateMessage'
+import { useSocketConnected } from '@/features/go-online/useSocketConnected'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
 import { useNotificationPrimer } from '@/features/notifications/usePushSetup'
 import { fetchEarningsSummary } from '@/features/earnings/api'
@@ -44,6 +46,7 @@ export default function HomeScreen() {
   const destinationCityName = useDriverSessionStore((s) => s.destinationCityName)
   const flow = useGoOnlineFlow()
   const walletGate = useWalletGate()
+  const socketConnected = useSocketConnected()
   const documentGate = useDocumentGate()
   const unreadNotifications = useUnreadCount()
   const primer = useNotificationPrimer()
@@ -121,11 +124,14 @@ export default function HomeScreen() {
 
   // Actionable, not just informational, tapping goes straight to the screen that fixes it, matching
   // the rule every driver-app rejection writeup agrees on: never leave a driver guessing what to do next.
+  const walletBlock = walletBlockMessage(walletGate)
   const blockedBanner = documentGate.hasRejected
     ? { title: documentGate.isMissingUpload ? 'Action needed' : 'Document rejected', message: documentGate.rejectionReason ?? 'Reupload it to go online again.', actionLabel: 'Fix now', route: '/documents' as const }
     : walletGate.isFrozen
       ? { title: 'Wallet frozen', message: 'Contact support to go online again.', actionLabel: 'View wallet', route: '/wallet' as const }
-      : null
+      : walletBlock
+        ? { ...walletBlock, actionLabel: 'Top up', route: '/wallet' as const }
+        : null
 
   const toggleDisabled =
     flow.sessionCheck !== 'ready' || flow.checkingVerification || (!isOnline && (!!blockedBanner || !flow.vehicle))
@@ -177,6 +183,12 @@ export default function HomeScreen() {
 
       {/* Minimal persistent HUD -- wallet balance and a notifications entry
           point, out of the way in the corners. */}
+      {isOnline && !socketConnected ? (
+        <View style={[styles.offlineStrip, { top: insets.top }]} accessibilityLiveRegion="polite">
+          <Text style={styles.offlineStripText}>Reconnecting… you may miss ride requests until it is back</Text>
+        </View>
+      ) : null}
+
       <View style={[styles.topRow, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
         <View style={styles.walletPill}>
           <MaterialCommunityIcons name="currency-inr" size={13} color={colors.accent} />
@@ -333,6 +345,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  offlineStrip: { position: 'absolute', left: 0, right: 0, zIndex: 20, backgroundColor: colors.warning, paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
+  offlineStripText: { ...typography.caption, color: colors.inkInverse, textAlign: 'center', fontFamily: fonts.bold },
   container: { flex: 1, backgroundColor: colors.bg },
   mapDim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: `${colors.bg}59` },
   topRow: { position: 'absolute', left: spacing.md, right: spacing.md, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },

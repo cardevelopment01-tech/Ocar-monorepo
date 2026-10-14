@@ -17,6 +17,8 @@ export type DriverWallet = {
   lifetime_commission: string
   is_frozen: boolean
   recent_ledger: LedgerEntry[] | null
+  /** The server's minimum balance to go online (system_config.driver_minimum_balance). */
+  min_balance?: number
 }
 
 export async function fetchBillingMode(): Promise<'commission' | 'package' | null> {

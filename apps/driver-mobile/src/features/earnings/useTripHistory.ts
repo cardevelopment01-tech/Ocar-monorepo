@@ -10,7 +10,11 @@ const LOAD_ERROR_MESSAGE = "Couldn't load your trips. Check your connection and 
 
 export function useTripHistory() {
   const [trips, setTrips] = useState<Trip[]>([])
-  const [summary, setSummary] = useState<EarningsSummary | null>(null)
+  const [summaryData, setSummary] = useState<EarningsSummary | null>(null)
+  // The period the stored summary belongs to. A failed load of another period must never leave the previous
+  // period's figures on screen under the new label (Today's numbers under 'This Week').
+  const [summaryPeriod, setSummaryPeriod] = useState<EarningsPeriod | null>(null)
+  const [summaryFailed, setSummaryFailed] = useState(false)
   // Recent Trips (below) is always the latest 10 regardless of period, same as
   // web's Earnings.tsx -- only the summary card/chart/breakdown respond to it.
   const [period, setPeriod] = useState<EarningsPeriod>('today')
@@ -40,6 +44,8 @@ export function useTripHistory() {
       setHasMore(tripsRes.hasMore)
       setPage(1)
       setSummary(summaryRes)
+      setSummaryPeriod(periodRef.current)
+      setSummaryFailed(false)
       lastFetchedAtRef.current = Date.now()
     } catch {
       setError(LOAD_ERROR_MESSAGE)
@@ -52,16 +58,20 @@ export function useTripHistory() {
   }, [])
 
   // Period changes only re-fetch the summary -- the trip list underneath stays put.
+  const [summaryRetry, setSummaryRetry] = useState(0)
   useEffect(() => {
     if (!hasLoadedOnceRef.current) return
     let cancelled = false
     setSummaryLoading(true)
+    setSummaryFailed(false)
     fetchEarningsSummary(period)
-      .then((res) => { if (!cancelled) setSummary(res) })
-      .catch(() => {})
+      .then((res) => { if (!cancelled) { setSummary(res); setSummaryPeriod(period) } })
+      .catch(() => { if (!cancelled) setSummaryFailed(true) })
       .finally(() => { if (!cancelled) setSummaryLoading(false) })
     return () => { cancelled = true }
-  }, [period])
+  }, [period, summaryRetry])
+  const retrySummary = useCallback(() => setSummaryRetry((n) => n + 1), [])
+  const summary = summaryPeriod === period ? summaryData : null
 
   const loadMore = useCallback(async () => {
     if (inFlightRef.current || loadingMore || !hasMore) return
@@ -91,5 +101,5 @@ export function useTripHistory() {
     void fetchAll()
   }, [fetchAll])
 
-  return { trips, summary, period, setPeriod, loading, refreshing, loadingMore, summaryLoading, hasMore, error, refresh, loadMore }
+  return { trips, summary, summaryFailed, retrySummary, period, setPeriod, loading, refreshing, loadingMore, summaryLoading, hasMore, error, refresh, loadMore }
 }
