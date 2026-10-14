@@ -4,6 +4,7 @@ import { statusShowsEta } from '@ocar/shared'
 import { socket } from '@/services/socket'
 import { fetchRide, fetchRouteLeg, fetchUnreadChatCount } from './api'
 import type { DriverCancelInfo, RideDetailExtra } from './types'
+import { useFocusEffect } from 'expo-router'
 
 type DriverLocationTick = { lat: number; lng: number; heading?: number; speed_kmph?: number }
 type StatusUpdatePayload = {
@@ -85,9 +86,13 @@ export function useRideTracking(rideId: string) {
     loadRide()
   }, [loadRide])
 
-  useEffect(() => {
-    fetchUnreadChatCount(rideId).then(setUnreadChatCount).catch(() => {})
-  }, [rideId])
+  // Refetch whenever this screen regains focus, not just on mount: the count is zeroed on the server while the rider
+  // is inside the chat screen, so without this the badge came back for messages that had already been read.
+  useFocusEffect(
+    useCallback(() => {
+      fetchUnreadChatCount(rideId).then(setUnreadChatCount).catch(() => {})
+    }, [rideId])
+  )
 
   useRoomJoin(socket, rideId, loadRide)
 

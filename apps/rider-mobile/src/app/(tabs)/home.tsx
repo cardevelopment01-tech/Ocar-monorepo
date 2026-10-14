@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRideHistory } from '@/features/ride-history/hooks/useRideHistory'
 import { fetchReverseGeocode } from '@/features/booking/api'
 import { useBookingDraftStore } from '@/features/booking/store'
+import { ScheduleSheet } from '@/features/booking/components/ScheduleSheet'
 import { useFreshness, useLocationStore } from '@/store/useLocationStore'
 import type { RideType } from '@/features/booking/api'
 import { ease, geo, h } from '@/theme/homeTokens'
@@ -87,6 +88,8 @@ export default function HomeScreen() {
   const setRideType = useBookingDraftStore((s) => s.setRideType)
   const pickup = useBookingDraftStore((s) => s.pickup)
   const setPickup = useBookingDraftStore((s) => s.setPickup)
+  const setScheduledFor = useBookingDraftStore((s) => s.setScheduledFor)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
 
   // Pickup is whatever the rider parks the pin on: resolve its address (debounced, latest drag wins) into the draft,
   // which the booking screen already reads.
@@ -119,6 +122,8 @@ export default function HomeScreen() {
   }
   // Search bar / recents / vehicle taps declare no ride type; /booking classifies the route itself.
   const toBookingAuto = () => toBooking('one_way', false)
+  // "Later" asks for the pickup time first, then carries on to the same search as "Where to?".
+  const toBookingLater = () => setScheduleOpen(true)
 
   // ---------- map sheet: peek -> half -> full, dragged from anywhere on the sheet ----------
   // The map is the first thing in the scroll content, so scrolling up carries it away 1:1 (closing it) and the sticky
@@ -321,7 +326,7 @@ export default function HomeScreen() {
             </GestureDetector>
 
             <Animated.View style={[styles.searchSlot, flowBar]}>
-              <SearchBar onPress={toBookingAuto} onLater={toBookingAuto} />
+              <SearchBar onPress={toBookingAuto} onLater={toBookingLater} />
             </Animated.View>
 
             {recents.length > 0 ? <RecentsCard items={recents} /> : null}
@@ -351,10 +356,15 @@ export default function HomeScreen() {
           />
         </Animated.View>
         <Animated.View style={[styles.pinned, { top: insets.top }, pinnedBar]} animatedProps={pinnedProps}>
-          <SearchBar stuck onPress={toBookingAuto} onLater={toBookingAuto} />
+          <SearchBar stuck onPress={toBookingAuto} onLater={toBookingLater} />
         </Animated.View>
         <View style={[styles.statusCover, { height: insets.top }]} pointerEvents="none" />
         <Toast visible={toast} bottom={navBottom + 72} onClose={hideToast} />
+        <ScheduleSheet
+          visible={scheduleOpen}
+          onClose={() => setScheduleOpen(false)}
+          onChange={(iso) => { setScheduledFor(iso); toBookingAuto() }}
+        />
         <PushPrimerSheet
           visible={primer.visible}
           title="Stay updated on your ride"

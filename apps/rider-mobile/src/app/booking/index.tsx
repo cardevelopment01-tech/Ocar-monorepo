@@ -4,7 +4,10 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts, pillTextFor, getApiErrorMessage } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, pillTextFor, getApiErrorMessage, haversineMetres } from '@ocar/mobile-shared'
+
+// Same threshold as the API (MIN_TRIP_DISTANCE_METRES): closer than this is the same place, not a trip.
+const SAME_PLACE_METRES = 100
 import { PlaceRow } from '@/features/booking/components/PlaceRow'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { fetchClassifyTrip, fetchNearestCityId, fetchPlaceDetail, fetchRoute, fetchSavedPlaces, type SavedPlace } from '@/features/booking/api'
@@ -199,8 +202,14 @@ export default function BookingPickersScreen() {
   // chooser.
   async function handleContinue() {
     if (!pickup || !drop || continuing) return
-    setContinuing(true)
     setContinueError(null)
+    // A one-way or round trip from a place to itself is a 0 km trip at the minimum fare, not a booking. (A city
+    // rental can start and end at the same place, so it is allowed through.)
+    if (rideTypeDeclared && rideType !== 'rental' && haversineMetres([pickup.lat, pickup.lng], [drop.lat, drop.lng]) < SAME_PLACE_METRES) {
+      setContinueError('Pickup and drop are the same place. Choose a different drop-off.')
+      return
+    }
+    setContinuing(true)
     // Defensive: a fresh Continue always starts clean, even if the drop-change
     // effect above didn't catch this particular path (e.g. re-tapping Continue
     // after a redirect's own timer already fired).
