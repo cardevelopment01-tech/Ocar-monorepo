@@ -43,7 +43,7 @@ function shouldClearAfterRefreshFailure(err: unknown): boolean {
 
 function clearAndRedirect() {
   clearAdminAuth()
-  window.location.href = '/login'
+  if (window.location.pathname !== '/login') window.location.href = '/login'
 }
 
 async function refreshAccessToken(): Promise<string> {

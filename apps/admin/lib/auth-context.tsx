@@ -39,7 +39,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         const status = (err as { response?: { status?: number } })?.response?.status
         if (status === 401) {
           clearAdminAuth()
-          window.location.href = '/login'
+          if (window.location.pathname !== '/login') window.location.href = '/login'
         }
       } finally {
         setIsLoading(false)
