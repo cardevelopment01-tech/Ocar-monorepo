@@ -77,14 +77,16 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
             </Text>
           ) : null}
           <View style={[styles.breakdownRow, styles.breakdownTotal]}>
-            <Text style={styles.breakdownLabelBold}>{isCash ? 'You keep' : 'Net earnings'}</Text>
-            <Text style={styles.breakdownValueBold}>{headline}</Text>
+            {/* Net earnings is the same figure the trips list shows for this ride. For a cash ride the headline above is the
+                cash in hand (the whole fare), which is a different number, so the two are never both labelled as what you keep. */}
+            <Text style={styles.breakdownLabelBold}>Net earnings</Text>
+            <Text style={styles.breakdownValueBold}>{fmt(net)}</Text>
           </View>
         </View>
 
         {isCash ? (
           <Text style={styles.cashNote}>
-            You collected this fare in cash. Commission has already been deducted from your wallet, so no payout is due for this ride.
+            You collected {fmt(collectedCash ?? fare)} in cash. The {fmt(commission)} commission is deducted from your wallet, so no payout is due for this ride.
           </Text>
         ) : null}
       </Animated.View>

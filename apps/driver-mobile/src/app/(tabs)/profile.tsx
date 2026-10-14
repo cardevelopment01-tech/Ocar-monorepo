@@ -248,7 +248,7 @@ export default function ProfileScreen() {
                 </View>
               ) : missingDocs > 0 ? (
                 <View style={styles.pendingBadge}>
-                  <Text style={styles.pendingBadgeText}>{missingDocs} pending</Text>
+                  <Text style={styles.pendingBadgeText}>Incomplete</Text>
                 </View>
               ) : null}
               <Feather name="chevron-right" size={14} color={colors.ink400} />

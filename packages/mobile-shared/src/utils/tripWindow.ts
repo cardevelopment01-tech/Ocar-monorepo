@@ -47,9 +47,10 @@ export function tripWindow({ bookedUntil, graceMin, now, overtimeRate }: TripWin
   return { kind: 'overtime', overtimeMs, billedMin, amount }
 }
 
-/** "3h 20m" above an hour, otherwise "12 min" (never "0 min": a started minute reads as 1). */
+/** "3h 20m" above an hour, otherwise "12 min". Whole minutes rounded down (a fresh 4 hour booking reads "4h", never
+ *  "4h 1m" because the clocks are a second apart), but never "0 min": the last minute reads as 1. */
 export function formatTimeLeft(ms: number): string {
-  const totalMin = Math.max(1, Math.ceil(ms / 60_000))
+  const totalMin = Math.max(1, Math.floor(ms / 60_000))
   const h = Math.floor(totalMin / 60)
   const m = totalMin % 60
   if (h === 0) return `${m} min`

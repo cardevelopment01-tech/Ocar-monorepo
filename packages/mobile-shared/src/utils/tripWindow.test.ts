@@ -18,11 +18,14 @@ describe('tripWindow boundary table', () => {
 })
 
 describe('formatting', () => {
-  it('time left rounds up to a started minute and drops zero parts', () => {
+  it('time left rounds down to whole minutes, never reads 0 min, and drops zero parts', () => {
     expect(formatTimeLeft(200 * 60_000)).toBe('3h 20m')
     expect(formatTimeLeft(2 * 3_600_000)).toBe('2h')
     expect(formatTimeLeft(12 * 60_000)).toBe('12 min')
     expect(formatTimeLeft(1)).toBe('1 min')
+    // a fresh 4 hour booking a second "early" on the clock must not read 4h 1m
+    expect(formatTimeLeft(4 * 3_600_000 + 1_000)).toBe('4h')
+    expect(formatTimeLeft(59 * 60_000 + 59_000)).toBe('59 min')
   })
   it('clock is m:ss', () => {
     expect(formatClock(252_000)).toBe('4:12')
