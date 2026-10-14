@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Dimensions, Pressable, StyleSheet, View } from 'react-native'
+import { AppState, Dimensions, Linking, Pressable, StyleSheet, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -73,6 +73,21 @@ export default function HomeScreen() {
   // a driver who'd moved since that snapshot saw themselves somewhere they
   // hadn't been in a while, with nothing on screen indicating it was stale.
   const live = useDriverLivePosition(isOnline)
+
+  // Location can be switched off in system settings while online; the server keeps the session alive but no
+  // position reaches it, so the driver must be told rather than left on "ride requests incoming".
+  const [locationOff, setLocationOff] = useState(false)
+  useEffect(() => {
+    if (!isOnline) { setLocationOff(false); return }
+    const check = () => {
+      Location.getForegroundPermissionsAsync()
+        .then(({ granted }) => setLocationOff(!granted))
+        .catch(() => {})
+    }
+    check()
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') check() })
+    return () => sub.remove()
+  }, [isOnline])
 
   useEffect(() => {
     Location.requestForegroundPermissionsAsync()
@@ -175,9 +190,17 @@ export default function HomeScreen() {
           <View style={styles.headerText}>
             <Text style={styles.date}>{todayLabel}</Text>
             <Text style={styles.greeting}>Hi, {firstName}</Text>
-            <Text style={styles.subtext}>
-              {isOnline ? "You're live, ride requests incoming" : 'Go online to start earning'}
-            </Text>
+            {isOnline && locationOff ? (
+              <Pressable onPress={() => void Linking.openSettings()}>
+                <Text style={[styles.subtext, { color: colors.error }]}>
+                  Location is off, so you won't get ride requests. Tap to turn it on in Settings.
+                </Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.subtext}>
+                {isOnline ? "You're live, ride requests incoming" : 'Go online to start earning'}
+              </Text>
+            )}
           </View>
           <OnlineToggle isOnline={isOnline} onToggle={() => void handleToggle()} disabled={toggleDisabled} />
         </View>

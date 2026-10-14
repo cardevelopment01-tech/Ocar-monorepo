@@ -307,5 +307,16 @@ export async function refreshTokens(refreshToken: string): Promise<{ tokens: Aut
 
 export async function logout(refreshToken: string): Promise<void> {
   const tokenHash = hashRefreshToken(refreshToken)
+  const token = await repo.findRefreshToken(tokenHash)
   await repo.revokeRefreshTokenFamily(tokenHash)
+  // A driver who signs out must not stay matchable with nobody logged in. Best effort: logout itself must not fail.
+  if (token?.principal_role === 'driver') {
+    try {
+      const driverId = BigInt(token.principal_id)
+      const active = await ridesRepo.getActiveSession(driverId)
+      if (active?.status === 'online') await goOffline(driverId, 'logout')
+    } catch (err) {
+      logger.warn({ err, driverId: token.principal_id }, 'could not end driver session on logout')
+    }
+  }
 }

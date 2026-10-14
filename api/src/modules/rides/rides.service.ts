@@ -190,7 +190,7 @@ export async function goOnline(driverId: bigint, data: {
   // otherwise a driver in a basic car could go online as a premium category (or use someone else's vehicle).
   const vehicleRes = await pool.query<{ category_id: string | null }>(
     `SELECT category_id::text FROM driver_vehicles
-      WHERE id = $1 AND driver_id = $2 AND status <> 'blacklisted'`,
+      WHERE id = $1 AND driver_id = $2 AND status = 'active'`,
     [data.vehicleId, driverId]
   )
   const vehicle = vehicleRes.rows[0]

@@ -75,4 +75,10 @@ describe('goOnline - the vehicle must be the driver\'s own', () => {
     expect(call[0]).toContain('driver_id = $2')
     expect(call[1]).toEqual([BigInt(1), BigInt(42)])
   })
+
+  it('only an ACTIVE vehicle may go online (pending, inactive and blacklisted are filtered out by the lookup)', async () => {
+    scriptQueries([{ category_id: '2' }])
+    await goOnline(BigInt(42), PARAMS())
+    expect(vi.mocked(pool.query).mock.calls[1]![0]).toContain("status = 'active'")
+  })
 })
