@@ -22,12 +22,14 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   createRideAssignment: (...a: unknown[]) => mockCreateRideAssignment(...a),
   updateRideStatusCAS: (...a: unknown[]) => mockUpdateRideStatus(...a),
   logStatusHistory: (...a: unknown[]) => mockLogStatusHistory(...a),
+  expireLapsedOffers: vi.fn().mockResolvedValue(undefined),
+  getRideCoreById: vi.fn().mockResolvedValue(null),
 }))
 vi.mock('@/modules/payments/payments.service', () => ({
   getMinWalletBalance: vi.fn().mockResolvedValue(100),
 }))
 vi.mock('@/websocket/socket.server', () => ({
-  socketEvents: { sendRideRequest: vi.fn() },
+  socketEvents: { sendRideRequest: vi.fn(), sendRideStatusUpdate: vi.fn() },
 }))
 vi.mock('@/db/redis', () => ({
   client: { set: vi.fn() },
@@ -226,6 +228,18 @@ describe('processBroadcast return-cab pickup-distance cap', () => {
     await processBroadcast({ ...base, rideType: 'one_way', broadcastRound: 3 })
     expect(mockUpdateRideStatus).toHaveBeenCalledWith(1n, 'requested', 'no_drivers')
     expect(mockCreateRideAssignment).not.toHaveBeenCalled()
+  })
+
+  it('tells the rider live when the ride closes as no_drivers after round 3', async () => {
+    mockUpdateRideStatus.mockResolvedValue({ id: 1n })
+    await processBroadcast({ ...base, rideType: 'one_way', broadcastRound: 3 })
+    expect(socketEvents.sendRideStatusUpdate).toHaveBeenCalledWith(String(base.rideId), { status: 'no_drivers' })
+  })
+
+  it('does not close the ride or tell the rider when a driver accepted in the meantime', async () => {
+    mockUpdateRideStatus.mockResolvedValue(null)
+    await processBroadcast({ ...base, rideType: 'one_way', broadcastRound: 3 })
+    expect(socketEvents.sendRideStatusUpdate).not.toHaveBeenCalled()
   })
 
   it('does not consult return-cab drivers at all when the ride is not a return cab', async () => {

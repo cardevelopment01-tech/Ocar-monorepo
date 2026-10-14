@@ -99,6 +99,8 @@ export const RETURN_CAB_MATCH_RADIUS_METRES = 2000
 // so a genuine Bhubaneswar<->Cuttack intercity trip can still land inside it. Only block
 // one_way/round_trip as "book a City Ride instead" when the trip is actually short.
 export const IN_CITY_MAX_TRIP_DISTANCE_METRES = 15_000
+// A one-way or round trip whose pickup and drop are closer than this is the same place, not a trip.
+export const MIN_TRIP_DISTANCE_METRES = 100
 
 // Rental overage: extra km/min are only billed once the trip runs past the package
 // limit PLUS this tolerance (GPS jitter / a few minutes of hand-over shouldn't cost

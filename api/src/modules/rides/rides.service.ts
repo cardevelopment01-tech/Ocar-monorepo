@@ -25,6 +25,7 @@ import {
   MAX_ADVANCE_BOOKING_DAYS,
   MAX_CONCURRENT_SCHEDULED_BOOKINGS,
   IN_CITY_MAX_TRIP_DISTANCE_METRES,
+  MIN_TRIP_DISTANCE_METRES,
   MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS,
   FORCE_ASSIGN_GRACE_MINUTES,
 } from '@/constants/limits'
@@ -610,6 +611,10 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     data.destinationLat !== undefined &&
     data.destinationLng !== undefined
   ) {
+    // Pickup and drop on the same spot is a 0 km trip billed at the minimum fare, never a real booking.
+    if (distanceMetres(data.originLat, data.originLng, data.destinationLat, data.destinationLng) < MIN_TRIP_DISTANCE_METRES) {
+      throw httpError(422, 'Pickup and drop are the same place. Choose a different drop-off.', 'PICKUP_DROP_SAME')
+    }
     const classification = await classifyTrip(
       data.originLat, data.originLng, data.destinationLat, data.destinationLng
     )
@@ -2256,10 +2261,9 @@ export async function adminAssignDriver(
   if (existingFallback) {
     await existingFallback.remove().catch(() => {})
   }
-  // By the time this fallback can fire (timeoutSeconds + 2s later), the manual
-  // offer's own window has already passed — mark it expired now so the audit
-  // trail is accurate instead of stuck 'offered' forever.
-  await repo.expireAssignment(rideId, driverId)
+  // The offer stays 'offered' for its whole window so the driver can accept it. Once the window has passed,
+  // processBroadcast (the fallback below) marks it expired through repo.expireLapsedOffers, which keeps the audit
+  // trail honest. Expiring it here, straight after creating it, made every manual offer impossible to accept.
   await queues[QUEUE_NAMES.DISPATCH].add(
     'broadcast_ride',
     {

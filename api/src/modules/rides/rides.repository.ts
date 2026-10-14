@@ -18,9 +18,10 @@ import {
 
 export async function getActiveSession(driverId: bigint): Promise<DriverSession | null> {
   const res = await pool.query<DriverSession>(
-    `SELECT ds.*, vc.display_name AS category_name
+    `SELECT ds.*, vc.display_name AS category_name, dc.name AS destination_city_name
      FROM driver_sessions ds
      JOIN vehicle_categories vc ON vc.id = ds.category_id
+     LEFT JOIN cities dc ON dc.id = ds.destination_city_id
      WHERE ds.driver_id = $1
        AND ds.status IN ('online', 'on_trip')`,
     [driverId]
@@ -1277,6 +1278,17 @@ export async function expireAssignment(rideId: bigint, driverId: bigint): Promis
      SET status = 'expired', responded_at = now()
      WHERE ride_id = $1 AND driver_id = $2 AND status = 'offered'`,
     [rideId, driverId]
+  )
+}
+
+// Offers whose window has passed without an answer: mark them expired so the audit row is honest. Only rows past
+// expires_at are touched, so an offer that is still open for its driver is never closed early.
+export async function expireLapsedOffers(rideId: bigint): Promise<void> {
+  await pool.query(
+    `UPDATE ride_assignments
+     SET status = 'expired', responded_at = now()
+     WHERE ride_id = $1 AND status = 'offered' AND expires_at < now()`,
+    [rideId]
   )
 }
 

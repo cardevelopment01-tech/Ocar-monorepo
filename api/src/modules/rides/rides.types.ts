@@ -9,6 +9,8 @@ export interface DriverSession {
   mode: 'standard' | 'return_cab'
   status: 'online' | 'on_trip' | 'offline'
   destination_city_id: bigint | null
+  /** Name of the return-cab destination city (joined in getActiveSession); absent on a freshly created session row. */
+  destination_city_name?: string | null
   origin_lat: string | null
   origin_lng: string | null
   went_online_at: string

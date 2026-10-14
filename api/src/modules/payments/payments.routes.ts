@@ -4,7 +4,7 @@ import { config } from '@/config'
 import { client as redis } from '@/db/redis'
 import { walletTopupOrderKey } from '@/constants/redis-keys'
 import { payuConfigured } from '@/lib/payu'
-import { requireDriver } from '@/middleware/role.middleware'
+import { requireDriver, requireUser } from '@/middleware/role.middleware'
 import { payuHashLimiter, payuConfirmLimiter } from '@/middleware/rateLimit.middleware'
 import * as payuSdk from '@/modules/payments/payu-sdk'
 import { verifyHmacSignature } from '@/lib/hash'
@@ -18,17 +18,19 @@ const router: IRouter = Router()
 const log = logger.child({ module: 'payments-routes' })
 
 // Driver: get own wallet
-router.get('/wallet/driver', authenticate(), async (req, res, next) => {
+router.get('/wallet/driver', authenticate(), requireDriver(), async (req, res, next) => {
   try {
     const wallet = await service.getDriverWallet(req.driver!.id)
-    res.json(wallet ?? { balance: '0.00', recent_ledger: [] })
+    // The app reads the minimum from here so its go-online gate and low-balance warnings always match the server's.
+    const min_balance = await service.getMinWalletBalance()
+    res.json({ ...(wallet ?? { balance: '0.00', recent_ledger: [] }), min_balance })
   } catch (err) {
     next(err)
   }
 })
 
 // User: get own wallet
-router.get('/wallet/user', authenticate(), async (req, res, next) => {
+router.get('/wallet/user', authenticate(), requireUser(), async (req, res, next) => {
   try {
     const wallet = await service.getUserWallet(req.user!.id)
     res.json(wallet ?? { balance: '0.00', recent_ledger: [] })
@@ -38,7 +40,7 @@ router.get('/wallet/user', authenticate(), async (req, res, next) => {
 })
 
 // Driver wallet top-up — create order (or direct credit in dev)
-router.post('/wallet/driver/topup/order', authenticate(), async (req, res, next) => {
+router.post('/wallet/driver/topup/order', authenticate(), requireDriver(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const { amount } = req.body as { amount: number }
@@ -61,7 +63,7 @@ router.post('/wallet/driver/topup/order', authenticate(), async (req, res, next)
 })
 
 // Driver wallet top-up — verify Razorpay payment + credit
-router.post('/wallet/driver/topup/verify', authenticate(), async (req, res, next) => {
+router.post('/wallet/driver/topup/verify', authenticate(), requireDriver(), async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const { orderId, paymentId, signature } = req.body as {
@@ -105,14 +107,14 @@ router.post('/wallet/driver/topup/verify', authenticate(), async (req, res, next
 })
 
 // Driver: list active package tiers
-router.get('/packages/tiers', authenticate(), async (_req, res, next) => {
+router.get('/packages/tiers', authenticate(), requireDriver(), async (_req, res, next) => {
   try {
     res.json(await packagesRepo.listActiveTiers())
   } catch (err) { next(err) }
 })
 
 // Driver: get own package wallet
-router.get('/packages/wallet', authenticate(), async (req, res, next) => {
+router.get('/packages/wallet', authenticate(), requireDriver(), async (req, res, next) => {
   try {
     const wallet = await packagesRepo.getPackageWallet(req.driver!.id)
     res.json(wallet ?? { balance: '0.00', is_frozen: false })
@@ -120,7 +122,7 @@ router.get('/packages/wallet', authenticate(), async (req, res, next) => {
 })
 
 // Driver: create a package purchase order (or direct credit in dev)
-router.post('/packages/purchase/order', authenticate(), async (req, res, next) => {
+router.post('/packages/purchase/order', authenticate(), requireDriver(), async (req, res, next) => {
   try {
     const sdk = (req.body as { client?: unknown }).client === 'sdk'
     if (sdk) await payuSdk.assertMobilePaymentsEnabled()

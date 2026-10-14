@@ -70,6 +70,16 @@ describe('in-city boundary gate (Khorda/Bhubaneswar/Cuttack merge)', () => {
     } as never)).rejects.toThrow('book an hourly rental package instead')
   })
 
+  it('refuses pickup and drop on the same spot as a 0 km trip', async () => {
+    await expect(createBooking(USER_ID, {
+      categoryId: 2, rideType: 'one_way',
+      originLat: 20.2961, originLng: 85.8245, originAddress: 'Here',
+      destinationLat: 20.29612, destinationLng: 85.82451, destinationAddress: 'Here too',
+      distanceKm: 0, durationMin: 0, originCityId: 1,
+    } as never)).rejects.toMatchObject({ httpStatus: 422, appCode: 'PICKUP_DROP_SAME' })
+    expect(repo.createRide).not.toHaveBeenCalled()
+  })
+
   it('allows a genuine Bhubaneswar<->Cuttack trip despite the shared boundary', async () => {
     await createBooking(USER_ID, {
       categoryId: 2, rideType: 'one_way',

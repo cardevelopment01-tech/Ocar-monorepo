@@ -38,6 +38,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     return
   }
 
+  await repo.expireLapsedOffers(rideId)
+
   const stops = await repo.getRideStops(rideId)
   const minWalletBalance = await getMinWalletBalance()
 
