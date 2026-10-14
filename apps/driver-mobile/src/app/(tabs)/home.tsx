@@ -28,6 +28,8 @@ import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosit
 const DEFAULT_REGION = { latitude: 20.2961, longitude: 85.8245, latitudeDelta: 0.05, longitudeDelta: 0.05 }
 
 const WINDOW_HEIGHT = Dimensions.get('window').height
+// Room the "Reconnecting" strip takes at the top, so the wallet pill and bell move down instead of sitting under it.
+const RECONNECT_STRIP_HEIGHT = 34
 // Rough pre-layout guess (greeting + stats card, no error banners) -- only
 // used for the first frame before onLayout below reports the sheet's real
 // measured height; mapPadding switches to the real value the instant it's
@@ -47,6 +49,7 @@ export default function HomeScreen() {
   const flow = useGoOnlineFlow()
   const walletGate = useWalletGate()
   const socketConnected = useSocketConnected()
+  const showReconnecting = isOnline && !socketConnected
   const documentGate = useDocumentGate()
   const unreadNotifications = useUnreadCount()
   const primer = useNotificationPrimer()
@@ -183,13 +186,13 @@ export default function HomeScreen() {
 
       {/* Minimal persistent HUD -- wallet balance and a notifications entry
           point, out of the way in the corners. */}
-      {isOnline && !socketConnected ? (
+      {showReconnecting ? (
         <View style={[styles.offlineStrip, { top: insets.top }]} accessibilityLiveRegion="polite">
           <Text style={styles.offlineStripText}>Reconnecting… you may miss ride requests until it is back</Text>
         </View>
       ) : null}
 
-      <View style={[styles.topRow, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
+      <View style={[styles.topRow, { top: insets.top + spacing.sm + (showReconnecting ? RECONNECT_STRIP_HEIGHT : 0) }]} pointerEvents="box-none">
         <View style={styles.walletPill}>
           <MaterialCommunityIcons name="currency-inr" size={13} color={colors.accent} />
           <Text style={styles.walletPillText}>{walletGate.loading ? '-' : Math.round(walletGate.balance).toLocaleString('en-IN')}</Text>
