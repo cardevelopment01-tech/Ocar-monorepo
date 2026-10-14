@@ -51,7 +51,7 @@ export function sessionReplaced() {
 
 function clearAndRedirect() {
   useAuthStore.getState().clearAuth()
-  window.location.href = '/login'
+  if (window.location.pathname !== '/login') window.location.href = '/login'
 }
 
 async function refreshAccessToken(): Promise<string> {

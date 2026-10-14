@@ -37,7 +37,8 @@ function tokenExpiresSoon(token: string, skewSeconds = 60): boolean {
 
 function redirectToLogin() {
   clearAuth()
-  window.location.href = '/login'
+  // Already on /login: reloading it just flickers the page (and every extra 401 would reload again).
+  if (window.location.pathname !== '/login') window.location.href = '/login'
 }
 
 function isRefreshAuthFailure(err: unknown): boolean {

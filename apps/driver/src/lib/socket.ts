@@ -53,7 +53,7 @@ export function getDriverSocket(): Socket {
         .catch(() => {
           // Refresh token itself is expired, force re-login
           useAuthStore.getState().clearAuth()
-          window.location.href = '/login'
+          if (window.location.pathname !== '/login') window.location.href = '/login'
         })
         .finally(() => {
           refreshInProgress = false
