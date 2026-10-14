@@ -164,7 +164,7 @@ export async function placeDetails(placeId: string): Promise<PlaceDetail> {
 
   return {
     placeId,
-    address: body.result.formatted_address ?? body.result.name,
+    address: body.result.formatted_address ? stripPlusCode(body.result.formatted_address) : body.result.name,
     lat: body.result.geometry.location.lat,
     lng: body.result.geometry.location.lng,
   }

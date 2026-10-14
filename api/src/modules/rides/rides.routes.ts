@@ -106,7 +106,9 @@ router.get('/me/active-user', authenticate(), onlyUser, async (req, res, next) =
 router.get('/me/active', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
-    const ride = await repo.getActiveRideForDriver(driverId)
+    // ?include=unsettled_cash: the mobile relaunch check also wants a finished ride whose cash is still unconfirmed.
+    const includeUnsettledCash = req.query['include'] === 'unsettled_cash'
+    const ride = await repo.getActiveRideForDriver(driverId, includeUnsettledCash)
     if (!ride) { res.status(404).json({ error: 'No active ride' }); return }
     const stops = await repo.getRideStops(BigInt(ride.id))
     res.json({ ...withTripWindow(service.maskRideContacts(ride, 'driver')), stops })

@@ -8,13 +8,12 @@ vi.mock('@/db/client', () => ({
 
 import { addContact } from '@/modules/emergency-contacts/emergency-contacts.service'
 
-// The repository runs these statements in order inside one transaction: lock, list, (own number), insert.
+// The repository runs these statements in order inside one transaction: lock the user's row, list, insert.
 function script(existing: string[], ownPhone = '+919000000001') {
   q.client.query.mockReset()
   q.client.query.mockImplementation(async (sql: string) => {
-    if (sql.includes('pg_advisory_xact_lock')) return { rows: [] }
-    if (sql.includes('FROM user_emergency_contacts')) return { rows: existing.map((phone) => ({ phone })) }
     if (sql.includes('FROM users')) return { rows: [{ phone: ownPhone }] }
+    if (sql.includes('FROM user_emergency_contacts')) return { rows: existing.map((phone) => ({ phone })) }
     if (sql.includes('INSERT INTO user_emergency_contacts')) return { rows: [{ id: '9', name: 'N', phone: '+919111111111' }] }
     return { rows: [] }
   })
@@ -23,11 +22,12 @@ function script(existing: string[], ownPhone = '+919000000001') {
 beforeEach(() => vi.clearAllMocks())
 
 describe('addContact', () => {
-  it('takes the per-user lock before counting, so simultaneous adds cannot all pass the limit', async () => {
+  it('locks the user row before counting, so simultaneous adds cannot all pass the limit', async () => {
     script([])
     await addContact(5n, 'N', '+919111111111')
     const calls = q.client.query.mock.calls.map((c) => String(c[0]))
-    expect(calls[0]).toContain('pg_advisory_xact_lock')
+    expect(calls[0]).toContain('FROM users')
+    expect(calls[0]).toContain('FOR UPDATE')
     expect(calls.findIndex((s) => s.includes('FROM user_emergency_contacts'))).toBeGreaterThan(0)
     expect(calls.some((s) => s.includes('INSERT INTO user_emergency_contacts'))).toBe(true)
   })

@@ -627,7 +627,10 @@ export async function getActiveRideIdForUser(userId: bigint): Promise<string | n
   return res.rows[0]?.id ?? null
 }
 
-export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | null> {
+// includeUnsettledCash: a finished cash ride whose cash was never confirmed counts as active too, so the mobile relaunch
+// check can reopen the cash screen. Other callers (the web driver app) treat any result as a ride in progress, so it is
+// opt-in.
+export async function getActiveRideForDriver(driverId: bigint, includeUnsettledCash = false): Promise<Ride | null> {
   const res = await pool.query<Ride>(
     `SELECT
        r.*,
@@ -652,11 +655,12 @@ export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | n
        AND (r.status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
             -- A finished cash ride whose cash was never confirmed: the app was closed between the end PIN and
             -- the cash screen. Surfacing it lets the relaunch check reopen that screen instead of stranding the ride.
-            OR (r.status = 'completed' AND r.payment_channel = 'cash' AND r.cash_collected_at IS NULL
-                AND r.completed_at > now() - interval '2 days'))
+            -- (A NULL channel means cash, same as collectCash.)
+            OR ($2::boolean AND r.status = 'completed' AND COALESCE(r.payment_channel::text, 'cash') = 'cash'
+                AND r.cash_collected_at IS NULL AND r.completed_at > now() - interval '2 days'))
      ORDER BY (r.status = 'completed'), r.accepted_at DESC
      LIMIT 1`,
-    [driverId]
+    [driverId, includeUnsettledCash]
   )
   return res.rows[0] ?? null
 }

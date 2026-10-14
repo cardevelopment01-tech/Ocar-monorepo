@@ -20,6 +20,9 @@ describe('walletGateState', () => {
   it('does not gate on its own guess when the server did not send a minimum', () => {
     expect(walletGateState({ ...base, balance: 0, minBalance: null }).canGoOnline).toBe(true)
   })
+  it('does not gate when the billing mode could not be read (fail open, the server still enforces)', () => {
+    expect(walletGateState({ ...base, balance: 0, billingMode: null })).toMatchObject({ canGoOnline: true, minBalance: null })
+  })
   it('never gates a package-billing driver on the balance', () => {
     expect(walletGateState({ ...base, balance: 0, billingMode: 'package' })).toMatchObject({ canGoOnline: true, minBalance: null })
   })

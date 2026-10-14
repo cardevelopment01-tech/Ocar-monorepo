@@ -22,8 +22,9 @@ router.get('/wallet/driver', authenticate(), requireDriver(), async (req, res, n
   try {
     const wallet = await service.getDriverWallet(req.driver!.id)
     // The app reads the minimum from here so its go-online gate and low-balance warnings always match the server's.
-    const min_balance = await service.getMinWalletBalance()
-    res.json({ ...(wallet ?? { balance: '0.00', recent_ledger: [] }), min_balance })
+    // If the config read fails the field is simply left out (the app then does not gate on its own guess).
+    const min_balance = await service.getMinWalletBalance().catch(() => undefined)
+    res.json({ ...(wallet ?? { balance: '0.00', recent_ledger: [] }), ...(min_balance !== undefined ? { min_balance } : {}) })
   } catch (err) {
     next(err)
   }

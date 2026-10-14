@@ -15,7 +15,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { LinearGradient } from 'expo-linear-gradient'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRideHistory } from '@/features/ride-history/hooks/useRideHistory'
 import { fetchReverseGeocode } from '@/features/booking/api'
@@ -124,6 +124,9 @@ export default function HomeScreen() {
   const toBookingAuto = () => toBooking('one_way', false)
   // "Later" asks for the pickup time first, then carries on to the same search as "Where to?".
   const toBookingLater = () => setScheduleOpen(true)
+  // A time picked with "Later" belongs to that one trip. If the rider backs out to Home it is dropped, so the next
+  // "Where to?" is a ride now and not a scheduled one they forgot about.
+  useFocusEffect(useCallback(() => { setScheduledFor(null) }, [setScheduledFor]))
 
   // ---------- map sheet: peek -> half -> full, dragged from anywhere on the sheet ----------
   // The map is the first thing in the scroll content, so scrolling up carries it away 1:1 (closing it) and the sticky

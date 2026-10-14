@@ -71,7 +71,9 @@ export function useTripHistory() {
     return () => { cancelled = true }
   }, [period, summaryRetry])
   const retrySummary = useCallback(() => setSummaryRetry((n) => n + 1), [])
-  const summary = summaryPeriod === period ? summaryData : null
+  // While another period is loading the previous figures stay on screen, dimmed (the card already dims while
+  // summaryLoading). If that load fails they are dropped, never left under the wrong label.
+  const summary = summaryPeriod === period || (summaryLoading && !summaryFailed) ? summaryData : null
 
   const loadMore = useCallback(async () => {
     if (inFlightRef.current || loadingMore || !hasMore) return

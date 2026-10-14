@@ -310,7 +310,9 @@ export async function logout(refreshToken: string): Promise<void> {
   const token = await repo.findRefreshToken(tokenHash)
   await repo.revokeRefreshTokenFamily(tokenHash)
   // A driver who signs out must not stay matchable with nobody logged in. Best effort: logout itself must not fail.
-  if (token?.principal_role === 'driver') {
+  // Only a live token counts: one that was already rotated or revoked (an old phone after a newer login, or a replayed
+  // token) must not end the session the driver is running on another device.
+  if (token?.principal_role === 'driver' && !token.revoked_at && !token.used_at) {
     try {
       const driverId = BigInt(token.principal_id)
       const active = await ridesRepo.getActiveSession(driverId)

@@ -95,10 +95,10 @@ export default function ProfileScreen() {
   }
 
   async function handleLogout() {
-    // Revoke the refresh token on the server before forgetting it locally. Best effort and short: signing out must
-    // still work with no network.
+    // Revoke the refresh token on the server. Sent without waiting (the token is already read), so signing out is
+    // instant and still works with no network.
     const refreshToken = useAuthStore.getState().refreshToken
-    if (refreshToken) await api.post('/api/v1/auth/logout', { refreshToken }, { timeout: 5000 }).catch(() => undefined)
+    if (refreshToken) void api.post('/api/v1/auth/logout', { refreshToken }, { timeout: 5000 }).catch(() => undefined)
     await teardownPushNotifications()
     clearAuth()
   }

@@ -1,6 +1,7 @@
 // Pure rules behind the wallet gate, so they can be unit-tested. The minimum comes from the server
 // (GET /payments/wallet/driver -> min_balance) rather than a copy in the app, so the app's go-online block and its
-// low-balance warnings always agree with what the server enforces. Package-billing drivers have no balance gate.
+// low-balance warnings always agree with what the server enforces. Only commission-billing drivers have a balance gate:
+// a package driver, or one whose billing mode could not be read, is never blocked on a guess.
 export type WalletGateInput = {
   loading: boolean
   balance: number
@@ -18,7 +19,7 @@ export type WalletGateState = {
 }
 
 export function walletGateState(i: WalletGateInput): WalletGateState {
-  const min = i.billingMode === 'package' ? null : i.minBalance
+  const min = i.billingMode === 'commission' ? i.minBalance : null
   const belowMin = min !== null && i.balance < min
   return {
     minBalance: min,
