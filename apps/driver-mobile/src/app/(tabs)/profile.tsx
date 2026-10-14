@@ -150,6 +150,10 @@ export default function ProfileScreen() {
   }
 
   async function handleLogout() {
+    // Tell the server first: it revokes the refresh token and takes an online driver offline, so nobody can be
+    // matched to a phone nobody is signed in on. Best effort and short: signing out must work with no network.
+    const refreshToken = useAuthStore.getState().refreshToken
+    if (refreshToken) await api.post('/api/v1/auth/logout', { refreshToken }, { timeout: 5000 }).catch(() => undefined)
     await teardownPushNotifications()
     clearAuth()
   }
