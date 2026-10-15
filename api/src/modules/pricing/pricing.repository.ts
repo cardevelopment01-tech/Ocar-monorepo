@@ -177,12 +177,14 @@ export async function getActiveSurge(cityId: number, categoryId: number) {
   })
 }
 
+// Admin-created surges are inserted as 'scheduled' and nothing ever flips them to 'active', so the time window
+// alone decides whether one applies (cancelled and expired ones are excluded by status and ends_at).
 async function fetchActiveSurgeFromDb(cityId: number, categoryId: number) {
   const res = await pool.query(
     `SELECT * FROM surge_events
      WHERE city_id = $1
        AND (category_id = $2 OR category_id IS NULL)
-       AND status = 'active'
+       AND status IN ('scheduled', 'active')
        AND starts_at <= now()
        AND ends_at > now()
      ORDER BY

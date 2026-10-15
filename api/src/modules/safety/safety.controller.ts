@@ -81,6 +81,9 @@ export async function postSos(req: Request, res: Response, next: NextFunction): 
 }
 
 // ── POST /safety/disputes ─────────────────────────────────────────
+// Mirrors the dispute_type enum; anything else would reach Postgres and come back as a 500.
+const DISPUTE_TYPES = new Set(['fare_overcharge', 'driver_behaviour', 'vehicle_condition', 'lost_item', 'trip_manipulation', 'payment_issue', 'safety_incident', 'other'])
+
 export async function postDispute(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const body = req.body as {
@@ -92,6 +95,11 @@ export async function postDispute(req: Request, res: Response, next: NextFunctio
 
     if (!body.rideId || !body.type || !body.description) {
       res.status(400).json({ error: 'rideId, type, and description are required', code: 'VALIDATION_ERROR' })
+      return
+    }
+
+    if (!DISPUTE_TYPES.has(body.type)) {
+      res.status(422).json({ error: 'Unknown dispute type', code: 'VALIDATION_ERROR' })
       return
     }
 

@@ -5,7 +5,8 @@ import * as repo from './admin.repository'
 import type { DriverStatus, UpdateDriverStatusPayload, UpdateDriverProfilePayload, UpdateDriverVehiclePayload, CityBoundaryGeoJson, CityBoundaryAnalysis, CityBoundaryWrite } from './admin.types'
 import { cityBoundaryGeoJsonSchema } from './admin.types'
 import { CITY_BOUNDARY_MIN_AREA_KM2, CITY_BOUNDARY_MAX_AREA_KM2 } from '@/constants/limits'
-import { forceResolveRide as resolveStuckRide, getRideAssignCandidates as getAssignCandidatesForRide, adminAssignDriver } from '@/modules/rides/rides.service'
+import { forceResolveRide as resolveStuckRide, getRideAssignCandidates as getAssignCandidatesForRide, adminAssignDriver, goOffline } from '@/modules/rides/rides.service'
+import { getActiveSession } from '@/modules/rides/rides.repository'
 import { getRideStops } from '@/modules/rides/rides.repository'
 import { listMessages as listRideMessages } from '@/modules/ride-chat/ride-chat.repository'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
@@ -167,6 +168,17 @@ export async function updateDriverStatus(
   // When rejecting docs, reset onboarding_step so driver lands on the documents page
   const onboardingStep = payload.status === 'docs_rejected' ? 'documents' : undefined
   await repo.updateDriverStatus(driverId, adminId, currentStatus, payload.status, payload.reason, onboardingStep, ipAddress)
+
+  // A suspended or banned driver must not stay on the map as online. A session on a trip is left alone so the
+  // passenger is not stranded; the status check already blocks new offers.
+  if (payload.status === 'suspended' || payload.status === 'banned') {
+    try {
+      const active = await getActiveSession(driverId)
+      if (active?.status === 'online') await goOffline(driverId, `admin_${payload.status}`)
+    } catch (err) {
+      logger.warn({ err, driverId: driverId.toString() }, 'could not end driver session after status change')
+    }
+  }
 }
 
 // Hard delete — irreversible, cascades to every ride/payment/rating/session

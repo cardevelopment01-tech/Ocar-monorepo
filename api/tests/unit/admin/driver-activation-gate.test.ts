@@ -7,7 +7,15 @@ vi.mock('@/modules/drivers/drivers.repository', () => ({
   hasAllRequiredDocsApproved: vi.fn(),
 }))
 
+vi.mock('@/modules/rides/rides.repository', () => ({ getActiveSession: vi.fn().mockResolvedValue(null), getRideStops: vi.fn() }))
+vi.mock('@/modules/rides/rides.service', () => ({
+  goOffline: vi.fn().mockResolvedValue(undefined),
+  forceResolveRide: vi.fn(), getRideAssignCandidates: vi.fn(), adminAssignDriver: vi.fn(),
+}))
+
 import * as repo from '@/modules/admin/admin.repository'
+import { getActiveSession } from '@/modules/rides/rides.repository'
+import { goOffline } from '@/modules/rides/rides.service'
 import { hasAllRequiredDocsApproved } from '@/modules/drivers/drivers.repository'
 import { updateDriverStatus } from '@/modules/admin/admin.service'
 
@@ -41,5 +49,15 @@ describe('updateDriverStatus — activation requires complete document approval'
     await updateDriverStatus(DRIVER_ID, ADMIN_ID, 'active', { status: 'suspended', reason: 'test reason' })
     expect(hasAllRequiredDocsApproved).not.toHaveBeenCalled()
     expect(repo.updateDriverStatus).toHaveBeenCalled()
+  })
+
+  it('ends an online session when the driver is suspended or banned, and leaves a trip alone', async () => {
+    vi.mocked(getActiveSession).mockResolvedValue({ id: 1n, status: 'online' } as never)
+    await updateDriverStatus(DRIVER_ID, ADMIN_ID, 'active', { status: 'suspended', reason: 'test reason' })
+    expect(goOffline).toHaveBeenCalledWith(DRIVER_ID, 'admin_suspended')
+    vi.mocked(goOffline).mockClear()
+    vi.mocked(getActiveSession).mockResolvedValue({ id: 1n, status: 'on_trip' } as never)
+    await updateDriverStatus(DRIVER_ID, ADMIN_ID, 'active', { status: 'banned', reason: 'test reason' })
+    expect(goOffline).not.toHaveBeenCalled()
   })
 })
