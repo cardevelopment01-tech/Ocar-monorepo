@@ -75,6 +75,18 @@ describe('paymentReducer', () => {
     expect(r(busy, { type: 'RESUME', kind: 'topup', txnId: 'other' })).toBe(busy)
   })
 
+  it('a finished attempt can be followed by a new START without dismissing its banner', () => {
+    const credited = run([...start, { type: 'SDK_EXIT', exit: 'success' }, { type: 'CONFIRM_RESULT', result: 'success' }])
+    const cancelled = run([...start, { type: 'SDK_EXIT', exit: 'cancel' }, { type: 'CONFIRM_RESULT', result: 'pending' }])
+    const failed = run([...start, { type: 'SDK_EXIT', exit: 'failure' }, { type: 'CONFIRM_RESULT', result: 'failed' }])
+    for (const s of [credited, cancelled, failed]) expect(r(s, { type: 'START', kind: 'topup' })).toMatchObject({ phase: 'creating' })
+  })
+
+  it('a payment whose outcome is unknown (pending) is not restarted by START', () => {
+    const s = { phase: 'pending', kind: 'topup', txnId: 'W1x' } as const
+    expect(r(s, { type: 'START', kind: 'topup' })).toBe(s)
+  })
+
   it('RESET returns terminal states to idle but never interrupts a live payment', () => {
     expect(r({ phase: 'credited', kind: 'topup' }, { type: 'RESET' })).toBe(initialPayment)
     expect(r({ phase: 'pending', kind: 'topup', txnId: 'x' }, { type: 'RESET' })).toBe(initialPayment)
