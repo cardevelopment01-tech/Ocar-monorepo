@@ -77,7 +77,7 @@ export default function OnboardingScreen() {
         />
         <Input
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(t) => { setEmail(t); setError('') }}
           label="Email (optional)"
           placeholder="For trip receipts"
           keyboardType="email-address"

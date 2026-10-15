@@ -258,7 +258,7 @@ export default function ProfileScreen() {
               <Feather name="mail" size={15} color={colors.ink400} style={styles.inputIcon} />
               <TextInput
                 value={editEmail}
-                onChangeText={setEditEmail}
+                onChangeText={(t) => { setEditEmail(t); setSaveErr('') }}
                 placeholder="Email address (optional)"
                 placeholderTextColor={colors.ink400}
                 selectionColor={colors.primary}
