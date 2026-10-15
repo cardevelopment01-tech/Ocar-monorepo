@@ -200,6 +200,18 @@ router.post('/payu/return', async (req, res) => {
   }
 })
 
+// Driver app (native PayU SDK) lands here instead of /payu/return: same confirmation funnel, but the answer is a bare
+// page, so no web app (and no web login) loads inside the payment screen before the app takes over.
+router.post('/payu/sdk-return', async (req, res) => {
+  try {
+    await service.handlePayuNotification(req.body as Record<string, string>)
+  } catch (err) {
+    if ((err as { httpStatus?: number }).httpStatus === 400) log.warn({ err }, 'PayU SDK return rejected: bad hash')
+    else log.error({ err }, 'PayU SDK return failed unexpectedly')
+  }
+  res.status(200).type('html').send('<!doctype html><meta charset="utf-8"><title>Ocar</title><p>Returning to the app...</p>')
+})
+
 // Driver app (native PayU SDK): hash signing for the SDK's generateHash callback.
 router.post('/payu/sdk-hash', authenticate(), requireDriver(), payuHashLimiter, async (req, res, next) => {
   try {

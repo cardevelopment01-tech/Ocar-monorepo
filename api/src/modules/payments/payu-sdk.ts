@@ -5,7 +5,7 @@ import { payuConfirmCooldownKey } from '@/constants/redis-keys'
 import { getConfigValue } from '@/lib/system-config'
 import { logger } from '@/lib/logger'
 import {
-  buildPayuForm, customerFor, payuSignString, PAYU_RETURN_PATH,
+  buildPayuForm, customerFor, payuSignString, PAYU_RETURN_PATH, PAYU_SDK_RETURN_PATH,
   TOPUP_PRODUCT_INFO, packageProductInfo, type PayuForm,
 } from '@/lib/payu'
 import * as packagesRepo from '@/modules/packages/packages.repository'
@@ -60,8 +60,8 @@ export function sdkParams(form: PayuForm): SdkOrderParams {
     firstName: f['firstname'] ?? '',
     email: f['email'] ?? '',
     phone: (f['phone'] ?? '').replace(/\D/g, '').slice(-10),
-    surl: f['surl'] ?? '',
-    furl: f['furl'] ?? '',
+    surl: `${config.API_BASE_URL}${PAYU_SDK_RETURN_PATH}`,
+    furl: `${config.API_BASE_URL}${PAYU_SDK_RETURN_PATH}`,
   }
 }
 

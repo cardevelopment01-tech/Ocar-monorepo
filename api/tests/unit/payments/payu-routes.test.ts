@@ -25,6 +25,30 @@ app.use(errorMiddleware)
 
 const RETURN = '/api/v1/payments/payu/return'
 const HOOK = '/api/v1/payments/webhook/payu'
+const SDK_RETURN = '/api/v1/payments/payu/sdk-return'
+
+describe('POST /payu/sdk-return', () => {
+  beforeEach(() => { handle.mockReset() })
+
+  it('confirms through the same funnel and answers a bare page, never a redirect to a web app', async () => {
+    handle.mockResolvedValue({ kind: 'wallet', id: '7', result: 'success' })
+    const res = await request(app).post(SDK_RETURN).type('form').send({ txnid: 'W7xabc', hash: 'h' })
+    expect(handle).toHaveBeenCalledWith({ txnid: 'W7xabc', hash: 'h' })
+    expect(res.status).toBe(200)
+    expect(res.headers['location']).toBeUndefined()
+    expect(res.text).toContain('Returning to the app')
+  })
+
+  it.each([
+    ['400 bad hash', () => Object.assign(new Error('Invalid signature'), { httpStatus: 400 })],
+    ['unexpected throw', () => new Error('boom')],
+  ])('%s still answers the bare page', async (_label, mkErr) => {
+    handle.mockImplementation(async () => { throw mkErr() })
+    const res = await request(app).post(SDK_RETURN).type('form').send({ txnid: 'W7xabc', hash: 'bad' })
+    expect(res.status).toBe(200)
+    expect(res.headers['location']).toBeUndefined()
+  })
+})
 
 describe('POST /payu/return', () => {
   beforeEach(() => { handle.mockReset() })
