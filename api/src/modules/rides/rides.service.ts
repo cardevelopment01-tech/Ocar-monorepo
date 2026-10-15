@@ -1478,10 +1478,15 @@ export async function addRideStop(
   }
 
   // Settlement bills snap.stop_fare, so a charged stop added after booking must land there too.
+  // A one-way ride settles to total_estimated (no recompute), so the charge has to be added there too or the rider
+  // is never billed for a stop added mid-trip. Round trips add snap.stop_fare to their recomputed total instead.
   if (chargeApplied > 0) {
     await pool.query(
-      `UPDATE fare_snapshots SET stop_fare = stop_fare + $2, stop_count = COALESCE(stop_count, 0) + 1 WHERE ride_id = $1`,
-      [rideId, chargeApplied],
+      `UPDATE fare_snapshots
+       SET stop_fare = stop_fare + $2, stop_count = COALESCE(stop_count, 0) + 1,
+           total_estimated = CASE WHEN $3 THEN total_estimated + $2 ELSE total_estimated END
+       WHERE ride_id = $1`,
+      [rideId, chargeApplied, ride.ride_type === 'one_way'],
     )
   }
 

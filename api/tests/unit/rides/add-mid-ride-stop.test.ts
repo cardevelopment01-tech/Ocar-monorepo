@@ -106,7 +106,19 @@ describe('addRideStop', () => {
 
     expect(repo.appendRideStop).toHaveBeenCalledWith(RIDE_ID, { ...STOP, chargeApplied: 30 })
     // The charge must reach the fare snapshot settlement bills from.
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE fare_snapshots SET stop_fare'), [RIDE_ID, 30])
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE fare_snapshots'), [RIDE_ID, 30, false])
+  })
+
+  it('adds the charge to total_estimated on a one-way ride, which settles to that total', async () => {
+    vi.mocked(repo.getRideStopCharge).mockResolvedValue(30)
+    vi.mocked(repo.getRideCoreById).mockResolvedValue({
+      id: RIDE_ID, user_id: USER_ID, status: 'in_progress', ride_type: 'one_way', category_id: BigInt(3),
+      origin_lat: 20.10, origin_lng: 85.70, dest_lat: null, dest_lng: null,
+    } as never)
+
+    await addRideStop(USER_ID, RIDE_ID, STOP)
+
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('total_estimated = CASE WHEN $3'), [RIDE_ID, 30, true])
   })
 
   it("adds a stop on a round trip's return leg ('returning') with the rate-card stop charge", async () => {
@@ -119,7 +131,7 @@ describe('addRideStop', () => {
     await addRideStop(USER_ID, RIDE_ID, STOP)
 
     expect(repo.appendRideStop).toHaveBeenCalledWith(RIDE_ID, { ...STOP, chargeApplied: 30 })
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE fare_snapshots SET stop_fare'), [RIDE_ID, 30])
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE fare_snapshots'), [RIDE_ID, 30, false])
     expect(socketEvents.sendStopAdded).toHaveBeenCalled()
   })
 
